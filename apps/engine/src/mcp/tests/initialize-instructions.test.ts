@@ -6,11 +6,17 @@
 // containing the summary text. When the tenant is all-clear, the instructions
 // string is the "all clear" sentence.
 //
-// A principal without stats:read (member role) must still receive tools
-// but MUST NOT receive an instructions string in the initialize response.
+// WS4 invariants verified here:
+// - Every principal (including member without stats:read) MUST receive a
+//   non-empty `instructions` string containing the BASE_INTRO text.
+// - A principal with stats:read additionally receives the operator health
+//   digest appended on top of BASE_INTRO.
+// - `serverInfo.version` MUST equal `resolveEngineVersion()` — not the
+//   hardcoded "0.0.0" placeholder.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { VERSION } from "@cli-core/version.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -25,6 +31,19 @@ import {
 import { _resetRssHighWaterForTests, setDlqJobCount } from "../../observability/instrumentation.ts";
 import { resetMetricsRegistryForTests } from "../../observability/metrics.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
+
+// Mirror the server's resolveEngineVersion() logic so tests assert the
+// actual resolved value rather than a hardcoded string.
+function resolveEngineVersionForTest(): string {
+  if (VERSION && VERSION !== "0.0.0-dev") return VERSION;
+  const env = process.env.ENGINE_VERSION;
+  if (env && env !== "0.0.0-dev") return env;
+  return VERSION ?? "0.0.0-dev";
+}
+
+// First sentence of BASE_INTRO — stable enough to assert on without
+// coupling the test to the full multi-line string.
+const BASE_INTRO_SENTINEL = "sk runs your business workflows";
 
 function sha256Hex(s: string): string {
   return createHash("sha256").update(s).digest("hex");
@@ -134,13 +153,14 @@ describe("mcp initialize — instructions field", () => {
     expect(instructions).toContain("dead-letter");
   });
 
-  test("a principal without stats:read connects with tools but no instructions", async () => {
+  test("a principal without stats:read receives BASE_INTRO instructions but no operator digest", async () => {
     resetMetricsRegistryForTests();
     _resetRssHighWaterForTests();
 
     // Insert a member-role user + key. The member role excludes stats:read
     // (see apps/engine/src/rbac/seed.ts memberPermissionFilter), so the
-    // server must skip the health digest and leave instructions undefined.
+    // server must skip appending the health digest but MUST still send
+    // the always-present BASE_INTRO (WS4: instructions is no longer gated).
     const [memberUser] = await suite.http.db
       .insert(users)
       .values({
@@ -170,8 +190,19 @@ describe("mcp initialize — instructions field", () => {
     await client.connect(transport as unknown as Transport);
 
     try {
-      // No instructions because stats:read is denied for member.
-      expect(client.getInstructions()).toBeUndefined();
+      const instructions = client.getInstructions();
+
+      // WS4: every principal now receives the BASE_INTRO, even without stats:read.
+      expect(typeof instructions).toBe("string");
+      expect(instructions!.length).toBeGreaterThan(0);
+      expect(instructions).toContain(BASE_INTRO_SENTINEL);
+
+      // The operator health digest is NOT appended when stats:read is denied.
+      // Digest output contains "Engine health" on the all-clear path and
+      // "Needs attention" on the non-all-clear path. Absence of both
+      // confirms the gate held — the member received BASE_INTRO only.
+      expect(instructions).not.toContain("Engine health");
+      expect(instructions).not.toContain("Needs attention");
 
       // The server still exposes the full tool palette — the member can
       // author and execute workflows; only the operator digest is gated.
@@ -180,5 +211,24 @@ describe("mcp initialize — instructions field", () => {
     } finally {
       await client.close();
     }
+  });
+
+  test("serverInfo.version equals the resolved engine version — not the 0.0.0 placeholder", async () => {
+    resetMetricsRegistryForTests();
+    _resetRssHighWaterForTests();
+
+    const client = await suite.connect();
+
+    const serverVersion = client.getServerVersion();
+    expect(serverVersion).toBeDefined();
+    expect(serverVersion!.name).toBe("subkit-engine");
+
+    // The resolved version must equal what resolveEngineVersion() returns.
+    // In CI / local dev without a build stamp this is "0.0.0-dev"; in a
+    // stamped build it is the real semver. Either way it must NOT be the
+    // old hardcoded "0.0.0" placeholder that pre-WS4 always emitted.
+    const expected = resolveEngineVersionForTest();
+    expect(serverVersion!.version).toBe(expected);
+    expect(serverVersion!.version).not.toBe("0.0.0");
   });
 });

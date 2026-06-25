@@ -13,7 +13,12 @@
 // connection, manifest, and tool result lives under its tenant's bucket.
 
 import { createHash } from "node:crypto";
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import {
+  ClientCredentialsProvider,
+  PrivateKeyJwtProvider,
+} from "@modelcontextprotocol/sdk/client/auth-extensions.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -25,7 +30,11 @@ import {
 import { getConfig } from "../../config/loader.ts";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { assertEgressAllowed } from "../../connectors/egress-guard.ts";
-import { getCredentialForMcpServer } from "../../credentials/service.ts";
+import {
+  getCredentialForMcpServer,
+  getOAuth2ClientCredentialForMcpServer,
+  getOAuth2PrivateKeyCredentialForMcpServer,
+} from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
@@ -261,8 +270,14 @@ async function resolveAuthHeaders(
   environment: "dev" | "prod",
 ): Promise<Record<string, string>> {
   if (auth.kind === "none") return {};
-  // oauth2 carries no static header — the authProvider supplies the token.
-  if (auth.kind === "oauth2") return {};
+  // oauth2 / M2M kinds carry no static header — the authProvider supplies
+  // the token via the SDK's non-interactive fetch path.
+  if (
+    auth.kind === "oauth2" ||
+    auth.kind === "oauth2_client_credentials" ||
+    auth.kind === "oauth2_private_key_jwt"
+  )
+    return {};
 
   const resolved = await getCredentialForMcpServer(tenant_id, mcp_server_id, environment, db);
   if (!resolved) {
@@ -376,7 +391,7 @@ function buildTransport(
   tenant_id: string,
   row: McpServerRow,
   headers: Record<string, string>,
-  authProvider?: McpDbOAuthClientProvider,
+  authProvider?: OAuthClientProvider,
 ): StreamableHTTPClientTransport | SSEClientTransport {
   const url = new URL(row.url);
   // SSRF / egress guard at the connection boundary: block loopback,
@@ -412,6 +427,101 @@ function buildTransport(
 }
 
 /**
+ * Resolve the SDK `OAuthClientProvider` for a server row, or `undefined`
+ * when the auth kind uses a static header (bearer / basic / none).
+ *
+ * - `oauth2` → `McpDbOAuthClientProvider` in non-interactive mode (no
+ *   browser, no code exchange; a missing token surfaces as
+ *   `UnauthorizedError` on connect and is caught by `connectClient`).
+ * - `oauth2_client_credentials` → SDK `ClientCredentialsProvider`. Reads
+ *   the client_id + client_secret from the `oauth2_client` credential
+ *   slot (same slot used by the interactive oauth2 path). If absent →
+ *   throws a clear error (caught → parked in error+backoff).
+ * - `oauth2_private_key_jwt` → SDK `PrivateKeyJwtProvider`. Reads the
+ *   client_id, private_key, and algorithm from the `oauth2_private_key`
+ *   credential slot. If absent → throws (caught → parked).
+ *
+ * Both M2M providers discover the token endpoint via RFC 9728 off
+ * `row.url` — the `issuer` field in `auth_config` is documentation-only.
+ * Both cache their access token in-memory (no `saveTokens` persistence);
+ * only the long-lived secret (client_secret / private_key) is stored
+ * encrypted in `credentials`.
+ */
+async function resolveAuthProvider(
+  db: Db,
+  tenant_id: string,
+  row: McpServerRow,
+  auth: McpServerAuthConfig,
+  environment: "dev" | "prod",
+  requestSource: RequestSource,
+): Promise<OAuthClientProvider | undefined> {
+  switch (auth.kind) {
+    case "oauth2":
+      return new McpDbOAuthClientProvider({
+        db,
+        tenant_id,
+        mcp_server_id: row.id,
+        environment,
+        // Throws when no canonical redirect URI is configured — caught
+        // by connectClient and parked as a redact-safe last_error + backoff.
+        redirect_uri: oauthRedirectUriFor(),
+        // No mcp_oauth_states row exists for the palette handshake; the
+        // state value is unused in non-interactive mode.
+        state: "",
+        auth,
+        interactive: false,
+        request_source: requestSource,
+      });
+
+    case "oauth2_client_credentials": {
+      // Read the client_secret from the `oauth2_client` credential slot,
+      // which is where the route handler writes it (same slot as DCR
+      // for the interactive oauth2 path).
+      const cred = await getOAuth2ClientCredentialForMcpServer(tenant_id, row.id, environment, db);
+      if (cred == null) {
+        throw new Error(
+          "oauth2_client_credentials server has no client credential — register the client_id and client_secret first",
+        );
+      }
+      if (!cred.client_secret) {
+        throw new Error("oauth2_client_credentials server credential is missing client_secret");
+      }
+      return new ClientCredentialsProvider({
+        clientId: cred.client_id,
+        clientSecret: cred.client_secret,
+        ...(auth.scope ? { scope: auth.scope } : {}),
+      });
+    }
+
+    case "oauth2_private_key_jwt": {
+      // Read the private_key + algorithm from the `oauth2_private_key`
+      // credential slot (distinct from the `oauth2_client` slot).
+      const cred = await getOAuth2PrivateKeyCredentialForMcpServer(
+        tenant_id,
+        row.id,
+        environment,
+        db,
+      );
+      if (cred == null) {
+        throw new Error(
+          "oauth2_private_key_jwt server has no private key credential — register the client_id, private_key, and algorithm first",
+        );
+      }
+      return new PrivateKeyJwtProvider({
+        clientId: cred.client_id,
+        privateKey: cred.private_key,
+        algorithm: cred.algorithm,
+        ...(auth.scope ? { scope: auth.scope } : {}),
+      });
+    }
+
+    default:
+      // bearer / basic / none — no provider; static header path.
+      return undefined;
+  }
+}
+
+/**
  * Connect (or reconnect) a single server: build the transport, resolve
  * auth by reference, handshake, list tools, hash + cap the manifest,
  * reconcile drift, persist handshake state, and audit. On failure parks
@@ -429,31 +539,29 @@ async function connectClient(
   try {
     const auth = parseAuthConfig(row.auth_config ?? null);
     const headers = await resolveAuthHeaders(db, tenant_id, row.id, auth, environment);
-    // For oauth2 servers the SDK transport's authProvider owns the whole
-    // token lifecycle (replay cached token, refresh pre-expiry, persist).
-    // It is constructed `interactive: false`: a palette handshake against
-    // an un-authorized server must NEVER open a browser or persist an
-    // authorization URL — the provider's redirectToAuthorization no-ops
-    // and the transport raises UnauthorizedError on connect, which the
-    // catch below parks in backoff. bearer/basic/none keep the static header.
-    const authProvider =
-      auth.kind === "oauth2"
-        ? new McpDbOAuthClientProvider({
-            db,
-            tenant_id,
-            mcp_server_id: row.id,
-            environment,
-            // Throws when no canonical redirect URI is configured — caught
-            // below and parked as a redact-safe last_error + backoff.
-            redirect_uri: oauthRedirectUriFor(),
-            // No mcp_oauth_states row exists for the palette handshake; the
-            // state value is unused in non-interactive mode.
-            state: "",
-            auth,
-            interactive: false,
-            request_source: requestSource,
-          })
-        : undefined;
+    // For oauth2 / M2M kinds the SDK transport's authProvider owns the whole
+    // token lifecycle. bearer/basic/none keep the static header instead.
+    //
+    // oauth2 (interactive): constructs McpDbOAuthClientProvider in
+    //   non-interactive mode — redirectToAuthorization no-ops, so no
+    //   browser opens. A missing/expired token raises UnauthorizedError
+    //   on connect, caught below and parked in backoff.
+    //
+    // oauth2_client_credentials (M2M): constructs ClientCredentialsProvider.
+    //   The SDK fetches the token directly via RFC 9728 discovery on row.url.
+    //   Token is cached in-memory on the provider instance (not persisted).
+    //
+    // oauth2_private_key_jwt (M2M): constructs PrivateKeyJwtProvider.
+    //   Same non-interactive discovery path; signs each token request with
+    //   the stored private key.
+    const authProvider: OAuthClientProvider | undefined = await resolveAuthProvider(
+      db,
+      tenant_id,
+      row,
+      auth,
+      environment,
+      requestSource,
+    );
     // TEST SEAM consumption (see header above `McpPoolTestFactories`):
     // production always takes the `??` fallback — real transport, real Client.
     const transport =

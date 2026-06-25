@@ -34,6 +34,7 @@ import { getBoss } from "../../queue/index.ts";
 import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
 import { getWorkflow } from "../../workflows/service.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
+import { zodToJsonSchema7 } from "../json-schema.ts";
 import { insertMcpTask, setMcpTaskFailure, setMcpTaskJobId } from "../tasks/store.ts";
 import {
   CONVERSATION_TASK_POLL_INTERVAL_MS,
@@ -70,12 +71,7 @@ const CommitArgs = z.object({
 });
 
 function jsonSchema(schema: z.ZodTypeAny): Tool["inputSchema"] {
-  // Zod v4 exposes `toJSONSchema` on the runtime module; the typed
-  // export does not surface it. Matches the helper in mcp/adapter.ts.
-  // biome-ignore lint/suspicious/noExplicitAny: zod v4 runtime surface.
-  const anyZ = z as any;
-  const json = anyZ.toJSONSchema(schema, { target: "jsonSchema7" });
-  return json as Tool["inputSchema"];
+  return zodToJsonSchema7(schema) as Tool["inputSchema"];
 }
 
 export function listConversationTools(): Tool[] {

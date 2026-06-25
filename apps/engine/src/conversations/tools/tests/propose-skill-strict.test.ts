@@ -8,7 +8,8 @@
 // without also tightening the schema fails fast.
 
 import { describe, expect, it } from "bun:test";
-import { z } from "@hono/zod-openapi";
+import type { ZodType } from "zod";
+import { zodToJsonSchema7 } from "../../../mcp/json-schema.ts";
 import { buildWorkflowTool } from "../build-workflow.ts";
 import { proposeSkillTool } from "../propose-skill.ts";
 import { proposeStepTool } from "../propose-step.ts";
@@ -44,9 +45,7 @@ function hasUnrestrictedObject(node: unknown): boolean {
   return false;
 }
 
-const toJsonSchema = (schema: unknown) =>
-  // biome-ignore lint/suspicious/noExplicitAny: zod v4 toJSONSchema surface
-  (z as any).toJSONSchema(schema, { target: "jsonSchema7" }) as unknown;
+const toJsonSchema = (schema: unknown) => zodToJsonSchema7(schema as ZodType) as unknown;
 
 describe("strict + inputExamples opt-in", () => {
   it("propose_skill opts into strict mode", () => {

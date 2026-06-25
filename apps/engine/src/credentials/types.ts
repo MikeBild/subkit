@@ -29,6 +29,11 @@ export const CredentialMode = z.enum([
   // the issued client_id + encrypted client_secret so the oauth start
   // handler can read them back without touching connectors.config JSONB.
   "oauth2_client",
+  // Private key (PEM or JWK) for machine-to-machine OAuth2 flows using
+  // the private_key_jwt client authentication method (RFC 7523). Stores
+  // client_id + private_key + algorithm so the MCP client pool can
+  // construct a PrivateKeyJwtProvider without interactive consent.
+  "oauth2_private_key",
 ]);
 export type CredentialMode = z.infer<typeof CredentialMode>;
 
@@ -132,6 +137,18 @@ export const OAuth2ClientCredentialValue = z.object({
 });
 export type OAuth2ClientCredentialValue = z.infer<typeof OAuth2ClientCredentialValue>;
 
+// Private key credential for machine-to-machine OAuth2 private_key_jwt
+// authentication (RFC 7523). Stores the client_id, the PEM or
+// JWK-serialized private key, and the signing algorithm so the MCP
+// client pool can construct a PrivateKeyJwtProvider non-interactively.
+// The private key is encrypted at rest exactly like any other secret.
+export const OAuth2PrivateKeyCredentialValue = z.object({
+  client_id: z.string(),
+  private_key: z.string().min(1),
+  algorithm: z.string().min(1),
+});
+export type OAuth2PrivateKeyCredentialValue = z.infer<typeof OAuth2PrivateKeyCredentialValue>;
+
 export type DecryptedCredential =
   | { mode: "none" }
   | ({ mode: "header" } & HeaderCredentialValue)
@@ -152,4 +169,5 @@ export type DecryptedCredential =
       refresh_token: string | null;
       expires_at: Date | null;
     } & TokenMintCredentialValue)
-  | ({ mode: "oauth2_client" } & OAuth2ClientCredentialValue);
+  | ({ mode: "oauth2_client" } & OAuth2ClientCredentialValue)
+  | ({ mode: "oauth2_private_key" } & OAuth2PrivateKeyCredentialValue);

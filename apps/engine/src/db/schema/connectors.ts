@@ -27,6 +27,9 @@ export const credentialModeEnum = pgEnum("credential_mode", [
   "aws_sigv4",
   "token_mint",
   "oauth2_client",
+  // Private key for machine-to-machine OAuth2 private_key_jwt flows.
+  // See credentials/types.ts `OAuth2PrivateKeyCredentialValue`.
+  "oauth2_private_key",
 ]);
 export const endUserCombineModeEnum = pgEnum("end_user_combine_mode", ["merge", "replace"]);
 export const connectorTemplateSourceEnum = pgEnum("connector_template_source", [

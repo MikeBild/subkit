@@ -21,8 +21,9 @@ import type {
   ToolSet,
 } from "ai";
 import { generateObject, jsonSchema } from "ai";
-import { z } from "zod";
+import type { ZodType } from "zod";
 import { logger } from "../../logging/logger.ts";
+import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import { normalizeSchema } from "./schema-normalizer.ts";
 
 export interface RepairToolCallParams<TOOLS extends ToolSet> {
@@ -214,9 +215,7 @@ export function isSchemaRejectionError(input: { errName: string; errMsg: string 
  */
 function toJsonSchemaShape(raw: unknown): Record<string, unknown> | null {
   if (raw && typeof raw === "object" && "_def" in (raw as Record<string, unknown>)) {
-    // biome-ignore lint/suspicious/noExplicitAny: zod v4 type surface — toJSONSchema lives on the runtime module, not the typed export.
-    const out = (z as any).toJSONSchema(raw, { target: "jsonSchema7" });
-    return out as Record<string, unknown>;
+    return zodToJsonSchema7(raw as ZodType);
   }
   if (raw && typeof raw === "object") {
     return raw as Record<string, unknown>;
