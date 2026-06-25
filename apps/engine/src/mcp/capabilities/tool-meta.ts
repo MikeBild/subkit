@@ -47,6 +47,32 @@ function isDestructive(toolName: string): boolean {
   return /^(delete_|revoke_|archive_|remove_)/.test(toolName);
 }
 
+/**
+ * Tools that reach systems OUTSIDE subkit's own tenant store — connector
+ * HTTP calls, probes, OAuth, docs fetch, dry-runs that execute real steps.
+ * Drives `openWorldHint`: ChatGPT's validator wants all four hints explicit,
+ * and an accurate `openWorldHint:false` on the internal CRUD/read tools lets
+ * ChatGPT treat them as closed-world (no per-call approval), while the
+ * external-reaching set is flagged open-world so the client frames it
+ * correctly. Everything not listed operates only on subkit-internal state.
+ */
+const EXTERNAL_REACHING_TOOLS: ReadonlySet<string> = new Set([
+  "call_connector",
+  "probe_connector",
+  "probe_connector_draft",
+  "test_connector",
+  "fetch_connector_docs",
+  "discover_connector_endpoints",
+  "authenticate_oauth",
+  "request_connector_reauth",
+  "dry_run_step",
+  "dry_run_workflow",
+]);
+
+function reachesExternal(toolName: string): boolean {
+  return EXTERNAL_REACHING_TOOLS.has(toolName);
+}
+
 export function buildConversationToolMeta(
   category: ToolCategory,
   toolName: string,
@@ -78,12 +104,17 @@ export function buildToolAnnotations(
   toolName: string,
 ): McpToolAnnotations {
   const readOnly = category === "tenant_read";
+  // All four spec hints are set EXPLICITLY: ChatGPT's connector validator
+  // treats an absent hint as unknown and may gate the tool as a write
+  // (per-call approval). Explicit values let it apply its native approval
+  // UI precisely — reads run without confirm, writes/externals surface it.
   return {
     readOnlyHint: readOnly,
     destructiveHint: isDestructive(toolName),
     // A pure read never mutates, so it is trivially idempotent. Writes make
     // no such guarantee.
     idempotentHint: readOnly,
+    openWorldHint: reachesExternal(toolName),
   };
 }
 

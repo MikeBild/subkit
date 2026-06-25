@@ -29,6 +29,27 @@ describe("buildToolAnnotations", () => {
       expect(buildToolAnnotations("tenant_write", name).destructiveHint).toBe(true);
     }
   });
+
+  test("all four spec hints are set explicitly (ChatGPT validator treats absent as write)", () => {
+    const a = buildToolAnnotations("tenant_read", "get_workflow");
+    for (const key of ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"]) {
+      expect(typeof (a as Record<string, unknown>)[key]).toBe("boolean");
+    }
+  });
+
+  test("external-reaching tools are open-world; internal CRUD/reads are closed-world", () => {
+    for (const name of [
+      "call_connector",
+      "probe_connector",
+      "authenticate_oauth",
+      "dry_run_workflow",
+    ]) {
+      expect(buildToolAnnotations("tenant_write", name).openWorldHint).toBe(true);
+    }
+    for (const name of ["get_workflow", "list_workflows", "delete_workflow", "update_connector"]) {
+      expect(buildToolAnnotations("tenant_read", name).openWorldHint).toBe(false);
+    }
+  });
 });
 
 describe("buildWorkflowToolAnnotations", () => {
