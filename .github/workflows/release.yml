@@ -9,7 +9,7 @@ on:
   # We intentionally do NOT listen on `release: published` — a single tag
   # push must fan out exactly once.
   push:
-    tags: ['v*.*.*', 'subkit-v*.*.*']
+    tags: ['v*.*.*']
   # Manual recovery — two modes:
   #   1. `gh workflow run release.yml --ref <tag>` — dispatch IS the tag;
   #      github.ref becomes the tag ref and the workflow runs as if the
@@ -257,8 +257,7 @@ jobs:
         env:
           RELEASE_REF: ${{ inputs.tag || github.ref_name }}
         run: |
-          VERSION="${RELEASE_REF#subkit-v}"
-          VERSION="${VERSION#v}"
+          VERSION="${RELEASE_REF#v}"
           EXT=""
           TARGET_FLAG=""
           if [ "${{ matrix.os }}" = "windows" ]; then
@@ -430,7 +429,7 @@ jobs:
         env:
           RELEASE_REF: ${{ inputs.tag || github.ref_name }}
         run: |
-          V="${RELEASE_REF#subkit-v}"; V="${V#v}"
+          V="${RELEASE_REF#v}"
           echo "version=$V" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
