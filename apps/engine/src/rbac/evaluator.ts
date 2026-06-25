@@ -6,6 +6,10 @@
 // request through or raise `ForbiddenError`.
 //
 // Evaluation order (first match wins):
+//   0. Credential ceiling — api-key scopes / allowed_connectors /
+//      allowed_workflows. A deny here precedes EVERY positive rule
+//      (including the admin short-circuit) so a deliberately narrow
+//      credential narrows even an admin → `credential_ceiling`.
 //   1. Built-in `admin` role on the principal → `builtin_admin`.
 //   2. Direct `resource_grants` row for this (subject, resource,
 //      permission) → `resource_grant`.
@@ -20,7 +24,8 @@
 // `{result, permission, source}` so operators can see deny rates per
 // permission in Prometheus.
 
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { isCeilingScope, WILDCARD_SCOPE } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import {
@@ -34,13 +39,39 @@ import {
 } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
+import { now } from "../utils/clock.ts";
 
 export type DecisionSource =
   | "builtin_admin"
   | "resource_grant"
   | "group"
   | "role"
-  | "portal_token_allowlist";
+  | "portal_token_allowlist"
+  // A deny produced by the credential ceiling — the api-key scopes /
+  // allowed_connectors / allowed_workflows narrowed the request before
+  // any positive rule (including the admin short-circuit) could apply.
+  | "credential_ceiling";
+
+/** Connector authorization collapsed to a single level, mirroring the
+ *  none / read-only / read-write framing. Computed by
+ *  `connectorAccessLevel` from the same `can()` the engine enforces. */
+export type ConnectorAccessLevel = "none" | "read-only" | "read-write";
+
+/**
+ * Structured, surface-agnostic denial detail used to render an actionable
+ * message on REST / MCP / CLI (e.g. "you have read-only access to connector
+ * X; this needs read-write"). Present only on denies that have a knowable
+ * remedy — not on `permission_unknown` (a config error, not a grant gap).
+ */
+export interface DenyDetail {
+  /** The permission the caller lacked. */
+  required: string;
+  /** The resource the check targeted, if any. */
+  resource?: { type: string; id: string };
+  /** Machine-readable cause, e.g. `credential_ceiling:scope_not_granted`
+   *  or `no_matching_grant`. */
+  cause: string;
+}
 
 export interface PermissionCheck {
   tenant_id: string;
@@ -63,6 +94,8 @@ export interface Decision {
   allow: boolean;
   reason?: string;
   source?: DecisionSource;
+  /** Actionable denial detail (Stream 2). Set only on denies. */
+  detail?: DenyDetail;
 }
 
 function recordMetric(result: "allow" | "deny", permission: string, source: string): void {
@@ -155,24 +188,59 @@ async function groupGrantsPermission(
   return rows.length > 0;
 }
 
+async function userGroupIds(db: Db, userId: string): Promise<string[]> {
+  // tenant-filter:exempt — group_members has no tenant_id column; a user's
+  // group memberships are tenant-scoped transitively (group_members.group_id
+  // → groups.tenant_id, and a user only joins groups in its own tenant). The
+  // resulting grant lookup IS tenant-filtered. Mirrors groupGrantsPermission.
+  const rows = await db
+    .select({ group_id: groupMembers.group_id })
+    .from(groupMembers)
+    .where(eq(groupMembers.user_id, userId));
+  return rows.map((r) => r.group_id);
+}
+
 async function hasResourceGrant(
   db: Db,
   check: PermissionCheck,
   permissionId: string,
 ): Promise<boolean> {
   if (!check.resource) return false;
-  const subjectType = check.principal.kind; // user | system_account
+
+  // A grant resolves if its subject is the principal itself OR — for a
+  // user — any group the principal belongs to. Matching only
+  // `subject_type === principal.kind` (the old behaviour) made every
+  // `subject_type='group'` grant invisible, so a group-scoped grant
+  // silently never applied.
+  const subjectClauses = [
+    and(
+      eq(resourceGrants.subject_type, check.principal.kind),
+      eq(resourceGrants.subject_id, check.principal.id),
+    ),
+  ];
+  if (check.principal.kind === "user") {
+    const groupIds = await userGroupIds(db, check.principal.id);
+    if (groupIds.length > 0) {
+      subjectClauses.push(
+        and(eq(resourceGrants.subject_type, "group"), inArray(resourceGrants.subject_id, groupIds)),
+      );
+    }
+  }
+
   const rows = await db
     .select({ id: resourceGrants.id })
     .from(resourceGrants)
     .where(
       and(
         eq(resourceGrants.tenant_id, check.tenant_id),
-        eq(resourceGrants.subject_type, subjectType),
-        eq(resourceGrants.subject_id, check.principal.id),
+        or(...subjectClauses),
         eq(resourceGrants.resource_type, check.resource.type),
         eq(resourceGrants.resource_id, check.resource.id),
         eq(resourceGrants.permission_id, permissionId),
+        // Expired grants must not allow. NULL = never expires. `now()` is
+        // the test-overridable clock seam, consistent with how `expires_at`
+        // is written app-side (see rbac/grants.ts).
+        or(isNull(resourceGrants.expires_at), gt(resourceGrants.expires_at, new Date(now()))),
       ),
     )
     .limit(1);
@@ -233,7 +301,83 @@ const rbacCtx = (check: PermissionCheck) => ({
   resource_id: check.resource?.id,
 });
 
+function ceilingDeny(check: PermissionCheck, cause: string): Decision {
+  const reason = `credential_ceiling:${cause}`;
+  recordMetric("deny", check.permission, "credential_ceiling");
+  emitDeny(check, reason, "credential_ceiling");
+  return {
+    allow: false,
+    reason,
+    source: "credential_ceiling",
+    detail: {
+      required: check.permission,
+      ...(check.resource ? { resource: check.resource } : {}),
+      cause: reason,
+    },
+  };
+}
+
+/**
+ * Credential ceiling — runs BEFORE every positive rule (including the admin
+ * short-circuit). A credential whose scopes / allowed_connectors /
+ * allowed_workflows are deliberately narrow must narrow even an admin-role
+ * key, or the displayed scope is a lie. Returns a deny `Decision` when the
+ * credential excludes the request, or `null` to continue normal evaluation.
+ *
+ * Portal tokens are exempt: they carry their own hard-isolation allowlist
+ * enforced by `matchesPortalTokenAllowlist`, and the `isPortalToken`
+ * short-circuits below already gate them. Re-checking here would only
+ * duplicate that path and perturb its reason strings.
+ */
+function credentialCeiling(check: PermissionCheck): Decision | null {
+  const { principal } = check;
+  if (principal.provider === "portal_token") return null;
+
+  // 1. scopes ceiling. Only `resource:action` scopes narrow; the `*`
+  //    wildcard and the `mcp:*` mode markers do not (see auth/scopes.ts).
+  //    A scope set that is *only* wildcard/markers imposes no ceiling.
+  const scopes = principal.scopes;
+  if (scopes && scopes.length > 0 && !scopes.includes(WILDCARD_SCOPE)) {
+    const ceiling = scopes.filter(isCeilingScope);
+    if (ceiling.length > 0 && !ceiling.includes(check.permission)) {
+      return ceilingDeny(check, "scope_not_granted");
+    }
+  }
+
+  // 2. allowed_connectors ceiling — caps connector-resource operations to
+  //    the key's connector allowlist.
+  const connectors = principal.allowed_connectors;
+  if (
+    connectors &&
+    connectors !== "all" &&
+    check.resource?.type === "connector" &&
+    !connectors.includes(check.resource.id)
+  ) {
+    return ceilingDeny(check, "connector_not_in_allowlist");
+  }
+
+  // 3. allowed_workflows ceiling — caps workflow-resource operations to
+  //    the key's workflow allowlist.
+  const workflows = principal.allowed_workflows;
+  if (
+    workflows &&
+    workflows !== "all" &&
+    check.resource?.type === "workflow" &&
+    !workflows.includes(check.resource.id)
+  ) {
+    return ceilingDeny(check, "workflow_not_in_allowlist");
+  }
+
+  return null;
+}
+
 export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
+  // 0. credential ceiling — a deliberately narrow credential narrows the
+  //    request BEFORE the admin short-circuit, so the surfaced scope is the
+  //    enforced scope even for an admin-role key.
+  const ceiling = credentialCeiling(check);
+  if (ceiling) return ceiling;
+
   // 1. admin short-circuit.
   if (hasBuiltinAdminRole(check.principal)) {
     recordMetric("allow", check.permission, "builtin_admin");
@@ -317,6 +461,11 @@ export async function can(db: Db, check: PermissionCheck): Promise<Decision> {
   return {
     allow: false,
     reason,
+    detail: {
+      required: check.permission,
+      ...(check.resource ? { resource: check.resource } : {}),
+      cause: isPortalToken ? "workflow_not_in_allowlist" : "no_matching_grant",
+    },
   };
 }
 
@@ -356,8 +505,34 @@ export async function assertCan(db: Db, check: PermissionCheck): Promise<Decisio
   return d;
 }
 
+/**
+ * Collapse a principal's connector authorization to a single level —
+ * `read-write` / `read-only` / `none` — the framing shared by the denial
+ * message (Stream 2), the introspection endpoint (Stream 3), and the
+ * build-time warning (Stream 4). Two `can()` probes against the same
+ * evaluator the engine enforces; both are `quiet` because a "no" here is a
+ * routine introspection outcome, not an operator-actionable deny.
+ */
+export async function connectorAccessLevel(
+  db: Db,
+  principal: ResolvedPrincipal,
+  connectorId: string,
+  tenantId: string,
+): Promise<ConnectorAccessLevel> {
+  const base = {
+    tenant_id: tenantId,
+    principal,
+    resource: { type: "connector", id: connectorId },
+    quiet: true,
+  } as const;
+  const [read, write] = await Promise.all([
+    can(db, { ...base, permission: "connector:read" }),
+    can(db, { ...base, permission: "connector:write" }),
+  ]);
+  if (write.allow) return "read-write";
+  if (read.allow) return "read-only";
+  return "none";
+}
+
 // Re-export symbols some consumers import from here.
 export { permissionsTable as rbacPermissions, rolesTable as rbacRoles };
-
-// Suppress unused-import warnings when the evaluator is tree-shaken for tests.
-void or;

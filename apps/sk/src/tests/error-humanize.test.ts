@@ -185,6 +185,28 @@ describe("humanizeRequestError surfaces hints", () => {
     expect(out).toContain("auth refresh");
   });
 
+  test("a 403 with a server hint renders the server hint (Stream 2 RBAC denial)", () => {
+    const err = new EngineError(403, {
+      code: "forbidden",
+      message: "credential_ceiling:connector_not_in_allowlist",
+      hint: "you have read-only access to connector conn-1; this needs read-write access — request a grant or a key with that access",
+      details: { connector_level: "read-only", required: "connector:write" },
+    });
+    const out = humanizeRequestError(err);
+    expect(out).toContain("HTTP 403");
+    expect(out).toContain("read-only access to connector conn-1");
+    // The curated server hint wins over the generic 403 → "auth refresh" pattern.
+    expect(out).not.toContain("auth refresh");
+  });
+
+  test("a 403 WITHOUT a server hint still renders the head (no stale hint)", () => {
+    const err = new EngineError(403, { code: "forbidden", message: "policy_denied" });
+    const out = humanizeRequestError(err);
+    expect(out).toContain("HTTP 403 forbidden");
+    // No server hint → no fabricated connector wording.
+    expect(out).not.toContain("read-only");
+  });
+
   test("provider-limited errors prefer the provider hint over the budget hint", () => {
     const err = new EngineError(429, {
       code: "llm_provider_limited",

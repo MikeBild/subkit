@@ -10,12 +10,10 @@
 // and keeps the rich authoring/admin surface available for callers that
 // explicitly ask for it.
 
+import { MCP_ADMIN_SCOPE, MCP_AUTHORING_SCOPE } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 
 export type McpMode = "product" | "authoring" | "admin";
-
-const MCP_ADMIN_SCOPE = "mcp:admin";
-const MCP_AUTHORING_SCOPE = "mcp:authoring";
 
 /** Env override used in tests and local dev where attaching scopes to
  *  every principal is annoying. Accepts `product` / `authoring` / `admin`
