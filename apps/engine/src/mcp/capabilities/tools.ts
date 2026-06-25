@@ -58,18 +58,20 @@ import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta
 
 const TOOL_PREFIX = "wf_";
 const PROGRESS_POLL_MS = 250;
-// ChatGPT enforces a ~5000-token ceiling on the COMBINED tools/list schema
-// and silently degrades past it (observed: frontend QuotaExceededError
-// caching `system-connectors`). We log the estimate on every tools/list and
-// warn past this so the operator can see when a client is at risk.
-const CHATGPT_SCHEMA_TOKEN_CEILING = 5000;
+// Conservative budget for the COMBINED tools/list schema. Strict MCP clients
+// cap total tool-schema size and silently drop tools past it (a real one we
+// measured degrades around this point, surfacing a frontend storage-quota
+// error). General, not tuned to any one vendor: we log the estimate on every
+// tools/list and warn past the budget so the operator sees the risk.
+const SCHEMA_TOKEN_BUDGET = 5000;
 // ~4 chars/token is the standard rough estimate for English/JSON.
 const CHARS_PER_TOKEN_EST = 4;
-// Upper bound on how long a `wf_<slug>` run blocks the tools/call response.
-// ChatGPT aborts tool calls at ~60s; past this window we stop blocking and
-// hand back a polling handle (execution_id → get_execution) while the run
-// finishes in the background. Fast runs (the common case) resolve well
-// inside this and return inline unchanged. Set below ChatGPT's ceiling.
+// Upper bound on how long a `wf_<slug>` run blocks the tools/call response, so
+// a slow run can't blow past a client's request timeout (strict clients abort
+// tool calls around ~60s). Past this window we stop blocking and hand back a
+// polling handle (execution_id → get_execution) while the run finishes in the
+// background. Fast runs (the common case) resolve inside this and return
+// inline unchanged. Applies to every client/transport.
 const WF_INLINE_TIMEOUT_MS = 50_000;
 // Coalesce `notifications/tools/list_changed` bursts: a bulk import that
 // emits many `workflow.lifecycle` events in quick succession yields a
@@ -84,10 +86,10 @@ const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
  * the paused call by invoking this tool with the original `tool`,
  * `arguments`, and `confirm_id` (the envelope's `tool_call_id`).
  *
- * Reality check (verified via runtime logs + client capability research,
- * 2026-06): the hosted flagship clients — claude.ai AND chatgpt.com — do
- * NOT advertise `elicitation`, so they DO see this tool and confirm through
- * it (model-driven, gated by the dispatcher's APPROVAL_REQUESTED check).
+ * Reality check (verified via runtime logs + client capability research):
+ * the hosted flagship clients — claude.ai AND chatgpt.com — do NOT advertise
+ * `elicitation`, so they DO see this tool and confirm through it
+ * (model-driven, gated by the dispatcher's APPROVAL_REQUESTED check).
  * The in-band `elicitation/create` path is reserved for genuinely
  * elicitation-capable clients (e.g. Claude Code form mode, MCP Inspector),
  * which then never see this tool.
@@ -408,21 +410,21 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     // the operator can see when a client (notably ChatGPT) is over its
     // schema ceiling and the catalog needs trimming.
     const estTokens = Math.ceil(JSON.stringify(tools).length / CHARS_PER_TOKEN_EST);
-    const overCeiling = estTokens > CHATGPT_SCHEMA_TOKEN_CEILING;
+    const overBudget = estTokens > SCHEMA_TOKEN_BUDGET;
     logger.info({
       module: "mcp",
       action: "mcp.catalog.size",
       msg: "tools/list catalog size",
       tool_count: tools.length,
       est_tokens: estTokens,
-      over_chatgpt_ceiling: overCeiling,
+      over_budget: overBudget,
       principal_id: principal.id,
     });
-    if (overCeiling) {
+    if (overBudget) {
       logger.warn({
         module: "mcp",
         action: "mcp.catalog.over_budget",
-        msg: `tools/list schema ~${estTokens} tokens exceeds the ChatGPT ~${CHATGPT_SCHEMA_TOKEN_CEILING}-token ceiling; ChatGPT may silently drop tools`,
+        msg: `tools/list schema ~${estTokens} tokens exceeds the ~${SCHEMA_TOKEN_BUDGET}-token budget; strict clients may silently drop tools`,
         tool_count: tools.length,
         est_tokens: estTokens,
       });
