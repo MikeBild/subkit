@@ -19,6 +19,7 @@ const ROUTES_DIR = "apps/engine/src/http/routes";
 // updating this map, the test fails loudly.
 const FILE_TO_SLUG: Record<string, string> = {
   "whoami.ts": "whoami",
+  "permissions.ts": "identity-permissions",
   "sk-bootstrap.ts": "sk-bootstrap",
   "providers.ts": "identity-providers",
   "login.ts": "identity-login",
@@ -99,6 +100,7 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
     expect([...SELF_INTROSPECTION_ROUTES].sort()).toEqual([
       "health",
       "identity-login",
+      "identity-permissions",
       "identity-providers",
       "identity-sessions-oidc",
       "metrics",

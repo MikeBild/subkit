@@ -2474,6 +2474,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/identity/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Effective permissions of the authenticated caller on a resource */
+        get: {
+            parameters: {
+                query: {
+                    resource_type: "connector";
+                    resource_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EffectivePermissions"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sk/bootstrap": {
         parameters: {
             query?: never;
@@ -10803,6 +10842,20 @@ export interface components {
             provider: string;
             base_url: string | null;
             scopes: string[] | null;
+        };
+        EffectivePermissions: {
+            /** @enum {string} */
+            resource_type: "connector";
+            resource_id: string;
+            /** @enum {string} */
+            level: "none" | "read-only" | "read-write";
+            credential_scopes: {
+                partial_grant: boolean | "unknown";
+                expected: string[];
+                granted: string[];
+                missing: string[];
+                note?: string;
+            } | null;
         };
         SkBootstrap: {
             whoami: {

@@ -2589,6 +2589,80 @@
           "scopes"
         ]
       },
+      "EffectivePermissions": {
+        "type": "object",
+        "properties": {
+          "resource_type": {
+            "type": "string",
+            "enum": [
+              "connector"
+            ]
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read-only",
+              "read-write"
+            ]
+          },
+          "credential_scopes": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "partial_grant": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "unknown"
+                    ]
+                  }
+                ]
+              },
+              "expected": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "granted": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "missing": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "partial_grant",
+              "expected",
+              "granted",
+              "missing"
+            ]
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id",
+          "level",
+          "credential_scopes"
+        ]
+      },
       "SkBootstrap": {
         "type": "object",
         "properties": {
@@ -16107,6 +16181,53 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Whoami"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/permissions": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Effective permissions of the authenticated caller on a resource",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "connector"
+              ]
+            },
+            "required": true,
+            "name": "resource_type",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "resource_id",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectivePermissions"
                 }
               }
             }

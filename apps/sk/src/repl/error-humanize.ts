@@ -355,7 +355,11 @@ export function humanizeRequestError(err: unknown): string {
     const e = err;
     const head = `sk: HTTP ${e.status} ${e.code} — ${e.message || "(no detail)"}`;
     const trace = e.trace_id ? ` · trace_id ${e.trace_id}` : "";
-    const matched = providerHint(e) ?? findErrorHint(`${e.code} ${e.message}`);
+    // Prefer the engine's curated remediation hint (e.g. the actionable
+    // RBAC denial "you have read-only access to connector X …") over the
+    // static pattern table — it is request-specific and always more
+    // precise than a generic 403 match.
+    const matched = e.hint ?? providerHint(e) ?? findErrorHint(`${e.code} ${e.message}`);
     const hint = matched
       ? `\n  ↳ ${matched}`
       : isDebugVerbose()

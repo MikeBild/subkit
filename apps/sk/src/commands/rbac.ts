@@ -39,6 +39,32 @@ const permissionsCmd = defineCommand({
   subCommands: { list: permissionsListCmd },
 });
 
+// ---------- whatcan ----------
+
+const whatcanCmd = defineCommand({
+  meta: {
+    name: "whatcan",
+    description: "Show your effective access level on a connector (none/read-only/read-write)",
+  },
+  args: {
+    connector: { type: "positional", required: true, description: "Connector id" },
+    json: { type: "boolean", description: "JSON output" },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    try {
+      const result = await client.getEffectivePermissions("connector", String(args.connector));
+      if (args.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(`connector ${result.resource_id}: ${result.level}\n`);
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
 // ---------- roles ----------
 
 const rolesListCmd = defineCommand({
@@ -488,6 +514,7 @@ export const rbacCommand = defineCommand({
   meta: { name: "rbac", description: "Manage RBAC roles, permissions, grants, groups, and hooks" },
   subCommands: {
     permissions: permissionsCmd,
+    whatcan: whatcanCmd,
     roles: rolesCmd,
     users: usersCmd,
     grants: grantsCmd,

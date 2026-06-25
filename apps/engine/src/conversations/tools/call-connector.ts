@@ -203,7 +203,9 @@ function endpointKeyPath(path: string): string {
 
 type PermissionResult = { allow: true } | { allow: false; reason: string };
 
-async function resolveConversationPrincipal(ctx: ToolContext): Promise<ResolvedPrincipal | null> {
+export async function resolveConversationPrincipal(
+  ctx: ToolContext,
+): Promise<ResolvedPrincipal | null> {
   const actorId = ctx.engineClient.context.actor_id;
   const actorType = ctx.engineClient.context.actor_type;
   if (!actorId || actorType === "system") return null;
