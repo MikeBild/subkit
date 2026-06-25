@@ -52,6 +52,7 @@ import { registerHealthRoute } from "./routes/health.ts";
 import { registerHooksInboundRoutes } from "./routes/hooks-inbound.ts";
 import { registerApiKeyRoutes } from "./routes/identity/api-keys.ts";
 import { registerLoginRoutes } from "./routes/identity/login.ts";
+import { registerEffectivePermissionsRoute } from "./routes/identity/permissions.ts";
 import { registerPortalTokenRoutes } from "./routes/identity/portal-tokens.ts";
 import { registerProvidersRoute } from "./routes/identity/providers.ts";
 import { registerSessionsOidcRoute } from "./routes/identity/sessions-oidc.ts";
@@ -234,6 +235,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   // it opts out of requireAuth exactly like the connector OAuth callback.
   registerMcpServerOAuthRoutes(app);
   registerWhoamiRoute(app);
+  registerEffectivePermissionsRoute(app);
   registerSkBootstrapRoute(app);
   registerWorkflowRoutes(app);
   registerExecutionRoutes(app);

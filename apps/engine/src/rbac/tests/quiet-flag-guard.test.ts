@@ -54,7 +54,9 @@ const QUIET_TRUE = /quiet\s*:\s*true\b/;
 //   - the MCP-connect operator-digest probe (`stats:read` capability check on
 //     every connect — a user without it is normal, not an incident, so the
 //     denial logs at DEBUG instead of flooding `rbac.denied` WARN)
-//   - the evaluator's own type definition (the `quiet?: boolean` doc)
+//   - the evaluator's own type definition (the `quiet?: boolean` doc) and
+//     the `connectorAccessLevel` probe (read/write level introspection —
+//     a "no" on write is a routine level outcome, not an incident)
 //   - the evaluator's own unit tests (exercise the probe path)
 //   - this guard test itself (references the literal in prose/regex)
 const ALLOWED = new Set<string>([

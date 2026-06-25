@@ -17,6 +17,9 @@
 export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   // GET /v1/identity/whoami
   "whoami",
+  // GET /v1/identity/permissions (a caller's own effective rights on a
+  // resource — must be reachable before any permission is known to be held)
+  "identity-permissions",
   // GET /v1/sk/bootstrap
   "sk-bootstrap",
   // GET /v1/identity/providers (lists which auth providers are configured)
