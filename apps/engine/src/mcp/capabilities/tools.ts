@@ -47,17 +47,30 @@ import { type ConfirmResolver, callToolViaDispatcher, listToolsViaRegistry } fro
 import { createElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { modeFlags, resolveMcpMode } from "../mode-resolver.ts";
-
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
   CONVERSATION_TOOL_PREFIX,
   handleConversationTool,
   listConversationTools,
 } from "./conversations.ts";
+import { raceInlineRun } from "./inline-timeout.ts";
 import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
 
 const TOOL_PREFIX = "wf_";
 const PROGRESS_POLL_MS = 250;
+// ChatGPT enforces a ~5000-token ceiling on the COMBINED tools/list schema
+// and silently degrades past it (observed: frontend QuotaExceededError
+// caching `system-connectors`). We log the estimate on every tools/list and
+// warn past this so the operator can see when a client is at risk.
+const CHATGPT_SCHEMA_TOKEN_CEILING = 5000;
+// ~4 chars/token is the standard rough estimate for English/JSON.
+const CHARS_PER_TOKEN_EST = 4;
+// Upper bound on how long a `wf_<slug>` run blocks the tools/call response.
+// ChatGPT aborts tool calls at ~60s; past this window we stop blocking and
+// hand back a polling handle (execution_id → get_execution) while the run
+// finishes in the background. Fast runs (the common case) resolve well
+// inside this and return inline unchanged. Set below ChatGPT's ceiling.
+const WF_INLINE_TIMEOUT_MS = 50_000;
 // Coalesce `notifications/tools/list_changed` bursts: a bulk import that
 // emits many `workflow.lifecycle` events in quick succession yields a
 // single client-facing ping, not a storm. Trailing-window from the first
@@ -101,7 +114,12 @@ const CONFIRM_TOOL_CALL_TOOL: Tool = {
     },
     required: ["tool", "confirm_id"],
   },
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
 };
 
 /** One-line operator prompt for an in-band confirm elicitation. */
@@ -385,6 +403,29 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     });
     if (!elicitationCapable) {
       tools.push(CONFIRM_TOOL_CALL_TOOL);
+    }
+    // Catalog-size observability — estimate the combined schema token cost so
+    // the operator can see when a client (notably ChatGPT) is over its
+    // schema ceiling and the catalog needs trimming.
+    const estTokens = Math.ceil(JSON.stringify(tools).length / CHARS_PER_TOKEN_EST);
+    const overCeiling = estTokens > CHATGPT_SCHEMA_TOKEN_CEILING;
+    logger.info({
+      module: "mcp",
+      action: "mcp.catalog.size",
+      msg: "tools/list catalog size",
+      tool_count: tools.length,
+      est_tokens: estTokens,
+      over_chatgpt_ceiling: overCeiling,
+      principal_id: principal.id,
+    });
+    if (overCeiling) {
+      logger.warn({
+        module: "mcp",
+        action: "mcp.catalog.over_budget",
+        msg: `tools/list schema ~${estTokens} tokens exceeds the ChatGPT ~${CHATGPT_SCHEMA_TOKEN_CEILING}-token ceiling; ChatGPT may silently drop tools`,
+        tool_count: tools.length,
+        est_tokens: estTokens,
+      });
     }
     return { tools };
   });
@@ -729,7 +770,45 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       });
 
       try {
-        const result = await runPromise;
+        // Bound the inline wait so a slow run doesn't blow past the client's
+        // request timeout. On timeout, detach the cancel wiring (so completing
+        // the response doesn't abort the run), let it finish in the
+        // background, and hand back a polling handle.
+        const outcome = await raceInlineRun(runPromise, WF_INLINE_TIMEOUT_MS);
+        if (outcome.timedOut) {
+          // Still running — stop blocking the client but keep the run alive.
+          extra.signal.removeEventListener("abort", onSignalAbort);
+          runPromise.then(() => state.bridge?.stop()).catch(() => state.bridge?.stop());
+          const execId = state.executionId;
+          logger.info({
+            module: "mcp",
+            action: "mcp.tool.result",
+            msg: "mcp wf run exceeded inline window — returned polling handle",
+            tool: name,
+            duration_ms: Date.now() - started,
+            execution_id: execId,
+          });
+          return {
+            isError: false,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  status: "running",
+                  execution_id: execId,
+                  message: `Workflow ${slug} is still running after ${Math.round(
+                    WF_INLINE_TIMEOUT_MS / 1000,
+                  )}s. Poll get_execution with this execution_id for the result.`,
+                  poll_with: "get_execution",
+                }),
+              },
+            ],
+            ...(execId
+              ? { _meta: { subkit: { execution: { id: execId, status: "running" } } } }
+              : {}),
+          };
+        }
+        const result = outcome.result;
         state.bridge?.stop();
         // Final progress frame @ 1.0.
         if (progressToken !== undefined && progressToken !== null) {
