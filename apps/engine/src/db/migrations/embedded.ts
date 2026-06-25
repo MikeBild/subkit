@@ -22,6 +22,7 @@ import sql0001CondemnedMaestro from "./0001_condemned_maestro.sql" with { type: 
 import sql0002KindHumanRobot from "./0002_kind_human_robot.sql" with { type: "text" };
 import sql0003MarvelousStranger from "./0003_marvelous_stranger.sql" with { type: "text" };
 import sql0004FlakyZarek from "./0004_flaky_zarek.sql" with { type: "text" };
+import sql0005M2mOauthCredentialMode from "./0005_m2m_oauth_credential_mode.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -51,6 +52,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0002_kind_human_robot": sql0002KindHumanRobot,
   "0003_marvelous_stranger": sql0003MarvelousStranger,
   "0004_flaky_zarek": sql0004FlakyZarek,
+  "0005_m2m_oauth_credential_mode": sql0005M2mOauthCredentialMode,
 };
 
 const journal = journalMeta as unknown as Journal;

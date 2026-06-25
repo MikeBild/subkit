@@ -20,7 +20,7 @@
 
 import type { LanguageModel } from "ai";
 import { and, eq } from "drizzle-orm";
-import { type ZodType, z } from "zod";
+import type { ZodType } from "zod";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -28,6 +28,7 @@ import { getConfig } from "../../config/loader.ts";
 import { type Executor, getDb } from "../../db/client.ts";
 import { tenantLlmSettings, tenants } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
+import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import {
   recordLlmCacheUsage,
   recordLlmCallDuration,
@@ -82,11 +83,9 @@ export async function resolveLanguageModel(
 }
 
 function zodToJson(schema: ZodType): Record<string, unknown> {
-  // Zod v4 ships a native JSON-Schema exporter. Pin to the "strict" target
-  // so object shapes are deterministic (no `anyOf` unions for optional
-  // fields — we want `required: [...]` arrays).
-  // biome-ignore lint/suspicious/noExplicitAny: zod v4 type surface
-  return (z as any).toJSONSchema(schema, { target: "jsonSchema7" });
+  // Shared boundary helper: draft-7 with deterministic object shapes
+  // (`required: [...]` arrays, no `anyOf` unions for optional fields).
+  return zodToJsonSchema7(schema);
 }
 
 const DEFAULT_PRIMARY = "claude-sonnet-4-6";

@@ -31,7 +31,11 @@
 
 import { getConfig } from "../config/loader.ts";
 import type { McpServerDecl } from "../config/schema.ts";
-import { getCredentialForMcpServer } from "../credentials/service.ts";
+import {
+  getCredentialForMcpServer,
+  getOAuth2ClientCredentialForMcpServer,
+  getOAuth2PrivateKeyCredentialForMcpServer,
+} from "../credentials/service.ts";
 import type { Db } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
@@ -73,6 +77,7 @@ function mapAuth(auth: McpServerDecl["auth"]): McpServerAuthConfig | undefined {
   if (auth.issuer !== undefined) out.issuer = auth.issuer;
   if (auth.client_id !== undefined) out.client_id = auth.client_id;
   if (auth.scope !== undefined) out.scope = auth.scope;
+  if (auth.algorithm !== undefined) out.algorithm = auth.algorithm;
   return out;
 }
 
@@ -84,7 +89,7 @@ function mapAuth(auth: McpServerDecl["auth"]): McpServerAuthConfig | undefined {
  *  no-secret shape, and a canonical `{kind, ...oauth2}` object otherwise.
  *  Only the config-owned non-secret fields participate (no token_ref). */
 function normalizeAuth(auth: McpServerAuthConfig | null | undefined): {
-  kind: "bearer" | "basic" | "oauth2";
+  kind: Exclude<McpServerAuthConfig["kind"], "none">;
   issuer: string | null;
   client_id: string | null;
   scope: string | null;
@@ -131,10 +136,29 @@ async function warnWhenCredentialMissing(
   db: Db,
   tenant_id: string,
   row: McpServerRow,
-  kind: "bearer" | "basic" | "oauth2",
+  kind: Exclude<McpServerAuthConfig["kind"], "none">,
 ): Promise<void> {
   try {
-    const cred = await getCredentialForMcpServer(tenant_id, row.id, MCP_CREDENTIAL_ENVIRONMENT, db);
+    // M2M kinds store their secret in a dedicated slot the primary-slot
+    // reader excludes, so check the matching slot or the warning fires even
+    // when the credential is present. client_credentials → oauth2_client slot;
+    // private_key_jwt → oauth2_private_key slot; everything else → primary.
+    const cred =
+      kind === "oauth2_client_credentials"
+        ? await getOAuth2ClientCredentialForMcpServer(
+            tenant_id,
+            row.id,
+            MCP_CREDENTIAL_ENVIRONMENT,
+            db,
+          )
+        : kind === "oauth2_private_key_jwt"
+          ? await getOAuth2PrivateKeyCredentialForMcpServer(
+              tenant_id,
+              row.id,
+              MCP_CREDENTIAL_ENVIRONMENT,
+              db,
+            )
+          : await getCredentialForMcpServer(tenant_id, row.id, MCP_CREDENTIAL_ENVIRONMENT, db);
     if (cred) return;
     logger.warn({
       module: "mcp.config_seed",

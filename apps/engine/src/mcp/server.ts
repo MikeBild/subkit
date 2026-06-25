@@ -5,6 +5,7 @@
 // principal — this keeps tenant isolation local and avoids a shared
 // principal cache.
 
+import { VERSION } from "@cli-core/version.ts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
@@ -22,6 +23,34 @@ export interface CreateMcpServerParams {
   principal: ResolvedPrincipal;
   transport: "http" | "stdio";
 }
+
+// Compile-time `VERSION` is the real serverInfo.version unless the build
+// never stamped one (`0.0.0-dev` placeholder), in which case fall back to the
+// runtime `ENGINE_VERSION` so a client's version-skew banner reads the engine
+// the operator actually deployed. Mirrors the HTTP OpenAPI resolver.
+function resolveEngineVersion(): string {
+  if (VERSION && VERSION !== "0.0.0-dev") return VERSION;
+  const env = process.env.ENGINE_VERSION;
+  if (env && env !== "0.0.0-dev") return env;
+  return VERSION ?? "0.0.0-dev";
+}
+
+// Always-present connect introduction handed to every principal via the SDK
+// `initialize` `instructions` field. Principal-independent (no tenant data),
+// so it is a module const built once. Leads with the operator outcome sk
+// delivers, names the canonical first move, and sketches how the tools are
+// grouped. The tenant-specific operator health digest is appended only when
+// the caller holds `stats:read` (see the gated assembly below).
+const BASE_INTRO = [
+  "sk runs your business workflows as governed, audited, versioned executions —",
+  "every run is permission-checked, recorded, and replayable.",
+  "",
+  "Start with `conversation_start`: describe the outcome you want in plain language",
+  "and sk turns it into a runnable, governed workflow.",
+  "",
+  "Tools are grouped into workflow tools (find, inspect, and run your workflows) and",
+  "conversation/session tools (author, refine, and commit workflows through a guided chat).",
+].join("\n");
 
 export async function createMcpServer(p: CreateMcpServerParams): Promise<Server> {
   const { db, principal, transport } = p;
@@ -46,7 +75,9 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
   // short timeout and falls through to no-instructions. Best-effort end to end
   // — a throw, a denied gate, or a timeout never fails initialize.
   const INSTRUCTIONS_TIMEOUT_MS = 400;
-  let instructions: string | undefined;
+  // Every principal gets the base intro; the operator digest is appended on
+  // top only when the gate allows and the digest resolves in time.
+  let instructions: string = BASE_INTRO;
   try {
     const decision = await can(db, {
       tenant_id: principal.tenant_id,
@@ -87,12 +118,12 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
       ]);
       if (timer) clearTimeout(timer);
       if (text) {
-        instructions = text;
+        instructions = `${BASE_INTRO}\n\n${text}`;
       } else {
         logger.warn({
           module: "mcp",
           action: "mcp.instructions.skipped",
-          msg: `connect health summary exceeded ${INSTRUCTIONS_TIMEOUT_MS}ms — proceeding without instructions`,
+          msg: `connect health summary exceeded ${INSTRUCTIONS_TIMEOUT_MS}ms — proceeding with base intro only`,
           tenant_id: principal.tenant_id,
         });
       }
@@ -101,7 +132,7 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
     logger.warn({
       module: "mcp",
       action: "mcp.instructions.skipped",
-      msg: "could not compute connect health summary — proceeding without instructions",
+      msg: "could not compute connect health summary — proceeding with base intro only",
       tenant_id: principal.tenant_id,
       ...errorFields(err),
     });
@@ -110,7 +141,7 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
   const server = new Server(
     {
       name: "subkit-engine",
-      version: "0.0.0",
+      version: resolveEngineVersion(),
     },
     {
       capabilities: {

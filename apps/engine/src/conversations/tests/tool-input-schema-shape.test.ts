@@ -13,12 +13,12 @@
 // time.
 
 import { describe, expect, test } from "bun:test";
-import { z } from "@hono/zod-openapi";
+import type { ZodType } from "zod";
+import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import { listTools } from "../tools/index.ts";
 
 function toJsonSchema(schema: unknown): Record<string, unknown> {
-  // biome-ignore lint/suspicious/noExplicitAny: zod v4 surface
-  return (z as any).toJSONSchema(schema, { target: "jsonSchema7" });
+  return zodToJsonSchema7(schema as ZodType);
 }
 
 describe("conversation tools — input schema shape", () => {

@@ -629,13 +629,22 @@ const McpServerDeclSchema = z
     url: z.string().url(),
     auth: z
       .object({
-        kind: z.enum(["none", "bearer", "basic", "oauth2"]),
-        // OAuth2 non-secret discovery fields (oauth2 only). The secret/token
-        // is never declared here — it is resolved from `credentials` at
-        // handshake time.
+        kind: z.enum([
+          "none",
+          "bearer",
+          "basic",
+          "oauth2",
+          "oauth2_client_credentials",
+          "oauth2_private_key_jwt",
+        ]),
+        // Non-secret discovery / identity fields. Secrets (token,
+        // client_secret, private_key) are never declared here — they live
+        // in the encrypted `credentials` row written by the CLI/route.
         issuer: z.string().url().optional(),
         client_id: z.string().optional(),
         scope: z.string().optional(),
+        // Non-secret JWT signing algorithm for oauth2_private_key_jwt.
+        algorithm: z.string().optional(),
       })
       .strict()
       .optional(),

@@ -15,7 +15,8 @@
 //   - the entire thing JSON-stringifies (no circular refs)
 
 import { describe, expect, test } from "bun:test";
-import { z } from "@hono/zod-openapi";
+import type { ZodType } from "zod";
+import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import { listTools } from "../tools/index.ts";
 
 interface AnthropicToolDef {
@@ -33,10 +34,7 @@ interface AnthropicToolDef {
 }
 
 function buildAnthropicToolDef(tool: ReturnType<typeof listTools>[number]): AnthropicToolDef {
-  // biome-ignore lint/suspicious/noExplicitAny: zod v4 surface
-  const json = (z as any).toJSONSchema(tool.inputSchema, {
-    target: "jsonSchema7",
-  }) as AnthropicToolDef["input_schema"];
+  const json = zodToJsonSchema7(tool.inputSchema as ZodType) as AnthropicToolDef["input_schema"];
   return {
     name: tool.name,
     description: tool.description,

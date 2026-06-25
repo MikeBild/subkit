@@ -1,9 +1,8 @@
 // MCP-surface adapter for the unified tool dispatcher.
 //
 // Renders ToolDescriptor into MCP `Tool` shape and ToolEnvelope into
-// MCP JSON-RPC `{isError, content[]}`. The server.ts wiring switches to
-// this adapter as part of the cutover; until then the legacy
-// `capabilities/tools.ts` path still drives `tools/list` + `tools/call`.
+// MCP JSON-RPC `{isError, content[]}`. This adapter drives `tools/list`
+// and `tools/call` (wired in via capabilities/tools.ts).
 //
 // Three concerns the adapter merges:
 //   1. Unified-registry tools (static + conversation tools).
@@ -16,7 +15,7 @@
 //      + call path lives in capabilities/conversations.ts.
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
+import type { ZodType } from "zod";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { ToolContext } from "../conversations/tools/index.ts";
 import type { Db } from "../db/client.ts";
@@ -32,19 +31,16 @@ import type {
   ToolInvocation,
 } from "../tools/types.ts";
 import { buildConversationToolMeta, buildToolAnnotations } from "./capabilities/tool-meta.ts";
+import { zodToJsonSchema7 } from "./json-schema.ts";
 
-// Zod schema → MCP JSON schema. Matches the helper in tenant-tools.ts;
-// kept local to the adapter so the dispatcher stays agnostic of MCP.
+// Zod schema → MCP JSON schema, via the shared boundary helper so the
+// emitted shape matches every other tool surface.
 function zodToMcpSchema(schema: unknown): Tool["inputSchema"] {
   try {
     if (schema && typeof schema === "object" && "parse" in (schema as object)) {
-      // biome-ignore lint/suspicious/noExplicitAny: z.toJSONSchema typing
-      const anyZ = z as any;
-      if (typeof anyZ.toJSONSchema === "function") {
-        const json = anyZ.toJSONSchema(schema, { target: "jsonSchema7" });
-        if (json && typeof json === "object" && (json as { type?: unknown }).type === "object") {
-          return json as Tool["inputSchema"];
-        }
+      const json = zodToJsonSchema7(schema as ZodType);
+      if (json && typeof json === "object" && (json as { type?: unknown }).type === "object") {
+        return json as Tool["inputSchema"];
       }
     }
     // Plain JSON Schema from static tools or workflow-derived tools.

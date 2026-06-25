@@ -16,14 +16,14 @@
 // a future refactor that swaps schema types breaks loudly.
 
 import { describe, expect, test } from "bun:test";
-import { z } from "@hono/zod-openapi";
+import type { ZodType } from "zod";
+import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import { getTool } from "../tools/index.ts";
 
 function jsonSchema(toolName: string): Record<string, unknown> {
   const tool = getTool(toolName);
   if (!tool) throw new Error(`tool not registered: ${toolName}`);
-  // biome-ignore lint/suspicious/noExplicitAny: zod v4 surface
-  return (z as any).toJSONSchema(tool.inputSchema, { target: "jsonSchema7" });
+  return zodToJsonSchema7(tool.inputSchema as ZodType);
 }
 
 describe("input-schema edge cases · per tool", () => {
