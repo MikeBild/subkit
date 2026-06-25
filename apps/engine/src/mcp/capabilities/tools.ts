@@ -87,12 +87,11 @@ const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
  * `arguments`, and `confirm_id` (the envelope's `tool_call_id`).
  *
  * Reality check (verified via runtime logs + client capability research):
- * the hosted flagship clients — claude.ai AND chatgpt.com — do NOT advertise
- * `elicitation`, so they DO see this tool and confirm through it
- * (model-driven, gated by the dispatcher's APPROVAL_REQUESTED check).
- * The in-band `elicitation/create` path is reserved for genuinely
- * elicitation-capable clients (e.g. Claude Code form mode, MCP Inspector),
- * which then never see this tool.
+ * the hosted flagship clients do NOT advertise `elicitation`, so they DO see
+ * this tool and confirm through it (model-driven, gated by the dispatcher's
+ * APPROVAL_REQUESTED check). The in-band `elicitation/create` path is
+ * reserved for clients that advertise the elicitation capability, which then
+ * never see this tool.
  */
 const CONFIRM_TOOL_CALL_NAME = "confirm_tool_call";
 const CONFIRM_TOOL_CALL_TOOL: Tool = {
@@ -287,8 +286,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
   // create/update/delete/restore/metadata change alters the tool list
   // mid-session. We subscribe to the same `workflow.lifecycle` pub/sub
   // channel `resources.ts` uses and push `notifications/tools/list_changed`
-  // so spec-compliant clients (Claude Code ≥ 2.1.0, claude.ai) re-fetch
-  // `tools/list` across the next turn without a manual `/mcp` reconnect.
+  // so spec-compliant clients re-fetch `tools/list` across the next turn
+  // without a manual `/mcp` reconnect.
   //
   // Tenant isolation: cross-tenant events drop before anything else
   // (same guard as `forwardIfSubscribed`). No RBAC re-check is needed —
@@ -382,10 +381,9 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     );
     if (flags.showConversationTools) tools.push(...listConversationTools());
     // Surface the confirm responder ONLY for clients without MCP
-    // elicitation. The hosted clients (claude.ai, chatgpt.com) do NOT
-    // advertise elicitation, so they receive it and confirm through it;
-    // only genuinely elicitation-capable clients are prompted in-band and
-    // skip it.
+    // elicitation. The hosted flagship clients do NOT advertise elicitation,
+    // so they receive it and confirm through it; only clients that advertise
+    // the elicitation capability are prompted in-band and skip it.
     const clientCaps = server.getClientCapabilities();
     const elicitationCapable = clientCaps?.elicitation != null;
     // Pin which confirm path a given client gets, so we can prove from logs
@@ -407,8 +405,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       tools.push(CONFIRM_TOOL_CALL_TOOL);
     }
     // Catalog-size observability — estimate the combined schema token cost so
-    // the operator can see when a client (notably ChatGPT) is over its
-    // schema ceiling and the catalog needs trimming.
+    // the operator can see when a client is over its schema budget and the
+    // catalog needs trimming.
     const estTokens = Math.ceil(JSON.stringify(tools).length / CHARS_PER_TOKEN_EST);
     const overBudget = estTokens > SCHEMA_TOKEN_BUDGET;
     logger.info({
@@ -832,7 +830,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             step_id: null,
             result: result.output,
           });
-          // MCP `resource_link` content block (2025-03 spec). The previous
+          // MCP `resource_link` content block. The previous
           // text-encoded JSON envelope forced clients to parse a string
           // field to discover the fixture URI; LLM agents rarely follow
           // such pointers without explicit instruction.

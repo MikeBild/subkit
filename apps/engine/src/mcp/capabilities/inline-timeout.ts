@@ -1,8 +1,8 @@
 // Bound how long an inline async operation (a `wf_<slug>` run) is allowed to
-// block a tools/call response. ChatGPT aborts tool calls at ~60s, so a slow
-// run must stop blocking and hand back a polling handle while it finishes in
-// the background. Extracted as a pure, dependency-free helper so the timing
-// decision is unit-testable without a real (slow) workflow execution.
+// block a tools/call response. Strict clients abort tool calls (around ~60s),
+// so a slow run must stop blocking and hand back a polling handle while it
+// finishes in the background. Extracted as a pure, dependency-free helper so
+// the timing decision is unit-testable without a real (slow) workflow run.
 
 const TIMEOUT_SENTINEL = Symbol("inline_timeout");
 
