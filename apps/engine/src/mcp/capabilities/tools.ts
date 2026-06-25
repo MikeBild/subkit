@@ -69,9 +69,15 @@ const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
  * `elicitation` capability. A `confirm_before_execution` gate returns a
  * `_meta.subkit.confirm` envelope to such clients; the model then approves
  * the paused call by invoking this tool with the original `tool`,
- * `arguments`, and `confirm_id` (the envelope's `tool_call_id`). Elicitation-
- * capable clients (claude.ai, ChatGPT) never see this tool — they are
- * prompted in-band — so the catalog stays lean for the common case.
+ * `arguments`, and `confirm_id` (the envelope's `tool_call_id`).
+ *
+ * Reality check (verified via runtime logs + client capability research,
+ * 2026-06): the hosted flagship clients — claude.ai AND chatgpt.com — do
+ * NOT advertise `elicitation`, so they DO see this tool and confirm through
+ * it (model-driven, gated by the dispatcher's APPROVAL_REQUESTED check).
+ * The in-band `elicitation/create` path is reserved for genuinely
+ * elicitation-capable clients (e.g. Claude Code form mode, MCP Inspector),
+ * which then never see this tool.
  */
 const CONFIRM_TOOL_CALL_NAME = "confirm_tool_call";
 const CONFIRM_TOOL_CALL_TOOL: Tool = {
@@ -356,9 +362,28 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     );
     if (flags.showConversationTools) tools.push(...listConversationTools());
     // Surface the confirm responder ONLY for clients without MCP
-    // elicitation — elicitation-capable clients (claude.ai, ChatGPT) are
-    // prompted in-band by the tools/call handler and never need it.
-    if (server.getClientCapabilities()?.elicitation == null) {
+    // elicitation. The hosted clients (claude.ai, chatgpt.com) do NOT
+    // advertise elicitation, so they receive it and confirm through it;
+    // only genuinely elicitation-capable clients are prompted in-band and
+    // skip it.
+    const clientCaps = server.getClientCapabilities();
+    const elicitationCapable = clientCaps?.elicitation != null;
+    // Pin which confirm path a given client gets, so we can prove from logs
+    // whether a real in-band human gate (elicitation) is reachable or the
+    // model-driven confirm_tool_call fallback is in play.
+    logger.info({
+      module: "mcp",
+      action: "mcp.client.capabilities",
+      msg: "client capabilities at tools/list",
+      elicitation: elicitationCapable,
+      sampling: clientCaps?.sampling != null,
+      roots: clientCaps?.roots != null,
+      tasks: clientCaps?.tasks != null,
+      confirm_path: elicitationCapable ? "elicitation" : "confirm_tool_call",
+      principal_id: principal.id,
+      tenant_id: principal.tenant_id,
+    });
+    if (!elicitationCapable) {
       tools.push(CONFIRM_TOOL_CALL_TOOL);
     }
     return { tools };

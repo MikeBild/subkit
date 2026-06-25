@@ -207,3 +207,90 @@ describe("probe_connector confirm gate — resolvable over MCP", () => {
     expect(rows[rows.length - 1]?.id).toBe(toolCallId);
   });
 });
+
+// Hardening: confirm_tool_call must reference a real, un-consumed
+// APPROVAL_REQUESTED — otherwise a model-driven client could approve an
+// arbitrary or recycled confirm_id and bypass the gate (and write an
+// APPROVAL_APPROVED that joins no request).
+describe("confirm_tool_call — confirmation validation", () => {
+  const probeArgs = (slug: string) => ({
+    connector_slug: slug,
+    method: "POST",
+    path: "/orders",
+    environment: "prod",
+    body: { qty: 1 },
+  });
+
+  test("unknown/forged confirm_id → rejected, not executed, no APPROVAL_APPROVED", async () => {
+    await suite.seedConnector({
+      slug: "forged-confirm",
+      environment: "prod",
+      base_url: mock.baseUrl,
+    });
+    const client = await suite.connect();
+
+    const approvedBaseline = await suite.http.db
+      .select({ c: count() })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, suite.http.tenantId), eq(auditLog.action, "approval.approved")),
+      );
+
+    const res = await client.callTool({
+      name: "confirm_tool_call",
+      arguments: {
+        tool: "probe_connector",
+        arguments: probeArgs("forged-confirm"),
+        confirm_id: "00000000-0000-0000-0000-000000000000",
+      },
+    });
+
+    expect(res.isError).toBe(true);
+    const payload = JSON.parse((res.content as Array<{ text: string }>)[0]!.text) as {
+      error_code?: string;
+    };
+    expect(payload.error_code).toBe("unknown_confirmation");
+
+    const approvedAfter = await suite.http.db
+      .select({ c: count() })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, suite.http.tenantId), eq(auditLog.action, "approval.approved")),
+      );
+    expect((approvedAfter[0]?.c ?? 0) - (approvedBaseline[0]?.c ?? 0)).toBe(0);
+  });
+
+  test("re-using an already-approved confirm_id → rejected (single-use)", async () => {
+    await suite.seedConnector({
+      slug: "reuse-confirm",
+      environment: "prod",
+      base_url: mock.baseUrl,
+    });
+    const client = await suite.connect();
+    const args = probeArgs("reuse-confirm");
+
+    // Obtain a real pending confirmation.
+    const first = await client.callTool({ name: "probe_connector", arguments: args });
+    const id = JSON.parse((first.content as Array<{ text: string }>)[0]!.text)
+      .tool_call_id as string;
+    expect(id).toBeTruthy();
+
+    // First approval succeeds.
+    const ok = await client.callTool({
+      name: "confirm_tool_call",
+      arguments: { tool: "probe_connector", arguments: args, confirm_id: id },
+    });
+    expect(ok.isError).toBeFalsy();
+
+    // Re-using the same id is rejected — the confirmation was consumed.
+    const again = await client.callTool({
+      name: "confirm_tool_call",
+      arguments: { tool: "probe_connector", arguments: args, confirm_id: id },
+    });
+    expect(again.isError).toBe(true);
+    const payload = JSON.parse((again.content as Array<{ text: string }>)[0]!.text) as {
+      error_code?: string;
+    };
+    expect(payload.error_code).toBe("confirmation_already_used");
+  });
+});
