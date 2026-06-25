@@ -39,29 +39,115 @@ import { logger } from "../../logging/logger.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
-import type { ToolInvocation } from "../../tools/types.ts";
+import type { ConfirmEnvelope, ToolInvocation } from "../../tools/types.ts";
 import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
-import { callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
+import { type ConfirmResolver, callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
+import { createElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { modeFlags, resolveMcpMode } from "../mode-resolver.ts";
-
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
   CONVERSATION_TOOL_PREFIX,
   handleConversationTool,
   listConversationTools,
 } from "./conversations.ts";
+import { raceInlineRun } from "./inline-timeout.ts";
 import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
 
 const TOOL_PREFIX = "wf_";
 const PROGRESS_POLL_MS = 250;
+// Conservative budget for the COMBINED tools/list schema. Strict MCP clients
+// cap total tool-schema size and silently drop tools past it (a real one we
+// measured degrades around this point, surfacing a frontend storage-quota
+// error). General, not tuned to any one vendor: we log the estimate on every
+// tools/list and warn past the budget so the operator sees the risk.
+const SCHEMA_TOKEN_BUDGET = 5000;
+// ~4 chars/token is the standard rough estimate for English/JSON.
+const CHARS_PER_TOKEN_EST = 4;
+// Upper bound on how long a `wf_<slug>` run blocks the tools/call response, so
+// a slow run can't blow past a client's request timeout (strict clients abort
+// tool calls around ~60s). Past this window we stop blocking and hand back a
+// polling handle (execution_id → get_execution) while the run finishes in the
+// background. Fast runs (the common case) resolve inside this and return
+// inline unchanged. Applies to every client/transport.
+const WF_INLINE_TIMEOUT_MS = 50_000;
 // Coalesce `notifications/tools/list_changed` bursts: a bulk import that
 // emits many `workflow.lifecycle` events in quick succession yields a
 // single client-facing ping, not a storm. Trailing-window from the first
 // event of a burst.
 const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
+
+/**
+ * Fallback responder tool for MCP clients that do NOT advertise the
+ * `elicitation` capability. A `confirm_before_execution` gate returns a
+ * `_meta.subkit.confirm` envelope to such clients; the model then approves
+ * the paused call by invoking this tool with the original `tool`,
+ * `arguments`, and `confirm_id` (the envelope's `tool_call_id`).
+ *
+ * Reality check (verified via runtime logs + client capability research):
+ * the hosted flagship clients do NOT advertise `elicitation`, so they DO see
+ * this tool and confirm through it (model-driven, gated by the dispatcher's
+ * APPROVAL_REQUESTED check). The in-band `elicitation/create` path is
+ * reserved for clients that advertise the elicitation capability, which then
+ * never see this tool.
+ */
+const CONFIRM_TOOL_CALL_NAME = "confirm_tool_call";
+const CONFIRM_TOOL_CALL_TOOL: Tool = {
+  name: CONFIRM_TOOL_CALL_NAME,
+  description:
+    "Approve a tool call that paused for confirmation (status:needs_confirm). Re-runs the " +
+    "named tool with the operator's approval. Pass the same `tool` and `arguments` from the " +
+    "confirm envelope and set `confirm_id` to its `tool_call_id`.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      tool: { type: "string", description: "Name of the paused tool to approve and run." },
+      arguments: {
+        type: "object",
+        description: "The original arguments from the confirm envelope.",
+      },
+      confirm_id: {
+        type: "string",
+        description: "The `tool_call_id` from the confirm envelope (joins the approval audit).",
+      },
+    },
+    required: ["tool", "confirm_id"],
+  },
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  },
+};
+
+/** One-line operator prompt for an in-band confirm elicitation. */
+function buildConfirmPrompt(confirm: ConfirmEnvelope): string {
+  const reason = confirm.reason.replace(/_/g, " ");
+  let argsPreview = "";
+  try {
+    const json = JSON.stringify(confirm.args);
+    argsPreview = json.length > 300 ? `${json.slice(0, 300)}…` : json;
+  } catch {
+    argsPreview = "(unserializable)";
+  }
+  return `Approve ${confirm.tool} (${reason})? Arguments: ${argsPreview}`;
+}
+
+/** Single-field confirm schema accepted by MCP `elicitation/create` form mode. */
+const CONFIRM_ELICIT_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    confirm: {
+      type: "boolean" as const,
+      title: "Proceed?",
+      description: "Confirm to run the call; decline to cancel.",
+    },
+  },
+  required: ["confirm"],
+};
 
 interface ListToolsParams {
   db: Db;
@@ -200,8 +286,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
   // create/update/delete/restore/metadata change alters the tool list
   // mid-session. We subscribe to the same `workflow.lifecycle` pub/sub
   // channel `resources.ts` uses and push `notifications/tools/list_changed`
-  // so spec-compliant clients (Claude Code ≥ 2.1.0, claude.ai) re-fetch
-  // `tools/list` across the next turn without a manual `/mcp` reconnect.
+  // so spec-compliant clients re-fetch `tools/list` across the next turn
+  // without a manual `/mcp` reconnect.
   //
   // Tenant isolation: cross-tenant events drop before anything else
   // (same guard as `forwardIfSubscribed`). No RBAC re-check is needed —
@@ -294,6 +380,53 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }),
     );
     if (flags.showConversationTools) tools.push(...listConversationTools());
+    // Surface the confirm responder ONLY for clients without MCP
+    // elicitation. The hosted flagship clients do NOT advertise elicitation,
+    // so they receive it and confirm through it; only clients that advertise
+    // the elicitation capability are prompted in-band and skip it.
+    const clientCaps = server.getClientCapabilities();
+    const elicitationCapable = clientCaps?.elicitation != null;
+    // Pin which confirm path a given client gets, so we can prove from logs
+    // whether a real in-band human gate (elicitation) is reachable or the
+    // model-driven confirm_tool_call fallback is in play.
+    logger.info({
+      module: "mcp",
+      action: "mcp.client.capabilities",
+      msg: "client capabilities at tools/list",
+      elicitation: elicitationCapable,
+      sampling: clientCaps?.sampling != null,
+      roots: clientCaps?.roots != null,
+      tasks: clientCaps?.tasks != null,
+      confirm_path: elicitationCapable ? "elicitation" : "confirm_tool_call",
+      principal_id: principal.id,
+      tenant_id: principal.tenant_id,
+    });
+    if (!elicitationCapable) {
+      tools.push(CONFIRM_TOOL_CALL_TOOL);
+    }
+    // Catalog-size observability — estimate the combined schema token cost so
+    // the operator can see when a client is over its schema budget and the
+    // catalog needs trimming.
+    const estTokens = Math.ceil(JSON.stringify(tools).length / CHARS_PER_TOKEN_EST);
+    const overBudget = estTokens > SCHEMA_TOKEN_BUDGET;
+    logger.info({
+      module: "mcp",
+      action: "mcp.catalog.size",
+      msg: "tools/list catalog size",
+      tool_count: tools.length,
+      est_tokens: estTokens,
+      over_budget: overBudget,
+      principal_id: principal.id,
+    });
+    if (overBudget) {
+      logger.warn({
+        module: "mcp",
+        action: "mcp.catalog.over_budget",
+        msg: `tools/list schema ~${estTokens} tokens exceeds the ~${SCHEMA_TOKEN_BUDGET}-token budget; strict clients may silently drop tools`,
+        tool_count: tools.length,
+        est_tokens: estTokens,
+      });
+    }
     return { tools };
   });
 
@@ -338,6 +471,57 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       // surface-specific operational concerns, not LLM tool palette items.
       const mcpModeForCall = resolveMcpMode(principal);
       const readOnlyForCall = !modeFlags(mcpModeForCall, readOnly).showTenantWrites;
+
+      // Confirm responder (fallback for elicitation-incapable clients):
+      // re-dispatch the named tool with the confirm marker set. The gate
+      // already ran on the first call (APPROVAL_REQUESTED); this approves
+      // it. Handled before the registry probe because the responder is not
+      // a registry tool.
+      if (name === CONFIRM_TOOL_CALL_NAME) {
+        const targetTool = typeof args.tool === "string" ? args.tool : "";
+        const targetArgs =
+          args.arguments && typeof args.arguments === "object"
+            ? (args.arguments as Record<string, unknown>)
+            : {};
+        const confirmId = typeof args.confirm_id === "string" ? args.confirm_id : undefined;
+        if (!targetTool || !confirmId) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error_code: "invalid_args",
+                  message: "confirm_tool_call requires `tool` and `confirm_id`.",
+                }),
+              },
+            ],
+          };
+        }
+        const confirmedInvocation: ToolInvocation = {
+          surface: "mcp",
+          name: targetTool,
+          args: targetArgs,
+          meta: { sk_confirm: true, sk_confirm_id: confirmId },
+        };
+        const response = await callToolViaDispatcher({
+          db,
+          principal,
+          mcpMode: mcpModeForCall,
+          readOnly: readOnlyForCall,
+          invocation: confirmedInvocation,
+        });
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.result",
+          msg: "mcp confirm_tool_call resolved",
+          tool: targetTool,
+          duration_ms: Date.now() - started,
+          is_error: response.isError,
+        });
+        return response;
+      }
+
       const probeEntry = getUnifiedRegistry().get(name, {
         surface: "mcp",
         mcpMode: mcpModeForCall,
@@ -351,12 +535,27 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           args: args as Record<string, unknown>,
           ...(callMeta ? { meta: callMeta } : {}),
         };
+        // In-band human-in-the-loop: when the client advertises
+        // elicitation, resolve a `needs_confirm` gate by prompting the
+        // operator via `elicitation/create` rather than handing back an
+        // envelope the model cannot satisfy (it cannot set `_meta`).
+        const bridge = createElicitationBridge(server, extra);
+        const confirmResolver: ConfirmResolver | undefined = bridge.capabilities.form
+          ? async (confirm: ConfirmEnvelope): Promise<boolean> => {
+              const res = await bridge.elicitForm({
+                message: buildConfirmPrompt(confirm),
+                requestedSchema: CONFIRM_ELICIT_SCHEMA,
+              });
+              return res.action === "accept" && res.content?.confirm === true;
+            }
+          : undefined;
         const response = await callToolViaDispatcher({
           db,
           principal,
           mcpMode: mcpModeForCall,
           readOnly: readOnlyForCall,
           invocation,
+          ...(confirmResolver ? { confirmResolver } : {}),
         });
         logger.info({
           module: "mcp",
@@ -571,7 +770,45 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       });
 
       try {
-        const result = await runPromise;
+        // Bound the inline wait so a slow run doesn't blow past the client's
+        // request timeout. On timeout, detach the cancel wiring (so completing
+        // the response doesn't abort the run), let it finish in the
+        // background, and hand back a polling handle.
+        const outcome = await raceInlineRun(runPromise, WF_INLINE_TIMEOUT_MS);
+        if (outcome.timedOut) {
+          // Still running — stop blocking the client but keep the run alive.
+          extra.signal.removeEventListener("abort", onSignalAbort);
+          runPromise.then(() => state.bridge?.stop()).catch(() => state.bridge?.stop());
+          const execId = state.executionId;
+          logger.info({
+            module: "mcp",
+            action: "mcp.tool.result",
+            msg: "mcp wf run exceeded inline window — returned polling handle",
+            tool: name,
+            duration_ms: Date.now() - started,
+            execution_id: execId,
+          });
+          return {
+            isError: false,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  status: "running",
+                  execution_id: execId,
+                  message: `Workflow ${slug} is still running after ${Math.round(
+                    WF_INLINE_TIMEOUT_MS / 1000,
+                  )}s. Poll get_execution with this execution_id for the result.`,
+                  poll_with: "get_execution",
+                }),
+              },
+            ],
+            ...(execId
+              ? { _meta: { subkit: { execution: { id: execId, status: "running" } } } }
+              : {}),
+          };
+        }
+        const result = outcome.result;
         state.bridge?.stop();
         // Final progress frame @ 1.0.
         if (progressToken !== undefined && progressToken !== null) {
@@ -593,7 +830,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             step_id: null,
             result: result.output,
           });
-          // MCP `resource_link` content block (2025-03 spec). The previous
+          // MCP `resource_link` content block. The previous
           // text-encoded JSON envelope forced clients to parse a string
           // field to discover the fixture URI; LLM agents rarely follow
           // such pointers without explicit instruction.

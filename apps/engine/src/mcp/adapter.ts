@@ -24,7 +24,13 @@ import { EngineClient } from "../engine-client/index.ts";
 import { logger as mcpStubLogger } from "../logging/logger.ts";
 import { dispatchTool } from "../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../tools/index.ts";
-import type { ToolDescriptor, ToolEnvelope, ToolInvocation } from "../tools/types.ts";
+import { SK_CONFIRM_ID_META_KEY, SK_CONFIRM_META_KEY } from "../tools/policy.ts";
+import type {
+  ConfirmEnvelope,
+  ToolDescriptor,
+  ToolEnvelope,
+  ToolInvocation,
+} from "../tools/types.ts";
 import { buildConversationToolMeta, buildToolAnnotations } from "./capabilities/tool-meta.ts";
 
 // Zod schema → MCP JSON schema. Matches the helper in tenant-tools.ts;
@@ -56,7 +62,7 @@ function descriptorToMcpTool(d: ToolDescriptor): Tool {
     name: d.name,
     description: d.description,
     inputSchema: zodToMcpSchema(d.inputSchema),
-    // Spec-standard hints so a generic MCP client (ChatGPT/codex) can tell a
+    // Spec-standard hints so a generic strict MCP client can tell a
     // read tool from a write and permit the call without its own gate.
     annotations: buildToolAnnotations(d.category, d.name),
   };
@@ -192,27 +198,81 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
   };
 }
 
+/**
+ * Resolver the tools/call handler supplies when the connected MCP client
+ * advertises the `elicitation` capability. Given the confirm envelope, it
+ * issues a server→client `elicitation/create` confirm prompt and resolves
+ * to the operator's decision (`true` = approved). See
+ * `callToolViaDispatcher` for why this is the only model-only-client path
+ * that can satisfy a `confirm_before_execution` gate.
+ */
+export type ConfirmResolver = (confirm: ConfirmEnvelope) => Promise<boolean>;
+
 /** Top-level adapter call — register this as the MCP tools/call handler.
  *  Wraps the dispatcher and renders the envelope to the MCP response
- *  shape. The server.ts cutover replaces the in-place dispatch in
- *  capabilities/tools.ts with a thin call to this function. */
+ *  shape.
+ *
+ *  Human-in-the-loop over MCP: a `confirm_before_execution` tool returns a
+ *  `needs_confirm` envelope. A model-only client cannot set the
+ *  transport-level `_meta.sk_confirm` flag the gate looks for — it only
+ *  fills the published inputSchema — so the gate is otherwise
+ *  unsatisfiable from a model-only client. When the client advertises
+ *  elicitation, `confirmResolver` prompts the operator in-band via
+ *  `elicitation/create`; on approval we re-dispatch the IDENTICAL call
+ *  with the confirm marker set server-side, which lets the dispatcher
+ *  proceed and join the APPROVAL_REQUESTED → APPROVAL_APPROVED lifecycle
+ *  by `tool_call_id`. Clients without elicitation get the
+ *  `_meta.subkit.confirm` envelope and resolve it via the
+ *  `confirm_tool_call` fallback tool. */
 export async function callToolViaDispatcher(opts: {
   db: Db;
   principal: ResolvedPrincipal;
   mcpMode: "product" | "authoring" | "admin";
   readOnly: boolean;
   invocation: ToolInvocation;
+  confirmResolver?: ConfirmResolver;
 }): Promise<ReturnType<typeof envelopeToMcpResponse>> {
-  const envelope = await dispatchTool(
-    {
-      registry: getUnifiedRegistry(),
-      db: opts.db,
-      principal: opts.principal,
-      buildMcpStubCtx: () => buildMcpStubCtx({ db: opts.db, principal: opts.principal }),
-      mcpMode: opts.mcpMode,
-      readOnly: opts.readOnly,
-    },
-    opts.invocation,
-  );
+  const deps = {
+    registry: getUnifiedRegistry(),
+    db: opts.db,
+    principal: opts.principal,
+    buildMcpStubCtx: () => buildMcpStubCtx({ db: opts.db, principal: opts.principal }),
+    mcpMode: opts.mcpMode,
+    readOnly: opts.readOnly,
+  };
+  const envelope = await dispatchTool(deps, opts.invocation);
+
+  if (envelope.status === "needs_confirm" && opts.confirmResolver) {
+    const approved = await opts.confirmResolver(envelope.confirm);
+    if (!approved) {
+      return {
+        isError: false,
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "declined",
+              tool: envelope.confirm.tool,
+              tool_call_id: envelope.confirm.tool_call_id,
+              message: "Operator declined the confirmation; the call was not executed.",
+            }),
+          },
+        ],
+      };
+    }
+    // Re-issue the identical call with the confirm marker the dispatcher's
+    // `isConfirmed` looks for, carrying the original tool_call_id so the
+    // APPROVAL_APPROVED audit row joins APPROVAL_REQUESTED.
+    const confirmedInvocation: ToolInvocation = {
+      ...opts.invocation,
+      meta: {
+        ...(opts.invocation.meta ?? {}),
+        [SK_CONFIRM_META_KEY]: true,
+        [SK_CONFIRM_ID_META_KEY]: envelope.confirm.tool_call_id,
+      },
+    };
+    return envelopeToMcpResponse(await dispatchTool(deps, confirmedInvocation));
+  }
+
   return envelopeToMcpResponse(envelope);
 }

@@ -13,12 +13,14 @@
 //   7. normalize   — wrap the executor's output in a ToolEnvelope
 //   8. log         — single tool.dispatch.invoke event per call
 
+import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { PermissionMode } from "../conversations/tool-policies.ts";
 import type { ToolContext, ToolResult } from "../conversations/tools/index.ts";
 import type { Db } from "../db/client.ts";
+import { auditLog } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { denialDetails, denialHint } from "../rbac/denial.ts";
 import { type ConnectorAccessLevel, can, connectorAccessLevel } from "../rbac/evaluator.ts";
@@ -145,6 +147,59 @@ function confirmIdFromInvocation(invocation: ToolInvocation): string | null {
   const fromArgs = (invocation.args as Record<string, unknown>)[ARGS_CONFIRM_ID_KEY];
   if (typeof fromArgs === "string" && fromArgs.length > 0) return fromArgs;
   return null;
+}
+
+/** Validate a model-suppliable MCP confirmation against the audit trail.
+ *  On MCP a confirmation is forgeable — `confirm_tool_call` (or any client
+ *  that can set `_meta.sk_confirm`) passes the tool, args, and confirm_id
+ *  itself. Without this check it could approve an arbitrary or recycled id
+ *  and bypass the gate, writing an APPROVAL_APPROVED that joins no request.
+ *  A confirmation is valid only when a matching APPROVAL_REQUESTED exists
+ *  for this tenant + tool and has NOT already been approved (single-use).
+ *  Chat confirmations are UI-driven and keep the legacy id-optional path. */
+async function verifyMcpConfirmation(
+  deps: DispatchDeps,
+  toolName: string,
+  approvalId: string | null,
+): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
+  if (approvalId === null) {
+    return {
+      ok: false,
+      code: "confirmation_missing_id",
+      message:
+        "Confirmed call carried no confirm_id. Re-issue the original call, then approve the returned tool_call_id.",
+    };
+  }
+  const rows = await deps.db
+    .select({ action: auditLog.action, metadata: auditLog.metadata })
+    .from(auditLog)
+    .where(
+      and(eq(auditLog.tenant_id, deps.principal.tenant_id), eq(auditLog.resource_id, approvalId)),
+    );
+  const requested = rows.find((r) => r.action === AuditAction.APPROVAL_REQUESTED);
+  if (!requested) {
+    return {
+      ok: false,
+      code: "unknown_confirmation",
+      message: `No pending confirmation matches confirm_id ${approvalId} for this tenant. Re-issue the original call to obtain one.`,
+    };
+  }
+  const requestedTool = (requested.metadata as { tool?: unknown } | null)?.tool;
+  if (typeof requestedTool === "string" && requestedTool !== toolName) {
+    return {
+      ok: false,
+      code: "confirmation_tool_mismatch",
+      message: `Confirmation ${approvalId} was issued for ${requestedTool}, not ${toolName}.`,
+    };
+  }
+  if (rows.some((r) => r.action === AuditAction.APPROVAL_APPROVED)) {
+    return {
+      ok: false,
+      code: "confirmation_already_used",
+      message: `Confirmation ${approvalId} was already used. Re-issue the call to obtain a fresh confirmation.`,
+    };
+  }
+  return { ok: true };
 }
 
 async function emitPolicyDenied(
@@ -299,52 +354,75 @@ export async function dispatchTool(
         //    SKIP the row and log a warning — better an audit gap that
         //    the operator can spot than an orphan row that compliance
         //    queries silently include in lifecycle joins.
+        let confirmRejected = false;
         if (isConfirmedRequest(invocation.args, invocation.meta)) {
           const approvalId = confirmIdFromInvocation(invocation);
-          if (approvalId !== null) {
-            await emitApprovalApproved(deps, entry.descriptor.name, invocation.surface, approvalId);
-          } else {
-            logger.warn({
-              module: "tools",
-              action: "tool.dispatch.confirm_id_missing",
-              msg: "sk_confirm without sk_confirm_id — APPROVAL_APPROVED skipped to avoid orphan row",
-              tool: invocation.name,
-              surface: invocation.surface,
-              principal_id: deps.principal.id,
-              tenant_id: deps.principal.tenant_id,
-            });
+          // On MCP a confirmation is model-suppliable — validate it against a
+          // real, un-consumed APPROVAL_REQUESTED so it can't approve an
+          // arbitrary or recycled id and bypass the gate. The elicitation
+          // re-dispatch passes (the engine just issued the request this turn)
+          // and chat stays on the UI-driven legacy path below.
+          if (invocation.surface === "mcp") {
+            const check = await verifyMcpConfirmation(deps, entry.descriptor.name, approvalId);
+            if (!check.ok) {
+              envelope = { status: "error", error_code: check.code, message: check.message };
+              decisionLabel = check.code;
+              confirmRejected = true;
+            }
+          }
+          if (!confirmRejected) {
+            if (approvalId !== null) {
+              await emitApprovalApproved(
+                deps,
+                entry.descriptor.name,
+                invocation.surface,
+                approvalId,
+              );
+            } else {
+              logger.warn({
+                module: "tools",
+                action: "tool.dispatch.confirm_id_missing",
+                msg: "sk_confirm without sk_confirm_id — APPROVAL_APPROVED skipped to avoid orphan row",
+                tool: invocation.name,
+                surface: invocation.surface,
+                principal_id: deps.principal.id,
+                tenant_id: deps.principal.tenant_id,
+              });
+            }
           }
         }
 
-        // 6. Execute.
-        try {
-          const executor = entry.executor;
-          if (isConversationExecutor(executor)) {
-            const ctx =
-              invocation.surface === "chat"
-                ? deps.conversationCtx
-                : (deps.buildMcpStubCtx?.(entry.descriptor.name) ?? deps.conversationCtx);
-            if (!ctx) {
-              throw new Error("dispatcher missing conversation ctx for tool execution");
+        // 6. Execute — unless the confirmation was rejected above.
+        if (!confirmRejected) {
+          try {
+            const executor = entry.executor;
+            if (isConversationExecutor(executor)) {
+              const ctx =
+                invocation.surface === "chat"
+                  ? deps.conversationCtx
+                  : (deps.buildMcpStubCtx?.(entry.descriptor.name) ?? deps.conversationCtx);
+              if (!ctx) {
+                throw new Error("dispatcher missing conversation ctx for tool execution");
+              }
+              const result = await executor.execute(ctx, invocation.args);
+              envelope = normalizeConversationResult(result);
+            } else if (isStaticExecutor(executor)) {
+              envelope = await executor.invoke(
+                { db: deps.db, principal: deps.principal },
+                invocation.args,
+              );
+            } else {
+              throw new Error("unknown executor kind in registry entry");
             }
-            const result = await executor.execute(ctx, invocation.args);
-            envelope = normalizeConversationResult(result);
-          } else if (isStaticExecutor(executor)) {
-            envelope = await executor.invoke(
-              { db: deps.db, principal: deps.principal },
-              invocation.args,
-            );
-          } else {
-            throw new Error("unknown executor kind in registry entry");
+            decisionLabel = envelope.status === "ok" ? "ok" : "error";
+          } catch (err) {
+            envelope = {
+              status: "error",
+              error_code: "tool_execute_failed",
+              message: err instanceof Error ? err.message : String(err),
+            };
+            decisionLabel = "execute_failed";
           }
-          decisionLabel = envelope.status === "ok" ? "ok" : "error";
-        } catch (err) {
-          envelope = {
-            status: "error",
-            error_code: "tool_execute_failed",
-            message: err instanceof Error ? err.message : String(err),
-          };
-          decisionLabel = "execute_failed";
         }
       }
     }

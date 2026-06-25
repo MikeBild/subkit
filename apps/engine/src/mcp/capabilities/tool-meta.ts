@@ -47,6 +47,32 @@ function isDestructive(toolName: string): boolean {
   return /^(delete_|revoke_|archive_|remove_)/.test(toolName);
 }
 
+/**
+ * Tools that reach systems OUTSIDE subkit's own tenant store — connector
+ * HTTP calls, probes, OAuth, docs fetch, dry-runs that execute real steps.
+ * Drives `openWorldHint`: strict clients want all four hints explicit, and an
+ * accurate `openWorldHint:false` on the internal CRUD/read tools lets them be
+ * framed as closed-world (no per-call approval), while the external-reaching
+ * set is flagged open-world so the client frames it correctly. Everything not
+ * listed operates only on subkit-internal state.
+ */
+const EXTERNAL_REACHING_TOOLS: ReadonlySet<string> = new Set([
+  "call_connector",
+  "probe_connector",
+  "probe_connector_draft",
+  "test_connector",
+  "fetch_connector_docs",
+  "discover_connector_endpoints",
+  "authenticate_oauth",
+  "request_connector_reauth",
+  "dry_run_step",
+  "dry_run_workflow",
+]);
+
+function reachesExternal(toolName: string): boolean {
+  return EXTERNAL_REACHING_TOOLS.has(toolName);
+}
+
 export function buildConversationToolMeta(
   category: ToolCategory,
   toolName: string,
@@ -63,27 +89,32 @@ export function buildConversationToolMeta(
 /**
  * MCP-standard `annotations` for a registry/conversation tool.
  *
- * Unlike the vendor `_meta.subkit.*` hints above (which only claude.ai's
- * own surface reads), these live in the spec-defined `Tool.annotations`
- * field that generic MCP clients — notably ChatGPT/codex — read to decide
- * whether a tool may be invoked without an explicit per-call confirmation.
- * With no annotations a strict client must treat every tool as an opaque
- * possibly-mutating action and gates the write-classified authoring tools
- * (e.g. `conversation_start`) on its own surface. Advertising `readOnlyHint`
- * on the read tools and a precise `destructiveHint` on writes gives the
- * client the signal it needs to permit the call.
+ * Unlike the vendor `_meta.subkit.*` hints above (read only by surfaces that
+ * understand them), these live in the spec-defined `Tool.annotations` field
+ * that generic MCP clients read to decide whether a tool may be invoked
+ * without an explicit per-call confirmation. With no annotations a strict
+ * client must treat every tool as an opaque possibly-mutating action and
+ * gates the write-classified authoring tools (e.g. `conversation_start`) on
+ * its own surface. Advertising `readOnlyHint` on the read tools and a precise
+ * `destructiveHint` on writes gives the client the signal it needs to permit
+ * the call.
  */
 export function buildToolAnnotations(
   category: ToolCategory | "workflow_run",
   toolName: string,
 ): McpToolAnnotations {
   const readOnly = category === "tenant_read";
+  // All four spec hints are set EXPLICITLY: a strict client's validator
+  // treats an absent hint as unknown and may gate the tool as a write
+  // (per-call approval). Explicit values let it apply its native approval
+  // UI precisely — reads run without confirm, writes/externals surface it.
   return {
     readOnlyHint: readOnly,
     destructiveHint: isDestructive(toolName),
     // A pure read never mutates, so it is trivially idempotent. Writes make
     // no such guarantee.
     idempotentHint: readOnly,
+    openWorldHint: reachesExternal(toolName),
   };
 }
 

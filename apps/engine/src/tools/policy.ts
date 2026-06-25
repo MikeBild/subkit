@@ -28,8 +28,13 @@ export type PolicyDecision =
  * the `DRAFT_WRITE_MCP_UNAVAILABLE_REASON` below, and any tests stay in
  * lock-step. Reference this constant rather than re-typing the phrase.
  */
+// NB: despite the name, this must NOT promise protocol-level MCP
+// `elicitation/create` — the hosted flagship clients do not advertise that
+// capability, so the engine collects input through the authoring conversation
+// (model-relayed prompts; OAuth via an authorize link). Keep the wording
+// capability-agnostic.
 export const MCP_ELICITATION_BLURB =
-  "the engine surfaces forms and OAuth authorization prompts directly in this client via MCP elicitation, so the operator never leaves the chat";
+  "the engine collects any input it needs — forms, OAuth authorization — through the authoring conversation in this client, so the operator stays in the chat";
 
 /**
  * Reason string surfaced when a `draft_write` tool is reached on the
@@ -134,7 +139,7 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
       tool_call_id: crypto.randomUUID(),
       resume:
         input.surface === "mcp"
-          ? "Re-issue the same call with _meta.sk_confirm=true after the operator approves."
+          ? "Elicitation-capable clients are prompted to approve in-band automatically. Otherwise approve by calling confirm_tool_call with { tool, arguments, confirm_id: <this tool_call_id> }."
           : "Resume via ask_user_confirm reply with confirmed=true.",
     },
   };
