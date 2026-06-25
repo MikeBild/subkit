@@ -39,11 +39,12 @@ import { logger } from "../../logging/logger.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
-import type { ToolInvocation } from "../../tools/types.ts";
+import type { ConfirmEnvelope, ToolInvocation } from "../../tools/types.ts";
 import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
-import { callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
+import { type ConfirmResolver, callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
+import { createElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 
@@ -62,6 +63,66 @@ const PROGRESS_POLL_MS = 250;
 // single client-facing ping, not a storm. Trailing-window from the first
 // event of a burst.
 const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
+
+/**
+ * Fallback responder tool for MCP clients that do NOT advertise the
+ * `elicitation` capability. A `confirm_before_execution` gate returns a
+ * `_meta.subkit.confirm` envelope to such clients; the model then approves
+ * the paused call by invoking this tool with the original `tool`,
+ * `arguments`, and `confirm_id` (the envelope's `tool_call_id`). Elicitation-
+ * capable clients (claude.ai, ChatGPT) never see this tool — they are
+ * prompted in-band — so the catalog stays lean for the common case.
+ */
+const CONFIRM_TOOL_CALL_NAME = "confirm_tool_call";
+const CONFIRM_TOOL_CALL_TOOL: Tool = {
+  name: CONFIRM_TOOL_CALL_NAME,
+  description:
+    "Approve a tool call that paused for confirmation (status:needs_confirm). Re-runs the " +
+    "named tool with the operator's approval. Pass the same `tool` and `arguments` from the " +
+    "confirm envelope and set `confirm_id` to its `tool_call_id`.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      tool: { type: "string", description: "Name of the paused tool to approve and run." },
+      arguments: {
+        type: "object",
+        description: "The original arguments from the confirm envelope.",
+      },
+      confirm_id: {
+        type: "string",
+        description: "The `tool_call_id` from the confirm envelope (joins the approval audit).",
+      },
+    },
+    required: ["tool", "confirm_id"],
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+};
+
+/** One-line operator prompt for an in-band confirm elicitation. */
+function buildConfirmPrompt(confirm: ConfirmEnvelope): string {
+  const reason = confirm.reason.replace(/_/g, " ");
+  let argsPreview = "";
+  try {
+    const json = JSON.stringify(confirm.args);
+    argsPreview = json.length > 300 ? `${json.slice(0, 300)}…` : json;
+  } catch {
+    argsPreview = "(unserializable)";
+  }
+  return `Approve ${confirm.tool} (${reason})? Arguments: ${argsPreview}`;
+}
+
+/** Single-field confirm schema accepted by MCP `elicitation/create` form mode. */
+const CONFIRM_ELICIT_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    confirm: {
+      type: "boolean" as const,
+      title: "Proceed?",
+      description: "Confirm to run the call; decline to cancel.",
+    },
+  },
+  required: ["confirm"],
+};
 
 interface ListToolsParams {
   db: Db;
@@ -294,6 +355,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }),
     );
     if (flags.showConversationTools) tools.push(...listConversationTools());
+    // Surface the confirm responder ONLY for clients without MCP
+    // elicitation — elicitation-capable clients (claude.ai, ChatGPT) are
+    // prompted in-band by the tools/call handler and never need it.
+    if (server.getClientCapabilities()?.elicitation == null) {
+      tools.push(CONFIRM_TOOL_CALL_TOOL);
+    }
     return { tools };
   });
 
@@ -338,6 +405,57 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       // surface-specific operational concerns, not LLM tool palette items.
       const mcpModeForCall = resolveMcpMode(principal);
       const readOnlyForCall = !modeFlags(mcpModeForCall, readOnly).showTenantWrites;
+
+      // Confirm responder (fallback for elicitation-incapable clients):
+      // re-dispatch the named tool with the confirm marker set. The gate
+      // already ran on the first call (APPROVAL_REQUESTED); this approves
+      // it. Handled before the registry probe because the responder is not
+      // a registry tool.
+      if (name === CONFIRM_TOOL_CALL_NAME) {
+        const targetTool = typeof args.tool === "string" ? args.tool : "";
+        const targetArgs =
+          args.arguments && typeof args.arguments === "object"
+            ? (args.arguments as Record<string, unknown>)
+            : {};
+        const confirmId = typeof args.confirm_id === "string" ? args.confirm_id : undefined;
+        if (!targetTool || !confirmId) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error_code: "invalid_args",
+                  message: "confirm_tool_call requires `tool` and `confirm_id`.",
+                }),
+              },
+            ],
+          };
+        }
+        const confirmedInvocation: ToolInvocation = {
+          surface: "mcp",
+          name: targetTool,
+          args: targetArgs,
+          meta: { sk_confirm: true, sk_confirm_id: confirmId },
+        };
+        const response = await callToolViaDispatcher({
+          db,
+          principal,
+          mcpMode: mcpModeForCall,
+          readOnly: readOnlyForCall,
+          invocation: confirmedInvocation,
+        });
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.result",
+          msg: "mcp confirm_tool_call resolved",
+          tool: targetTool,
+          duration_ms: Date.now() - started,
+          is_error: response.isError,
+        });
+        return response;
+      }
+
       const probeEntry = getUnifiedRegistry().get(name, {
         surface: "mcp",
         mcpMode: mcpModeForCall,
@@ -351,12 +469,27 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           args: args as Record<string, unknown>,
           ...(callMeta ? { meta: callMeta } : {}),
         };
+        // In-band human-in-the-loop: when the client advertises
+        // elicitation, resolve a `needs_confirm` gate by prompting the
+        // operator via `elicitation/create` rather than handing back an
+        // envelope the model cannot satisfy (it cannot set `_meta`).
+        const bridge = createElicitationBridge(server, extra);
+        const confirmResolver: ConfirmResolver | undefined = bridge.capabilities.form
+          ? async (confirm: ConfirmEnvelope): Promise<boolean> => {
+              const res = await bridge.elicitForm({
+                message: buildConfirmPrompt(confirm),
+                requestedSchema: CONFIRM_ELICIT_SCHEMA,
+              });
+              return res.action === "accept" && res.content?.confirm === true;
+            }
+          : undefined;
         const response = await callToolViaDispatcher({
           db,
           principal,
           mcpMode: mcpModeForCall,
           readOnly: readOnlyForCall,
           invocation,
+          ...(confirmResolver ? { confirmResolver } : {}),
         });
         logger.info({
           module: "mcp",

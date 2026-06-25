@@ -125,7 +125,10 @@ describe("tools/policy.policyDecide (active parity)", () => {
     });
     expect(decision.kind).toBe("needs_confirm");
     if (decision.kind === "needs_confirm") {
-      expect(decision.envelope.resume).toContain("sk_confirm=true");
+      // MCP clients resolve the gate in-band via elicitation, or via the
+      // confirm_tool_call fallback — never by setting transport `_meta`
+      // (a model-only client cannot).
+      expect(decision.envelope.resume).toContain("confirm_tool_call");
     }
   });
 
