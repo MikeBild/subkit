@@ -134,7 +134,7 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
       tool_call_id: crypto.randomUUID(),
       resume:
         input.surface === "mcp"
-          ? "Re-issue the same call with _meta.sk_confirm=true after the operator approves."
+          ? "Elicitation-capable clients are prompted to approve in-band automatically. Otherwise approve by calling confirm_tool_call with { tool, arguments, confirm_id: <this tool_call_id> }."
           : "Resume via ask_user_confirm reply with confirmed=true.",
     },
   };
