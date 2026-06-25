@@ -8,6 +8,7 @@ import { assertCryptoKeyOrExit } from "./crypto/aes-gcm.ts";
 import { closeDb, getDb, getPool } from "./db/client.ts";
 import { type DriftReport, detectDrift, runMigrations } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
+import { warmEmbeddings } from "./embeddings/local-provider.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
 import { getScanner, NoopScanner } from "./files/scanner.ts";
@@ -390,6 +391,31 @@ async function runServer(): Promise<void> {
       module: "execution",
       action: "wait_reaper.boot_failed",
       msg: "boot-time wait reaper failed (non-fatal)",
+      ...errorFields(err),
+    });
+  }
+
+  // Warm the in-process embedding model before the listener accepts
+  // traffic: the first retrieval/backfill is then warm, and the one-time
+  // load (which briefly corrects process.release for transformers' env
+  // detection, see local-provider.ts) runs with no concurrent request.
+  // Non-fatal — embeddings degrade to FTS when the model can't load (e.g.
+  // a build without the fetched assets), so a failure must never block boot.
+  try {
+    const ready = await warmEmbeddings();
+    logger.info({
+      module: "embeddings",
+      action: "warm.complete",
+      msg: ready
+        ? "embedding model warm — semantic retrieval active"
+        : "embedding model unavailable — retrieval uses FTS",
+      available: ready,
+    });
+  } catch (err) {
+    logger.warn({
+      module: "embeddings",
+      action: "warm.failed",
+      msg: "embedding warm-up failed (non-fatal); retrieval uses FTS",
       ...errorFields(err),
     });
   }

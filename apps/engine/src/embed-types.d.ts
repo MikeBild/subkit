@@ -15,3 +15,22 @@ declare module "*.md" {
   const content: string;
   export default content;
 }
+
+// `with { type: "file" }` imports (embedded-assets.ts) resolve to a STRING
+// path Bun serves from the binary's virtual filesystem at runtime. The
+// engine imports no .onnx/.wasm/.mjs as real modules, so a default-string
+// declaration is unambiguous.
+declare module "*.onnx" {
+  const path: string;
+  export default path;
+}
+
+declare module "*.wasm" {
+  const path: string;
+  export default path;
+}
+
+declare module "*.mjs" {
+  const path: string;
+  export default path;
+}
