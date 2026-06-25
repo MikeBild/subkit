@@ -5,6 +5,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uuid,
@@ -64,6 +65,15 @@ export const conversations = pgTable(
     // Per-tool execution policy overrides (tool name → mode).
     // { run_workflow: "confirm_before_execution", list_workflows: "no_confirm" }
     tool_policies: jsonb("tool_policies").$type<Record<string, string>>().default({}).notNull(),
+    // Topic embedding for suggest-related-conversations routing — the
+    // conversation's first user message embedded with the local model
+    // (measured: first message alone matches a title-augmented variant, so
+    // no title dependency). Plain real[], no pgvector: the cosine match runs
+    // in JS over the caller's bounded owner-scoped candidate set. Nullable,
+    // populated out-of-band by backfillConversationTopics so the create path
+    // stays fast; embedding_model tags the producer for invalidation.
+    topic_embedding: real("topic_embedding").array(),
+    topic_embedding_model: text("topic_embedding_model"),
     ...timestamps,
   },
   (t) => [

@@ -28,6 +28,7 @@ import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as svc from "../../conversations/service.ts";
 import { buildWorkflowUsage } from "../../conversations/tools/usage-guidance.ts";
+import { suggestConversationsByTopic } from "../../conversations/topic-routing.ts";
 import type { Db } from "../../db/client.ts";
 import { enqueueConversationRunTurn } from "../../queue/handlers/conversation-run-turn.ts";
 import { getBoss } from "../../queue/index.ts";
@@ -68,6 +69,9 @@ const GetArgs = z.object({
 });
 const CommitArgs = z.object({
   conversation_id: z.string(),
+});
+const SuggestRelatedArgs = z.object({
+  message: z.string().min(1),
 });
 
 function jsonSchema(schema: z.ZodTypeAny): Tool["inputSchema"] {
@@ -115,6 +119,13 @@ export function listConversationTools(): Tool[] {
       description: "Return the committed workflow id for a committed conversation.",
       inputSchema: jsonSchema(CommitArgs),
       annotations: buildToolAnnotations("tenant_read", "conversation_commit"),
+    },
+    {
+      name: "suggest_related_conversations",
+      description:
+        "Before starting a NEW conversation, check whether this prompt continues a prior one. Returns your prior conversations whose topic is semantically related (ranked, the caller's own only), so you can resume with conversation_append(conversation_id) instead of losing the earlier context — or start fresh if none is returned. Suggestion only: it never resumes anything itself.",
+      inputSchema: jsonSchema(SuggestRelatedArgs),
+      annotations: buildToolAnnotations("tenant_read", "suggest_related_conversations"),
     },
   ];
 }
@@ -360,6 +371,16 @@ export async function handleConversationTool(
       const parsed = GetArgs.safeParse(args);
       if (!parsed.success) return errorText("conversation_id is required");
       return conversationGet(db, principal, parsed.data.conversation_id);
+    }
+
+    if (name === "suggest_related_conversations") {
+      const parsed = SuggestRelatedArgs.safeParse(args);
+      if (!parsed.success) return errorText("message is required");
+      const suggestions = await suggestConversationsByTopic(
+        { tenant_id: principal.tenant_id, owner_id: principal.id, message: parsed.data.message },
+        db,
+      );
+      return successText({ suggestions });
     }
 
     if (name === "conversation_commit") {

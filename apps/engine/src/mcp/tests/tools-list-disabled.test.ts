@@ -67,12 +67,15 @@ describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
     // Hold the line so future additions are a deliberate choice, not drift.
     const client = await suite.connect();
     const result = await client.listTools();
-    // Deliberate +1 over the prior ceiling: this client advertises no
-    // elicitation capability, so it is offered the `confirm_tool_call`
-    // responder (the model-drivable way to satisfy a confirm gate).
-    // Elicitation-capable clients never see it. Keep the guard tight so
-    // further additions stay a conscious choice, not drift.
-    expect(result.tools.length).toBeLessThan(81);
+    // Deliberate ceiling, raised as tools are consciously added:
+    //   +1 `confirm_tool_call` — this client advertises no elicitation
+    //      capability, so it is offered the model-drivable confirm responder
+    //      (elicitation-capable clients never see it);
+    //   +2 grounding read tools — `list_capability_gaps` (durable capability
+    //      gaps) and `suggest_related_conversations` (topic routing).
+    // Keep the guard tight so further additions stay a conscious choice,
+    // not drift.
+    expect(result.tools.length).toBeLessThan(83);
     // No tenant_* alias should remain in the catalog.
     expect(result.tools.filter((t) => t.name.startsWith("tenant_")).length).toBe(0);
   });

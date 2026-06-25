@@ -117,6 +117,16 @@ jobs:
       - name: AI eval contract
         run: bun run verify:ai
 
+      # Cache the embedded-embedding model so the compile step doesn't
+      # re-download ~146 MB from the HuggingFace CDN on every run (and
+      # doesn't flake on a CDN blip). Keyed on the fetch script, which pins
+      # the model id + revision — a model change busts the cache.
+      - name: Cache embedding assets
+        uses: actions/cache@v4
+        with:
+          path: apps/engine/assets/embeddings
+          key: ${{ runner.os }}-embed-assets-${{ hashFiles('scripts/fetch-embedding-assets.ts') }}
+
       - name: Build all binaries
         run: bun run build:all
 

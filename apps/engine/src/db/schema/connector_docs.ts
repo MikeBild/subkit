@@ -16,6 +16,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   uuid,
@@ -87,6 +88,11 @@ export const connectorDocumentChunks = pgTable(
     tsv: tsvector("tsv").generatedAlwaysAs(
       sql`to_tsvector('english', (((COALESCE(title, '') || ' ') || COALESCE(path, '')) || ' ') || content)`,
     ),
+    // Semantic embedding for hybrid retrieval — plain real[], no pgvector
+    // (rerank runs over the FTS-prefiltered candidates in JS). Nullable so
+    // FTS keeps working pre-backfill; embedding_model tags the producer.
+    embedding: real("embedding").array(),
+    embedding_model: text("embedding_model"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [

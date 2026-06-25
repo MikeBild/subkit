@@ -22,7 +22,9 @@ import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { embeddingsAvailable } from "../embeddings/local-provider.ts";
+import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
+import { log, logger } from "../logging/logger.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
 import {
   canConsumeBytes,
@@ -290,6 +292,10 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
     assertInsertRow(docRow, "connector_documents");
 
     if (accepted.length > 0) {
+      // Chunks are written WITHOUT embeddings — embedding is populated
+      // out-of-band by backfillEmbeddings so neither the inline HTTP create
+      // nor a large ingest blocks on model load + per-chunk inference. FTS
+      // works immediately; vectors follow shortly after.
       await tx.insert(connectorDocumentChunks).values(
         accepted.map((c, i) => ({
           tenant_id: p.tenant_id,
@@ -610,8 +616,96 @@ export async function searchDocs(p: SearchParams, exec?: Executor): Promise<Sear
     })),
     limit,
   );
-  searchCache.set(cacheKey, hits);
-  return hits;
+  // Hybrid recovery: the FTS prefilter above is English-stemmer only, so a
+  // German or synonym query can return few/zero lexical hits. Scan a
+  // bounded set of this connector's embedded chunks, rank by query↔chunk
+  // cosine, and fuse semantic hits in vector-first — so the right doc
+  // surfaces even when it shares no stemmed lexeme. NULL-safe + bounded:
+  // chunks without an embedding stay reachable via FTS, and the scan is
+  // capped (beyond the cap the tail degrades to FTS recall).
+  const fused = await fuseDocsWithVectors(db, p, hits, limit);
+
+  // Retrieval-quality signal for the evidence process. Emitted only on a
+  // real (non-cached) search so the hit/miss rate reflects distinct
+  // queries. query_length (not query) keeps user text out of logs.
+  log.docs.searched({
+    tenant_id: p.tenant_id,
+    connector_id: p.connector_id,
+    query_length: p.query.length,
+    hit_count: fused.length,
+    top_match_id: fused[0]?.id ?? null,
+    top_rank: fused[0]?.rank ?? null,
+    limit,
+  });
+  searchCache.set(cacheKey, fused);
+  return fused;
+}
+
+/** Bounded full-scope vector recovery for searchDocs. Returns `hits`
+ *  unchanged when embeddings are unavailable or nothing clears the cosine
+ *  floor. Extracted so the search query stays readable. */
+const DOCS_VECTOR_SCAN_CAP = 2000;
+async function fuseDocsWithVectors(
+  db: Executor,
+  p: SearchParams,
+  hits: SearchHit[],
+  limit: number,
+): Promise<SearchHit[]> {
+  if (!(await embeddingsAvailable())) return hits;
+  const scopeOut = await db.execute(sql`
+    SELECT
+      cdc.id::text AS id,
+      cdc.document_id::text AS document_id,
+      cdc.title AS title,
+      cdc.path AS path,
+      cdc.content AS content,
+      cd.updated_at AS fetched_at,
+      cdc.embedding AS embedding
+    FROM connector_document_chunks cdc
+    JOIN connector_documents cd ON cd.id = cdc.document_id
+    WHERE cdc.tenant_id = ${p.tenant_id}
+      AND cdc.connector_id = ${p.connector_id}
+      AND cdc.embedding IS NOT NULL
+    ORDER BY cdc.created_at DESC
+    LIMIT ${DOCS_VECTOR_SCAN_CAP}
+  `);
+  type ScopeRow = {
+    id: string;
+    document_id: string;
+    title: string | null;
+    path: string | null;
+    content: string;
+    fetched_at: Date | string | null;
+    embedding: number[] | null;
+  };
+  const scopeRows =
+    (scopeOut as unknown as { rows: ScopeRow[] }).rows ?? (scopeOut as unknown as ScopeRow[]);
+  const scored = await vectorScoreCandidates(
+    p.query,
+    scopeRows.map((r) => ({ item: r, embedding: r.embedding })),
+  );
+  if (scored.length === 0) return hits;
+  const ftsById = new Map(hits.map((h) => [h.id, h]));
+  const vector = scored.map((s) => {
+    const existing = ftsById.get(s.item.id);
+    const hit: SearchHit = existing ?? {
+      id: s.item.id,
+      document_id: s.item.document_id,
+      title: s.item.title,
+      path: s.item.path,
+      snippet: s.item.content.slice(0, 200),
+      rank: s.cosine,
+      match_type: "general",
+      fetched_at:
+        s.item.fetched_at instanceof Date
+          ? s.item.fetched_at.toISOString()
+          : typeof s.item.fetched_at === "string"
+            ? s.item.fetched_at
+            : null,
+    };
+    return { item: hit, cosine: s.cosine };
+  });
+  return fuseVectorFirst({ fts: hits, vector, idOf: (h) => h.id, limit });
 }
 
 // Touch byteLen so the linter doesn't flag an unused import — the
