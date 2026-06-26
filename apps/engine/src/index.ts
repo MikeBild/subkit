@@ -254,19 +254,21 @@ async function runServer(): Promise<void> {
     process.exit(1);
   }
 
-  // Drift detection — read-only. If the DB carries migration rows whose
-  // hash isn't in this binary, the schema state was set by a different
-  // engine lineage. We log loudly and surface the flag in /v1/health
-  // (operators see it on the dashboard), but boot continues — the
-  // existing schema may still satisfy this binary's expectations.
+  // Drift detection — read-only. `unknown_in_db` means the DB carries
+  // migration rows whose hash isn't embedded in this binary (typically a
+  // squashed/older lineage where pre-squash rows linger). This binary already
+  // ran its own migrations, so its schema expectations are satisfied and boot
+  // continues — it is informational, not an incident. We log at INFO (a WARN
+  // on every boot for the same benign historical rows drowned out real
+  // signals) and still surface the flag in /v1/health for the dashboard.
   let drift: DriftReport | null = null;
   try {
     drift = await detectDrift(db);
     if (drift.unknown_in_db.length > 0) {
-      logger.warn({
+      logger.info({
         module: "engine",
         action: "migrate.drift_detected",
-        msg: "DB carries migration rows not present in this binary",
+        msg: "DB carries historical migration rows not embedded in this binary (informational; schema expectations satisfied)",
         unknown_count: drift.unknown_in_db.length,
         first_hashes: drift.unknown_in_db.slice(0, 10).map((r) => r.hash),
       });
