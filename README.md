@@ -14,7 +14,7 @@ production without an explicit human approval step.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The authoritative glossary is [`docs/02-concepts.md`](docs/02-concepts.md); the canonical
+The authoritative glossary is [`docs/concepts.md`](docs/concepts.md); the canonical
 contract for contributors is [`AGENTS.md`](AGENTS.md).
 
 ---
@@ -46,7 +46,7 @@ the control flow of an approved workflow is fixed; runtime does not re-decide it
 ## Documentation
 
 Full conceptual, operational, and quickstart documentation lives in [`docs/`](docs/) — start
-with the [docs index](docs/README.md) and the [glossary](docs/02-concepts.md).
+with the [docs index](docs/README.md) and the [glossary](docs/concepts.md).
 
 ---
 

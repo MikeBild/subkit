@@ -5,7 +5,7 @@
 //   - AC1: A valid Standard-Webhooks signature enqueues an execution.
 //   - AC2: A stale timestamp is denied.
 //   - AC3: A duplicate webhook-id is deduped.
-// Spec refs: docs/03-input-surfaces.md
+// Spec refs: docs/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";

@@ -11,7 +11,7 @@
 //          as tenant A returns ok=false, error='file_not_found'. No KS row
 //          is written. This proves requireFileForTenant isolation.
 //
-// Spec refs: docs/04-authoring.md, docs/02-concepts.md (Knowledge Sources)
+// Spec refs: docs/authoring.md, docs/concepts.md (Knowledge Sources)
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";

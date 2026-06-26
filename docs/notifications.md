@@ -157,7 +157,7 @@ and surface in the generated OpenAPI document.
   partitioned by adapter platform and outcome.
 - Counter `webhook_delivery_total{subscription_id,status}` —
   for the webhook subscriptions surface (parallel system; see
-  `docs/08-operations.md`).
+  `docs/operations.md`).
 - Structured logs from `notifications/service.ts` carry
   `tenant_id`, `rule_id`, `channel_id`, `event_type`, `status`.
 

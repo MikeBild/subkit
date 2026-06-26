@@ -514,7 +514,7 @@ export async function resolveElicitation(
     if (!existing) return { kind: "not_found" };
     return { kind: "already_resolved", existing: rowToRecord(existing) };
   }
-  // Elicitation audit is a TRI-STATE — see docs/10-tool-palette.md
+  // Elicitation audit is a TRI-STATE — see docs/tool-palette.md
   // ("Elicitation audit is a tri-state — transport ≠ approval"). Three
   // independent facts land on this row and must not be conflated:
   //   - `action`               = the governance DECISION (APPROVAL_APPROVED

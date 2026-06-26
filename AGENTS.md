@@ -41,8 +41,8 @@ High-value references (by task type):
 
 - **Project shape & build** — `package.json`, `biome.json`, `tsconfig.json`, `docker-compose.yml`,
   `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.commitlintrc.json`
-- **Platform & concepts** — `docs/02-concepts.md`
-- **Input surfaces** — `docs/03-input-surfaces.md`. The sk REPL exposes a 5-tab
+- **Platform & concepts** — `docs/concepts.md`
+- **Input surfaces** — `docs/input-surfaces.md`. The sk REPL exposes a 5-tab
   `/settings` palette (`Status · Config · Usage · Skills · Knowledge`) embedded
   in-process via the `kind: "settings"` PaneSpec. Operator surfaces
   (`Permissions`, `Profile`, `Admin`) are not tabs — each is its own SinglePane
@@ -50,11 +50,11 @@ High-value references (by task type):
   "no admin permissions" message unless the principal holds an admin-scoped
   permission. Slash registry is in `apps/sk/src/slash.ts`; deleted-slash
   redirects in `apps/sk/src/repl/slash/dispatcher.ts:REMOVED_SLASH_GUIDANCE`.
-- **AI authoring** — `docs/04-authoring.md`
-- **Connectors & integration** — `docs/05-connectors.md`
-- **Execution** — `docs/06-execution.md`
-- **Security & governance** — `docs/07-security-governance.md`
-- **Operations** — `docs/08-operations.md`
+- **AI authoring** — `docs/authoring.md`
+- **Connectors & integration** — `docs/connectors.md`
+- **Execution** — `docs/execution.md`
+- **Security & governance** — `docs/security-governance.md`
+- **Operations** — `docs/operations.md`
 - **Agent-task navigation** — `.claude/docs/agent-navigation.md` (task-oriented index)
 
 ## Working Rules
@@ -149,51 +149,51 @@ Subsystem map inside `apps/engine/src/` (45 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
-| OpenAPI types (source of truth) | `api/` | `docs/03-input-surfaces.md` |
-| Immutable audit log | `audit/` | `docs/07-security-governance.md` |
-| Auth providers (OIDC, API key, portal token) | `auth/` | `docs/07-security-governance.md` |
-| Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/03-input-surfaces.md` |
+| OpenAPI types (source of truth) | `api/` | `docs/input-surfaces.md` |
+| Immutable audit log | `audit/` | `docs/security-governance.md` |
+| Auth providers (OIDC, API key, portal token) | `auth/` | `docs/security-governance.md` |
+| Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/input-surfaces.md` |
 | Layered config loader (override → tenant → global → default) | `config/` | `docs/operations/configuration.md` |
-| 4 drivers + 93 templates | `connectors/` | `docs/05-connectors.md` |
-| AI authoring loop + tool use | `conversations/` | `docs/04-authoring.md` |
-| Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/07-security-governance.md` |
-| AES-256-GCM + redaction | `crypto/` | `docs/07-security-governance.md` |
-| Drizzle schema + migrations + seed + transactional outbox events | `db/` | `docs/07-security-governance.md` |
-| Unified file resource (chat attachments, workflow inputs/outputs, LLM context, MCP); `{$file: fid_uuid}` wire shape; `requireFileForTenant` chokepoint, `files` table + `file_links` polymorphic join, inline (≤5MB) vs presigned upload, scanner interface, soft-delete + cleanup cron with in-flight grace | `files/` | `docs/06-execution.md` |
-| File → connector/skill proposals | `discovery/` | `docs/04-authoring.md` |
-| OpenAPI / GraphQL / HTML → searchable context | `docs-ingestion/` | `docs/04-authoring.md` |
-| Local multilingual embeddings + hybrid vector rerank (no API key, degrades to FTS) | `embeddings/` | `docs/04-authoring.md` |
-| Typed engine HTTP client (used by sk + agent) | `engine-client/` | `docs/03-input-surfaces.md` |
-| DAG engine + step dispatch | `execution/` | `docs/06-execution.md` |
-| Hono routes + middleware + errors | `http/` | `docs/03-input-surfaces.md` |
-| SSO / OIDC / user provisioning | `identity/` | `docs/07-security-governance.md` |
-| Semantic search on tenant KB | `knowledge/` | `docs/04-authoring.md` |
-| Prompt assembly, token budgets, repairs | `llm/` | `docs/04-authoring.md` |
-| Structured logger + context | `logging/` | `docs/08-operations.md` |
-| MCP server (streamable HTTP + stdio) | `mcp/` | `docs/03-input-surfaces.md` |
-| Unified tool palette + dispatcher (registry, providers, policy, adapters) | `tools/` | `docs/10-tool-palette.md` |
-| Rule-based fan-out (Slack, webhook) | `notifications/` | `docs/03-input-surfaces.md` |
-| Prometheus metrics + tracing | `observability/` | `docs/08-operations.md` |
-| First-run bootstrap + demo seed | `onboarding/` | `docs/08-operations.md` |
-| Operator health digest (drift/repair/queue summary) | `operator/` | `docs/08-operations.md` |
-| PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/06-execution.md` |
-| pg-boss handler dispatch | `queue/` | `docs/06-execution.md` |
-| RBAC (40+ permissions) + ABAC + policies | `rbac/` | `docs/07-security-governance.md` |
-| 5-tier QuickJS-WASM isolation | `sandboxes/` | `docs/06-execution.md` |
-| Cron reconciler + schedule fires | `scheduler/` | `docs/06-execution.md` |
-| Connector endpoint schema tracking | `schema-versions/` | `docs/06-execution.md` |
-| Drift detection + bounded repair | `self-healing/` | `docs/06-execution.md` |
-| Pattern detection → proposed skills | `skill-candidates/` | `docs/04-authoring.md` |
-| Curated LLM-context records | `skills/` | `docs/04-authoring.md` |
-| Tenant-scoped time-bucketed runtime stats aggregation | `stats/` | `docs/08-operations.md` |
-| Object/blob storage | `storage/` | `docs/06-execution.md` |
+| 4 drivers + 93 templates | `connectors/` | `docs/connectors.md` |
+| AI authoring loop + tool use | `conversations/` | `docs/authoring.md` |
+| Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/security-governance.md` |
+| AES-256-GCM + redaction | `crypto/` | `docs/security-governance.md` |
+| Drizzle schema + migrations + seed + transactional outbox events | `db/` | `docs/security-governance.md` |
+| Unified file resource (chat attachments, workflow inputs/outputs, LLM context, MCP); `{$file: fid_uuid}` wire shape; `requireFileForTenant` chokepoint, `files` table + `file_links` polymorphic join, inline (≤5MB) vs presigned upload, scanner interface, soft-delete + cleanup cron with in-flight grace | `files/` | `docs/execution.md` |
+| File → connector/skill proposals | `discovery/` | `docs/authoring.md` |
+| OpenAPI / GraphQL / HTML → searchable context | `docs-ingestion/` | `docs/authoring.md` |
+| Local multilingual embeddings + hybrid vector rerank (no API key, degrades to FTS) | `embeddings/` | `docs/authoring.md` |
+| Typed engine HTTP client (used by sk + agent) | `engine-client/` | `docs/input-surfaces.md` |
+| DAG engine + step dispatch | `execution/` | `docs/execution.md` |
+| Hono routes + middleware + errors | `http/` | `docs/input-surfaces.md` |
+| SSO / OIDC / user provisioning | `identity/` | `docs/security-governance.md` |
+| Semantic search on tenant KB | `knowledge/` | `docs/authoring.md` |
+| Prompt assembly, token budgets, repairs | `llm/` | `docs/authoring.md` |
+| Structured logger + context | `logging/` | `docs/operations.md` |
+| MCP server (streamable HTTP + stdio) | `mcp/` | `docs/input-surfaces.md` |
+| Unified tool palette + dispatcher (registry, providers, policy, adapters) | `tools/` | `docs/tool-palette.md` |
+| Rule-based fan-out (Slack, webhook) | `notifications/` | `docs/input-surfaces.md` |
+| Prometheus metrics + tracing | `observability/` | `docs/operations.md` |
+| First-run bootstrap + demo seed | `onboarding/` | `docs/operations.md` |
+| Operator health digest (drift/repair/queue summary) | `operator/` | `docs/operations.md` |
+| PG LISTEN/NOTIFY streaming | `pubsub/` | `docs/execution.md` |
+| pg-boss handler dispatch | `queue/` | `docs/execution.md` |
+| RBAC (40+ permissions) + ABAC + policies | `rbac/` | `docs/security-governance.md` |
+| 5-tier QuickJS-WASM isolation | `sandboxes/` | `docs/execution.md` |
+| Cron reconciler + schedule fires | `scheduler/` | `docs/execution.md` |
+| Connector endpoint schema tracking | `schema-versions/` | `docs/execution.md` |
+| Drift detection + bounded repair | `self-healing/` | `docs/execution.md` |
+| Pattern detection → proposed skills | `skill-candidates/` | `docs/authoring.md` |
+| Curated LLM-context records | `skills/` | `docs/authoring.md` |
+| Tenant-scoped time-bucketed runtime stats aggregation | `stats/` | `docs/operations.md` |
+| Object/blob storage | `storage/` | `docs/execution.md` |
 | Engine-internal cross-subsystem fixtures + helpers | `test-helpers/` | (test infrastructure) |
 | Top-level integration suites | `tests/` | (test infrastructure) |
 | Cross-subsystem utilities | `utils/` | (shared helpers) |
-| Inbound + outbound webhooks (incl. transactional outbox dispatch) | `webhooks/` | `docs/03-input-surfaces.md` |
-| Inbound signal write + atomic-claim match (wait-for-event step) | `workflow-signals/` | `docs/06-execution.md` |
-| Persistent per-workflow tenant-encrypted state (`state_read` / `state_write`) | `workflow-state/` | `docs/06-execution.md` |
-| DAG versioning + locking + execution | `workflows/` | `docs/06-execution.md` |
+| Inbound + outbound webhooks (incl. transactional outbox dispatch) | `webhooks/` | `docs/input-surfaces.md` |
+| Inbound signal write + atomic-claim match (wait-for-event step) | `workflow-signals/` | `docs/execution.md` |
+| Persistent per-workflow tenant-encrypted state (`state_read` / `state_write`) | `workflow-state/` | `docs/execution.md` |
+| DAG versioning + locking + execution | `workflows/` | `docs/execution.md` |
 
 Loose root files in `apps/engine/src/`:
 

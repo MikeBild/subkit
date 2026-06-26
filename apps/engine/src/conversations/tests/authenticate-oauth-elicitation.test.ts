@@ -363,7 +363,7 @@ describe("authenticate_oauth — URL-mode elicitation, happy path", () => {
 
     // The bridge (oob) governance row resolved `APPROVAL_APPROVED`. Its
     // resolve audit carries the tri-state discriminators
-    // (docs/10-tool-palette.md): a bridge-delivered accept records
+    // (docs/tool-palette.md): a bridge-delivered accept records
     // `surface: mcp_elicitation` and `elicitation_transport: succeeded`.
     const elicitation = (await readElicitations(conversation_id)).find((r) =>
       r.summary.includes("aoe-happy"),
@@ -622,7 +622,7 @@ describe("authenticate_oauth — elicitation transport failure", () => {
     expect(stateRows).toHaveLength(1);
 
     // The governance row resolved `APPROVAL_REJECTED`. Its resolve audit
-    // records the tri-state (docs/10-tool-palette.md): the carrier was
+    // records the tri-state (docs/tool-palette.md): the carrier was
     // delivered through the MCP bridge, so `surface: mcp_elicitation`,
     // and the round-trip broke in transit, so
     // `elicitation_transport: failed`.

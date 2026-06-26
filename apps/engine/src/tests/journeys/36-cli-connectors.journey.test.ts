@@ -9,7 +9,7 @@
 //   - AC4: `connectors list --json` after create contains at least 1 item.
 //   - AC5: `connectors delete <id> --yes` outputs "deleted".
 //   - AC6: `connectors get <id>` after delete produces an error / process.exit.
-// Spec refs: docs/05-connectors.md, docs/03-input-surfaces.md
+// Spec refs: docs/connectors.md, docs/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectorsCommand } from "../../../../sk/src/commands/connectors.ts";

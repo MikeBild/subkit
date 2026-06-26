@@ -65,7 +65,7 @@ There is no configuration file format to author or maintain. Environment variabl
 
 The engine validates its configuration at boot and exits with a descriptive error if required settings are missing or invalid. There is no silent degraded mode from a misconfiguration.
 
-To point the `openai` provider at a self-hosted or third-party **OpenAI-compatible endpoint** (custom `base_url`), see [AI-Assisted Authoring → OpenAI-compatible endpoints](04-authoring.md#openai-compatible-endpoints).
+To point the `openai` provider at a self-hosted or third-party **OpenAI-compatible endpoint** (custom `base_url`), see [AI-Assisted Authoring → OpenAI-compatible endpoints](authoring.md#openai-compatible-endpoints).
 
 ---
 
@@ -202,7 +202,7 @@ These limits have documented defaults and can be tuned by operators for their sp
 
 ### Documentation & Knowledge Tunables
 
-Documentation ingestion and Knowledge Source budgets are env-configurable so operators can raise them on hardware that warrants larger corpora. Defaults are conservative and match the docs in [`04-authoring.md`](04-authoring.md).
+Documentation ingestion and Knowledge Source budgets are env-configurable so operators can raise them on hardware that warrants larger corpora. Defaults are conservative and match the docs in [`authoring.md`](authoring.md).
 
 | Env var | Default | Effect |
 |---|---|---|

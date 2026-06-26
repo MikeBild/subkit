@@ -13,14 +13,14 @@ Eight architecture-level documents, read in order or by concern.
 
 | Doc | What it covers |
 |---|---|
-| [02-concepts.md](02-concepts.md) | The authoritative glossary: every domain term defined exactly once — Tenant, Workflow, Skill, Connector, Execution, Audit Log, and more. |
-| [03-input-surfaces.md](03-input-surfaces.md) | Every way users and systems reach sk: the CLI, REST API, MCP server, chat platforms, webhooks, and scheduled triggers. |
-| [04-authoring.md](04-authoring.md) | How Conversations produce governed workflows: the AI authoring loop, the human approval gate, Skills, Knowledge Sources, and Discovery. |
-| [05-connectors.md](05-connectors.md) | The integration fabric: Connectors, Drivers, Credentials, the vault, and the OAuth2 lifecycle. |
-| [06-execution.md](06-execution.md) | The governed, version-bound execution engine: Workflow DAGs, Step types, Execution records, Schedules, and how drift-assisted repair keeps workflows healthy (codebase term: *self-healing*). |
-| [07-security-governance.md](07-security-governance.md) | Multi-tenancy, authentication (OIDC, API keys, portal tokens), RBAC, Before-Request Hooks, the credential vault, and the immutable audit trail. |
-| [08-operations.md](08-operations.md) | Deployment topology, configuration, metrics, structured logging, execution inspection, resource limits, drift-assisted repair, and backup. |
-| [09-notifications.md](09-notifications.md) | Notification rules, channels (Slack / Teams / Google Chat / webhook), rate limits, circuit breaker, RBAC, and the synthetic-test endpoint. |
+| [concepts.md](concepts.md) | The authoritative glossary: every domain term defined exactly once — Tenant, Workflow, Skill, Connector, Execution, Audit Log, and more. |
+| [input-surfaces.md](input-surfaces.md) | Every way users and systems reach sk: the CLI, REST API, MCP server, chat platforms, webhooks, and scheduled triggers. |
+| [authoring.md](authoring.md) | How Conversations produce governed workflows: the AI authoring loop, the human approval gate, Skills, Knowledge Sources, and Discovery. |
+| [connectors.md](connectors.md) | The integration fabric: Connectors, Drivers, Credentials, the vault, and the OAuth2 lifecycle. |
+| [execution.md](execution.md) | The governed, version-bound execution engine: Workflow DAGs, Step types, Execution records, Schedules, and how drift-assisted repair keeps workflows healthy (codebase term: *self-healing*). |
+| [security-governance.md](security-governance.md) | Multi-tenancy, authentication (OIDC, API keys, portal tokens), RBAC, Before-Request Hooks, the credential vault, and the immutable audit trail. |
+| [operations.md](operations.md) | Deployment topology, configuration, metrics, structured logging, execution inspection, resource limits, drift-assisted repair, and backup. |
+| [notifications.md](notifications.md) | Notification rules, channels (Slack / Teams / Google Chat / webhook), rate limits, circuit breaker, RBAC, and the synthetic-test endpoint. |
 
 ### Deep-dive companions
 
@@ -28,9 +28,9 @@ Focused references that expand a single concept doc.
 
 | Doc | Expands | What it covers |
 |---|---|---|
-| [04a-conversational-flow-replay.md](04a-conversational-flow-replay.md) | 04-authoring | Canonical happy-path authoring transcripts that pin the auto-persist contract. |
-| [05a-recipe-authoring.md](05a-recipe-authoring.md) | 05-connectors | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
-| [10-tool-palette.md](10-tool-palette.md) | 03-input-surfaces | The unified tool palette and dispatcher: registry, naming, and policy gates. |
+| [conversational-flow-replay.md](conversational-flow-replay.md) | authoring | Canonical happy-path authoring transcripts that pin the auto-persist contract. |
+| [recipe-authoring.md](recipe-authoring.md) | connectors | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
+| [tool-palette.md](tool-palette.md) | input-surfaces | The unified tool palette and dispatcher: registry, naming, and policy gates. |
 
 ---
 
@@ -50,13 +50,13 @@ Three persona-specific paths to get running fast.
 
 ## Who Should Read What
 
-**End users** — start at [03-input-surfaces.md](03-input-surfaces.md) to understand how to reach sk, then [04-authoring.md](04-authoring.md) to understand what Conversations can do. The [end-user quickstart](quickstart/end-user.md) gets you to a live session in 5 minutes.
+**End users** — start at [input-surfaces.md](input-surfaces.md) to understand how to reach sk, then [authoring.md](authoring.md) to understand what Conversations can do. The [end-user quickstart](quickstart/end-user.md) gets you to a live session in 5 minutes.
 
-**Operators** — start with the [operator quickstart](quickstart/operator.md) to get the engine running, then [07-security-governance.md](07-security-governance.md) for identity and RBAC setup, and [08-operations.md](08-operations.md) for monitoring and operational hygiene.
+**Operators** — start with the [operator quickstart](quickstart/operator.md) to get the engine running, then [security-governance.md](security-governance.md) for identity and RBAC setup, and [operations.md](operations.md) for monitoring and operational hygiene.
 
 **Developers** — start with [AGENTS.md](../AGENTS.md) for the subsystem map and contribution rules, then read all eight concept docs for full architectural context. The [developer quickstart](quickstart/developer.md) gets the local environment running in 10 minutes.
 
-**Architects** — start with [02-concepts.md](02-concepts.md) for the domain model, then [07-security-governance.md](07-security-governance.md) for the security architecture.
+**Architects** — start with [concepts.md](concepts.md) for the domain model, then [security-governance.md](security-governance.md) for the security architecture.
 
 ---
 

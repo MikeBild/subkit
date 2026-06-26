@@ -12,7 +12,7 @@ Terms are grouped by concern. Read the groups in order for a complete mental mod
 
 A few names in the codebase differ from the phrasing used in the prose docs, and several acronyms recur across every group. Both are collected here so every reader shares the same vocabulary.
 
-**Contextual learning loop** — *Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run.* The mechanism by which a tenant's authoring context improves over time: every run can surface drift, a drift can produce an operator-reviewed Patch Candidate, a recurring pattern can produce an operator-promoted Skill Candidate, and both feed back into the next authoring run. See [`06-execution.md`](06-execution.md) and the self-healing subsystem.
+**Contextual learning loop** — *Run → Drift → Patch Candidate → Skill Candidate → Better Authoring → Better Run.* The mechanism by which a tenant's authoring context improves over time: every run can surface drift, a drift can produce an operator-reviewed Patch Candidate, a recurring pattern can produce an operator-promoted Skill Candidate, and both feed back into the next authoring run. See [`execution.md`](execution.md) and the self-healing subsystem.
 
 **Drift-assisted repair suggestion** — the prose phrasing for the codebase's *self-healing* subsystem (also called *operator-reviewed remediation* in governance contexts). Same concept, different audience.
 
@@ -121,7 +121,7 @@ Collected so every reader has the same expansion at hand.
 
 **Chat Adapter** — the integration layer for enterprise chat platforms (Slack, Microsoft Teams, Google Chat). Each adapter normalises platform-specific events — mentions, slash commands, interaction callbacks — into sk's Conversation model, and renders responses back as native platform messages. Approval flows surface as interactive cards with approve and reject buttons. Identity linking connects a chat user's platform identity to their Tenant account.
 
-**Notification Rule** — a tenant-scoped row that selects which engine events fan out to which channel. Carries an event-type pattern, an optional workflow pattern, a severity, an optional `request_source_filter`, and the target `(workspace_id, channel_id)` tuple. Backed by the dispatcher in `apps/engine/src/notifications/service.ts` with a leaky-bucket rate limiter and a three-state circuit breaker. See [docs/09-notifications.md](09-notifications.md).
+**Notification Rule** — a tenant-scoped row that selects which engine events fan out to which channel. Carries an event-type pattern, an optional workflow pattern, a severity, an optional `request_source_filter`, and the target `(workspace_id, channel_id)` tuple. Backed by the dispatcher in `apps/engine/src/notifications/service.ts` with a leaky-bucket rate limiter and a three-state circuit breaker. See [docs/notifications.md](notifications.md).
 
 **Notification Delivery** — the per-attempt outcome of dispatching a Notification Rule against an event. Possible statuses: `sent`, `rate_limited`, `breaker_open`, `failed`, `skipped`. Each row is the audit-grade record of what was (or was not) delivered, mirrored in the audit log via `chat.message.sent`, `chat.message.denied`, or `webhook.outbound.failed`.
 
@@ -135,4 +135,4 @@ Collected so every reader has the same expansion at hand.
 
 ## What to Read Next
 
-- [docs/03-input-surfaces.md](03-input-surfaces.md) — How users and systems reach sk: the CLI, REST API, MCP server, chat platforms, webhooks, and scheduled triggers.
+- [docs/input-surfaces.md](input-surfaces.md) — How users and systems reach sk: the CLI, REST API, MCP server, chat platforms, webhooks, and scheduled triggers.

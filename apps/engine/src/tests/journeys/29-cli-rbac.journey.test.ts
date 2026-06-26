@@ -15,7 +15,7 @@
 //   - AC7: `subkit rbac groups create` + `add-member` + `assign-role`
 //          materialise group rows.
 //   - AC8: `subkit rbac roles delete` on the admin built-in returns 409.
-// Spec refs: docs/07-security-governance.md, docs/03-input-surfaces.md
+// Spec refs: docs/security-governance.md, docs/input-surfaces.md
 //            (Pass-2 Stream C — fully integrated RBAC)
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

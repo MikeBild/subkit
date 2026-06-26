@@ -7,7 +7,7 @@
 //   - AC3: POST YAML → 200 with parsed keys.
 //   - AC4: POST XML → 200 with the parsed tree.
 //   - AC5: POST 101 MB → 413 (payload_too_large).
-// Spec refs: docs/04-authoring.md, docs/08-operations.md
+// Spec refs: docs/authoring.md, docs/operations.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { EXTRACT_BODY_CAP_BYTES } from "../../http/routes/ai/extract.ts";

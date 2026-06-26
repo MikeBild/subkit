@@ -183,7 +183,7 @@ The schema source of truth is
 [`apps/engine/src/workflows/types.ts`](../apps/engine/src/workflows/types.ts)
 (`RequestTriggerSchema`, `WebhookTriggerSchema`, `ScheduleTriggerSchema`);
 runtime semantics are documented in
-[`docs/06-execution.md`](06-execution.md#triggers).
+[`docs/execution.md`](execution.md#triggers).
 
 When you author a webhook or schedule recipe, tag it with
 `"trigger:webhook"` or `"trigger:schedule"` so the recipe-pack endpoints
@@ -478,6 +478,6 @@ Before opening a PR:
 
 ## Related
 
-- `docs/05-connectors.md` — connector templates (parent surface).
+- `docs/connectors.md` — connector templates (parent surface).
 - `apps/engine/src/connectors/AGENTS.md` — connector subsystem rules.
 - `scripts/lint-recipes.ts` — quality lint source.

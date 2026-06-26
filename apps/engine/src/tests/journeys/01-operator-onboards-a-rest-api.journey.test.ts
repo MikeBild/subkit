@@ -9,8 +9,8 @@
 //   - AC3: The same workflow runs asynchronously through pg-boss, lands
 //          a terminal execution row, and writes an audit entry for the
 //          workflow run.
-// Spec refs: docs/05-connectors.md, docs/04-authoring.md,
-//            docs/04-authoring.md, docs/06-execution.md
+// Spec refs: docs/connectors.md, docs/authoring.md,
+//            docs/authoring.md, docs/execution.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";

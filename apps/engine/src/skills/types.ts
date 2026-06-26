@@ -1,4 +1,4 @@
-// Skill record shape — mirrors docs/04-authoring.md. Skills are authored by
+// Skill record shape — mirrors docs/authoring.md. Skills are authored by
 // operators via REST, CLI, or chat; the engine loads them into prompts in
 // scope order but never creates, mutates, or promotes them automatically.
 
