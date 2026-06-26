@@ -199,6 +199,47 @@ export async function embedChunkTexts(texts: string[]): Promise<(number[] | null
   return texts.map(() => null);
 }
 
+/** Max texts handed to the WASM extractor in one synchronous call on the
+ *  backfill path. One MiniLM forward pass is tens of ms, so ~4 texts keeps a
+ *  single block well under the ~100-200ms event-loop budget. */
+export const EMBED_SUBBATCH = 4;
+
+/** Yield a *macrotask* so the event loop runs pending I/O and timers (health
+ *  checks, HTTP handlers) before the next synchronous WASM block. A microtask
+ *  (Promise.resolve) would NOT — it drains before the loop services I/O. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Paced variant of embedChunkTexts for the bulk backfill path. Splits `texts`
+ * into sub-batches of `subBatch` (default EMBED_SUBBATCH) and embeds each via
+ * embedChunkTexts, yielding a macrotask between sub-batches so the event loop
+ * stays responsive while a backlog drains. Output is null-aligned to the input.
+ * Never throws — same contract as embedChunkTexts. `embed`/`yield` are
+ * injectable so tests assert pacing without a real model.
+ */
+export async function embedChunkTextsPaced(
+  texts: string[],
+  opts: {
+    subBatch?: number;
+    embed?: (t: string[]) => Promise<(number[] | null)[]>;
+    yield?: () => Promise<void>;
+  } = {},
+): Promise<(number[] | null)[]> {
+  if (texts.length === 0) return [];
+  const subBatch = Math.max(1, opts.subBatch ?? EMBED_SUBBATCH);
+  const embed = opts.embed ?? embedChunkTexts;
+  const onYield = opts.yield ?? yieldToEventLoop;
+  const out: (number[] | null)[] = [];
+  for (let i = 0; i < texts.length; i += subBatch) {
+    if (i > 0) await onYield(); // macrotask between blocks, not before the first
+    const slice = texts.slice(i, i + subBatch);
+    out.push(...(await embed(slice)));
+  }
+  return out;
+}
+
 /** Cosine similarity for L2-normalised vectors (i.e. a dot product).
  *  Defensive against non-normalised input so it is correct for any pair. */
 export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
