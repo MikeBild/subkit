@@ -46,7 +46,7 @@ import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { type ConfirmResolver, callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
 import { createElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
-import { modeFlags, resolveMcpMode } from "../mode-resolver.ts";
+import { MCP_CORE_TOOL_NAMES, type McpMode, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
   CONVERSATION_TOOL_PREFIX,
@@ -73,6 +73,21 @@ const CHARS_PER_TOKEN_EST = 4;
 // background. Fast runs (the common case) resolve inside this and return
 // inline unchanged. Applies to every client/transport.
 const WF_INLINE_TIMEOUT_MS = 50_000;
+// Default size of the per-workflow `wf_` palette; matches the converse cap.
+const DEFAULT_PALETTE_LIMIT = 40;
+// Floor the budget-fit cascade trims the palette to before falling back to
+// schema compression. The trimmed-out workflows stay reachable via
+// `find_workflow` / `run_workflow(slug)` (search-first), so this is a
+// preloading bound, not a functional limit.
+const MIN_PALETTE_LIMIT = 10;
+// Prose caps applied only when the budget-fit cascade enables compression.
+const MAX_TOOL_DESC_CHARS = 220;
+const MAX_SCHEMA_DESC_CHARS = 80;
+// Bound how long a tools/call dispatch may block the response before we hand
+// back a clear "engine busy" error instead of letting the client hang to its
+// own (much longer) request timeout. Sits above the common-case latency and
+// below strict clients' ~60s abort.
+const TOOLS_CALL_DEADLINE_MS = 30_000;
 // Coalesce `notifications/tools/list_changed` bursts: a bulk import that
 // emits many `workflow.lifecycle` events in quick succession yields a
 // single client-facing ping, not a storm. Trailing-window from the first
@@ -152,10 +167,15 @@ const CONFIRM_ELICIT_SCHEMA = {
 interface ListToolsParams {
   db: Db;
   principal: ResolvedPrincipal;
+  limit?: number;
 }
 
-async function listWorkflowTools({ db, principal }: ListToolsParams): Promise<Tool[]> {
-  const catalog = await listWorkflowToolsForTenant({ db, principal });
+async function listWorkflowTools({ db, principal, limit }: ListToolsParams): Promise<Tool[]> {
+  const catalog = await listWorkflowToolsForTenant({
+    db,
+    principal,
+    ...(limit !== undefined ? { limit } : {}),
+  });
   return catalog.map((entry) => ({
     name: `${TOOL_PREFIX}${entry.slug}`,
     // Frame the tool as an executable action, not a passive description.
@@ -182,6 +202,143 @@ function describeWorkflowTool(entry: { name: string; description: string }): str
       ? ` — ${entry.description.trim()}`
       : "";
   return `Run the saved workflow "${entry.name}"${summary}. Executes its stored steps and connectors and returns the result. Prefer this over re-deriving the same query with call_connector.`;
+}
+
+/** Estimate the combined tools/list schema token cost (~4 chars/token). */
+export function estimateCatalogTokens(tools: Tool[]): number {
+  return Math.ceil(JSON.stringify(tools).length / CHARS_PER_TOKEN_EST);
+}
+
+/** Recursively trim prose-only fields from a JSON schema without touching any
+ *  structural key (`type`, `required`, `properties`, `items`, `enum`, …). Only
+ *  `description` strings are capped and `examples`/`$comment` (pure prose,
+ *  ignored by validators) are dropped — so a compressed schema still validates
+ *  every input the original did. */
+function compressSchemaProse(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(compressSchemaProse);
+  if (!node || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key === "examples" || key === "$comment") continue;
+    if (key === "description" && typeof value === "string") {
+      out[key] =
+        value.length > MAX_SCHEMA_DESC_CHARS
+          ? `${value.slice(0, MAX_SCHEMA_DESC_CHARS - 1).trimEnd()}…`
+          : value;
+      continue;
+    }
+    out[key] = compressSchemaProse(value);
+  }
+  return out;
+}
+
+/** Shrink a tool's token footprint by trimming prose only — its callable
+ *  contract (name, inputSchema structure, required fields) is unchanged. */
+export function compressToolSchema(tool: Tool): Tool {
+  const description =
+    tool.description && tool.description.length > MAX_TOOL_DESC_CHARS
+      ? `${tool.description.slice(0, MAX_TOOL_DESC_CHARS - 1).trimEnd()}…`
+      : tool.description;
+  return {
+    ...tool,
+    ...(description !== undefined ? { description } : {}),
+    inputSchema: compressSchemaProse(tool.inputSchema) as Tool["inputSchema"],
+  };
+}
+
+interface AssembleTierParams {
+  principal: ResolvedPrincipal;
+  readOnly: boolean;
+  mode: McpMode;
+  paletteLimit: number;
+  compress: boolean;
+  elicitationCapable: boolean;
+  /** Full `wf_` palette, fetched once; sliced to `paletteLimit` per tier. */
+  fullPalette: Tool[];
+}
+
+// Tool whose early position matters when a strict client truncates the
+// manifest at its own token limit: it anchors the search-first authoring entry
+// point right after the core + workflow palette.
+const CONVERSATION_START_TOOL_NAME = "conversation_start";
+
+/** Essentials-first priority. Strict clients that silently drop tools tend to
+ *  truncate the tail of the manifest, so we lead with what every client needs:
+ *  the search-first core, then the workflow palette, then the authoring entry
+ *  point, then everything else. A stable sort preserves intra-bucket order. */
+function essentialsRank(tool: Tool): number {
+  if (MCP_CORE_TOOL_NAMES.has(tool.name)) return 0;
+  if (tool.name.startsWith(TOOL_PREFIX)) return 1;
+  if (tool.name === CONVERSATION_START_TOOL_NAME) return 2;
+  return 3;
+}
+
+function orderEssentialsFirst(tools: Tool[]): Tool[] {
+  return tools
+    .map((tool, i) => ({ tool, i }))
+    .sort((a, b) => essentialsRank(a.tool) - essentialsRank(b.tool) || a.i - b.i)
+    .map((e) => e.tool);
+}
+
+/** Assemble one catalog tier (in-memory; no DB). The `wf_` palette is sliced
+ *  from the pre-fetched full list, the registry + conversation tools follow the
+ *  mode, and `confirm_tool_call` is appended for non-elicitation clients so it
+ *  is always part of the measured floor. The result is ordered essentials-first
+ *  so a strict client that truncates keeps the tools that matter. */
+export function assembleTier(p: AssembleTierParams): Tool[] {
+  const flags = modeFlags(p.mode, p.readOnly);
+  const tools: Tool[] = [];
+  tools.push(...p.fullPalette.slice(0, p.paletteLimit));
+  tools.push(
+    ...listToolsViaRegistry({
+      principal: p.principal,
+      mcpMode: p.mode,
+      readOnly: !flags.showTenantWrites,
+    }),
+  );
+  if (flags.showConversationTools) tools.push(...listConversationTools());
+  if (!p.elicitationCapable) tools.push(CONFIRM_TOOL_CALL_TOOL);
+  const compressed = p.compress ? tools.map(compressToolSchema) : tools;
+  return orderEssentialsFirst(compressed);
+}
+
+export interface CatalogFitResult {
+  tools: Tool[];
+  estTokensBefore: number;
+  estTokensAfter: number;
+  mode: McpMode;
+  paletteLimit: number;
+  compressed: boolean;
+}
+
+/** Shrink the catalog toward the schema-token budget without ever dropping a
+ *  named tool or stepping the mode — one general path for every client/mode.
+ *
+ *  Non-destructive levers, in order: shrink the `wf_` palette to its Top-N (the
+ *  trimmed workflows stay reachable via find_workflow / run_workflow(slug)),
+ *  then compress schema prose. We never drop a named tool (that would break
+ *  list/resolve parity and the authoring surface), so a rich authoring/admin
+ *  catalog can legitimately stay above the budget — capable clients (claude.ai,
+ *  sk-cli) handle it, and assembleTier orders the result essentials-first so a
+ *  strict client that truncates still keeps the core + palette + authoring
+ *  entry point. The product surface fits under the budget outright. */
+export function fitCatalogToBudget(
+  base: Omit<AssembleTierParams, "mode" | "paletteLimit" | "compress"> & { initialMode: McpMode },
+): CatalogFitResult {
+  const mode = base.initialMode;
+  let paletteLimit = DEFAULT_PALETTE_LIMIT;
+  let compress = false;
+  let tools = assembleTier({ ...base, mode, paletteLimit, compress });
+  const estTokensBefore = estimateCatalogTokens(tools);
+  let est = estTokensBefore;
+  while (est > SCHEMA_TOKEN_BUDGET) {
+    if (paletteLimit > MIN_PALETTE_LIMIT) paletteLimit = MIN_PALETTE_LIMIT;
+    else if (!compress) compress = true;
+    else break; // non-destructive levers exhausted — keep every named tool
+    tools = assembleTier({ ...base, mode, paletteLimit, compress });
+    est = estimateCatalogTokens(tools);
+  }
+  return { tools, estTokensBefore, estTokensAfter: est, mode, paletteLimit, compressed: compress };
 }
 
 async function resolveWorkflowBySlug(
@@ -347,43 +504,23 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
   }
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    // The catalog surface is shaped by the principal's mcp mode:
-    //   • product   — saved workflows + authenticate (default)
-    //   • authoring — adds conversation.* + tenant reads
-    //   • admin     — adds tenant writes
-    //
-    // Sources, in priority order:
-    //   - listWorkflowTools         — wf.<slug> per-workflow tools.
-    //   - listToolsViaRegistry      — unified registry: static
-    //                                 (authenticate, list_recipes,
-    //                                 self_healing.scan in admin) plus
-    //                                 every visible conversation tool
-    //                                 surfaced under its bare name.
-    //   - listConversationTools     — MCP-only session-management tools
-    //                                 under the conversation.* prefix.
-    //
-    // The tenant.* prefix aliases are NOT emitted: every conversation
-    // tool already surfaces under its bare name via listToolsViaRegistry,
-    // so the aliases were a pure duplicate that doubled the catalog and
-    // degraded tool selection on large clients. Bare names dispatch via
-    // the unified dispatcher (see tools/call), which applies the same
-    // RBAC + policy gate the aliases did.
-    const mode = resolveMcpMode(principal);
-    const flags = modeFlags(mode, readOnly);
-    const tools: Tool[] = [];
-    tools.push(...(await listWorkflowTools({ db, principal })));
-    tools.push(
-      ...listToolsViaRegistry({
-        principal,
-        mcpMode: mode,
-        readOnly: !flags.showTenantWrites,
-      }),
-    );
-    if (flags.showConversationTools) tools.push(...listConversationTools());
-    // Surface the confirm responder ONLY for clients without MCP
-    // elicitation. The hosted flagship clients do NOT advertise elicitation,
-    // so they receive it and confirm through it; only clients that advertise
-    // the elicitation capability are prompted in-band and skip it.
+    // The catalog is assembled per mcp mode, then trimmed to fit the strict
+    // tools/list token budget (fitCatalogToBudget) so strict clients never
+    // silently drop tools. Sources per tier:
+    //   - listWorkflowTools     — wf_<slug> per-workflow tools (Top-N palette).
+    //   - listToolsViaRegistry  — unified registry: static (authenticate,
+    //                             list_recipes, self_healing.scan in admin)
+    //                             plus every visible conversation tool under
+    //                             its bare name.
+    //   - listConversationTools — MCP-only conversation.* session tools.
+    //   - CONFIRM_TOOL_CALL_TOOL — appended for non-elicitation clients.
+    // The trimmed long tail stays reachable via find_workflow /
+    // run_workflow(slug) (search-first) — nothing becomes unreachable.
+    const initialMode = resolveMcpMode(principal);
+    // Surface the confirm responder ONLY for clients without MCP elicitation.
+    // The hosted flagship clients do NOT advertise elicitation, so they receive
+    // it and confirm through it; only clients that advertise elicitation are
+    // prompted in-band and skip it.
     const clientCaps = server.getClientCapabilities();
     const elicitationCapable = clientCaps?.elicitation != null;
     // Pin which confirm path a given client gets, so we can prove from logs
@@ -401,33 +538,60 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
-    if (!elicitationCapable) {
-      tools.push(CONFIRM_TOOL_CALL_TOOL);
-    }
-    // Catalog-size observability — estimate the combined schema token cost so
-    // the operator can see when a client is over its schema budget and the
-    // catalog needs trimming.
-    const estTokens = Math.ceil(JSON.stringify(tools).length / CHARS_PER_TOKEN_EST);
-    const overBudget = estTokens > SCHEMA_TOKEN_BUDGET;
-    logger.info({
-      module: "mcp",
-      action: "mcp.catalog.size",
-      msg: "tools/list catalog size",
-      tool_count: tools.length,
-      est_tokens: estTokens,
-      over_budget: overBudget,
-      principal_id: principal.id,
+    // Fetch the full wf_ palette once (mode-independent); the cascade slices it.
+    const fullPalette = await listWorkflowTools({
+      db,
+      principal,
+      limit: DEFAULT_PALETTE_LIMIT,
     });
-    if (overBudget) {
+    const fit = fitCatalogToBudget({
+      principal,
+      readOnly,
+      initialMode,
+      elicitationCapable,
+      fullPalette,
+    });
+    // Defense-in-depth: the search-first floor must survive the trim. The
+    // leanest tier preserves it by construction (product allow-list +
+    // static + appended confirm), but assert it so a future regression is
+    // loud rather than silent. confirm_tool_call is core only for
+    // non-elicitation clients (elicitation-capable ones confirm in-band).
+    const presentNames = new Set(fit.tools.map((t) => t.name));
+    const missingCore = [...MCP_CORE_TOOL_NAMES].filter(
+      (coreName) =>
+        !presentNames.has(coreName) && !(coreName === CONFIRM_TOOL_CALL_NAME && elicitationCapable),
+    );
+    if (missingCore.length > 0) {
       logger.warn({
         module: "mcp",
-        action: "mcp.catalog.over_budget",
-        msg: `tools/list schema ~${estTokens} tokens exceeds the ~${SCHEMA_TOKEN_BUDGET}-token budget; strict clients may silently drop tools`,
-        tool_count: tools.length,
-        est_tokens: estTokens,
+        action: "mcp.catalog.floor_violation",
+        msg: "search-first core tool(s) missing from the fitted catalog",
+        missing: missingCore,
+        mode: fit.mode,
+        principal_id: principal.id,
+        tenant_id: principal.tenant_id,
       });
     }
-    return { tools };
+    // A rich authoring/admin catalog can legitimately stay over budget — we
+    // never drop named tools, capable clients handle it, and the essentials are
+    // ordered first so a strict client that truncates keeps what matters. So
+    // over-budget is informational (in the fitted event), not a warning; the
+    // only alarm is a floor violation (above).
+    logger.info({
+      module: "mcp",
+      action: "mcp.catalog.fitted",
+      msg: "tools/list catalog fitted to budget",
+      tool_count: fit.tools.length,
+      est_tokens_before: fit.estTokensBefore,
+      est_tokens_after: fit.estTokensAfter,
+      mode: fit.mode,
+      palette_n: fit.paletteLimit,
+      compressed: fit.compressed,
+      over_budget: fit.estTokensAfter > SCHEMA_TOKEN_BUDGET,
+      principal_id: principal.id,
+      tenant_id: principal.tenant_id,
+    });
+    return { tools: fit.tools };
   });
 
   server.setRequestHandler(
@@ -549,14 +713,48 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
               return res.action === "accept" && res.content?.confirm === true;
             }
           : undefined;
-        const response = await callToolViaDispatcher({
-          db,
-          principal,
-          mcpMode: mcpModeForCall,
-          readOnly: readOnlyForCall,
-          invocation,
-          ...(confirmResolver ? { confirmResolver } : {}),
-        });
+        // Bound the dispatch so a stalled call (e.g. event-loop pressure or a
+        // slow downstream) returns a clear "engine busy" error instead of
+        // hanging until the client's own (much longer) request timeout. The
+        // dispatch keeps running in the background — we just stop blocking.
+        const raced = await raceInlineRun(
+          callToolViaDispatcher({
+            db,
+            principal,
+            mcpMode: mcpModeForCall,
+            readOnly: readOnlyForCall,
+            invocation,
+            ...(confirmResolver ? { confirmResolver } : {}),
+          }),
+          TOOLS_CALL_DEADLINE_MS,
+        );
+        if (raced.timedOut) {
+          logger.warn({
+            module: "mcp",
+            action: "mcp.tool.deadline_exceeded",
+            msg: "mcp tool call exceeded the inline deadline; returned engine-busy",
+            tool: name,
+            deadline_ms: TOOLS_CALL_DEADLINE_MS,
+            duration_ms: Date.now() - started,
+            principal_id: principal.id,
+            tenant_id: principal.tenant_id,
+          });
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error_code: "engine_busy",
+                  message: `Tool "${name}" did not respond within ${Math.round(
+                    TOOLS_CALL_DEADLINE_MS / 1000,
+                  )}s (engine busy). Please retry.`,
+                }),
+              },
+            ],
+          };
+        }
+        const response = raced.result;
         logger.info({
           module: "mcp",
           action: "mcp.tool.result",

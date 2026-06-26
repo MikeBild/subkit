@@ -60,11 +60,14 @@ describe("tools/registry — providers (active)", () => {
     expect(dryRun?.descriptor.disabled?.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
   });
 
-  test("ConversationToolProvider hides tenant_write tools on MCP read-only mode", () => {
+  test("ConversationToolProvider hides tenant_write tools on MCP read-only mode (except the exempt workflow run)", () => {
     const writes = conversationToolProvider
       .list({ surface: "mcp", mcpMode: "admin", readOnly: true })
       .filter((d) => d.category === "tenant_write");
-    expect(writes.length).toBe(0);
+    // run_workflow is a workflow *run*, exempt from the readOnly hide (it
+    // behaves like the always-on wf_ palette; RBAC still gates execution).
+    // Every other tenant_write stays hidden under readOnly.
+    expect(writes.map((d) => d.name)).toEqual(["run_workflow"]);
   });
 
   test("buildRegistry throws when two providers register the same name", () => {

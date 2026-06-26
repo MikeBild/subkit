@@ -73,9 +73,12 @@ describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
     //      (elicitation-capable clients never see it);
     //   +2 grounding read tools — `list_capability_gaps` (durable capability
     //      gaps) and `suggest_related_conversations` (topic routing).
+    //   +1 `run_workflow` — the search-first workflow runner is now exempt
+    //      from the readOnly-implied hide so it surfaces in authoring/admin too
+    //      (RBAC still gates execution); it was previously hidden here.
     // Keep the guard tight so further additions stay a conscious choice,
     // not drift.
-    expect(result.tools.length).toBeLessThan(83);
+    expect(result.tools.length).toBeLessThan(84);
     // No tenant_* alias should remain in the catalog.
     expect(result.tools.filter((t) => t.name.startsWith("tenant_")).length).toBe(0);
   });
