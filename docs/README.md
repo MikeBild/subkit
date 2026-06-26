@@ -9,11 +9,10 @@ use it. The core architectural narrative that connects the concept docs:
 
 ## Concept Docs
 
-Nine architecture-level documents, read in order or by concern.
+Eight architecture-level documents, read in order or by concern.
 
 | Doc | What it covers |
 |---|---|
-| [01-platform.md](01-platform.md) | What sk is, what it is not, the three-layer story, and the six design principles that are enforced by architecture. |
 | [02-concepts.md](02-concepts.md) | The authoritative glossary: every domain term defined exactly once — Tenant, Workflow, Skill, Connector, Execution, Audit Log, and more. |
 | [03-input-surfaces.md](03-input-surfaces.md) | Every way users and systems reach sk: the CLI, REST API, MCP server, chat platforms, webhooks, and scheduled triggers. |
 | [04-authoring.md](04-authoring.md) | How Conversations produce governed workflows: the AI authoring loop, the human approval gate, Skills, Knowledge Sources, and Discovery. |
@@ -55,9 +54,9 @@ Three persona-specific paths to get running fast.
 
 **Operators** — start with the [operator quickstart](quickstart/operator.md) to get the engine running, then [07-security-governance.md](07-security-governance.md) for identity and RBAC setup, and [08-operations.md](08-operations.md) for monitoring and operational hygiene.
 
-**Developers** — start with [AGENTS.md](../AGENTS.md) for the subsystem map and contribution rules, then read all nine concept docs for full architectural context. The [developer quickstart](quickstart/developer.md) gets the local environment running in 10 minutes.
+**Developers** — start with [AGENTS.md](../AGENTS.md) for the subsystem map and contribution rules, then read all eight concept docs for full architectural context. The [developer quickstart](quickstart/developer.md) gets the local environment running in 10 minutes.
 
-**Architects** — start with [01-platform.md](01-platform.md) for the design rationale and the three-layer story, then [02-concepts.md](02-concepts.md) for the domain model, and [07-security-governance.md](07-security-governance.md) for the security architecture.
+**Architects** — start with [02-concepts.md](02-concepts.md) for the domain model, then [07-security-governance.md](07-security-governance.md) for the security architecture.
 
 ---
 

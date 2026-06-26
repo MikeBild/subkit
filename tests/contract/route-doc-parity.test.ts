@@ -43,17 +43,27 @@ function extractRoutes(text: string): Set<string> {
 
 function collectRoutesFromSource(files: string[]): Set<string> {
   const out = new Set<string>();
+  // Two declaration styles coexist in the engine:
+  //   1. createRoute({ method, path }) + app.openapi(route, ...) — the
+  //      Zod-OpenAPI style used by most REST resources. `method:` and
+  //      `path:` sit within ~200 chars.
+  //   2. Raw Hono `app.<method>("/v1/...", handler)` — used by the MCP
+  //      OAuth bridge endpoints (DCR, authorize, token, revoke), which
+  //      are not part of the typed OpenAPI surface.
+  const patterns = [
+    /method:\s*"(get|post|put|patch|delete)"[\s\S]{0,200}?path:\s*"(\/v1\/[^"]+)"/gi,
+    /app\.(get|post|put|patch|delete)\(\s*"(\/v1\/[^"]+)"/gi,
+  ];
   for (const rel of files) {
     const text = readFileSync(join(REPO, rel), "utf8");
-    // createRoute({ method, path }) + app.openapi(route, ...). Match
-    // pairs where `method:` and `path:` sit within ~200 chars.
-    const re = /method:\s*"(get|post|put|patch|delete)"[\s\S]{0,200}?path:\s*"(\/v1\/[^"]+)"/gi;
-    let match: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: tight loop, common pattern
-    while ((match = re.exec(text)) !== null) {
-      const method = match[1]?.toUpperCase() ?? "";
-      const path = match[2] ?? "";
-      out.add(canonicalize(`${method} ${path}`));
+    for (const re of patterns) {
+      let match: RegExpExecArray | null;
+      // biome-ignore lint/suspicious/noAssignInExpressions: tight loop, common pattern
+      while ((match = re.exec(text)) !== null) {
+        const method = match[1]?.toUpperCase() ?? "";
+        const path = match[2] ?? "";
+        out.add(canonicalize(`${method} ${path}`));
+      }
     }
   }
   return out;
@@ -80,6 +90,10 @@ const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/executions/transform.ts",
   "apps/engine/src/http/routes/executions/cancel.ts",
   "apps/engine/src/http/routes/workflows.ts",
+  // MCP OAuth 2.1 bridge endpoints — raw Hono routes (not createRoute).
+  "apps/engine/src/http/routes/oauth/dcr.ts",
+  "apps/engine/src/http/routes/oauth/consent.ts",
+  "apps/engine/src/http/routes/oauth/token.ts",
 ];
 
 const DOC_FILES = ["docs/03-input-surfaces.md", "docs/05-connectors.md"];

@@ -163,33 +163,6 @@ describe("classifyError", () => {
     expect(classifyError(wrapped)).toBe("upstream_tls");
   });
 
-  test("SQL Server (tedious/mssql) connection codes classify", () => {
-    expect(classifyError(Object.assign(new Error("login failed"), { code: "ELOGIN" }))).toBe(
-      "upstream_auth",
-    );
-    // tedious ETIMEOUT (no D) is its own code, distinct from POSIX ETIMEDOUT.
-    expect(classifyError(Object.assign(new Error("conn timeout"), { code: "ETIMEOUT" }))).toBe(
-      "timeout",
-    );
-    expect(classifyError(Object.assign(new Error("socket"), { code: "ESOCKET" }))).toBe(
-      "transient",
-    );
-    expect(classifyError(Object.assign(new Error("instance"), { code: "EINSTLOOKUP" }))).toBe(
-      "transient",
-    );
-    expect(classifyError(Object.assign(new Error("tls"), { code: "EENCRYPT" }))).toBe(
-      "upstream_tls",
-    );
-    // Lifecycle misuse on a closed/not-open pool is deterministic → logic, NOT a
-    // retryable transient bounce (node-mssql wrapper codes).
-    expect(classifyError(Object.assign(new Error("closed"), { code: "ECONNCLOSED" }))).toBe(
-      "logic",
-    );
-    expect(classifyError(Object.assign(new Error("not open"), { code: "ENOTOPEN" }))).toBe("logic");
-    // A request-level SQL Server message stays unknown (needs the SQL number).
-    expect(classifyError(Object.assign(new Error("msg"), { code: "EREQUEST" }))).toBe("unknown");
-  });
-
   test("PostgreSQL SQLSTATE class dispatch (retryable / resource / timeout / privilege)", () => {
     // 40001 serialization_failure & 40P01 deadlock_detected are RETRYABLE.
     expect(classifyError(Object.assign(new Error("serialize"), { code: "40001" }))).toBe(
@@ -212,73 +185,6 @@ describe("classifyError", () => {
     // 22xxx data_exception → validation; 23505 constraint stays logic.
     expect(classifyError(Object.assign(new Error("range"), { code: "22003" }))).toBe("validation");
     expect(classifyError(Object.assign(new Error("dup"), { code: "23505" }))).toBe("logic");
-  });
-
-  test("SMB NTSTATUS codes classify", () => {
-    expect(classifyError(Object.assign(new Error("logon"), { code: "STATUS_LOGON_FAILURE" }))).toBe(
-      "upstream_auth",
-    );
-    expect(
-      classifyError(Object.assign(new Error("share"), { code: "STATUS_BAD_NETWORK_NAME" })),
-    ).toBe("resource");
-    expect(
-      classifyError(Object.assign(new Error("nofile"), { code: "STATUS_OBJECT_NAME_NOT_FOUND" })),
-    ).toBe("resource");
-    expect(classifyError(Object.assign(new Error("to"), { code: "STATUS_TIMEOUT" }))).toBe(
-      "timeout",
-    );
-  });
-
-  test("basic-ftp FTPError numeric reply codes classify", () => {
-    const ftp = (code: number) => Object.assign(new Error("ftp"), { name: "FTPError", code });
-    expect(classifyError(ftp(530))).toBe("upstream_auth"); // not logged in
-    expect(classifyError(ftp(550))).toBe("resource"); // file unavailable
-    expect(classifyError(ftp(421))).toBe("transient"); // service not available
-    expect(classifyError(ftp(502))).toBe("logic"); // command not implemented
-    // A bare Error with a numeric code but no FTPError name is NOT treated as FTP.
-    expect(classifyError(Object.assign(new Error("x"), { code: 530 }))).toBe("unknown");
-  });
-
-  test("SFTP (ssh2-sftp-client) wrapper codes classify", () => {
-    expect(classifyError(Object.assign(new Error("noent"), { code: "ENOENT" }))).toBe("resource");
-    expect(classifyError(Object.assign(new Error("perm"), { code: "EACCES" }))).toBe(
-      "upstream_auth",
-    );
-    expect(classifyError(Object.assign(new Error("not conn"), { code: "ERR_NOT_CONNECTED" }))).toBe(
-      "logic",
-    );
-  });
-
-  test("node-redis client error classes classify by constructor name", () => {
-    // node-redis classes set no .code/.name — only the constructor name is the
-    // discriminator. Simulate with same-named local classes.
-    class ConnectionTimeoutError extends Error {}
-    class SocketClosedUnexpectedlyError extends Error {}
-    class WatchError extends Error {}
-    class CredentialsError extends Error {}
-    expect(classifyError(new ConnectionTimeoutError("Connection timeout"))).toBe("timeout");
-    expect(classifyError(new SocketClosedUnexpectedlyError("closed"))).toBe("transient");
-    expect(classifyError(new WatchError("watched key changed"))).toBe("logic");
-    expect(classifyError(new CredentialsError("creds"))).toBe("upstream_auth");
-  });
-
-  test("node-redis server reply errors classify by RESP protocol token", () => {
-    class ErrorReply extends Error {}
-    expect(classifyError(new ErrorReply("NOAUTH Authentication required."))).toBe("upstream_auth");
-    expect(classifyError(new ErrorReply("WRONGPASS invalid username-password pair"))).toBe(
-      "upstream_auth",
-    );
-    expect(classifyError(new ErrorReply("CLUSTERDOWN Hash slot not served"))).toBe("upstream_5xx");
-    expect(classifyError(new ErrorReply("LOADING Redis is loading the dataset"))).toBe(
-      "upstream_5xx",
-    );
-    expect(classifyError(new ErrorReply("WRONGTYPE Operation against a key…"))).toBe("logic");
-    expect(classifyError(new ErrorReply("OOM command not allowed"))).toBe("resource");
-    // An unrecognized reply token does not force a bucket.
-    expect(classifyError(new ErrorReply("ERR unknown command"))).toBe("unknown");
-    // The token-parse only applies to redis reply classes — a generic Error
-    // whose message starts with "NOAUTH" must NOT be classified as redis.
-    expect(classifyError(new Error("NOAUTH something unrelated"))).toBe("unknown");
   });
 
   test("a self-referential cause cannot loop", () => {

@@ -60,5 +60,4 @@ curl -s http://localhost:3000/v1/health | jq
 ## 6. Before you PR
 
 - [AGENTS.md](../../AGENTS.md) — non-negotiables: tenant isolation, audit coverage, Zod at boundaries, QuickJS sandbox, no auto-promote. Read this first.
-- [docs/01-platform.md](../01-platform.md) — architectural context for the decisions you will encounter in the code.
 - [docs/02-concepts.md](../02-concepts.md) — the domain model. Every term used in the codebase is defined here.

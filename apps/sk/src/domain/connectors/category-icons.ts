@@ -10,10 +10,6 @@ export const CATEGORY_ICON: Readonly<Record<string, string>> = Object.freeze({
   graphql: "◈",
   postgres: "◯",
   s3: "□",
-  ftp: "▽",
-  sftp: "▽",
-  smb: "△",
-  redis: "▣",
   webhook: "▶",
   default: "•",
 });

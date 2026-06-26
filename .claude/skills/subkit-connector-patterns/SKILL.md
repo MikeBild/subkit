@@ -1,17 +1,16 @@
 ---
 name: subkit-connector-patterns
-description: Add or modify a connector template, driver, or auth flow in subkit. Use when the task mentions a connector, an external system (HubSpot, Stripe, GitHub, etc.), a driver protocol (HTTP/GraphQL/Postgres/S3/FTP/SFTP/SMB/MSSQL/Redis), or OAuth2 flows.
+description: Add or modify a connector template, driver, or auth flow in subkit. Use when the task mentions a connector, an external system (HubSpot, Stripe, GitHub, etc.), a driver protocol (HTTP/GraphQL/Postgres/S3), or OAuth2 flows.
 ---
 
 # subkit Connector Patterns
 
 > **Project context:** Before starting work, read `AGENTS.md` at the repository root.
 
-Everything connector-related lives under `apps/engine/src/connectors/`. Nine typed
-drivers (`drivers/http.ts`, `graphql.ts`, `postgres.ts`, `s3.ts`, `ftp.ts`, `sftp.ts`,
-`smb.ts`, `mssql.ts`, `redis.ts`) fan out from a single `service.ts`. Templates are
-declarative JSON (`templates.json`, currently 105 entries) with optional
-connector-bound skills (`template-skills.json`).
+Everything connector-related lives under `apps/engine/src/connectors/`. Four typed
+drivers (`drivers/http.ts`, `graphql.ts`, `postgres.ts`, `s3.ts`) fan out from a single
+`service.ts`. Templates are declarative JSON (`templates.json`, currently 93 entries)
+with optional connector-bound skills (`template-skills.json`).
 
 Two conversation tools bootstrap a connector from a URL or a spec:
 
@@ -43,8 +42,8 @@ Both are exposed on the HTTP API, the MCP surface, and through the sk CLI.
 
 ## Add a new driver protocol (rare)
 
-This is architectural. Confirm with the user first — the 9 drivers cover HTTP, GraphQL,
-Postgres, S3, FTP, SFTP, SMB, MSSQL, and Redis and the system assumes these.
+This is architectural. Confirm with the user first — the 4 drivers cover HTTP, GraphQL,
+Postgres, and S3 and the system assumes these.
 
 1. New file under `drivers/` implementing the driver interface exported from `index.ts`.
 2. Update `connectors/types.ts` with the new driver discriminator.

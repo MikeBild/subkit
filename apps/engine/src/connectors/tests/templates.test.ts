@@ -119,10 +119,8 @@ describe("connector templates", () => {
     expect(drivers.has("graphql")).toBe(true);
     expect(drivers.has("postgres")).toBe(true);
     expect(drivers.has("s3")).toBe(true);
-    expect(drivers.has("caldav")).toBe(true);
-    expect(drivers.has("soap")).toBe(true);
-    expect(drivers.has("mqtt")).toBe(true);
-    expect(drivers.has("ftp")).toBe(true);
+    // The four executable drivers are the only ones templates may declare.
+    expect(drivers).toEqual(new Set(["http", "graphql", "postgres", "s3"]));
   });
 
   test("github-graphql ships alongside github REST", () => {

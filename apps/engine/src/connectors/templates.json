@@ -489,114 +489,6 @@
   },
   {
     "version": 1,
-    "slug": "apple-icloud-calendar",
-    "name": "Apple iCloud Calendar",
-    "driver": "caldav",
-    "base_url": "https://caldav.icloud.com",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "apple-icloud-calendar-basics",
-    "ingestion_source": "caldav_discovery",
-    "ingestion_url": null,
-    "icon": "apple-icloud-calendar.svg",
-    "description": "Apple iCloud Calendar via CalDAV",
-    "category": "productivity",
-    "tags": ["caldav", "calendar", "apple", "ics"],
-    "setup_instructions": "Apple iCloud CalDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords. Use Apple ID email + app-specific password as Basic Auth.",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "Basic auth",
-        "description": "Authenticate with HTTP Basic credentials (username and password)."
-      }
-    ],
-    "url_pattern": "^https://caldav\\.icloud\\.com(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
-    "slug": "apple-icloud-contacts",
-    "name": "Apple iCloud Contacts",
-    "driver": "caldav",
-    "base_url": "https://contacts.icloud.com",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "apple-icloud-contacts-basics",
-    "ingestion_source": "caldav_discovery",
-    "ingestion_url": null,
-    "icon": "apple-icloud-contacts.svg",
-    "description": "Apple iCloud Contacts via CardDAV",
-    "category": "productivity",
-    "tags": ["carddav", "contacts", "apple", "vcard"],
-    "setup_instructions": "Apple iCloud CardDAV requires an app-specific password: go to appleid.apple.com > Sign-In and Security > App-Specific Passwords.",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "Basic auth",
-        "description": "Authenticate with HTTP Basic credentials (username and password)."
-      }
-    ],
-    "url_pattern": "^https://contacts\\.icloud\\.com(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
     "slug": "appsync-cognito",
     "name": "AWS AppSync (Cognito User-Password)",
     "driver": "graphql",
@@ -5433,8 +5325,14 @@
           "digest_sent": true
         },
         "required_connectors": [
-          { "placeholder": "b8000000-0000-4000-8000-000000000001", "template": "browserless" },
-          { "placeholder": "b8000000-0000-4000-8000-000000000002", "template": "sendgrid" }
+          {
+            "placeholder": "b8000000-0000-4000-8000-000000000001",
+            "template": "browserless"
+          },
+          {
+            "placeholder": "b8000000-0000-4000-8000-000000000002",
+            "template": "sendgrid"
+          }
         ],
         "version": "1.0.0",
         "author": "subkit-builtin",
@@ -5458,7 +5356,10 @@
               "digest_subject"
             ],
             "properties": {
-              "target_url": { "type": "string", "description": "Full URL of the page to scrape" },
+              "target_url": {
+                "type": "string",
+                "description": "Full URL of the page to scrape"
+              },
               "row_selector": {
                 "type": "string",
                 "description": "CSS selector matching each result row"
@@ -5484,7 +5385,9 @@
               "method": "POST",
               "connector_id": "b8000000-0000-4000-8000-000000000001",
               "url": "${connector.browserless.base_url}/chrome/function",
-              "headers": { "Content-Type": "application/json" },
+              "headers": {
+                "Content-Type": "application/json"
+              },
               "side_effects": "read",
               "body": {
                 "code": "export default async ({ page }) => { const url = process.env.TARGET_URL; const sel = process.env.ROW_SELECTOR; await page.goto(url, { waitUntil: 'networkidle2' }); let rows = []; for (let i = 0; i < 3; i++) { try { await page.waitForSelector(sel, { timeout: 15000 }); } catch (_) { return { data: { error: 'selector_missing', selector: sel, url: page.url() }, type: 'application/json' }; } rows = await page.evaluate((s) => Array.from(document.querySelectorAll(s)).map((r) => ({ text: r.textContent.trim() })), sel); if (rows.length > 0) break; if (i < 2) await page.reload({ waitUntil: 'networkidle2' }); } if (!rows.length) return { data: { error: 'no_rows_after_retries', selector: sel, url: page.url() }, type: 'application/json' }; return { data: rows, type: 'application/json' }; }",
@@ -5506,10 +5409,22 @@
               "method": "POST",
               "connector_id": "b8000000-0000-4000-8000-000000000002",
               "url": "${connector.sendgrid.base_url}/v3/mail/send",
-              "headers": { "Content-Type": "application/json" },
+              "headers": {
+                "Content-Type": "application/json"
+              },
               "body": {
-                "personalizations": [{ "to": [{ "email": "${input.digest_recipient}" }] }],
-                "from": { "email": "${input.digest_sender}" },
+                "personalizations": [
+                  {
+                    "to": [
+                      {
+                        "email": "${input.digest_recipient}"
+                      }
+                    ]
+                  }
+                ],
+                "from": {
+                  "email": "${input.digest_sender}"
+                },
                 "subject": "${input.digest_subject}",
                 "content": [
                   {
@@ -5524,67 +5439,6 @@
         }
       }
     ],
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
-    "slug": "caldav-generic",
-    "name": "CalDAV (Generic)",
-    "driver": "caldav",
-    "base_url": "https://{server}/remote.php/dav",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "caldav-generic-basics",
-    "ingestion_source": "caldav_discovery",
-    "ingestion_url": null,
-    "icon": "caldav-generic.svg",
-    "description": "Generic CalDAV calendar server",
-    "category": "productivity",
-    "tags": ["caldav", "calendar", "ics", "open-standard"],
-    "setup_instructions": "Provide your CalDAV server URL and credentials. Common servers: Nextcloud (/remote.php/dav), Google (apidata.googleusercontent.com/caldav/v2), Fastmail (caldav.fastmail.com).",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "Username + Password",
-        "description": "Use your CalDAV server credentials as Basic Auth.",
-        "oauth": null
-      },
-      {
-        "auth_type": "oauth2",
-        "label": "OAuth 2.0 (Google, etc.)",
-        "description": "Some CalDAV servers (Google) support OAuth2. Configure with your provider's OAuth endpoints.",
-        "oauth": null
-      }
-    ],
-    "url_pattern": "^https://[^/]+/remote\\.php/dav(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
     "aws_service": null,
     "aws_region": null,
     "verified_at": null
@@ -6335,8 +6189,12 @@
                 "returnSecureToken": true
               },
               "outputs": {
-                "idToken": { "secret": true },
-                "refreshToken": { "secret": true }
+                "idToken": {
+                  "secret": true
+                },
+                "refreshToken": {
+                  "secret": true
+                }
               }
             },
             {
@@ -6441,67 +6299,6 @@
       }
     ],
     "url_pattern": "^https://[^/]+\\.freshdesk\\.com/api/v2(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
-    "slug": "ftp",
-    "name": "FTP/FTPS",
-    "driver": "ftp",
-    "base_url": "ftp://{host}:21",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "ftp-basics",
-    "ingestion_source": "unsupported",
-    "ingestion_url": null,
-    "icon": "ftp.svg",
-    "description": "FTP/FTPS file transfer protocol",
-    "category": "storage",
-    "tags": ["ftp", "ftps", "file-transfer", "legacy"],
-    "setup_instructions": "Provide FTP server host, port (21 for FTP, 990 for implicit FTPS, 21 with STARTTLS for explicit FTPS), username and password. For FTPS, the engine uses TLS encryption.",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "Username + Password",
-        "description": "FTP LOGIN with username and password.",
-        "oauth": null
-      },
-      {
-        "auth_type": "none",
-        "label": "Anonymous FTP",
-        "description": "Anonymous access (username: anonymous, password: email or empty).",
-        "oauth": null
-      }
-    ],
-    "url_pattern": "^ftp://[^/]+:21(\\/|$)",
     "keywords": [],
     "inline_schema": null,
     "probe_endpoint": null,
@@ -7334,10 +7131,18 @@
             "type": "object",
             "required": ["owner", "repo", "title"],
             "properties": {
-              "owner": { "type": "string" },
-              "repo": { "type": "string" },
-              "title": { "type": "string" },
-              "body": { "type": "string" }
+              "owner": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
             }
           },
           "steps": [
@@ -7408,11 +7213,21 @@
             "type": "object",
             "required": ["owner", "repo", "head", "base", "title"],
             "properties": {
-              "owner": { "type": "string" },
-              "repo": { "type": "string" },
-              "head": { "type": "string" },
-              "base": { "type": "string" },
-              "title": { "type": "string" }
+              "owner": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "head": {
+                "type": "string"
+              },
+              "base": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
             }
           },
           "steps": [
@@ -8690,53 +8505,6 @@
   },
   {
     "version": 1,
-    "slug": "grpc-native",
-    "name": "gRPC Native",
-    "driver": "grpc",
-    "base_url": "grpc://{host}:50051",
-    "auth_type": "bearer",
-    "oauth": null,
-    "default_skill": "grpc-native-basics",
-    "ingestion_source": "grpc_reflection",
-    "ingestion_url": null,
-    "icon": "grpc-native.svg",
-    "description": "Native gRPC over HTTP/2 with protobuf",
-    "category": "protocol",
-    "tags": ["grpc", "protobuf", "http2", "streaming"],
-    "setup_instructions": "Provide the gRPC server address (host:port). If the server has reflection enabled, operations are auto-discovered. Otherwise, provide .proto files.",
-    "auth_options": [
-      {
-        "auth_type": "bearer",
-        "label": "Bearer token",
-        "description": "Authenticate with a bearer token sent in the Authorization header."
-      }
-    ],
-    "url_pattern": "^grpc://[^/]+:50051(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "token",
-        "label": "API Bearer Token",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
     "slug": "hubspot",
     "name": "HubSpot",
     "driver": "http",
@@ -9321,67 +9089,6 @@
         }
       }
     ],
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
-    "slug": "imap-email",
-    "name": "IMAP Email",
-    "driver": "imap",
-    "base_url": "imaps://{host}:993",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "imap-email-basics",
-    "ingestion_source": "unsupported",
-    "ingestion_url": null,
-    "icon": "imap-email.svg",
-    "description": "IMAP/SMTP email protocol",
-    "category": "communication",
-    "tags": ["imap", "smtp", "email", "mime"],
-    "setup_instructions": "Provide IMAP server host and port (993 for TLS). For Apple iCloud: imap.mail.me.com with app-specific password. For Gmail: imap.gmail.com with XOAUTH2 or app password.",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "Username + Password",
-        "description": "IMAP LOGIN with username and password over TLS.",
-        "oauth": null
-      },
-      {
-        "auth_type": "oauth2",
-        "label": "XOAUTH2 (Gmail, Outlook)",
-        "description": "Gmail and Outlook support IMAP XOAUTH2. Provide OAuth token in credential.",
-        "oauth": null
-      }
-    ],
-    "url_pattern": "^imaps://[^/]+:993(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
     "aws_service": null,
     "aws_region": null,
     "verified_at": null
@@ -11955,626 +11662,6 @@
   },
   {
     "version": 1,
-    "slug": "mqtt",
-    "name": "MQTT",
-    "driver": "mqtt",
-    "base_url": "mqtt://{broker}:1883",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "mqtt-basics",
-    "ingestion_source": "asyncapi",
-    "ingestion_url": null,
-    "icon": "mqtt.svg",
-    "description": "MQTT pub/sub messaging protocol",
-    "category": "protocol",
-    "tags": ["mqtt", "pub-sub", "iot", "event-driven"],
-    "setup_instructions": "Provide MQTT broker URL (mqtt:// or mqtts:// for TLS). Username/password if required. Common brokers: Mosquitto, HiveMQ, EMQX, AWS IoT Core, Azure IoT Hub.",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "Username + Password",
-        "description": "MQTT CONNECT packet carries username/password. Standard for most brokers.",
-        "oauth": null
-      },
-      {
-        "auth_type": "bearer",
-        "label": "JWT Token (in password field)",
-        "description": "Some brokers accept JWT in the password field of CONNECT. Configure token in credential.",
-        "oauth": null
-      },
-      {
-        "auth_type": "none",
-        "label": "Anonymous",
-        "description": "No authentication — for development/testing brokers only.",
-        "oauth": null
-      }
-    ],
-    "url_pattern": "^mqtt://[^/]+:1883(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
-    "slug": "mssql",
-    "name": "Microsoft SQL Server",
-    "driver": "mssql",
-    "base_url": "",
-    "auth_type": "none",
-    "oauth": null,
-    "default_skill": "mssql-basics",
-    "ingestion_source": "unsupported",
-    "ingestion_url": null,
-    "icon": "mssql.svg",
-    "description": "Microsoft SQL Server database",
-    "category": "database",
-    "tags": ["sql", "relational", "introspection", "azure-sql"],
-    "setup_instructions": "Provide an MSSQL connection string: mssql://user:password@hostname:1433/database?encrypt=true. For Azure SQL, enable 'Allow Azure services' in firewall rules.",
-    "auth_options": [
-      {
-        "auth_type": "none",
-        "label": "SQL Authentication (DSN)",
-        "description": "Provide username and password in the connection string.",
-        "oauth": null
-      },
-      {
-        "auth_type": "oauth2",
-        "label": "Microsoft Entra ID (Azure SQL)",
-        "description": "Use Entra ID token-based auth for Azure SQL. Register app in Azure Portal, assign SQL roles.",
-        "oauth": {
-          "grant_type": "authorization_code",
-          "token_auth_method": "body",
-          "token_content_type": "form",
-          "use_pkce": false,
-          "client_id": null,
-          "extra_headers": {},
-          "issuer_url": "https://login.microsoftonline.com",
-          "token_endpoint": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-          "scopes": "https://database.windows.net/.default"
-        }
-      }
-    ],
-    "url_pattern": "^$",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "recipes": [
-      {
-        "slug": "list-databases",
-        "title": "List databases",
-        "description": "Enumerate user databases on the server.",
-        "intent_keywords": ["list databases", "mssql databases", "servers"],
-        "derived_from_skill": "mssql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mssql-list-databases",
-          "description": "List databases.",
-          "steps": [
-            {
-              "kind": "request",
-              "id": "l",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT name, database_id, create_date FROM sys.databases WHERE database_id > 4 ORDER BY name;"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "list-tables",
-        "title": "List tables in current schema",
-        "description": "INFORMATION_SCHEMA tables for the connected database.",
-        "intent_keywords": ["list tables", "mssql tables", "list tables in current schema"],
-        "derived_from_skill": "mssql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mssql-list-tables",
-          "description": "List tables.",
-          "steps": [
-            {
-              "kind": "request",
-              "id": "l",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME;"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "describe-table",
-        "title": "Describe a table",
-        "description": "Column name, data type, nullability for one table.",
-        "intent_keywords": ["describe table", "columns", "table schema"],
-        "derived_from_skill": "mssql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mssql-describe",
-          "description": "Describe a table.",
-          "input_schema": {
-            "type": "object",
-            "required": ["schema", "table"],
-            "properties": {
-              "schema": {
-                "type": "string"
-              },
-              "table": {
-                "type": "string"
-              }
-            }
-          },
-          "steps": [
-            {
-              "kind": "request",
-              "id": "d",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @P1 AND TABLE_NAME = @P2 ORDER BY ORDINAL_POSITION;",
-                "params": ["${input.schema}", "${input.table}"]
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "row-count",
-        "title": "Get exact row count",
-        "description": "COUNT(*) for a target table.",
-        "intent_keywords": ["row count", "table size", "count rows"],
-        "derived_from_skill": "mssql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mssql-row-count",
-          "description": "Row count.",
-          "input_schema": {
-            "type": "object",
-            "required": ["schema", "table"],
-            "properties": {
-              "schema": {
-                "type": "string"
-              },
-              "table": {
-                "type": "string"
-              }
-            }
-          },
-          "steps": [
-            {
-              "kind": "request",
-              "id": "c",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = @P1 AND TABLE_NAME = @P2;",
-                "params": ["${input.schema}", "${input.table}"]
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "active-connections",
-        "title": "List active sessions",
-        "description": "Snapshot sys.dm_exec_sessions for non-system sessions.",
-        "intent_keywords": ["active sessions", "connections", "busy"],
-        "derived_from_skill": "mssql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mssql-active-sessions",
-          "description": "Active sessions.",
-          "steps": [
-            {
-              "kind": "request",
-              "id": "s",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT session_id, login_name, host_name, program_name, status, last_request_start_time FROM sys.dm_exec_sessions WHERE is_user_process = 1 ORDER BY last_request_start_time DESC;"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "top-largest-tables",
-        "title": "Top 10 largest tables",
-        "description": "Largest tables by allocated size (data + index).",
-        "intent_keywords": ["table size", "disk usage", "storage"],
-        "derived_from_skill": "mssql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mssql-table-size",
-          "description": "Top 10 largest tables.",
-          "steps": [
-            {
-              "kind": "request",
-              "id": "s",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT TOP 10 s.name AS schema_name, t.name AS table_name, SUM(a.total_pages) * 8 AS total_kb FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id JOIN sys.indexes i ON t.object_id = i.object_id JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id = i.index_id JOIN sys.allocation_units a ON a.container_id = p.partition_id GROUP BY s.name, t.name ORDER BY total_kb DESC;"
-              }
-            }
-          ]
-        }
-      }
-    ],
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
-    "slug": "mysql",
-    "name": "MySQL",
-    "driver": "mysql",
-    "base_url": "",
-    "auth_type": "none",
-    "oauth": null,
-    "default_skill": "mysql-basics",
-    "ingestion_source": "unsupported",
-    "ingestion_url": null,
-    "icon": "mysql.svg",
-    "description": "MySQL relational database",
-    "category": "database",
-    "tags": ["sql", "relational", "introspection", "mariadb"],
-    "setup_instructions": "Provide a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Works with MySQL 5.7+, MySQL 8.x, MySQL 9.x, and MariaDB 10.x+.",
-    "auth_options": [],
-    "url_pattern": "^$",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "recipes": [
-      {
-        "slug": "list-databases",
-        "title": "List databases",
-        "description": "Enumerate user schemas (databases) on the server.",
-        "intent_keywords": ["list databases", "mysql databases", "schemas"],
-        "derived_from_skill": "mysql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mysql-list-databases",
-          "description": "List databases.",
-          "steps": [
-            {
-              "kind": "request",
-              "id": "l",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT SCHEMA_NAME AS database_name FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema','mysql','performance_schema','sys') ORDER BY SCHEMA_NAME;"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "list-tables",
-        "title": "List tables",
-        "description": "INFORMATION_SCHEMA tables for the connected database.",
-        "intent_keywords": ["list tables", "mysql tables", "all tables"],
-        "derived_from_skill": "mysql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mysql-list-tables",
-          "description": "List tables.",
-          "steps": [
-            {
-              "kind": "request",
-              "id": "l",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_ROWS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys') ORDER BY TABLE_SCHEMA, TABLE_NAME;"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "describe-table",
-        "title": "Describe a table",
-        "description": "Column name, type, nullability, default for one table.",
-        "intent_keywords": ["describe table", "columns", "mysql schema"],
-        "derived_from_skill": "mysql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mysql-describe",
-          "description": "Describe a table.",
-          "input_schema": {
-            "type": "object",
-            "required": ["schema", "table"],
-            "properties": {
-              "schema": {
-                "type": "string"
-              },
-              "table": {
-                "type": "string"
-              }
-            }
-          },
-          "steps": [
-            {
-              "kind": "request",
-              "id": "d",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION;",
-                "params": ["${input.schema}", "${input.table}"]
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "row-count",
-        "title": "Get exact row count",
-        "description": "COUNT(*) for a target table.",
-        "intent_keywords": ["row count", "count rows", "get exact row count"],
-        "derived_from_skill": "mysql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mysql-row-count",
-          "description": "Row count.",
-          "input_schema": {
-            "type": "object",
-            "required": ["schema", "table"],
-            "properties": {
-              "schema": {
-                "type": "string"
-              },
-              "table": {
-                "type": "string"
-              }
-            }
-          },
-          "steps": [
-            {
-              "kind": "request",
-              "id": "c",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?;",
-                "params": ["${input.schema}", "${input.table}"]
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "top-largest-tables",
-        "title": "Top 10 largest tables",
-        "description": "Largest tables by data + index size.",
-        "intent_keywords": ["table size", "disk usage", "storage"],
-        "derived_from_skill": "mysql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mysql-top-tables",
-          "description": "Top 10 largest tables.",
-          "steps": [
-            {
-              "kind": "request",
-              "id": "s",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT TABLE_SCHEMA, TABLE_NAME, (DATA_LENGTH + INDEX_LENGTH) AS total_bytes FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys') ORDER BY total_bytes DESC LIMIT 10;"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "slug": "active-connections",
-        "title": "List active connections",
-        "description": "Snapshot processlist for non-Sleep threads.",
-        "intent_keywords": ["active connections", "processlist", "busy queries"],
-        "derived_from_skill": "mysql-basics",
-        "category": "database",
-        "tags": [],
-        "difficulty": "intermediate",
-        "estimated_setup_minutes": 5,
-        "prerequisites": [],
-        "sample_input": null,
-        "expected_output_preview": null,
-        "required_connectors": [],
-        "version": "1.0.0",
-        "author": "subkit-builtin",
-        "last_validated_at": null,
-        "deprecated": null,
-        "workflow": {
-          "name": "mysql-processlist",
-          "description": "List active connections.",
-          "steps": [
-            {
-              "kind": "request",
-              "id": "p",
-              "method": "SELECT",
-              "connector_id": "00000000-0000-0000-0000-000000000000",
-              "sql": {
-                "query": "SELECT ID, USER, HOST, DB, COMMAND, TIME, STATE, LEFT(INFO, 200) AS query_preview FROM INFORMATION_SCHEMA.PROCESSLIST WHERE COMMAND <> 'Sleep' ORDER BY TIME DESC;"
-              }
-            }
-          ]
-        }
-      }
-    ],
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
     "slug": "notion",
     "name": "Notion",
     "driver": "http",
@@ -14821,60 +13908,6 @@
   },
   {
     "version": 1,
-    "slug": "sap-soap",
-    "name": "SAP SOAP",
-    "driver": "soap",
-    "base_url": "https://{tenant}.s4hana.cloud.sap/sap/bc/srt/scs_ext/{service}",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "sap-soap-basics",
-    "ingestion_source": "wsdl",
-    "ingestion_url": null,
-    "icon": "sap-soap.svg",
-    "description": "SAP S/4HANA SOAP web services",
-    "category": "enterprise",
-    "tags": ["soap", "sap", "erp", "wsdl"],
-    "setup_instructions": "SAP exposes SOAP services via /sap/bc/srt/. Find your WSDL at the service endpoint + ?wsdl. Use SAP technical user credentials for Basic Auth.",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "Basic auth",
-        "description": "Authenticate with HTTP Basic credentials (username and password)."
-      }
-    ],
-    "url_pattern": "^https://[^/]+\\.s4hana\\.cloud\\.sap/sap/bc/srt/scs_ext/[^/]+(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
     "slug": "scrapingbee",
     "name": "ScrapingBee",
     "driver": "http",
@@ -15446,60 +14479,6 @@
       {
         "field": "client_secret",
         "label": "OAuth2 Client Secret",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
-    "slug": "servicenow-soap",
-    "name": "ServiceNow SOAP",
-    "driver": "soap",
-    "base_url": "https://{instance}.service-now.com",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "servicenow-soap-basics",
-    "ingestion_source": "wsdl",
-    "ingestion_url": null,
-    "icon": "servicenow-soap.svg",
-    "description": "ServiceNow SOAP API for legacy integrations",
-    "category": "enterprise",
-    "tags": ["soap", "itsm", "servicenow", "wsdl"],
-    "setup_instructions": "ServiceNow exposes SOAP via /{tableName}.do?WSDL. Use admin credentials for Basic Auth.",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "Basic auth",
-        "description": "Authenticate with HTTP Basic credentials (username and password)."
-      }
-    ],
-    "url_pattern": "^https://[^/]+\\.service\\-now\\.com(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
         "placeholder": "",
         "doc_url": null,
         "secret": true
@@ -16381,73 +15360,6 @@
       {
         "field": "token",
         "label": "API Bearer Token",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
-    "slug": "soap-generic",
-    "name": "SOAP (Generic)",
-    "driver": "soap",
-    "base_url": "https://{endpoint}",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "soap-generic-basics",
-    "ingestion_source": "wsdl",
-    "ingestion_url": null,
-    "icon": "soap-generic.svg",
-    "description": "Generic SOAP/WSDL web service",
-    "category": "enterprise",
-    "tags": ["soap", "xml", "wsdl", "enterprise"],
-    "setup_instructions": "Provide the SOAP endpoint URL. Append ?wsdl to fetch the service definition. Choose auth method: HTTP Basic, WS-Security (UsernameToken), or OAuth Bearer.",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "HTTP Basic Auth",
-        "description": "Standard HTTP Basic Auth for the SOAP endpoint.",
-        "oauth": null
-      },
-      {
-        "auth_type": "header",
-        "label": "WS-Security (UsernameToken)",
-        "description": "Username and password in the SOAP header via WS-Security. Configured in connector config.",
-        "oauth": null
-      },
-      {
-        "auth_type": "bearer",
-        "label": "OAuth 2.0 Bearer",
-        "description": "Bearer token in HTTP Authorization header for modern SOAP services.",
-        "oauth": null
-      }
-    ],
-    "url_pattern": null,
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
         "placeholder": "",
         "doc_url": null,
         "secret": true
@@ -18910,67 +17822,6 @@
   },
   {
     "version": 1,
-    "slug": "webdav-generic",
-    "name": "WebDAV (Generic)",
-    "driver": "webdav",
-    "base_url": "https://{server}/remote.php/dav/files/{user}",
-    "auth_type": "basic",
-    "oauth": null,
-    "default_skill": "webdav-generic-basics",
-    "ingestion_source": "unsupported",
-    "ingestion_url": null,
-    "icon": "webdav-generic.svg",
-    "description": "Generic WebDAV file storage server",
-    "category": "storage",
-    "tags": ["webdav", "file-storage", "open-standard"],
-    "setup_instructions": "Provide your WebDAV server URL and credentials. Common servers: Nextcloud, ownCloud, Apache mod_dav, Nginx DAV, Box (dav.box.com).",
-    "auth_options": [
-      {
-        "auth_type": "basic",
-        "label": "Username + Password",
-        "description": "Use your WebDAV server credentials as Basic Auth.",
-        "oauth": null
-      },
-      {
-        "auth_type": "bearer",
-        "label": "Bearer Token",
-        "description": "Some WebDAV servers support Bearer token auth.",
-        "oauth": null
-      }
-    ],
-    "url_pattern": "^https://[^/]+/remote\\.php/dav/files/[^/]+(\\/|$)",
-    "keywords": [],
-    "inline_schema": null,
-    "probe_endpoint": null,
-    "credential_hints": [
-      {
-        "field": "username",
-        "label": "Username",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": false
-      },
-      {
-        "field": "password",
-        "label": "Password",
-        "placeholder": "",
-        "doc_url": null,
-        "secret": true
-      }
-    ],
-    "base_url_options": [],
-    "pagination_defaults": null,
-    "capabilities": {
-      "webhooks": false,
-      "webhook_events": [],
-      "rate_limits": null
-    },
-    "aws_service": null,
-    "aws_region": null,
-    "verified_at": null
-  },
-  {
-    "version": 1,
     "slug": "zendesk",
     "name": "Zendesk",
     "driver": "http",
@@ -19228,7 +18079,9 @@
         "difficulty": "beginner",
         "estimated_setup_minutes": 1,
         "prerequisites": [],
-        "sample_input": { "url": "https://example.com" },
+        "sample_input": {
+          "url": "https://example.com"
+        },
         "expected_output_preview": null,
         "required_connectors": [],
         "version": "1.0.0",
@@ -19241,7 +18094,11 @@
           "input_schema": {
             "type": "object",
             "required": ["url"],
-            "properties": { "url": { "type": "string" } }
+            "properties": {
+              "url": {
+                "type": "string"
+              }
+            }
           },
           "steps": [
             {
@@ -19272,7 +18129,9 @@
         "difficulty": "beginner",
         "estimated_setup_minutes": 1,
         "prerequisites": [],
-        "sample_input": { "url": "https://example.com/post" },
+        "sample_input": {
+          "url": "https://example.com/post"
+        },
         "expected_output_preview": null,
         "required_connectors": [],
         "version": "1.0.0",
@@ -19285,7 +18144,11 @@
           "input_schema": {
             "type": "object",
             "required": ["url"],
-            "properties": { "url": { "type": "string" } }
+            "properties": {
+              "url": {
+                "type": "string"
+              }
+            }
           },
           "steps": [
             {
@@ -19337,7 +18200,9 @@
           "Target site exposes a sitemap.xml with <urlset><url><loc>… entries",
           "Respect for robots.txt is on by default — set connectors.web_scraper.runtime.respect_robots = false to bypass (NOT recommended)"
         ],
-        "sample_input": { "sitemap_url": "https://example.com/sitemap.xml" },
+        "sample_input": {
+          "sitemap_url": "https://example.com/sitemap.xml"
+        },
         "expected_output_preview": null,
         "required_connectors": [],
         "version": "1.0.0",
@@ -19350,7 +18215,11 @@
           "input_schema": {
             "type": "object",
             "required": ["sitemap_url"],
-            "properties": { "sitemap_url": { "type": "string" } }
+            "properties": {
+              "sitemap_url": {
+                "type": "string"
+              }
+            }
           },
           "timeout_ms": 21600000,
           "steps": [
@@ -19497,7 +18366,9 @@
         "difficulty": "intermediate",
         "estimated_setup_minutes": 5,
         "prerequisites": [],
-        "sample_input": { "text": "Hello from sk 👋" },
+        "sample_input": {
+          "text": "Hello from sk 👋"
+        },
         "expected_output_preview": null,
         "required_connectors": [],
         "version": "1.0.0",
@@ -19511,8 +18382,13 @@
             "type": "object",
             "required": ["text"],
             "properties": {
-              "text": { "type": "string" },
-              "visibility": { "type": "string", "default": "PUBLIC" }
+              "text": {
+                "type": "string"
+              },
+              "visibility": {
+                "type": "string",
+                "default": "PUBLIC"
+              }
             }
           },
           "steps": [
@@ -19536,7 +18412,9 @@
                 "lifecycleState": "PUBLISHED",
                 "specificContent": {
                   "com.linkedin.ugc.ShareContent": {
-                    "shareCommentary": { "text": "${input.text}" },
+                    "shareCommentary": {
+                      "text": "${input.text}"
+                    },
                     "shareMediaCategory": "NONE"
                   }
                 },

@@ -14,7 +14,7 @@ quality gate, and the promotion checklist.
 Every recipe ships inline on its connector template at:
 
 ```
-apps/engine/src/connectors/templates.json   # 105 templates, 248 recipes
+apps/engine/src/connectors/templates.json   # 93 templates, 237 recipes
 ```
 
 The schema is defined at:
