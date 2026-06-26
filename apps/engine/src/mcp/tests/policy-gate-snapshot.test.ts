@@ -75,10 +75,11 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
     ).toBe("confirm_before_execution");
   });
 
-  test("probe_connector dev POST → confirm_before_execution (mutating verb escalates regardless of env)", () => {
-    // Surprised by this? The HTTP-verb gate fires on POST/PUT/PATCH/DELETE
-    // even in dev. The prod-env gate adds an additional escalation source
-    // (any non-GET on prod). Both paths converge on confirm_before_execution.
+  test("probe_connector dev POST → no_confirm (confirm keys on env, not HTTP method)", () => {
+    // A probe is a diagnostic read of the vendor's surface. Many read APIs
+    // require POST (search endpoints, GraphQL, RPC), so the gate keys on the
+    // *environment*, not the HTTP verb: a dev probe auto-runs regardless of
+    // method; only prod escalates to confirm (see the prod-POST case below).
     expect(
       resolveToolMode({
         tool: "probe_connector",
@@ -88,6 +89,23 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
           method: "POST",
           path: "/orders",
           environment: "dev",
+          body: { foo: "bar" },
+        },
+        overrides: EMPTY_OVERRIDES,
+      }),
+    ).toBe("no_confirm");
+  });
+
+  test("probe_connector prod POST → confirm_before_execution (prod is the boundary)", () => {
+    expect(
+      resolveToolMode({
+        tool: "probe_connector",
+        category: "tenant_read",
+        input: {
+          connector_slug: "demo",
+          method: "POST",
+          path: "/orders",
+          environment: "prod",
           body: { foo: "bar" },
         },
         overrides: EMPTY_OVERRIDES,
