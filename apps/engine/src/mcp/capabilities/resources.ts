@@ -413,6 +413,12 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       tenant_id: principal.tenant_id,
       principal,
       permission: "stats:read",
+      // Probe-style visibility check run on every resources/list (every MCP
+      // connect): a principal without stats:read is normal, not an incident.
+      // Quiet so it logs at DEBUG instead of an `rbac.denied` WARN per connect.
+      // The read handler below stays LOUD — an actual read attempt is
+      // operator-actionable.
+      quiet: true,
     });
     if (digestDecision.allow) {
       resources.push({
