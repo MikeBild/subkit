@@ -10,11 +10,14 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
+import { createFirebaseProvider } from "../auth/providers/firebase.ts";
 import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
 import { createOidcProvider } from "../auth/providers/oidc.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
 import { AuthProviderRegistry } from "../auth/registry.ts";
 import { ChatAdapterRegistry } from "../chat/registry.ts";
+import { getConfig } from "../config/loader.ts";
+import type { Config } from "../config/schema.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { registerMcpHttpRoutes } from "../mcp/transports/streamable-http.ts";
@@ -51,6 +54,7 @@ import { registerFileRoutes } from "./routes/files.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerHooksInboundRoutes } from "./routes/hooks-inbound.ts";
 import { registerApiKeyRoutes } from "./routes/identity/api-keys.ts";
+import { registerInviteRoutes } from "./routes/identity/invites.ts";
 import { registerLoginRoutes } from "./routes/identity/login.ts";
 import { registerEffectivePermissionsRoute } from "./routes/identity/permissions.ts";
 import { registerPortalTokenRoutes } from "./routes/identity/portal-tokens.ts";
@@ -100,22 +104,62 @@ export interface CreateAppOptions {
   rateLimit?: { max?: number; windowMs?: number };
 }
 
-export function buildDefaultRegistry(db?: Db): AuthProviderRegistry {
+export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProviderRegistry {
   const reg = new AuthProviderRegistry();
-  // MCP OAuth tokens (wf_mcp_*) are registered first as a performance
-  // preference: the prefix is unambiguous so non-matching requests are
-  // rejected before the DB is touched. The registry executes sequentially
-  // (for...of, early return on first non-null principal), so registration
-  // order is a latency optimisation, not a correctness requirement.
-  reg.register(createMcpOAuthAuthProvider(db ? { db } : {}));
-  // Portal tokens are registered next so `wf_portal_*` bearers resolve
-  // before the api-key provider even runs its prefix lookup. Both
-  // providers reject foreign prefixes fast, so ordering is a
-  // performance/logging preference rather than a correctness
-  // requirement.
+
+  // The set of registered providers is config-driven. When the config
+  // loader has not been initialised (some unit/test paths build an app
+  // before boot), fall back to the always-on local providers so the
+  // engine never starts with an empty registry.
+  let auth = cfg;
+  if (!auth) {
+    try {
+      auth = getConfig().auth;
+    } catch {
+      /* loader not initialised — fall through to local defaults below */
+    }
+  }
+  // Machine/token auth (API keys, portal tokens) is ALWAYS available — it is
+  // the programmatic + agent surface and is orthogonal to who owns *human*
+  // identity. MCP OAuth stays gated on its own server feature flag. The human
+  // identity provider is selected by `auth.provider` and exactly one is
+  // registered: "subkit" (default) registers none — humans authenticate with
+  // engine-issued API keys provisioned via admin-invite; "firebase"/"oidc"
+  // register the matching external provider.
+  const enableMcpOAuth = auth?.mcp_oauth.enabled ?? true;
+  const provider = auth?.provider ?? "subkit";
+
+  const registered: string[] = [];
+
+  // Registration order is a latency optimisation, not a correctness
+  // requirement: the registry returns the first non-null principal and each
+  // prefix-bound provider rejects foreign tokens before touching the DB. The
+  // unambiguous-prefix machine providers come first; the JWT/cookie human
+  // provider (if any) follows.
+  if (enableMcpOAuth) {
+    reg.register(createMcpOAuthAuthProvider(db ? { db } : {}));
+    registered.push("mcp_oauth");
+  }
   reg.register(createPortalTokenProvider(db ? { db } : {}));
+  registered.push("portal_token");
   reg.register(createApiKeyProvider(db ? { db } : {}));
-  reg.register(createOidcProvider());
+  registered.push("api_key");
+  if (provider === "oidc") {
+    reg.register(createOidcProvider(db ? { db } : {}));
+    registered.push("oidc");
+  } else if (provider === "firebase") {
+    reg.register(createFirebaseProvider(db ? { db } : {}));
+    registered.push("firebase");
+  }
+
+  logger.info({
+    module: "auth",
+    action: "registry.built",
+    msg: "auth provider registry built",
+    human_provider: provider,
+    providers: registered,
+  });
+
   return reg;
 }
 
@@ -216,6 +260,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerMetricsRoute(app);
   registerTenantRoutes(app);
   registerUserRoutes(app);
+  registerInviteRoutes(app);
   registerSystemAccountRoutes(app);
   registerApiKeyRoutes(app);
   registerPortalTokenRoutes(app);

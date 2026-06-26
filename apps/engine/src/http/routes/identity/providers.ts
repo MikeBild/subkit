@@ -45,10 +45,12 @@ export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
     const { getConfig } = await import("../../../config/loader.ts");
     const auth = getConfig().auth;
 
-    // Firebase Auth — detected via auth.firebase.project_id
+    // The human identity provider is selected by `auth.provider`; exactly one
+    // external provider is advertised (or none, for "subkit"). Firebase —
+    // advertised only when selected and a project_id is configured.
     const firebaseProjectId = auth.firebase.project_id;
     const firebaseLoginUrl = auth.firebase.login_url;
-    if (firebaseProjectId) {
+    if (auth.provider === "firebase" && firebaseProjectId) {
       providers.push({
         type: "firebase",
         name: "Google (via Firebase)",
@@ -57,9 +59,9 @@ export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
       });
     }
 
-    // Generic OIDC — detected via auth.oidc.issuer_url
+    // Generic OIDC — advertised only when selected and an issuer is set.
     const oidcIssuer = auth.oidc.issuer_url;
-    if (oidcIssuer) {
+    if (auth.provider === "oidc" && oidcIssuer) {
       providers.push({
         type: "oidc",
         name: "OIDC (device flow)",
@@ -67,7 +69,9 @@ export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
       });
     }
 
-    // API key is always available as a fallback
+    // API key — machine auth is always available; advertised as the local
+    // surface (and the only human path under the default "subkit" provider,
+    // where keys are provisioned via admin-invite).
     providers.push({
       type: "api-key",
       name: "API key",

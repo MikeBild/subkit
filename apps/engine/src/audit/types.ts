@@ -28,10 +28,30 @@ export const AuditAction = {
   TENANT_DELETED: "tenant.deleted",
 
   USER_CREATED: "user.created",
+  // An admin issued a single-use provisioning invite for a user. The
+  // resulting api key is minted later by the invited user at redeem
+  // time — this row records the grant the admin authorized (scopes +
+  // allow lists), pinned by `UserInvitedMetadataSchema`.
+  USER_INVITED: "user.invited",
+  // An external identity provider (Firebase/OIDC) linked a verified
+  // external subject to an existing email-matched user row by stamping
+  // `external_subject`. Records the bind so an account-takeover via a
+  // provider-side email collision is auditable. Pinned by
+  // `UserIdentityLinkedMetadataSchema`.
+  USER_IDENTITY_LINKED: "user.identity_linked",
   USER_LOGGED_IN: "user.logged_in",
   USER_LOGGED_OUT: "user.logged_out",
   USER_ROLE_CHANGED: "user.role_changed",
   USER_DELETED: "user.deleted",
+  // The invited user redeemed their single-use invite at the
+  // unauthenticated redeem endpoint, minting their OWN personal api key.
+  // Paired with the `API_KEY_ISSUED` row that `issueApiKey` writes in the
+  // same transaction. Pinned by `InviteRedeemedMetadataSchema`.
+  INVITE_REDEEMED: "user_invite.redeemed",
+  // An admin revoked an un-redeemed invite, severing the grant before the
+  // invited user could mint a key from it. Pinned by
+  // `UserInviteRevokedMetadataSchema`.
+  INVITE_REVOKED: "user_invite.revoked",
 
   SESSION_ISSUED: "session.issued",
   SESSION_REFRESHED: "session.refreshed",
@@ -987,6 +1007,62 @@ export const RiskSignalClearedMetadataSchema = z.object({
   request_source: RequestSourceSchema.optional(),
 });
 export type RiskSignalClearedMetadata = z.infer<typeof RiskSignalClearedMetadataSchema>;
+
+/** `user.invited` metadata. Emitted from `createInvite` when an admin
+ *  issues a single-use provisioning invite. Records exactly the grant the
+ *  admin authorized so compliance can prove the redeemed api key never
+ *  exceeded it — the invite prefix (never the plaintext or hash) plus the
+ *  scopes + optional allow lists. */
+export const UserInvitedMetadataSchema = z.object({
+  invite_id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  /** Unhashed prefix of the invite token — safe to log, identifies the
+   *  row without leaking the redeemable secret. */
+  prefix: z.string(),
+  scopes: z.array(z.string()),
+  allowed_workflows: z.array(z.string()).nullable().optional(),
+  allowed_connectors: z.array(z.string()).nullable().optional(),
+  expires_at: z.string(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type UserInvitedMetadata = z.infer<typeof UserInvitedMetadataSchema>;
+
+/** `user_invite.redeemed` metadata. Emitted from `redeemInvite` when the
+ *  invited user mints their personal api key. The `api_key_id` correlates
+ *  to the paired `API_KEY_ISSUED` row; the plaintext key never appears in
+ *  the audit trail. */
+export const InviteRedeemedMetadataSchema = z.object({
+  invite_id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  api_key_id: z.string().uuid(),
+  prefix: z.string(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type InviteRedeemedMetadata = z.infer<typeof InviteRedeemedMetadataSchema>;
+
+/** `user_invite.revoked` metadata. Emitted from `revokeInvite` when an
+ *  admin cancels an un-redeemed invite. Records the invite identity (id +
+ *  prefix) and the user the grant was for; no plaintext or hash. */
+export const UserInviteRevokedMetadataSchema = z.object({
+  invite_id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  /** Unhashed prefix of the invite token — safe to log, identifies the
+   *  row without leaking the redeemable secret. */
+  prefix: z.string(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type UserInviteRevokedMetadata = z.infer<typeof UserInviteRevokedMetadataSchema>;
+
+/** `user.identity_linked` metadata. Emitted when an auth provider binds a
+ *  verified external subject to a pre-existing email-matched user row. The
+ *  `source` names the provider; `external_subject` is the bound subject. */
+export const UserIdentityLinkedMetadataSchema = z.object({
+  source: z.string(),
+  external_subject: z.string(),
+  email: z.string().optional(),
+  request_source: RequestSourceSchema.optional(),
+});
+export type UserIdentityLinkedMetadata = z.infer<typeof UserIdentityLinkedMetadataSchema>;
 
 export type AuditEntry = {
   id: string;

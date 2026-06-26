@@ -55,6 +55,9 @@ const PORTAL_TOKEN_USER_PERMISSIONS = new Set<string>([
 function memberAllows(name: string): boolean {
   if (name.startsWith("rbac:")) return false;
   if (name === "audit:read") return false;
+  // identity:* is admin-only user/tenant/invite management. Mirrors
+  // memberPermissionFilter in seed.ts.
+  if (name.startsWith("identity:")) return false;
   if (name === "api_key:write") return false;
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;
