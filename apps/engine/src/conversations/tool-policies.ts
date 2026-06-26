@@ -452,29 +452,23 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
   // web_search leaves the tenant perimeter — confirm by default.
   web_search: { defaultMode: "confirm_before_execution" },
-  // probe_connector does an external HTTP call but produces no side
-  // effect beyond the vendor's read surface. Dev + GET/HEAD auto; any
-  // other combination (write verbs or prod env) requires confirm.
+  // probe_connector is a diagnostic call against the vendor's surface. Confirm
+  // keys on the *environment*, not the HTTP method: many read APIs require POST
+  // (search endpoints, GraphQL, RPC), so a method-based gate confirm-blocks
+  // harmless reads while still rubber-stamping a POST that happens to write.
+  // Prod probes require confirm; dev probes (the authoring sandbox) auto-run.
   probe_connector: {
     defaultMode: "no_confirm",
     computeModeFromInput: (input) => {
-      const obj = asObj(input);
-      const method = typeof obj.method === "string" ? obj.method.toUpperCase() : "GET";
-      const env = obj.environment;
-      if (env === "prod") return "confirm_before_execution";
-      if (method !== "GET" && method !== "HEAD") return "confirm_before_execution";
-      return "no_confirm";
+      const env = asObj(input).environment;
+      return env === "prod" ? "confirm_before_execution" : "no_confirm";
     },
   },
   probe_connector_draft: {
     defaultMode: "no_confirm",
     computeModeFromInput: (input) => {
-      const obj = asObj(input);
-      const method = typeof obj.method === "string" ? obj.method.toUpperCase() : "GET";
-      const env = obj.environment;
-      if (env === "prod") return "confirm_before_execution";
-      if (method !== "GET" && method !== "HEAD") return "confirm_before_execution";
-      return "no_confirm";
+      const env = asObj(input).environment;
+      return env === "prod" ? "confirm_before_execution" : "no_confirm";
     },
   },
 };
