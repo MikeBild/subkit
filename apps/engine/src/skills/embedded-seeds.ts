@@ -23,6 +23,9 @@ import errorRecovery from "../conversations/seed/skills/error-recovery.md" with 
 import githubGraphqlBasics from "../conversations/seed/skills/github-graphql-basics.md" with {
   type: "text",
 };
+import graphqlAuthoringRecipe from "../conversations/seed/skills/graphql-authoring-recipe.md" with {
+  type: "text",
+};
 import graphqlConnectors from "../conversations/seed/skills/graphql-connectors.md" with {
   type: "text",
 };
@@ -72,6 +75,7 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "document-analysis-guidance.md", content: documentAnalysisGuidance },
   { file: "error-recovery.md", content: errorRecovery },
   { file: "github-graphql-basics.md", content: githubGraphqlBasics },
+  { file: "graphql-authoring-recipe.md", content: graphqlAuthoringRecipe },
   { file: "graphql-connectors.md", content: graphqlConnectors },
   { file: "http-connectors.md", content: httpConnectors },
   { file: "mcp-server-setup.md", content: mcpServerSetup },

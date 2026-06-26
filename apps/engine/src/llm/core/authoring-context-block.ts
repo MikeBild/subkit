@@ -39,7 +39,7 @@ export interface AuthoringContextInput {
     source: string;
     confidence: number;
     endpoint_count: number;
-    sample_endpoints?: Array<{ method: string; path: string }>;
+    sample_endpoints?: Array<{ method: string; path: string; description?: string }>;
   } | null;
   /**
    * Caller's read on the user's expertise. The renderer uses it to pick
@@ -107,7 +107,14 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
       `- Completed: source=${da.source}, confidence=${da.confidence}%, endpoints=${da.endpoint_count}`,
     );
     if (da.sample_endpoints && da.sample_endpoints.length > 0) {
-      const preview = da.sample_endpoints.slice(0, 6).map((e) => `${e.method} ${e.path}`);
+      const preview = da.sample_endpoints.slice(0, 6).map((e) => {
+        const base = `${e.method} ${e.path}`;
+        if (!e.description) return base;
+        // Truncate the description to bound the prompt-token budget; the
+        // full text is reachable via the connector's endpoint schema rows.
+        const desc = e.description.length > 120 ? `${e.description.slice(0, 119)}…` : e.description;
+        return `${base} — ${desc}`;
+      });
       lines.push(`- Endpoints: ${preview.join(", ")}`);
       if (da.sample_endpoints.length > 6) {
         lines.push(`  - …and ${da.sample_endpoints.length - 6} more`);

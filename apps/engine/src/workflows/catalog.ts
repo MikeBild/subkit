@@ -32,6 +32,10 @@ export interface WorkflowToolDescriptor {
   description: string;
   /** Materialised JSON Schema for the workflow's input. Empty-object schema when the workflow declares none. */
   inputSchema: { type: "object"; properties?: Record<string, unknown>; [k: string]: unknown };
+  /** Declared `output_schema` JSON Schema, when the workflow declares a
+   *  `type:"object"` contract. Undefined when none is declared — synth
+   *  never fabricates an output contract. */
+  outputSchema?: { type: "object"; properties?: Record<string, unknown>; [k: string]: unknown };
   /** Last `runExecution` timestamp; null when the workflow has never run. Drives LRU truncation. */
   last_executed_at: Date | null;
 }
@@ -48,6 +52,23 @@ function toInputSchema(raw: unknown): WorkflowToolDescriptor["inputSchema"] {
     return raw as WorkflowToolDescriptor["inputSchema"];
   }
   return EMPTY_OBJECT_SCHEMA;
+}
+
+// Mirror of `toInputSchema`'s guard for the declared `output_schema`:
+// pass it through only when it is a `type:"object"` JSON Schema, else
+// surface no output contract at all (the MCP Tool simply omits one).
+function toOutputSchema(
+  raw: unknown,
+): NonNullable<WorkflowToolDescriptor["outputSchema"]> | undefined {
+  if (
+    raw &&
+    typeof raw === "object" &&
+    !Array.isArray(raw) &&
+    (raw as { type?: unknown }).type === "object"
+  ) {
+    return raw as NonNullable<WorkflowToolDescriptor["outputSchema"]>;
+  }
+  return undefined;
 }
 
 export interface ListWorkflowToolsParams {
@@ -164,6 +185,7 @@ export async function listWorkflowToolsForTenant(
     const columnDescription = row.description?.trim() ? row.description.trim() : null;
     let description = columnDescription ?? row.name;
     let inputSchema: WorkflowToolDescriptor["inputSchema"] = EMPTY_OBJECT_SCHEMA;
+    let outputSchema: WorkflowToolDescriptor["outputSchema"];
     const dag = row.current_version_id ? dagByVersionId.get(row.current_version_id) : undefined;
     if (dag) {
       const parsed = WorkflowDefSchema.safeParse(dag);
@@ -175,6 +197,9 @@ export async function listWorkflowToolsForTenant(
           const synth = synthesizeInputSchema(parsed.data);
           if (synth) inputSchema = synth as WorkflowToolDescriptor["inputSchema"];
         }
+        if (parsed.data.output_schema) {
+          outputSchema = toOutputSchema(parsed.data.output_schema);
+        }
       }
     }
     out.push({
@@ -183,6 +208,7 @@ export async function listWorkflowToolsForTenant(
       name: row.name,
       description,
       inputSchema,
+      ...(outputSchema ? { outputSchema } : {}),
       last_executed_at: row.last_executed_at,
     });
   }

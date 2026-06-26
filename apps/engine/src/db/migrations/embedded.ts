@@ -26,6 +26,7 @@ import sql0005M2mOauthCredentialMode from "./0005_m2m_oauth_credential_mode.sql"
 import sql0006RemarkableNamor from "./0006_remarkable_namor.sql" with { type: "text" };
 import sql0007SlimyAbomination from "./0007_slimy_abomination.sql" with { type: "text" };
 import sql0008OutstandingMakkari from "./0008_outstanding_makkari.sql" with { type: "text" };
+import sql0009AuthoringCapabilityCandidate from "./0009_authoring_capability_candidate.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -59,6 +60,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0006_remarkable_namor": sql0006RemarkableNamor,
   "0007_slimy_abomination": sql0007SlimyAbomination,
   "0008_outstanding_makkari": sql0008OutstandingMakkari,
+  "0009_authoring_capability_candidate": sql0009AuthoringCapabilityCandidate,
 };
 
 const journal = journalMeta as unknown as Journal;

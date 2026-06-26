@@ -339,3 +339,147 @@ describe("listWorkflowToolsForTenant — descriptor shape", () => {
     expect(item?.description).toBe("My Workflow Name");
   });
 });
+
+// ---------------------------------------------------------------------------
+// inputSchema per-property description propagation
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — inputSchema property descriptions", () => {
+  test("declared input_schema properties with description flow into inputSchema", async () => {
+    await seedWorkflow({
+      slug: "schema-desc-wf",
+      name: "Schema Desc WF",
+      dag: {
+        name: "Schema Desc WF",
+        slug: "schema-desc-wf",
+        input_schema: {
+          type: "object",
+          properties: {
+            startDate: {
+              type: "string",
+              description: "ISO 8601 start date for the report range",
+            },
+            limit: {
+              type: "integer",
+              description: "Maximum number of rows to return",
+            },
+          },
+          required: ["startDate"],
+        },
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "schema-desc-wf");
+    expect(item).toBeDefined();
+
+    // Property descriptions must survive the catalog round-trip so MCP
+    // clients can render useful tooltips for the workflow's input fields.
+    const props = item?.inputSchema.properties as Record<string, unknown> | undefined;
+    expect(props).toBeDefined();
+    expect((props?.startDate as Record<string, unknown>)?.description).toBe(
+      "ISO 8601 start date for the report range",
+    );
+    expect((props?.limit as Record<string, unknown>)?.description).toBe(
+      "Maximum number of rows to return",
+    );
+  });
+
+  test("inputSchema without per-property description is still returned (empty string not injected)", async () => {
+    await seedWorkflow({
+      slug: "schema-no-desc-wf",
+      name: "Schema No Desc WF",
+      dag: {
+        name: "Schema No Desc WF",
+        slug: "schema-no-desc-wf",
+        input_schema: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+          },
+        },
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "schema-no-desc-wf");
+    expect(item).toBeDefined();
+    const props = item?.inputSchema.properties as Record<string, unknown> | undefined;
+    expect(props).toBeDefined();
+    // No description fabricated — the catalog must not inject an empty string.
+    expect((props?.id as Record<string, unknown>)?.description).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// outputSchema propagation
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — outputSchema", () => {
+  test("declared output_schema with type:object is surfaced as outputSchema", async () => {
+    await seedWorkflow({
+      slug: "output-schema-wf",
+      name: "Output Schema WF",
+      dag: {
+        name: "Output Schema WF",
+        slug: "output-schema-wf",
+        output_schema: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string", description: "User display name" },
+          },
+        },
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "output-schema-wf");
+    expect(item).toBeDefined();
+
+    // outputSchema must be present and carry the declared contract.
+    expect(item?.outputSchema).toBeDefined();
+    expect(item?.outputSchema?.type).toBe("object");
+    const outProps = item?.outputSchema?.properties as Record<string, unknown> | undefined;
+    expect(outProps?.id).toBeDefined();
+    expect((outProps?.name as Record<string, unknown>)?.description).toBe("User display name");
+  });
+
+  test("workflow without output_schema has no outputSchema on descriptor", async () => {
+    await seedWorkflow({
+      slug: "no-output-schema-wf",
+      name: "No Output Schema WF",
+      dag: {
+        name: "No Output Schema WF",
+        slug: "no-output-schema-wf",
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "no-output-schema-wf");
+    expect(item).toBeDefined();
+    // outputSchema must be absent — the catalog never fabricates an output contract.
+    expect(item?.outputSchema).toBeUndefined();
+  });
+
+  test("output_schema with non-object type is rejected (no outputSchema on descriptor)", async () => {
+    // The toOutputSchema guard requires type:"object"; arrays/scalars are silently dropped.
+    await seedWorkflow({
+      slug: "array-output-schema-wf",
+      name: "Array Output Schema WF",
+      dag: {
+        name: "Array Output Schema WF",
+        slug: "array-output-schema-wf",
+        output_schema: {
+          type: "array",
+          items: { type: "string" },
+        },
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "array-output-schema-wf");
+    expect(item).toBeDefined();
+    expect(item?.outputSchema).toBeUndefined();
+  });
+});

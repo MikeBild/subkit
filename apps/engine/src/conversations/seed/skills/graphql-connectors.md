@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, graphql]
-version: 8
+version: 9
 ---
 
 # GraphQL Connectors
@@ -177,32 +177,54 @@ steps only when:
 ## Response errors
 
 GraphQL servers return HTTP 200 with an `errors` array on partial failures.
-The driver classifies that as a failed step and routes errors to the error
-channel — never onto `.data`:
+The driver behaviour is controlled by the `error_policy` step field.
 
-- If the response has both `data` and `errors`, envelope `data` is the
-  partial payload and envelope `error` carries the first error's message
-  plus `details: { all_errors: [...] }`. The step is marked failed;
-  `on_error` decides whether to abort or continue.
-- If the response `data` is null, envelope `data` is null and `error` is set.
+**`error_policy: "none"` (default)** — fail whenever `errors` is non-empty:
 
-Either way, inspect failures via `$scope.<step>.error` — the `errors` array
-is never readable under `$scope.<step>.data`.
+- If the response has both `data` and `errors`, the step is marked failed.
+  `$scope.<step>.error` carries the first error message plus
+  `details: { all_errors: [...] }`. The partial payload is accessible on
+  `$scope.<step>.data`.
+- If the response `data` is null, `$scope.<step>.data` is null and
+  `$scope.<step>.error` is set.
 
-If partial data is acceptable, set `on_error: "continue"` directly on the
-step so the run keeps going past the failure. Add `max_retries` /
-`retry_backoff_ms` for transient infrastructure issues:
+Use `on_error: "continue"` on the step to keep the run going past the
+failure when the default policy applies.
+
+**`error_policy: "all"`** — accept partial results. When both `data` and
+`errors` are present the step is marked **succeeded**:
+
+- `$scope.<step>.data` holds the partial data payload as normal.
+- `request_meta.partial` is `true`.
+- `request_meta.graphql_errors` contains the full `errors` array.
+
+When `data` is null (total failure), the step still fails even under
+`error_policy: "all"`. Downstream steps can check
+`$scope.<step_id>.request_meta.partial` to branch on partial vs full results.
+
+### Transient errors and throttling
+
+The driver retries automatically on:
+
+- HTTP 429 and 5xx responses.
+- Structured throttling or transient codes in `extensions.code`,
+  `extensions.errorType`, or `extensions.classification` — classes THROTTL,
+  RATE_LIMIT, TOO_MANY_REQUESTS, TIMEOUT, UNAVAILABLE, TRY_AGAIN, INTERNAL.
+
+`max_retries` (default 4) and `retry_backoff_ms` (default 200) control the
+retry budget. A `Retry-After` response header is honoured when present. Each
+attempt is independently audited.
 
 ```json
 {
   "id": "list_repos_lenient",
   "kind": "request",
-  "connector_id": "<github_graphql_connector_id>",
+  "connector_id": "<gql_connector_id>",
   "graphql": {
     "query": "query { viewer { repositories(first: 10) { nodes { name } } } }"
   },
-  "on_error": "continue",
-  "max_retries": 2,
+  "error_policy": "all",
+  "max_retries": 3,
   "retry_backoff_ms": 500
 }
 ```

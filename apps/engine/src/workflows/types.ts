@@ -99,6 +99,8 @@ export const PaginationSchema = z
 
 const onError = z.enum(["fail", "continue"]).default("fail");
 
+const errorPolicy = z.enum(["none", "all"]).default("none");
+
 type GraphQLConfig = {
   operation?: "query" | "mutation" | "subscription" | undefined;
   query: string;
@@ -287,6 +289,11 @@ export const RequestStepSchema = z
     // Optional GraphQL operation. When present, the request step routes
     // through the GraphQL driver instead of the HTTP retry pipeline.
     graphql: GraphQLConfigSchema.optional(),
+    // Apollo errorPolicy convention. "none" (default = legacy): a GraphQL response
+    // carrying body.errors fails the step. "all": accept data-with-errors — step
+    // succeeds, errors surface as partial-result meta + a warn log. Applies only to
+    // the graphql branch.
+    error_policy: errorPolicy.optional(),
     /**
      * Optional SQL operation. When present, the request step routes
      * through the postgres driver. `query` is a parameterised SQL

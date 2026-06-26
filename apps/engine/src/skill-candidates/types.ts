@@ -14,6 +14,10 @@ export const SkillCandidatePatternSchema = z.enum([
   "failure_pattern",
   "success_pattern",
   "chained_workflow_pattern",
+  // Authoring-time capability summary proposed on workflow commit. Its own
+  // pattern_kind keeps the workflow-keyed supersede isolated from the
+  // run-derived success detector (see db/schema/skills.ts).
+  "authoring_capability",
 ]);
 
 export type SkillCandidateStatus = z.infer<typeof SkillCandidateStatusSchema>;

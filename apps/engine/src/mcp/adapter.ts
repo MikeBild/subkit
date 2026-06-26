@@ -186,6 +186,7 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
     tenant_id: opts.principal.tenant_id,
     conversation_id: stubConversationId,
     actor_id: opts.principal.id,
+    principal: opts.principal,
     connector_id: null,
     workflow_id: null,
     engineClient,

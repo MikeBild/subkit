@@ -43,7 +43,7 @@ import type { ConfirmEnvelope, ToolInvocation } from "../../tools/types.ts";
 import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
-import { type ConfirmResolver, callToolViaDispatcher, listToolsViaRegistry } from "../adapter.ts";
+import { type ConfirmResolver, callToolViaDispatcher } from "../adapter.ts";
 import { createElicitationBridge } from "../elicitation/bridge.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
@@ -55,11 +55,7 @@ import {
   SCHEMA_TOKEN_BUDGET,
   TOOL_PREFIX,
 } from "./catalog-budget.ts";
-import {
-  CONVERSATION_TOOL_PREFIX,
-  handleConversationTool,
-  listConversationTools,
-} from "./conversations.ts";
+import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversations.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
 import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
 
@@ -129,6 +125,7 @@ async function listWorkflowTools({ db, principal, limit }: ListToolsParams): Pro
     // over re-deriving" nudge closes that gap.
     description: describeWorkflowTool(entry),
     inputSchema: entry.inputSchema as Tool["inputSchema"],
+    ...(entry.outputSchema ? { outputSchema: entry.outputSchema as Tool["outputSchema"] } : {}),
     annotations: buildWorkflowToolAnnotations(),
     _meta: buildWorkflowToolMeta(),
   }));

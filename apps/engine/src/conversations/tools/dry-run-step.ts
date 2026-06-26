@@ -5,8 +5,9 @@
 // surface can still render human-readable failure summaries.
 
 import { z } from "@hono/zod-openapi";
-import { classifyRunResult } from "../../execution/classify.ts";
+import { classifyRunResult, isTransientRunResult } from "../../execution/classify.ts";
 import { runSingleStep } from "../../execution/step-run.ts";
+import { logger } from "../../logging/logger.ts";
 import {
   recordExecutionDryRun,
   recordExecutionWarningsEmitted,
@@ -87,7 +88,18 @@ export const dryRunStepTool: ConversationTool = {
       };
     }
     const step = rawStep as unknown as StepDef;
-    const run = await runSingleStep({
+    // Bounded transient retry (authoring safety net). The request/graphql
+    // drivers already retry most transients in-band; a single residual flap
+    // (an upstream 5xx/429/connection blip that survives the driver's own
+    // retries) still surfaces as a failed dry-run. Four such failures in a
+    // row trip `error_code_repeat_block` and stall the whole authoring
+    // session on a fault that has nothing to do with the draft. Re-running
+    // the single step up to twice more (500ms then 1s backoff) clears that
+    // flap without masking a deterministic failure: only transient
+    // classifications retry; timeouts and auth/4xx/schema errors fall
+    // through on the first attempt.
+    const TRANSIENT_RETRY_BACKOFF_MS = [500, 1_000] as const;
+    let run = await runSingleStep({
       db: ctx.db,
       tenant_id: ctx.tenant_id,
       step,
@@ -98,6 +110,38 @@ export const dryRunStepTool: ConversationTool = {
       ...(args.budget_ms !== undefined ? { timeout_ms: args.budget_ms } : {}),
       request_source: "chat",
     });
+    for (
+      let attempt = 0;
+      attempt < TRANSIENT_RETRY_BACKOFF_MS.length &&
+      isTransientRunResult(run) &&
+      !ctx.abortSignal?.aborted;
+      attempt++
+    ) {
+      const backoff_ms = TRANSIENT_RETRY_BACKOFF_MS[attempt]!;
+      logger.warn({
+        module: "conversation_tool",
+        action: "dry_run_step.transient_retry",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        step_id: args.step_id,
+        error_code: run.error?.code ?? null,
+        attempt: attempt + 1,
+        backoff_ms,
+      });
+      await sleepUnlessAborted(backoff_ms, ctx.abortSignal);
+      if (ctx.abortSignal?.aborted) break;
+      run = await runSingleStep({
+        db: ctx.db,
+        tenant_id: ctx.tenant_id,
+        step,
+        hold_writes: !args.execute_writes,
+        input: args.input ?? null,
+        ...(ctx.abortSignal ? { signal: ctx.abortSignal } : {}),
+        ...(args.environment ? { environment: args.environment } : {}),
+        ...(args.budget_ms !== undefined ? { timeout_ms: args.budget_ms } : {}),
+        request_source: "chat",
+      });
+    }
     const summary = classifyRunResult(step, run);
     const runWarnings = (run.warnings ?? []).map((w) => ({
       step_key: (w as { step_key?: string | null }).step_key ?? args.step_id,
@@ -235,3 +279,22 @@ export const dryRunStepTool: ConversationTool = {
     };
   },
 };
+
+/** Sleep for `ms`, resolving early (without throwing) if `signal` aborts
+ *  during the wait. Keeps the transient-retry backoff responsive to the
+ *  conversation's abort signal — a cancelled authoring turn must not block
+ *  on a pending backoff. */
+function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}

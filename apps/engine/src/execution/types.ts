@@ -128,7 +128,11 @@ export type StepWarningCode =
   // run result. `dry_run_workflow` treats the same code as a blocking
   // repair warning so a contract-violating draft never auto-commits.
   // `step_key` is the sentinel "$output" (workflow-level, no step).
-  | "output_contract_violation";
+  | "output_contract_violation"
+  // Emitted by the graphql driver when error_policy:"all" is set and the
+  // response carries both data and errors. The step succeeds; errors surface
+  // here so the operator sees them without the step failing.
+  | "graphql_partial_errors";
 
 export interface StepWarning {
   code: StepWarningCode;
