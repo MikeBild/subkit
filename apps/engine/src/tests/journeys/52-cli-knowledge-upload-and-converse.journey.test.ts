@@ -18,7 +18,7 @@
 //   - AC5: `POST /v1/connectors/{id}/docs/ingest` with a Markdown
 //          file_upload succeeds, and a follow-up search returns
 //          per-hit `fetched_at`. (Gap 8 + Gap 7 on the docs path)
-// Spec refs: docs/04-authoring.md, docs/05-connectors.md
+// Spec refs: docs/authoring.md, docs/connectors.md
 //            plans/discover-knowledge-and-documentation-dreamy-falcon.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";

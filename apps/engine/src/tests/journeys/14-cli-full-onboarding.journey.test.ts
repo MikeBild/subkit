@@ -6,7 +6,7 @@
 //          rows against the engine using `EngineClient`.
 //   - AC3: `workflows create` + `workflows run` drive a real execution
 //          end-to-end via the CLI client wrapper, returning succeeded.
-// Spec refs: docs/03-input-surfaces.md
+// Spec refs: docs/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";

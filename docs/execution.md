@@ -263,5 +263,5 @@ The Audit Log records every execution trigger, every Step completion, every erro
 
 ## Further reading
 
-- [Security & governance](./07-security-governance.md) — RBAC, API keys, Before-Request Hooks, Audit Log guarantees, and the policy model that governs every surface in sk.
-- [glossary — execution terms](./02-concepts.md#group-4-execution) — Workflow, Step, Execution, Execution Fixture, Schedule.
+- [Security & governance](./security-governance.md) — RBAC, API keys, Before-Request Hooks, Audit Log guarantees, and the policy model that governs every surface in sk.
+- [glossary — execution terms](./concepts.md#group-4-execution) — Workflow, Step, Execution, Execution Fixture, Schedule.

@@ -242,5 +242,5 @@ Not every workflow starts with a human. Scheduled triggers and inbound webhooks 
 
 ## Further reading
 
-- [AI-assisted authoring](./04-authoring.md) — how Conversations work, how the AI assembles Workflows, and how the approval gate turns a Draft into a committed, executable Workflow.
-- [glossary](./02-concepts.md#group-6-surfaces) — definitions for sk CLI, MCP Server, Chat Adapter, Notification Rule, Service Metadata.
+- [AI-assisted authoring](./authoring.md) — how Conversations work, how the AI assembles Workflows, and how the approval gate turns a Draft into a committed, executable Workflow.
+- [glossary](./concepts.md#group-6-surfaces) — definitions for sk CLI, MCP Server, Chat Adapter, Notification Rule, Service Metadata.

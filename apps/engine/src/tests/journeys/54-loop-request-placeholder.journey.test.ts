@@ -18,7 +18,7 @@
 //          structured `placeholder_unresolved` error instead of shipping
 //          the literal token over the wire.
 // Spec refs: workflow-authoring.md "Loops" section,
-//            docs/04-authoring.md placeholder substitution.
+//            docs/authoring.md placeholder substitution.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";

@@ -59,7 +59,7 @@ const SAFE_KINDS = new Set<PatchProposal["kind"]>([
 ]);
 
 /**
- * Rules per docs/06-execution.md §Patch classification:
+ * Rules per docs/execution.md §Patch classification:
  *
  *   safe: field renames, compatible type widenings (string → string
  *         | null, int → number), new optional headers, added optional

@@ -13,7 +13,7 @@
 //   - AC4: body.input overrides the original input.
 //   - AC5: a draft-source execution yields 409 with a remediation hint.
 //   - AC6: unknown id yields 404.
-// Spec refs: docs/06-execution.md
+// Spec refs: docs/execution.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {

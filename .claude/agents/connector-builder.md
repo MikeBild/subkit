@@ -32,7 +32,7 @@ You implement connector changes in subkit. Your scope is `apps/engine/src/connec
 
 ## Your workflow
 
-1. **Read `docs/05-connectors.md` first.**
+1. **Read `docs/connectors.md` first.**
 2. **Find 2–3 neighbors.** Grep `templates.json` for templates with the same auth type
    and protocol. Mirror their shape, naming, and required fields.
 3. **Read `connectors/types.ts`** to confirm the exact schema of a template.

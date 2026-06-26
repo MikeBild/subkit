@@ -12,7 +12,7 @@ You run sk for your team. Goal: engine up in production, one admin key minted, o
 curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash
 ```
 
-See [docs/03-input-surfaces.md](../03-input-surfaces.md) for Windows and manual platform installs. The install script may place a `subkit` compatibility alias on disk; the canonical command surface is `sk`.
+See [docs/input-surfaces.md](../input-surfaces.md) for Windows and manual platform installs. The install script may place a `subkit` compatibility alias on disk; the canonical command surface is `sk`.
 
 ## 2. Run the engine (Docker)
 
@@ -63,7 +63,7 @@ sk connectors create \
   --name stripe-prod
 ```
 
-Pick from 93 connector templates — see [docs/05-connectors.md](../05-connectors.md) for how templates, drivers, and credentials work together.
+Pick from 93 connector templates — see [docs/connectors.md](../connectors.md) for how templates, drivers, and credentials work together.
 
 ## 5. You're operational
 
@@ -85,6 +85,6 @@ The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it st
 
 ## Next steps
 
-- [docs/05-connectors.md](../05-connectors.md) — connector management, credentials, and OAuth2.
-- [docs/07-security-governance.md](../07-security-governance.md) — RBAC, identity setup (OIDC/SSO), API key rotation, and Before-Request Hooks.
-- [docs/08-operations.md](../08-operations.md) — observability, resource limits, self-healing, and backup strategy.
+- [docs/connectors.md](../connectors.md) — connector management, credentials, and OAuth2.
+- [docs/security-governance.md](../security-governance.md) — RBAC, identity setup (OIDC/SSO), API key rotation, and Before-Request Hooks.
+- [docs/operations.md](../operations.md) — observability, resource limits, self-healing, and backup strategy.

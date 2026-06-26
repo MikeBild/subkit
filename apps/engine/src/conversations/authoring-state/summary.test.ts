@@ -4,7 +4,7 @@
 // "probe_connector_draft"]` simultaneously, which trapped the model:
 // `probe_connector_draft` cannot succeed before tokens exist, but the
 // suggestion fired in parallel with `authenticate_oauth`. The
-// documented lifecycle (docs/05-connectors.md) is save → authenticate
+// documented lifecycle (docs/connectors.md) is save → authenticate
 // → probe — these tests pin that ordering.
 
 import { describe, expect, it } from "bun:test";

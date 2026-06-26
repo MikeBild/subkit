@@ -1,5 +1,5 @@
 // `sk` — end-user conversational CLI for subkit-backend. See
-// docs/03-input-surfaces.md for the rationale; this file is the command
+// docs/input-surfaces.md for the rationale; this file is the command
 // entry point only.
 //
 // Bare `sk` opens an interactive REPL against the active profile

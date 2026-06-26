@@ -35,7 +35,7 @@ Nothing to install. In the workspace your operator set up:
 - **Teams.** Same pattern — `@sk …` in a channel or DM.
 - **Google Chat.** Invite the bot to a space; mention it.
 
-See [docs/03-input-surfaces.md](../03-input-surfaces.md) for how chat adapters work and what the platform can do through each surface.
+See [docs/input-surfaces.md](../input-surfaces.md) for how chat adapters work and what the platform can do through each surface.
 
 ## Path D — MCP client (Claude Desktop, Cursor, etc.)
 
@@ -53,7 +53,7 @@ Add the engine as a streamable-HTTP MCP server:
 }
 ```
 
-Your client will discover workflows, prompts, and resources automatically. See [docs/03-input-surfaces.md](../03-input-surfaces.md) for the MCP surface details.
+Your client will discover workflows, prompts, and resources automatically. See [docs/input-surfaces.md](../input-surfaces.md) for the MCP surface details.
 
 ## Troubleshooting
 
@@ -61,5 +61,5 @@ Any failed request prints `{code}: {message} [trace=…]`. Send the `trace_id` t
 
 ## Next steps
 
-- [docs/03-input-surfaces.md](../03-input-surfaces.md) — detailed explanations of every surface: CLI, REST, MCP, chat, webhooks, schedules.
-- [docs/04-authoring.md](../04-authoring.md) — what Conversations can do: proposing workflows, Skills, Knowledge Sources, Discovery, and the approval gate.
+- [docs/input-surfaces.md](../input-surfaces.md) — detailed explanations of every surface: CLI, REST, MCP, chat, webhooks, schedules.
+- [docs/authoring.md](../authoring.md) — what Conversations can do: proposing workflows, Skills, Knowledge Sources, Discovery, and the approval gate.

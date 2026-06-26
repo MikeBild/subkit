@@ -21,9 +21,9 @@ Both are exposed on the HTTP API, the MCP surface, and through the sk CLI.
 
 ## Canonical references
 
-- `docs/05-connectors.md` — Connector model, drivers, templates, auth, schema versions.
-- `docs/07-security-governance.md` — Credentials, OAuth2, crypto, credential vault.
-- `docs/04-authoring.md` — Documentation ingestion and the connector template catalog context.
+- `docs/connectors.md` — Connector model, drivers, templates, auth, schema versions.
+- `docs/security-governance.md` — Credentials, OAuth2, crypto, credential vault.
+- `docs/authoring.md` — Documentation ingestion and the connector template catalog context.
 
 ## Add a connector template
 
@@ -51,7 +51,7 @@ Postgres, and S3 and the system assumes these.
 4. Wire into `execution/` step dispatch (`request`, `call` kinds).
 5. Add to `sandboxes/` if it accepts user-supplied code.
 6. Full test coverage: unit for the driver, integration for the HTTP surface.
-7. Document it: add `docs/05-connectors.md` sections, example template.
+7. Document it: add `docs/connectors.md` sections, example template.
 
 ## OAuth2 flows
 

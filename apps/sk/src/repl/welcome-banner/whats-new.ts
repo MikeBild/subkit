@@ -7,7 +7,7 @@
 // Operators can opt out of the network call entirely by setting
 // `SK_WHATS_NEW_URL=` (empty) or `SK_WHATS_NEW_URL=disabled` —
 // the resolver short-circuits to the bundled-CHANGELOG path. See
-// `docs/03-input-surfaces.md` for the air-gapped policy.
+// `docs/input-surfaces.md` for the air-gapped policy.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -95,8 +95,8 @@ const WhatsNewRemoteSchema = z.object({ headline: z.string() }).strict();
  * sentinels (`""`, `"disabled"`, `"off"`, `"0"`) are accepted so
  * operators can disable an inherited populated value explicitly.
  *
- * Air-gapped deploys are documented in `docs/03-input-surfaces.md` +
- * `docs/07-security-governance.md`; the default posture matches those
+ * Air-gapped deploys are documented in `docs/input-surfaces.md` +
+ * `docs/security-governance.md`; the default posture matches those
  * docs.
  */
 export function whatsNewUrl(): string | null {

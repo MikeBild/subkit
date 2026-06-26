@@ -524,7 +524,7 @@ export async function runPatternAnalysis(
     const result = await upsertFromSignal(params.tenant_id, signal, db);
     if (result.action === "proposed") proposed++;
     if (result.action === "updated") updated++;
-    // Middle edge of the Run → Drift → Patch → Skill loop (docs/06-execution.md):
+    // Middle edge of the Run → Drift → Patch → Skill loop (docs/execution.md):
     // a freshly-proposed candidate whose evidence carries a patch_candidate_id
     // is a Patch Candidate that became a Skill Candidate (the repair-pattern
     // detector path). The auto-aggregator feeds the same counter.
@@ -637,7 +637,7 @@ export async function approveSkillCandidate(
       actor_id: p.actor_id,
     });
 
-    // Promotion edge of the Run → Drift → Patch → Skill loop (docs/06-execution.md).
+    // Promotion edge of the Run → Drift → Patch → Skill loop (docs/execution.md).
     // §6). Lag is anchored to the EARLIEST linked Patch Candidate's created_at
     // (drift-detection time) — not the evidence-capture time — so the
     // histogram measures the true drift→skill journey. Candidates with no

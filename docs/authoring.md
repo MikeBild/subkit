@@ -333,6 +333,6 @@ The conversational authoring layer is aware of the stdlib and proposes `sk.*` fo
 
 ## Further reading
 
-- [Connectors & integration](./05-connectors.md) — how Connectors, Drivers, and Credentials form the integration fabric that authoring draws on.
-- [Workflow execution](./06-execution.md) — how approved workflows run deterministically, what governance looks like at execution time, and how self-healing keeps workflows healthy.
-- [glossary — authoring terms](./02-concepts.md#group-2-authoring) — Conversation, Draft, Skill, Skill Candidate, Knowledge Source, Discovery.
+- [Connectors & integration](./connectors.md) — how Connectors, Drivers, and Credentials form the integration fabric that authoring draws on.
+- [Workflow execution](./execution.md) — how approved workflows run deterministically, what governance looks like at execution time, and how self-healing keeps workflows healthy.
+- [glossary — authoring terms](./concepts.md#group-2-authoring) — Conversation, Draft, Skill, Skill Candidate, Knowledge Source, Discovery.

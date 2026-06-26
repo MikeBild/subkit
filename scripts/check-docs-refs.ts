@@ -6,8 +6,8 @@
 // gate in CI):
 //   1. Markdown links to a relative path that does not exist, or to a
 //      `#anchor` (same-file or cross-file) whose heading is missing.
-//   2. Code comments that cite a numbered concept doc (`docs/NN-*.md`) which
-//      does not exist.
+//   2. Code comments that cite a concept doc (`docs/<name>.md`) which does
+//      not exist.
 //
 // Wired into `package.json` (`bun run check:docs-refs`), the `verify` gate, and
 // `.github/workflows/ci.yml`. Output is line-oriented and deterministic:
@@ -46,8 +46,14 @@ export function extractAnchors(markdown: string): Set<string> {
 
 // Markdown link: [text](target) — target may carry a "title" we strip.
 const LINK = /\[(?:[^\]]*)\]\(([^)]+)\)/g;
-// Code-comment refs to numbered concept docs: docs/NN-*.md (and sub-numbered).
-const DOC_REF = /docs\/\d{2}[0-9a-z][\w./-]*\.md/g;
+// Code-comment refs to concept docs: docs/<kebab-name>.md (and nested,
+// e.g. docs/operations/settings-reference.md). Unnumbered — the docs/ set
+// dropped its NN- prefixes, so this matches the stable kebab-case names.
+// Kebab-only segments + a leading word/slash boundary deliberately exclude
+// example/external paths like `/docs/index.md` (ingestion sample) and
+// `nodejs/undici docs/api/Errors.md` (external citation), which are not
+// subkit concept docs.
+const DOC_REF = /(?<![\w/])docs\/[a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*\.md/g;
 
 export type Broken = { file: string; target: string; reason: string };
 

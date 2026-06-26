@@ -8,7 +8,7 @@ Overrides and extends the root `AGENTS.md`. When rules conflict, this file wins.
 the Conversations surface on the engine. It's a thin client: all AI authoring
 happens on the engine via the Conversations tool-use loop.
 
-Canonical docs: `docs/03-input-surfaces.md`, `docs/04-authoring.md`.
+Canonical docs: `docs/input-surfaces.md`, `docs/authoring.md`.
 
 ## Layout
 

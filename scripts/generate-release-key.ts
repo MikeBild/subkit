@@ -14,7 +14,7 @@
 // Usage:
 //   bun run scripts/generate-release-key.ts
 //
-// Rotation procedure: see `docs/08-operations.md`.
+// Rotation procedure: see `docs/operations.md`.
 
 import { generateKeyPairSync } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";

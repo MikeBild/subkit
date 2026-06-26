@@ -9,7 +9,7 @@ zero external dependencies. It is the fastest way to try or self-host subkit.
 > single-node self-hosting. For production at scale, run PostgreSQL separately
 > (point the same image at it via `DATABASE_URL`, see [External database](#external-database))
 > and run the engine as a standalone service — see
-> [Deployment & Operations](../08-operations.md#deployment-topology).
+> [Deployment & Operations](../operations.md#deployment-topology).
 
 ## Quick start
 

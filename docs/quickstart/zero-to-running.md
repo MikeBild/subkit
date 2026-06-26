@@ -31,7 +31,7 @@ output below is real.
 | **Execution** | One immutable run of a workflow. |
 | **Knowledge source** | A document (runbook, PDF) indexed for semantic search. |
 
-Full glossary: [`docs/02-concepts.md`](../02-concepts.md).
+Full glossary: [`docs/concepts.md`](../concepts.md).
 
 ---
 
@@ -349,7 +349,7 @@ docker volume rm subkit-data   # also wipe all state (optional)
 ```
 
 - [**Using the `sk` REPL**](./using-the-repl.md) — the primary interface, in depth.
-- [`docs/05-connectors.md`](../05-connectors.md) — connectors, credentials, OAuth2.
-- [`docs/06-execution.md`](../06-execution.md) — steps, versioning, scheduling.
-- [`docs/04-authoring.md`](../04-authoring.md) — conversational authoring, skills, knowledge.
+- [`docs/connectors.md`](../connectors.md) — connectors, credentials, OAuth2.
+- [`docs/execution.md`](../execution.md) — steps, versioning, scheduling.
+- [`docs/authoring.md`](../authoring.md) — conversational authoring, skills, knowledge.
 - Operator setup (TLS, external DB, settings): [`docs/operations/docker.md`](../operations/docker.md).

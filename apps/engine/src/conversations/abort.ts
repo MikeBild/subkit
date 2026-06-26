@@ -27,7 +27,7 @@
 // keyed on `conversation_id` (or stand up a shared store) before
 // scaling past one replica; otherwise the `cancel.no_controller`
 // log line is expected on a fraction of cancels and the running turn
-// drains its own budget. Tracked in docs/08-operations.md (single-
+// drains its own budget. Tracked in docs/operations.md (single-
 // replica is the supported topology for the cancel surface today).
 //
 // **Reason coverage for `isExpectedCancellation`.** The two known

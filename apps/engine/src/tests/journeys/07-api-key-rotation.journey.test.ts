@@ -7,7 +7,7 @@
 //          `rotating_out_at` is in the future.
 //   - AC3: Once `rotating_out_at` is in the past, the old key is
 //          rejected but the new key keeps working.
-// Spec refs: docs/07-security-governance.md
+// Spec refs: docs/security-governance.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";

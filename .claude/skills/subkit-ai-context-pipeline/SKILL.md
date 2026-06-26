@@ -13,9 +13,9 @@ subkit separates curated context (Skills, Knowledge Sources) from detected patte
 
 ## Canonical references
 
-- `docs/04-authoring.md` — AI-assisted authoring: conversations, skills, knowledge sources, discovery, multi-provider.
-- `docs/06-execution.md` — Drift detection, self-healing, and bounded repair.
-- `docs/02-concepts.md` — Entity glossary for Skill, Skill Candidate, Knowledge Source, Conversation.
+- `docs/authoring.md` — AI-assisted authoring: conversations, skills, knowledge sources, discovery, multi-provider.
+- `docs/execution.md` — Drift detection, self-healing, and bounded repair.
+- `docs/concepts.md` — Entity glossary for Skill, Skill Candidate, Knowledge Source, Conversation.
 
 ## Subsystem boundaries
 

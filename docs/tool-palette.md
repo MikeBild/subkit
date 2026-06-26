@@ -267,10 +267,10 @@ apps/engine/src/conversations/tools/
 
 ## Cross-refs
 
-- `docs/02-concepts.md` — vocabulary (workflow, connector, skill).
-- `docs/03-input-surfaces.md` — how chat/MCP/HTTP surfaces map to the
+- `docs/concepts.md` — vocabulary (workflow, connector, skill).
+- `docs/input-surfaces.md` — how chat/MCP/HTTP surfaces map to the
   conversation loop.
-- `docs/07-security-governance.md` — RBAC, audit, policy.
+- `docs/security-governance.md` — RBAC, audit, policy.
 - `AGENTS.md` lines 142–185 — subsystem map (the row for `tools` lives
   here).
 
