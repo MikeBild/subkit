@@ -13,6 +13,10 @@ export function validateAgainstJsonSchema(
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   if (!schema || typeof schema !== "object") return { valid: true, errors: [] };
+  const obj =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
   const required = schema.required as string[] | undefined;
   if (required && Array.isArray(required) && required.length > 0) {
     // A null / undefined / non-object value cannot satisfy any required
@@ -20,17 +24,67 @@ export function validateAgainstJsonSchema(
     // boundary that turns a misconfigured scheduled run (fired with no
     // input) into a fast, named failure instead of an opaque downstream
     // error six steps later.
-    const obj =
-      value && typeof value === "object" && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : null;
     for (const field of required) {
       if (!obj || !(field in obj)) {
         errors.push(`${location}: required field '${field}' is missing`);
       }
     }
   }
+  // For each DECLARED property that is actually present, validate its JSON
+  // Schema `type` and `enum` membership. `additionalProperties` stays
+  // permissive: undeclared keys are ignored, and a declared-but-absent key
+  // is the `required` loop's concern, not this one. This restores the
+  // type/enum half of the input/output contract — a misconfigured run that
+  // passes the wrong scalar type now fails fast and named at the boundary.
+  const properties =
+    schema.properties && typeof schema.properties === "object"
+      ? (schema.properties as Record<string, unknown>)
+      : null;
+  if (obj && properties) {
+    for (const [field, rawSpec] of Object.entries(properties)) {
+      if (!(field in obj)) continue;
+      if (!rawSpec || typeof rawSpec !== "object") continue;
+      const spec = rawSpec as Record<string, unknown>;
+      const fieldValue = obj[field];
+      const expectedType = typeof spec.type === "string" ? spec.type : null;
+      if (expectedType && !matchesJsonSchemaType(fieldValue, expectedType)) {
+        errors.push(`${location}: field '${field}' must be type '${expectedType}'`);
+        // Skip the enum check when the type is already wrong — one named
+        // error per field is enough to point the operator at the fix.
+        continue;
+      }
+      const enumValues = Array.isArray(spec.enum) ? spec.enum : null;
+      if (enumValues && enumValues.length > 0 && !enumValues.includes(fieldValue)) {
+        const rendered = enumValues.map((v) => JSON.stringify(v)).join(", ");
+        errors.push(`${location}: field '${field}' must be one of [${rendered}]`);
+      }
+    }
+  }
   return { valid: errors.length === 0, errors };
+}
+
+/** JSON Schema `type` check for the scalar/structural keywords subkit's
+ *  input/output schemas use. `integer` is a `number` with no fractional
+ *  part; `object` excludes arrays and null; `array` is a real array. */
+function matchesJsonSchemaType(value: unknown, expected: string): boolean {
+  switch (expected) {
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return typeof value === "number" && Number.isInteger(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "object":
+      return value !== null && typeof value === "object" && !Array.isArray(value);
+    case "array":
+      return Array.isArray(value);
+    default:
+      // Unknown / unsupported type keyword — stay permissive rather than
+      // inventing a failure for a contract we don't model.
+      return true;
+  }
 }
 
 /** Envelope shape exposed on `scope[step.id]`. Transform expressions

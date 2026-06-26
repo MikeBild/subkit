@@ -99,6 +99,36 @@ export function classifyRunResult(step: StepDef, run: RunResult): PreviewStepSum
   return classifyStepResult(step, syntheticResult, duration_ms);
 }
 
+/** Transient upstream-failure codes a single-step run may surface on its
+ *  top-level `RunResult.error.code`. These are the retryable transport /
+ *  rate-limit / server-error classes the request and graphql drivers emit
+ *  (HTTP: `connection`, `http_5xx`, `http_429`; GraphQL: `graphql_throttle`,
+ *  `graphql_5xx`). Timeouts are deliberately NOT in this set — a step that
+ *  blew its wall-clock budget surfaces `status: "timed_out"` / code
+ *  `step_timeout`, which is a TERMINAL outcome (re-running the same slow
+ *  request just re-spends the budget). */
+const TRANSIENT_RUN_CODES: ReadonlySet<string> = new Set([
+  "connection",
+  "http_5xx",
+  "http_429",
+  "graphql_throttle",
+  "graphql_5xx",
+]);
+
+/** True when a single-step `RunResult` failed with a transient upstream
+ *  fault that a bounded retry could plausibly clear. The request/graphql
+ *  drivers already retry most transients in-band; this predicate lets the
+ *  authoring layer add a thin safety net around the residual flap so a
+ *  flickering upstream doesn't trip `error_code_repeat_block`. Timeouts and
+ *  every deterministic failure (auth, 4xx, placeholder, schema) return
+ *  false — re-running them only repeats the same outcome. */
+export function isTransientRunResult(run: RunResult): boolean {
+  // A timed-out run is terminal by contract — never retry it here.
+  if (run.status === "timed_out") return false;
+  const code = run.error?.code;
+  return code != null && TRANSIENT_RUN_CODES.has(code);
+}
+
 export function classifyFailure(result: StepResult): PreviewClassification {
   if (result.status === "aborted") return "aborted";
   if (result.status === "skipped") return "aborted";

@@ -8527,7 +8527,8 @@
               "repair_pattern",
               "failure_pattern",
               "success_pattern",
-              "chained_workflow_pattern"
+              "chained_workflow_pattern",
+              "authoring_capability"
             ]
           },
           "title": {

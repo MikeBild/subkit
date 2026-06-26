@@ -168,9 +168,17 @@
     ],
     "best_practices": [
       "Request only the fields you need in GraphQL queries to stay within complexity limits",
-      "Use webhook subscriptions for real-time updates instead of polling"
+      "Use webhook subscriptions for real-time updates instead of polling",
+      "Run discover_connector_endpoints before authoring — Linear's schema evolves frequently and field names differ from documentation examples; introspection gives the exact current shape",
+      "Paginate using Relay cursor style: request pageInfo { hasNextPage endCursor } and pass endCursor as the after variable; stop when hasNextPage is false",
+      "Push filters into GraphQL filter arguments (e.g. filter: { state: { type: { eq: \"started\" } } }) rather than fetching all records and filtering in a transform — reduces payload and complexity cost",
+      "Set error_policy: \"all\" with max_retries on steps that may return partial errors, and inspect request_meta.partial downstream"
     ],
-    "pitfalls": ["There is no REST API — all operations must use GraphQL mutations and queries"],
+    "pitfalls": [
+      "There is no REST API — all operations must use GraphQL mutations and queries",
+      "Selecting deeply nested objects (assignee + team + labels + cycle in a single query) can exceed Linear's per-query complexity limit — split into separate steps when a complexity error appears",
+      "Linear uses Relay-style pagination via edges/node, not a flat array — a transform reading the field directly instead of edges[].node returns undefined"
+    ],
     "doc_refs": ["https://linear.app/developers/graphql"]
   },
   "asana-basics": {
@@ -198,10 +206,16 @@
     ],
     "best_practices": [
       "Monitor complexity cost of queries — complex nested queries consume more points",
-      "Use items_page(limit, cursor) for paginated item fetching"
+      "Use items_page(limit, cursor) for paginated item fetching",
+      "Run discover_connector_endpoints before authoring — Monday's schema exposes filter input types (ItemsQuery, BoardsQuery) with exact field names that differ from documentation examples; introspection gives the correct current shape",
+      "Paginate via the cursor field returned by items_page: pass it as the next cursor argument and stop when the returned cursor is null — this is NOT Relay-style (no pageInfo wrapper)",
+      "Push filters into items_page or boards query arguments rather than fetching all items and filtering in a transform — reduces payload and complexity cost",
+      "Set error_policy: \"all\" with max_retries on steps that may encounter complexity throttling — Monday throttling surfaces as errors alongside partial data"
     ],
     "pitfalls": [
-      "Cursors expire after 60 minutes — long-running pagination jobs must handle cursor expiration"
+      "Cursors expire after 60 minutes — long-running pagination jobs must handle cursor expiration",
+      "Monday uses a non-Relay cursor shape: items_page(limit, cursor) returns { cursor, items: [...] } — do not look for edges/node or pageInfo; the next page cursor is the direct cursor field",
+      "Deeply nested subitems (items → subitems → column_values) multiply complexity cost rapidly — fetch subitems in a separate step when the query exceeds the complexity budget"
     ],
     "doc_refs": ["https://developer.monday.com/api-reference/reference"]
   },

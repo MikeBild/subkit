@@ -14,10 +14,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { evaluateHook } from "../../../auth/hooks.ts";
-import {
-  graphqlErrorMessages,
-  query as graphqlQuery,
-} from "../../../connectors/drivers/graphql.ts";
+import type { query as graphqlQuery } from "../../../connectors/drivers/graphql.ts";
 import {
   buildMultipartBody,
   buildRequestPlan,
@@ -85,6 +82,7 @@ import type {
 } from "../../types.ts";
 import { buildStepErrorDetail } from "../error-detail.ts";
 import { RequestError } from "./errors.ts";
+import { runGraphqlWithRetry } from "./graphql-retry.ts";
 import {
   backoffMs,
   isIdempotent,
@@ -882,8 +880,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               },
             });
           }
-          const res = await withEgressAudit(
-            {
+          return await runGraphqlWithRetry({
+            queryArgs: args,
+            egressInput: {
               executor: p.ctx.db,
               tenant_id: p.ctx.tenant_id,
               actor_id: p.ctx.principal?.id ?? null,
@@ -891,7 +890,6 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               connector_id: connector.id,
               connector_slug: connector.slug,
               driver: "graphql",
-              credential_id: null, // populated post-call from response.credential_id
               operation: p.step.graphql.operation ?? "query",
               url: endpointUrl,
               source: "execution",
@@ -899,67 +897,11 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               workflow_id: p.ctx.workflow_id,
               step_id: p.step.id,
             },
-            () => graphqlQuery(args),
-            (out) => {
-              const gqlErrors = graphqlErrorMessages(out.body);
-              return {
-                status: out.status,
-                bytes_in: out.bytes_in,
-                ok: out.status >= 200 && out.status < 300 && gqlErrors === null,
-                ...(gqlErrors
-                  ? { reason: `graphql response returned ${gqlErrors.length} error(s)` }
-                  : {}),
-              };
-            },
-          );
-          // Update connectorResolution with the actually-applied auth method
-          // (may be `oauth2_refreshed` if the driver rotated a stale token).
-          connectorResolution = {
-            ...connectorResolution,
-            auth_method: res.auth_method,
-          };
-          // GraphQL fails logically via a `body.errors` array even on
-          // HTTP 200 (the AppSync convention). A non-empty `errors`
-          // array is a failed step — not a success whose output happens
-          // to contain errors. Without this check a broken query
-          // ("green" HTTP 200) flows through as a succeeded step: the
-          // dry-run reports clean and auto-commits a broken workflow.
-          const gqlErrors = graphqlErrorMessages(res.body);
-          const graphqlOk = res.status >= 200 && res.status < 300 && gqlErrors === null;
-          // Unwrap the GraphQL envelope so the step output is the `data`
-          // payload, not the `{ data, errors }` transport wrapper. This
-          // makes `$scope.<step>.data` consistent with the REST driver
-          // (single `data`, not a confusing double `data.data`). GraphQL
-          // `errors` are not lost — they are classified above and routed
-          // to the step `error` channel (see `gqlErrors` / `graphql_error`
-          // below); a transform reads them via `$scope.<step>.error`.
-          return {
-            status: graphqlOk ? "succeeded" : "failed",
-            output: (res.body as { data?: unknown }).data ?? null,
-            retry_count: 0,
-            duration_ms: Date.now() - start,
-            request_meta: {
-              driver: "graphql",
-              method: "POST",
-              status: res.status,
-              connector: connectorResolution,
-            },
-            ...(graphqlOk
-              ? {}
-              : {
-                  error: gqlErrors
-                    ? {
-                        code: "graphql_error",
-                        message: `graphql response returned errors: ${gqlErrors
-                          .slice(0, 3)
-                          .join("; ")}`,
-                      }
-                    : {
-                        code: `graphql_${res.status}`,
-                        message: `graphql endpoint returned ${res.status}`,
-                      },
-                }),
-          };
+            step: p.step,
+            signal,
+            start,
+            connectorResolution,
+          });
         } catch (err) {
           // Header-contract violations on the GraphQL pipeline get the
           // same `request_invalid` classification as the HTTP driver.

@@ -272,11 +272,11 @@ export async function getSkillCandidateEvidence(
 // Upsert (internal — called by detectors)
 // ---------------------------------------------------------------------------
 
-async function upsertFromSignal(
+export async function upsertFromSignal(
   tenant_id: string,
   signal: PatternSignal,
   exec: Db,
-): Promise<{ action: "proposed" | "updated" | "skipped" }> {
+): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
   return await exec.transaction(async (tx) => {
     // Check for existing candidate with same fingerprint
     const existing = await tx
@@ -300,7 +300,7 @@ async function upsertFromSignal(
           pattern_kind: signal.pattern_kind,
           reason: row.status,
         });
-        return { action: "skipped" as const };
+        return { action: "skipped" as const, candidate_id: row.id };
       }
       // If already approved, skip
       if (row.status === "approved") {
@@ -310,7 +310,7 @@ async function upsertFromSignal(
           pattern_kind: signal.pattern_kind,
           reason: "approved",
         });
-        return { action: "skipped" as const };
+        return { action: "skipped" as const, candidate_id: row.id };
       }
       // Update existing proposed candidate (bump version, update confidence)
       await tx
@@ -365,7 +365,7 @@ async function upsertFromSignal(
         tx,
       );
 
-      return { action: "updated" as const };
+      return { action: "updated" as const, candidate_id: row.id };
     }
 
     // Cross-fingerprint supersede ("the pattern evolved → retire the stale
@@ -495,7 +495,7 @@ async function upsertFromSignal(
       superseded_count: supersededCount,
     });
 
-    return { action: "proposed" as const };
+    return { action: "proposed" as const, candidate_id: row.id };
   });
 }
 

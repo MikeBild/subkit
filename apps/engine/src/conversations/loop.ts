@@ -596,7 +596,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     source: string;
     confidence: number;
     endpoint_count: number;
-    sample_endpoints: Array<{ method: string; path: string }>;
+    sample_endpoints: Array<{ method: string; path: string; description?: string }>;
   } | null = null;
   // Folded into the consolidated `convRow` read above — no separate
   // SELECT for the persisted target_connector_id.
@@ -606,6 +606,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       .select({
         method: connectorEndpointSchemas.method,
         path: connectorEndpointSchemas.path,
+        description: connectorEndpointSchemas.description,
         source: connectorEndpointSchemas.source,
         confidence: connectorEndpointSchemas.confidence,
       })
@@ -623,7 +624,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         source: head.source,
         confidence: head.confidence,
         endpoint_count: epRows.length,
-        sample_endpoints: epRows.map((r) => ({ method: r.method, path: r.path })),
+        sample_endpoints: epRows.map((r) => ({
+          method: r.method,
+          path: r.path,
+          ...(r.description ? { description: r.description } : {}),
+        })),
       };
     }
   }

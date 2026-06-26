@@ -27,6 +27,7 @@ import {
 } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { buildWorkflowUsage } from "../tools/usage-guidance.ts";
+import { proposeAuthoringCapabilityCandidate } from "./commit-workflow-skill-candidate.ts";
 import { classifyPreviewFailure } from "./preview-failure-class.ts";
 import { findPriorSaveWorkflowApproval } from "./save-workflow-approval.ts";
 
@@ -69,6 +70,11 @@ export function workflowDefFromDraft(draft: WorkflowDefFromDraft): WorkflowDefFr
     steps: draft.steps,
   };
 }
+
+export type ScopeIndex = Record<
+  string,
+  { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
+>;
 
 export interface CommitWorkflowAtomicParams {
   ctx: ToolContext;
@@ -878,6 +884,18 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     })
     .where(eq(conversations.id, ctx.conversation_id));
 
+  // Capability Skill-Candidate (status `proposed`, NEVER an active skill).
+  // The operator just authored this workflow, so we propose a workflow-keyed
+  // capability summary they can approve via the human gate (best-effort).
+  const candidateNotice = await proposeAuthoringCapabilityCandidate({
+    db: ctx.db,
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    workflow: { id: workflow.id, slug: workflow.slug, name: workflow.name },
+    def,
+    scope_index: scopeIndex,
+  });
+
   // commit telemetry: record exactly what was persisted so a partial or
   // wrong commit is never silent. The step id list + present-field summary
   // makes "what did this commit actually write?" answerable from logs alone
@@ -982,7 +1000,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       name: workflow.name,
       usage,
       next_best_actions: ["run_workflow", "inspect_workflow"],
-      next_prompt: usage.follow_up,
+      next_prompt: candidateNotice ? `${usage.follow_up}\n${candidateNotice}` : usage.follow_up,
     },
     committed_workflow_id: workflow.id,
   };

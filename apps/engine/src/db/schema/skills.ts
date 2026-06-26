@@ -132,6 +132,11 @@ export const skillCandidatePatternEnum = pgEnum("skill_candidate_pattern", [
   "failure_pattern",
   "success_pattern",
   "chained_workflow_pattern",
+  // Authoring-time capability summary, proposed when an operator commits a
+  // workflow. Distinct from success_pattern so its workflow-keyed supersede
+  // (one live candidate per workflow) never collides with the run-derived
+  // success detector's own supersede pass.
+  "authoring_capability",
 ]);
 
 export const skillCandidates = pgTable(
