@@ -20,9 +20,6 @@ import documentAnalysisGuidance from "../conversations/seed/skills/document-anal
   type: "text",
 };
 import errorRecovery from "../conversations/seed/skills/error-recovery.md" with { type: "text" };
-import fileTransportConnectors from "../conversations/seed/skills/file-transport-connectors.md" with {
-  type: "text",
-};
 import githubGraphqlBasics from "../conversations/seed/skills/github-graphql-basics.md" with {
   type: "text",
 };
@@ -32,9 +29,6 @@ import graphqlConnectors from "../conversations/seed/skills/graphql-connectors.m
 import httpConnectors from "../conversations/seed/skills/http-connectors.md" with { type: "text" };
 import mcpServerSetup from "../conversations/seed/skills/mcp-server-setup.md" with { type: "text" };
 import mcpToolContract from "../conversations/seed/skills/mcp-tool-contract.md" with {
-  type: "text",
-};
-import mssqlConnectors from "../conversations/seed/skills/mssql-connectors.md" with {
   type: "text",
 };
 import multiStepBestPractices from "../conversations/seed/skills/multi-step-best-practices.md" with {
@@ -48,9 +42,6 @@ import postgresConnectors from "../conversations/seed/skills/postgres-connectors
   type: "text",
 };
 import rbacAndScopes from "../conversations/seed/skills/rbac-and-scopes.md" with { type: "text" };
-import redisConnectors from "../conversations/seed/skills/redis-connectors.md" with {
-  type: "text",
-};
 import s3Connectors from "../conversations/seed/skills/s3-connectors.md" with { type: "text" };
 import selfHealing from "../conversations/seed/skills/self-healing.md" with { type: "text" };
 import subkitConcepts from "../conversations/seed/skills/subkit-concepts.md" with { type: "text" };
@@ -80,19 +71,16 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "data-handling.md", content: dataHandling },
   { file: "document-analysis-guidance.md", content: documentAnalysisGuidance },
   { file: "error-recovery.md", content: errorRecovery },
-  { file: "file-transport-connectors.md", content: fileTransportConnectors },
   { file: "github-graphql-basics.md", content: githubGraphqlBasics },
   { file: "graphql-connectors.md", content: graphqlConnectors },
   { file: "http-connectors.md", content: httpConnectors },
   { file: "mcp-server-setup.md", content: mcpServerSetup },
   { file: "mcp-tool-contract.md", content: mcpToolContract },
-  { file: "mssql-connectors.md", content: mssqlConnectors },
   { file: "multi-step-best-practices.md", content: multiStepBestPractices },
   { file: "oauth-flow.md", content: oauthFlow },
   { file: "onboarding-workflow-creation.md", content: onboardingWorkflowCreation },
   { file: "postgres-connectors.md", content: postgresConnectors },
   { file: "rbac-and-scopes.md", content: rbacAndScopes },
-  { file: "redis-connectors.md", content: redisConnectors },
   { file: "s3-connectors.md", content: s3Connectors },
   { file: "self-healing.md", content: selfHealing },
   { file: "subkit-concepts.md", content: subkitConcepts },

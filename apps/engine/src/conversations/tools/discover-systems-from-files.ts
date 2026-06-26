@@ -85,7 +85,7 @@ const CapabilityEnum = z.enum([
 
 const CandidateSchema = z.object({
   name: z.string(),
-  kind: z.enum(["http", "graphql", "postgres", "s3", "ftp", "sftp", "smb", "mssql", "redis"]),
+  kind: z.enum(["http", "graphql", "postgres", "s3"]),
   base_url_guess: z.string().nullable(),
   endpoints: z.array(
     z.object({
@@ -276,7 +276,7 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
       "Analyze the following document and enumerate every third-party system or API it describes.",
       "For each system, return:",
       "  - name: the operator-facing label (e.g. 'DigitalOcean', 'Stripe').",
-      "  - kind: one of http | graphql | postgres | s3 | ftp | sftp | smb | mssql | redis.",
+      "  - kind: one of http | graphql | postgres | s3.",
       "  - base_url_guess: the most plausible base URL or null if unstated.",
       "  - endpoints: list of { method, path, summary } the document mentions or implies.",
       "  - auth_kind: one of none | header | query | bearer | basic | oauth2 | unknown.",

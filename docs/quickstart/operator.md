@@ -63,7 +63,7 @@ sk connectors create \
   --name stripe-prod
 ```
 
-Pick from 105 connector templates — see [docs/05-connectors.md](../05-connectors.md) for how templates, drivers, and credentials work together.
+Pick from 93 connector templates — see [docs/05-connectors.md](../05-connectors.md) for how templates, drivers, and credentials work together.
 
 ## 5. You're operational
 

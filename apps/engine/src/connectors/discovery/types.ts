@@ -32,8 +32,7 @@
 //   swagger-ui-scrape                `swagger-ui-scrape.ts`
 //   llms-txt                         `llms-txt.ts`
 //   html-to-markdown                 `html-to-markdown.ts`
-//   postgres/mssql introspect        `postgres-introspect.ts` +
-//                                    `mssql-introspect.ts` (both engines)
+//   postgres introspect              `postgres-introspect.ts`
 //   endpoint-scorer                  `endpoint-scorer.ts` — heuristic
 //                                    ranking of discovered endpoints by
 //                                    relevance to a probe intent;
@@ -119,7 +118,6 @@ export type DiscoveryStrategyName =
   | "openapi-direct"
   | "graphql-introspect"
   | "postgres-introspect"
-  | "mssql-introspect"
   | "swagger-ui-scrape"
   | "llms-txt"
   | "html-scrape"

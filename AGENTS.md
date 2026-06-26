@@ -9,7 +9,7 @@ instruction files are compatibility layers or indexes — not competing sources 
 - **subkit is a self-hostable, multi-tenant engine for governed, versioned, AI-assisted
   workflow execution.** It is not a chat product, not an LLM provider, and not a general
   workflow-automation tool. It owns: identity & access (RBAC/ABAC, encrypted credentials,
-  portal tokens, API keys), unified data/tool interfaces (9 typed drivers, 105 connector
+  portal tokens, API keys), unified data/tool interfaces (4 typed drivers, 93 connector
   templates), governed execution (immutable audit log, human-in-the-loop approvals,
   versioned workflows with full snapshots), observability (Prometheus, structured logs,
   drift detection), and multi-tenant conversation-first surfaces (CLI, `sk`, Slack, Teams,
@@ -35,13 +35,13 @@ Priority when sources conflict:
 
 1. Code, types, tests, and verified inline decisions.
 2. Canonical docs in `docs/` (numbered) and workflow/config files.
-3. Existing implementation examples (e.g. the 105 templates, the 9 drivers).
+3. Existing implementation examples (e.g. the 93 templates, the 4 drivers).
 
 High-value references (by task type):
 
 - **Project shape & build** — `package.json`, `biome.json`, `tsconfig.json`, `docker-compose.yml`,
   `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.commitlintrc.json`
-- **Platform & concepts** — `docs/01-platform.md`, `docs/02-concepts.md`
+- **Platform & concepts** — `docs/02-concepts.md`
 - **Input surfaces** — `docs/03-input-surfaces.md`. The sk REPL exposes a 5-tab
   `/settings` palette (`Status · Config · Usage · Skills · Knowledge`) embedded
   in-process via the `kind: "settings"` PaneSpec. Operator surfaces
@@ -154,7 +154,7 @@ Subsystem map inside `apps/engine/src/` (45 directories + 5 loose root files):
 | Auth providers (OIDC, API key, portal token) | `auth/` | `docs/07-security-governance.md` |
 | Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/03-input-surfaces.md` |
 | Layered config loader (override → tenant → global → default) | `config/` | `docs/operations/configuration.md` |
-| 9 drivers + 105 templates | `connectors/` | `docs/05-connectors.md` |
+| 4 drivers + 93 templates | `connectors/` | `docs/05-connectors.md` |
 | AI authoring loop + tool use | `conversations/` | `docs/04-authoring.md` |
 | Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/07-security-governance.md` |
 | AES-256-GCM + redaction | `crypto/` | `docs/07-security-governance.md` |

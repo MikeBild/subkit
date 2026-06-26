@@ -11454,7 +11454,7 @@ export interface components {
                 slug: string;
                 name: string;
                 /** @enum {string} */
-                driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
+                driver: "http" | "postgres" | "s3" | "graphql";
                 base_url: string | null;
                 /** @enum {string} */
                 auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
@@ -11650,7 +11650,7 @@ export interface components {
             slug: string;
             name: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
+            driver: "http" | "postgres" | "s3" | "graphql";
             base_url: string | null;
             /** @enum {string} */
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
@@ -11706,7 +11706,7 @@ export interface components {
             slug: string;
             name: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
+            driver: "http" | "postgres" | "s3" | "graphql";
             base_url: string | null;
             /** @enum {string} */
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
@@ -11858,7 +11858,7 @@ export interface components {
             name: string;
             slug?: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mssql" | "mysql" | "caldav" | "webdav" | "soap" | "grpc" | "mqtt" | "imap" | "ftp" | "sftp" | "smb" | "redis";
+            driver: "http" | "postgres" | "s3" | "graphql";
             /**
              * @default dev
              * @enum {string}
@@ -12000,7 +12000,7 @@ export interface components {
             text_corpus?: string | null;
         };
         /** @enum {string} */
-        DiscoveryStrategyName: "openapi-direct" | "graphql-introspect" | "postgres-introspect" | "mssql-introspect" | "swagger-ui-scrape" | "llms-txt" | "html-scrape" | "playwright-crawl";
+        DiscoveryStrategyName: "openapi-direct" | "graphql-introspect" | "postgres-introspect" | "swagger-ui-scrape" | "llms-txt" | "html-scrape" | "playwright-crawl";
         DiscoveredAuthScheme: {
             name: string;
             /** @enum {string} */

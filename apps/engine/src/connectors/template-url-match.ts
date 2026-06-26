@@ -99,7 +99,7 @@ export function matchTemplateByUrl(
   templates?: ConnectorTemplate[],
 ): TemplateUrlMatch | null {
   if (!looksLikeUrl(rawUrl)) {
-    // Allow postgres/mysql/redis DSNs too — they are not URL objects, but
+    // Allow postgres DSNs too — they are not URL objects, but
     // templates may have url_pattern starting with `^postgres:`.
     if (!/^[a-z][a-z0-9+\-.]*:\/\//.test(rawUrl)) return null;
   }

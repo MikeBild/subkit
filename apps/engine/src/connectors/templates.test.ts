@@ -22,7 +22,7 @@ describe("connector-template catalog — structural", () => {
     // canonical drift guard is `loadBuiltinTemplates()` at startup —
     // every entry must pass `ConnectorTemplateSchema`. This test pins
     // the catalog size so a stray add/remove surfaces explicitly.
-    expect(templates.length).toBe(106);
+    expect(templates.length).toBe(93);
   });
 
   test("supabase-graphql url_pattern matches a real host, not the literal [^/]+", () => {
@@ -114,7 +114,6 @@ describe("connector-template catalog — cross-reference invariants", () => {
       zendesk: "https://acme.zendesk.com/api/v2",
       freshdesk: "https://acme.freshdesk.com/api/v2",
       servicenow: "https://acme.service-now.com/api/now",
-      "servicenow-soap": "https://acme.service-now.com",
       snowflake: "https://acme.snowflakecomputing.com/api/v2",
       mailchimp: "https://us21.api.mailchimp.com/3.0",
       "azure-blob-storage": "https://acct.blob.core.windows.net",
@@ -139,7 +138,7 @@ describe("connector-template catalog — cross-reference invariants", () => {
   test("no url_pattern is a greedy host wildcard that matches an arbitrary unknown URL", () => {
     // A pattern like `^https://[^/]+(/|$)` matches EVERY https URL, so it would
     // hijack auto-detection for every unknown connector (regression: un-escaping
-    // the broken `\[\^/\]\+` patterns turned grpc-connect/soap-generic into
+    // the broken `\[\^/\]\+` patterns turned grpc-connect into
     // match-everything). Generic protocol templates carry url_pattern=null and
     // are selected by slug instead.
     const arbitrary = [

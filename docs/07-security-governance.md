@@ -3,9 +3,7 @@
 > **Reading time:** ~12 min
 > **Audience:** Security engineers, compliance reviewers, operators wiring access
 
-Enterprise AI requires enterprise-grade security from the start. A platform that touches production integrations, sensitive credentials, and automated business processes cannot treat security as a layer added later. It has to be the foundation.
-
-sk is designed so that the right security behaviour is the default behaviour. Every interaction is authorised, every action is auditable, and every secret is protected — by architecture, not by configuration.
+sk is designed so that the right security behaviour is the default behaviour. Every interaction is authorised, every action is auditable, and every secret is protected — by architecture, not by configuration. This document describes the identity, RBAC, isolation, and audit primitives that enforce it.
 
 ---
 

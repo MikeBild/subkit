@@ -18,11 +18,7 @@ const DISCOVERY_DIR = join(import.meta.dir);
 // `fetch()` — its network egress is governed by the Chromium process
 // boundary, not the Node assertEgressAllowed() guard. Tracked
 // separately if/when Chromium gains an SSRF surface in subkit.
-const DB_STRATEGIES = new Set<string>([
-  "postgres-introspect.ts",
-  "mssql-introspect.ts",
-  "playwright-crawl.ts",
-]);
+const DB_STRATEGIES = new Set<string>(["postgres-introspect.ts", "playwright-crawl.ts"]);
 
 // Files that aren't strategies (entrypoints, helpers, types, tests).
 const NOT_STRATEGY_RE =

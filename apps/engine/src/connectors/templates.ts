@@ -332,24 +332,7 @@ export const ConnectorTemplateSchema = z
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/),
     name: z.string().min(1),
-    driver: z.enum([
-      "http",
-      "postgres",
-      "s3",
-      "graphql",
-      "mssql",
-      "mysql",
-      "caldav",
-      "webdav",
-      "soap",
-      "grpc",
-      "mqtt",
-      "imap",
-      "ftp",
-      "sftp",
-      "smb",
-      "redis",
-    ]),
+    driver: z.enum(["http", "postgres", "s3", "graphql"]),
     /** Operator-supplied or template-default base URL. Nullable for
      *  templates whose endpoint is per-tenant / per-region (e.g.
      *  AppSync, API Gateway, GCP service-account-driven APIs). The

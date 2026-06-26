@@ -884,40 +884,6 @@
     ],
     "doc_refs": ["https://www.postgresql.org/docs/current/sql.html"]
   },
-  "mssql-basics": {
-    "title": "Microsoft SQL Server Basics",
-    "body": "Connect using an MSSQL DSN: mssql://user:password@hostname:1433/database?encrypt=true. Full information_schema support for introspection. For Azure SQL, enable encryption and allow Azure services in firewall rules. Health check uses SELECT 1.",
-    "examples": [
-      "SELECT TOP 50 * FROM Customers WHERE Region = @region — parameterized query with TOP",
-      "INSERT INTO Orders (CustomerId, Total) OUTPUT INSERTED.Id VALUES (@custId, @total) — insert with OUTPUT"
-    ],
-    "best_practices": [
-      "Use parameterized queries (@param) to prevent SQL injection",
-      "For Azure SQL, always enable encrypt=true in the connection string"
-    ],
-    "pitfalls": [
-      "MSSQL uses @param syntax for parameters (not $1) and TOP instead of LIMIT — PostgreSQL-style syntax will fail"
-    ],
-    "doc_refs": [
-      "https://learn.microsoft.com/en-us/sql/t-sql/language-reference?view=sql-server-ver17"
-    ]
-  },
-  "mysql-basics": {
-    "title": "MySQL Database Basics",
-    "body": "Connect using a MySQL DSN: mysql://user:password@hostname:3306/database?ssl=true. Full information_schema support for introspection. Works with MySQL 5.7+, MySQL 8.x, MySQL 9.x, and MariaDB 10.x+. Health check uses SELECT 1.",
-    "examples": [
-      "SELECT * FROM products WHERE category = ? LIMIT 50 — parameterized query with LIMIT",
-      "INSERT INTO orders (customer_id, total) VALUES (?, ?) — parameterized insert"
-    ],
-    "best_practices": [
-      "Use ? placeholder syntax for parameterized queries",
-      "Enable ssl=true in the connection string for production databases"
-    ],
-    "pitfalls": [
-      "MySQL uses ? placeholders (not $1 or @param) — using the wrong syntax silently fails or causes injection vulnerabilities"
-    ],
-    "doc_refs": ["https://dev.mysql.com/doc/refman/9.7/en/sql-statements.html"]
-  },
   "cockroachdb-basics": {
     "title": "CockroachDB Database Basics",
     "body": "Connect using a PostgreSQL DSN: postgresql://user:password@host:26257/defaultdb?sslmode=verify-full. CockroachDB implements PostgreSQL wire protocol v3.0 — the standard PostgreSQL driver works unchanged. Uses information_schema for introspection. Health check uses SELECT 1.",
@@ -1179,123 +1145,6 @@
     ],
     "doc_refs": ["https://developer.zendesk.com/api-reference/"]
   },
-  "apple-icloud-calendar-basics": {
-    "title": "Apple iCloud CalDAV Basics",
-    "body": "Authenticate with Basic Auth using your Apple ID email and an app-specific password (not your Apple ID password). CalDAV discovery chain: PROPFIND /.well-known/caldav -> current-user-principal -> calendar-home-set -> list calendars. Events use ICS format. Supports sync-token for incremental sync (RFC 6578).",
-    "examples": [
-      "PROPFIND /.well-known/caldav — discover CalDAV service endpoint",
-      "REPORT /calendars/{user}/{calendar}/ with calendar-query — filter events by date range"
-    ],
-    "best_practices": [
-      "Use sync-token for incremental sync instead of re-fetching all events",
-      "Use calendar-multiget REPORT for batch fetching multiple events by URL"
-    ],
-    "pitfalls": [
-      "Apple requires app-specific passwords — your regular Apple ID password will not work for CalDAV auth"
-    ],
-    "doc_refs": ["https://datatracker.ietf.org/doc/html/rfc6764"]
-  },
-  "apple-icloud-contacts-basics": {
-    "title": "Apple iCloud CardDAV Basics",
-    "body": "Authenticate with Basic Auth using your Apple ID email and an app-specific password. CardDAV discovery chain: PROPFIND /.well-known/carddav -> current-user-principal -> addressbook-home-set. Contacts use vCard format. Use addressbook-multiget REPORT for batch fetching.",
-    "examples": [
-      "PROPFIND /.well-known/carddav — discover CardDAV service endpoint",
-      "REPORT /contacts/{user}/card/ with addressbook-multiget — fetch multiple contacts"
-    ],
-    "best_practices": [
-      "Use addressbook-multiget REPORT to batch fetch multiple contacts in a single request",
-      "Use sync-token for incremental sync of contact changes"
-    ],
-    "pitfalls": [
-      "Apple requires app-specific passwords — your regular Apple ID password will not work"
-    ],
-    "doc_refs": [
-      "https://developer.apple.com/documentation/devicemanagement/carddav",
-      "https://www.rfc-editor.org/rfc/rfc6352.html"
-    ]
-  },
-  "caldav-generic-basics": {
-    "title": "CalDAV Generic Server Basics",
-    "body": "Authenticate with Basic Auth (or OAuth for Google). Standard CalDAV (RFC 4791) discovery via .well-known/caldav. Works with Nextcloud, Fastmail, Radicale, Baikal, Synology, and any standards-compliant server. Events are in ICS format, managed via PROPFIND, REPORT, PUT, and DELETE.",
-    "examples": [
-      "PROPFIND /.well-known/caldav — start CalDAV discovery chain",
-      "PUT /calendars/{user}/{calendar}/{event}.ics — create or update an event"
-    ],
-    "best_practices": [
-      "Follow the full discovery chain (well-known -> principal -> calendar-home-set) rather than hardcoding paths",
-      "Use calendar-query REPORT with date filters to avoid fetching the entire calendar"
-    ],
-    "pitfalls": [
-      "CalDAV paths vary significantly between servers (Nextcloud uses /remote.php/dav, Google uses /caldav/v2) — always use discovery"
-    ],
-    "doc_refs": ["https://www.rfc-editor.org/rfc/rfc4791"]
-  },
-  "webdav-generic-basics": {
-    "title": "WebDAV Generic Server Basics",
-    "body": "Authenticate with Basic Auth or Bearer token. WebDAV (RFC 4918) extends HTTP with methods like PROPFIND, PROPPATCH, MKCOL, COPY, MOVE, LOCK, and UNLOCK. Use PROPFIND with Depth:1 to list directory contents. OPTIONS response reveals DAV compliance level (1, 2, or 3).",
-    "examples": [
-      "PROPFIND / with Depth:1 — list files in root directory",
-      "PUT /files/document.pdf — upload a file"
-    ],
-    "best_practices": [
-      "Use OPTIONS request to check DAV compliance level before using advanced features (locking, versioning)",
-      "Use PROPFIND Depth:1 for directory listing — Depth:infinity can be very expensive on large trees"
-    ],
-    "pitfalls": [
-      "Not all WebDAV servers support all methods — check OPTIONS response before using LOCK, COPY, or MOVE"
-    ],
-    "doc_refs": ["https://www.ietf.org/rfc/rfc4918.html"]
-  },
-  "soap-generic-basics": {
-    "title": "SOAP Generic Web Service Basics",
-    "body": "All operations are HTTP POST with XML envelope. SOAP 1.1 uses text/xml content type, SOAP 1.2 uses application/soap+xml. Provide the WSDL URL (usually endpoint + ?wsdl) for auto-discovery of operations, messages, and types. SOAPAction header identifies the operation.",
-    "examples": [
-      "POST /service with SOAPAction header — invoke a SOAP operation",
-      "GET /service?wsdl — fetch the WSDL service definition"
-    ],
-    "best_practices": [
-      "Fetch and parse the WSDL first to understand available operations and their input/output schemas",
-      "Always include the SOAPAction header — many services require it to route the request"
-    ],
-    "pitfalls": [
-      "SOAP faults return HTTP 500 with an XML body — always parse the fault detail element for the actual error message"
-    ],
-    "doc_refs": ["https://www.w3.org/TR/soap12-part1/"]
-  },
-  "sap-soap-basics": {
-    "title": "SAP SOAP Web Services Basics",
-    "body": "Authenticate with Basic Auth using SAP technical user credentials. SAP exposes SOAP services at /sap/bc/srt/scs_ext/ or /sap/bc/srt/wsdl/. WSDL auto-discovery is supported at the service endpoint + ?wsdl. Common services include Material Master, Business Partner, Sales Order, and Financial Posting.",
-    "examples": [
-      "POST /sap/bc/srt/scs_ext/material — invoke a Material Master service operation",
-      "GET /sap/bc/srt/wsdl/flv_10002A111AD1/wsdl11/allinone/ws_policy/document?sap-client=100 — fetch WSDL"
-    ],
-    "best_practices": [
-      "Use a dedicated SAP technical user with minimal authorizations for API integrations",
-      "Include sap-client parameter in requests when your SAP system has multiple clients"
-    ],
-    "pitfalls": [
-      "SAP SOAP endpoints require the correct sap-client number — omitting it may route to the wrong client or fail"
-    ],
-    "doc_refs": ["https://help.sap.com/docs/SAP_S4HANA_CLOUD"]
-  },
-  "servicenow-soap-basics": {
-    "title": "ServiceNow SOAP API Basics",
-    "body": "Authenticate with Basic Auth using admin credentials. SOAP endpoints follow the pattern /{tableName}.do?SOAP for execution and /{tableName}.do?WSDL for schema. Operations include insert, update, deleteRecord, get, getRecords, and getKeys. This is the legacy API complementary to the REST Table API.",
-    "examples": [
-      "POST /incident.do?SOAP — execute a SOAP operation on the incident table",
-      "GET /incident.do?WSDL — get the WSDL for the incident table"
-    ],
-    "best_practices": [
-      "Use the REST Table API for new integrations — SOAP is legacy",
-      "Use getKeys + get for targeted record retrieval instead of getRecords for all"
-    ],
-    "pitfalls": [
-      "Each table has its own WSDL endpoint ({table}.do?WSDL) — there is no single unified WSDL for all tables"
-    ],
-    "doc_refs": [
-      "https://www.servicenow.com/docs/r/vancouver/api-reference/rest-apis/soap-integration.html"
-    ]
-  },
   "grpc-connect-basics": {
     "title": "gRPC Connect Protocol Basics",
     "body": "Connect protocol (from Buf) provides gRPC-compatible RPC over standard HTTP/1.1 with JSON encoding. POST to /{package.Service}/{Method} with a JSON body. No HTTP/2 or Envoy proxy required. Uses standard HTTP status codes and headers. Compatible with the existing HTTP driver.",
@@ -1311,54 +1160,6 @@
       "Server-streaming responses use NDJSON format — each line is a separate JSON message, not a single array"
     ],
     "doc_refs": ["https://connectrpc.com/docs/protocol/"]
-  },
-  "grpc-native-basics": {
-    "title": "gRPC Native Protocol Basics",
-    "body": "Native gRPC over HTTP/2 with protobuf binary encoding. Supports four RPC types: unary, server-streaming, client-streaming, and bidirectional streaming. Discovery via gRPC Server Reflection (grpc.reflection.v1). Auth via metadata headers (similar to HTTP Bearer). TLS and mTLS supported.",
-    "examples": [
-      "Unary call: service.GetUser({ id: '123' }) — single request/response",
-      "Server stream: service.ListUsers({}) — server sends multiple responses"
-    ],
-    "best_practices": [
-      "Enable gRPC Server Reflection on your server for automatic service/method discovery",
-      "Use deadlines (timeouts) on every RPC call to prevent hanging connections"
-    ],
-    "pitfalls": [
-      "gRPC requires HTTP/2 — it will not work through HTTP/1.1 proxies or load balancers that do not support h2c or h2"
-    ],
-    "doc_refs": ["https://grpc.io/docs/"]
-  },
-  "mqtt-basics": {
-    "title": "MQTT Protocol Basics",
-    "body": "MQTT is pub/sub, not request/response. Subscribe to topics to receive messages; publish to topics to send. QoS levels: 0 (at-most-once), 1 (at-least-once), 2 (exactly-once). Topic wildcards: + (single level), # (all below). Connect via mqtt:// (plain), mqtts:// (TLS), or wss:// (WebSocket).",
-    "examples": [
-      "SUBSCRIBE sensors/+/temperature — subscribe to temperature readings from all sensors",
-      "PUBLISH devices/lamp1/command {\"state\":\"on\"} — send a command to a device"
-    ],
-    "best_practices": [
-      "Use QoS 1 (at-least-once) as default — QoS 0 loses messages, QoS 2 adds significant overhead",
-      "Design topic hierarchies carefully — they cannot be changed once devices are deployed"
-    ],
-    "pitfalls": [
-      "MQTT 3.1.1 and 5.0 have different feature sets (5.0 adds shared subscriptions, properties) — specify the protocol version in config"
-    ],
-    "doc_refs": ["https://mqtt.org/mqtt-specification/"]
-  },
-  "imap-email-basics": {
-    "title": "IMAP Email Protocol Basics",
-    "body": "IMAP is a stateful TCP protocol. Operations: LIST (folders), SELECT (open folder), FETCH (messages), SEARCH (filter), STORE (flags), APPEND (add). Always use TLS (port 993). SMTP is used for sending. Gmail and Outlook support IMAP XOAUTH2 as an alternative to passwords.",
-    "examples": [
-      "SELECT INBOX then SEARCH UNSEEN — find unread messages in inbox",
-      "FETCH 1:10 (BODY[HEADER.FIELDS (FROM SUBJECT DATE)]) — get headers of first 10 messages"
-    ],
-    "best_practices": [
-      "Use IMAP IDLE for real-time push notifications instead of polling",
-      "Reuse connections — IMAP connection setup is expensive (TCP + TLS + AUTH)"
-    ],
-    "pitfalls": [
-      "IMAP connections are stateful — the driver must manage connection pooling and handle dropped connections gracefully"
-    ],
-    "doc_refs": ["https://datatracker.ietf.org/doc/html/rfc9051"]
   },
   "firecrawl-basics": {
     "title": "Firecrawl Web Scraping API Basics",
@@ -1482,22 +1283,6 @@
       "The sync scrape endpoint has a hard 1-minute timeout — any scraping job taking longer will fail silently"
     ],
     "doc_refs": ["https://docs.brightdata.com/datasets/scrapers/overview.md"]
-  },
-  "ftp-basics": {
-    "title": "FTP/FTPS Protocol Basics",
-    "body": "Authenticate with username/password or anonymous access. Operations: LIST (directory listing), RETR (download), STOR (upload), DELE (delete), MKD (create directory), RMD (remove directory), RENAME. FTPS adds TLS encryption (implicit on port 990, explicit via STARTTLS on port 21). Use passive mode for firewall compatibility.",
-    "examples": [
-      "LIST / — list files in the root directory",
-      "STOR /uploads/document.pdf — upload a file"
-    ],
-    "best_practices": [
-      "Always use FTPS (TLS) in production — plain FTP transmits credentials and data unencrypted",
-      "Use passive mode to avoid firewall issues with data connections"
-    ],
-    "pitfalls": [
-      "Plain FTP transmits passwords and files in cleartext — never use it over untrusted networks"
-    ],
-    "doc_refs": ["https://datatracker.ietf.org/doc/html/rfc959"]
   },
   "web-scraper-basics": {
     "title": "Web scraper basics",

@@ -1,4 +1,4 @@
-// `call_connector` — invoke an arbitrary HTTP/GraphQL/Postgres/SFTP/S3
+// `call_connector` — invoke an arbitrary HTTP/GraphQL/Postgres/S3
 // endpoint against a *persisted* connector with its real credential applied.
 //
 // Why this exists:
@@ -15,8 +15,8 @@
 // for dispatch. The flat shape is friendlier to the LLM than a
 // discriminated union (no `driver_kind` discriminator to remember; the
 // connector itself dictates which fields are read). Driver-specific fields
-// (`sql`, `parameters`, `allow_writes`, `row_limit`, `op`) are optional and
-// only consulted on the matching branch. Mismatches (e.g. `op: "list"` on
+// (`sql`, `parameters`, `allow_writes`, `row_limit`) are optional and
+// only consulted on the matching branch. Mismatches (e.g. `sql` on
 // an HTTP connector) surface as `invalid_input`.
 //
 // Policy:
@@ -27,22 +27,20 @@
 //     URL host, path, status. Body, headers, full SQL, and full request
 //     bodies are NEVER recorded — those belong in telemetry, not the
 //     audit log (PII risk + cardinality). For Postgres we surface only a
-//     100-char SQL summary; for SFTP only the operation kind.
+//     100-char SQL summary.
 //   - Persistence: the connector MUST be saved (`auth_type !== "none"` ⇒
 //     credential row required). Drafts use `probe_connector_draft`.
 //   - Body truncation: response bodies > ~8KB are truncated for the LLM
 //     and stashed under `raw_ref` for follow-up `get_raw_result` retrieval.
 //   - Confirmation: tool-policies.ts owns the policy table; this tool's
 //     execution mode is confirm_before_execution by default. Postgres
-//     `allow_writes`, SFTP `put`, and S3 `PUT`/`DELETE` ALL flow through
-//     the same gate (no auto path).
+//     `allow_writes` and S3 `PUT`/`DELETE` ALL flow through the same gate
+//     (no auto path).
 //   - Postgres safety: writes are rejected BEFORE the SQL hits the
 //     database via a regex check on the leading keyword. `row_limit` is
 //     enforced by appending `LIMIT $N` when the query has no LIMIT
 //     clause; queries with an existing LIMIT are passed through as-is
 //     (the operator is presumed to know what they want).
-//   - SFTP safety: `get` rejects responses > 1MB with `object_too_large`;
-//     `put` rejects request bodies > 1MB with `body_too_large`.
 //
 // EXECUTION_MODE: confirm_before_execution
 
@@ -54,7 +52,6 @@ import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { pgQueryWithCount } from "../../connectors/drivers/postgres.ts";
 import { executeS3Request, type S3Method } from "../../connectors/drivers/s3.ts";
-import { executeSftpCommand } from "../../connectors/drivers/sftp.ts";
 import {
   classifyConnectorHealth,
   connectorHealthHint,
@@ -70,7 +67,6 @@ import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const Method = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
-const SftpOp = z.enum(["list", "get", "put"]);
 
 const CallConnectorInput = z
   .object({
@@ -84,7 +80,7 @@ const CallConnectorInput = z
       .min(1)
       .optional()
       .describe(
-        "Path relative to the connector's base_url (e.g. '/v2/droplets'), or a full URL on the same host. For S3, an object key (`/bucket-prefix`). For SFTP, the remote path.",
+        "Path relative to the connector's base_url (e.g. '/v2/droplets'), or a full URL on the same host. For S3, an object key (`/bucket-prefix`).",
       ),
     query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
     headers: z
@@ -123,16 +119,12 @@ const CallConnectorInput = z
       .describe(
         "Postgres only. Caps SELECT results by appending `LIMIT $N` when the query has no LIMIT clause. Defaults to 100.",
       ),
-
-    // SFTP fields.
-    op: SftpOp.optional().describe("SFTP operation (sftp connectors only)."),
   })
   .openapi("CallConnectorToolInput");
 
 // ---- helpers ---------------------------------------------------------------
 
 const RESPONSE_BODY_BUDGET_BYTES = 8 * 1024;
-const SFTP_BODY_CAP_BYTES = 1024 * 1024; // 1 MB
 const DEFAULT_ROW_LIMIT = 100;
 const SQL_SUMMARY_MAX = 100;
 
@@ -301,7 +293,7 @@ function structuredError(
 export const callConnectorTool: ConversationTool = {
   name: "call_connector",
   description:
-    "Invoke an HTTP/GraphQL/Postgres/SFTP/S3 endpoint against a *persisted* connector with its real credential applied. Use this AFTER the connector is saved to sample a response, validate pagination, run an exploratory SELECT, list a remote directory, or check field shapes before proposing a workflow step. Always confirm-before-execute. Returns `{ status, headers, body, latency_ms }`.",
+    "Invoke an HTTP/GraphQL/Postgres/S3 endpoint against a *persisted* connector with its real credential applied. Use this AFTER the connector is saved to sample a response, validate pagination, run an exploratory SELECT, or check field shapes before proposing a workflow step. Always confirm-before-execute. Returns `{ status, headers, body, latency_ms }`.",
   use_case:
     "Reach for this when the connector is saved and the user (or you) needs to see the actual vendor response shape — for endpoint discovery, pagination probing, sampling rows, or field-name verification — without committing to a workflow draft.",
   important_notes: [
@@ -312,7 +304,6 @@ export const callConnectorTool: ConversationTool = {
     "`health` is `ok|auth_failed|endpoint_gone|deprecated|not_found|rate_limited|degraded`. `auth_failed`/`endpoint_gone` mean the connector itself is unusable: an empty body means 'auth failed / endpoint removed', NOT 'no data' — tell the user to fix the connector. `not_found`/`rate_limited` are request-level (wrong path / throttled); `deprecated` means the call SUCCEEDED but the vendor announced removal — surface the migration hint. Always use `health_suggestion` + `next_best_actions`.",
     "Response bodies > 8KB are truncated; full payload is available via `get_raw_result(ref=raw_ref)`.",
     "Postgres: writes (INSERT/UPDATE/DELETE/DROP/…) are rejected unless `allow_writes:true` is passed. `row_limit` defaults to 100; queries with an existing LIMIT pass through unchanged.",
-    "SFTP: `op` is one of list/get/put. `get` and `put` cap the body at 1 MB.",
     "S3: `method` is one of GET/PUT/HEAD/LIST/DELETE; `path` is the object key (or prefix for LIST).",
     "Audit row records actor + connector + method + URL host + status; bodies, headers, full SQL, and full request bodies are NEVER logged.",
   ],
@@ -334,7 +325,6 @@ export const callConnectorTool: ConversationTool = {
       conversation_id: ctx.conversation_id,
       connector_id: args.connector_id,
       method: args.method,
-      op: args.op,
     });
 
     // RBAC. `connector:invoke` does not exist in the catalog; the closest
@@ -404,13 +394,7 @@ export const callConnectorTool: ConversationTool = {
 
     // Driver routing.
     const driver = connector.driver;
-    if (
-      driver !== "http" &&
-      driver !== "graphql" &&
-      driver !== "postgres" &&
-      driver !== "sftp" &&
-      driver !== "s3"
-    ) {
+    if (driver !== "http" && driver !== "graphql" && driver !== "postgres" && driver !== "s3") {
       logger.warn({
         module: "conversation_tool",
         action: "call_connector.failed",
@@ -430,12 +414,6 @@ export const callConnectorTool: ConversationTool = {
     // Cross-driver input validation: reject obvious shape mismatches BEFORE
     // we touch the network or audit log.
     if (driver === "http" || driver === "graphql") {
-      if (args.op !== undefined) {
-        return structuredError(
-          "invalid_input",
-          `'op' is sftp-only; ${driver} connectors take method+path`,
-        );
-      }
       if (args.sql !== undefined) {
         return structuredError(
           "invalid_input",
@@ -443,33 +421,20 @@ export const callConnectorTool: ConversationTool = {
         );
       }
     } else if (driver === "postgres") {
-      if (args.method !== undefined || args.op !== undefined) {
+      if (args.method !== undefined) {
         return structuredError(
           "invalid_input",
-          "postgres connectors take 'sql' (and optional 'parameters'/'allow_writes'/'row_limit'), not method/op",
+          "postgres connectors take 'sql' (and optional 'parameters'/'allow_writes'/'row_limit'), not method",
         );
       }
       if (!args.sql || args.sql.trim().length === 0) {
         return structuredError("invalid_input", "postgres connectors require non-empty 'sql'");
       }
-    } else if (driver === "sftp") {
-      if (args.method !== undefined || args.sql !== undefined) {
-        return structuredError(
-          "invalid_input",
-          "sftp connectors take 'op' + 'path' (and optional 'body' for put), not method/sql",
-        );
-      }
-      if (!args.op) {
-        return structuredError("invalid_input", "sftp connectors require 'op' (list|get|put)");
-      }
-      if (!args.path) {
-        return structuredError("invalid_input", "sftp connectors require 'path'");
-      }
     } else if (driver === "s3") {
-      if (args.op !== undefined || args.sql !== undefined) {
+      if (args.sql !== undefined) {
         return structuredError(
           "invalid_input",
-          "s3 connectors take method (GET|PUT|HEAD|LIST|DELETE) + path, not op/sql",
+          "s3 connectors take method (GET|PUT|HEAD|LIST|DELETE) + path, not sql",
         );
       }
       if (!args.method) {
@@ -510,7 +475,7 @@ export const callConnectorTool: ConversationTool = {
     let usedHost = "";
     let errorDetail: string | null = null;
     // What we record in audit metadata. NEVER the full SQL or full body.
-    let auditMethod = args.method ?? args.op ?? "";
+    let auditMethod = args.method ?? "";
     let auditPathSummary = args.path ?? "";
 
     try {
@@ -608,66 +573,6 @@ export const callConnectorTool: ConversationTool = {
         usedHost = hostOf(connector.dsn ?? "") || "postgres";
         auditMethod = allowWrites ? "WRITE" : "READ";
         auditPathSummary = summarizeSql(sql);
-      } else if (driver === "sftp") {
-        const op = args.op as "list" | "get" | "put";
-        const path = args.path ?? "";
-        if (op === "put") {
-          const body = args.body;
-          if (typeof body !== "string") {
-            return structuredError(
-              "invalid_input",
-              "sftp put requires 'body' as a string (utf-8 contents to upload)",
-            );
-          }
-          const byteLen = Buffer.byteLength(body, "utf8");
-          if (byteLen > SFTP_BODY_CAP_BYTES) {
-            return structuredError(
-              "body_too_large",
-              `sftp put body is ${byteLen} bytes; cap is ${SFTP_BODY_CAP_BYTES}`,
-              { byte_count: byteLen, cap_bytes: SFTP_BODY_CAP_BYTES },
-            );
-          }
-          const res = await executeSftpCommand({
-            connector,
-            command: "PUT",
-            path,
-            body,
-          });
-          status = 200;
-          responseBody = res;
-        } else if (op === "get") {
-          const res = await executeSftpCommand({
-            connector,
-            command: "GET",
-            path,
-          });
-          // Defensive: cap the response too. The driver currently returns
-          // a utf-8 string; if the remote object is huge we refuse rather
-          // than blowing the LLM context window.
-          if (res.command === "GET") {
-            const byteLen = Buffer.byteLength(res.body, "utf8");
-            if (byteLen > SFTP_BODY_CAP_BYTES) {
-              return structuredError(
-                "object_too_large",
-                `sftp object is ${byteLen} bytes; cap is ${SFTP_BODY_CAP_BYTES}`,
-                { byte_count: byteLen, cap_bytes: SFTP_BODY_CAP_BYTES },
-              );
-            }
-          }
-          status = 200;
-          responseBody = res;
-        } else {
-          // list
-          const res = await executeSftpCommand({
-            connector,
-            command: "LIST",
-            path,
-          });
-          status = 200;
-          responseBody = res;
-        }
-        responseHeaders = {};
-        usedHost = hostOf(connector.dsn ?? "") || "sftp";
       } else if (driver === "s3") {
         const method = (args.method ?? "GET") as S3Method;
         const path = args.path ?? "";
@@ -702,7 +607,7 @@ export const callConnectorTool: ConversationTool = {
     // a rejected credential (401/403), a removed endpoint (410), or the
     // Atlassian Seraph anonymous-200. Classify on the raw response so an
     // empty body is not mistaken for "no data". HTTP/GraphQL carry real
-    // upstream statuses + headers; postgres/sftp/s3 synthesize status 200
+    // upstream statuses + headers; postgres/s3 synthesize status 200
     // and classify as "ok".
     const health = errorDetail ? "ok" : classifyConnectorHealth(status, responseHeaders);
 
@@ -750,7 +655,7 @@ export const callConnectorTool: ConversationTool = {
     // context's "Recorded endpoint samples" section + the drift
     // detector read these rows back. Endpoint key is `<METHOD> <path>`
     // so repeat calls against the same endpoint reuse a row.
-    // postgres/sftp inputs reject `method` at validation time, so this
+    // postgres inputs reject `method` at validation time, so this
     // branch only fires for the method+path drivers (http/graphql/s3).
     if (status >= 200 && status < 300 && responseBody !== null && args.method && args.path) {
       try {

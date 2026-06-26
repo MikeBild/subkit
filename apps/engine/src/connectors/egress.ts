@@ -87,16 +87,7 @@ export function injectTraceContext(headers: Record<string, string>): void {
   headers.traceparent = `00-${trace}-${span}-01`;
 }
 
-export type EgressKind =
-  | "http"
-  | "graphql"
-  | "s3"
-  | "postgres"
-  | "mssql"
-  | "redis"
-  | "ftp"
-  | "sftp"
-  | "smb";
+export type EgressKind = "http" | "graphql" | "s3" | "postgres";
 
 export interface EgressInput {
   executor?: Db;

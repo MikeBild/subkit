@@ -8,19 +8,15 @@
 //   - GraphQL `body: {query, variables}` reaches the same path.
 //   - Postgres SELECT happy path; mutation rejected without allow_writes;
 //     mutation accepted WITH allow_writes:true.
-//   - SFTP list happy path; get of an over-sized object → object_too_large.
 //   - S3 GET happy path.
-//   - Driver mismatch: passing `op` to an HTTP connector → invalid_input.
 //   - RBAC denial when a member user lacks `connector:read`.
 //   - connector_not_found surfaces as a structured error.
-//   - Unsupported driver (redis) returns driver_not_supported_for_call_connector.
 //   - Large response bodies are truncated and surface a raw_ref.
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import * as pgDriver from "../../connectors/drivers/postgres.ts";
 import * as s3Driver from "../../connectors/drivers/s3.ts";
-import * as sftpDriver from "../../connectors/drivers/sftp.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { connectors, roles, schemaVersions, users } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -127,7 +123,7 @@ async function seedHttpConnector(opts: {
   slug: string;
   authType?: "bearer" | "none";
   tokenValue?: string;
-  driver?: "http" | "graphql" | "s3" | "postgres" | "sftp" | "redis";
+  driver?: "http" | "graphql" | "s3" | "postgres";
   base_url?: string;
   dsn?: string;
   config?: Record<string, unknown>;
@@ -143,13 +139,13 @@ async function seedHttpConnector(opts: {
   // is no base_url/path split — so a GraphQL connector's base_url carries
   // the `/graphql` path itself.
   const baseUrlField =
-    driver === "postgres" || driver === "sftp"
+    driver === "postgres"
       ? null
       : driver === "graphql"
         ? (opts.base_url ?? `${baseUrl}/graphql`)
         : (opts.base_url ?? baseUrl);
   const dsnField =
-    opts.dsn ?? (driver === "postgres" || driver === "sftp" ? "sftp://u:p@example.test:22/" : null);
+    opts.dsn ?? (driver === "postgres" ? "postgres://u:p@example.test:5432/db" : null);
   const [conn] = await ctx.testDb.db
     .insert(connectors)
     .values({
@@ -356,39 +352,6 @@ describe("call_connector — error envelopes", () => {
     expect(result.ok).toBe(false);
     const err = (result.data as { error: { code: string } }).error;
     expect(err.code).toBe("connector_not_found");
-  });
-
-  test("unsupported driver (redis) returns driver_not_supported_for_call_connector", async () => {
-    const { connector_id } = await seedHttpConnector({
-      slug: "call_redis",
-      driver: "redis",
-      base_url: "redis://example.test",
-    });
-    const result = await callConnectorTool.execute(makeToolContext(), {
-      connector_id,
-      method: "GET",
-      path: "/some-key",
-    });
-    expect(result.ok).toBe(false);
-    const data = result.data as {
-      error: { code: string };
-      next_best_actions: string[];
-    };
-    expect(data.error.code).toBe("driver_not_supported_for_call_connector");
-    expect(data.next_best_actions).toContain("author_workflow");
-  });
-
-  test("driver mismatch: passing `op` to an HTTP connector → invalid_input", async () => {
-    const { connector_id } = await seedHttpConnector({ slug: "call_mismatch_http_op" });
-    const result = await callConnectorTool.execute(makeToolContext(), {
-      connector_id,
-      // biome-ignore lint/suspicious/noExplicitAny: deliberately probing input validation
-      op: "list" as any,
-      path: "/v2/droplets",
-    });
-    expect(result.ok).toBe(false);
-    const err = (result.data as { error: { code: string } }).error;
-    expect(err.code).toBe("invalid_input");
   });
 
   test("RBAC: bare-role user without connector:read is denied", async () => {
@@ -608,78 +571,6 @@ describe("call_connector — Postgres", () => {
       // No LIMIT injection when allow_writes is true.
       expect(call.sql).not.toMatch(/LIMIT 100/);
       expect(call.params).toEqual([42]);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// SFTP
-// ---------------------------------------------------------------------------
-
-describe("call_connector — SFTP", () => {
-  test("list happy path returns directory entries", async () => {
-    const { connector_id } = await seedHttpConnector({
-      slug: "call_sftp_list",
-      driver: "sftp",
-      dsn: "sftp://u:p@example.test:22/",
-    });
-    const entries = [
-      { name: "a.csv", size: 100, type: "file" as const, modified_at: null },
-      { name: "sub", size: 0, type: "directory" as const, modified_at: null },
-    ];
-    const spy = spyOn(sftpDriver, "executeSftpCommand").mockResolvedValue({
-      command: "LIST",
-      entries,
-    });
-    try {
-      const result = await callConnectorTool.execute(makeToolContext(), {
-        connector_id,
-        op: "list",
-        path: "/incoming",
-      });
-      expect(result.ok).toBe(true);
-      const data = result.data as {
-        driver_kind: string;
-        body: { command: string; entries: typeof entries };
-      };
-      expect(data.driver_kind).toBe("sftp");
-      expect(data.body.command).toBe("LIST");
-      expect(data.body.entries).toEqual(entries);
-      expect(spy).toHaveBeenCalledTimes(1);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  test("get of file > 1MB is rejected with object_too_large", async () => {
-    const { connector_id } = await seedHttpConnector({
-      slug: "call_sftp_huge",
-      driver: "sftp",
-      dsn: "sftp://u:p@example.test:22/",
-    });
-    // 1 MB + 1 byte payload.
-    const huge = "x".repeat(1024 * 1024 + 1);
-    const spy = spyOn(sftpDriver, "executeSftpCommand").mockResolvedValue({
-      command: "GET",
-      body: huge,
-    });
-    try {
-      const result = await callConnectorTool.execute(makeToolContext(), {
-        connector_id,
-        op: "get",
-        path: "/incoming/big.bin",
-      });
-      expect(result.ok).toBe(false);
-      const data = result.data as {
-        error: { code: string };
-        cap_bytes: number;
-        byte_count: number;
-      };
-      expect(data.error.code).toBe("object_too_large");
-      expect(data.cap_bytes).toBe(1024 * 1024);
-      expect(data.byte_count).toBeGreaterThan(1024 * 1024);
     } finally {
       spy.mockRestore();
     }
