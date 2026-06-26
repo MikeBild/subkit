@@ -28,40 +28,21 @@ import { pauseForUserInput } from "../../ask-user/common.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
+import { type RepairLoopVerdict, tallyRepairSignals } from "./repair-loop-tally.ts";
 
 /**
- * Codes that count toward the repair-loop circuit breaker. Each one
- * means "the JSONata path or template doesn't actually resolve to
- * data the engine can use" — so a re-run with the same draft will
- * produce the same warning. Three of any of these codes in the
- * recent history (per-code, not summed) trips the breaker.
- */
-const REPEATING_REPAIR_CODES = new Set([
-  "unresolved_identifier",
-  "loop_over_unresolved",
-  "transform_empty_extraction",
-]);
-
-/**
- * Circuit-breaker for repair loops. Walks the recent tool-call
- * history for this conversation and counts how many `run_workflow` /
- * `dry_run_workflow` invocations produced an authoring-bug warning
- * (see `REPEATING_REPAIR_CODES`). Three identical occurrences in a
- * row signal "the LLM is stuck rewriting the same JSONata five
- * different ways and every attempt produces the same warning" —
- * exactly the v3→v4→v5 spiral the user reported. We refuse and
- * surface a structured halt instead of letting the LLM burn another
- * 88k tokens.
+ * Circuit-breaker for repair loops. Fetches the recent tool-call history
+ * for this conversation and delegates to `tallyRepairSignals`, which
+ * counts two trip signals (a repeating authoring-bug warning code, and a
+ * repeating runtime execution failure keyed on `exec_failed:<step>:<code>`)
+ * and refuses the run when either reaches the threshold — instead of
+ * burning the rest of the step budget on a draft that won't work.
  */
 async function detectRepairLoop(
   db: ReturnType<typeof eq> extends never ? never : import("../../../../db/client.ts").Db,
   tenant_id: string,
   conversation_id: string,
-): Promise<{
-  tripped: boolean;
-  recent_codes: string[];
-  tripped_codes: Array<{ code: string; count: number }>;
-}> {
+): Promise<RepairLoopVerdict> {
   try {
     const rows = await db
       .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
@@ -74,30 +55,7 @@ async function detectRepairLoop(
       )
       .orderBy(desc(conversationToolCalls.created_at))
       .limit(8);
-    const codes: string[] = [];
-    const counts = new Map<string, number>();
-    for (const r of rows) {
-      if (r.tool !== "run_workflow" && r.tool !== "dry_run_workflow") continue;
-      const data = r.output as { data?: { warnings?: Array<{ code?: unknown }> } } | null;
-      const ws = data?.data?.warnings;
-      if (!Array.isArray(ws)) continue;
-      for (const w of ws) {
-        if (w && typeof w.code === "string") {
-          codes.push(w.code);
-          if (REPEATING_REPAIR_CODES.has(w.code)) {
-            counts.set(w.code, (counts.get(w.code) ?? 0) + 1);
-          }
-        }
-      }
-    }
-    const tripped_codes = [...counts.entries()]
-      .filter(([, n]) => n >= 3)
-      .map(([code, n]) => ({ code, count: n }));
-    return {
-      tripped: tripped_codes.length > 0,
-      recent_codes: codes.slice(0, 8),
-      tripped_codes,
-    };
+    return tallyRepairSignals(rows);
   } catch {
     return { tripped: false, recent_codes: [], tripped_codes: [] };
   }
@@ -376,12 +334,13 @@ export const runWorkflowTool: ConversationTool = {
       };
     }
 
-    // Circuit-breaker: refuse to run when any repeating authoring-bug
-    // warning code has fired three times in this conversation. The
-    // LLM is chasing a fix that isn't working; another run won't
-    // tell it anything new and burns tokens. Tracked codes:
-    // unresolved_identifier, loop_over_unresolved,
-    // transform_empty_extraction.
+    // Circuit-breaker: refuse to run when the same trip signal has fired
+    // three times in this conversation — either a repeating authoring-bug
+    // warning code (unresolved_identifier, loop_over_unresolved,
+    // transform_empty_extraction) OR the same runtime execution failure
+    // (exec_failed:<step>:<error_code>). The LLM is chasing a fix that
+    // isn't working; another run won't tell it anything new and burns the
+    // rest of the step budget.
     const breaker = await detectRepairLoop(ctx.db, ctx.tenant_id, ctx.conversation_id);
     if (breaker.tripped) {
       logger.warn({
@@ -394,12 +353,15 @@ export const runWorkflowTool: ConversationTool = {
       });
       recordAuthoringGateBlock({ code: "repair_loop_detected", tool: "run_workflow" });
       const codesPretty = breaker.tripped_codes.map((c) => `\`${c.code}\` × ${c.count}`).join(", ");
+      const execFailureTrip = breaker.tripped_codes.some((c) => c.code.startsWith("exec_failed:"));
       return {
         ok: false,
         data: withStatus(
           buildGateError(currentDraft, {
             error_code: "repair_loop_detected",
-            message: `stop — three or more consecutive runs of this workflow surfaced the same authoring-bug warning(s): ${codesPretty}. The current strategy is not working. Read \`data-handling.md\` and \`workflow-authoring.md\` for the loop+JSONata scope rules, ask the user what output they actually want, and propose a structurally different draft. Re-running this one will produce the same warning.`,
+            message: execFailureTrip
+              ? `stop — this workflow has failed at runtime three or more times with the same error: ${codesPretty}. Re-running the same draft will fail the same way. Run \`diagnose_latest_execution\` to read the failing step, then fix the actual cause or ask the user what they want — do NOT re-run this draft unchanged. A common cause: a request step calls an endpoint that rejects the value you pass (many APIs have no "by-name" lookup and need a search/resolve step that turns the name into an id first).`
+              : `stop — three or more consecutive runs of this workflow surfaced the same authoring-bug warning(s): ${codesPretty}. The current strategy is not working. Read \`data-handling.md\` and \`workflow-authoring.md\` for the loop+JSONata scope rules, ask the user what output they actually want, and propose a structurally different draft. Re-running this one will produce the same warning.`,
             recommended_mode: "diagnosis",
             next_best_actions: [
               "ask_user_text",

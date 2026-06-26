@@ -2281,6 +2281,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     pendingElicitationId = signals.pendingElicitation?.elicitation_id;
     completedStatus = "awaiting_input";
   } else {
+    completedStatus = "active";
     if (signals.step >= budget && !signals.pendingElicitation) {
       log.warn({
         module: "conversation",
@@ -2289,8 +2290,62 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         conversation_id: p.conversation_id,
         step_budget: budget,
       });
+      // Pre-fix: a step-budget cap hit returned `active` + a synthesised
+      // empty-text fallback, so an MCP client (e.g. ChatGPT) saw a vague
+      // "working"/"completed" with no next step — the "never done"
+      // ambiguity the user reported. When the cap was hit WITHOUT the
+      // model leaving a real answer, park the turn on an ask_user_text
+      // elicitation: the task then derives `input_required` and the
+      // client surfaces a clear, actionable prompt instead of silence.
+      // (When the model DID leave an answer, keep `active` — that text is
+      // emitted as usual and parking would be noise.)
+      if (!signals.lastAssistantText) {
+        try {
+          const elicitation = await createElicitation(
+            {
+              tenant_id: p.tenant_id,
+              conversation_id: p.conversation_id,
+              tool_call_id: null,
+              tool_name: "ask_user_text",
+              summary: "step limit reached before finishing",
+              input: {
+                question:
+                  `I stopped because I reached this turn's step limit (${budget} steps) before finishing — ` +
+                  "the work kept failing when I tested it, and re-running the same approach won't help. " +
+                  'Tell me how you\'d like to proceed: describe the outcome you want, or reply "diagnose" ' +
+                  "to look at the last failure in detail.",
+                placeholder: "describe the outcome | diagnose | change approach",
+                metadata: { source: "loop.budget_exhausted", step_budget: budget },
+              },
+              actor_id: p.actor_id,
+            },
+            p.db,
+          );
+          status = "awaiting_input";
+          completedStatus = "awaiting_input";
+          pendingElicitationId = elicitation.id;
+          logger.info({
+            module: "conversation",
+            action: "loop.budget_exhausted.elicited",
+            msg: "step-budget cap parked on an ask_user_text elicitation",
+            conversation_id: p.conversation_id,
+            tenant_id: p.tenant_id,
+            elicitation_id: elicitation.id,
+            step_budget: budget,
+          });
+        } catch (err) {
+          // Could not open the elicitation — fall back to the prior
+          // `active` behaviour rather than crash turn finalisation.
+          logger.warn({
+            module: "conversation",
+            action: "loop.budget_exhausted.elicit_failed",
+            msg: "could not park budget-exhausted turn on an elicitation",
+            conversation_id: p.conversation_id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
     }
-    completedStatus = "active";
   }
 
   // Attach turn usage to the `completed` frame (sk status-line
