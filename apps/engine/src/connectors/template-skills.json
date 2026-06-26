@@ -319,7 +319,7 @@
   },
   "notion-basics": {
     "title": "Notion API Basics",
-    "body": "Authenticate with a Bearer token (internal integration token starting with ntn_). All requests go to https://api.notion.com/v1. You must include a Notion-Version header (e.g., 2025-09-03). Pages and databases must be explicitly shared with your integration to be accessible. A page body is a TREE of blocks: GET /v1/blocks/{id}/children returns one level; any block whose has_children is true must be fetched again to descend — there is no single call that returns a whole page. Keep each level to ONE paginated request (page_size=100 + start_cursor) and only recurse where has_children is true.",
+    "body": "Authenticate with a Bearer token (internal integration token starting with ntn_). All requests go to https://api.notion.com/v1. You must include a Notion-Version header (e.g., 2025-09-03). Pages and databases must be explicitly shared with your integration to be accessible. There is NO get-page-by-name endpoint: GET /v1/pages/{id} requires a UUID page id and returns HTTP 400 if you give it a human-readable title. To resolve a page (or database) by its title, call POST /v1/search with body {query: <title>, filter: {property: \"object\", value: \"page\"}} (mark the step side_effects: \"read\" — search is a read), then exact-match the results array client-side: pick the entry whose property of type \"title\" equals the requested title (compare trimmed + case-insensitive). Never interpolate a human title string into a /v1/pages/{id} or /v1/blocks/{id} URL. A page body is a TREE of blocks: GET /v1/blocks/{id}/children returns one level; any block whose has_children is true must be fetched again to descend — there is no single call that returns a whole page. Keep each level to ONE paginated request (page_size=100 + start_cursor) and only recurse where has_children is true.",
     "examples": [
       "POST /v1/databases/{id}/query — query a database with filters and sorts",
       "POST /v1/pages — create a page",
@@ -334,7 +334,8 @@
     ],
     "pitfalls": [
       "Pages and databases are invisible to your integration unless explicitly shared — this is the most common cause of 'not found' errors",
-      "Re-fetching the same children without paginating, or descending into leaf blocks, turns one page into an N+1 storm of serial requests"
+      "Re-fetching the same children without paginating, or descending into leaf blocks, turns one page into an N+1 storm of serial requests",
+      "There is no get-by-title endpoint: /v1/pages/{id} only accepts a UUID. Putting a human-readable page name into that URL path returns HTTP 400. Always resolve a title to an id with POST /v1/search first."
     ],
     "doc_refs": ["https://developers.notion.com/reference"]
   },
