@@ -16,7 +16,7 @@ import {
   compressToolSchema,
   estimateCatalogTokens,
   fitCatalogToBudget,
-} from "./tools.ts";
+} from "./catalog-budget.ts";
 
 function principal(scopes: string[]): ResolvedPrincipal {
   return {
