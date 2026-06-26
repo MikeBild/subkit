@@ -286,9 +286,13 @@ describe("save_workflow_draft — policy gate", () => {
     expect(result.ok).toBe(true);
     const data = result.data as Record<string, unknown>;
     expect(data.workflow_id).toBeDefined();
-    // Commit success envelope carries usage + next_prompt derived from usage.follow_up
+    // Commit success envelope carries usage + next_prompt centralised from
+    // usage.follow_up, with the capability Skill-Candidate notice appended on
+    // commit (status proposed — never an active skill).
     expect(data.usage).toBeDefined();
-    expect(data.next_prompt).toBe((data.usage as { follow_up: string }).follow_up);
+    const followUp = (data.usage as { follow_up: string }).follow_up;
+    expect((data.next_prompt as string).startsWith(followUp)).toBe(true);
+    expect(data.next_prompt as string).toContain("Skill-Candidate");
   });
 
   test('LLM-issued save_workflow_draft with __policy_confirmed: "true" (string) is coerced and skips the gate (G2)', async () => {
