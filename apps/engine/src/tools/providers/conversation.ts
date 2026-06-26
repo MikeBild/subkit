@@ -38,19 +38,21 @@ export interface ConversationProviderEntry {
   readonly execute: ConversationToolExecutor;
 }
 
-/** Conversation tools that the legacy MCP `tools/list` exposed in
- *  PRODUCT mode (via the manual `tools.push(matchConnectorTemplateByUrlMcpTool)`
- *  etc.). Anything not in this set is gated behind authoring/admin
- *  mode. Matches the pre-cutover catalog exactly.
+/** Conversation tools that surface in PRODUCT mode. Anything not in this set
+ *  is gated behind authoring/admin mode.
  *
- *  Note: this allow-list intentionally excludes `tenant_write` tools.
- *  Even if a tool was historically pushed into product mode by the
- *  legacy code, exposing a write to product callers is a category
- *  violation — write gating now applies uniformly to the bare names
- *  and the `tenant.*` aliases, hidden under `readOnly: true` and
- *  hidden from product mode regardless of `readOnly`.
- *  `import_connector_from_spec` is `tenant_write`; it is reachable on
- *  MCP authoring+admin modes only. */
+ *  `find_workflow` + `run_workflow` are the search-first core: they let a
+ *  product/strict client discover and execute the full workflow library on
+ *  demand when the per-workflow `wf_` palette is trimmed to its Top-N for the
+ *  catalog token budget. Without them, a trimmed palette would make the long
+ *  tail unreachable. (`run_workflow` is `tenant_write` — see the readOnly
+ *  exemption below; it is a workflow *run*, exactly like the `wf_` palette
+ *  tools, which already surface in product mode regardless of `readOnly`.
+ *  Authorization stays with `gateWorkflowRunRbac`, not this list.)
+ *
+ *  Other `tenant_write` tools (e.g. `import_connector_from_spec`) stay out:
+ *  exposing a config-mutating write to product callers is a category
+ *  violation — those remain authoring+admin only. */
 const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
   "match_connector_template_by_url",
   "test_connector",
@@ -58,7 +60,16 @@ const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
   // probe_connector_draft is reachable in product mode too — useful for
   // headless connector bootstrap.
   "probe_connector_draft",
+  // search-first core (see comment above)
+  "find_workflow",
+  "run_workflow",
 ]);
+
+/** `tenant_write` tools exempt from the readOnly hide because they are
+ *  workflow *runs*, not config mutations — consistent with the `wf_` palette,
+ *  which surfaces in product mode regardless of `readOnly`. Mirrors the
+ *  search-first floor in `mcp/mode-resolver.ts` (MCP_CORE_TOOL_NAMES). */
+const READONLY_EXEMPT_RUNS: ReadonlySet<string> = new Set(["run_workflow"]);
 
 function visibilityFor(
   category: ToolCategory,
@@ -193,8 +204,11 @@ function isVisibleForFilter(t: ConversationTool, filter: ToolListFilter): boolea
     }
   }
 
-  // readOnly hides every tenant_write regardless of mode.
-  if (filter.readOnly && t.category === "tenant_write") return false;
+  // readOnly hides every tenant_write regardless of mode — except workflow
+  // runs, which behave like the always-on wf_ palette (RBAC still gates them).
+  if (filter.readOnly && t.category === "tenant_write" && !READONLY_EXEMPT_RUNS.has(t.name)) {
+    return false;
+  }
 
   return true;
 }
