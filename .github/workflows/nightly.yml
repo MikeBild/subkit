@@ -65,13 +65,13 @@ jobs:
       TZ: UTC
       LANG: C.UTF-8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.12
       - name: Cache Bun install
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
@@ -152,25 +152,23 @@ jobs:
       TZ: UTC
       LANG: C.UTF-8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.12
       - name: Cache Bun install
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-      - name: Verify ANTHROPIC_API_KEY is set
-        run: |
-          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-            echo "ANTHROPIC_API_KEY secret is not configured for this repo."
-            exit 1
-          fi
+      # No separate secret-presence guard: eval:judge's own validateProviderSetup()
+      # fails fast with a clear message if the anthropic provider isn't ready
+      # (judge-calibration.ts). The prior guard checked a variable the job never
+      # exported, so it failed unconditionally and skipped the calibration.
       - name: Judge calibration vs golden set
         run: bun run eval:judge
 
@@ -199,13 +197,13 @@ jobs:
       TZ: UTC
       LANG: C.UTF-8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.12
       - name: Cache Bun install
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
@@ -228,13 +226,13 @@ jobs:
     env:
       SUBKIT_DOCKER_BASE_URL: http://127.0.0.1:3000
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.12
       - name: Cache Bun install
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
