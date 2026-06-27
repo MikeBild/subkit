@@ -92,8 +92,8 @@ describe("enrichConnectorFromTemplate — stripe (bearer, no oauth)", () => {
   });
 });
 
-describe("enrichConnectorFromTemplate — paypal (base_url_options + oauth2)", () => {
-  const template = getBuiltinTemplate("paypal")!;
+describe("enrichConnectorFromTemplate — salesforce (base_url_options + oauth2)", () => {
+  const template = getBuiltinTemplate("salesforce")!;
 
   test("template is found", () => {
     expect(template).not.toBeNull();

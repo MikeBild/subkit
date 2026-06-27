@@ -9,7 +9,7 @@ instruction files are compatibility layers or indexes — not competing sources 
 - **subkit is a self-hostable, multi-tenant engine for governed, versioned, AI-assisted
   workflow execution.** It is not a chat product, not an LLM provider, and not a general
   workflow-automation tool. It owns: identity & access (RBAC/ABAC, encrypted credentials,
-  portal tokens, API keys), unified data/tool interfaces (4 typed drivers, 93 connector
+  portal tokens, API keys), unified data/tool interfaces (4 typed drivers, 55 connector
   templates), governed execution (immutable audit log, human-in-the-loop approvals,
   versioned workflows with full snapshots), observability (Prometheus, structured logs,
   drift detection), and multi-tenant conversation-first surfaces (CLI, `sk`, Slack, Teams,
@@ -35,7 +35,7 @@ Priority when sources conflict:
 
 1. Code, types, tests, and verified inline decisions.
 2. Canonical docs in `docs/` (numbered) and workflow/config files.
-3. Existing implementation examples (e.g. the 93 templates, the 4 drivers).
+3. Existing implementation examples (e.g. the 55 templates, the 4 drivers).
 
 High-value references (by task type):
 
@@ -154,7 +154,7 @@ Subsystem map inside `apps/engine/src/` (45 directories + 5 loose root files):
 | Auth providers (OIDC, API key, portal token) | `auth/` | `docs/admins/rbac-and-roles.md` |
 | Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/developers/input-surfaces.md` |
 | Layered config loader (override → tenant → global → default) | `config/` | `docs/admins/configuration.md` |
-| 4 drivers + 93 templates | `connectors/` | `docs/concepts/connectors.md` |
+| 4 drivers + 55 templates | `connectors/` | `docs/concepts/connectors.md` |
 | AI authoring loop + tool use | `conversations/` | `docs/authors/authoring-workflows.md` |
 | Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/admins/credentials-and-keys.md` |
 | AES-256-GCM + redaction | `crypto/` | `docs/concepts/governance-and-audit.md` |

@@ -80,17 +80,17 @@ auth headers from the connector's auth config, then dispatches. The envelope's
 
 ```json
 {
-  "id": "create_ticket",
+  "id": "create_task",
   "kind": "request",
   "method": "POST",
-  "connector_id": "<zendesk_connector_id>",
-  "path": "/api/v2/tickets.json",
+  "connector_id": "<asana_connector_id>",
+  "path": "/api/1.0/tasks",
   "headers": { "content-type": "application/json" },
   "body": {
-    "ticket": {
-      "subject": "${input.subject}",
-      "comment": { "body": "${input.body}" },
-      "requester_id": "${scope.lookup_user.data.id}"
+    "data": {
+      "name": "${input.subject}",
+      "notes": "${input.body}",
+      "assignee": "${scope.lookup_user.data.gid}"
     }
   }
 }
@@ -113,11 +113,11 @@ auth headers from the connector's auth config, then dispatches. The envelope's
 
 ```json
 {
-  "id": "revoke_token",
+  "id": "delete_comment",
   "kind": "request",
   "method": "DELETE",
-  "connector_id": "<auth0_connector_id>",
-  "path": "/api/v2/device-credentials/${scope.find_cred.data.id}"
+  "connector_id": "<github_connector_id>",
+  "path": "/repos/${input.owner}/${input.repo}/issues/comments/${scope.find_comment.data.id}"
 }
 ```
 
