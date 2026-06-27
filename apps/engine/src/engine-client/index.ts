@@ -42,6 +42,7 @@ import * as rbacRoles from "../rbac/roles.ts";
 import * as selfHealingSvc from "../self-healing/index.ts";
 import * as skillCandidatesSvc from "../skill-candidates/service.ts";
 import * as skillsSvc from "../skills/service.ts";
+import type { CreateSkillInput, UpdateSkillInput } from "../skills/types.ts";
 import * as inboundSvc from "../webhooks/inbound/service.ts";
 import * as subscriptionsSvc from "../webhooks/outbound/service.ts";
 import {
@@ -172,6 +173,11 @@ export class EngineClient {
   skills = {
     list: () => skillsSvc.listSkills({ tenant_id: this.tenant_id }, this.db),
     get: (id: string) => skillsSvc.getSkill(this.tenant_id, id, this.db),
+    create: (input: CreateSkillInput) =>
+      skillsSvc.createSkill({ tenant_id: this.tenant_id, input, actor_id: this.actor_id }, this.db),
+    update: (id: string, patch: UpdateSkillInput) =>
+      skillsSvc.updateSkill(this.tenant_id, id, patch, this.actor_id, this.db),
+    delete: (id: string) => skillsSvc.deleteSkill(this.tenant_id, id, this.actor_id, this.db),
   };
 
   skillCandidates = {
