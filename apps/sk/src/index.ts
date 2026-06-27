@@ -33,6 +33,8 @@ import { healthCommand } from "./commands/health.ts";
 import { hooksCommand } from "./commands/hooks.ts";
 import { initCommand } from "./commands/init.ts";
 import { installCommand } from "./commands/install.ts";
+import { invitesCommand } from "./commands/invites.ts";
+import { joinCommand } from "./commands/join.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
 import { logsCommand } from "./commands/logs.ts";
 import { mcpServersCommand } from "./commands/mcp-servers.ts";
@@ -622,12 +624,14 @@ const mainCommand = defineCommand({
     stats: statsCommand,
     init: initCommand,
     install: installCommand,
+    join: joinCommand,
     // admin commands
     rbac: rbacCommand,
     audit: auditCommand,
     apikeys: apiKeysCommand,
     "portal-tokens": portalTokensCommand,
     users: usersCommand,
+    invites: invitesCommand,
     "system-accounts": systemAccountsCommand,
   },
   async run({ args }) {
@@ -849,12 +853,18 @@ const SUB_COMMANDS: Record<string, SubEntry> = {
   // single-use; that's the gating, not a tier check here.
   init: { command: initCommand },
   install: { command: installCommand, requires: "connector:write" },
+  // `sk join` redeems an invite UNAUTHENTICATED — like `sk init`, the
+  // invited user has no profile / api key yet, so it carries no
+  // permission requirement. The engine route is rate-limited and the
+  // token is single-use; that's the gating, not a tier check here.
+  join: { command: joinCommand },
   // admin
   rbac: { command: rbacCommand, requires: "rbac:read" },
   audit: { command: auditCommand, requires: "audit:read" },
   apikeys: { command: apiKeysCommand, requires: "api_key:read" },
   "portal-tokens": { command: portalTokensCommand, requires: "portal_token:read" },
   users: { command: usersCommand, requires: "identity:read" },
+  invites: { command: invitesCommand, requires: "identity:read" },
   "system-accounts": { command: systemAccountsCommand, requires: "identity:read" },
 };
 

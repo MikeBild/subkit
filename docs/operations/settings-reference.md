@@ -89,6 +89,7 @@ Authentication
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `auth.firebase.login_url` | string | `""` | global | no | yes |  |
 | `auth.firebase.project_id` | string | `""` | global | no | yes |  |
+| `auth.firebase.tenant_slug` | string | `"default"` | global | no | yes | Tenant slug that Firebase-authenticated users are mapped into. |
 | `auth.mcp_oauth.access_token_ttl_seconds` | number | `3600` | global | no | no | Lifetime in seconds for MCP OAuth access tokens. |
 | `auth.mcp_oauth.authorization_code_ttl_seconds` | number | `60` | global | no | no | Lifetime in seconds for MCP OAuth authorization codes. |
 | `auth.mcp_oauth.dynamic_registration_enabled` | boolean | `true` | global | no | no | Allow RFC 7591 dynamic client registration at POST /v1/oauth/register. |
@@ -99,6 +100,7 @@ Authentication
 | `auth.oidc.client_secret` | string | `""` | global | yes | yes |  |
 | `auth.oidc.issuer_url` | string | `""` | global | no | yes |  |
 | `auth.oidc.redirect_uri` | string | `""` | global | no | yes |  |
+| `auth.provider` | enum("subkit" \| "firebase" \| "oidc") | `"subkit"` | global | no | yes | Human identity provider: 'subkit' (local admin-invite), 'firebase' (Firebase ID tokens), or 'oidc' (generic OIDC). Machine auth (API keys, portal, MCP OAuth) is always available. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform

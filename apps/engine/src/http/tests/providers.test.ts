@@ -35,6 +35,7 @@ describe("GET /v1/identity/providers", () => {
   });
 
   test("returns firebase provider when auth.firebase.project_id is set", async () => {
+    await setConfigKey("auth.provider", "firebase", { force: true });
     await setConfigKey("auth.firebase.project_id", "test-project", { force: true });
     await setConfigKey("auth.firebase.login_url", "https://test-project.web.app", {
       force: true,
@@ -53,6 +54,7 @@ describe("GET /v1/identity/providers", () => {
   });
 
   test("returns oidc provider when auth.oidc.issuer_url is set", async () => {
+    await setConfigKey("auth.provider", "oidc", { force: true });
     await setConfigKey("auth.oidc.issuer_url", "https://auth.example.com", { force: true });
 
     const res = await fetch(`${ctx.baseUrl}/v1/identity/providers`);
@@ -65,16 +67,32 @@ describe("GET /v1/identity/providers", () => {
     expect(oidc!.issuer).toBe("https://auth.example.com");
   });
 
-  test("returns all providers when both Firebase and OIDC configured", async () => {
+  test("advertises exactly the selected external provider plus api-key", async () => {
     await setConfigKey("auth.firebase.project_id", "test-fb", { force: true });
     await setConfigKey("auth.oidc.issuer_url", "https://auth.example.com", { force: true });
 
-    const res = await fetch(`${ctx.baseUrl}/v1/identity/providers`);
-    const data = (await res.json()) as { providers: { type: string }[] };
-    const types = data.providers.map((p) => p.type);
-    expect(types).toContain("firebase");
-    expect(types).toContain("oidc");
+    await setConfigKey("auth.provider", "subkit", { force: true });
+    let res = await fetch(`${ctx.baseUrl}/v1/identity/providers`);
+    let types = ((await res.json()) as { providers: { type: string }[] }).providers.map(
+      (p) => p.type,
+    );
     expect(types).toContain("api-key");
+    expect(types).not.toContain("firebase");
+    expect(types).not.toContain("oidc");
+
+    await setConfigKey("auth.provider", "firebase", { force: true });
+    res = await fetch(`${ctx.baseUrl}/v1/identity/providers`);
+    types = ((await res.json()) as { providers: { type: string }[] }).providers.map((p) => p.type);
+    expect(types).toContain("api-key");
+    expect(types).toContain("firebase");
+    expect(types).not.toContain("oidc");
+
+    await setConfigKey("auth.provider", "oidc", { force: true });
+    res = await fetch(`${ctx.baseUrl}/v1/identity/providers`);
+    types = ((await res.json()) as { providers: { type: string }[] }).providers.map((p) => p.type);
+    expect(types).toContain("api-key");
+    expect(types).toContain("oidc");
+    expect(types).not.toContain("firebase");
   });
 
   test("does not require authentication", async () => {
@@ -86,6 +104,7 @@ describe("GET /v1/identity/providers", () => {
   });
 
   test("firebase uses default login_url when auth.firebase.login_url not set", async () => {
+    await setConfigKey("auth.provider", "firebase", { force: true });
     await setConfigKey("auth.firebase.project_id", "my-proj", { force: true });
     // login_url stays empty → route falls back to "https://{project}.web.app".
 

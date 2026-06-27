@@ -3,4 +3,5 @@
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
 export * from "./oidc-discovery.ts";
+export * from "./provisioning.ts";
 export * from "./service.ts";

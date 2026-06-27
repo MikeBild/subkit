@@ -71,6 +71,13 @@
       "when": 1782491224244,
       "tag": "0009_authoring_capability_candidate",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782577624244,
+      "tag": "0010_local_invite_provisioning",
+      "breakpoints": true
     }
   ]
 }

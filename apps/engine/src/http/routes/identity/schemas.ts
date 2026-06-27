@@ -28,6 +28,7 @@ export const UserSchema = z
     tenant_id: z.string().uuid(),
     email: z.string(),
     role: z.enum(["admin", "member", "enduser"]),
+    status: z.enum(["invited", "active", "disabled"]),
     created_at: z.string(),
     updated_at: z.string(),
   })
@@ -83,3 +84,37 @@ export const PortalTokenSchema = z
 export const PortalTokenIssuedSchema = PortalTokenSchema.extend({
   plaintext_token: z.string(),
 }).openapi("PortalTokenIssued");
+
+export const UserInviteSchema = z
+  .object({
+    id: z.string().uuid(),
+    tenant_id: z.string().uuid(),
+    user_id: z.string().uuid(),
+    prefix: z.string(),
+    scopes: z.array(z.string()),
+    allowed_workflows: z.array(z.string()).nullable(),
+    allowed_connectors: z.array(z.string()).nullable(),
+    expires_at: z.string(),
+    redeemed_at: z.string().nullable(),
+    revoked_at: z.string().nullable(),
+    created_by: z.string().uuid().nullable(),
+    created_at: z.string(),
+  })
+  .openapi("UserInvite");
+
+export const UserInviteIssuedSchema = UserInviteSchema.extend({
+  plaintext_token: z
+    .string()
+    .describe(
+      "Only returned once at issue time. Hand to the invited user; the engine never shows it again.",
+    ),
+}).openapi("UserInviteIssued");
+
+export const InviteRedeemedSchema = z
+  .object({
+    user_id: z.string().uuid(),
+    tenant_id: z.string().uuid(),
+    api_key: z.string().describe("The invited user's personal API key. Returned exactly once."),
+    api_key_prefix: z.string(),
+  })
+  .openapi("InviteRedeemed");

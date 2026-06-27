@@ -82,6 +82,16 @@ docker exec subkit sk init \
 > docker logs subkit 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
 > ```
 
+> **Authentication defaults to the local `subkit` provider** — people are added
+> by admin invite and authenticate with engine-issued API keys; no external
+> identity provider is involved (that's the [teammate flow](#add-a-teammate-multi-user)
+> below). To switch the whole engine to SSO via Firebase, set the provider and
+> restart:
+> ```bash
+> docker exec subkit sk settings set auth.provider '"firebase"' --force
+> docker restart subkit
+> ```
+
 Verify:
 
 ```bash
@@ -258,6 +268,43 @@ sk            # the same conversational REPL, now host-native
 ```
 
 Host config lives at `~/.sk/config.json`.
+
+---
+
+## Add a teammate (multi-user)
+
+With the local `subkit` provider, an admin provisions each teammate and the
+teammate mints their **own** personal API key from a single-use invite — the
+admin never sees that key. Three commands, in order:
+
+```bash
+# 1. Admin: create the user (roles: admin | member | enduser, default member)
+docker exec subkit sk users create --email teammate@example.com --role member
+# created user
+#   id     <USER_ID>
+#   email  teammate@example.com
+#   role   member
+
+# 2. Admin: issue a single-use invite — the wf_invite_ token is shown ONCE
+docker exec subkit sk users invite <USER_ID>
+# invite issued for user <USER_ID>
+#   token    wf_invite_…
+#   expires  …
+# the invited user runs:
+#   sk join --invite wf_invite_…
+```
+
+```bash
+# 3. Teammate (on their own machine, no login required): redeem the token to
+#    provision a personal API key into their ~/.sk profile
+sk join --invite wf_invite_… --engine-url http://localhost:3000
+# sk join: joined — profile 'default' saved to ~/.sk/config.json
+#   personal api key prefix: wf_live_…
+#   next: sk status
+```
+
+Hand the token over securely — it works only once. Admins can review or revoke
+un-redeemed invites with `sk invites list` and `sk invites revoke <invite-id>`.
 
 ---
 
