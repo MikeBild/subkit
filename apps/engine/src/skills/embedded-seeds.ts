@@ -19,7 +19,14 @@ import dataHandling from "../conversations/seed/skills/data-handling.md" with { 
 import documentAnalysisGuidance from "../conversations/seed/skills/document-analysis-guidance.md" with {
   type: "text",
 };
+import engineRestApi from "../conversations/seed/skills/engine-rest-api.md" with { type: "text" };
+import engineStatusAndCapabilities from "../conversations/seed/skills/engine-status-and-capabilities.md" with {
+  type: "text",
+};
 import errorRecovery from "../conversations/seed/skills/error-recovery.md" with { type: "text" };
+import externalChatIntegration from "../conversations/seed/skills/external-chat-integration.md" with {
+  type: "text",
+};
 import githubGraphqlBasics from "../conversations/seed/skills/github-graphql-basics.md" with {
   type: "text",
 };
@@ -47,8 +54,12 @@ import postgresConnectors from "../conversations/seed/skills/postgres-connectors
 import rbacAndScopes from "../conversations/seed/skills/rbac-and-scopes.md" with { type: "text" };
 import s3Connectors from "../conversations/seed/skills/s3-connectors.md" with { type: "text" };
 import selfHealing from "../conversations/seed/skills/self-healing.md" with { type: "text" };
+import skCliReference from "../conversations/seed/skills/sk-cli-reference.md" with { type: "text" };
 import subkitConcepts from "../conversations/seed/skills/subkit-concepts.md" with { type: "text" };
 import troubleshootingWorkflowFailures from "../conversations/seed/skills/troubleshooting-workflow-failures.md" with {
+  type: "text",
+};
+import webhooksAndTriggers from "../conversations/seed/skills/webhooks-and-triggers.md" with {
   type: "text",
 };
 import workflowAuthoring from "../conversations/seed/skills/workflow-authoring.md" with {
@@ -73,7 +84,10 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "connector-creation-guidance.md", content: connectorCreationGuidance },
   { file: "data-handling.md", content: dataHandling },
   { file: "document-analysis-guidance.md", content: documentAnalysisGuidance },
+  { file: "engine-rest-api.md", content: engineRestApi },
+  { file: "engine-status-and-capabilities.md", content: engineStatusAndCapabilities },
   { file: "error-recovery.md", content: errorRecovery },
+  { file: "external-chat-integration.md", content: externalChatIntegration },
   { file: "github-graphql-basics.md", content: githubGraphqlBasics },
   { file: "graphql-authoring-recipe.md", content: graphqlAuthoringRecipe },
   { file: "graphql-connectors.md", content: graphqlConnectors },
@@ -87,7 +101,9 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "rbac-and-scopes.md", content: rbacAndScopes },
   { file: "s3-connectors.md", content: s3Connectors },
   { file: "self-healing.md", content: selfHealing },
+  { file: "sk-cli-reference.md", content: skCliReference },
   { file: "subkit-concepts.md", content: subkitConcepts },
   { file: "troubleshooting-workflow-failures.md", content: troubleshootingWorkflowFailures },
+  { file: "webhooks-and-triggers.md", content: webhooksAndTriggers },
   { file: "workflow-authoring.md", content: workflowAuthoring },
 ];

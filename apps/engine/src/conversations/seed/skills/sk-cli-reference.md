@@ -1,0 +1,38 @@
+---
+slug: sk-cli-reference
+scope: global
+title: sk CLI Reference
+description: Mental model for the sk command-line client — interactive REPL vs. headless, profiles and auth, the noun/verb resource commands, and `sk mcp` as the bridge into MCP clients. Consult the sk-ref-cli knowledge source for exhaustive command, flag, and subcommand detail.
+activates_when: [{"kind":"intent_keyword","word":"sk cli"},{"kind":"intent_keyword","word":"command"},{"kind":"intent_keyword","word":"headless"},{"kind":"intent_keyword","word":"sk mcp"},{"kind":"intent_keyword","word":"sk settings"},{"kind":"intent_keyword","word":"sk doctor"},{"kind":"intent_keyword","word":"sk health"},{"kind":"intent_keyword","word":"sk extract"},{"kind":"intent_keyword","word":"sk init"},{"kind":"intent_keyword","word":"sk join"}]
+side_effects: read
+idempotency: none
+maturity: stable
+tags: [sk-platform-reference, cli]
+version: 1
+---
+
+# sk CLI reference
+
+`sk` is the command-line client for the subkit engine. It has two run modes over one resolved profile:
+
+- **Interactive REPL** — bare `sk` opens a conversational session against the active profile.
+- **Headless** — `sk -p "..."` runs a single prompt and prints the result. `--output text|json|stream-json` (default `text`) selects the machine-readable shape for scripts and CI.
+
+## Key facts
+
+1. **Profiles + auth.** Profiles live in `~/.sk/config.json`. `sk login` authenticates (browser SSO/Firebase, OIDC device flow, scripted `--api-key`, or `--portal-token`); `sk status` prints the active profile and engine reachability; `sk logout` drops it; `sk tenants [use <id>]` lists or switches the active tenant. `sk init` bootstraps an engine + tenant + profile; `sk join` accepts an invite.
+2. **Resource commands are noun → verb.** Kebab-case nouns each carry their own subcommands: `sk workflows`, `sk connectors`, `sk connector-templates`, `sk credentials`, `sk executions`, `sk schedules`, `sk knowledge-sources`, `sk skills`, `sk skill-candidates`, `sk patch-candidates`, `sk discovery`, `sk self-healing`, `sk hooks`, `sk subscriptions`, `sk rbac`, `sk audit`, `sk apikeys`, `sk portal-tokens`, `sk users`, `sk invites`, `sk system-accounts`, `sk mcp-servers`, and more.
+3. **Diagnostics.** `sk doctor` checks connectivity/setup (profile, reachability, authn, schema drift, version match); `sk health` reports runtime posture (liveness, token budget, failing runs, risk signals, drift); `sk logs` tails engine logs; `sk settings` (`list|get|set|configure`) reads and writes engine config with secrets masked.
+4. **`sk extract`** pulls structured data from a file (LLM for text, native parsers for binary). `sk files` / `sk attach` manage attachments.
+5. **`sk mcp` is the MCP bridge.** It runs a stdio MCP server proxied to the engine — this is how you wire sk into MCP clients (Claude Desktop, Codex, Cursor). MCP tool names use **underscores, never dots**: `wf_<slug>`, `conversation_start`, `conversation_append`, `conversation_get`, `conversation_commit`, `conversation_respond_elicitation`, `run_workflow`, `search_knowledge`, `search_knowledge_v2`, `list_knowledge_sources`, `get_engine_status`, `whoami`, `get_token_budget`, `get_llm_usage`, `list_inbound_hooks`, `get_inbound_hook`.
+6. **Debug forensics.** Headless and REPL turns write `~/.sk/debug.log` plus `~/.sk/history.jsonl`; grep these to trace dropped fields or failing turns.
+
+## Full reference
+
+This skill is intentionally thin. For the exhaustive command set — every subcommand, flag, required scope, and output shape — call:
+
+```
+search_knowledge({ query: "<your command or topic>", tags: ["sk-platform-reference"] })
+```
+
+(or `search_knowledge_v2` with the same `tags` filter). The complete sk CLI reference lives in the knowledge source slug `sk-ref-cli`.

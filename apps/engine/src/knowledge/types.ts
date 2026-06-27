@@ -145,7 +145,7 @@ export interface CreateKnowledgeSourceParams {
    *  rather than a file upload, the route stamps these on the row so
    *  later refreshes know where the content originated. Defaults to
    *  `"file_upload"` + `upload.filename` for back-compat. */
-  source_type_override?: "file_upload" | "inline" | "url";
+  source_type_override?: "file_upload" | "inline" | "url" | "seed";
   source_uri_override?: string;
 }
 
