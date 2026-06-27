@@ -98,7 +98,8 @@ Type `/` for the live menu. The shipped commands:
 | `/skills` · `/knowledge` | List reusable Skills / knowledge sources in scope. |
 | `/clear` (`/new`) · `/compact` · `/resume` | New conversation · shrink history · reattach. |
 | `/setup` · `/status` · `/cost` · `/usage` | Readiness · session+persona · budget · token usage. |
-| `/config` (`/settings`) | Open the searchable settings UI (every engine setting). |
+| `/config` | Open the searchable Config tab (every engine setting). |
+| `/settings` (`/preferences`) | Open the 5-tab settings palette (Status / Config / Usage / Skills / Knowledge). |
 | `/model` · `/tenant` · `/login` · `/logout` | Switch model · switch/list tenants · auth. |
 | `/attach` · `/upload` · `/files` | Attach a file to the message · upload · list files. |
 | `/yolo` | Lift the destructive-action confirm gate for a few turns (typed `yes`). |

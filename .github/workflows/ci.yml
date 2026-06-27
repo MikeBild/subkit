@@ -77,6 +77,9 @@ jobs:
         # does not resolve.
         run: bun run check:docs-refs
 
+      - name: Docs drift (generated pages)
+        run: bun run check:llms-txt-drift && bun run check:sk-settings-doc-drift && bun run check:cli-reference-drift
+
       - name: Phantom dependencies
         # Fails if any imported package is undeclared (resolves only
         # transitively) — an upstream bump could break it silently.

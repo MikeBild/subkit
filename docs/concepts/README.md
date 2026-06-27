@@ -1,0 +1,31 @@
+# Concepts
+
+The shared mental model for sk: how connectors, workflows, knowledge, skills, and governance fit together — so every team means the same thing and reasons about the same system.
+
+```mermaid
+flowchart TD
+    Overview["Architecture Overview<br/>the whole picture"]
+    Glossary["Concepts & Domain Model<br/>the vocabulary"]
+    Connectors["Connectors & Integration"]
+    Workflows["Workflow Execution"]
+    Knowledge["Knowledge & Skills"]
+    Governance["Governance & Audit"]
+
+    Overview --> Glossary
+    Glossary --> Connectors
+    Glossary --> Workflows
+    Connectors --> Workflows
+    Workflows --> Knowledge
+    Workflows --> Governance
+```
+
+Start with the **Overview** for the big picture, then the **Glossary** to lock the vocabulary. From there, **Connectors** feed **Workflows**, **Knowledge & Skills** shape how the AI authors them, and **Governance & Audit** wraps every run.
+
+| Page | What it covers |
+|---|---|
+| [Architecture Overview](overview.md) | The first mental model of sk — the major pieces and how they connect. |
+| [Concepts & Domain Model](glossary.md) | One vocabulary, defined once: Workflow, Connector, Credential, Audit Log, and the rest. |
+| [Connectors & Integration](connectors.md) | Drivers, Connector Templates, and Credentials — authenticate a system once, reuse it everywhere. |
+| [Workflow Execution](workflows.md) | The lifecycle, execution model, eight Step kinds, triggers, versioning, scheduling, and self-healing. |
+| [Knowledge & Skills](knowledge-and-skills.md) | How Knowledge Sources and Skills shape the AI that authors workflows. |
+| [Governance & Audit](governance-and-audit.md) | Permission checks, immutable records, and the audit trail behind every run. |

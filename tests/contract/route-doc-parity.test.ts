@@ -4,8 +4,8 @@
 //   1. The OpenAPI spec the engine actually mounts (source of truth).
 //   2. The prose docs that list routes (docs/developers/input-surfaces.md,
 //      docs/concepts/connectors.md).
-//   3. The slash-command registry in apps/sk/src/slash.ts (for the
-//      docs/developers/input-surfaces.md parity check).
+//   3. The slash-command registry in apps/sk/src/slash.ts (parity-checked
+//      against the generated docs/authors/slash-commands.md reference).
 //
 // Breakage signals real drift: a docs reference to a route that was
 // removed, or a new route that nobody documented. Known stable
@@ -130,9 +130,9 @@ describe("route-doc parity", () => {
     expect(missing).toHaveLength(0);
   });
 
-  test("every slash command registered in sk also appears in docs/developers/input-surfaces.md", () => {
+  test("every slash command registered in sk also appears in docs/authors/slash-commands.md", () => {
     const slashSrc = readFileSync(join(REPO, "apps/sk/src/slash.ts"), "utf8");
-    const cliDoc = readFileSync(join(REPO, "docs/developers/input-surfaces.md"), "utf8");
+    const cliDoc = readFileSync(join(REPO, "docs/authors/slash-commands.md"), "utf8");
     // Commands are declared inside the exported SLASH_COMMANDS array as
     // either inline objects `{ name: "x", ... }` or multi-line objects
     // whose first property is `name: "..."`. Match only entries whose
@@ -155,7 +155,7 @@ describe("route-doc parity", () => {
     }
     if (missing.length > 0) {
       throw new Error(
-        `sk slash commands not documented in docs/developers/input-surfaces.md:\n  /${missing.join("\n  /")}`,
+        `sk slash commands not documented in docs/authors/slash-commands.md:\n  /${missing.join("\n  /")}`,
       );
     }
     expect(missing).toHaveLength(0);

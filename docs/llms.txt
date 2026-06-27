@@ -4,15 +4,17 @@ A robots.txt-style index of the sk documentation set for LLMs: every public page
 
 ## Concepts
 
+- [Concepts](docs/concepts/README.md): The shared mental model for sk: how connectors, workflows, knowledge, skills, and governance fit together — so every team means the same thing and reasons about the same system.
 - [Connectors & Integration](docs/concepts/connectors.md): Outcome: authenticate an external system once, reuse it across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log.
 - [Concepts & Domain Model](docs/concepts/glossary.md): One vocabulary, defined once.
 - [Governance & Audit](docs/concepts/governance-and-audit.md): Pass the audit on the first pass.
 - [Knowledge & Skills](docs/concepts/knowledge-and-skills.md): Outcome: authoring grounded in your own conventions — not generic API docs — so workflows ship faster, with fewer rework cycles and fewer compliance surprises.
-- [Architecture Overview](docs/concepts/overview.md): Ship audited automation in hours, not sprints — and keep every run compliant by construction.
+- [Architecture Overview](docs/concepts/overview.md): Ship audited automation in hours, not sprints — and keep every run governed, versioned, and auditable.
 - [Workflow Execution](docs/concepts/workflows.md): Approved workflows run the same way every time — deterministic, immutable, fully audited.
 
 ## Operators
 
+- [Operators](docs/operators/README.md): Run and govern the sk engine day-to-day — register connectors, wire schedules and webhooks, route notifications, watch the run, and apply repairs when an upstream API drifts.
 - [Connectors & Credentials (operator guide)](docs/operators/connectors-and-credentials.md): Connect a system once, reuse it everywhere — and the credential is never exposed.
 - [Notifications](docs/operators/notifications.md): Operators hear about what matters, not noise.
 - [Observability & Resource Limits](docs/operators/observability.md): See every run, catch drift before it costs you.
@@ -22,8 +24,9 @@ A robots.txt-style index of the sk documentation set for LLMs: every public page
 
 ## Authors
 
+- [Authors](docs/authors/README.md): Build and run workflows by chatting with sk — describe the outcome in plain language, approve what the AI proposes, and ship a governed, versioned workflow.
 - [AI-Assisted Authoring](docs/authors/authoring-workflows.md): Describe the outcome.
-- [Custom Skills](docs/authors/custom-skills.md): Outcome: the system encodes your conventions once, then applies them on every Conversation, discovery, and repair — so authored workflows ship faster, pass review sooner, and stay policy-uniform across tenants.
+- [Custom Skills](docs/authors/custom-skills.md): Outcome: sk encodes your conventions once, then applies them on every Conversation, discovery, and repair — so authored workflows ship faster, pass review sooner, and stay policy-uniform across tenants.
 - [Knowledge Sources](docs/authors/knowledge-sources.md): Outcome: workflows follow your runbooks and compliance docs, not generic knowledge.
 - [Quickstart — Authors](docs/authors/quickstart.md): Turn a plain-language request into a governed, audited, runnable workflow — in about 5 minutes, no code.
 - [Recipe authoring](docs/authors/recipes.md): Common automations start from a vetted blueprint, not a blank page.
@@ -33,6 +36,7 @@ A robots.txt-style index of the sk documentation set for LLMs: every public page
 
 ## Developers
 
+- [Developers](docs/developers/README.md): Integrate, extend, and self-host sk — without forking security per surface.
 - [sk CLI reference](docs/developers/cli-reference.md): Non-interactive commands for the sk CLI.
 - [Evidence process — verifying a behavioral / LLM-path change](docs/developers/evidence-process.md): Outcome: changes to LLM-driven paths ship proven, not guessed.
 - [Input Surfaces](docs/developers/input-surfaces.md): Meet your team where they already work — without re-implementing access control per channel.
@@ -42,6 +46,7 @@ A robots.txt-style index of the sk documentation set for LLMs: every public page
 
 ## Admins
 
+- [Admins — govern access](docs/admins/README.md): Govern your tenants, identity, RBAC, secrets, and hardening — so a team moves fast while every run stays permission-checked, scoped, and audited.
 - [Configuring the engine](docs/admins/configuration.md): Outcome: one validated configuration, or the engine refuses to boot.
 - [Credentials & Keys](docs/admins/credentials-and-keys.md): Every integration secret is encrypted at rest, rotated on demand, and never logged, returned in an API response, or shown to the AI.
 - [Production hardening — known caveats & TODOs](docs/admins/production-hardening.md): Outcome: ship sk production-ready, audit-ready, and recoverable.

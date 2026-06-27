@@ -68,17 +68,9 @@ The sk CLI is the primary human-facing authoring tool and the canonical operator
 | Portal Token | Scoped external-user flows |
 | Headless (stdin) | Scripted / automated usage with no TTY |
 
-**In-conversation actions.** Users drive the AI authoring loop with slash commands — `/approve` to commit a Draft, `/reject` to discard a proposal, `/list` to enumerate available Connectors or Skills, `/run` to trigger an execution, `/draft` to inspect the current draft snapshot, `/context` to inspect the current authoring state, and others — without leaving the terminal.
+**In-conversation actions.** Users drive the AI authoring loop with slash commands — `/approve` to commit a Draft, `/reject` to discard a proposal, `/draft` to inspect the current draft snapshot, `/context` to inspect the current authoring state, and others — without leaving the terminal. Connector onboarding runs through `/install`, an alias of `/onboard`.
 
-**Slash-command reference.** The full set of conversational and admin slashes (registered in `apps/sk/src/slash.ts`):
-
-- *Authoring*: `/connector`, `/connectors`, `/workflow`, `/workflows`, `/templates`, `/versions`, `/approve`, `/approvals`, `/reject`, `/draft`, `/context`, `/probe` (run a connector probe checkpoint), `/preview` (run a workflow preview checkpoint), `/run`, `/list`, `/restore`, `/policy`, `/yolo` (force-skip checkpoint gates), `/patch-candidates`, `/discovery`, `/actions`, `/queue`, `/history`, `/view`, `/export`, `/attach`, `/paste`, `/upload`, `/files`, `/rename` (rename the session), `/fork` (fork the session into a new conversation).
-- *Session*: `/help`, `/clear`, `/compact`, `/resume`, `/exit`, `/init`, `/setup`, `/onboard`, `/profile`, `/model`, `/status`, `/cost`, `/verbose`, `/debug`, `/bug`, `/feedback`, `/logs`, `/config`, `/config-form`, `/settings` (5-tab settings palette), `/usage` (token usage per flow), `/copy` (copy last assistant message), `/aliases`, `/env`, `/exec`.
-- *Identity & access*: `/login`, `/logout`, `/auth`, `/apikeys`, `/audit`, `/admin`, `/tenant`, `/users`, `/system-accounts`, `/permissions`, `/session` (mint a portal token + QR for a workflow).
-- *AI context*: `/skills`, `/knowledge`, `/mcp`, `/mcp-servers`, `/mention`, `/memory`, `/notifications`, `/executions`.
-- *Vendor install helpers*: `/install-slack`, `/install-teams`, `/install-github`, `/install-google-workspace`, `/install-salesforce`, `/install-jira`, `/install-hubspot`.
-
-Each command's full surface lives next to its handler; this list is the canonical index.
+**Slash-command reference.** The canonical, always-current list of every conversational and admin slash command — names, aliases, and one-line descriptions — is the generated reference at [`slash-commands.md`](../authors/slash-commands.md). It is regenerated from the registry in `apps/sk/src/slash.ts`, so it never drifts from what the CLI actually accepts.
 
 **State visibility.** The CLI does not infer progress from transcript text. It renders the engine's authoring summary directly — current mode, stage, active target, checkpoint freshness, blockers, next required action, latest execution, latest diagnosis — which is what makes resume, repair, and handoff predictable across long-running sessions.
 

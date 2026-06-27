@@ -3,7 +3,7 @@
 > **Audience:** Authors and operators encoding organization-specific guidance for
 > the AI.
 
-**Outcome:** the system encodes your conventions once, then applies them on every
+**Outcome:** sk encodes your conventions once, then applies them on every
 Conversation, discovery, and repair — so authored workflows ship faster, pass
 review sooner, and stay policy-uniform across tenants. With approval, it gets
 smarter over time.
@@ -72,8 +72,12 @@ or manage them from the CLI:
 
 ```bash
 sk skills list
-sk skills create --title "Stripe conventions" --scope connector:stripe --file ./stripe-skill.md
+sk skills create --file ./stripe-skill.json
 ```
+
+The `--file` argument is a SkillDef JSON, not markdown. The SkillDef body carries
+the `scope`, `connector_id`, and `title` — there are no separate `--title` or
+`--scope` flags.
 
 A Skill is dense, prescriptive guidance the AI should follow — keep each one tight and single-purpose. Broader, document-scale context belongs in a [Knowledge Source](./knowledge-sources.md) instead.
 
@@ -85,13 +89,13 @@ A Skill is dense, prescriptive guidance the AI should follow — keep each one t
 
 ## Skill Candidates: learning from what works
 
-Skills are not auto-generated and not auto-promoted. The platform detects recurring patterns from execution history — Connectors or step sequences that are used together frequently and tend to succeed — and surfaces them as **Skill Candidates** for operator review. Each candidate carries a confidence score and links to the executions that support it.
+Skills are not auto-generated and not auto-promoted. The platform detects recurring patterns from execution history — Connectors or step sequences that are used together frequently and tend to succeed — and surfaces them as **Skill Candidates** for operator review. Each candidate carries a confidence tier (low / medium / high) and links to the executions that support it.
 
 ```mermaid
 flowchart TD
     E[Execution history] --> D{Recurring,<br/>successful pattern?}
     D -->|no| E
-    D -->|yes| SC[Skill Candidate<br/>confidence + supporting executions]
+    D -->|yes| SC[Skill Candidate<br/>confidence tier + supporting executions]
     SC --> R{Operator review}
     R -->|reject| X[Discarded]
     R -->|promote| AS[Active Skill]
@@ -103,10 +107,10 @@ A candidate becomes an active Skill only through explicit operator promotion:
 
 ```bash
 sk skill-candidates list
-sk skill-candidates promote <id>
+sk skill-candidates approve <id>
 ```
 
-The system learns from what works, but humans decide what becomes canonical guidance.
+sk learns from what works, but humans decide what becomes canonical guidance.
 
 ## The sk-Stdlib the AI proposes
 

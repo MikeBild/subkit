@@ -163,7 +163,12 @@ function main(): void {
   for (const { dir, label } of AUDIENCE_ORDER) {
     const group = entries
       .filter((e) => e.audience === dir)
-      .sort((a, b) => a.path.localeCompare(b.path));
+      .sort((a, b) => {
+        const ar = a.path.endsWith("/README.md");
+        const br = b.path.endsWith("/README.md");
+        if (ar !== br) return ar ? -1 : 1;
+        return a.path.localeCompare(b.path);
+      });
     if (group.length === 0) continue;
     lines.push("", `## ${label}`, "");
     for (const e of group) {
