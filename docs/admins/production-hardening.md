@@ -1,9 +1,46 @@
 # Production hardening — known caveats & TODOs
 
-Operator-facing notes for running `sk` in production. Each item below is a
-**deliberate default the engine ships with**, surfaced as a loud `warn` log line
-at boot — *not* a bug. This page explains what each means, the risk, how to
-close it, and the future TODO.
+**Outcome:** ship sk **production-ready, audit-ready, and recoverable.** Every
+workflow run stays permission-checked, recorded, and replayable — and a clean
+operator can rebuild the whole estate from a database backup alone.
+
+This page lists the **deliberate defaults** the engine ships with. Each surfaces
+as a loud `warn` line at boot — *not* a bug. For every item: what it is, the
+risk, how to close it, and the future TODO.
+
+## Hardening layers at a glance
+
+```mermaid
+flowchart TB
+    subgraph Edge["Edge"]
+        proxy[Reverse proxy / TLS]
+    end
+    subgraph App["sk engine — stateless"]
+        scan[File AV scan]
+        store[Persistent file storage]
+        key[MASTER_KEY + credential vault]
+    end
+    subgraph State["Durable state"]
+        pg[(PostgreSQL)]
+        ver[Workflow versions]
+        audit[Audit log]
+    end
+    proxy --> scan --> store --> key
+    key --> pg
+    pg --> ver
+    pg --> audit
+    pg -. pg_dump / WAL .-> backup[(Backups)]
+```
+
+| Layer | Production-ready when | Section |
+|---|---|---|
+| File AV scan | a real scanner (clamd) answers under budget | [§1](#1-file-uploads-are-not-virus-scanned-scannernoop_in_production) |
+| File storage | points at a persistent, backed-up path | [§2](#2-storage-directory-is-set-via-a-config-override-overrideactive) |
+| Secrets | `MASTER_KEY` set + rotated | [credentials-and-keys.md](./credentials-and-keys.md) |
+| Database | external managed PostgreSQL | [self-host.md](../developers/self-host.md) |
+| Recovery | versioned workflows + PG backups | [Backup and Recovery](#backup-and-recovery) |
+
+### Grep the boot warnings
 
 The engine emits these at boot so you can grep for them:
 
@@ -17,10 +54,11 @@ docker logs subkit 2>&1 | grep -E '"action":"(scanner.noop_in_production|overrid
 ## 1. File uploads are NOT virus-scanned (`scanner.noop_in_production`)
 
 ### What it is
+
 Every file uploaded into the engine (workflow attachments, inline uploads,
-presigned uploads) is passed through `getScanner().scan(stream, meta)` before the
+presigned uploads) passes through `getScanner().scan(stream, meta)` before the
 file row flips to `status='ready'`. The **default scanner is a no-op**
-(`NoopScanner`) that returns `{ verdict: "clean", engine: "noop" }` for *every*
+(`NoopScanner`) — it returns `{ verdict: "clean", engine: "noop" }` for *every*
 input without inspecting the bytes.
 
 Boot log when `NODE_ENV=production`:
@@ -33,22 +71,29 @@ warn  files  scanner.noop_in_production
 ```
 
 ### Risk
-- A malicious file uploaded by a user is **accepted and stored unscanned**; any
-  later download/processing serves it as-is.
-- **Low risk** for a single-trust-boundary install (you control every uploader).
-- **Real risk** once **untrusted / multi-tenant** users can upload files — this
-  is a compliance/security hole (no AV gate).
+
+| Install shape | Risk | Why |
+|---|---|---|
+| Single trust boundary (you control every uploader) | **Low** | No untrusted bytes enter the system. |
+| Untrusted / multi-tenant uploads | **Real** | A malicious file is accepted and stored unscanned; any later download/processing serves it as-is. Compliance/security hole (no AV gate). |
 
 ### Current behavior (by design)
-- The upload pipeline calls the scanner **unconditionally** — so wiring a real
-  backend needs **no changes to routes**, only to the resolver.
-- Verdicts: `clean` → row `ready`; `infected` → row `failed` + a
-  `FILE_SCAN_COMPLETED` audit event (verdict + signature); `timeout` (route
-  wrapper only) → row parked in `scanning`, reaped by the cleanup cron.
+
+- The upload pipeline calls the scanner **unconditionally** — wiring a real
+  backend needs **no route changes**, only the resolver.
+- Verdicts:
+
+  | Verdict | File row | Side effect |
+  |---|---|---|
+  | `clean` | `ready` | — |
+  | `infected` | `failed` | `FILE_SCAN_COMPLETED` audit event (verdict + signature) |
+  | `timeout` (route wrapper only) | parked in `scanning` | reaped by the cleanup cron |
+
 - Per-call ceiling: `SCANNER_TIMEOUT_SECONDS = 10` (in `files/scanner.ts`) — a
   real scanner must answer within this budget or the row is parked.
 
 ### How to close it (real fix — infra + a small code change)
+
 1. **Provision ClamAV** on the host (or a sidecar):
    ```sh
    apt-get install -y clamav-daemon clamav-freshclam
@@ -72,6 +117,7 @@ warn  files  scanner.noop_in_production
    confirm the file row flips to `failed` with a `FILE_SCAN_COMPLETED` audit row.
 
 ### TODO (future)
+
 - [ ] Add `storage.scanner.*` config (backend = `noop | clamav`, host/port/socket,
       timeout) so the scanner is operator-configurable instead of code-swapped.
 - [ ] Ship a clamd-backed `FileScanner` and have `getScanner()` construct it from
@@ -89,6 +135,7 @@ warn  files  scanner.noop_in_production
 ## 2. Storage directory is set via a config override (`override.active`)
 
 ### What it is
+
 The engine resolves config from `subkit.config.json` plus **`SK_OVERRIDE_*`
 environment overlays** (prefix `SK_OVERRIDE_`, see `config/loader.ts`). In
 production, point file storage at a persistent path (e.g. the all-in-one
@@ -106,9 +153,10 @@ warn  config  override.active   override_keys=["storage.files.dir"]
 ```
 
 ### Why this is correct (not a problem)
+
 - `storage.files.dir` is **where uploaded files are written on disk**.
-- If it is left **empty** with the `local` backend, `LocalDiskObjectStore` falls
-  back to `os.tmpdir()/sk-files` and the engine emits a *different*, more serious
+- If left **empty** with the `local` backend, `LocalDiskObjectStore` falls back
+  to `os.tmpdir()/sk-files` and the engine emits a *different*, more serious
   warning — `ephemeral_dir_warning` — because **tmpdir is wiped on reboot and
   every customer file is lost**.
 - Setting it to a **persistent path** (`/var/lib/subkit/files`) is exactly what
@@ -117,12 +165,15 @@ warn  config  override.active   override_keys=["storage.files.dir"]
   default config."
 
 ### Action required
+
 **None.** This is the intended production configuration. Keep the directory:
+
 - on persistent storage (not tmpfs),
 - backed up if uploads matter,
 - owned/writable by the engine's system user.
 
 ### TODO (future, optional)
+
 - [ ] Move `storage.files.dir` (and other stable prod values) from a
       `SK_OVERRIDE_*` env into the committed `subkit.config.json` so the
       `override.active` line stops appearing for settled config and overrides are
@@ -146,8 +197,29 @@ See also: [`self-host.md`](../developers/self-host.md) · [`configuration.md`](.
 
 ## Backup and Recovery
 
-sk's complete state lives in PostgreSQL. A standard PostgreSQL backup strategy — `pg_dump`, WAL archiving, or managed backup from a cloud database service — covers everything: workflows, connectors, credentials, executions, audit log, skills, and knowledge sources.
+**Outcome:** any clean host can rebuild the entire estate from one backup —
+workflows, connectors, credentials, executions, audit log, skills, and knowledge
+sources all live in PostgreSQL.
 
-The engine itself is stateless. It can be stopped, replaced with a new version, and restarted without data loss. All in-flight jobs are durably queued in PostgreSQL and resume automatically on restart. There is no in-memory state that needs to be preserved across restarts.
+```mermaid
+flowchart LR
+    subgraph Source["sk in production"]
+        engine[Engine — stateless]
+        pg[(PostgreSQL — single source of truth)]
+    end
+    engine -. durable queue .-> pg
+    pg -->|pg_dump / WAL archive / managed backup| backup[(Backup store)]
+    backup -->|restore| pg2[(PostgreSQL)]
+    pg2 -->|start| engine2[New engine]
+    engine2 -->|in-flight jobs resume| ready[Estate live]
+    badversion[Bad deploy] -.->|roll back to version| ready
+```
 
-Workflow versioning provides application-level recovery. Every workflow change creates a new immutable version. If a deployment goes wrong, rolling back to a known-good version is a single command. The history is always available.
+| Property | Guarantee |
+|---|---|
+| State of record | **PostgreSQL** — back it up and you have backed up sk. |
+| Backup method | Standard `pg_dump`, WAL archiving, or managed cloud-database backup. |
+| Engine state | **Stateless** — stop, replace, restart with no data loss. |
+| In-flight jobs | Durably queued in PostgreSQL; resume automatically on restart. |
+| In-memory state | None that must survive a restart. |
+| App-level rollback | Every workflow change creates a new **immutable version**; roll back to a known-good version in a single command. History is always available. |

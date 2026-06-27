@@ -1,31 +1,43 @@
 # Recipe authoring
 
-Recipes are pre-authored workflows attached to connector templates. The
-LLM clones a recipe via `start_workflow_from_recipe(template_slug,
-recipe_slug)` instead of synthesizing a workflow from scratch — the
-difference between a 30-second authoring loop and a multi-turn debugging
-spiral.
+**Common automations start from a vetted blueprint, not a blank page.** A
+recipe is a pre-authored workflow attached to a connector template. The LLM
+clones one via `start_workflow_from_recipe(template_slug, recipe_slug)`
+instead of synthesizing a workflow from scratch — collapsing a multi-turn
+debugging spiral into a 30-second authoring loop.
 
-This guide is the authoring contract: the schema, the conventions, the
-quality gate, and the promotion checklist.
+This guide is the authoring contract: schema, conventions, quality gate, and
+promotion checklist.
+
+## How a recipe becomes a workflow
+
+```mermaid
+flowchart LR
+  intent["User intent<br/>plain language"] --> match["Recipe match<br/>intent_keywords rank"]
+  match --> param["Parameterize<br/>sample_input + connector binding"]
+  param --> wf["Runnable workflow<br/>cloned draft"]
+```
+
+| Stage | What happens | Author's lever |
+|---|---|---|
+| Intent | Operator describes an outcome in plain language. | — |
+| Match | The LLM ranks the prompt against each recipe's keywords. | `intent_keywords` |
+| Parameterize | The clone tool binds connectors and seeds the first dry-run. | `required_connectors`, `sample_input` |
+| Workflow | A runnable draft lands, ready to preview, run, and commit. | `workflow` def |
 
 ## Where recipes live
 
-Every recipe ships inline on its connector template at:
+Every recipe ships inline on its connector template.
 
-```
-apps/engine/src/connectors/templates.json   # 93 templates, 237 recipes
-```
+| Concern | Location |
+|---|---|
+| Catalog | `apps/engine/src/connectors/templates.json` |
+| Schema | `apps/engine/src/connectors/templates.ts` (`ConnectorRecipeSchema`) |
+| Lint | `scripts/lint-recipes.ts` |
 
-The schema is defined at:
-
-```
-apps/engine/src/connectors/templates.ts:222  # ConnectorRecipeSchema
-```
-
-Recipes are read-only at runtime. Tenant-scoped per-recipe overrides
-are planned via a `connector_recipes` table; today, every operator
-sees the same shipped catalog.
+Recipes are read-only at runtime. Tenant-scoped per-recipe overrides are
+planned via a `connector_recipes` table; today every operator sees the same
+shipped catalog.
 
 ## Schema
 
@@ -171,13 +183,17 @@ that cannot express the connector via a `base_url` placeholder.
 
 ## The `trigger` block
 
-`workflow.trigger` is a discriminated union over `kind` — `request`,
-`webhook`, or `schedule`. Omitting it is equivalent to
-`{ "kind": "request" }`, which is what every recipe shipped before the
-trigger field existed assumes. Setting `webhook` or `schedule` reverse-binds
-an inbound binding or cron schedule on save and removes it on delete or
-version rotate, so the recipe is self-contained — operators do not need
-a separate `sk schedule create` or webhook-registration step.
+`workflow.trigger` is a discriminated union over `kind`. Omitting it is
+equivalent to `{ "kind": "request" }`.
+
+| `kind` | On save | Self-contained |
+|---|---|---|
+| `request` | nothing extra | runs on demand |
+| `webhook` | reverse-binds an inbound binding | no webhook-registration step |
+| `schedule` | reverse-binds a cron schedule | no `sk schedule create` |
+
+`webhook` and `schedule` bindings are removed on delete or version rotate, so
+the recipe stays self-contained.
 
 The schema source of truth is
 [`apps/engine/src/workflows/types.ts`](../../apps/engine/src/workflows/types.ts)

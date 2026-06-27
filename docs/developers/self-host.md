@@ -1,23 +1,30 @@
 # Quickstart — Zero to Running
 
-**No prior knowledge required.** Start from nothing and finish with a running
-engine, an authenticated `sk` CLI, a working connector, a workflow you can run,
-and a knowledge article — all from the released Docker image.
+**sk runs inside your own infrastructure — your data stays yours.** One container,
+one stateful dependency (PostgreSQL), no SaaS lock-in and nothing leaving your
+network except outbound LLM calls. Start from nothing and finish with a running
+engine, an authenticated `sk` CLI, a working connector, a runnable workflow, and
+an indexed knowledge article — all from the released Docker image.
 
-> **The primary interface is the conversational `sk` REPL.** You describe what
-> you want in plain language; the AI proposes a connector or workflow, you
-> review and approve. That's the easiest path for a human and the one to learn
-> first. Declarative JSON files and one-shot commands exist too — they're for
-> scripting and CI — and live in [Scripting & CI](#scripting--ci-non-interactive)
-> at the end.
+```mermaid
+flowchart LR
+    Op["docker run"] --> Engine["engine container<br/>(bundled sk + PostgreSQL)"]
+    Engine --> PG[("PostgreSQL<br/>your data, your volume")]
+    Engine -. outbound only .-> LLM[("LLM provider")]
+```
 
-This guide was run end-to-end against the released image; every command and
-output below is real.
+| What | Detail |
+|---|---|
+| **Time** | ~15 minutes |
+| **You need** | Docker + one free [Anthropic API key](https://console.anthropic.com) |
+| **Cost** | The weather API used here (open-meteo) is free and keyless |
+| **Outcome** | A governed engine you own, end-to-end |
 
-> **Time:** ~15 minutes.
-> **You need:** Docker, and one free **Anthropic API key**
-> (https://console.anthropic.com → API keys). The weather API used here
-> (open-meteo) is **free and needs no key**.
+> **The primary interface is the conversational `sk` REPL.** You describe what you
+> want in plain language; the AI proposes a connector or workflow, you review and
+> approve. Declarative JSON and one-shot commands exist too — for scripting and CI —
+> see [Scripting & CI](#scripting--ci-non-interactive). Every command and output
+> below is real, run end-to-end against the released image.
 
 ---
 
@@ -47,11 +54,11 @@ Wait a few seconds, then confirm it is healthy:
 
 ```bash
 curl -s http://localhost:3000/v1/health
-# {"status":"ok","version":"7.2.2","db_connected":true,"uptime_seconds":3}
+# {"status":"ok","db_connected":true,"uptime_seconds":3}
 ```
 
-The `subkit-data` volume holds **all** state (database, config, encryption key,
-uploaded files) so restarts keep your data.
+The `subkit-data` volume holds **all** state — database, config, encryption key,
+uploaded files — so restarts keep your data.
 
 ---
 
@@ -390,22 +397,24 @@ docker exec subkit sk credentials list <CONNECTOR_ID>
 
 ## Production deployment
 
-The quickstart above uses the all-in-one image, which bundles the engine and PostgreSQL in a single container — great for trials, demos, and small single-node self-hosting. This section covers what changes when you run sk for real.
+The quickstart above uses the all-in-one image — engine and PostgreSQL in one
+container — ideal for trials, demos, and small single-node self-hosting. This
+section covers what changes when you run sk for real.
 
 ### Deployment Topology
 
-sk compiles to a single binary. The only stateful dependency is PostgreSQL.
-
-There is no separate message broker to manage, no distributed queue service to operate, and no coordination system to keep in sync. The job queue, the cron scheduler, and the pub/sub event bus all run within the engine process, using PostgreSQL as their durable backing store. This is a deliberate architectural choice: it reduces the operational footprint to a single dependency and eliminates an entire category of distributed systems failure modes.
-
-The standard deployment model is straightforward: one engine service and one PostgreSQL instance. For teams that need higher availability, the engine is horizontally scalable — run multiple instances behind a load balancer. The queue and scheduler subsystems are designed for concurrent execution across multiple engine instances without coordination overhead.
+sk compiles to a single binary whose only stateful dependency is PostgreSQL. The
+job queue, cron scheduler, and pub/sub event bus all run **inside** the engine
+process, backed by PostgreSQL. No message broker, no distributed queue, no
+coordination service — one dependency, and an entire class of distributed-systems
+failure modes designed away.
 
 ```mermaid
 flowchart TB
     Internet(("Internet"))
     Proxy["TLS reverse proxy / LB<br/>(your choice)"]
     Engine["engine container<br/>mikebild/subkit"]
-    PG[("PostgreSQL 18")]
+    PG[("PostgreSQL")]
     LLM[("LLM Provider<br/>Anthropic / OpenAI / Google")]
     S3[("S3 (optional)<br/>step-result spillover")]
 
@@ -416,17 +425,23 @@ flowchart TB
     Engine -. outbound .-> S3
 ```
 
-*The engine is a single container. No message broker, no distributed queue — pg-boss + outbox in PostgreSQL cover scheduling, queueing, and pub/sub. Horizontal scaling is multiple engine containers behind a load balancer against the same PostgreSQL.*
-
-For larger deployments, run the engine container against an **external PostgreSQL** (see [External database](#external-database)) and front it with your own TLS-terminating reverse proxy / load balancer. For local development, the repo's `docker-compose.yml` brings up postgres only (plus an optional MinIO under `--profile storage`); `bun run dev` runs the engine on the host.
+| Concern | How sk handles it |
+|---|---|
+| **Queue / scheduler / events** | pg-boss + outbox in PostgreSQL — nothing extra to run |
+| **Standard model** | one engine service + one PostgreSQL instance |
+| **High availability** | run multiple engine containers behind a load balancer (no coordination overhead) |
+| **Production database** | point at [external PostgreSQL](#external-database); engine auto-migrates on boot |
+| **Local development** | `docker-compose.yml` brings up postgres only (MinIO under `--profile storage`); `bun run dev` runs the engine on the host |
 
 ### Installation
 
-sk ships pre-compiled binaries for macOS (Intel and Apple Silicon), Linux (x64 and ARM64), and Windows (x64). The primary binaries are `sk` and the engine. Some release channels also publish a `subkit` compatibility alias for the CLI, but contributor docs and operator examples use `sk`.
-
-A one-line install script covers the common cases for bash and PowerShell environments. The engine is also published as a container image for Kubernetes and cloud-native deployments.
-
-Auto-update is supported: binaries check for new versions on startup and can update in place — gated by a signed `SHA256SUMS` (see [`../admins/credentials-and-keys.md`](../admins/credentials-and-keys.md)).
+| Channel | Detail |
+|---|---|
+| **Binaries** | macOS (Intel + Apple Silicon), Linux (x64 + ARM64), Windows (x64) |
+| **Primary binaries** | `sk` (CLI) and the engine — docs and examples use `sk` |
+| **Install script** | one-liner for bash and PowerShell |
+| **Container** | published image for Kubernetes / cloud-native deployments |
+| **Auto-update** | binaries check on startup and update in place, gated by a signed `SHA256SUMS` — see [`../admins/credentials-and-keys.md`](../admins/credentials-and-keys.md) |
 
 ---
 
