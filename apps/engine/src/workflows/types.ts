@@ -1,7 +1,7 @@
 // Workflow definition zod schemas. The shape is the user-authored DAG that
 // gets persisted into `workflow_versions.dag` and consumed by the execution
 // engine. The core step kinds are: request, transform, call, wait,
-// branch, parallel, loop.
+// wait_for_event, branch, parallel, loop.
 
 import { z } from "@hono/zod-openapi";
 

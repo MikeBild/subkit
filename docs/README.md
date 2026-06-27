@@ -29,6 +29,16 @@ flowchart LR
     Developers --> V1["developers/quickstart.md"]
 ```
 
+## Section overviews
+
+Each audience folder has a landing page that indexes its docs:
+
+- [Concepts](concepts/README.md) — the domain model: surfaces, the governance gate, connectors, workflows, knowledge, and audit.
+- [Operators](operators/README.md) — run sk day-to-day: credentials, scheduling, observability, self-healing, notifications.
+- [Authors](authors/README.md) — build workflows by conversation: the REPL, the approval loop, recipes, skills, knowledge.
+- [Developers](developers/README.md) — contribute and self-host: repo setup, input surfaces, the tool palette, the evidence process.
+- [Admins](admins/README.md) — govern access: configuration, RBAC, credentials, and production hardening.
+
 ## The model in one picture
 
 ```mermaid

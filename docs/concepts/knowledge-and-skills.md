@@ -38,7 +38,7 @@ Operators own Skills. Scope each one:
 
 Skills are never auto-generated or auto-promoted. The engine detects recurring
 patterns and surfaces them as Skill Candidates; a candidate becomes an active
-Skill only by explicit operator promotion. The system learns what works; humans
+Skill only by explicit operator promotion. The engine learns what works; humans
 decide what becomes canonical.
 
 ---
@@ -76,11 +76,12 @@ flowchart TB
         B2["2. Auto-loaded Skills<br/>(global → connector → workflow)"]
         B3["3. Explicitly loaded Skills"]
         B4["4. Knowledge Source chunks"]
-        B5["5. Connector documentation chunks"]
-        B6["6. Prior failures for the current task"]
-        B7["7. User memory + authoring-context blocks"]
-        B8["8. Current turn history<br/>(user / assistant messages)"]
-        B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> B7 --> B8
+        B5["5. User memory"]
+        B6["6. Connector documentation chunks"]
+        B7["7. Prior failures for the current task"]
+        B8["8. Authoring-context blocks"]
+        B9["9. Current turn history<br/>(user / assistant messages)"]
+        B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> B7 --> B8 --> B9
     end
     Trim{{"Trim order (top = dropped first)"}}
     T1["failures → connector docs → knowledge<br/>→ user memory → authoring context<br/>→ explicit Skills → workflow Skills<br/>→ connector Skills → global Skills"]
@@ -101,7 +102,7 @@ collapse into a deterministic summary plus the recent tail.
 
 ## Discovery: from files to proposals
 
-Discovery cuts onboarding time for a new system: instead of hand-configuring
+Discovery cuts onboarding time for a new integration: instead of hand-configuring
 every connector and Skill, it starts from documentation that already exists.
 
 An operator uploads files — API specs, data dictionaries, architecture
@@ -133,7 +134,7 @@ confidence scores and links to the supporting executions. Self-healing drift
 detection keeps workflows healthy as connected systems change, proposing the
 smallest safe fix as a Patch Candidate.
 
-Same shape both times: the engine surfaces proposals, humans decide. The system
+Same shape both times: the engine surfaces proposals, humans decide. The engine
 gets smarter over time — but only with human approval at each step.
 
 ---

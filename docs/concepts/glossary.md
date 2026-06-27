@@ -9,7 +9,7 @@ This is the authoritative glossary for sk: each term is defined exactly once, an
 | [0 — Naming & Acronyms](#group-0-naming--acronyms) | Shared names and expansions | Contextual learning loop, AEAD, DAG, MCP, RBAC |
 | [1 — Platform Core](#group-1-platform-core) | Isolation and identity | Tenant, User, API Key, Portal Token |
 | [2 — Authoring](#group-2-authoring) | How workflows get built | Conversation, Draft, Skill, Knowledge Source, Discovery |
-| [3 — Integration](#group-3-integration) | Reaching external systems | Connector, Template, Driver, Credential |
+| [3 — Integration](#group-3-integration) | Reaching external integrations | Connector, Template, Driver, Credential |
 | [4 — Execution](#group-4-execution) | What runs, and what it records | Workflow, Step, Execution, Schedule |
 | [5 — Governance](#group-5-governance) | Control and proof | Audit Log, RBAC, Before-Request Hook, Self-Healing |
 | [6 — Surfaces](#group-6-surfaces) | How callers reach sk | sk CLI, MCP Server, Chat Adapter, Notifications |
@@ -45,7 +45,7 @@ Collected so every reader has the same expansion at hand.
 | DAG | Directed Acyclic Graph | The shape of a Workflow: steps flow forward, never loop back to themselves. |
 | DCR | Dynamic Client Registration | OAuth 2.1 mechanism that lets a new external client self-register with the server (RFC 7591). |
 | DLP | Data Loss Prevention | Policy layer that recognises sensitive fields (PII, secrets) and blocks them at the boundary. |
-| MCP | Model Context Protocol | The standard by which AI clients (IDE assistants, coding agents, chat clients) connect to external systems. |
+| MCP | Model Context Protocol | The standard by which AI clients (IDE assistants, coding agents, chat clients) connect to external integrations (Connectors). |
 | OAuth 2.1 | — | The current consolidated OAuth standard (PKCE-by-default, refresh-token rotation, no implicit grant). |
 | OIDC | OpenID Connect | Identity layer on top of OAuth 2.x; how sk verifies who a user is. |
 | PII | Personally Identifiable Information | Data that identifies a natural person; subject to GDPR / SOC2 controls. |
@@ -119,7 +119,7 @@ Collected so every reader has the same expansion at hand.
 
 **Audit Log** — the immutable, append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. The Audit Log cannot be modified or deleted. It is the authoritative record for compliance, debugging, and incident review.
 
-**RBAC** — role-based access control enforced at every platform boundary. Every API route, MCP call, webhook trigger, and execution path checks the caller's role and permissions before proceeding. sk ships four built-in roles. Custom roles and resource-level grants are supported for more granular control. RBAC decisions are recorded in the Audit Log.
+**RBAC** — role-based access control enforced at every platform boundary. Every API route, MCP call, webhook trigger, and execution path checks the caller's role and permissions before proceeding. sk ships five built-in roles: the three user-facing roles (admin, member, enduser) plus the metrics_scraper and portal_token_user system roles. Custom roles and resource-level grants are supported for more granular control. RBAC decisions are recorded in the Audit Log.
 
 **Before-Request Hook** — a sandboxed script that runs before a Connector request executes. Hooks can inspect or modify the outbound request, enforce policy (such as blocking writes during maintenance windows), or abort execution entirely. Hooks run in an isolated sandbox with a strict CPU budget and no access to the host environment. Hook execution is audited. Any error or timeout fails closed and denies the request.
 
@@ -133,7 +133,7 @@ Collected so every reader has the same expansion at hand.
 
 **sk CLI** — the unified command-line surface and primary human-facing interface for the platform. Built on Ink plus citty commands, it provides a terminal UI that opens a Conversation for end users describing workflow goals, and top-level admin commands for operators managing the platform (`sk connectors`, `sk workflows`, `sk executions`, `sk audit`, and related groups). The sk CLI supports four authentication modes: API Key, OIDC, Portal Token, and headless (stdin pipe for scripted usage). Persona-aware: the surface adapts based on the authenticated user's role.
 
-**MCP Server** — the Model Context Protocol server embedded in the sk engine. It exposes Workflows as callable `wf.<slug>` entries inside the MCP callable surface, Connectors as structured resources, and Skills as curated prompts that can be injected into an AI's context. Any MCP-compatible client — IDE assistants, coding agents, and chat clients alike — can connect to the MCP Server and interact with the platform. All MCP calls are governed by the same RBAC and Audit Log as direct API calls.
+**MCP Server** — the Model Context Protocol server embedded in the sk engine. It exposes Workflows as callable `wf_<slug>` entries inside the MCP callable surface, Connectors as structured resources, and Skills as curated prompts that can be injected into an AI's context. Any MCP-compatible client — IDE assistants, coding agents, and chat clients alike — can connect to the MCP Server and interact with the platform. All MCP calls are governed by the same RBAC and Audit Log as direct API calls.
 
 **Chat Adapter** — the integration layer for enterprise chat platforms (Slack, Microsoft Teams, Google Chat). Each adapter normalises platform-specific events — mentions, slash commands, interaction callbacks — into sk's Conversation model, and renders responses back as native platform messages. Approval flows surface as interactive cards with approve and reject buttons. Identity linking connects a chat user's platform identity to their Tenant account.
 

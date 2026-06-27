@@ -46,7 +46,7 @@ sk                         # opens the TUI, picks up your session
 Portal tokens are time-limited and pre-scoped. Click the link your operator sent; it provisions a session for `sk` automatically.
 
 ```bash
-sk login --portal-token <token>      # one-off; token is single-use
+sk login --portal-token <token>      # token is time-limited and pre-scoped; reusable until it expires or is revoked
 sk
 ```
 

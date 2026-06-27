@@ -460,7 +460,7 @@ Every recipe-touching PR runs:
 
 ```sh
 bun run lint:recipes        # recipe lint
-bun run test:unit           # includes recipe-snapshot.test.ts
+bun run test:unit           # includes apps/engine/src/connectors/recipes.test.ts
 bun run verify:ai           # includes recipe-discovery validator
 ```
 

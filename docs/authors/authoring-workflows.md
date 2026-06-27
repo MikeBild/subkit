@@ -197,7 +197,7 @@ The assembler pre-loads Skills + docs + Knowledge chunks before every turn. On-d
 
 ### Self-healing retry
 
-When drift is detected, the repair flow proposes a patch, classifies it, and dry-runs it against the most recent `execution_fixtures` row. If either gate rejects, the loop re-prompts the LLM with the structured rejection folded into `prior_failures`, up to `REPAIR_MAX_ATTEMPTS = 2` total. The final patch candidate carries a `metadata.rejection_chain` array recording every prior rejection, so reviewers see what was tried. Rate-limit-class drift (HTTP 429 / 503 with a template `rate_limits` hint) produces a distinct `kind: "rate_limited"` candidate — same retry loop, but the patch only adjusts backoff metadata.
+When drift is detected, the repair flow proposes a patch, classifies it, and dry-runs it against the most recent `execution_fixtures` row. If either gate rejects, the loop re-prompts the LLM with the structured rejection folded into `prior_failures`, up to `MAX_REPAIR_ATTEMPTS = 2` total. The final patch candidate carries a `metadata.rejection_chain` array recording every prior rejection, so reviewers see what was tried. Rate-limit-class drift (HTTP 429 / 503 with a template `rate_limits` hint) produces a distinct `kind: "rate_limited"` candidate — same retry loop, but the patch only adjusts backoff metadata.
 
 ---
 
@@ -213,7 +213,7 @@ Diagnosis keeps the latest execution and its causal context attached to the draf
 | `diagnosis_available` | the latest run should be inspected before editing |
 | `latest_diagnosis` | structured reason, warning sources, step-level summaries from the diagnosis pass |
 
-This matters most for expression-heavy workflows. A run can technically succeed while carrying warnings such as unresolved identifiers in scope paths. The static verifier blocks the most common version — writing `$scope.step.field` instead of `$scope.step.data.field` — before commit. For the rest, the right recovery is not "run it again" but "diagnose, repair the draft, preview again, commit again, then run again." Diagnosis is a first-class authoring phase, not an operator-only debugging escape hatch.
+This matters most for expression-heavy workflows. A run can technically succeed while carrying warnings such as unresolved identifiers in scope paths. The static verifier checks the step-id segment of a reference: a reference to a non-existent step — writing `$scope.wrong_step.data` when no `wrong_step` exists — is blocked before commit. It does not catch field-path mistakes on an existing step: writing `$scope.step.field` instead of `$scope.step.data.field` passes the static check and surfaces only as a runtime unresolved-identifier warning. For those, the right recovery is not "run it again" but "diagnose, repair the draft, preview again, commit again, then run again." Diagnosis is a first-class authoring phase, not an operator-only debugging escape hatch.
 
 ---
 
@@ -277,7 +277,7 @@ A Skill is a curated, reusable piece of context loaded into the AI's window duri
 | Scope | Global (all Conversations), per-Connector (loaded when referenced), or per-Workflow |
 | Promotion | Not auto-generated, not auto-promoted; the platform surfaces Skill Candidates from execution history, a human promotes |
 
-The system learns from what works; humans decide what becomes canonical guidance.
+The platform learns from what works; humans decide what becomes canonical guidance.
 
 ---
 
@@ -360,7 +360,7 @@ sk's authoring layer is not static — it improves as the platform accumulates e
 | **Skill Candidates** | Connectors / step sequences used together frequently and succeeding | A proposed Skill with confidence scores and links to supporting executions | Operator promotes or rejects |
 | **Self-healing drift detection** | A connector's behavior diverges from what the workflow expects (endpoints move, fields shift, new error codes) | A Patch Candidate — the smallest safe change the AI can propose | Operator reviews before anything is applied |
 
-The pattern is identical: the platform surfaces improvement proposals, humans make the decisions. The system gets smarter over time, but only with human approval at each step.
+The pattern is identical: the platform surfaces improvement proposals, humans make the decisions. The platform gets smarter over time, but only with human approval at each step.
 
 ---
 

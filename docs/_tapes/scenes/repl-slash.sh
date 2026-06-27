@@ -13,7 +13,7 @@ sleep 0.6
 # Empty composer → discoverability hint (SlashSuggest.tsx welcome hint).
 printf '%b❯%b ' "$ACCENT" "$RESET"
 sleep 0.5
-printf '\n  %bpress %b/%b to browse 48 commands%b\n' "$DIM" "$ACCENT" "$DIM" "$RESET"
+printf '\n  %bpress %b/%b to browse commands%b\n' "$DIM" "$ACCENT" "$DIM" "$RESET"
 sleep 1.0
 
 # Type "/" → the ranked fuzzy footer opens (the `›` panel).

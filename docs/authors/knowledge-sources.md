@@ -76,7 +76,7 @@ the next workflow follows the new rule.
 
 | Axis | Options |
 |---|---|
-| Refresh | Manual, scheduled, or webhook-triggered. |
+| Refresh | Manual or scheduled. |
 | Scope | Tenant-wide (available globally) or pinned to specific workflows. |
 
 ## Budgets

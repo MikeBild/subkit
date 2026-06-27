@@ -106,7 +106,7 @@ curl -X POST "$SK_BASE_URL/v1/connectors/$CONNECTOR_ID/call" \
 |---|---|
 | HTTP | Supported |
 | GraphQL | Supported |
-| Postgres / S3 / SQL Server / file-transfer | Returns `driver_not_supported_for_call_connector`, points to workflow authoring |
+| Postgres / S3 | Returns `driver_not_supported_for_call_connector`, points to workflow authoring |
 
 ## Keeping a fleet healthy
 

@@ -2,10 +2,10 @@
 
 > **Audience:** Anyone forming a first mental model of sk — architects, operators, authors, contributors.
 
-**Ship audited automation in hours, not sprints — and keep every run compliant by
-construction.** A team describes the outcome in plain language; sk turns it into a
+**Ship audited automation in hours, not sprints — and keep every run governed,
+versioned, and auditable.** A team describes the outcome in plain language; sk turns it into a
 governed, versioned workflow; an operator approves it; the engine runs it
-deterministically against the systems already in use.
+deterministically against the connectors (the SaaS and apps your team already uses).
 
 One contract holds throughout: **AI assists with *authoring*; *execution* is fixed
 at approval time and never re-decided at runtime.** Multi-tenancy, RBAC, encrypted

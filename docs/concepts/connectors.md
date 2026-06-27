@@ -125,7 +125,7 @@ A draft connector that does not yet have a saved credential cannot be probed. Th
 
 Connectors that ship with an `ingestion_url` (the OpenAPI or Swagger spec) can be inspected without authoring a single workflow step. The conversational tool `discover_connector_endpoints` and the matching HTTP route fetch and parse the spec server-side, returning a curated index of endpoints with auth schemes, parameters, and pagination hints.
 
-Three fetch strategies run in order — direct fetch of the declared spec URL, a regex extraction from a Swagger UI page, and a last-resort scan of well-known paths under the connector's base URL. The first strategy that produces a valid spec wins. Each attempt is logged so operators can see where a discovery succeeded or failed.
+A chain of fallback strategies runs in order — postgres introspection, OpenAPI direct fetch, GraphQL introspection, Swagger UI scrape, llms.txt, HTML/well-known-paths scrape, and a last-resort Playwright crawl. The first strategy that produces a valid spec wins. Each attempt is logged so operators can see where a discovery succeeded or failed.
 
 Discovery results cache for 24 hours per tenant in `knowledge_sources` of kind `connector_endpoint_index`. Pass `force_refresh: true` to bypass the cache. Refreshes write an audit row of kind `knowledge_source.refreshed` with `reason: "discovery_cache_refresh"`.
 
@@ -150,9 +150,9 @@ Once a connector is persisted, the agent can invoke any endpoint against it for 
 
 `call_connector` is RBAC-checked (`connector:read`), audited (`connector.invoked`), and always confirm-before-execution per the conversational tool policies. Response bodies above ~8 KB are truncated in the tool result with `truncated: true` and `body_byte_count` so the prompt budget stays bounded; the full response is available via the egress telemetry.
 
-Driver coverage: HTTP and GraphQL. For Postgres / S3 / SQL Server / file-transfer drivers, `call_connector` returns a structured `driver_not_supported_for_call_connector` envelope and points at `author_workflow` as the path to author a single-step workflow that invokes the driver.
+Driver coverage: HTTP and GraphQL. For Postgres and S3 connectors, `call_connector` returns a structured `driver_not_supported_for_call_connector` envelope and points at `author_workflow` as the path to author a single-step workflow that invokes the driver.
 
-The same surface is reachable as `POST /v1/connectors/{id}/call` for CI scripts and SDK callers. The route applies the saved credential, emits a `connector.invoked` audit row, and returns `{ status, headers, body, latency_ms, body_byte_count, truncated, metadata }`.
+The same surface is reachable as `POST /v1/connectors/{id}/call` for CI scripts and SDK callers. The route applies the saved credential, emits a `connector.invoked` audit row, and returns `{ status, headers, body, latency_ms, body_byte_count, truncated, health, metadata }`.
 
 ```bash
 curl -X POST "$SK_BASE_URL/v1/connectors/$CONNECTOR_ID/call" \
