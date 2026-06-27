@@ -85,6 +85,8 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "llm.critic.max_consecutive_rejections": "Critic max consecutive rejections",
 
   // ── Authentication ─────────────────────────────────────────────
+  "auth.provider": "Identity provider (subkit | firebase | oidc)",
+  "auth.firebase.tenant_slug": "Firebase tenant slug",
   "auth.oidc.issuer_url": "OIDC issuer URL",
   "auth.oidc.client_id": "OIDC client ID",
   "auth.oidc.client_secret": "OIDC client secret",

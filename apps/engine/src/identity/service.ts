@@ -14,6 +14,7 @@ import {
   sessions,
   systemAccounts,
   tenants,
+  userInvites,
   users,
 } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
@@ -77,6 +78,66 @@ export async function getUser(tenantId: string, id: string, exec?: Executor) {
     .where(and(eq(users.tenant_id, tenantId), eq(users.id, id), isNull(users.deleted_at)))
     .limit(1);
   return rows[0] ?? null;
+}
+
+export type UserRole = "admin" | "member" | "enduser";
+export type UserStatus = "invited" | "active" | "disabled";
+
+export interface UpdateUserInput {
+  tenant_id: string;
+  id: string;
+  role?: UserRole;
+  role_id?: string | null;
+  actor_id: string | null;
+}
+
+/**
+ * Update a user's role (legacy enum + optional `role_id`). Writes a
+ * `USER_ROLE_CHANGED` audit row carrying the before/after role. Returns
+ * `null` when no matching non-deleted user exists in the tenant.
+ */
+export async function updateUser(input: UpdateUserInput, exec?: Executor) {
+  const db = exec ?? getDb();
+  return db.transaction(async (tx) => {
+    const current = await tx
+      .select()
+      .from(users)
+      .where(
+        and(eq(users.tenant_id, input.tenant_id), eq(users.id, input.id), isNull(users.deleted_at)),
+      )
+      .limit(1);
+    const before = current[0];
+    if (!before) return null;
+
+    const patch: { role?: UserRole; role_id?: string | null; updated_at: Date } = {
+      updated_at: new Date(now()),
+    };
+    if (input.role !== undefined) patch.role = input.role;
+    if (input.role_id !== undefined) patch.role_id = input.role_id;
+
+    const [row] = await tx
+      .update(users)
+      .set(patch)
+      .where(and(eq(users.tenant_id, input.tenant_id), eq(users.id, input.id)))
+      .returning();
+    if (!row) return null;
+    await auditAwait(
+      {
+        tenant_id: input.tenant_id,
+        actor_type: input.actor_id ? "user" : "system",
+        actor_id: input.actor_id,
+        action: AuditAction.USER_ROLE_CHANGED,
+        resource_type: "user",
+        resource_id: row.id,
+        result: "success",
+        before: { role: before.role, role_id: before.role_id },
+        after: { role: row.role, role_id: row.role_id },
+        metadata: { email: row.email },
+      },
+      tx,
+    );
+    return row;
+  });
 }
 
 // ---------- system accounts -------------------------------------------------

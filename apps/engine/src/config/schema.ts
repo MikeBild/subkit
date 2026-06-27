@@ -286,6 +286,13 @@ const McpOAuthSection = z
 
 const AuthSection = z
   .object({
+    provider: z
+      .enum(["subkit", "firebase", "oidc"])
+      .default("subkit")
+      .describe(
+        "Human identity provider: 'subkit' (local admin-invite), 'firebase' (Firebase ID tokens), or 'oidc' (generic OIDC). Machine auth (API keys, portal, MCP OAuth) is always available.",
+      )
+      .meta(global({ requiresRestart: true })),
     oidc: z
       .object({
         issuer_url: optionalUrl.default("").meta(global({ requiresRestart: true })),
@@ -320,6 +327,11 @@ const AuthSection = z
           .default("")
           .meta(global({ requiresRestart: true })),
         login_url: optionalUrl.default("").meta(global({ requiresRestart: true })),
+        tenant_slug: z
+          .string()
+          .default("default")
+          .describe("Tenant slug that Firebase-authenticated users are mapped into.")
+          .meta(global({ requiresRestart: true })),
       })
       .prefault({})
       .describe("Firebase authentication"),

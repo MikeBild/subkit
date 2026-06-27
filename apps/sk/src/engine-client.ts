@@ -545,6 +545,50 @@ export interface RunExecutionResponse {
   warnings?: unknown[];
 }
 
+// ---------- Identity provisioning wire types ----------
+// Mirror `apps/engine/src/http/routes/identity/schemas.ts`
+// (UserSchema, UserInviteSchema, UserInviteIssuedSchema,
+// InviteRedeemedSchema). Kept structural (not Zod) so the CLI's tsc
+// graph doesn't pull in @hono/zod-openapi.
+
+export interface IdentityUserWire {
+  id: string;
+  tenant_id: string;
+  email: string;
+  role: "admin" | "member" | "enduser";
+  status: "invited" | "active" | "disabled";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserInviteWire {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  prefix: string;
+  scopes: string[];
+  allowed_workflows: string[] | null;
+  allowed_connectors: string[] | null;
+  expires_at: string;
+  redeemed_at: string | null;
+  revoked_at: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface UserInviteIssuedWire extends UserInviteWire {
+  /** Returned exactly once at issue time; the engine never shows it again. */
+  plaintext_token: string;
+}
+
+export interface InviteRedeemedWire {
+  user_id: string;
+  tenant_id: string;
+  /** The invited user's personal API key. Returned exactly once. */
+  api_key: string;
+  api_key_prefix: string;
+}
+
 export class EngineClient {
   private readonly base: string;
   private readonly apiKey: string;
@@ -2620,11 +2664,51 @@ export class EngineClient {
   getIdentityUser(id: string): Promise<Record<string, unknown>> {
     return this.request("GET", `/v1/identity/users/${encodeURIComponent(id)}`);
   }
+  /** Create a user in the caller's tenant. Mirrors the route's
+   *  CreateUserBody (`{ email, role? }`). */
+  createUser(body: {
+    email: string;
+    role?: "admin" | "member" | "enduser";
+  }): Promise<IdentityUserWire> {
+    return this.request("POST", "/v1/identity/users", body);
+  }
   patchIdentityUser(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.request("PATCH", `/v1/identity/users/${encodeURIComponent(id)}`, body);
   }
   deleteIdentityUser(id: string): Promise<void> {
     return this.request("DELETE", `/v1/identity/users/${encodeURIComponent(id)}`);
+  }
+
+  // -------------------- Identity: Invites --------------------
+  /** Issue a single-use provisioning invite for an existing user.
+   *  Returns the plaintext token ONCE (UserInviteIssuedWire). */
+  createInvite(
+    userId: string,
+    body: {
+      scopes?: string[];
+      allowed_workflows?: string[];
+      allowed_connectors?: string[];
+      ttl_minutes?: number;
+    } = {},
+  ): Promise<UserInviteIssuedWire> {
+    return this.request("POST", `/v1/identity/users/${encodeURIComponent(userId)}/invites`, body);
+  }
+  listInvites(
+    query: { status?: "pending" | "redeemed" | "revoked" | "expired" } = {},
+  ): Promise<{ items: UserInviteWire[] }> {
+    return this.request("GET", "/v1/identity/invites", undefined, query);
+  }
+  revokeInvite(id: string): Promise<void> {
+    return this.request("DELETE", `/v1/identity/invites/${encodeURIComponent(id)}`);
+  }
+  /**
+   * Redeem an invite to mint the invited user's personal API key.
+   * UNAUTHENTICATED: construct the client with an empty `api_key` so
+   * `headers()` sends no Authorization header — the token in the body
+   * is the proof. Returns the personal API key plaintext ONCE.
+   */
+  redeemInvite(body: { token: string }): Promise<InviteRedeemedWire> {
+    return this.request("POST", "/v1/identity/invites/redeem", body);
   }
 
   // -------------------- Identity: System Accounts --------------------

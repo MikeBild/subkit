@@ -16,6 +16,11 @@ import { bytea, tenantId, timestamps } from "./_common.ts";
 // ----- enums ----------------------------------------------------------------
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "member", "enduser"]);
+// Provisioning lifecycle: `invited` once an admin issues an invite that
+// has not yet been redeemed, `active` after redemption (or for any user
+// created directly), `disabled` after a soft-deactivation. Distinct from
+// `deleted_at` — a disabled user keeps their row for audit continuity.
+export const userStatusEnum = pgEnum("user_status", ["invited", "active", "disabled"]);
 export const auditActorKindEnum = pgEnum("audit_actor_kind", ["user", "system_account", "system"]);
 export const egressGuardModeEnum = pgEnum("egress_guard_mode", ["strict", "permissive"]);
 
@@ -103,6 +108,11 @@ export const users = pgTable(
     // RBAC management API. The legacy `role` enum column stays for
     // backward compatibility with existing tests and bootstrap code.
     role_id: uuid("role_id"),
+    // Provisioning lifecycle (invited|active|disabled). Defaults to
+    // `active` so directly-created and pre-invite-feature users are
+    // unaffected; the invite-redeem path flips a fresh invited user to
+    // `active`.
+    status: userStatusEnum("status").default("active").notNull(),
     oidc_subject: text("oidc_subject"),
     external_subject: text("external_subject"),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
@@ -236,6 +246,43 @@ export const portalTokens = pgTable(
   (t) => [
     uniqueIndex("portal_tokens_prefix_key").on(t.prefix),
     index("portal_tokens_tenant_enduser_idx").on(t.tenant_id, t.enduser_ref),
+  ],
+);
+
+// ----- user_invites ---------------------------------------------------------
+//
+// Single-use admin-issued invite. The admin creates the (invited) user and
+// mints an invite carrying the EXACT scopes the user's personal API key
+// will receive on redemption — no auto-grant beyond these. The token is
+// modelled on `portal_tokens`: a `wf_invite_` prefix literal stored
+// unhashed for indexed lookup plus a sha256 of the full plaintext. The
+// admin never sees the resulting api key; the invited user mints it (and
+// only it) at the unauthenticated `redeem` endpoint.
+
+export const userInvites = pgTable(
+  "user_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    prefix: text("prefix").notNull(),
+    token_sha256: text("token_sha256").notNull(),
+    // Scopes the redeemed api key receives verbatim. NEVER widened at
+    // redemption time.
+    scopes: jsonb("scopes").$type<string[]>().notNull(),
+    allowed_workflows: jsonb("allowed_workflows").$type<string[]>(),
+    allowed_connectors: jsonb("allowed_connectors").$type<string[]>(),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    redeemed_at: timestamp("redeemed_at", { withTimezone: true }),
+    revoked_at: timestamp("revoked_at", { withTimezone: true }),
+    created_by: uuid("created_by"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("user_invites_prefix_key").on(t.prefix),
+    index("user_invites_tenant_user_idx").on(t.tenant_id, t.user_id),
   ],
 );
 
