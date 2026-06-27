@@ -17107,12 +17107,12 @@
     "description": "Supabase PostgREST API",
     "category": "database",
     "tags": ["rest", "postgrest", "realtime", "auth"],
-    "setup_instructions": "Get project URL and API keys from Dashboard > Settings > API. Use `apikey` header with anon or service_role key.",
+    "setup_instructions": "Get project URL and API keys from Dashboard > Settings > API. Send the `apikey` header AND `Authorization: Bearer <key>` carrying the same key — PostgREST reads the database role (including service_role's RLS bypass) from the JWT in the Authorization header, so apikey alone runs as anon. anon respects Row Level Security; service_role bypasses it (server-side only). Self-hosted: override base_url with your own host, e.g. https://supabase.example.com/rest/v1.",
     "auth_options": [
       {
         "auth_type": "header",
-        "label": "API key header",
-        "description": "Authenticate with an API key sent in a request header."
+        "label": "API key + Bearer (apikey & Authorization)",
+        "description": "Send both the `apikey` header and `Authorization: Bearer <key>` with the same anon or service_role key. apikey alone runs as anon, so RLS-guarded reads/writes need the Authorization header too."
       }
     ],
     "url_pattern": "^https://[^/]+\\.supabase\\.co/rest/v1(\\/|$)",
@@ -17154,7 +17154,7 @@
     "description": "Supabase GraphQL API (pg_graphql at /graphql/v1) — one roundtrip for nested reads instead of N+1 PostgREST calls.",
     "category": "database",
     "tags": ["graphql", "postgrest", "pg_graphql", "database"],
-    "setup_instructions": "Project URL + API keys live in Dashboard > Settings > API. The GraphQL endpoint is https://<ref>.supabase.co/graphql/v1 (NOT /graphql). Send the `apikey` header with the anon or service_role key; most projects also require `Authorization: Bearer <key>` carrying the same key. The anon key respects Row Level Security; the service_role key bypasses it.",
+    "setup_instructions": "Project URL + API keys live in Dashboard > Settings > API. The GraphQL endpoint is https://<ref>.supabase.co/graphql/v1 (NOT /graphql). Send the `apikey` header with the anon or service_role key; most projects also require `Authorization: Bearer <key>` carrying the same key. The anon key respects Row Level Security; the service_role key bypasses it. Self-hosted: override base_url with your own host, e.g. https://supabase.example.com/graphql/v1.",
     "auth_options": [
       {
         "auth_type": "header",
