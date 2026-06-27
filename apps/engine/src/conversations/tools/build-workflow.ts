@@ -419,7 +419,9 @@ export const buildWorkflowTool: ConversationTool = {
       const messageParts: string[] = [];
       if (reservedAuthHeaderViolations.length > 0) {
         messageParts.push(
-          `workflow steps with connector_id must not declare reserved auth headers: ${reservedAuthHeaderViolations.map((e) => e.path).join(", ")}`,
+          `workflow steps with connector_id must not declare reserved auth headers: ${reservedAuthHeaderViolations.map((e) => e.path).join(", ")}. ` +
+            `The connector injects auth from its saved credential — remove the header. ` +
+            `If the API needs more than one auth header (e.g. Supabase wants both apikey and Authorization: Bearer), carry them all on the connector credential, not on the step.`,
         );
       }
       if (problems.length > 0) {

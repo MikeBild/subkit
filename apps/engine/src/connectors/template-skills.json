@@ -932,18 +932,23 @@
   },
   "supabase-basics": {
     "title": "Supabase PostgREST API Basics",
-    "body": "Authenticate with an apikey header (literal header name, not Authorization). Use the anon key for client-side and service_role key for server-side (bypasses Row Level Security). The API is PostgREST-based with powerful filtering via query params. Supports range and offset pagination. Supabase also exposes a GraphQL endpoint at /graphql/v1 (pg_graphql) — use the supabase-graphql connector for nested reads in a single roundtrip.",
+    "body": "PostgREST needs TWO auth headers carrying the same key: `apikey: <key>` AND `Authorization: Bearer <key>`. The apikey passes the Supabase API gateway; PostgREST derives the database role — including service_role's Row Level Security bypass — from the JWT in the Authorization header. apikey alone runs as the anon role regardless of which key it holds, so RLS-guarded writes then 401 or return empty. Use the anon key (RLS enforced) for least privilege; the service_role key bypasses ALL RLS and is server-side only. The connector injects both headers from its saved credential — never add Authorization (or apikey) as a workflow step header on a step that has a connector_id; the engine reserves Authorization and rejects it with reserved_auth_header_present. PostgREST filters via query params with range/offset pagination. Supabase also exposes GraphQL at /graphql/v1 (pg_graphql) — use the supabase-graphql connector for nested reads in one roundtrip.",
     "examples": [
-      "GET /rest/v1/todos?select=id,title&is_complete=eq.false — list incomplete todos",
-      "POST /rest/v1/todos — insert a new todo"
+      "GET /rest/v1/todos?select=id,title&is_complete=eq.false — list incomplete todos (headers: apikey + Authorization: Bearer)",
+      "POST /rest/v1/todos with Prefer: resolution=merge-duplicates — upsert rows"
     ],
     "best_practices": [
-      "Use the anon key with Row Level Security (RLS) policies for client-side access",
-      "Use PostgREST query operators (eq, gt, in, like) for server-side filtering"
+      "Send BOTH apikey and Authorization: Bearer carrying the same key — apikey alone runs as anon and silently ignores service_role",
+      "Prefer the anon key + RLS policies; reserve the service_role key (RLS bypass) for trusted server-side workflows",
+      "Use PostgREST query operators (eq, gt, in, like) for server-side filtering",
+      "After any DDL (new table or column), run `notify pgrst, 'reload schema'` so PostgREST sees the new object"
     ],
     "pitfalls": [
+      "apikey-only requests run as the anon role — RLS-guarded reads return empty and writes 401, even with the service_role key in apikey",
       "The service_role key bypasses ALL Row Level Security — never expose it in client-side code",
-      "REST lives at /rest/v1 and GraphQL at /graphql/v1 — mixing the two paths returns 404"
+      "A new table or column 404s (or returns PGRST204 on write) until you run `notify pgrst, 'reload schema'`",
+      "REST lives at /rest/v1 and GraphQL at /graphql/v1 — mixing the two paths returns 404",
+      "Do not put Authorization in a step's headers when the step has a connector_id — the engine reserves it (reserved_auth_header_present); the connector injects auth"
     ],
     "doc_refs": ["https://supabase.com/docs/guides/api"]
   },
