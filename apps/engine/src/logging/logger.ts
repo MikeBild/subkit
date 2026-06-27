@@ -486,7 +486,11 @@ export const log = {
   // instead of a silent gap; `ready` marks the listener accepting traffic.
   boot: {
     phase: (ctx: Ctx) => logger.info({ module: "boot", action: "phase", ...ctx }),
-    heartbeat: (ctx: Ctx) => logger.warn({ module: "boot", action: "heartbeat", ...ctx }),
+    // A normal boot ticks a few heartbeats at INFO; only a boot that drags
+    // past the slow-boot threshold escalates to WARN via `heartbeatSlow`.
+    // Both keep `action: "heartbeat"` so operator greps are unaffected.
+    heartbeat: (ctx: Ctx) => logger.info({ module: "boot", action: "heartbeat", ...ctx }),
+    heartbeatSlow: (ctx: Ctx) => logger.warn({ module: "boot", action: "heartbeat", ...ctx }),
     ready: (ctx: Ctx) => logger.info({ module: "boot", action: "ready", ...ctx }),
   },
   // Process-level runtime telemetry. `memory.sample` is the periodic

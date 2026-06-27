@@ -201,13 +201,22 @@ export async function bootPhase<T>(phase: string, fn: () => Promise<T> | T): Pro
  * unmatched `bootPhase` start marker. The timer is `unref`'d so it never keeps
  * the process alive.
  */
-export function startBootHeartbeat(opts?: { intervalMs?: number }): () => void {
+export function startBootHeartbeat(opts?: {
+  intervalMs?: number;
+  slowBootMs?: number;
+}): () => void {
   const intervalMs = opts?.intervalMs ?? 5_000;
+  // A healthy boot completes in a few seconds, so the first one or two
+  // ticks are routine and log at INFO. Past this threshold the boot is
+  // genuinely dragging (the slow-boot stall class) and escalates to WARN
+  // so a real stall stands out instead of every boot emitting a warning.
+  const slowBootMs = opts?.slowBootMs ?? 20_000;
   const started = Date.now();
   const timer = setInterval(() => {
-    safe(() =>
-      log.boot.heartbeat({ elapsed_ms: Date.now() - started, rss_mb: sampleMemory().rss_mb }),
-    );
+    safe(() => {
+      const ctx = { elapsed_ms: Date.now() - started, rss_mb: sampleMemory().rss_mb };
+      (ctx.elapsed_ms >= slowBootMs ? log.boot.heartbeatSlow : log.boot.heartbeat)(ctx);
+    });
   }, intervalMs);
   if (typeof timer.unref === "function") timer.unref();
   return () => clearInterval(timer);
