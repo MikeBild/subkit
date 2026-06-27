@@ -26,8 +26,6 @@ WARN="${ESC}[38;5;221m"    # severity.warning (yellow) — also `ask` mode
 OK="${ESC}[38;5;114m"      # severity.success (green)
 ERR="${ESC}[38;5;210m"     # severity.error (red)
 
-SK_VERSION="7.16.0"
-
 # ---- low-level -------------------------------------------------------------
 
 p()  { printf '%b' "$1"; }
@@ -70,8 +68,8 @@ box_bottom() { printf '%b╰%s╯%b\n' "$DIM" "$(printf '─%.0s' $(seq 1 $INNER
 banner() {
   local tip="${1:-Use /resume to reopen a prior session without replaying the full transcript.}"
   box_top
-  boxline "${BOLD}sk${RESET}${DIM} · v${SK_VERSION} · profile default${RESET}" \
-          "sk · v${SK_VERSION} · profile default"
+  boxline "${BOLD}sk${RESET}${DIM} · profile default${RESET}" \
+          "sk · profile default"
   boxline "${USERC}${BOLD}admin@acme-prod${RESET}${DIM} · subkit-api.mikebild.dev · session ${RESET}${ASST}7f3a9c21${RESET}" \
           "admin@acme-prod · subkit-api.mikebild.dev · session 7f3a9c21"
   boxline "${WARN}${BOLD}ask${RESET}${DIM} · chat · online${RESET}" \
