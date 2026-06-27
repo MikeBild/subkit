@@ -305,6 +305,9 @@ export const deleteKnowledgeSourceTool: ConversationTool = {
   category: "tenant_write",
   async execute(ctx, rawArgs) {
     const args = IdInput.parse(rawArgs);
+    // The dispatcher now owns MCP RBAC (RBAC_OVERRIDES); this in-execute
+    // check stays because the chat surface invokes execute() directly and
+    // does not route through the dispatcher's descriptor.rbac yet.
     const auth = await requirePermission(ctx, "knowledge:delete", {
       type: "knowledge_source",
       id: args.id,

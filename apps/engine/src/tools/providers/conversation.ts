@@ -160,6 +160,60 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "role", id } : null;
     },
   },
+  // create_knowledge_source: no resource — the tool creates a NEW
+  // knowledge source (no pre-existing id to scope to). Tenant-scoped
+  // permission check is the authorization boundary.
+  create_knowledge_source: {
+    permission: "knowledge:write",
+  },
+  update_knowledge_source: {
+    permission: "knowledge:write",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
+    },
+  },
+  analyze_knowledge_source: {
+    permission: "knowledge:write",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
+    },
+  },
+  delete_knowledge_source: {
+    permission: "knowledge:delete",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
+    },
+  },
+  // create_skill: no resource — the tool creates a NEW skill (no
+  // pre-existing id to scope to). Tenant-scoped permission check is the
+  // authorization boundary.
+  create_skill: {
+    permission: "skill:write",
+  },
+  update_skill: {
+    permission: "skill:write",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "skill", id } : null;
+    },
+  },
+  delete_skill: {
+    permission: "skill:delete",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "skill", id } : null;
+    },
+  },
+  approve_skill_candidate: {
+    permission: "skill:write",
+    resource: (args) => {
+      const id = (args as { candidate_id?: unknown }).candidate_id;
+      return typeof id === "string" && id.length > 0 ? { type: "skill_candidate", id } : null;
+    },
+  },
 };
 
 function descriptorFor(t: ConversationTool, surface: ToolSurface): ToolDescriptor | null {
