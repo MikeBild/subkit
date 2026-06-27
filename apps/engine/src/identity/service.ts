@@ -14,7 +14,6 @@ import {
   sessions,
   systemAccounts,
   tenants,
-  userInvites,
   users,
 } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
