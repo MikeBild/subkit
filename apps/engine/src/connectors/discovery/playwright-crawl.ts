@@ -426,7 +426,7 @@ class PlaywrightCrawlStrategy implements DiscoveryStrategy {
         "playwright_failed",
         `cannot derive origin from ${scrubUrl(url)}`,
       );
-      log.warn({
+      log.debug({
         module: "connector",
         action: "discovery.strategy.failed",
         strategy: this.name,
@@ -466,7 +466,7 @@ class PlaywrightCrawlStrategy implements DiscoveryStrategy {
           "playwright_failed",
           `no candidate URLs from sitemap or BFS at ${scrubUrl(url)}`,
         );
-        log.warn({
+        log.debug({
           module: "connector",
           action: "discovery.strategy.failed",
           strategy: this.name,
@@ -484,7 +484,7 @@ class PlaywrightCrawlStrategy implements DiscoveryStrategy {
           "playwright_failed",
           `all ${candidateUrls.length} candidates filtered by negative keywords`,
         );
-        log.warn({
+        log.debug({
           module: "connector",
           action: "discovery.strategy.failed",
           strategy: this.name,
@@ -502,7 +502,7 @@ class PlaywrightCrawlStrategy implements DiscoveryStrategy {
           "playwright_failed",
           `every candidate failed or was filtered for ${scrubUrl(url)}`,
         );
-        log.warn({
+        log.debug({
           module: "connector",
           action: "discovery.strategy.failed",
           strategy: this.name,
@@ -546,7 +546,7 @@ class PlaywrightCrawlStrategy implements DiscoveryStrategy {
       if (err instanceof DiscoveryError) throw err;
       const message = err instanceof Error ? err.message : String(err);
       const failure = new DiscoveryError("playwright_failed", message);
-      log.warn({
+      log.debug({
         module: "connector",
         action: "discovery.strategy.failed",
         strategy: this.name,

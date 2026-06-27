@@ -161,7 +161,7 @@ class HtmlScrapeStrategy implements DiscoveryStrategy {
       // html-too-large bubbles up with its code; other failures fall
       // through to well-known paths.
       if (err instanceof DiscoveryError) {
-        log.warn({
+        log.debug({
           module: "connector",
           action: "discovery.strategy.failed",
           strategy: this.name,
@@ -201,7 +201,7 @@ class HtmlScrapeStrategy implements DiscoveryStrategy {
       "spec_not_found",
       `no spec located via HTML scrape from ${scrubUrl(url)} (tried ${candidates.length} candidates)`,
     );
-    log.warn({
+    log.debug({
       module: "connector",
       action: "discovery.strategy.failed",
       strategy: this.name,

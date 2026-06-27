@@ -149,7 +149,7 @@ class LlmsTxtStrategy implements DiscoveryStrategy {
         "spec_not_found",
         `cannot derive origin from ${scrubUrl(baseUrl)}`,
       );
-      log.warn({
+      log.debug({
         module: "connector",
         action: "discovery.strategy.failed",
         strategy: this.name,
@@ -182,7 +182,7 @@ class LlmsTxtStrategy implements DiscoveryStrategy {
         "spec_not_found",
         `no llms.txt found at well-known paths under ${scrubUrl(origin)}`,
       );
-      log.warn({
+      log.debug({
         module: "connector",
         action: "discovery.strategy.failed",
         strategy: this.name,
@@ -218,7 +218,7 @@ class LlmsTxtStrategy implements DiscoveryStrategy {
         "spec_not_found",
         `llms.txt at ${scrubUrl(chosenUrl)} produced an empty corpus`,
       );
-      log.warn({
+      log.debug({
         module: "connector",
         action: "discovery.strategy.failed",
         strategy: this.name,
