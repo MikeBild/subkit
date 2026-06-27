@@ -290,7 +290,7 @@ const AuthSection = z
       .enum(["subkit", "firebase", "oidc"])
       .default("subkit")
       .describe(
-        "Human identity provider: 'subkit' (local — admin-invite + engine-issued API keys, no external IdP), 'firebase' (Firebase ID tokens), or 'oidc' (generic OIDC issuer). Machine auth (API keys, portal tokens, MCP OAuth) is always available regardless of this setting.",
+        "Human identity provider: 'subkit' (local admin-invite), 'firebase' (Firebase ID tokens), or 'oidc' (generic OIDC). Machine auth (API keys, portal, MCP OAuth) is always available.",
       )
       .meta(global({ requiresRestart: true })),
     oidc: z

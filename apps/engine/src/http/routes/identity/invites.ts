@@ -3,7 +3,7 @@
 //   POST   /v1/identity/users/{id}/invites  — admin issues a single-use
 //          invite for an existing user (identity:write). Returns the
 //          plaintext invite token ONCE.
-//   GET    /v1/identity/invites             — list invites (identity:read).
+//   GET    /v1/identity/invites             — list invites (admin only).
 //   DELETE /v1/identity/invites/{id}        — revoke an invite
 //          (identity:write).
 //   POST   /v1/identity/invites/redeem      — UNAUTHENTICATED. The invited

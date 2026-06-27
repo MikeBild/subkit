@@ -15,7 +15,7 @@ const PERMISSION_NAMES = loadPermissionCatalog().map((p) => p.name);
 function memberAllows(name: string): boolean {
   if (name.startsWith("rbac:")) return false;
   if (name === "audit:read") return false;
-  if (name.startsWith("identity:")) return false;
+  if (name === "identity:write") return false;
   if (name === "stats:read") return false;
   if (name === "stats:read:all") return false;
   if (name === "api_key:write") return false;

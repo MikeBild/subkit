@@ -48,12 +48,14 @@ export const BUILTIN_ROLE_NAMES = {
 function memberPermissionFilter(name: string): boolean {
   if (name.startsWith("rbac:")) return false;
   if (name === "audit:read") return false;
-  // identity:* manages users, tenants, and provisioning invites across the
+  // identity:write mutates users, tenants, and provisioning invites across the
   // tenant — creating users, changing roles, deactivating accounts, minting
   // and revoking invites. That is administrative authority, not day-to-day
   // operator work, so members must NOT hold it. Handler-level `adminOnly`
   // checks stay as defense-in-depth; this keeps the permission name honest.
-  if (name.startsWith("identity:")) return false;
+  // identity:read is read-only and stays: members rely on it for surfaces
+  // like /v1/diagnostics/setup (gated audit:read OR identity:read).
+  if (name === "identity:write") return false;
   // stats:read exposes cross-workflow operational posture (failure
   // rates, connector rate-limit floods, LLM spend) that a typical
   // member working on their own connector/workflow does not need.
