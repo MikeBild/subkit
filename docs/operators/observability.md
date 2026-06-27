@@ -2,11 +2,18 @@
 
 > **Audience:** SREs, platform engineers, operators running sk in production
 
-sk is built to run unattended: observable enough to diagnose problems quickly,
-and bounded enough that no single workflow, tenant, or external dependency can
-degrade the platform for everyone else. This document covers the metrics, logs,
-traces, and event streams operators read day-to-day, plus the resource limits
-that keep the engine safe under load.
+**See every run, catch drift before it costs you.** sk runs unattended: observable
+enough to diagnose a problem in minutes, bounded enough that no single workflow,
+tenant, or external dependency can degrade the platform for everyone else. The payoff
+is operational — fewer incidents, faster root-cause, predictable AI spend.
+
+| You want to | Read |
+|---|---|
+| Scrape process-wide metrics | [`/metrics` (Prometheus)](#observability) |
+| Trace one failing run across surfaces | [Telemetry Surface](#telemetry-surface) — correlate by `trace_id` |
+| Answer per-tenant questions over time | [`/v1/stats/*`](#tenant-scoped-runtime-stats-v1stats) |
+| Keep a tenant from monopolizing capacity | [Resource Limits](#resource-limits-and-operational-safety) |
+| Tune ingestion / knowledge budgets | [Documentation & Knowledge Tunables](#documentation--knowledge-tunables) |
 
 For the leaf-by-leaf tunable reference, see
 [`../admins/configuration.md`](../admins/configuration.md) and the generated
@@ -16,15 +23,48 @@ For the leaf-by-leaf tunable reference, see
 
 ## Observability
 
-**Metrics.** The engine exposes a Prometheus-compatible `/metrics` endpoint. Metrics cover every operational concern: request latency by route, execution duration and step counts, error rates and retry counts, queue depth, token usage per tenant, and connection pool statistics. No external metrics system is required for collection — any Prometheus-compatible scraper works.
+Four surfaces, one identity envelope. Each answers a different question, and they
+chain by `trace_id` so an operator can follow a single request from HTTP edge to
+notification.
 
-**Structured Logging.** All engine output is structured JSON on stdout. Every log entry carries a trace ID, tenant ID, request source, and severity level. Logs can be shipped to any standard log aggregation system — Datadog, Grafana Loki, CloudWatch, Elasticsearch — without transformation. The structured format means you can query and alert on log fields directly, not just on log message text.
+```mermaid
+flowchart LR
+    subgraph emit[Engine emits]
+        M[Metrics<br/>/metrics Prometheus]
+        L[Structured logs<br/>JSON on stdout]
+        T[Execution traces<br/>per-step logs]
+        E[SSE event stream<br/>tenant-wide]
+    end
 
-**Execution Inspection.** Every workflow execution has per-step logs accessible through the API and CLI. Operators can follow a running execution in real time with `sk executions tail <execution-id>`. Failed steps include the full error, the inputs that were passed to the step, and the raw connector response. There is no guesswork about what happened.
+    M --> SCRAPE[Prometheus scraper]
+    L --> AGG[Datadog / Loki / CloudWatch]
+    T --> CLI[sk executions tail]
+    E --> DASH[Dashboards / alerting]
 
-**Event Streaming.** A tenant-wide Server-Sent Events stream delivers real-time execution events. External monitoring systems, dashboards, and alerting integrations can subscribe to this stream for custom logic. The SSE stream carries the same events that drive the CLI's live-tail mode.
+    SCRAPE --> STATS[/v1/stats/*<br/>per-tenant, time-bucketed]
+    AGG --> STATS
+    STATS --> DIGEST[/v1/operator/health-digest<br/>leading-indicator risk]
 
-**Product Analytics.** When operators want to forward HTTP-response telemetry to an external product-analytics platform (PostHog, Mixpanel, a custom ingest endpoint), enable `observability.analytics`. It is off by default — no external calls are made until the operator explicitly opts in. The emission reuses the existing `request.telemetry` hook in the metrics middleware; no parallel hook is added.
+    M -. trace_id .-> L
+    L -. trace_id .-> T
+    T -. trace_id .-> E
+```
+
+| Surface | Endpoint / command | Scope | Answers |
+|---|---|---|---|
+| **Metrics** | `/metrics` | Process-wide, resets on redeploy | Latency by route, execution duration + step counts, error/retry rates, queue depth, token usage, pool stats |
+| **Structured logging** | JSON on stdout | Per-event | Query/alert on fields directly — `trace_id`, `tenant_id`, `request_source`, severity |
+| **Execution inspection** | `sk executions tail <id>` + API | Per-execution | Per-step logs; failed steps include full error, inputs, raw connector response |
+| **Event streaming** | tenant-wide SSE | Per-tenant | Real-time execution events for external dashboards/alerting |
+
+No external metrics system is required for collection — any Prometheus-compatible
+scraper works. Logs ship to any standard aggregator without transformation.
+
+**Product analytics (opt-in).** To forward HTTP-response telemetry to an external
+product-analytics platform (PostHog, Mixpanel, a custom ingest endpoint), enable
+`observability.analytics`. Off by default — no external calls until the operator
+opts in. It reuses the existing `request.telemetry` hook in the metrics middleware;
+no parallel hook is added.
 
 ```yaml
 # sk settings set observability.analytics.enabled true
@@ -40,12 +80,15 @@ For the leaf-by-leaf tunable reference, see
 | `observability.analytics.api_key` | `""` | Bearer credential (secret). |
 | `observability.analytics.project` | `""` | Project/workspace identifier forwarded in each event body. |
 
-Each event carries `method`, `path` (route template, not raw URL), `status_code`, `duration_ms`, `request_source`, and `tenant_id`. Errors on the analytics call are caught and logged at debug level — a slow or unavailable endpoint never stalls a response.
+Each event carries `method`, `path` (route template, not raw URL), `status_code`,
+`duration_ms`, `request_source`, and `tenant_id`. Errors on the analytics call are
+caught and logged at debug level — a slow or unavailable endpoint never stalls a
+response.
 
 ### Telemetry Surface
 
-Every code path that an operator may need to debug emits at least one
-structured event with a stable `action` field. The full surface:
+Every code path an operator may need to debug emits at least one structured event
+with a stable `action` field. The full surface:
 
 | Action | Module | When | Key fields |
 |---|---|---|---|
@@ -60,55 +103,56 @@ structured event with a stable `action` field. The full surface:
 | `metrics.label_dropped` | `observability` | Metric write used an unknown label | `metric`, `label` (logged once per pair) |
 | `metrics.write_failed` | `observability` | Metric write threw | `error` |
 
-Identity envelope: every record above carries `tenant_id` (where
-applicable), `trace_id`, and `request_source`. Operators correlate
-across surfaces (HTTP → execution → notification) by `trace_id`.
+**Identity envelope.** Every record above carries `tenant_id` (where applicable),
+`trace_id`, and `request_source`. Operators correlate across surfaces
+(HTTP → execution → notification) by `trace_id`.
 
 The full Prometheus metric registry is built in
 [`apps/engine/src/observability/metrics.ts`](../../apps/engine/src/observability/metrics.ts).
-New metrics added in this revision:
+Context and predictive-maintenance metrics:
 
-- `llm_context_assembled_total{flow,request_source}` — assemblies per
-  flow.
-- `llm_context_dropped_sections_total{flow,section}` — which sections
-  the trimmer is dropping per flow.
-- `llm_context_total_tokens{flow}` — histogram of total prompt tokens
-  per call.
-- Predictive-maintenance gauges/counters: `db_pool_{total,idle,waiting}_connections`,
-  `db_transient_retries_total{label}`, `db_transient_retry_rate_per_min`,
-  `dlq_job_count{queue}`, `connector_call_total{slug,health}`,
-  `llm_call_duration_ms{provider,model,flow}`,
-  `llm_fallback_invocations_total{from,to,reason}`,
-  `process_memory_rss_high_water_bytes`. These feed the leading-indicator `risk[]`
-  block of `GET /v1/operator/health-digest`.
-  - The `transient_retry` risk signal reads `db_transient_retry_rate_per_min`, a
-    **windowed** rate the 60s memory sampler computes (retries since the previous
-    tick ÷ elapsed minutes), against `observability.predictive.transient_retry_rate`
-    — **not** the cumulative `db_transient_retries_total` ÷ uptime. The window is
-    what keeps it a leading indicator: a one-off Postgres blip decays to 0 within
-    a tick or two instead of latching the warn (short uptime) or being averaged
-    into silence (long uptime).
+| Metric | Labels | What it tells you |
+|---|---|---|
+| `llm_context_assembled_total` | `flow`, `request_source` | Assemblies per flow |
+| `llm_context_dropped_sections_total` | `flow`, `section` | Which sections the trimmer drops per flow |
+| `llm_context_total_tokens` | `flow` | Histogram of total prompt tokens per call |
+| `db_pool_{total,idle,waiting}_connections` | — | Pool pressure |
+| `db_transient_retries_total` | `label` | Cumulative transient retries |
+| `db_transient_retry_rate_per_min` | — | **Windowed** retry rate (leading indicator) |
+| `dlq_job_count` | `queue` | Dead-letter depth |
+| `connector_call_total` | `slug`, `health` | Connector outcomes |
+| `llm_call_duration_ms` | `provider`, `model`, `flow` | LLM latency |
+| `llm_fallback_invocations_total` | `from`, `to`, `reason` | Fallback frequency |
+| `process_memory_rss_high_water_bytes` | — | Memory high-water mark |
 
-**Risk-signal audit dedup is per-process.** A risk signal crossing into
-`critical` (or recovering) writes a single `operator.risk_signal_raised` /
-`operator.risk_signal_cleared` audit row on the transition edge, under the
-**system** tenant. The edge tracker is in-process, so in an N-replica deployment
-a standing critical can produce up to N rows per edge — one per replica that
-first reads the digest. Audit volume is small, but SIEM dedup on
-`(action, resource_id)` should expect up to N duplicates per incident. A
-Postgres-side claim (`INSERT … ON CONFLICT` on a `(kind, window)` table) is the
-HA hardening if exactly-once attribution becomes a requirement.
+These feed the leading-indicator `risk[]` block of `GET /v1/operator/health-digest`.
+
+> **Why the retry rate is windowed.** The `transient_retry` risk signal reads
+> `db_transient_retry_rate_per_min` — a windowed rate the 60s memory sampler computes
+> (retries since the previous tick ÷ elapsed minutes) against
+> `observability.predictive.transient_retry_rate` — **not** the cumulative
+> `db_transient_retries_total` ÷ uptime. The window keeps it a leading indicator: a
+> one-off Postgres blip decays to 0 within a tick or two instead of latching the warn
+> (short uptime) or being averaged into silence (long uptime).
+
+**Risk-signal audit dedup is per-process.** A risk signal crossing into `critical`
+(or recovering) writes a single `operator.risk_signal_raised` /
+`operator.risk_signal_cleared` audit row on the transition edge, under the **system**
+tenant. The edge tracker is in-process, so in an N-replica deployment a standing
+critical can produce up to N rows per edge — one per replica that first reads the
+digest. Audit volume is small, but SIEM dedup on `(action, resource_id)` should expect
+up to N duplicates per incident. A Postgres-side claim (`INSERT … ON CONFLICT` on a
+`(kind, window)` table) is the HA hardening if exactly-once attribution becomes a
+requirement.
 
 ### Tenant-scoped runtime stats (`/v1/stats/*`)
 
-Where `/metrics` is a process-wide Prometheus snapshot that resets on
-redeploy and is **not** tenant-scoped, the `/v1/stats/*` surface answers
-per-tenant operational questions over time-bucketed history. It
-aggregates at read time from `executions`, `audit_log`, and `llm_usage`
-— no new tables. Every route filters `tenant_id = principal.tenant_id`
-as the first predicate and is gated by the single `stats:read`
-permission (admins hold it by default; members opt in via a custom
-role).
+Where `/metrics` is a process-wide Prometheus snapshot that resets on redeploy and is
+**not** tenant-scoped, the `/v1/stats/*` surface answers per-tenant operational
+questions over time-bucketed history. It aggregates at read time from `executions`,
+`audit_log`, and `llm_usage` — no new tables. Every route filters
+`tenant_id = principal.tenant_id` as the first predicate and is gated by the single
+`stats:read` permission (admins hold it by default; members opt in via a custom role).
 
 | Route | Aggregates over | Answers |
 |---|---|---|
@@ -117,37 +161,47 @@ role).
 | `GET /v1/stats/events` | `audit_log` (per `?class=`) | webhook / chat / schedule / self-healing / discovery / policy / external-write event volume |
 | `GET /v1/stats/llm` | `llm_usage` | token usage + cache-hit rate + latency by model / flow |
 
-Common bucket grammar: `bucket` (`minute|hour|day|month|year`), required
-`from`, optional `to` (default now) and `tz` (default UTC). Hard window
-caps reject scans that would explode (`minute ≤ 24h`, `hour ≤ 31d`, `day
-≤ 366d`, …) with `400 bucket_window_too_large`. Audit-backed routes clamp
-`from` to the tenant's audit-retention horizon and surface
-`truncated_at` on the envelope. Every response carries three rollups:
-per-bucket (`groups[].buckets[]`), per-group totals (`groups[].totals`),
-and window totals (top-level `totals`).
+**Bucket grammar.** `bucket` (`minute|hour|day|month|year`), required `from`, optional
+`to` (default now) and `tz` (default UTC). Hard window caps reject scans that would
+explode (`minute ≤ 24h`, `hour ≤ 31d`, `day ≤ 366d`, …) with
+`400 bucket_window_too_large`. Audit-backed routes clamp `from` to the tenant's
+audit-retention horizon and surface `truncated_at` on the envelope. Every response
+carries three rollups: per-bucket (`groups[].buckets[]`), per-group totals
+(`groups[].totals`), and window totals (top-level `totals`).
 
 Two btree indexes back these routes:
-`executions (tenant_id, status, started_at)` and
-`audit_log (tenant_id, action, ts)`.
+`executions (tenant_id, status, started_at)` and `audit_log (tenant_id, action, ts)`.
 
-Operators read this surface from the CLI: `sk stats
-executions|connectors|events|llm` (human ASCII table + sparkline by
-default, `--json` for cron/CI/ETL), and it feeds the `sk` settings
-Status heatmap + Usage token bar.
+Operators read this surface from the CLI: `sk stats executions|connectors|events|llm`
+(human ASCII table + sparkline by default, `--json` for cron/CI/ETL), and it feeds the
+`sk` settings Status heatmap + Usage token bar.
 
 ---
 
 ## Resource Limits and Operational Safety
 
-sk enforces limits at multiple levels to protect overall system reliability.
+sk enforces limits at multiple levels so that no single workflow, tenant, or external
+connector dependency can degrade the platform for others. All limits have documented
+defaults and are operator-tunable.
 
-Per-execution and per-step timeouts prevent runaway workflows from consuming resources indefinitely. Per-tenant token budgets cap AI usage costs. Rate limits on API endpoints prevent any single caller from monopolizing capacity. Circuit breakers on connector requests detect when an external connector boundary is degraded and fail fast — after a configurable number of consecutive failures, the circuit opens and requests fail immediately until the boundary recovers. Queue depth caps prevent unbounded work accumulation.
+| Limit | Protects against |
+|---|---|
+| Per-execution / per-step timeouts | Runaway workflows consuming resources indefinitely |
+| Per-tenant token budgets | Unbounded AI usage costs |
+| API rate limits | A single caller monopolizing capacity |
+| Connector circuit breakers | Cascading failure from a degraded external boundary — after N consecutive failures the circuit opens and requests fail fast until recovery |
+| Queue depth caps | Unbounded work accumulation |
 
-These limits have documented defaults and can be tuned by operators for their specific workloads. They are designed so that no single workflow, tenant, or external connector dependency can degrade the platform for others.
+When a circuit breaker trips, the audit log records it and the event stream delivers a
+notification. Operators see the failure before users do.
 
 ### Documentation & Knowledge Tunables
 
-Documentation ingestion and Knowledge Source budgets are env-configurable so operators can raise them on hardware that warrants larger corpora. Defaults are conservative and match the docs in [`../authors/knowledge-sources.md`](../authors/knowledge-sources.md).
+Documentation ingestion and Knowledge Source budgets are env-configurable so operators
+can raise them on hardware that warrants larger corpora. Defaults are conservative and
+match the docs in [`../authors/knowledge-sources.md`](../authors/knowledge-sources.md).
+Each value falls back to the default when the env var is unset, empty, zero, or
+unparseable — there is no half-configured state.
 
 | Env var | Default | Effect |
 |---|---|---|
@@ -163,11 +217,13 @@ Documentation ingestion and Knowledge Source budgets are env-configurable so ope
 | `DOCS_CRAWL_POSITIVE_LOW` | `swagger,openapi` | URL keywords that score `+3`. |
 | `DOCS_CRAWL_NEGATIVE` | `pricing,login,signin,signup,/blog/,careers,/locale/,/legal/,/privacy/,/terms/,/contact/` | URL keywords that score `-10`. |
 
-Each value falls back to the default when the env var is unset, empty, zero, or unparseable — there is no half-configured state.
-
 ### Binary file parser tunables (compile-time)
 
-The binary office-document parsers (PDF / DOCX / XLSX / PPTX) are guarded by per-format ceilings that are deliberately not env-configurable — the values are workload-defensive defaults, and an operator who needs to change them should do it in code with a code review. Their absence from `subkit.config.json` is intentional (zero-conf principle).
+The binary office-document parsers (PDF / DOCX / XLSX / PPTX) are guarded by per-format
+ceilings that are deliberately **not** env-configurable — the values are
+workload-defensive defaults, and an operator who needs to change them should do it in
+code with a code review. Their absence from `subkit.config.json` is intentional
+(zero-conf principle).
 
 | Constant | Default | Where | Effect |
 |---|---|---|---|
@@ -182,18 +238,36 @@ The binary office-document parsers (PDF / DOCX / XLSX / PPTX) are guarded by per
 | `XLSX_ROW_CAP_PER_SHEET` | `200` | `docs-ingestion/parsers/xlsx.ts` | Per-sheet row cap (mirrors the CSV row cap). |
 | `PPTX_SLIDE_CAP` | `2000` | `docs-ingestion/parsers/pptx.ts` | Per-archive slide cap; short-circuits ZIP walk when exceeded. |
 
-When a parser trips its timeout, the request fails with a typed `BinaryParseError` mapped to HTTP 400 and the structured logger records a `docs_ingestion.binary_parsers.parse_failed` row. The `subkit_docs_binary_parse_total{format,result="error"}` counter increments so operators can chart per-format failure rates.
+When a parser trips its timeout, the request fails with a typed `BinaryParseError`
+mapped to HTTP 400 and the structured logger records a
+`docs_ingestion.binary_parsers.parse_failed` row. The
+`subkit_docs_binary_parse_total{format,result="error"}` counter increments so operators
+can chart per-format failure rates.
 
-**Audit-log surface for binary extracts.** Successful and failed binary `POST /v1/extract` calls emit `audit_log` rows under `action = "data.exported"`. Each row carries up to ~455 bytes of operator-controlled input inside `metadata`:
+**Audit-log surface for binary extracts.** Successful and failed binary
+`POST /v1/extract` calls emit `audit_log` rows under `action = "data.exported"`. Each
+row carries up to ~455 bytes of operator-controlled input inside `metadata`:
 
-- `metadata.filename` — the validated `x-filename` header (≤ 255 chars, no path separators or NULs; rejected at the Zod boundary before parse).
-- `metadata.error` — the parser's diagnostic (≤ 200 chars, ASCII control characters stripped via `audit/sanitize.ts`).
+- `metadata.filename` — the validated `x-filename` header (≤ 255 chars, no path
+  separators or NULs; rejected at the Zod boundary before parse).
+- `metadata.error` — the parser's diagnostic (≤ 200 chars, ASCII control characters
+  stripped via `audit/sanitize.ts`).
 
-SIEM consumers should expect both fields to be free-form text from the caller's side. Both are passed through `sanitizeForAudit` in `apps/engine/src/audit/sanitize.ts` so a malformed PDF whose parser message embeds a few bytes of the input can't smuggle TAB / NUL / CR into the audit row.
+SIEM consumers should expect both fields to be free-form text from the caller's side.
+Both pass through `sanitizeForAudit` in `apps/engine/src/audit/sanitize.ts` so a
+malformed PDF whose parser message embeds a few bytes of the input can't smuggle
+TAB / NUL / CR into the audit row.
 
-**Metric vs audit denominator gradient.** The `subkit_docs_binary_parse_total{format,result}` counter increments on *every* binary parse dispatch path — the `/v1/extract` HTTP route, the docs-ingestion file-upload source, **and** the LLM `text_extract` context-assembly branch. The `audit_log` `data.exported` rows, by contrast, are written only by the `/v1/extract` route and the docs-ingestion service (not the LLM context path, which is read-only assembly with no egress). An operator charting parse errors should therefore expect `subkit_docs_binary_parse_total{result="error"}` to be a strict superset of `audit_log` `data.exported` rows with `result="error"` — the metric is the broader denominator. Reconcile by parsing surface, not 1:1.
-
-When a circuit breaker trips, the audit log records it and the event stream delivers a notification. Operators see the failure before users do.
+**Metric vs audit denominator gradient.** The
+`subkit_docs_binary_parse_total{format,result}` counter increments on *every* binary
+parse dispatch path — the `/v1/extract` HTTP route, the docs-ingestion file-upload
+source, **and** the LLM `text_extract` context-assembly branch. The `audit_log`
+`data.exported` rows, by contrast, are written only by the `/v1/extract` route and the
+docs-ingestion service (not the LLM context path, which is read-only assembly with no
+egress). An operator charting parse errors should therefore expect
+`subkit_docs_binary_parse_total{result="error"}` to be a strict superset of `audit_log`
+`data.exported` rows with `result="error"` — the metric is the broader denominator.
+Reconcile by parsing surface, not 1:1.
 
 ---
 

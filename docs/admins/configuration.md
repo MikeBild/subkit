@@ -1,16 +1,43 @@
-# Configuring the subkit engine
+# Configuring the engine
 
-> Runtime configuration lives in a single JSON file, not in `.env`.
-> Operators run **`sk settings configure`** for an interactive form,
-> **`sk settings list / get / set`** for scriptable access, or
-> `vim subkit.config.json` and restart the engine for a hand edit.
+**Outcome: one validated configuration, or the engine refuses to boot.**
+There is no silent degraded mode. Every runtime setting lives in a single
+JSON file, type-checked against a schema at startup — a misconfig fails fast
+with the exact leaf path, so a broken deploy never reaches production traffic.
 
-The auto-generated reference at
-[`docs/admins/settings-reference.md`](./settings-reference.md)
-lists every leaf, its type, default, scope, and whether it requires
-a restart. This document explains the model that surrounds it:
-where the file lives, how values resolve, what stays in env, and how
-incidents work.
+| You want | You run |
+| --- | --- |
+| Interactive form | `sk settings configure` |
+| Scriptable access | `sk settings list / get / set` |
+| Hand edit | `vim subkit.config.json`, then restart |
+
+The per-leaf reference (type, default, scope, sensitivity, restart flag) is
+auto-generated in
+[`settings-reference.md`](./settings-reference.md). **This page covers the
+model around it** — where the file lives, how a value resolves, what stays in
+env, and how incident overrides work.
+
+### How a value resolves
+
+```mermaid
+flowchart TB
+    boot([Engine boot]) --> env{Bootstrap env\nMASTER_KEY, NODE_ENV,\nSUBKIT_CONFIG, DATABASE_URL}
+    env --> load[Load subkit.config.json\nmissing file = schema defaults]
+    load --> validate{Validate against\nZod schema}
+    validate -- invalid --> fail[Exit non-zero\nwith exact leaf path]
+    validate -- valid --> ready([Engine ready])
+
+    read([Every settings read]) --> o{SK_OVERRIDE_KEY set?}
+    o -- yes --> useo[Use override\nall tenants]
+    o -- no --> t{Tenant overlay?}
+    t -- yes --> uset[Use tenant value]
+    t -- no --> g{Global value set?}
+    g -- yes --> useg[Use global value]
+    g -- no --> d[Use schema default]
+```
+
+Precedence, highest to lowest: **`SK_OVERRIDE_<KEY>` env → tenant overlay →
+global value → schema default.**
 
 ---
 
@@ -81,9 +108,14 @@ the file only needs to carry overrides:
 ### Resolution order (every read)
 
 `SK_OVERRIDE_<KEY>` env var → tenant overlay → global value → schema
-default. The override env applies across **all** tenants
-(intentional incident-response global rotation); there's no
-per-tenant override env var.
+default (see the boot/read flowchart above).
+
+| Layer | Scope | Set by |
+| --- | --- | --- |
+| `SK_OVERRIDE_<KEY>` | All tenants (no per-tenant override env) | Incident-response env injection |
+| Tenant overlay | One tenant, `scope: tenant` leaves only | `sk settings set … --tenant <id>` |
+| Global value | All tenants | `sk settings set …` |
+| Schema default | All tenants | Shipped in the schema |
 
 ## `sk settings configure` — interactive form
 
@@ -183,11 +215,17 @@ probe reads/writes it for sentinel state. Two keys:
 
 ## Operational guarantees
 
-The engine validates its configuration at boot and exits with a descriptive error if required settings are missing or invalid. There is no silent degraded mode from a misconfiguration. Secrets — database passwords, API keys — belong in a secrets manager or environment-variable injection (`MASTER_KEY`) or the masked, audited `sk settings` path, never in committed configuration files.
-
-To point the `openai` provider at a self-hosted or third-party **OpenAI-compatible endpoint** (custom `base_url`), see [AI-Assisted Authoring → OpenAI-compatible endpoints](../authors/authoring-workflows.md#openai-compatible-endpoints).
-
-Resource-limit tunables (timeouts, token budgets, ingestion/knowledge byte caps, circuit breakers) are kept cohesive in [Observability & Resource Limits](../operators/observability.md#resource-limits-and-operational-safety).
+- **Fail-fast boot.** Missing or invalid required settings exit non-zero with
+  a descriptive, leaf-pathed error. No silent degraded mode.
+- **Secrets stay out of the file.** Database passwords and API keys belong in a
+  secrets manager, env injection (`MASTER_KEY`), or the masked, audited
+  `sk settings` path — never in committed config.
+- **OpenAI-compatible endpoints.** To point the `openai` provider at a
+  self-hosted or third-party endpoint (custom `base_url`), see
+  [AI-Assisted Authoring → OpenAI-compatible endpoints](../authors/authoring-workflows.md#openai-compatible-endpoints).
+- **Resource-limit tunables** (timeouts, token budgets, ingestion/knowledge byte
+  caps, circuit breakers) are kept cohesive in
+  [Observability & Resource Limits](../operators/observability.md#resource-limits-and-operational-safety).
 
 ## See also
 

@@ -1,10 +1,33 @@
 # Notifications
 
-A workflow run is only useful if the people who care about it find out
-when it finishes — succeeded, failed, or aborted. The notifications
-subsystem turns engine outbox events into delivered messages, governed
-by tenant-scoped rules, with rate limits, circuit breakers, audit, and
+**Operators hear about what matters, not noise.** When a workflow run
+ends — succeeded, failed, or aborted — the right people learn about it
+in the channel they already watch, with rate limits and circuit
+breakers keeping a flapping target from drowning out the signal. Less
+log-spelunking, faster incident response, a full audit trail of who
+was told what.
+
+sk turns engine outbox events into delivered messages, governed by
+tenant-scoped rules, with rate limits, circuit breakers, audit, and
 RBAC.
+
+```mermaid
+flowchart LR
+    run([Workflow run ends]) --> ev[events row<br/>execution.status]
+    ev --> fan[Outbox fanout]
+    fan --> rule{Notification rule<br/>match?}
+    rule -->|no| drop([No delivery])
+    rule -->|yes| brk{Circuit breaker}
+    brk -->|open| skip([record breaker_open])
+    brk -->|closed / half-open| rl{Rate limiter}
+    rl -->|empty bucket| limited([record rate_limited])
+    rl -->|token| ch[Channel adapter]
+    ch --> slack[Slack]
+    ch --> teams[Teams]
+    ch --> gchat[Google Chat]
+    ch --> hook[Webhook]
+    ch --> rec[(notification_deliveries<br/>+ audit row)]
+```
 
 ## Surface at a glance
 
@@ -19,30 +42,29 @@ RBAC.
 
 ## End-to-end flow
 
-1. A workflow finishes. `apps/engine/src/execution/state.ts` writes an
-   `events` row with channel `execution.status` and type
-   `execution.<status>` (`succeeded`, `failed`, `aborted`,
-   `timed_out`, ...).
-2. The outbox listener picks the row up and forwards it to
-   `webhooks/outbound/fanout.ts`. The fanout looks up active
-   subscriptions (for outbound webhooks) AND active notification rules
-   (for chat / webhook notifications).
-3. For each matching rule, `notifications/service.ts#dispatchEvent`:
-   1. resolves (or auto-creates) the `notification_channels` row,
-   2. checks the circuit breaker (`closed` → continue, `open` →
-      record `breaker_open` and skip, `half-open` → trial-fire),
-   3. acquires a token from the leaky-bucket rate limiter (records
-      `rate_limited` when the bucket is empty),
-   4. resolves an adapter via the registry,
-   5. invokes `adapter.send()` with a structured `ChatDelivery`,
-   6. records a `notification_deliveries` row + an audit row,
-   7. updates the breaker state from the outcome
-      (`closed → open` after `FAILURE_THRESHOLD` consecutive failures;
-      `half-open → closed` on first success).
+| Step | Component | Action |
+|---|---|---|
+| 1 | `execution/state.ts` | Workflow finishes → writes an `events` row, channel `execution.status`, type `execution.<status>` (`succeeded`, `failed`, `aborted`, `timed_out`, …). |
+| 2 | `webhooks/outbound/fanout.ts` | Outbox listener forwards the row → fanout looks up active subscriptions (outbound webhooks) AND active notification rules (chat / webhook notifications). |
+| 3 | `notifications/service.ts#dispatchEvent` | Per matching rule, runs the dispatch pipeline below. |
 
-The dispatcher always resolves — per-rule failures are logged and
-recorded, never thrown. A misconfigured rule cannot block other
-deliveries.
+For each matching rule, `dispatchEvent`:
+
+1. resolves (or auto-creates) the `notification_channels` row,
+2. checks the circuit breaker (`closed` → continue, `open` → record
+   `breaker_open` and skip, `half-open` → trial-fire),
+3. acquires a token from the leaky-bucket rate limiter (records
+   `rate_limited` when the bucket is empty),
+4. resolves an adapter via the registry,
+5. invokes `adapter.send()` with a structured `ChatDelivery`,
+6. records a `notification_deliveries` row + an audit row,
+7. updates the breaker state from the outcome (`closed → open` after
+   `FAILURE_THRESHOLD` consecutive failures; `half-open → closed` on
+   first success).
+
+> The dispatcher always resolves. Per-rule failures are logged and
+> recorded, never thrown — a misconfigured rule cannot block other
+> deliveries.
 
 ## Channels
 
@@ -50,43 +72,34 @@ deliveries.
 
 The chat adapters under `apps/engine/src/chat/` ship as full peers —
 they verify inbound webhooks, normalize platform events, and post
-outbound messages. The notification subsystem reuses the same
-`send()` surface to deliver completion signals to the operator's
-chat workspace.
+outbound messages. The notification subsystem reuses the same `send()`
+surface to deliver completion signals to the operator's chat
+workspace.
 
 ### Webhook (`notifications/channels/webhook.ts`)
 
 For tenants that prefer a generic HTTP endpoint over a chat platform.
-The adapter:
 
-- POSTs JSON `{ tenant_id, workspace_id, channel_id, kind, text }`
-  with headers `content-type: application/json`,
-  `x-subkit-notification: 1`, `x-subkit-attempt: <n>`, and an
-  optional `x-subkit-secret` shared secret.
-- Bounded retry: at most `WEBHOOK_MAX_ATTEMPTS` tries (default 3),
-  exponential backoff capped at `WEBHOOK_BACKOFF_CAP_MS` (30 s).
-- Honours `Retry-After` on `429`/`503` responses.
-- Treats non-`429` `4xx` responses as terminal — retrying a
-  mis-configured receiver wastes budget.
+| Behaviour | Detail |
+|---|---|
+| Payload | POSTs JSON `{ tenant_id, workspace_id, channel_id, kind, text }` |
+| Headers | `content-type: application/json`, `x-subkit-notification: 1`, `x-subkit-attempt: <n>`, optional `x-subkit-secret` shared secret |
+| Retry | At most `WEBHOOK_MAX_ATTEMPTS` tries (default 3), exponential backoff capped at `WEBHOOK_BACKOFF_CAP_MS` (30 s) |
+| Backpressure | Honours `Retry-After` on `429` / `503` responses |
+| Terminal errors | Non-`429` `4xx` treated as terminal — retrying a mis-configured receiver wastes budget |
 
 ## Rules
 
 A `notification_rules` row carries:
 
-- `event_pattern` — glob matched against the event type
-  (`execution.*`, `execution.failed`, `*`).
-- `workflow_pattern` — glob matched against `workflow_id` or
-  `workflow_slug` so a rule can scope to a specific workflow
-  family.
-- `severity` — drives both the platform-side rendering and the
-  per-rule rate limit.
-- `request_source_filter` — array of sources the rule should fire
-  for. Default semantics in the dispatcher skip notifications for
-  `chat`-sourced runs (the conversation already saw the result) and
-  `mcp` runs (the caller is an LLM, not a human).
-- `target_workspace_id` + `target_channel_id` — point at the
-  channel row to deliver through.
-- `active` — soft-disable without deleting.
+| Field | Purpose |
+|---|---|
+| `event_pattern` | Glob matched against the event type (`execution.*`, `execution.failed`, `*`). |
+| `workflow_pattern` | Glob matched against `workflow_id` or `workflow_slug` so a rule can scope to a specific workflow family. |
+| `severity` | Drives both the platform-side rendering and the per-rule rate limit. |
+| `request_source_filter` | Array of sources the rule should fire for. Default: the dispatcher skips `chat`-sourced runs (the conversation already saw the result) and `mcp` runs (the caller is an LLM, not a human). |
+| `target_workspace_id` + `target_channel_id` | Point at the channel row to deliver through. |
+| `active` | Soft-disable without deleting. |
 
 ## Rate limiting
 
@@ -108,10 +121,10 @@ Per-channel three-state breaker in
 | `open` | Dispatcher records `breaker_open` and skips. Auto-flips to half-open after `OPEN_DURATION_MS`. |
 | `half-open` | One trial delivery is allowed. Success → `closed`; failure → `open`. |
 
-Threshold: `FAILURE_THRESHOLD` consecutive failures (default 5)
-opens the breaker. The breaker is per-channel, not per-rule, so a
-rule that targets a healthy channel keeps firing even when an
-unrelated rule's target is down.
+`FAILURE_THRESHOLD` consecutive failures (default 5) opens the breaker.
+The breaker is per-channel, not per-rule — a rule that targets a
+healthy channel keeps firing even when an unrelated rule's target is
+down.
 
 ## RBAC
 
@@ -125,72 +138,61 @@ audit log carries the actor, the resource, and the changed fields.
 
 ## HTTP routes
 
-- `GET    /v1/notifications/channels`
-- `POST   /v1/notifications/channels`
-- `PATCH  /v1/notifications/channels/:id`
-- `DELETE /v1/notifications/channels/:id`
-- `GET    /v1/notifications/rules`
-- `POST   /v1/notifications/rules`
-- `PATCH  /v1/notifications/rules/:id`
-- `DELETE /v1/notifications/rules/:id`
-- `POST   /v1/notifications/rules/:id/test` — synthesise a
-  notification event and dispatch it through the rule pipeline.
-  Returns the rule-matching, rate-limit, and channel-dispatch outcome
-  so operators can verify a rule end-to-end without waiting for a
-  real workflow run. Audited as `notification_rule.tested`.
-- `GET    /v1/notifications/deliveries?limit=&offset=&status=`
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/v1/notifications/channels` | |
+| `POST` | `/v1/notifications/channels` | |
+| `PATCH` | `/v1/notifications/channels/:id` | |
+| `DELETE` | `/v1/notifications/channels/:id` | |
+| `GET` | `/v1/notifications/rules` | |
+| `POST` | `/v1/notifications/rules` | |
+| `PATCH` | `/v1/notifications/rules/:id` | |
+| `DELETE` | `/v1/notifications/rules/:id` | |
+| `POST` | `/v1/notifications/rules/:id/test` | Synthesise a notification event and dispatch it through the rule pipeline. Returns the rule-matching, rate-limit, and channel-dispatch outcome so operators can verify a rule end-to-end without waiting for a real workflow run. Audited as `notification_rule.tested`. |
+| `GET` | `/v1/notifications/deliveries?limit=&offset=&status=` | |
 
-All routes are Zod-first (see `apps/engine/src/http/routes/notifications.ts`)
-and surface in the generated OpenAPI document.
+All routes are Zod-first (see
+`apps/engine/src/http/routes/notifications.ts`) and surface in the
+generated OpenAPI document.
 
 ## Audit actions
 
-- `notification_channel.created` / `.updated` / `.deleted`
-- `notification_rule.created` / `.updated` / `.deleted` / `.tested`
-- `chat.message.sent` (delivery `sent`)
-- `chat.message.denied` (delivery `rate_limited` or `breaker_open`)
-- `webhook.outbound.failed` (delivery `failed`)
+| Action | Trigger |
+|---|---|
+| `notification_channel.created` / `.updated` / `.deleted` | Channel lifecycle |
+| `notification_rule.created` / `.updated` / `.deleted` / `.tested` | Rule lifecycle + test |
+| `chat.message.sent` | Delivery `sent` |
+| `chat.message.denied` | Delivery `rate_limited` or `breaker_open` |
+| `webhook.outbound.failed` | Delivery `failed` |
 
 ## Observability
 
-- Counter `chat_delivery_total{platform,status}` —
-  partitioned by adapter platform and outcome.
-- Counter `webhook_delivery_total{subscription_id,status}` —
-  for the webhook subscriptions surface (parallel system; see
-  `docs/operators/observability.md`).
-- Structured logs from `notifications/service.ts` carry
-  `tenant_id`, `rule_id`, `channel_id`, `event_type`, `status`.
+| Signal | Detail |
+|---|---|
+| Counter `chat_delivery_total{platform,status}` | Partitioned by adapter platform and outcome. |
+| Counter `webhook_delivery_total{subscription_id,status}` | For the webhook subscriptions surface (parallel system; see [observability](observability.md)). |
+| Structured logs (`notifications/service.ts`) | Carry `tenant_id`, `rule_id`, `channel_id`, `event_type`, `status`. |
 
 ## What is intentionally not here
 
-- **Per-user notifications** — recipients are channel-targeted; we
-  do not maintain a personal-inbox model.
-- **Templating DSL** — the rendered message text is built from the
-  event metadata. A future template field on rules could land here
-  without changing the dispatch contract.
-- **In-app notification surface** — there is no dedicated UI inbox;
-  the deliveries table is the authoritative log.
+| Not built | Why / where instead |
+|---|---|
+| Per-user notifications | Recipients are channel-targeted; there is no personal-inbox model. |
+| Templating DSL | Message text is built from event metadata. A future template field on rules could land here without changing the dispatch contract. |
+| In-app notification surface | No dedicated UI inbox; the deliveries table is the authoritative log. |
 
 ## Notification payload pattern — what, why, proposal
 
-Notifications are the first place an operator sees the bounded
-repair loop in action. The conceptual job of a useful incident
-message is to answer four questions in a single delivery, so the
-operator can decide without opening logs:
+Notifications are the first place an operator sees the bounded repair
+loop in action. A useful incident message answers four questions in a
+single delivery, so the operator can decide without opening logs:
 
-1. **What** happened — the failure substance (status, surfaced
-   error, timestamp).
-2. **Where** in the operational system it happened — workflow slug
-   and version, step id, the external endpoint that drifted.
-   Important the moment there is more than one workflow, more than
-   one supplier, more than one tenant: "the script broke" is not
-   enough.
-3. **Why** it happened — the drift the connector or driver actually
-   detected, not just the HTTP status, plus the `patch_candidate`
-   reference when the bounded repair loop has already produced one.
-4. **How** to act — the Patch Candidate diff, the deterministic
-   dry-run outcome against recorded fixtures, and the operator
-   actions: **approve**, **reject**, **escalate to human**.
+| Question | Carries |
+|---|---|
+| **What** happened | The failure substance — status, surfaced error, timestamp. |
+| **Where** it happened | Workflow slug and version, step id, the external endpoint that drifted. Decisive the moment there is more than one workflow, supplier, or tenant: "the script broke" is not enough. |
+| **Why** it happened | The drift the connector or driver actually detected — not just the HTTP status — plus the `patch_candidate` reference when the bounded repair loop has already produced one. |
+| **How** to act | The Patch Candidate diff, the deterministic dry-run outcome against recorded fixtures, and the operator actions: **approve**, **reject**, **escalate to human**. |
 
 A concrete delivery body — the same shape across every surface:
 
@@ -220,23 +222,19 @@ A concrete delivery body — the same shape across every surface:
 }
 ```
 
-The Slack / Teams / Google-Chat adapters render the same payload
-into a platform-native block layout with the four sections as
-headings and the operator actions as buttons. The webhook channel
-forwards the JSON verbatim — the receiving operator system gets the
-same four-part answer it could surface in its own UI. The **sk CLI**
-renders the same four-part shape into terminal-native blocks via
-`sk executions tail` (live *what* + *where* + *why* as the run
-progresses) and `sk patch-candidates get <id>` (the *how* with `sk
-patch-candidates approve` / `reject` as the actions). The CLI is a
-pull surface, the chat / webhook adapters are push surfaces — the
-**payload contract is the same** across all of them, so every
-operator path lands on the same answer.
+One payload contract, every surface:
 
-The point is not the wire format and not the surface. The point is
-the conceptual job: the closed learning loop is only as good as the
-moment in which a human can act on it, and acting requires *what*,
-*where*, *why*, and *how* in one place. The alternative — a red
-workflow plus a "go read the logs" link — pushes the operator into
-reconstructing all four questions from scratch, which is where the
-compounding loop quietly stalls into a ticket backlog.
+| Surface | Mode | Renders |
+|---|---|---|
+| Slack / Teams / Google Chat | Push | Platform-native blocks — four sections as headings, operator actions as buttons. |
+| Webhook | Push | The JSON verbatim — the receiving system gets the same four-part answer for its own UI. |
+| sk CLI — `sk executions tail` | Pull | Live *what* + *where* + *why* as the run progresses. |
+| sk CLI — `sk patch-candidates get <id>` | Pull | The *how*, with `sk patch-candidates approve` / `reject` as the actions. |
+
+The point is not the wire format and not the surface. The point is the
+conceptual job: the closed learning loop is only as good as the moment
+a human can act on it, and acting requires *what*, *where*, *why*, and
+*how* in one place. The alternative — a red workflow plus a "go read
+the logs" link — pushes the operator into reconstructing all four
+questions from scratch, which is where the compounding loop quietly
+stalls into a ticket backlog.
