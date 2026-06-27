@@ -9,7 +9,7 @@
 //   - AC3: An `audit_log` row is written with `action=policy.denied`.
 //   - AC4: A GET-only workflow still succeeds even while the hook is
 //          enabled.
-// Spec refs: docs/security-governance.md, docs/security-governance.md
+// Spec refs: docs/admins/rbac-and-roles.md, docs/admins/rbac-and-roles.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";

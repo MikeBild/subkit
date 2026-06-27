@@ -10,7 +10,7 @@
 //     pre-P2 shape.
 //
 //   POST /v1/extract
-//     The file-upload surface documented in docs/authoring.md. Accepts
+//     The file-upload surface documented in docs/authors/authoring-workflows.md. Accepts
 //     a raw request body whose format is detected from the `content-type`
 //     header. Formats: json, csv, yaml, xml, plaintext, pdf, docx,
 //     xlsx/xls, pptx. Binary formats are handled by the docs-ingestion
@@ -20,7 +20,7 @@
 //     LLM is called.
 //
 // Both routes enforce the shared 100 MB body cap from
-// docs/operations.md. The cap is checked twice so a hostile
+// docs/operators/observability.md. The cap is checked twice so a hostile
 // or buggy client cannot evade it:
 //   1. `content-length` header — rejected before the body is read so we
 //      never touch the socket for an obviously-oversized upload.
@@ -57,7 +57,7 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 
-/** 100 MB — see docs/operations.md § File and payload sizes. */
+/** 100 MB — see docs/operators/observability.md § File and payload sizes. */
 export const EXTRACT_BODY_CAP_BYTES = 100 * 1024 * 1024;
 
 /** Formats the file-upload extractor knows how to parse. */
@@ -499,7 +499,7 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
               request_source: readRequestSource(c),
               // `filenameHeader` is Zod-validated (no path seps/NULs)
               // but can still carry TAB/CR/LF — sanitize so the audit
-              // row matches the `docs/security-governance.md`
+              // row matches the `docs/concepts/governance-and-audit.md`
               // contract that metadata is control-char-free.
               ...(filenameHeader ? { filename: sanitizeForAudit(filenameHeader) } : {}),
             },

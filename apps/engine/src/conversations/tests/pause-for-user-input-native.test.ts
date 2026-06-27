@@ -168,7 +168,7 @@ describe("pauseForUserInput — MCP-native form elicitation (capable client)", (
     expect(rows[0]!.output).toEqual({ value: "my-answer" });
 
     // The resolve audit row carries the tri-state discriminators
-    // (docs/tool-palette.md): a bridge-delivered accept records
+    // (docs/developers/tool-palette.md): a bridge-delivered accept records
     // `surface: mcp_elicitation` and `elicitation_transport: succeeded`.
     const audit = await readResolveAudit(rows[0]!.id, "approval.approved");
     expect(audit).toBeDefined();
@@ -299,7 +299,7 @@ describe("pauseForUserInput — bridge transport failure", () => {
     // The resolve audit row records the tri-state: a bridge round-trip
     // that broke in transit is `APPROVAL_REJECTED` with
     // `surface: mcp_elicitation` and `elicitation_transport: failed`
-    // (docs/tool-palette.md — transport failure ≠ a governance
+    // (docs/developers/tool-palette.md — transport failure ≠ a governance
     // decision the operator made).
     const audit = await readResolveAudit(rows[0]!.id, "approval.rejected");
     expect(audit).toBeDefined();

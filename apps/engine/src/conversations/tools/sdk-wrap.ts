@@ -18,7 +18,7 @@
 //   continues to wrap each tool inline (rate-limiting, abort signals,
 //   live-log forwarding, draft-state diff emission, structured event
 //   stream) because those concerns are loop-scoped, not surface-scoped.
-//   See docs/tool-palette.md ("Why this exists" + "Layout") for the
+//   See docs/developers/tool-palette.md ("Why this exists" + "Layout") for the
 //   end-to-end picture.
 
 import type { Tool } from "ai";

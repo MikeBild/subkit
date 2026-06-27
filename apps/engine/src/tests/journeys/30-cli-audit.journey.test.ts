@@ -9,7 +9,7 @@
 //   - AC4: `sk audit show <id>` fetches a single row.
 //   - AC5: `sk audit export` streams ndjson with one row per line.
 //   - AC6: Without `--api-key`, the CLI rejects with an auth error.
-// Spec refs: docs/security-governance.md, docs/input-surfaces.md (Pass-2 Stream D)
+// Spec refs: docs/concepts/governance-and-audit.md, docs/developers/input-surfaces.md (Pass-2 Stream D)
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { count } from "drizzle-orm";

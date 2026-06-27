@@ -11,7 +11,7 @@
 //      is reached (timeout, OOM, retry exhaustion, etc.),
 //   3. be referenced by every call site rather than redeclared locally.
 //
-// `docs/execution.md` reproduces this table for operators; keep them
+// `docs/concepts/workflows.md` reproduces this table for operators; keep them
 // in sync.
 
 // --- Workflow / step lifetimes ----------------------------------------

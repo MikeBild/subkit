@@ -1,4 +1,4 @@
-// Generate docs/operations/settings-reference.md from ConfigSchema.
+// Generate docs/admins/settings-reference.md from ConfigSchema.
 //
 // Walks every leaf in apps/engine/src/config/schema.ts and emits a
 // markdown table per top-level section: dotted path, type, default,
@@ -11,7 +11,7 @@
 // Wired into `bun run verify` as the docs drift gate (see package.json).
 //
 // Usage:
-//   bun run apps/engine/scripts/gen-settings-doc.ts > docs/operations/settings-reference.md
+//   bun run apps/engine/scripts/gen-settings-doc.ts > docs/admins/settings-reference.md
 
 import { ConfigSchema, SECTION_ORDER } from "../src/config/schema.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../src/config/walk.ts";

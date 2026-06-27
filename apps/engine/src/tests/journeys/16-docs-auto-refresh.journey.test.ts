@@ -5,7 +5,7 @@
 //   - AC2: When the upstream OpenAPI changes, the next reconciler tick re-ingests.
 //   - AC3: connector_document_chunks grows by the added-path count.
 //   - AC4: connectors.last_ingested_at advances.
-// Spec refs: docs/authoring.md, docs/connectors.md
+// Spec refs: docs/authors/authoring-workflows.md, docs/concepts/connectors.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";

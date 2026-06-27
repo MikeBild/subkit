@@ -12,7 +12,7 @@
 // repo's e2e harness (MinIO testcontainer, Anthropic stub with call
 // counter, PTY-driven REPL, debug clock-advance hook, MCP stdio
 // subprocess). Those scenarios live in
-// `docs/operations/files-deferred-e2e.md` with the required
+// `docs/internal/operations/files-deferred-e2e.md` with the required
 // infrastructure and acceptance criteria; pick one up by wiring the
 // missing infra and porting the scenario back into this file.
 //
@@ -176,7 +176,7 @@ describe("E3: presigned upload (large file)", () => {
   });
 });
 
-// E4 — S3 backend (deferred — see docs/operations/files-deferred-e2e.md).
+// E4 — S3 backend (deferred — see docs/internal/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E5 — Headless attach with mocked LLM (no real Anthropic call)
@@ -210,8 +210,8 @@ describe("E5: headless --attach with mock LLM", () => {
   });
 });
 
-// E6 — Provider id reuse (deferred — see docs/operations/files-deferred-e2e.md).
-// E7 — REPL attach persistence (deferred — see docs/operations/files-deferred-e2e.md).
+// E6 — Provider id reuse (deferred — see docs/internal/operations/files-deferred-e2e.md).
+// E7 — REPL attach persistence (deferred — see docs/internal/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E8 — Workflow file input + multipart out via echo server
@@ -237,8 +237,8 @@ describe("E8: workflow file input + multipart out", () => {
   });
 });
 
-// E9  — Discovery from file (deferred — see docs/operations/files-deferred-e2e.md).
-// E10 — Knowledge from file (deferred — see docs/operations/files-deferred-e2e.md).
+// E9  — Discovery from file (deferred — see docs/internal/operations/files-deferred-e2e.md).
+// E10 — Knowledge from file (deferred — see docs/internal/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E11 — Tenant cross-leak
@@ -271,7 +271,7 @@ describe("E11: tenant cross-leak isolation", () => {
   });
 });
 
-// E12 — Migration backfill (deferred — see docs/operations/files-deferred-e2e.md).
+// E12 — Migration backfill (deferred — see docs/internal/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E13 — Conversation fork preserves files
@@ -361,8 +361,8 @@ describe("E13: conversation fork preserves files", () => {
   });
 });
 
-// E14 — Range download (deferred — see docs/operations/files-deferred-e2e.md).
-// E15 — Cleanup cron lifecycle (deferred — see docs/operations/files-deferred-e2e.md).
+// E14 — Range download (deferred — see docs/internal/operations/files-deferred-e2e.md).
+// E15 — Cleanup cron lifecycle (deferred — see docs/internal/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E16 — Audit completeness
@@ -416,7 +416,7 @@ describe("E16: audit completeness", () => {
   });
 });
 
-// E17 — MCP file resource (deferred — see docs/operations/files-deferred-e2e.md).
+// E17 — MCP file resource (deferred — see docs/internal/operations/files-deferred-e2e.md).
 
 // ---------------------------------------------------------------------------
 // E18 — Legacy @attachment: text rewrite

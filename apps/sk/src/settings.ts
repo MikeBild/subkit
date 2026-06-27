@@ -56,7 +56,7 @@ export interface SkSettings {
   nextCommandPreviewEnabled?: boolean;
 }
 
-const DEFAULTS: SkSettings = {
+export const DEFAULTS: SkSettings = {
   statusLine: { showTokens: true, showPersona: true, showCost: false },
   includeMemoryFile: true,
   maxInlineMentionBytes: 262144,

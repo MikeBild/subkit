@@ -24,7 +24,7 @@
 // write for any of these routes, the query returns empty and the test
 // fails with the exact action name on the expect line.
 //
-// Spec refs: docs/input-surfaces.md, docs/security-governance.md, gap-pass-2 Stream D
+// Spec refs: docs/developers/input-surfaces.md, docs/concepts/governance-and-audit.md, gap-pass-2 Stream D
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";

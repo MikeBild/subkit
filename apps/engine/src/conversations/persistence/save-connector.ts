@@ -398,7 +398,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   const staleCheckpoints = probeCheckpointFresh && probeIsGreen ? [] : staleCheckpointsRaw;
   // OAuth2 drafts cannot probe before `authenticate_oauth` completes —
   // there is no access token yet, every probe will 401. The documented
-  // lifecycle is save → authenticate_oauth → probe (docs/connectors.md),
+  // lifecycle is save → authenticate_oauth → probe (docs/concepts/connectors.md),
   // so the first save MUST not gate on probe; subsequent saves take the
   // idempotent short-circuit above. Before this carve-out OAuth2 drafts
   // tripped the probe gate, then the 60s `force_save` cooldown — the

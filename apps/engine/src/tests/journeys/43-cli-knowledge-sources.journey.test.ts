@@ -11,7 +11,7 @@
 //   - AC5: `knowledge-sources patch <id> --title <new>` updates the name.
 //   - AC6: `knowledge-sources delete <id>` outputs "deleted".
 //   - AC7: `knowledge-sources get <id>` after delete returns an error.
-// Spec refs: docs/authoring.md, docs/input-surfaces.md
+// Spec refs: docs/authors/authoring-workflows.md, docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";

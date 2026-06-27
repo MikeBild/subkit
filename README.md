@@ -14,16 +14,16 @@ production without an explicit human approval step.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The authoritative glossary is [`docs/concepts.md`](docs/concepts.md); the canonical
+The authoritative glossary is [`docs/concepts/glossary.md`](docs/concepts/glossary.md); the canonical
 contract for contributors is [`AGENTS.md`](AGENTS.md).
 
 ---
 
 ## Architecture at a Glance
 
-![sk architecture at a glance — outside-the-bridge AI clients cross via the MCP OAuth bridge into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](docs/overview.png)
+![sk architecture at a glance — outside-the-bridge AI clients cross via the MCP OAuth bridge into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](docs/concepts/overview.png)
 
-*Outside-the-bridge clients (IDE assistants, employee chat) reach governed workflows only through the **MCP OAuth bridge**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`docs/overview.drawio`](docs/overview.drawio).*
+*Outside-the-bridge clients (IDE assistants, employee chat) reach governed workflows only through the **MCP OAuth bridge**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`docs/concepts/overview.drawio`](docs/concepts/overview.drawio).*
 
 Every interaction — regardless of entry point — flows through the same governed pipeline.
 AI assists with authoring but never executes without human approval. Execution is
@@ -36,17 +36,17 @@ the control flow of an approved workflow is fixed; runtime does not re-decide it
 
 | You want to | Start here |
 |-------------|-----------|
-| Brand new to sk — go from nothing to a running engine + first connector, workflow, and knowledge article | [Zero-to-running quickstart](docs/quickstart/zero-to-running.md) |
-| Run the engine for a team | [Operator quickstart](docs/quickstart/operator.md) |
-| Use `sk`, chat, or MCP | [End-user quickstart](docs/quickstart/end-user.md) |
-| Contribute to sk | [Developer quickstart](docs/quickstart/developer.md) |
+| Brand new to sk — go from nothing to a running engine + first connector, workflow, and knowledge article | [Self-host quickstart](docs/developers/self-host.md) |
+| Run the engine for a team | [Operator quickstart](docs/operators/quickstart.md) |
+| Use `sk`, chat, or MCP | [Author quickstart](docs/authors/quickstart.md) |
+| Contribute to sk | [Developer quickstart](docs/developers/quickstart.md) |
 
 ---
 
 ## Documentation
 
 Full conceptual, operational, and quickstart documentation lives in [`docs/`](docs/) — start
-with the [docs index](docs/README.md) and the [glossary](docs/concepts.md).
+with the [docs index](docs/README.md) and the [glossary](docs/concepts/glossary.md).
 
 ---
 

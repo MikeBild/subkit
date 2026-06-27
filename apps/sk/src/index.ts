@@ -1,5 +1,5 @@
 // `sk` — end-user conversational CLI for subkit-backend. See
-// docs/input-surfaces.md for the rationale; this file is the command
+// docs/developers/input-surfaces.md for the rationale; this file is the command
 // entry point only.
 //
 // Bare `sk` opens an interactive REPL against the active profile
@@ -805,7 +805,9 @@ interface SubEntry {
 
 // All subcommands with their permission tier for help filtering.
 // Engine enforces permissions on every API call — this is UX-only.
-const SUB_COMMANDS: Record<string, SubEntry> = {
+// Exported so `scripts/gen-cli-reference.ts` can render the
+// non-interactive command table without re-declaring the inventory.
+export const SUB_COMMANDS: Record<string, SubEntry> = {
   login: { command: loginCommand },
   logout: { command: logoutCommand },
   profile: { command: profileCommand },
@@ -939,24 +941,29 @@ async function dispatch(): Promise<void> {
   await runCommand(mainCommand, { rawArgs });
 }
 
-dispatch().catch((err: unknown) => {
-  // Subcommand handlers throw rather than calling `process.exit`. The
-  // typed exit code comes from `exitCodeFor`, which maps EngineError
-  // status codes (400/409/422 → 1, others → 2) and TransportError → 2.
-  // Setting `process.exitCode` lets the process drain stdout/stderr
-  // naturally.
-  //
-  // Rendering happens exactly once: handlers that route their catch
-  // through `reportCommandError` already printed the error (with the
-  // engine envelope's remediation hint + trace id), so the dispatcher
-  // only renders errors that never passed through it.
-  if (!wasReported(err)) {
-    const lines = [`sk: ${err instanceof Error ? err.message : String(err)}`];
-    if (isEngineError(err)) {
-      if (err.hint) lines.push(pc.dim(`  hint: ${err.hint}`));
-      if (err.trace_id) lines.push(pc.dim(`  trace: ${err.trace_id}`));
+// Only dispatch when run as the process entrypoint. Importing this
+// module (e.g. `scripts/gen-cli-reference.ts` reading SUB_COMMANDS)
+// must not start the CLI / REPL or require a logged-in profile.
+if (import.meta.main) {
+  dispatch().catch((err: unknown) => {
+    // Subcommand handlers throw rather than calling `process.exit`. The
+    // typed exit code comes from `exitCodeFor`, which maps EngineError
+    // status codes (400/409/422 → 1, others → 2) and TransportError → 2.
+    // Setting `process.exitCode` lets the process drain stdout/stderr
+    // naturally.
+    //
+    // Rendering happens exactly once: handlers that route their catch
+    // through `reportCommandError` already printed the error (with the
+    // engine envelope's remediation hint + trace id), so the dispatcher
+    // only renders errors that never passed through it.
+    if (!wasReported(err)) {
+      const lines = [`sk: ${err instanceof Error ? err.message : String(err)}`];
+      if (isEngineError(err)) {
+        if (err.hint) lines.push(pc.dim(`  hint: ${err.hint}`));
+        if (err.trace_id) lines.push(pc.dim(`  trace: ${err.trace_id}`));
+      }
+      process.stderr.write(`${lines.join("\n")}\n`);
     }
-    process.stderr.write(`${lines.join("\n")}\n`);
-  }
-  process.exitCode = exitCodeFor(err);
-});
+    process.exitCode = exitCodeFor(err);
+  });
+}

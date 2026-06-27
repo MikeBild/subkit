@@ -1,0 +1,50 @@
+# sk Documentation
+
+A robots.txt-style index of the sk documentation set for LLMs: every public page grouped by audience, each with its title, path, and one-line summary.
+
+## Concepts
+
+- [Connectors & Integration](docs/concepts/connectors.md): Outcome: authenticate an external system once, reuse it across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log.
+- [Concepts & Domain Model](docs/concepts/glossary.md): One vocabulary, defined once.
+- [Governance & Audit](docs/concepts/governance-and-audit.md): Pass the audit on the first pass.
+- [Knowledge & Skills](docs/concepts/knowledge-and-skills.md): Outcome: authoring grounded in your own conventions — not generic API docs — so workflows ship faster, with fewer rework cycles and fewer compliance surprises.
+- [Architecture Overview](docs/concepts/overview.md): Ship audited automation in hours, not sprints — and keep every run compliant by construction.
+- [Workflow Execution](docs/concepts/workflows.md): Approved workflows run the same way every time — deterministic, immutable, fully audited.
+
+## Operators
+
+- [Connectors & Credentials (operator guide)](docs/operators/connectors-and-credentials.md): This is the operational slice of the connector subsystem: how to attach and rotate credentials, test connectivity on demand, invoke an endpoint ad-hoc, and run the vendor-drift sweep.
+- [Notifications](docs/operators/notifications.md): A workflow run is only useful if the people who care about it find out when it finishes — succeeded, failed, or aborted.
+- [Observability & Resource Limits](docs/operators/observability.md): sk is built to run unattended: observable enough to diagnose problems quickly, and bounded enough that no single workflow, tenant, or external dependency can degrade the platform for everyone else.
+- [Quickstart — Operator](docs/operators/quickstart.md): Outcome: a governed, audited automation engine your whole team can use — live in production in 15 minutes.
+- [Scheduling & Hooks (operator guide)](docs/operators/scheduling-and-hooks.md): This guide covers two operational levers: how a workflow gets triggered (on demand, by schedule, or by inbound webhook), and how a Before-Request Hook adds dynamic policy in front of connector egress.
+- [Self-Healing in Operations](docs/operators/self-healing.md): From an operational perspective, self-healing is how sk stays healthy as the external world changes.
+
+## Authors
+
+- [AI-Assisted Authoring](docs/authors/authoring-workflows.md): Traditional enterprise workflow tools put the burden of construction on the builder.
+- [Custom Skills](docs/authors/custom-skills.md): A Skill is a curated, reusable piece of context loaded into the AI's context window during a Conversation and other AI-assisted authoring flows (discovery, diagnosis, bounded repair).
+- [Knowledge Sources](docs/authors/knowledge-sources.md): A Knowledge Source is a persistent, indexed document store the AI can search while authoring, discovering, or repairing workflows.
+- [Quickstart — Authors](docs/authors/quickstart.md): Turn a plain-language request into a governed, audited, runnable workflow — in about 5 minutes, no code.
+- [Recipe authoring](docs/authors/recipes.md): Recipes are pre-authored workflows attached to connector templates.
+- [Using the `sk` REPL — authoring by conversation](docs/authors/repl-tour.md): Go from idea to a governed, versioned workflow in minutes — no JSON, no glue code.
+- [sk settings](docs/authors/settings.md): Settings for the sk CLI itself — separate from the engine's runtime settings (see settings-reference).
+- [Slash commands](docs/authors/slash-commands.md): Slash commands run from the sk REPL.
+
+## Developers
+
+- [sk CLI reference](docs/developers/cli-reference.md): Non-interactive commands for the sk CLI.
+- [Evidence process — verifying a behavioral / LLM-path change](docs/developers/evidence-process.md): How to prove a change to an LLM-driven path (authoring generation, the preview judge, repair loops) actually does what you claim — with real evidence, not intuition.
+- [Input Surfaces](docs/developers/input-surfaces.md): Automation that only works from one place does not fit how enterprise teams actually operate.
+- [Quickstart — Developer](docs/developers/quickstart.md): Ship to sk with confidence: a green quality gate on every change keeps regressions out of production.
+- [Quickstart — Zero to Running](docs/developers/self-host.md): No prior knowledge required.
+- [Tool palette and dispatch](docs/developers/tool-palette.md): The engine speaks "LLM tool-calling" across two surfaces:
+
+## Admins
+
+- [Configuring the subkit engine](docs/admins/configuration.md): The auto-generated reference at docs/admins/settings-reference.md lists every leaf, its type, default, scope, and whether it requires a restart.
+- [Credentials & Keys](docs/admins/credentials-and-keys.md): This document is the admin home for the secrets that protect a sk deployment: the credential vault that holds every integration secret, the MASTER_KEY that encrypts it at rest (and how to rotate it), and the release-signing key that gates self-updates of the engine and sk binaries.
+- [Production hardening — known caveats & TODOs](docs/admins/production-hardening.md): Operator-facing notes for running sk in production.
+- [Admin Quickstart](docs/admins/quickstart.md): Every workflow run is permission-checked, scoped, and audited — so a team can move fast without losing the governance trail compliance needs.
+- [RBAC & Roles](docs/admins/rbac-and-roles.md): This document describes how sk authenticates callers and authorises every action: the pluggable identity chain, the four built-in roles plus custom roles and resource grants, and the dynamic policy layer added by Before-Request Hooks.
+- [subkit runtime settings](docs/admins/settings-reference.md): Every value below lives in subkit.config.json and is editable via sk settings configure or sk settings set .

@@ -7,7 +7,7 @@
 //          `request_source=scheduler` exists for the workflow.
 //   - AC3: That execution reaches a terminal status via the queue
 //          handler (worker registered by the journey setup).
-// Spec refs: docs/06-scheduler.md, docs/05-execution.md
+// Spec refs: docs/concepts/workflows.md, docs/concepts/workflows.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";

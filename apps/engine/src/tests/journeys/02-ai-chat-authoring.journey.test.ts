@@ -8,8 +8,8 @@
 //          the canned mock-LLM plan through an approval.
 //   - AC3: Approving the pending approval commits the draft and creates
 //          a real workflow row.
-// Spec refs: docs/input-surfaces.md, docs/authoring.md,
-//            docs/authoring.md, docs/execution.md
+// Spec refs: docs/developers/input-surfaces.md, docs/authors/authoring-workflows.md,
+//            docs/authors/authoring-workflows.md, docs/concepts/workflows.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";

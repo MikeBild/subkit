@@ -1,7 +1,7 @@
 // Transactional outbox. Domain writers call `writeEvent(tx, channel, type, payload)`
 // inside the same transaction as their domain mutation. A dedicated LISTENER
 // process (implemented in P4) reads this table via `LISTEN`/`NOTIFY` + cursor
-// catch-up. See docs/security-governance.md for the replay protocol.
+// catch-up. See docs/concepts/governance-and-audit.md for the replay protocol.
 
 import {
   bigint,

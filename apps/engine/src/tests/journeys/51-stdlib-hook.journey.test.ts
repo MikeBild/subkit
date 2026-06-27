@@ -10,8 +10,8 @@
 //   - AC3: A GET-only workflow still succeeds while the sk-based hook
 //          is enabled — parity with the inline-hook baseline in
 //          journey 12.
-// Spec refs: docs/authoring.md (sk-Stdlib im Sandbox),
-// docs/security-governance.md
+// Spec refs: docs/authors/authoring-workflows.md (sk-Stdlib im Sandbox),
+// docs/admins/rbac-and-roles.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";

@@ -153,7 +153,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
   // → terminal status), then tails live and closes right after the
   // terminal frame so followers of a finished run exit immediately.
   // Hand-rolled outside the openapi() surface like /v1/events/stream
-  // (documented in docs/input-surfaces.md).
+  // (documented in docs/developers/input-surfaces.md).
   // -----------------------------------------------------------------
   app.get("/v1/executions/:id/stream", async (c) => {
     const principal = requireAuth(c);

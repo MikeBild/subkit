@@ -965,7 +965,7 @@ export async function assembleContext(
     section_tokens: prompt.token_counts,
   });
 
-  // Closing edge of the Run → Drift → Patch → Skill loop (docs/execution.md):
+  // Closing edge of the Run → Drift → Patch → Skill loop (docs/concepts/workflows.md):
   // record which loop-originated skills actually influenced this authoring
   // turn. `catalog` counts ONLY Skills promoted from a Skill Candidate
   // (source === "candidate") — not engine-shipped seed/template/manual skills,

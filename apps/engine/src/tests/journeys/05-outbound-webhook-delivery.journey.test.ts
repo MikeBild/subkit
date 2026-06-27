@@ -8,7 +8,7 @@
 //          opens the breaker after 10 failures.
 //   - AC3: While the breaker is open, a subsequent delivery job writes a
 //          `circuit_open` dead_letter row and skips the HTTP hit.
-// Spec refs: docs/input-surfaces.md
+// Spec refs: docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";

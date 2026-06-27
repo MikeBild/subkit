@@ -3,7 +3,7 @@
 # This compose file is **dev-only**: it brings up postgres for local
 # development while `bun run dev` runs the engine on the host. For a
 # self-contained production engine use the all-in-one image
-# (`mikebild/subkit`) — see docs/operations/docker.md.
+# (`mikebild/subkit`) — see docs/developers/self-host.md.
 #
 # Quick start (from repo root):
 #   docker compose up -d              # postgres only

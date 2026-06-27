@@ -14,7 +14,7 @@
 //   - AC4: an enduser (execution:read, no audit:read) can follow the
 //          run but is refused on /v1/events/stream.
 //   - AC5: unknown execution id yields 404.
-// Spec refs: docs/execution.md ("Following a run live")
+// Spec refs: docs/concepts/workflows.md ("Following a run live")
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
