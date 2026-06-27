@@ -17098,7 +17098,7 @@
     "name": "Supabase",
     "driver": "http",
     "base_url": "https://{ref}.supabase.co/rest/v1",
-    "auth_type": "header",
+    "auth_type": "bearer",
     "oauth": null,
     "default_skill": "supabase-basics",
     "ingestion_source": "unsupported",
@@ -17107,12 +17107,17 @@
     "description": "Supabase PostgREST API",
     "category": "database",
     "tags": ["rest", "postgrest", "realtime", "auth"],
-    "setup_instructions": "Get project URL and API keys from Dashboard > Settings > API. Send the `apikey` header AND `Authorization: Bearer <key>` carrying the same key — PostgREST reads the database role (including service_role's RLS bypass) from the JWT in the Authorization header, so apikey alone runs as anon. anon respects Row Level Security; service_role bypasses it (server-side only). Self-hosted: override base_url with your own host, e.g. https://supabase.example.com/rest/v1.",
+    "setup_instructions": "Get project URL and API keys from Dashboard > Settings > API. Authenticate with `Authorization: Bearer <key>` (auth_type bearer) using the service_role or anon key — PostgREST reads the database role from this JWT (service_role bypasses Row Level Security; anon enforces it). Bearer alone is sufficient for self-hosted PostgREST. On Supabase Cloud (behind the Kong gateway) you must ALSO send the `apikey` header with the same key — use a header credential carrying both `apikey` and `Authorization: Bearer`. Self-hosted: override base_url with your own host, e.g. https://supabase.example.com/rest/v1.",
     "auth_options": [
       {
+        "auth_type": "bearer",
+        "label": "Bearer token (service_role or anon key)",
+        "description": "Send `Authorization: Bearer <key>` with the service_role (RLS bypass) or anon (RLS enforced) key. This sets the database role and is sufficient for self-hosted PostgREST."
+      },
+      {
         "auth_type": "header",
-        "label": "API key + Bearer (apikey & Authorization)",
-        "description": "Send both the `apikey` header and `Authorization: Bearer <key>` with the same anon or service_role key. apikey alone runs as anon, so RLS-guarded reads/writes need the Authorization header too."
+        "label": "Cloud: apikey + Authorization (both headers)",
+        "description": "Supabase Cloud's gateway also requires the `apikey` header. Use a header credential carrying BOTH `apikey` and `Authorization: Bearer` with the same key. apikey alone runs as anon."
       }
     ],
     "url_pattern": "^https://[^/]+\\.supabase\\.co/rest/v1(\\/|$)",
@@ -17121,8 +17126,8 @@
     "probe_endpoint": null,
     "credential_hints": [
       {
-        "field": "value",
-        "label": "API Key (header value)",
+        "field": "token",
+        "label": "Bearer token (service_role or anon key)",
         "placeholder": "",
         "doc_url": null,
         "secret": true
