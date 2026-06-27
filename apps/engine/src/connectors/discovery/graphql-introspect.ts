@@ -458,7 +458,7 @@ class GraphQLIntrospectStrategy implements DiscoveryStrategy {
     } catch (err) {
       const code = err instanceof DiscoveryError ? err.code : "fetch_failed";
       const message = err instanceof Error ? err.message : String(err);
-      log.warn({
+      log.debug({
         module: "connector",
         action: "discovery.strategy.failed",
         strategy: this.name,
