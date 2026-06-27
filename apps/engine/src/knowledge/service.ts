@@ -265,6 +265,31 @@ export async function getKnowledgeSource(
   return rows[0] ? toView(rows[0]) : null;
 }
 
+/**
+ * Look up a non-deleted Knowledge Source by its `(tenant_id, slug)` natural
+ * key. Used by the boot-time seeder to decide insert vs. re-ingest vs. skip
+ * without re-deriving the upsert logic in two places.
+ */
+export async function getKnowledgeSourceBySlug(
+  tenant_id: string,
+  slug: string,
+  exec?: Executor,
+): Promise<KnowledgeSourceView | null> {
+  const db = exec ?? getDb();
+  const rows = await db
+    .select()
+    .from(knowledgeSources)
+    .where(
+      and(
+        eq(knowledgeSources.tenant_id, tenant_id),
+        eq(knowledgeSources.slug, slug),
+        isNull(knowledgeSources.deleted_at),
+      ),
+    )
+    .limit(1);
+  return rows[0] ? toView(rows[0]) : null;
+}
+
 export async function updateKnowledgeSource(
   p: UpdateKnowledgeSourceParams,
   exec?: Executor,

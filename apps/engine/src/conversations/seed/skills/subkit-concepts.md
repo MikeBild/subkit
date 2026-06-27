@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [foundations, concepts]
-version: 4
+version: 5
 ---
 
 # sk Core Concepts
@@ -196,3 +196,5 @@ long as connector slugs match and required credentials exist in the prod env.
 - `workflow-authoring.md` — how to actually build these in a conversation.
 - `data-handling.md` — deep dive on the envelope, data_selector, and JSONata.
 - `error-recovery.md` — reading tool errors from the conversation surface.
+- For exhaustive platform facts (every REST endpoint, every `sk` CLI command, the full MCP tool
+  catalog, webhooks, triggers, chat, status) call `search_knowledge({ query, tags: ["sk-platform-reference"] })`.

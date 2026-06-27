@@ -16,6 +16,7 @@ import { setHealthState } from "./http/health-state.ts";
 import { engineServeOptions } from "./http/listen-hostname.ts";
 import { OPENAPI_INFO } from "./http/openapi.ts";
 import { createApp } from "./http/server.ts";
+import { seedKnowledgeAtBoot } from "./knowledge/seed.ts";
 import { newTraceId, withContext } from "./logging/context.ts";
 import { errorFields, logger } from "./logging/logger.ts";
 import { reconcileMcpServersFromConfig } from "./mcp/config-seed.ts";
@@ -561,6 +562,10 @@ async function runServer(): Promise<void> {
       }
     })();
   }
+
+  // Knowledge-Source seed pipeline (see knowledge/seed.ts). Background,
+  // always-on, non-fatal — mirrors the skill seed above.
+  void seedKnowledgeAtBoot(db);
 
   // External MCP server reconcile. Converges the `mcp_servers` table
   // to the `mcp.servers` config declarations for every tenant. Zero-conf:
