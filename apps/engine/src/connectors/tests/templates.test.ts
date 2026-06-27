@@ -21,7 +21,7 @@ afterAll(async () => {
 describe("connector templates", () => {
   test("loadBuiltinTemplates returns all valid rows", () => {
     const rows = loadBuiltinTemplates();
-    expect(rows.length).toBeGreaterThanOrEqual(80);
+    expect(rows.length).toBeGreaterThanOrEqual(50);
     for (const row of rows) {
       const parsed = ConnectorTemplateSchema.safeParse(row);
       expect(parsed.success).toBe(true);
@@ -32,10 +32,10 @@ describe("connector templates", () => {
     expect(slugs).toContain("github");
     expect(slugs).toContain("notion");
     expect(slugs).toContain("jira");
-    expect(slugs).toContain("microsoft-graph");
-    expect(slugs).toContain("firecrawl");
+    expect(slugs).toContain("salesforce");
+    expect(slugs).toContain("supabase");
     const openapi = rows.filter((r) => r.ingestion_source === "openapi");
-    expect(openapi.length).toBeGreaterThanOrEqual(25);
+    expect(openapi.length).toBeGreaterThanOrEqual(20);
   });
 
   test("every template has category, setup_instructions and valid slug", () => {
@@ -70,7 +70,7 @@ describe("connector templates", () => {
   test("OAuth2 blocks declare the extended control fields", () => {
     const rows = loadBuiltinTemplates();
     const withOauth = rows.filter((r) => r.oauth !== null);
-    expect(withOauth.length).toBeGreaterThanOrEqual(30);
+    expect(withOauth.length).toBeGreaterThanOrEqual(25);
     for (const row of withOauth) {
       const o = row.oauth!;
       expect([

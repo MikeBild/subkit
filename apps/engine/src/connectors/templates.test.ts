@@ -4,7 +4,7 @@
 // fails ConnectorTemplateSchema. Running it inside a test makes that
 // trip at PR time instead, before the bad commit lands. Plus a few
 // invariants that the schema can't express on a single row but that
-// must hold across the whole 90-template catalog.
+// must hold across the whole template catalog.
 
 import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
@@ -22,7 +22,7 @@ describe("connector-template catalog — structural", () => {
     // canonical drift guard is `loadBuiltinTemplates()` at startup —
     // every entry must pass `ConnectorTemplateSchema`. This test pins
     // the catalog size so a stray add/remove surfaces explicitly.
-    expect(templates.length).toBe(93);
+    expect(templates.length).toBe(55);
   });
 
   test("supabase-graphql url_pattern matches a real host, not the literal [^/]+", () => {
@@ -109,19 +109,13 @@ describe("connector-template catalog — cross-reference invariants", () => {
     // templates whose host class was over-escaped. Curated real URLs are more
     // robust than reverse-engineering each regex.
     const cases: Record<string, string> = {
-      auth0: "https://example.auth0.com/api/v2",
-      okta: "https://dev.okta.com/api/v1",
-      zendesk: "https://acme.zendesk.com/api/v2",
-      freshdesk: "https://acme.freshdesk.com/api/v2",
-      servicenow: "https://acme.service-now.com/api/now",
-      snowflake: "https://acme.snowflakecomputing.com/api/v2",
       mailchimp: "https://us21.api.mailchimp.com/3.0",
-      "azure-blob-storage": "https://acct.blob.core.windows.net",
-      "azure-devops": "https://dev.azure.com/myorg/_apis",
-      bamboohr: "https://api.bamboohr.com/api/gateway.php/acme/v1",
       confluence: "https://api.atlassian.com/ex/confluence/abc/wiki/api/v2",
       jira: "https://api.atlassian.com/ex/jira/abc/rest/api/3",
       supabase: "https://abcdef.supabase.co/rest/v1",
+      "supabase-graphql": "https://abcdef.supabase.co/graphql/v1",
+      salesforce: "https://acme.my.salesforce.com/services/data/v59.0",
+      shopify: "https://acme.myshopify.com/admin/api/2024-01",
     };
     for (const [slug, url] of Object.entries(cases)) {
       const t = templates.find((x) => x.slug === slug);

@@ -103,9 +103,9 @@ branches are arrays of arrays (each inner array is one parallel chain).
       "id": "create_ticket",
       "kind": "request",
       "method": "POST",
-      "connector_id": "<zendesk_connector_id>",
-      "path": "/api/v2/tickets.json",
-      "body": { "ticket": { "subject": "Onboarding for ${scope.lookup.data.email}" } }
+      "connector_id": "<asana_connector_id>",
+      "path": "/api/1.0/tasks",
+      "body": { "data": { "name": "Onboarding for ${scope.lookup.data.email}" } }
     },
     {
       "id": "log_self_serve",
