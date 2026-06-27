@@ -99,13 +99,16 @@ export interface DeactivateUserInput {
 }
 
 /**
- * Soft-deactivate a user: set `deleted_at` + `status='disabled'` and revoke
- * every one of the user's non-revoked api keys in the SAME transaction.
- * The api-key provider does not check `users.deleted_at`, so revoking the
- * keys is what actually severs access — without it a "deleted" user's key
- * would keep resolving. Writes one `USER_DELETED` audit row plus an
- * `API_KEY_REVOKED` row per key. Returns `null` if the user is already
- * gone.
+ * Soft-deactivate a user: set `deleted_at` + `status='disabled'`, revoke
+ * every one of the user's non-revoked api keys, AND revoke every one of the
+ * user's still-pending (un-redeemed, un-revoked) invites — all in the SAME
+ * transaction. The api-key provider does not check `users.deleted_at`, so
+ * revoking the keys is what severs existing access; revoking the pending
+ * invites closes the resurrection path where a deactivated user redeems a
+ * still-live invite to mint a fresh key (the redeem claim's
+ * `isNull(revoked_at)` guard then fails). Writes one `USER_DELETED` audit row,
+ * an `API_KEY_REVOKED` row per key, and an `INVITE_REVOKED` row per invite.
+ * Returns `null` if the user is already gone.
  */
 export async function deactivateUser(input: DeactivateUserInput, exec?: Executor) {
   const db = exec ?? getDb();
@@ -152,6 +155,39 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
       );
     }
 
+    // Sever still-pending invites so a deactivated user can't redeem one to
+    // mint a fresh key. Same tx → a concurrent redeem either loses the claim
+    // (this revoke commits first) or mints a key that the api-key revoke above
+    // catches; either ordering leaves the user with no live credential.
+    const revokedInvites = await tx
+      .update(userInvites)
+      .set({ revoked_at: nowTs, updated_at: nowTs })
+      .where(
+        and(
+          eq(userInvites.tenant_id, input.tenant_id),
+          eq(userInvites.user_id, input.user_id),
+          isNull(userInvites.redeemed_at),
+          isNull(userInvites.revoked_at),
+        ),
+      )
+      .returning();
+
+    for (const inv of revokedInvites) {
+      await auditAwait(
+        {
+          tenant_id: input.tenant_id,
+          actor_type: input.actor_id ? "user" : "system",
+          actor_id: input.actor_id,
+          action: AuditAction.INVITE_REVOKED,
+          resource_type: "user_invite",
+          resource_id: inv.id,
+          result: "success",
+          metadata: { invite_id: inv.id, user_id: inv.user_id, prefix: inv.prefix },
+        },
+        tx,
+      );
+    }
+
     await auditAwait(
       {
         tenant_id: input.tenant_id,
@@ -161,7 +197,11 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
         resource_type: "user",
         resource_id: row.id,
         result: "success",
-        metadata: { email: row.email, revoked_api_keys: revoked.length },
+        metadata: {
+          email: row.email,
+          revoked_api_keys: revoked.length,
+          revoked_invites: revokedInvites.length,
+        },
       },
       tx,
     );
@@ -427,6 +467,18 @@ export async function redeemInvite(
   if (invite.revoked_at) return { ok: false, code: "invite_revoked" };
   if (invite.redeemed_at) return { ok: false, code: "invite_already_redeemed" };
   if (invite.expires_at.getTime() <= now()) return { ok: false, code: "invite_expired" };
+
+  // Defense-in-depth: refuse to resurrect a deactivated user. deactivateUser
+  // revokes pending invites in-tx (so the concurrent path fails the claim
+  // below), but a non-concurrent invite-for-an-already-deleted-user must also
+  // be rejected. Surface the generic invalid code — never reveal user state to
+  // an unauthenticated redeemer.
+  const userRows = await db
+    .select({ deleted_at: users.deleted_at })
+    .from(users)
+    .where(and(eq(users.tenant_id, invite.tenant_id), eq(users.id, invite.user_id)))
+    .limit(1);
+  if (!userRows[0] || userRows[0].deleted_at) return { ok: false, code: "invite_invalid" };
 
   return db.transaction(async (tx) => {
     const redeemedAt = new Date(now());

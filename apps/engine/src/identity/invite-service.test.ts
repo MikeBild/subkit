@@ -300,3 +300,134 @@ describe("revokeInvite — INVITE_REVOKED audit row (H2)", () => {
     expect(auditRows[0]?.result).toBe("success");
   });
 });
+
+// H3 — deactivateUser severs pending (un-redeemed) invites.
+//
+// The fix adds a revokedInvites UPDATE + INVITE_REVOKED audit loop inside
+// deactivateUser (same transaction as the user soft-delete + key revoke).
+// Without it, a deactivated user could still redeem a live invite to mint
+// a fresh personal api key — resurrecting their access.
+//
+// This test FAILS in three independent ways if the revokedInvites block is
+// removed from deactivateUser:
+//   1. `after?.revoked_at` is null  — the invite row was never stamped.
+//   2. `auditRows.length` is 0     — no INVITE_REVOKED entry was written.
+//   3. `outcome.code` is "invite_invalid" instead of "invite_revoked"
+//      — the invite isn't revoked, so redeemInvite falls through to the
+//      defense-in-depth user-deleted check (H4) and returns the generic
+//      invalid code rather than the precise "invite_revoked" one.
+describe("deactivateUser — severs pending invite (H3)", () => {
+  test("deactivateUser stamps revoked_at on a pending invite, writes an INVITE_REVOKED audit row, and blocks subsequent redemption with invite_revoked", async () => {
+    const user = await seedInvitedUser("inv-deact-pending@test.local");
+    const { view: inviteView, plaintext } = await createInvite(
+      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      testDb.db,
+    );
+
+    // Confirm the invite is pending before deactivation.
+    const [before] = await testDb.db
+      .select()
+      .from(userInvites)
+      .where(eq(userInvites.id, inviteView.id));
+    expect(before?.revoked_at).toBeNull();
+    expect(before?.redeemed_at).toBeNull();
+
+    const result = await deactivateUser(
+      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      testDb.db,
+    );
+    expect(result).not.toBeNull();
+
+    // The invite row must now carry revoked_at — the deactivateUser tx
+    // stamped it alongside the user soft-delete and key revoke.
+    const [after] = await testDb.db
+      .select()
+      .from(userInvites)
+      .where(eq(userInvites.id, inviteView.id));
+    expect(after?.revoked_at).not.toBeNull();
+
+    // An INVITE_REVOKED audit row must exist scoped to this tenant and invite.
+    // This is the durable evidence that access was fully severed — not just
+    // the user soft-delete. Reverts of the audit loop break this assertion.
+    const auditRows = await testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.action, "user_invite.revoked"), eq(auditLog.resource_id, inviteView.id)),
+      );
+    expect(auditRows.length).toBe(1);
+    expect(auditRows[0]?.tenant_id).toBe(tenantId);
+    expect(auditRows[0]?.result).toBe("success");
+
+    // A subsequent redemption must fail with "invite_revoked" — not the
+    // generic "invite_invalid". The precise code proves the invite row
+    // carries revoked_at (H3's revoke path), not that the user-deleted
+    // guard (H4) fired instead.
+    const outcome = await redeemInvite({ token: plaintext }, testDb.db);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) throw new Error("expected failure");
+    expect(outcome.code).toBe("invite_revoked");
+
+    // No api_keys were minted for this user at any point during the scenario.
+    const minted = await testDb.db.select().from(apiKeys).where(eq(apiKeys.user_id, user.id));
+    expect(minted.length).toBe(0);
+  });
+});
+
+// H4 — redeemInvite rejects an invite whose target user is already soft-deleted.
+//
+// This is the defense-in-depth guard added to redeemInvite. It covers the
+// non-concurrent case where a user row is soft-deleted by means OTHER than
+// deactivateUser (e.g. a direct DB operation during incident response),
+// leaving the invite row un-revoked. Without this check redeemInvite would
+// succeed, mint a personal api key, and flip the deleted user to "active" —
+// resurrecting access silently.
+//
+// This test FAILS if the `userRows` deleted_at guard is removed from
+// redeemInvite: the call would return ok:true, `outcome.ok` would be true
+// (breaking the first assertion), and a key row would be minted
+// (breaking the final assertion).
+//
+// The user is soft-deleted directly via SQL UPDATE — not through
+// deactivateUser — so the invite row is intentionally left un-revoked.
+// This isolates the H4 guard from the H3 deactivateUser invite-revoke path.
+describe("redeemInvite — rejects invite for soft-deleted user (H4)", () => {
+  test("redeemInvite returns invite_invalid and mints no key when the target user is already soft-deleted", async () => {
+    const user = await seedInvitedUser("inv-deleted-user@test.local");
+    const { plaintext } = await createInvite(
+      { tenant_id: tenantId, user_id: user.id, actor_id: null },
+      testDb.db,
+    );
+
+    // Soft-delete the user row directly — bypassing deactivateUser — so
+    // the invite is NOT revoked. This is the non-concurrent case the H4
+    // guard is designed to catch.
+    await testDb.db
+      .update(users)
+      .set({
+        deleted_at: new Date(getTestNow()),
+        status: "disabled",
+        updated_at: new Date(getTestNow()),
+      })
+      .where(eq(users.id, user.id));
+
+    // Confirm the invite is still pending (un-revoked, un-redeemed).
+    const [inviteRow] = await testDb.db
+      .select()
+      .from(userInvites)
+      .where(eq(userInvites.user_id, user.id));
+    expect(inviteRow?.revoked_at).toBeNull();
+    expect(inviteRow?.redeemed_at).toBeNull();
+
+    // redeemInvite must refuse with the generic "invite_invalid" code —
+    // never revealing user-deleted state to an unauthenticated redeemer.
+    const outcome = await redeemInvite({ token: plaintext }, testDb.db);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) throw new Error("expected failure");
+    expect(outcome.code).toBe("invite_invalid");
+
+    // No api_keys row was minted for this user.
+    const minted = await testDb.db.select().from(apiKeys).where(eq(apiKeys.user_id, user.id));
+    expect(minted.length).toBe(0);
+  });
+});
