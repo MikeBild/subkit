@@ -1,6 +1,6 @@
 // Budget guards for documentation ingestion.
 //
-// Canonical caps (from docs/authoring.md):
+// Canonical caps (from docs/authors/authoring-workflows.md):
 //   - total 10 MB per connector per ingest run
 //   - per-page (single fetched document / chunk) 3 MB
 //   - 20 links followed from llms.txt / markdown
@@ -16,7 +16,7 @@ import { envIntOr } from "../utils/env-config.ts";
 import type { BudgetState } from "./types.ts";
 
 // Operator-tunable via env vars. Defaults match the canonical caps in
-// docs/authoring.md; ops can raise them per deployment without a rebuild.
+// docs/authors/authoring-workflows.md; ops can raise them per deployment without a rebuild.
 export const TOTAL_BUDGET_BYTES = envIntOr(
   "DOCS_INGESTION_MAX_BYTES_PER_CONNECTOR",
   10 * 1024 * 1024,

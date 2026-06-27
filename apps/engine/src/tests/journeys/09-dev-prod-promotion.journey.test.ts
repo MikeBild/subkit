@@ -7,7 +7,7 @@
 //   - AC2: Creating a matching prod connector (same slug, different
 //          environment) lives in its own row.
 //   - AC3: Running the workflow against dev records execution_mode=dev.
-// Spec refs: docs/connectors.md, docs/execution.md
+// Spec refs: docs/concepts/connectors.md, docs/concepts/workflows.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";

@@ -1,6 +1,6 @@
 // Unified tool palette — shared types for chat (Anthropic SDK) and MCP
 // surfaces. The registry, dispatcher, providers, and per-surface
-// adapters all speak these types. See docs/tool-palette.md for
+// adapters all speak these types. See docs/developers/tool-palette.md for
 // the design rationale.
 
 import type { ToolResultPause } from "../conversations/tools/index.ts";

@@ -14,7 +14,7 @@
 //          re-delivers the persisted snapshot on every GET), then a
 //          follow-up turn + elicit response produces a `committed`
 //          frame on the subsequent reconnect.
-// Spec refs: docs/authoring.md
+// Spec refs: docs/authors/authoring-workflows.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors } from "../../db/schema/index.ts";

@@ -12,8 +12,8 @@
 //   - AC7: `workflows restore <id> 1` restores to version 1.
 //   - AC8: `workflows delete <id>` outputs "deleted".
 //   - AC9: `workflows get <id>` after delete → error contains "not_found".
-// Spec refs: docs/execution.md, docs/execution.md,
-//            docs/input-surfaces.md
+// Spec refs: docs/concepts/workflows.md, docs/concepts/workflows.md,
+//            docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";

@@ -275,7 +275,7 @@ export function computeBlockedBy(
     }
     // Probe gate fires AFTER authentication for OAuth2 connectors —
     // the documented lifecycle is save → authenticate_oauth → probe
-    // (docs/connectors.md). Until the OAuth dance completes there
+    // (docs/concepts/connectors.md). Until the OAuth dance completes there
     // are no tokens to probe with, so suggesting `probe_connector_draft`
     // in parallel with `authenticate_oauth` trapped the model in a
     // loop (Gmail-OAuth2 session 37a6d350, 2026-05-12).

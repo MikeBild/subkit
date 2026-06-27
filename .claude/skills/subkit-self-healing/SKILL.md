@@ -16,9 +16,9 @@ that bypass it.
 
 ## Canonical references
 
-- `docs/execution.md` — Self-healing, drift detection, bounded repair loop, Execution Fixtures, versioning.
-- `docs/security-governance.md` — Audit expectations for proposal and approval.
-- `docs/authoring.md` — LLM tool-use loops (self-healing reuses the same primitives).
+- `docs/concepts/workflows.md` — Self-healing, drift detection, bounded repair loop, Execution Fixtures, versioning.
+- `docs/concepts/governance-and-audit.md` — Audit expectations for proposal and approval.
+- `docs/authors/authoring-workflows.md` — LLM tool-use loops (self-healing reuses the same primitives).
 
 ## Loop contract
 
@@ -86,7 +86,7 @@ it from an ops schedule or from `sk diagnostics`.
 
 ## Adding or changing repair behavior
 
-1. Read `docs/execution.md` (self-healing and versioning sections) first.
+1. Read `docs/concepts/workflows.md` (self-healing and versioning sections) first.
 2. Find the phase you're changing (drift detect, context refresh, LLM loop,
    dry-run, candidate write, approval).
 3. Preserve the six-phase flow. If your change would collapse or skip a phase,

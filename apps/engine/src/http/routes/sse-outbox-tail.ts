@@ -2,7 +2,7 @@
 //
 // Hand-rolled (outside the openapi() surface) because streamSSE
 // commandeers the response — same precedent as GET /v1/events/stream
-// (documented in docs/input-surfaces.md). On connect:
+// (documented in docs/developers/input-surfaces.md). On connect:
 //
 //   1. Replay. When the client supplied `Last-Event-ID`, replay every
 //      row strictly after that id; otherwise flush recent history

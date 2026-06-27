@@ -11,7 +11,7 @@
 //   - AC6: Configure the receiver to always throw; 10 consecutive
 //          failures open the breaker; next delivery is skipped with
 //          `status: "circuit_open"`.
-// Spec refs: docs/20-notifications.md, docs/05-events.md
+// Spec refs: docs/operators/notifications.md, docs/operators/notifications.md
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";

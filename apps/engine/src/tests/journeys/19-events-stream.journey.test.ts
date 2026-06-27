@@ -11,7 +11,7 @@
 //          (parity with the per-execution stream, but on the unified
 //          outbox channel).
 //   - AC6: invalid `execution_id` yields 400.
-// Spec refs: docs/input-surfaces.md, docs/05-events.md
+// Spec refs: docs/developers/input-surfaces.md, docs/operators/notifications.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {

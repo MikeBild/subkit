@@ -11,7 +11,7 @@
 //   - AC4: `apikeys revoke <id>` prints "revoked" to stdout.
 //   - AC5: After revoke, `apikeys list --json` no longer contains the
 //          revoked key's id.
-// Spec refs: docs/security-governance.md, docs/input-surfaces.md
+// Spec refs: docs/admins/rbac-and-roles.md, docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { apiKeysCommand } from "../../../../sk/src/commands/apikeys.ts";

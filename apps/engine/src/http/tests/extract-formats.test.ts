@@ -1,4 +1,4 @@
-// /v1/extract — file-format matrix against docs/authoring.md.
+// /v1/extract — file-format matrix against docs/authors/authoring-workflows.md.
 //
 // The endpoint accepts a raw body and detects the format from the
 // content-type header. This suite covers the happy path for each

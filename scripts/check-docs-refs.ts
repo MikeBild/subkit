@@ -47,7 +47,7 @@ export function extractAnchors(markdown: string): Set<string> {
 // Markdown link: [text](target) — target may carry a "title" we strip.
 const LINK = /\[(?:[^\]]*)\]\(([^)]+)\)/g;
 // Code-comment refs to concept docs: docs/<kebab-name>.md (and nested,
-// e.g. docs/operations/settings-reference.md). Unnumbered — the docs/ set
+// e.g. docs/admins/settings-reference.md). Unnumbered — the docs/ set
 // dropped its NN- prefixes, so this matches the stable kebab-case names.
 // Kebab-only segments + a leading word/slash boundary deliberately exclude
 // example/external paths like `/docs/index.md` (ingestion sample) and

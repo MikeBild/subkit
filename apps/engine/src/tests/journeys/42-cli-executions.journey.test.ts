@@ -11,7 +11,7 @@
 //   - AC5: `executions abort <id>` aborts a queued/running execution; the
 //          command outputs "aborted" and a subsequent get shows status
 //          aborted or failed.
-// Spec refs: docs/execution.md, docs/input-surfaces.md
+// Spec refs: docs/concepts/workflows.md, docs/developers/input-surfaces.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { defineCommand } from "citty";

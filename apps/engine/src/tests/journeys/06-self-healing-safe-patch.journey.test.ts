@@ -9,7 +9,7 @@
 //   - AC3: Audit log records `patch_candidate.proposed` and
 //          `patch_candidate.auto_applied`, and the outbox holds a
 //          `patch.proposed` event.
-// Spec refs: docs/execution.md
+// Spec refs: docs/concepts/workflows.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";

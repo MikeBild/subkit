@@ -16,7 +16,7 @@
 //          portal-token bearer calling `wf.<slug>` for a workflow
 //          outside its scope errors with `workflow_not_in_allowlist`
 //          and an audit row lands with the same reason.
-// Spec refs: docs/security-governance.md, docs/security-governance.md
+// Spec refs: docs/admins/rbac-and-roles.md, docs/admins/rbac-and-roles.md
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";

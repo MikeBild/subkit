@@ -1061,7 +1061,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         line("run 'sk tenants [use <id>]' outside the REPL to switch tenants");
         return;
       default:
-        line(`/${name} is not wired in this build — check docs/input-surfaces.md`);
+        line(`/${name} is not wired in this build — check docs/developers/input-surfaces.md`);
     }
   };
 
