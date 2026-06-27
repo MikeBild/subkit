@@ -249,6 +249,9 @@ export const createKnowledgeSourceTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = CreateKnowledgeSourceInput.parse(rawArgs);
 
+    // The dispatcher now owns MCP RBAC (RBAC_OVERRIDES); this in-execute
+    // check stays because the chat surface invokes execute() directly and
+    // does not route through the dispatcher's descriptor.rbac yet.
     const auth = await requirePermission(ctx, "knowledge:write", {
       type: "knowledge",
       id: "*",

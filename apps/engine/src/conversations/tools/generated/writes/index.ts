@@ -9,11 +9,14 @@ import { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidat
 import { cleanupWriteTools } from "./cleanup.ts";
 import { createApiKeyTool } from "./create-api-key.ts";
 import { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
+import { createSkillTool } from "./create-skill.ts";
+import { deleteSkillTool } from "./delete-skill.ts";
 import { rerunExecutionTool } from "./rerun-execution.ts";
 import { runWorkflowTool } from "./run-workflow.ts";
 import { scheduleTools } from "./schedules.ts";
 import { updateConnectorTool } from "./update-connector.ts";
 import { updateKnowledgeSourceTool } from "./update-knowledge-source.ts";
+import { updateSkillTool } from "./update-skill.ts";
 import { updateSubscriptionTool } from "./update-subscription.ts";
 import { updateWorkflowTool } from "./update-workflow.ts";
 
@@ -29,6 +32,8 @@ export {
 } from "./cleanup.ts";
 export { createApiKeyTool } from "./create-api-key.ts";
 export { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
+export { createSkillTool } from "./create-skill.ts";
+export { deleteSkillTool } from "./delete-skill.ts";
 export { rerunExecutionTool } from "./rerun-execution.ts";
 export { runWorkflowTool } from "./run-workflow.ts";
 export {
@@ -39,6 +44,7 @@ export {
 } from "./schedules.ts";
 export { updateConnectorTool } from "./update-connector.ts";
 export { updateKnowledgeSourceTool } from "./update-knowledge-source.ts";
+export { updateSkillTool } from "./update-skill.ts";
 export { updateSubscriptionTool } from "./update-subscription.ts";
 export { updateWorkflowTool } from "./update-workflow.ts";
 
@@ -50,6 +56,9 @@ export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
   createApiKeyTool,
   createKnowledgeSourceTool,
   analyzeKnowledgeSourceTool,
+  createSkillTool,
+  updateSkillTool,
+  deleteSkillTool,
   updateWorkflowTool,
   updateConnectorTool,
   updateKnowledgeSourceTool,
