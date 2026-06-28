@@ -67,7 +67,7 @@ export const OPENAPI_INFO = {
   title: "subkit engine",
   version: resolveEngineVersion(),
   description:
-    "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec.",
+    "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org.",
 } as const;
 
 export const SECURITY_SCHEMES = {

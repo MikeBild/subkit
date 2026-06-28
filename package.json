@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "7.19.1",
+  "version": "7.20.0",
   "private": true,
   "type": "module",
   "description": "A self-hostable, multi-tenant engine for governed, versioned, AI-assisted workflow execution against connected systems.",
@@ -63,7 +63,7 @@
     "gen:cli-reference": "bun run scripts/gen-cli-reference.ts > docs/developers/cli-reference.md",
     "check:cli-reference-drift": "bun run gen:cli-reference && git diff --exit-code docs/developers/cli-reference.md",
     "gen:llms-txt": "bun run scripts/gen-llms-txt.ts",
-    "check:llms-txt-drift": "bun run gen:llms-txt && git diff --exit-code docs/llms.txt",
+    "check:llms-txt-drift": "bun run gen:llms-txt && git diff --exit-code docs/llms.txt docs/llms-full.txt",
     "gen:config-example": "bun run apps/engine/scripts/gen-config-example.ts > subkit.config.example.json",
     "check:config-example-drift": "bun run gen:config-example && git diff --exit-code subkit.config.example.json",
     "audit:invariants": "bun run apps/engine/scripts/audit-invariants.ts",

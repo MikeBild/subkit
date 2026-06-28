@@ -838,6 +838,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/llms.txt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * llms-txt index of the sk documentation set
+         * @description A robots.txt-style index (https://llmstxt.org) of the sk docs for LLMs: every public page with its title, path, and one-line summary. See /llms-full.txt for the full text in one fetch.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description llms-txt index */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/markdown": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llms-full.txt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Full sk documentation set in one fetch (llms-txt full-content variant)
+         * @description The complete sk docs concatenated into a single llms-txt document (https://llmstxt.org), each page preceded by a source marker — enough to ground a model on the whole surface in one fetch.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Full llms-txt corpus */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/markdown": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/tenants": {
         parameters: {
             query?: never;

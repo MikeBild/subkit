@@ -4,6 +4,7 @@
 //   - /v1/identity/* routes
 //   - /openapi.json
 //   - /docs (Scalar)
+//   - /llms.txt + /llms-full.txt (llms-txt docs for LLM clients)
 //
 // Tests construct an app via `createApp({ db, registry })` so they can swap
 // in a per-test database and registry without touching env globals.
@@ -68,6 +69,7 @@ import { registerWhoamiRoute } from "./routes/identity/whoami.ts";
 import { registerInstallRoute } from "./routes/install.ts";
 import { registerInstallBinaryRoute } from "./routes/install-binary.ts";
 import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
+import { registerLlmsTxtRoutes } from "./routes/llms-txt.ts";
 import { registerMcpCatalogRoutes } from "./routes/mcp-catalog.ts";
 import { registerMcpServerRoutes } from "./routes/mcp-servers.ts";
 import { registerMcpServerOAuthRoutes } from "./routes/mcp-servers-oauth.ts";
@@ -258,6 +260,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerStatsRoutes(app);
   registerSettingsRoutes(app);
   registerMetricsRoute(app);
+  registerLlmsTxtRoutes(app);
   registerTenantRoutes(app);
   registerUserRoutes(app);
   registerInviteRoutes(app);

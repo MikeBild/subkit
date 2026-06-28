@@ -1,27 +1,38 @@
-// Generate docs/llms.txt — a robots.txt-style index for LLMs.
+// Generate docs/llms.txt and docs/llms-full.txt for LLMs (see llmstxt.org).
 //
-// Walks docs/**/*.md (excluding docs/internal/ and docs/_tapes/) and emits a
-// flat, machine-readable index: a title line, a one-line description of the
-// docs set, then a Markdown list grouped by audience. Each entry is
-//   - [Title](docs/relative/path.md): one-line summary
-// where Title is the page's first H1 and the summary is its first non-heading
-// sentence, trimmed aggressively. Paths use the raw GitHub-relative form
-// (repo-root-relative, e.g. `docs/concepts/connectors.md`).
+// Both walk docs/**/*.md (excluding docs/internal/ and docs/_tapes/) in the
+// same audience-then-path order, so they stay in lockstep:
 //
-// Output is byte-stable: audiences in AUDIENCE_ORDER, entries sorted by path
-// within each audience. No timestamps, no absolute paths.
+//   docs/llms.txt       — a robots.txt-style index: a title line, a one-line
+//                         description of the docs set, then a Markdown list
+//                         grouped by audience. Each entry is
+//                           - [Title](docs/relative/path.md): one-line summary
+//                         where Title is the page's first H1 and the summary is
+//                         its first non-heading sentence, trimmed aggressively.
+//
+//   docs/llms-full.txt  — the full-content variant: every indexed page's
+//                         complete Markdown concatenated inline, each preceded
+//                         by a `<!-- Source: docs/path.md -->` marker, so a
+//                         model can ground itself on the whole docs set in a
+//                         single fetch.
+//
+// Paths use the raw GitHub-relative form (repo-root-relative, e.g.
+// `docs/concepts/connectors.md`). Output is byte-stable: audiences in
+// AUDIENCE_ORDER, entries sorted by path within each audience. No timestamps,
+// no absolute paths.
 //
 // Wired into `bun run verify` as a docs drift gate (see package.json:
 // gen:llms-txt / check:llms-txt-drift), mirroring the settings-doc gate.
 //
 // Usage:
-//   bun run scripts/gen-llms-txt.ts   (writes docs/llms.txt in place)
+//   bun run scripts/gen-llms-txt.ts   (writes docs/llms.txt + docs/llms-full.txt)
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const DOCS_DIR = "docs";
 const OUTPUT = join(DOCS_DIR, "llms.txt");
+const OUTPUT_FULL = join(DOCS_DIR, "llms-full.txt");
 const EXCLUDE_DIRS = new Set(["internal", "_tapes"]);
 
 // Audience folder -> section heading, in emission order.
@@ -38,6 +49,7 @@ interface Entry {
   path: string; // repo-root-relative, e.g. docs/concepts/connectors.md
   title: string;
   summary: string;
+  content: string; // full, verbatim Markdown body
 }
 
 function walkMarkdown(dir: string): string[] {
@@ -151,13 +163,22 @@ function main(): void {
       path: rel,
       title,
       summary: extractSummary(content),
+      content,
     });
   }
 
-  const lines: string[] = [
+  // The index (llms.txt): title, set description, then a grouped link list.
+  const indexLines: string[] = [
     "# sk Documentation",
     "",
     "A robots.txt-style index of the sk documentation set for LLMs: every public page grouped by audience, each with its title, path, and one-line summary.",
+  ];
+
+  // The full text (llms-full.txt): every page's complete Markdown inline.
+  const fullLines: string[] = [
+    "# sk Documentation — Full Text",
+    "",
+    "The complete sk documentation set for LLMs in a single file: every public page's full Markdown, grouped by audience, each preceded by a source marker. For just the index, see llms.txt.",
   ];
 
   for (const { dir, label } of AUDIENCE_ORDER) {
@@ -170,14 +191,22 @@ function main(): void {
         return a.path.localeCompare(b.path);
       });
     if (group.length === 0) continue;
-    lines.push("", `## ${label}`, "");
+
+    indexLines.push("", `## ${label}`, "");
     for (const e of group) {
       const summary = e.summary ? `: ${e.summary}` : "";
-      lines.push(`- [${e.title}](${e.path})${summary}`);
+      indexLines.push(`- [${e.title}](${e.path})${summary}`);
+    }
+
+    for (const e of group) {
+      // Source marker + verbatim body; trailing whitespace trimmed so the
+      // separator spacing is identical regardless of how each file ends.
+      fullLines.push("", `<!-- Source: ${e.path} -->`, "", e.content.trimEnd());
     }
   }
 
-  writeFileSync(OUTPUT, `${lines.join("\n")}\n`);
+  writeFileSync(OUTPUT, `${indexLines.join("\n")}\n`);
+  writeFileSync(OUTPUT_FULL, `${fullLines.join("\n")}\n`);
 }
 
 main();

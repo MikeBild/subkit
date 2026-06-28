@@ -3,7 +3,7 @@
   "info": {
     "title": "subkit engine",
     "version": "0.0.0-dev",
-    "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec."
+    "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
     "securitySchemes": {
@@ -14706,6 +14706,48 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SettingValidationFailed"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "tags": [
+          "docs"
+        ],
+        "summary": "llms-txt index of the sk documentation set",
+        "description": "A robots.txt-style index (https://llmstxt.org) of the sk docs for LLMs: every public page with its title, path, and one-line summary. See /llms-full.txt for the full text in one fetch.",
+        "responses": {
+          "200": {
+            "description": "llms-txt index",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/llms-full.txt": {
+      "get": {
+        "tags": [
+          "docs"
+        ],
+        "summary": "Full sk documentation set in one fetch (llms-txt full-content variant)",
+        "description": "The complete sk docs concatenated into a single llms-txt document (https://llmstxt.org), each page preceded by a source marker — enough to ground a model on the whole surface in one fetch.",
+        "responses": {
+          "200": {
+            "description": "Full llms-txt corpus",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }

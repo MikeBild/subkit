@@ -112,6 +112,17 @@ Inspect connectors and their docs (credentials are never returned).
 OAuth: authorize a connector via `authenticate` (core floor) or by starting a
 `conversation_start` flow.
 
+Discovery grounding: `discover_connector_endpoints` probes a target system for a
+machine-readable description and persists it for authoring. It tries, in order,
+OpenAPI specs, GraphQL introspection, then **llms-txt** — the standard
+`/llms-full.txt` or `/llms.txt` file (at the site root, or mirrored under
+`/.well-known/`, per https://llmstxt.org), full-content variant first. llms-txt
+carries the intent and pitfalls a bare schema omits (which auth header, error-code
+meanings, gotchas), so a connector that publishes it lets authoring get the
+conventions right on the first pass. `fetch_connector_docs` / `search_docs` then
+search that grounded prose. The sk engine itself publishes `/llms.txt` and
+`/llms-full.txt`, so it is discoverable the same way.
+
 # Knowledge & Docs Search
 
 Ground answers in tenant knowledge and product docs.
