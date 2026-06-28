@@ -521,6 +521,18 @@ export function _disableReadSamplingForTests(): void {
   _readSamplingEnabled = false;
 }
 
+/**
+ * True once `loadConfig()` has run. Lets low-level code that may execute
+ * before the config subsystem is bootstrapped (e.g. driver functions
+ * exercised directly in unit tests) read a setting only when it is
+ * actually available, falling back to a documented default otherwise. In
+ * production config is always loaded before the HTTP listener accepts
+ * traffic, so request-path callers always observe `true`.
+ */
+export function isConfigLoaded(): boolean {
+  return _state !== null;
+}
+
 export function getConfig(tenantId?: string): Config {
   if (_state === null) {
     throw new ConfigLoaderError("getConfig() called before loadConfig()");

@@ -12,7 +12,7 @@
 // sending an unauthenticated request. Callers must persist a credential
 // via save_connector_draft({credential}) before probing.
 
-import { getConfig } from "../../config/loader.ts";
+import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
@@ -54,6 +54,26 @@ export class HttpRequestInvalidError extends Error {
 // existing default used below; the graphql driver, webhook-notification
 // channel, and outbound delivery worker import this so all four agree.
 export const FETCH_DEADLINE_MS = 60_000;
+
+// Default hard cap on a single connector response body (100 MB). Keep in
+// sync with the `.default()` on `connectors.http.max_response_bytes` in
+// config/schema.ts — that config leaf is the live source of truth; this
+// constant is the value used when config has not been loaded (driver
+// functions exercised directly in unit tests before any loadConfig()).
+export const DEFAULT_MAX_RESPONSE_BYTES = 104_857_600;
+
+/**
+ * Resolve the per-response byte cap from tenant config, falling back to
+ * DEFAULT_MAX_RESPONSE_BYTES when the config subsystem has not been
+ * bootstrapped. In production config is always loaded before the HTTP
+ * listener accepts traffic, so the real configured value is always used;
+ * the default branch exists only for low-level driver unit tests.
+ */
+export function resolveMaxResponseBytes(tenant_id?: string): number {
+  return isConfigLoaded()
+    ? getConfig(tenant_id).connectors.http.max_response_bytes
+    : DEFAULT_MAX_RESPONSE_BYTES;
+}
 
 /**
  * Read a fetch Response body into a string with a HARD byte cap, so a
@@ -917,7 +937,7 @@ export async function executePlannedHttpRequest(params: {
     fields: { method: params.method, url_host: params.url.host },
     fn: () => getDriverFetch()(params.url, init),
   });
-  const maxResponseBytes = getConfig(params.tenant_id).connectors.http.max_response_bytes;
+  const maxResponseBytes = resolveMaxResponseBytes(params.tenant_id);
   const text = await readBodyCapped(res, maxResponseBytes, params.url.toString());
   const headerObj: Record<string, string> = {};
   res.headers.forEach((v, k) => {

@@ -1109,6 +1109,8 @@ const ConnectorsHttpSection = z
       .int()
       .min(1_048_576)
       .max(1_073_741_824)
+      // Keep this default in sync with DEFAULT_MAX_RESPONSE_BYTES in
+      // connectors/drivers/http.ts (used when config isn't yet loaded).
       .default(104_857_600)
       .describe(
         "Max bytes read from a single HTTP/GraphQL connector response before it is rejected as response_too_large. OOM guard; generous default (100 MB).",
