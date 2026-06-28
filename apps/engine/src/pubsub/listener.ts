@@ -13,7 +13,7 @@
 // listener_id + channel composite so multiple listener processes can
 // coexist.
 
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, max, sql } from "drizzle-orm";
 import pg from "pg";
 import type { Db } from "../db/client.ts";
 import { events as eventsTable, outboxCursors } from "../db/schema/index.ts";
@@ -47,6 +47,8 @@ export interface ListenerOptions {
 const DEFAULT_CATCH_UP_BATCH = 1000;
 const BACKOFF_START_MS = 500;
 const BACKOFF_MAX_MS = 30_000;
+// Stable outbox-consumer id, shared across restarts so the cursor persists.
+const DEFAULT_LISTENER_ID = "engine";
 
 export class PubSubListener {
   private client: pg.Client | null = null;
@@ -64,7 +66,13 @@ export class PubSubListener {
   constructor(private readonly opts: ListenerOptions) {
     this.channels = opts.channels ?? LISTENER_CHANNELS;
     this.emitter = opts.emitter ?? globalEmitter;
-    this.listenerId = opts.listenerId ?? `engine-${process.pid}`;
+    // STABLE consumer id (not `engine-${pid}`). A per-pid id meant every
+    // restart minted a fresh id with no cursor row → loadCursor returned 0 →
+    // the entire outbox was re-dispatched, re-firing every historical
+    // notification/webhook. A stable id reuses its cursor across restarts.
+    // (Single-process deployment; a multi-instance rollout additionally
+    // needs handler idempotency — see the fanout dedup key.)
+    this.listenerId = opts.listenerId ?? DEFAULT_LISTENER_ID;
   }
 
   on<P = unknown>(channel: OutboxChannel, handler: EventHandler<P>): () => void {
@@ -298,7 +306,20 @@ export class PubSubListener {
         and(eq(outboxCursors.listener_id, this.listenerId), eq(outboxCursors.channel, channel)),
       )
       .limit(1);
-    return rows[0]?.last_seen_id ?? 0;
+    if (rows[0]) return rows[0].last_seen_id;
+    // No cursor row for this consumer yet. Seeding from 0 would re-dispatch
+    // the entire outbox once (e.g. the first boot after adopting the stable
+    // id, or any brand-new consumer). Instead resume from the furthest
+    // watermark ANY prior consumer reached on this channel — so a fresh
+    // consumer starts at "now", not at the dawn of history. (NULL → 0 only
+    // on a genuinely empty cursor table.)
+    // tenant-filter:exempt — outbox/listener sweeps every tenant; the cursor
+    // watermark is a per-channel global, not tenant-scoped.
+    const [hwm] = await db
+      .select({ m: max(outboxCursors.last_seen_id) })
+      .from(outboxCursors)
+      .where(eq(outboxCursors.channel, channel));
+    return hwm?.m ?? 0;
   }
 
   private async saveCursor(channel: OutboxChannel, lastId: number): Promise<void> {
