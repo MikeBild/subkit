@@ -6,7 +6,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "../delivery-worker.ts";
-import { fanoutEvent } from "../fanout.ts";
+import { deterministicEventId, fanoutEvent } from "../fanout.ts";
 import { createOutboundCtx, type OutboundTestCtx } from "./setup.ts";
 
 let ctx: OutboundTestCtx;
@@ -59,5 +59,45 @@ describe("outbound: fanout", () => {
 
     // Clean up: complete the fetched job so pg-boss teardown is happy.
     if (j) await ctx.boss.complete(WEBHOOK_DELIVER_QUEUE, j.id);
+  });
+
+  // #19: the delivery event_id is derived deterministically from the outbox
+  // row id, so a retried event.fanout re-emits the SAME event_id — the
+  // receiver/deliveries table can dedup, making fanout retries safe.
+  test("deterministicEventId is stable + a valid v5 UUID", () => {
+    const a = deterministicEventId(4242);
+    const b = deterministicEventId(4242);
+    const c = deterministicEventId(4243);
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  test("re-fanning the same outbox row yields the same delivery event_id (retry-safe)", async () => {
+    await ctx.createSub({
+      event_pattern: "execution.*",
+      target_url: "http://127.0.0.1:0/ignored",
+      secret: "whsec_fanoutidemaaaaaaaaaaaaaaaa",
+    });
+    const fan = () =>
+      fanoutEvent({
+        db: ctx.db,
+        boss: ctx.boss,
+        tenant_id: ctx.tenantId,
+        event_row_id: 4242,
+        event_type: "execution.succeeded",
+        payload: { execution_id: "00000000-0000-0000-0000-0000000000aa" },
+      });
+
+    await fan();
+    await fan(); // simulate a retried event.fanout job for the same outbox row
+
+    const jobs = await ctx.boss.fetch<WebhookDeliverJob>(WEBHOOK_DELIVER_QUEUE, { batchSize: 10 });
+    const ids = (jobs ?? []).map((x) => x.data.event_id);
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    // Every re-emitted delivery carries the SAME, deterministic event_id.
+    expect(new Set(ids).size).toBe(1);
+    expect(ids[0]).toBe(deterministicEventId(4242));
+    for (const x of jobs ?? []) await ctx.boss.complete(WEBHOOK_DELIVER_QUEUE, x.id);
   });
 });

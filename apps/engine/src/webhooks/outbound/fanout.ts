@@ -11,7 +11,7 @@
 // translates outbox events into delivery jobs. The delivery worker is
 // where signing + retries + circuit breaking happen.
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
@@ -27,6 +27,24 @@ import {
 } from "../../notifications/service.ts";
 import { matchEventPattern } from "../events/catalog.ts";
 import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "./delivery-worker.ts";
+
+// RFC-4122 v5 UUID namespace for outbox-derived delivery ids (arbitrary,
+// fixed). Deriving the delivery event_id from the stable outbox row id makes
+// fanout retries idempotent: a re-run emits the same event_id.
+const OUTBOX_EVENT_NS = "9f1c2e4a-6b3d-5c7e-8a9b-0c1d2e3f4a5b";
+
+export function deterministicEventId(eventRowId: number): string {
+  const nsHex = OUTBOX_EVENT_NS.replace(/-/g, "");
+  const bytes = createHash("sha1")
+    .update(Buffer.from(nsHex, "hex"))
+    .update(`outbox:${eventRowId}`)
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50; // version 5
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // RFC-4122 variant
+  const h = bytes.toString("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
 
 /**
  * Build a notification AdapterResolver backed by a ChatAdapterRegistry.
@@ -140,7 +158,12 @@ export async function fanoutEvent(input: FanoutInput): Promise<FanoutStats> {
     timestamp: now,
     data: payload,
   });
-  const eventUuid = input.event_uuid ?? randomUUID();
+  // Idempotency key for downstream delivery. Derive it DETERMINISTICALLY
+  // from the stable outbox row id (not randomUUID) so that if the
+  // event.fanout job is retried, every re-emitted webhook delivery carries
+  // the SAME event_id — the receiver (and our deliveries table) can then
+  // dedup, making fanout retries safe instead of duplicate-delivering.
+  const eventUuid = input.event_uuid ?? deterministicEventId(event_row_id);
 
   for (const sub of rows) {
     if (!matchEventPattern(sub.event_pattern, event_type)) continue;
