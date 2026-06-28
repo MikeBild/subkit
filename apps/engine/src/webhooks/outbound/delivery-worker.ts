@@ -21,7 +21,7 @@ import { eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { audit, auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { assertEgressAllowed, EgressBlockedError } from "../../connectors/egress-guard.ts";
+import { assertEgressAllowedResolved, EgressBlockedError } from "../../connectors/egress-guard.ts";
 import type { Db } from "../../db/client.ts";
 import { deliveries, subscriptions } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
@@ -226,7 +226,7 @@ export async function registerDeliveryWorker(
     // immediately as dead_letter — retrying a private-IP target won't
     // suddenly make it public, so the retry ladder is skipped.
     try {
-      assertEgressAllowed(new URL(loaded.row.target_url), {
+      await assertEgressAllowedResolved(new URL(loaded.row.target_url), {
         tenant_id: data.tenant_id,
       });
     } catch (err) {

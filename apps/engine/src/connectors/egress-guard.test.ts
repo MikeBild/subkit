@@ -10,7 +10,18 @@
 //   - Permissive mode still blocks `localhost`/`0.0.0.0`.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { assertEgressAllowed, EgressBlockedError, isPrivateOrLoopback } from "./egress-guard.ts";
+import {
+  assertEgressAllowed,
+  assertEgressAllowedResolved,
+  EgressBlockedError,
+  isPrivateOrLoopback,
+} from "./egress-guard.ts";
+
+// biome-ignore lint/suspicious/noExplicitAny: test stub for node's dns lookup
+type LookupStub = any;
+function fakeLookup(address: string): LookupStub {
+  return async () => [{ address, family: address.includes(":") ? 6 : 4 }];
+}
 
 const PREV_ENV = { ...process.env };
 
@@ -212,5 +223,57 @@ describe("assertEgressAllowed (mode resolution)", () => {
   test("development default is permissive (allows 10.x)", () => {
     process.env.NODE_ENV = "development";
     expect(() => assertEgressAllowed("http://10.0.0.1/x", {})).not.toThrow();
+  });
+});
+
+describe("assertEgressAllowedResolved — DNS resolution (#4)", () => {
+  const strict = { mode: "strict" as const };
+
+  test("blocks a public name that resolves to cloud-metadata (169.254.169.254)", async () => {
+    await expect(
+      assertEgressAllowedResolved("https://totally-legit.example.com/x", strict, {
+        lookupImpl: fakeLookup("169.254.169.254"),
+      }),
+    ).rejects.toThrow(EgressBlockedError);
+  });
+
+  test("blocks a public name that resolves into RFC1918 space", async () => {
+    await expect(
+      assertEgressAllowedResolved("https://rebind.example.com/x", strict, {
+        lookupImpl: fakeLookup("10.1.2.3"),
+      }),
+    ).rejects.toThrow(EgressBlockedError);
+  });
+
+  test("allows a public name that resolves to a public IP", async () => {
+    await expect(
+      assertEgressAllowedResolved("https://example.com/x", strict, {
+        lookupImpl: fakeLookup("93.184.216.34"),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  test("an IP literal is decided synchronously without a DNS lookup", async () => {
+    let called = false;
+    const spy: LookupStub = async () => {
+      called = true;
+      return [];
+    };
+    // Public literal → allowed, and the resolver is never consulted.
+    await assertEgressAllowedResolved("https://93.184.216.34/x", strict, { lookupImpl: spy });
+    expect(called).toBe(false);
+    // Private literal → still blocked by the synchronous check.
+    await expect(
+      assertEgressAllowedResolved("http://10.0.0.1/x", strict, { lookupImpl: spy }),
+    ).rejects.toThrow(EgressBlockedError);
+  });
+
+  test("a DNS-resolution failure does not block (the fetch surfaces it)", async () => {
+    const failing: LookupStub = async () => {
+      throw new Error("ENOTFOUND");
+    };
+    await expect(
+      assertEgressAllowedResolved("https://nxdomain.example/x", strict, { lookupImpl: failing }),
+    ).resolves.toBeUndefined();
   });
 });

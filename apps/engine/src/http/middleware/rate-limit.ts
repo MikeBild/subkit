@@ -17,11 +17,39 @@ const PRUNE_INTERVAL_MS = 60_000;
 export interface RateLimitOptions {
   max?: number;
   windowMs?: number;
+  /** Number of trusted reverse proxies in front of the engine. The client
+   *  IP is read that many entries from the RIGHT of X-Forwarded-For (the
+   *  entries our own infra appended), not the leftmost (which the client
+   *  controls and can forge to evade the limit). Default 1 — the standard
+   *  single Caddy/ingress in front of the engine. */
+  trustedProxies?: number;
+}
+
+// Resolve the client IP, trusting only the proxy-appended right-hand
+// entries of X-Forwarded-For. The leftmost entries are client-supplied and
+// must never be trusted for rate-limit keying.
+export function resolveClientIp(
+  xff: string | undefined,
+  realIp: string | undefined,
+  hops: number,
+): string {
+  if (xff) {
+    const parts = xff
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length > 0) {
+      const idx = Math.max(0, parts.length - hops);
+      return parts[idx] ?? "unknown";
+    }
+  }
+  return realIp ?? "unknown";
 }
 
 export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHandler<AppEnv> {
   const max = opts.max ?? DEFAULT_MAX;
   const windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
+  const trustedProxies = Math.max(1, opts.trustedProxies ?? 1);
   const buckets = new Map<string, Bucket>();
   let lastPrune = Date.now();
 
@@ -38,10 +66,11 @@ export function rateLimitMiddleware(opts: RateLimitOptions = {}): MiddlewareHand
       lastPrune = now;
     }
 
-    const ip =
-      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      c.req.header("x-real-ip") ??
-      "unknown";
+    const ip = resolveClientIp(
+      c.req.header("x-forwarded-for"),
+      c.req.header("x-real-ip"),
+      trustedProxies,
+    );
 
     const bucket = buckets.get(ip);
     if (bucket) {

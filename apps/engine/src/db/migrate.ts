@@ -27,6 +27,7 @@
 // already in the table?") instead of a timestamp watermark.
 
 import { sql } from "drizzle-orm";
+import type pg from "pg";
 import { z } from "zod";
 import { errorFields, logger } from "../logging/logger.ts";
 import type { Db } from "./client.ts";
@@ -121,12 +122,24 @@ async function readAppliedHashes(db: Db): Promise<AppliedState> {
   return { hashes, tags, count: dbRows.length };
 }
 
+// Stable advisory-lock key, namespaced to the migration runner. Two
+// engine instances booting against the same database both call
+// pg_advisory_lock(MIGRATION_LOCK_KEY) on a dedicated connection; the
+// second blocks until the first releases, so they can never both decide
+// the same migration is unapplied and double-run its (non-idempotent)
+// DDL. The value is arbitrary but must be identical across all binaries.
+const MIGRATION_LOCK_KEY = 776_644_2026; // "subkit migrations"
+
 /**
  * Apply embedded migrations to the given database connection.
  *
  * Idempotent: re-running on an already-migrated DB is a no-op. Safe to
  * invoke on every engine boot. The caller owns the connection pool —
  * this function does not open or close any pools.
+ *
+ * Concurrency-safe: the apply runs under a session-level Postgres advisory
+ * lock held on a dedicated pooled connection, so parallel boots serialize
+ * instead of racing the unapplied-set check.
  */
 export async function runMigrations(
   db: Db,
@@ -134,6 +147,33 @@ export async function runMigrations(
   // ONLY so tests can drive the real runner with a synthetic appended migration
   // (proving the tag-membership logic, not a hand-copy of it). Production always
   // uses the default.
+  migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
+): Promise<MigrationReport> {
+  // `db.$client` is the node-postgres Pool backing this drizzle instance
+  // (the global pool in prod, a disposable per-suite pool in tests), so the
+  // lock is always taken on the same database the migrations target.
+  const pool = (db as unknown as { $client?: pg.Pool }).$client;
+  if (!pool || typeof pool.connect !== "function") {
+    // No reachable pool (e.g. a mock/tx handle in a unit test) — fall back
+    // to running without the cross-process lock.
+    return applyMigrations(db, migrations);
+  }
+  const lockClient = await pool.connect();
+  try {
+    await lockClient.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
+    return await applyMigrations(db, migrations);
+  } finally {
+    try {
+      await lockClient.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]);
+    } catch {
+      /* releasing on a broken connection is best-effort */
+    }
+    lockClient.release();
+  }
+}
+
+async function applyMigrations(
+  db: Db,
   migrations: readonly EmbeddedMigration[] = EMBEDDED_MIGRATIONS,
 ): Promise<MigrationReport> {
   logger.info({

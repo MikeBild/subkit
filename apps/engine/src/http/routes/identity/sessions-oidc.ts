@@ -20,11 +20,12 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import { getConfig } from "../../../config/loader.ts";
 import { tenants, users } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
 import { type DiscoveryDoc, fetchDiscovery } from "../../../identity/index.ts";
 import { logger } from "../../../logging/index.ts";
-import { BadRequestError, UnauthorizedError } from "../../errors.ts";
+import { BadRequestError, ForbiddenError, UnauthorizedError } from "../../errors.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { ErrorSchema } from "./schemas.ts";
 
@@ -65,15 +66,37 @@ const route = createRoute({
       description: "Invalid id_token",
       content: { "application/json": { schema: ErrorSchema } },
     },
+    403: {
+      description: "OIDC login not configured, or issuer not allow-listed",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
 const DEFAULT_TENANT_SLUG = "default";
 
+// Normalize an issuer URL for comparison: drop a single trailing slash so
+// "https://idp/" and "https://idp" compare equal. Throws on invalid URLs.
+function normalizeIssuer(value: string): string {
+  return new URL(value).toString().replace(/\/$/, "");
+}
+
 export function registerSessionsOidcRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
     const db = c.get("db");
     const body = c.req.valid("json");
+
+    // Allow-list gate: the route mints a personal API key, so the issuer
+    // MUST be the operator-configured OIDC provider. Without this, an
+    // attacker runs their own issuer + JWKS, self-signs an id_token, and
+    // the public route hands back a key. An unconfigured issuer also
+    // closes the discovery SSRF vector (the URL is no longer attacker-
+    // chosen). Audience is pinned to the configured client_id below.
+    const oidcCfg = getConfig().auth.oidc;
+    const configuredIssuer = oidcCfg.issuer_url?.trim() ?? "";
+    if (!configuredIssuer) {
+      throw new ForbiddenError("oidc login is not configured");
+    }
 
     let issuerUrl: URL;
     try {
@@ -81,10 +104,21 @@ export function registerSessionsOidcRoute(app: OpenAPIHono<AppEnv>): void {
     } catch {
       throw new BadRequestError("issuer must be a valid URL");
     }
+    try {
+      if (normalizeIssuer(body.issuer) !== normalizeIssuer(configuredIssuer)) {
+        throw new ForbiddenError("issuer not allow-listed");
+      }
+    } catch (err) {
+      if (err instanceof ForbiddenError) throw err;
+      throw new BadRequestError("issuer must be a valid URL");
+    }
+    // Discover from the configured issuer (not the request body) so the
+    // verified key set is always the operator's, regardless of body input.
+    const discoverUrl = new URL(configuredIssuer);
 
     let disco: DiscoveryDoc;
     try {
-      disco = await fetchDiscovery(issuerUrl);
+      disco = await fetchDiscovery(discoverUrl);
     } catch (err) {
       logger.warn({
         module: "auth",
@@ -102,8 +136,12 @@ export function registerSessionsOidcRoute(app: OpenAPIHono<AppEnv>): void {
     let claims: jose.JWTPayload;
     try {
       const jwks = jose.createRemoteJWKSet(new URL(disco.jwks_uri));
+      const expectedAudience = oidcCfg.client_id?.trim() ?? "";
       const result = await jose.jwtVerify(body.id_token, jwks, {
         issuer: disco.issuer,
+        // Pin audience to the configured client_id so a token minted for a
+        // different relying party at the same IdP cannot be replayed here.
+        ...(expectedAudience ? { audience: expectedAudience } : {}),
       });
       claims = result.payload;
     } catch (err) {
@@ -118,8 +156,13 @@ export function registerSessionsOidcRoute(app: OpenAPIHono<AppEnv>): void {
 
     const sub = typeof claims.sub === "string" ? claims.sub : null;
     if (!sub) throw new UnauthorizedError("id_token missing sub");
+    // Only trust the `email` claim when the IdP asserts it is verified;
+    // otherwise fall back to a synthetic, collision-free address keyed on
+    // sub so an unverified claim can neither be trusted nor collide with a
+    // real account's email.
+    const emailVerified = claims.email_verified === true;
     const email =
-      typeof claims.email === "string" && claims.email.length > 0
+      emailVerified && typeof claims.email === "string" && claims.email.length > 0
         ? claims.email
         : `${sub}@${issuerUrl.host}`;
 
@@ -144,13 +187,26 @@ export function registerSessionsOidcRoute(app: OpenAPIHono<AppEnv>): void {
     let userRow = existingByOidc[0];
 
     if (!userRow) {
-      // Try to attach to an existing email row first to avoid duplicate
-      // accounts when the same human signed in via email earlier.
-      const existingByEmail = await db
-        .select()
-        .from(users)
-        .where(and(eq(users.tenant_id, tenant_id), eq(users.email, email)))
-        .limit(1);
+      // Try to attach to an existing email row to avoid duplicate accounts
+      // when the same human signed in via email earlier. This is the
+      // account-takeover hot spot: linking by email lets a token whose
+      // `email` claim names another user (e.g. an admin) rebind that
+      // account to the attacker's `sub`. Two guards close it:
+      //   1. The IdP must assert `email_verified === true`.
+      //   2. We only link a row that has no OIDC binding yet — never
+      //      overwrite an existing `oidc_subject`.
+      const existingByEmail = emailVerified
+        ? await db
+            .select()
+            .from(users)
+            .where(and(eq(users.tenant_id, tenant_id), eq(users.email, email)))
+            .limit(1)
+        : [];
+      if (existingByEmail[0] && existingByEmail[0].oidc_subject) {
+        // The email maps to an account already bound to a different OIDC
+        // subject — refuse rather than hijack it.
+        throw new ForbiddenError("account already linked to a different identity");
+      }
       if (existingByEmail[0]) {
         const [updated] = await db
           .update(users)

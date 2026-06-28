@@ -401,6 +401,9 @@ function buildTransport(
   // been seeded out-of-band or the guard mode tightened since; this is the
   // last gate before connect. Throws EgressBlockedError, caught by
   // connectClient's handler which parks the server in backoff.
+  // Synchronous literal gate here (this builder is sync). DNS-resolved
+  // checking happens at registration time in registry.ts, the authoritative
+  // validation point for an MCP server URL.
   assertEgressAllowed(url, { tenant_id });
   const requestInit: RequestInit = Object.keys(headers).length > 0 ? { headers } : {};
   switch (row.transport) {

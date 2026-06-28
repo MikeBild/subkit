@@ -27,7 +27,7 @@ import {
   recordMcpServerRegistered,
 } from "../../audit/recorders/mcp-server.ts";
 import type { RecorderBase } from "../../audit/recorders/types.ts";
-import { assertEgressAllowed } from "../../connectors/egress-guard.ts";
+import { assertEgressAllowedResolved } from "../../connectors/egress-guard.ts";
 import type { Executor } from "../../db/client.ts";
 import { mcpServers } from "../../db/schema/index.ts";
 import type { McpServerStatus, McpServerTransport } from "../../db/schema/mcp_servers.ts";
@@ -229,7 +229,7 @@ export async function createMcpServer(
   // error here, not only later at connect time. The same guard runs again
   // in the pool before each handshake. `EgressBlockedError` carries the
   // host (not the full URL) so it is safe to surface.
-  assertEgressAllowed(parsed.url, { tenant_id: parsed.tenant_id });
+  await assertEgressAllowedResolved(parsed.url, { tenant_id: parsed.tenant_id });
   const [row] = await db
     .insert(mcpServers)
     .values({
@@ -296,7 +296,7 @@ export async function updateMcpServer(
   // SSRF guard: a URL change must clear the egress policy before it is
   // persisted, so an operator can't repoint a server at an internal host.
   if (parsed.url !== undefined) {
-    assertEgressAllowed(parsed.url, { tenant_id });
+    await assertEgressAllowedResolved(parsed.url, { tenant_id });
   }
   const existing = await getMcpServer(db, tenant_id, id);
   if (!existing) return null;

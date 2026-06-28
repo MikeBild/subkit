@@ -230,6 +230,42 @@ describe("firebase provider — identity-linking path (N1)", () => {
     expect(meta.external_subject).toBe(FIREBASE_SUB);
   });
 
+  test("a disabled user is rejected even with a valid Firebase token", async () => {
+    const disabledSub = "firebase-uid-disabled-003";
+    const disabledEmail = "disabled@fb-test.local";
+    await testDb.db.insert(users).values({
+      tenant_id: tenantId,
+      email: disabledEmail,
+      role: "member",
+      external_subject: disabledSub,
+      status: "disabled",
+    });
+
+    const token = await new jose.SignJWT({ email: disabledEmail })
+      .setProtectedHeader({ alg: "RS256" })
+      .setSubject(disabledSub)
+      .setIssuer(`https://securetoken.google.com/${FB_PROJECT_ID}`)
+      .setAudience(FB_PROJECT_ID)
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(signingKey);
+
+    const jwks: jose.JWTVerifyGetKey = async () => verifyingKey;
+    const provider = createFirebaseProvider({
+      projectId: FB_PROJECT_ID,
+      tenantSlug: FB_TENANT_SLUG,
+      db: testDb.db,
+      jwks,
+    });
+
+    const principal = await provider.resolve(
+      new Request("http://127.0.0.1/v1/whoami", {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(principal).toBeNull();
+  });
+
   test("new email (no existing user) creates a USER_CREATED row, not USER_IDENTITY_LINKED", async () => {
     const newSub = "firebase-uid-brand-new-002";
     const newEmail = "brand-new@fb-test.local";

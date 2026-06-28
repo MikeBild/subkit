@@ -16,6 +16,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
+import { SYSTEM_TENANT_ID } from "../../../audit/index.ts";
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
 import { apiKeys, tenants, users } from "../../../db/schema/index.ts";
@@ -398,6 +399,78 @@ describe("PUT /v1/settings/{path}", () => {
       .from(auditLog)
       .where(eq(auditLog.action, "settings.changed"));
     expect(rows.length).toBe(0);
+  });
+
+  // A tenant's OWN admin must not reach across the tenant boundary. The
+  // built-in "admin" role is shared across all tenants, so the previous
+  // `roles.includes("admin")` gate let tenant A's admin read/write tenant
+  // B's settings — a cross-tenant isolation breach. Only a system-tenant
+  // operator may now manage another tenant.
+  test("a tenant admin cannot mutate another tenant's overlay", async () => {
+    const seqTag = nextSeq();
+    const [otherTenant] = await server.db
+      .insert(tenants)
+      .values({ slug: `admin-other-${seqTag}`, display_name: "Other Tenant" })
+      .returning();
+    const [adminUser] = await server.db
+      .insert(users)
+      .values({
+        tenant_id: otherTenant!.id,
+        email: `admin-${seqTag}@test.local`,
+        role: "admin",
+      })
+      .returning();
+    const plaintext = `wf_live_${det(16)}`;
+    await server.db.insert(apiKeys).values({
+      tenant_id: otherTenant!.id,
+      user_id: adminUser!.id,
+      prefix: plaintext.slice(0, 12),
+      token_sha256: createHash("sha256").update(plaintext).digest("hex"),
+      scopes: ["*"],
+    });
+
+    const res = await fetch(`${server.baseUrl}/v1/settings/llm.api_key?tenant=${server.tenantId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${plaintext}` },
+      body: JSON.stringify({ value: "stolen-by-tenant-admin" }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("scope_violation");
+  });
+
+  // The allow path must still work: a SYSTEM-tenant operator manages other
+  // tenants. Proves the fix tightened the gate without disabling the
+  // legitimate platform-operator capability.
+  test("a system-tenant operator can mutate another tenant's overlay", async () => {
+    const seqTag = nextSeq();
+    await server.db
+      .insert(tenants)
+      .values({ id: SYSTEM_TENANT_ID, slug: `system-${seqTag}`, display_name: "System" })
+      .onConflictDoNothing();
+    const [sysAdmin] = await server.db
+      .insert(users)
+      .values({
+        tenant_id: SYSTEM_TENANT_ID,
+        email: `sysop-${seqTag}@test.local`,
+        role: "admin",
+      })
+      .returning();
+    const plaintext = `wf_live_${det(16)}`;
+    await server.db.insert(apiKeys).values({
+      tenant_id: SYSTEM_TENANT_ID,
+      user_id: sysAdmin!.id,
+      prefix: plaintext.slice(0, 12),
+      token_sha256: createHash("sha256").update(plaintext).digest("hex"),
+      scopes: ["*"],
+    });
+
+    const res = await fetch(`${server.baseUrl}/v1/settings/llm.api_key?tenant=${server.tenantId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${plaintext}` },
+      body: JSON.stringify({ value: "set-by-system-operator" }),
+    });
+    expect(res.status).toBe(200);
   });
 
   // Cross-tenant guard must cover the tenant-scoped overlay sections —

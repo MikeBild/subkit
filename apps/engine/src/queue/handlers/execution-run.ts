@@ -9,6 +9,7 @@
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { runExecution } from "../../execution/engine.ts";
+import { finalizeExecution } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
 import { log } from "../../logging/logger.ts";
 import { withJobContext } from "../job-context.ts";
@@ -62,6 +63,31 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db): Promise<void> {
       error: message,
       duration_ms: Date.now() - started,
     });
+    // runExecution only throws on EARLY errors (input-schema violation,
+    // definition resolution, depth limit) — before the engine finalizes
+    // the row itself. The row was pre-created `queued` by the HTTP enqueue,
+    // so without this it would strand forever. Record the failure on the
+    // row (CAS-guarded — a no-op if the engine already finalized it) so a
+    // polling client sees a terminal state. Finalizing successfully means
+    // the DB is reachable and the error was deterministic, so we do NOT
+    // re-throw (a retry would just loop on the same bad input). If the
+    // finalize itself fails (e.g. DB down), propagate so pg-boss retries.
+    if (data.execution_id) {
+      const code =
+        typeof (err as { code?: unknown }).code === "string"
+          ? (err as { code: string }).code
+          : "execution_error";
+      try {
+        await finalizeExecution(db, data.tenant_id, data.execution_id, "failed", null, {
+          step_id: null,
+          error_code: code,
+          error_message: message,
+        });
+        return;
+      } catch {
+        // fall through to re-throw the original error
+      }
+    }
     throw err;
   }
 }

@@ -14,6 +14,8 @@
 // should pass `ctx.mode = tenant.egress_guard_mode ?? undefined` —
 // the resolver below honors it ahead of the env-var fallback.
 
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 import { getRobots } from "./robots-cache.ts";
@@ -178,6 +180,60 @@ export function assertEgressAllowed(url: URL | string, ctx: EgressGuardContext):
       tenant_id: ctx.tenant_id ?? null,
     });
     throw new EgressBlockedError("private_ip_blocked", host);
+  }
+}
+
+/**
+ * Stronger, async egress guard for runtime data-plane fetches. Runs the
+ * synchronous literal check first (so an IP-literal or bare `localhost`
+ * is rejected exactly as before), then — in strict mode, for non-literal
+ * hostnames — resolves the name's A/AAAA records and rejects if ANY
+ * resolved address is private/loopback/link-local.
+ *
+ * Why: `assertEgressAllowed` only inspects the URL's hostname string. A
+ * public name whose DNS record points at 169.254.169.254 (cloud metadata)
+ * or an RFC1918 address sails straight through — a trivial one-shot SSRF
+ * for a tenant who controls the connector/webhook URL. Resolving here
+ * closes that without a TOCTOU assumption about a single record.
+ *
+ * DNS-resolution failures are NOT treated as a block — the subsequent
+ * fetch surfaces the real network error with better context.
+ */
+export async function assertEgressAllowedResolved(
+  url: URL | string,
+  ctx: EgressGuardContext,
+  // Test seam — inject a resolver. Defaults to node's DNS lookup.
+  deps: { lookupImpl?: typeof lookup } = {},
+): Promise<void> {
+  const parsed = typeof url === "string" ? new URL(url) : url;
+  // Literal-host + permissive-mode handling stays identical.
+  assertEgressAllowed(parsed, ctx);
+
+  if (resolveMode(ctx) === "permissive") return;
+
+  const host = stripBrackets(parsed.hostname.toLowerCase());
+  // Already an IP literal → the synchronous check above was authoritative.
+  if (isIP(host) !== 0) return;
+
+  const lookupImpl = deps.lookupImpl ?? lookup;
+  let addrs: Array<{ address: string }>;
+  try {
+    addrs = await lookupImpl(host, { all: true });
+  } catch {
+    return; // let the fetch report the resolution error
+  }
+  for (const { address } of addrs) {
+    if (isPrivateOrLoopback(address)) {
+      logger.warn({
+        module: "egress_guard",
+        action: "blocked",
+        reason: "private_ip_resolved",
+        host,
+        resolved: address,
+        tenant_id: ctx.tenant_id ?? null,
+      });
+      throw new EgressBlockedError("private_ip_resolved", host);
+    }
   }
 }
 

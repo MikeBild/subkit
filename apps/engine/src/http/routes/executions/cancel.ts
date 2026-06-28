@@ -13,7 +13,7 @@ import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { writeEvent } from "../../../db/events.ts";
 import { executions } from "../../../db/schema/index.ts";
-import { cancel as abortCancel, getAbort } from "../../../execution/index.ts";
+import { cancel as abortCancel, finalizeExecution, getAbort } from "../../../execution/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { EXECUTION_RUN_QUEUE } from "../../../queue/index.ts";
 import { NotFoundError } from "../../errors.ts";
@@ -74,6 +74,13 @@ export function registerCancelRoute(app: OpenAPIHono<AppEnv>): void {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+      // Cancelling the pg-boss job means the worker will never pick it up,
+      // so nothing else will ever move the row off "queued". Transition it
+      // to the terminal "aborted" state (CAS-guarded to queued-only so a
+      // concurrent pickup that already flipped it to running is left for
+      // the abort signal below to finalize). Without this the row stays
+      // "queued" forever and the 202 is a lie to any polling client.
+      await finalizeExecution(db, principal.tenant_id, id, "aborted", null, null, ["queued"]);
     }
 
     // (b) Signal the in-process AbortController if the execution is

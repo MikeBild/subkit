@@ -24,7 +24,7 @@
 // channel row at resolution time.
 
 import type { ChatDelivery } from "../../chat/types.ts";
-import { assertEgressAllowed, EgressBlockedError } from "../../connectors/egress-guard.ts";
+import { assertEgressAllowedResolved, EgressBlockedError } from "../../connectors/egress-guard.ts";
 import { logger } from "../../logging/logger.ts";
 import type { NotificationAdapter } from "../service.ts";
 
@@ -61,7 +61,7 @@ export class WebhookNotificationAdapter implements NotificationAdapter {
   async send(delivery: ChatDelivery): Promise<{ platform_message_id: string }> {
     // SSRF guard: refuse to deliver to private/loopback/link-local targets.
     try {
-      assertEgressAllowed(new URL(this.opts.url), {
+      await assertEgressAllowedResolved(new URL(this.opts.url), {
         tenant_id: delivery.tenant_id,
       });
     } catch (err) {

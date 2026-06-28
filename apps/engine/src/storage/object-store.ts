@@ -13,7 +13,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve as resolvePath } from "node:path";
+import { dirname, join, resolve as resolvePath, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { getConfig } from "../config/loader.ts";
@@ -272,8 +272,14 @@ export class LocalDiskObjectStore implements ObjectStore {
     if (!key || key.includes("..")) {
       throw new Error(`object-store: invalid key "${key}"`);
     }
+    const rootResolved = resolvePath(this.root);
     const target = resolvePath(this.root, key);
-    if (!target.startsWith(resolvePath(this.root))) {
+    // Anchor containment on the path separator. A bare prefix check
+    // (`startsWith(root)`) also accepts a sibling directory whose name
+    // begins with the root — e.g. root "/data/sk-files" would wrongly
+    // admit "/data/sk-files-evil/x". Require an exact match or a child
+    // under `root + sep`.
+    if (target !== rootResolved && !target.startsWith(rootResolved + sep)) {
       throw new Error(`object-store: key escapes storage root: ${key}`);
     }
     return target;

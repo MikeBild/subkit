@@ -156,14 +156,41 @@ MSG
 `;
 }
 
+// Strict authority charset. A parsed URL's `host` (hostname[:port]) must
+// match one of these before it is interpolated into the install script.
+// This is the security boundary: the script is served for `curl | bash`,
+// so the base URL must never carry shell metacharacters. DNS names + an
+// optional port, or a bracketed IPv6 literal + optional port.
+const SAFE_HOST = /^[a-zA-Z0-9.-]+(:\d{1,5})?$/;
+const SAFE_IPV6_HOST = /^\[[0-9a-fA-F:]+\](:\d{1,5})?$/;
+
+// Parse a candidate URL and return a sanitized `protocol//host` origin, or
+// null if it is not a safe http(s) URL. Reconstructing from the parsed
+// `protocol` + `host` drops any path/query/fragment/userinfo an attacker
+// might have appended, and the regex gate rejects any host that survived
+// parsing with shell-significant characters.
+function sanitizeBaseUrl(candidate: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(candidate);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  const host = u.host;
+  if (!SAFE_HOST.test(host) && !SAFE_IPV6_HOST.test(host)) return null;
+  return `${u.protocol}//${host}`;
+}
+
 export function registerInstallRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
-    // Resolve the engine's public URL: prefer the explicit
-    // X-Forwarded-Host / Host headers (so reverse-proxied deployments
-    // get the right thing), then fall back to PUBLIC_BASE_URL env, then
-    // to the request URL itself.
-    const fwdProto = c.req.header("x-forwarded-proto");
-    const fwdHost = c.req.header("x-forwarded-host") ?? c.req.header("host");
+    // Resolve the engine's public URL for the install script. The value is
+    // interpolated into a `curl | bash` script, so it MUST be sanitized:
+    // prefer the operator-configured public_base_url, then the forwarded /
+    // Host header (reverse-proxy deployments), then the request origin —
+    // but EVERY candidate is run through sanitizeBaseUrl, which strips it
+    // down to a validated `protocol//host`. A forged X-Forwarded-Host
+    // carrying shell metacharacters fails the validation and is skipped.
     let configBase = "";
     try {
       const { getConfig } = await import("../../config/loader.ts");
@@ -172,9 +199,31 @@ export function registerInstallRoute(app: OpenAPIHono<AppEnv>): void {
       /* loader not initialised */
     }
     const reqUrl = new URL(c.req.url);
-    const engineBaseUrl =
-      (configBase ? configBase.replace(/\/$/, "") : "") ||
-      (fwdHost ? `${fwdProto ?? reqUrl.protocol.replace(/:$/, "")}://${fwdHost}` : reqUrl.origin);
+
+    const candidates: string[] = [];
+    if (configBase) candidates.push(configBase);
+    const fwdHost = c.req.header("x-forwarded-host") ?? c.req.header("host");
+    if (fwdHost) {
+      const proto = c.req.header("x-forwarded-proto") ?? reqUrl.protocol.replace(/:$/, "");
+      candidates.push(`${proto}://${fwdHost}`);
+    }
+    candidates.push(reqUrl.origin);
+
+    let engineBaseUrl = "";
+    for (const candidate of candidates) {
+      const safe = sanitizeBaseUrl(candidate);
+      if (safe) {
+        engineBaseUrl = safe;
+        break;
+      }
+    }
+    // Last resort: reqUrl.origin is itself a parsed-URL origin, but pass it
+    // through the same gate so a hostile Host header can never reach the
+    // script even if every earlier candidate was rejected.
+    if (!engineBaseUrl) {
+      engineBaseUrl = sanitizeBaseUrl(reqUrl.origin) ?? "";
+    }
+
     const body = buildScript(OPENAPI_INFO.version, engineBaseUrl);
     return c.body(body, 200, {
       "content-type": "text/x-shellscript; charset=utf-8",
@@ -184,4 +233,4 @@ export function registerInstallRoute(app: OpenAPIHono<AppEnv>): void {
 }
 
 // Exported for unit tests.
-export const _internal = { buildScript };
+export const _internal = { buildScript, sanitizeBaseUrl };

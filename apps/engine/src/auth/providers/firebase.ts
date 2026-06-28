@@ -244,6 +244,20 @@ export function createFirebaseProvider(opts: FirebaseProviderOptions = {}): Auth
         }
         if (!userRow) return null;
 
+        // A disabled or soft-deleted account must not authenticate, even
+        // with a valid Firebase ID token. Freshly created users default to
+        // status "active", so this only rejects pre-existing deactivated
+        // rows.
+        if (userRow.deleted_at !== null || userRow.status !== "active") {
+          logger.warn({
+            module: "auth",
+            action: "firebase.user_inactive",
+            msg: "rejected firebase login for inactive user",
+            reason: userRow.deleted_at !== null ? "user_deleted" : "user_disabled",
+          });
+          return null;
+        }
+
         if (createdUser) {
           await auditAwait(
             {
