@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { executions, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { runExecution } from "./engine.ts";
 import { createExecution, finalizeExecution, markExecutionRunning } from "./state.ts";
 
@@ -71,7 +72,7 @@ describe("finalizeExecution — queued-only guard (#13)", () => {
 
   test("a running row is left untouched by the queued-only finalize", async () => {
     const id = await newQueued();
-    await markExecutionRunning(db, tenantId, id, new Date());
+    await markExecutionRunning(db, tenantId, id, new Date(FROZEN_NOW));
     await finalizeExecution(db, tenantId, id, "aborted", null, null, ["queued"]);
     // Still running — the queued-cancel path must not abort a row that a
     // concurrent worker already picked up; the abort signal handles that.
