@@ -81,6 +81,21 @@ describe("cascadeIngest", () => {
     expect(openapiAttempts.every((a) => a.status !== "ok")).toBe(true);
   });
 
+  test("prefers /llms-full.txt over the plain /llms.txt index", async () => {
+    const llmsFull = `# Example API — Full
+
+Authentication is via bearer token. Every endpoint is documented below with
+its request and response shapes, so a model can ground itself in one fetch.`;
+    const { fn, calls } = makeFetchMock([
+      { match: /llms-full\.txt$/, status: 200, body: llmsFull, content_type: "text/plain" },
+    ]);
+    const res = await cascadeIngest({ base_url: "https://api.example.com", fetchImpl: fn });
+    expect(res.winning_source).toBe("llms_txt");
+    expect(res.source_uri).toMatch(/llms-full\.txt$/);
+    // The full-content variant wins before the plain index is ever probed.
+    expect(calls.some((c) => /\/llms\.txt$/.test(c))).toBe(false);
+  });
+
   test("falls through to llms.txt when neither openapi nor graphql respond", async () => {
     const llmsTxt = `# Example API
 

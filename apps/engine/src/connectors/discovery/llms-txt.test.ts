@@ -121,7 +121,53 @@ describe("llmsTxtStrategy", () => {
     expect(calls).toContain("https://docs.acme.example.com/gadgets.md");
   });
 
-  seamTest("throws spec_not_found when both well-known paths 404", async () => {
+  seamTest("prefers root /llms-full.txt over the .well-known mirror", async () => {
+    const calls: string[] = [];
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      calls.push(url);
+      if (url.endsWith("/llms-full.txt")) {
+        return Promise.resolve(
+          new Response(FULL_MARKDOWN, {
+            status: 200,
+            headers: { "content-type": "text/markdown" },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    const result = await llmsTxtStrategy.fetch("https://docs.acme.example.com/api", {});
+
+    // Root is the canonical spec location, probed before /.well-known/.
+    expect(result.source_url).toBe("https://docs.acme.example.com/llms-full.txt");
+    expect(result.text_corpus ?? "").toContain("ACME API");
+    expect(calls[0]).toBe("https://docs.acme.example.com/llms-full.txt");
+  });
+
+  seamTest("uses root /llms.txt when it is the only file present", async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      // Only the root index exists; both -full variants and the
+      // .well-known mirror 404.
+      if (url === "https://docs.acme.example.com/llms.txt") {
+        return Promise.resolve(
+          new Response(FULL_MARKDOWN, {
+            status: 200,
+            headers: { "content-type": "text/markdown" },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    const result = await llmsTxtStrategy.fetch("https://docs.acme.example.com/api", {});
+
+    expect(result.source_url).toBe("https://docs.acme.example.com/llms.txt");
+    expect(result.text_corpus ?? "").toContain("ACME API");
+  });
+
+  seamTest("throws spec_not_found when every candidate path 404s", async () => {
     fetchSpy.mockResolvedValue(new Response(null, { status: 404 }));
 
     let caught: DiscoveryError | null = null;

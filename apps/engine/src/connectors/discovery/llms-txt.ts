@@ -1,11 +1,13 @@
 // Strategy: `llms.txt` / `llms-full.txt` fallback.
 //
-// The llms-txt standard (<https://llmstxt.org>) lets an API publish a
-// plaintext / markdown document at `/.well-known/llms-full.txt` (full
-// content) or `/.well-known/llms.txt` (an index of links) describing the
-// surface in LLM-friendly prose. For services that don't ship OpenAPI
-// or GraphQL introspection — but DO publish llms.txt — this strategy is
-// the zero-cost win.
+// The llms-txt standard (<https://llmstxt.org>) lets a service publish a
+// plaintext / markdown document at `/llms-full.txt` (full content) or
+// `/llms.txt` (an index of links) describing the surface in LLM-friendly
+// prose. The spec's canonical location is the site root; some sites mirror
+// it under `/.well-known/` too, so we probe both — root first, full-content
+// variant first. For services that don't ship OpenAPI or GraphQL
+// introspection — but DO publish llms.txt — this strategy is the zero-cost
+// win.
 //
 // Output shape: a `DiscoveryResult` with `endpoints: []` and a populated
 // `text_corpus`. Downstream consumers feed `text_corpus` into RAG /
@@ -31,8 +33,13 @@ const MAX_SINGLE_DOC_BYTES = 4 * 1024 * 1024;
 const MAX_INDEX_FANOUT = 10;
 const MIN_FULL_BODY_CHARS = 200;
 
-const WELL_KNOWN_PATHS: { path: string; preferred: boolean }[] = [
+// Probed richest-first: full-content before index, root before `.well-known`.
+// Root is the llms-txt spec's canonical location; `.well-known` is a common
+// mirror, so we try both rather than assume one.
+const CANDIDATE_PATHS: { path: string; preferred: boolean }[] = [
+  { path: "/llms-full.txt", preferred: true },
   { path: "/.well-known/llms-full.txt", preferred: true },
+  { path: "/llms.txt", preferred: false },
   { path: "/.well-known/llms.txt", preferred: false },
 ];
 
@@ -163,7 +170,7 @@ class LlmsTxtStrategy implements DiscoveryStrategy {
     let chosenUrl: string | null = null;
     let chosenBody: string | null = null;
 
-    for (const { path } of WELL_KNOWN_PATHS) {
+    for (const { path } of CANDIDATE_PATHS) {
       const candidate = `${origin}${path}`;
       const body = await fetchText(candidate, opts);
       if (!body) continue;
@@ -180,7 +187,7 @@ class LlmsTxtStrategy implements DiscoveryStrategy {
     if (!chosenUrl || !chosenBody) {
       const failure = new DiscoveryError(
         "spec_not_found",
-        `no llms.txt found at well-known paths under ${scrubUrl(origin)}`,
+        `no llms.txt found at the standard paths under ${scrubUrl(origin)}`,
       );
       log.debug({
         module: "connector",

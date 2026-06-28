@@ -16,6 +16,7 @@ sk exposes one HTTP surface for direct API callers, all under the `/v1` base pat
 - Content type: `application/json` for request and response bodies.
 - Single execution entry point: `POST /v1/executions` (runs saved workflows, inline drafts, and single steps).
 - Spec: `GET /openapi.json` (OpenAPI 3.0). Interactive reference UI: `GET /docs` (Scalar).
+- LLM-native docs (unauthenticated, `text/markdown`, per https://llmstxt.org): `GET /llms.txt` (a robots.txt-style index of the docs set) and `GET /llms-full.txt` (the full docs concatenated into one fetch). Point a model at these to ground it on the sk surface — auth, error-code semantics, and conventions in prose that the bare schema can't express.
 
 # Authentication
 

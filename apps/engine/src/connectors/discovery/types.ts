@@ -13,9 +13,10 @@
 //                              GraphQL endpoint and normalise the result.
 //   3. `swagger-ui-scrape`   — page embeds Swagger UI; pull the spec URL
 //                              out of the page's bootstrap, then delegate.
-//   4. `llms-txt`            — well-known `/.well-known/llms-full.txt` or
-//                              `/.well-known/llms.txt` — markdown corpus,
-//                              not structured endpoints.
+//   4. `llms-txt`            — the llms-txt standard file at `/llms-full.txt`
+//                              or `/llms.txt` (root, or mirrored under
+//                              `/.well-known/`) — markdown corpus, not
+//                              structured endpoints.
 //   5. `html-scrape`         — last resort: try common well-known paths
 //                              and look for embedded spec hrefs.
 //

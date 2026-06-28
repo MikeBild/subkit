@@ -16,6 +16,11 @@ declare module "*.md" {
   export default content;
 }
 
+declare module "*.txt" {
+  const content: string;
+  export default content;
+}
+
 // `with { type: "file" }` imports (embedded-assets.ts) resolve to a STRING
 // path Bun serves from the binary's virtual filesystem at runtime. The
 // engine imports no .onnx/.wasm/.mjs as real modules, so a default-string

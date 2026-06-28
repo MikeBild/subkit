@@ -9,7 +9,8 @@
 //   1. OpenAPI  — probe common spec paths; if HTML comes back, scan it for
 //                 spec links and retry. Handles most commercial APIs.
 //   2. GraphQL  — POST an introspection query against /graphql.
-//   3. llms.txt — standardized hint file at /.well-known/llms.txt or /llms.txt.
+//   3. llms.txt — standardized hint file at /llms-full.txt or /llms.txt (root,
+//                 or mirrored under /.well-known/); full-content variant first.
 //   4. Markdown — classic README-style paths (/README.md, /docs.md, etc.).
 //   5. Raw-HTTP — final fallback: fetch the base URL, treat as plain text.
 //
@@ -72,7 +73,13 @@ const OPENAPI_CANDIDATE_PATHS = [
 
 const GRAPHQL_CANDIDATE_PATHS = ["/graphql", "/api/graphql", "/query"];
 
-const LLMS_TXT_CANDIDATE_PATHS = ["/.well-known/llms.txt", "/llms.txt"];
+// Richest-first: full-content before index, root before `.well-known` mirror.
+const LLMS_TXT_CANDIDATE_PATHS = [
+  "/llms-full.txt",
+  "/.well-known/llms-full.txt",
+  "/llms.txt",
+  "/.well-known/llms.txt",
+];
 
 const MARKDOWN_CANDIDATE_PATHS = [
   "/README.md",
