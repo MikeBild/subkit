@@ -1,7 +1,7 @@
 // Persistence helpers for execution / execution_steps / outbox events.
 // Keeps the engine.ts file focused on control flow.
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
@@ -114,6 +114,10 @@ export interface ExecutionFailureDetail {
   error_message: string;
 }
 
+// Non-terminal statuses. A finalize may only move a row OUT of one of
+// these — once a row is terminal it must never be overwritten.
+const NON_TERMINAL_STATUSES: ExecutionStatus[] = ["queued", "running"];
+
 export async function finalizeExecution(
   db: Db,
   tenant_id: string,
@@ -121,12 +125,19 @@ export async function finalizeExecution(
   status: ExecutionStatus,
   result_storage_uri: string | null,
   failure?: ExecutionFailureDetail | null,
+  // Compare-and-set guard: the transition only applies when the row is
+  // currently in one of these statuses. Defaults to the non-terminal set,
+  // so completion / cancel / timeout racing on the same execution become
+  // first-writer-wins instead of last-write-clobbers. Callers that must
+  // only act on a specific prior state (e.g. queued-cancel) narrow it.
+  expectedStatuses: ExecutionStatus[] = NON_TERMINAL_STATUSES,
 ): Promise<void> {
   // workflow_id is NULL for draft and step runs; observability code must
   // handle the null case (e.g. report duration without workflow breakdown).
   let workflow_id: string | null = null;
   let request_source: string = "api";
   let duration_ms: number | null = null;
+  let applied = false;
   await db.transaction(async (tx) => {
     const updated = await tx
       .update(executions)
@@ -135,7 +146,7 @@ export async function finalizeExecution(
         finished_at: new Date(),
         result_storage_uri,
       })
-      .where(eq(executions.id, execution_id))
+      .where(and(eq(executions.id, execution_id), inArray(executions.status, expectedStatuses)))
       .returning({
         id: executions.id,
         workflow_id: executions.workflow_id,
@@ -144,12 +155,16 @@ export async function finalizeExecution(
         finished_at: executions.finished_at,
       });
     const row = updated[0];
-    if (row) {
-      workflow_id = row.workflow_id ?? null;
-      request_source = row.request_source ?? "api";
-      if (row.started_at && row.finished_at) {
-        duration_ms = row.finished_at.getTime() - row.started_at.getTime();
-      }
+    if (!row) {
+      // Another terminal transition already won (or the row vanished). Do
+      // not emit a second terminal event or double-count metrics.
+      return;
+    }
+    applied = true;
+    workflow_id = row.workflow_id ?? null;
+    request_source = row.request_source ?? "api";
+    if (row.started_at && row.finished_at) {
+      duration_ms = row.finished_at.getTime() - row.started_at.getTime();
     }
     // Enrich the event payload with the workflow + source + failure
     // reason so a downstream `event.fanout` → notification / webhook can
@@ -167,6 +182,16 @@ export async function finalizeExecution(
       },
     });
   });
+  if (!applied) {
+    logger.info({
+      module: "execution",
+      action: "execution.finalize_noop",
+      msg: "finalize skipped — execution already terminal",
+      execution_id,
+      attempted_status: status,
+    });
+    return;
+  }
   logger.info({
     module: "execution",
     action: `execution.${status}`,

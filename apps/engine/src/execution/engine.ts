@@ -163,6 +163,25 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const workflow_id = resolved.workflow_id;
   const workflow_version_id = resolved.workflow_version_id;
 
+  // Validate the run input BEFORE any side-effecting setup (execution row,
+  // abort registration, total-timeout timer). The check is pure — it only
+  // needs the normalized input and the def's schema — so an invalid input
+  // throws here with zero side effects: no orphaned `running` row, no
+  // leaked AbortController in the process-global registry, no armed 6h
+  // timer. On the async (queue) path the pre-created row stays `queued`
+  // and the worker's catch finalizes it to `failed`. Validate even when
+  // input is null/undefined so a required-input workflow run with no input
+  // (e.g. a schedule) fails fast and named, not deep inside a later step.
+  if (def.input_schema) {
+    const check = validateAgainstJsonSchema(normalizedInput, def.input_schema, "$input");
+    if (!check.valid) {
+      throw Object.assign(new Error(check.errors.join("; ")), {
+        code: "input_schema_violation",
+        details: check.errors,
+      });
+    }
+  }
+
   const request_source: RequestSource = opts.request_source ?? "api";
   const parent_execution_id = opts.parent_execution_id ?? null;
   const execution_mode = opts.execution_mode ?? "dev";
@@ -237,20 +256,6 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   const llmBudget = new RunLlmBudget(def.max_llm_tokens_per_run ?? null);
 
   const scope: Record<string, unknown> = { $input: normalizedInput };
-
-  if (def.input_schema) {
-    // Validate even when the input is null/undefined: a workflow with
-    // required input fields run with no input (e.g. a schedule that
-    // carries no `input`) must fail fast and named here, not deep inside
-    // a later step.
-    const check = validateAgainstJsonSchema(normalizedInput, def.input_schema, "$input");
-    if (!check.valid) {
-      throw Object.assign(new Error(check.errors.join("; ")), {
-        code: "input_schema_violation",
-        details: check.errors,
-      });
-    }
-  }
 
   let finalStatus: ExecutionStatus = "succeeded";
   const stepSummaries: RunResult["steps"] = [];

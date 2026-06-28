@@ -12,6 +12,7 @@ import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   createExecution,
+  finalizeExecution,
   type RunExecutionSource,
   resolveDefinition,
   runExecution,
@@ -189,7 +190,20 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         trace_id,
         execution_mode,
       };
-      await getBoss().send(EXECUTION_RUN_QUEUE, job);
+      // The execution row and the pg-boss job are two separate writes. If
+      // the enqueue fails the row would strand as `queued` with no worker
+      // ever picking it up. Compensate by finalizing it to `failed` so the
+      // caller's 202 contract isn't violated by a silently-stuck run.
+      try {
+        await getBoss().send(EXECUTION_RUN_QUEUE, job);
+      } catch (err) {
+        await finalizeExecution(db, principal.tenant_id, execution_id, "failed", null, {
+          step_id: null,
+          error_code: "enqueue_failed",
+          error_message: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
       return c.json({ execution_id, status: "queued" }, 202);
     }
 
