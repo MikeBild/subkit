@@ -45,6 +45,17 @@ describe("GET /v1/health", () => {
   });
 });
 
+describe("GET /docs", () => {
+  test("sends a Content-Security-Policy scoping scripts to self + the Scalar CDN", async () => {
+    const res = await fetch(`${ctx.baseUrl}/docs`);
+    expect(res.status).toBe(200);
+    const csp = res.headers.get("content-security-policy");
+    expect(csp).toBeTruthy();
+    expect(csp).toContain("script-src 'self' https://cdn.jsdelivr.net");
+    expect(csp).toContain("frame-ancestors 'none'");
+  });
+});
+
 describe("GET /v1/readyz", () => {
   test("returns 200 ready when the database is reachable", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/readyz`);

@@ -143,4 +143,14 @@ describe("LocalDiskObjectStore — full surface", () => {
     // contains '..', regardless of how it arrived.
     await expect(store.put("subkit-file://x/../y", Buffer.from("x"))).rejects.toThrow();
   });
+
+  test("rejects an absolute key that is a sibling-prefix of the root (#58)", async () => {
+    // No '..' here — the attack is an absolute path whose string prefix
+    // matches the root. resolvePath honours the absolute key, and the old
+    // `startsWith(root)` check wrongly admitted "<root>-evil/...". The
+    // separator-anchored containment must reject it.
+    const root = makeRoot();
+    const store = new LocalDiskObjectStore(root);
+    await expect(store.put(`${root}-evil/escape`, Buffer.from("x"))).rejects.toThrow(/escapes/);
+  });
 });
