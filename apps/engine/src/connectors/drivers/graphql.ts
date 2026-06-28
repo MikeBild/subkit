@@ -10,7 +10,6 @@
 // `query()` with `operation: "subscription"` returns a typed
 // `not_implemented` error envelope.
 
-import { getConfig } from "../../config/loader.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
@@ -25,6 +24,7 @@ import {
   FETCH_DEADLINE_MS,
   readBodyCapped,
   resolveConnectorCredential,
+  resolveMaxResponseBytes,
   validateOutboundHeaders,
 } from "./http.ts";
 import type { DriverProbeResult } from "./index.ts";
@@ -242,7 +242,7 @@ export async function executeGraphQLRequest(p: {
         signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
       }),
   });
-  const maxResponseBytes = getConfig(p.tenant_id).connectors.http.max_response_bytes;
+  const maxResponseBytes = resolveMaxResponseBytes(p.tenant_id);
   const text = await readBodyCapped(res, maxResponseBytes, url.toString());
   let parsed: { data?: unknown; errors?: unknown };
   try {

@@ -180,6 +180,8 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "notifications.push.quietHoursStart": "Quiet hours start (HH:MM)",
   "notifications.push.quietHoursEnd": "Quiet hours end (HH:MM)",
 
+  // ── Connectors / HTTP + GraphQL transport ────────────────
+  "connectors.http.max_response_bytes": "Max response size (bytes)",
   // ── Connectors / web-scraper ─────────────────────────────
   "connectors.web_scraper.runtime.respect_robots": "Respect robots.txt",
   "connectors.web_scraper.runtime.user_agent": "User-Agent header",
