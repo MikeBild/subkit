@@ -48,6 +48,70 @@ export class HttpRequestInvalidError extends Error {
   }
 }
 
+// Per-attempt outbound fetch deadline. Bun/undici fetch has NO default
+// timeout, so a TCP-connected-but-unresponsive upstream hangs forever.
+// 60s is generous (slow-but-alive APIs are never cut off) and matches the
+// existing default used below; the graphql driver, webhook-notification
+// channel, and outbound delivery worker import this so all four agree.
+export const FETCH_DEADLINE_MS = 60_000;
+
+/**
+ * Read a fetch Response body into a string with a HARD byte cap, so a
+ * single oversized upstream response can't OOM the engine. Rejects early
+ * on a Content-Length over the cap; for chunked / unknown-length bodies it
+ * streams and aborts once the cumulative size exceeds the cap. Throws
+ * `HttpRequestInvalidError` (classified non-retryable / `request_invalid`
+ * by the request step) so the retry ladder doesn't re-pull the body.
+ * Falls back to `res.text()` when the body isn't a readable stream (e.g. a
+ * mocked Response in tests), still honouring the Content-Length pre-check.
+ */
+export async function readBodyCapped(
+  res: Response,
+  maxBytes: number,
+  path: string,
+): Promise<string> {
+  const cl = res.headers.get("content-length");
+  if (cl) {
+    const declared = Number(cl);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      throw new HttpRequestInvalidError(
+        `response too large: ${declared} bytes exceeds max_response_bytes ${maxBytes}`,
+        path,
+      );
+    }
+  }
+  const body = res.body;
+  if (!body || typeof body.getReader !== "function") {
+    const text = await res.text();
+    if (Buffer.byteLength(text, "utf8") > maxBytes) {
+      throw new HttpRequestInvalidError(
+        `response too large: exceeds max_response_bytes ${maxBytes}`,
+        path,
+      );
+    }
+    return text;
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new HttpRequestInvalidError(
+          `response too large: exceeds max_response_bytes ${maxBytes}`,
+          path,
+        );
+      }
+      chunks.push(value);
+    }
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 // RFC 7230 §3.2.6 token characters.
 export const HTTP_HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
@@ -853,7 +917,8 @@ export async function executePlannedHttpRequest(params: {
     fields: { method: params.method, url_host: params.url.host },
     fn: () => getDriverFetch()(params.url, init),
   });
-  const text = await res.text();
+  const maxResponseBytes = getConfig(params.tenant_id).connectors.http.max_response_bytes;
+  const text = await readBodyCapped(res, maxResponseBytes, params.url.toString());
   const headerObj: Record<string, string> = {};
   res.headers.forEach((v, k) => {
     headerObj[k] = v;
@@ -901,7 +966,7 @@ export async function executeConnectorHttpRequest(params: {
   }
   const signal =
     signals.length === 0
-      ? AbortSignal.timeout(60_000)
+      ? AbortSignal.timeout(FETCH_DEADLINE_MS)
       : signals.length === 1
         ? signals[0]!
         : mergeSignals(signals);

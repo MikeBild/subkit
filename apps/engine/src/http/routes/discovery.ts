@@ -20,6 +20,23 @@ import type { AppEnv } from "../openapi.ts";
 const RunIdParam = z.object({ id: z.string().uuid() });
 const ArtifactIdParam = z.object({ id: z.string().uuid() });
 
+// Per-request total upload cap for the multipart discovery routes. Guards
+// the shared engine process from buffering arbitrarily large uploads into
+// memory (OOM). Generous — far above any realistic authoring upload.
+export const MAX_DISCOVERY_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
+
+// Cheap pre-buffer fast-reject from the advisory Content-Length header.
+// Content-Length is absent under chunked encoding, so this is NOT the sole
+// guard — the authoritative cap is enforced while buffering below.
+export function contentLengthOverCap(c: {
+  req: { header: (n: string) => string | undefined };
+}): boolean {
+  const cl = c.req.header("content-length");
+  if (!cl) return false;
+  const n = Number(cl);
+  return Number.isFinite(n) && n > MAX_DISCOVERY_UPLOAD_BYTES;
+}
+
 const DiscoveryRunListResponse = z
   .object({ items: z.array(DiscoveryRunSchema) })
   .openapi("DiscoveryRunListResponse");
@@ -255,6 +272,9 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
 
+    if (contentLengthOverCap(c)) {
+      return c.json({ error: "upload exceeds 100MB limit" }, 413);
+    }
     const formData = await c.req.formData();
     const label = formData.get("label");
     const files = formData.getAll("files");
@@ -267,9 +287,16 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     const parsedFiles: Array<{ buffer: Buffer; filename: string; mime?: string }> = [];
+    let totalBytes = 0;
     for (const file of files) {
       if (!(file instanceof File)) continue;
       const buffer = Buffer.from(await file.arrayBuffer());
+      // Authoritative cap: stop accumulating once the running total exceeds
+      // the limit (Content-Length is advisory/absent under chunked uploads).
+      totalBytes += buffer.byteLength;
+      if (totalBytes > MAX_DISCOVERY_UPLOAD_BYTES) {
+        return c.json({ error: "upload exceeds 100MB limit" }, 413);
+      }
       parsedFiles.push({
         buffer,
         filename: file.name,
@@ -297,6 +324,9 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
 
+    if (contentLengthOverCap(c)) {
+      return c.json({ error: "archive exceeds 100MB limit" }, 413);
+    }
     const formData = await c.req.formData();
     const label = formData.get("label");
     const archive = formData.get("archive");
@@ -305,7 +335,7 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json({ error: "multipart 'archive' file is required" }, 400);
     }
     const archiveBuffer = Buffer.from(await archive.arrayBuffer());
-    if (archiveBuffer.byteLength > 100 * 1024 * 1024) {
+    if (archiveBuffer.byteLength > MAX_DISCOVERY_UPLOAD_BYTES) {
       return c.json({ error: "archive exceeds 100MB limit" }, 413);
     }
 

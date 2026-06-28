@@ -24,6 +24,7 @@
 // channel row at resolution time.
 
 import type { ChatDelivery } from "../../chat/types.ts";
+import { FETCH_DEADLINE_MS } from "../../connectors/drivers/http.ts";
 import { assertEgressAllowedResolved, EgressBlockedError } from "../../connectors/egress-guard.ts";
 import { logger } from "../../logging/logger.ts";
 import type { NotificationAdapter } from "../service.ts";
@@ -99,7 +100,12 @@ export class WebhookNotificationAdapter implements NotificationAdapter {
       }
       let res: Response;
       try {
-        res = await fetchImpl(this.opts.url, { method: "POST", headers, body });
+        res = await fetchImpl(this.opts.url, {
+          method: "POST",
+          headers,
+          body,
+          signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
+        });
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
         if (attempt === WEBHOOK_MAX_ATTEMPTS) break;

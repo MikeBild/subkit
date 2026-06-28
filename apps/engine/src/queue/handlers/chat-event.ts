@@ -28,6 +28,7 @@ import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import { ChatEventJobSchema } from "../../chat/api.ts";
 import { markChatEventSeen } from "../../chat/dedup.ts";
 import { type DispatchRunEnqueue, handleChatEvent } from "../../chat/dispatcher.ts";
+import { ensureChatRegistryHydrated } from "../../chat/hydrate.ts";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces } from "../../db/schema/index.ts";
@@ -178,11 +179,18 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
   // Slack adapters share one signing secret (one subkit app), so the
   // fallback used for verify works for any request — but `send` needs
   // the correct workspace's bot token, hence the keyed lookup.
-  const adapter = chatRegistry.get({
+  const key = {
     tenant_id: workspace.tenant_id,
     platform: event.platform,
     workspace_id: event.workspace_id,
-  });
+  };
+  let adapter = chatRegistry.get(key);
+  if (!adapter) {
+    // Cold-registry / boot-race miss: lazily rehydrate (idempotent,
+    // cooldown-guarded) and retry once before failing the job.
+    await ensureChatRegistryHydrated(db, chatRegistry);
+    adapter = chatRegistry.get(key);
+  }
   if (!adapter) {
     throw new Error(
       `chat.event: no adapter registered for tenant=${workspace.tenant_id} platform=${event.platform} workspace=${event.workspace_id}`,

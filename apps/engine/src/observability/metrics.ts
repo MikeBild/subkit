@@ -35,6 +35,7 @@ export const METRIC_NAMES = {
   EXECUTION_TOTAL: "execution_total",
   EXECUTION_DURATION_MS: "execution_duration_ms",
   REQUEST_RETRY_TOTAL: "request_retry_total",
+  CONNECTOR_ENV_FALLBACK_TOTAL: "connector_env_fallback_total",
   WEBHOOK_DELIVERY_TOTAL: "webhook_delivery_total",
   CHAT_DELIVERY_TOTAL: "chat_delivery_total",
   LLM_TOKENS_TOTAL: "llm_tokens_total",
@@ -375,6 +376,11 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.REQUEST_RETRY_TOTAL,
     help: "Outbound HTTP retries inside the request step driver.",
     labels: ["connector_id", "reason"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CONNECTOR_ENV_FALLBACK_TOTAL,
+    help: "Connector resolved to a different environment than requested (prod run may hit the dev binding).",
+    labels: ["connector_id", "requested_environment", "resolved_environment"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.WEBHOOK_DELIVERY_TOTAL,

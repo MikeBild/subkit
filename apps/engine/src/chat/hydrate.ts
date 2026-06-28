@@ -202,3 +202,44 @@ export async function hydrateChatRegistry(
 
   return outcome;
 }
+
+// Lazy rehydrate-on-miss. The registry is process-local and hydrated once
+// at boot; a request that arrives during the boot-race window (or, in a
+// future multi-instance deploy, against an instance that missed an install)
+// would otherwise 503 forever. On a miss the caller invokes this, which
+// re-runs the idempotent hydrate at most once per cooldown (single-flight),
+// then retries the lookup. Never removes a live adapter; a genuinely-0-
+// install tenant can't DB-storm (cooldown).
+const REHYDRATE_COOLDOWN_MS = 30_000;
+let lastRehydrateAt = 0;
+let rehydrateInFlight: Promise<void> | null = null;
+
+export async function ensureChatRegistryHydrated(
+  db: Db,
+  registry: ChatAdapterRegistry,
+): Promise<void> {
+  if (rehydrateInFlight) return rehydrateInFlight;
+  if (Date.now() - lastRehydrateAt < REHYDRATE_COOLDOWN_MS) return;
+  rehydrateInFlight = (async () => {
+    try {
+      await hydrateChatRegistry(db, registry);
+    } catch (err) {
+      logger.warn({
+        module: "chat",
+        action: "rehydrate.failed",
+        msg: "lazy chat-registry rehydrate failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      lastRehydrateAt = Date.now();
+      rehydrateInFlight = null;
+    }
+  })();
+  return rehydrateInFlight;
+}
+
+/** Test-only: reset the rehydrate cooldown/single-flight state. */
+export function _resetChatRehydrateStateForTests(): void {
+  lastRehydrateAt = 0;
+  rehydrateInFlight = null;
+}
