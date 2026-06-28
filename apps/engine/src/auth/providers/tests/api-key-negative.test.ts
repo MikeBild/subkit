@@ -141,6 +141,50 @@ describe("api-key provider — negative paths", () => {
   });
 });
 
+async function seedKeyForUser(uid: string): Promise<string> {
+  const key = generateKey();
+  await db.insert(apiKeys).values({
+    tenant_id: tenantId,
+    user_id: uid,
+    prefix: key.prefix,
+    token_sha256: key.hash,
+    scopes: ["*"],
+  });
+  return key.plaintext;
+}
+
+describe("api-key provider — user lifecycle", () => {
+  test("a disabled user's key returns null", async () => {
+    const [u] = await db
+      .insert(users)
+      .values({
+        tenant_id: tenantId,
+        email: "disabled@ak.local",
+        role: "member",
+        status: "disabled",
+      })
+      .returning();
+    const token = await seedKeyForUser(u!.id);
+    const provider = createApiKeyProvider({ db });
+    expect(await provider.resolve(bearerReq(token))).toBeNull();
+  });
+
+  test("a soft-deleted user's key returns null", async () => {
+    const [u] = await db
+      .insert(users)
+      .values({
+        tenant_id: tenantId,
+        email: "deleted@ak.local",
+        role: "member",
+        deleted_at: new Date(FROZEN_NOW - 60_000),
+      })
+      .returning();
+    const token = await seedKeyForUser(u!.id);
+    const provider = createApiKeyProvider({ db });
+    expect(await provider.resolve(bearerReq(token))).toBeNull();
+  });
+});
+
 describe("api-key provider — tenant boundary", () => {
   test("the persisted row's tenant_id matches the resolved principal's tenant_id", async () => {
     const issued = await seedKey({});
