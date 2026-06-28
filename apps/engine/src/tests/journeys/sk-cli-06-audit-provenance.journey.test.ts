@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server as HttpServer } from "node:http";
 import { and, desc, eq } from "drizzle-orm";
 import * as jose from "jose";
+import { setConfigKey } from "../../config/loader.ts";
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
@@ -101,6 +102,11 @@ describe("journey: sk-cli audit provenance", () => {
       .setExpirationTime("5m")
       .setIssuedAt()
       .sign(kp.privateKey);
+
+    // The sessions-oidc route now requires the issuer to match the
+    // configured allow-list; point it at this journey's mock IdP.
+    await setConfigKey("auth.oidc.issuer_url", idpUrl, { force: true });
+    await setConfigKey("auth.oidc.client_id", "", { force: true });
   }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {

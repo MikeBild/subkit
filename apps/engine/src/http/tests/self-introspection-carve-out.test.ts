@@ -45,6 +45,7 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
   test("every identity/ route either gates with requirePermission OR is on the carve-out list", () => {
     const files = readdirSync(IDENTITY_ROUTES_DIR)
       .filter((f) => f.endsWith(".ts"))
+      .filter((f) => !f.endsWith(".test.ts")) // test files are not route modules
       .filter((f) => !NON_ROUTE_FILES.has(f));
     const violations: string[] = [];
     for (const file of files) {
