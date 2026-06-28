@@ -38,6 +38,35 @@ const route = createRoute({
   },
 });
 
+// Readiness is distinct from liveness: /v1/health is a liveness probe (the
+// process is up → 200, with db_connected as an informational field), while
+// /v1/readyz is a readiness probe that returns 503 when the engine cannot
+// serve real traffic because its database is unreachable. Load balancers /
+// orchestrators should gate routing on /readyz, not /health.
+const ReadyResponse = z
+  .object({
+    status: z.enum(["ready", "unavailable"]),
+    db_connected: z.boolean(),
+  })
+  .openapi("ReadyResponse");
+
+const readyRoute = createRoute({
+  method: "get",
+  path: "/v1/readyz",
+  tags: ["health"],
+  summary: "Engine readiness (503 when the database is unreachable)",
+  responses: {
+    200: {
+      description: "Ready",
+      content: { "application/json": { schema: ReadyResponse } },
+    },
+    503: {
+      description: "Not ready — database unreachable",
+      content: { "application/json": { schema: ReadyResponse } },
+    },
+  },
+});
+
 const BOOT_AT = Date.now();
 
 async function pingDb(db: Db): Promise<boolean> {
@@ -71,6 +100,18 @@ export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps =
         uptime_seconds: Math.floor((Date.now() - BOOT_AT) / 1000),
       },
       200,
+    );
+  });
+
+  app.openapi(readyRoute, async (c) => {
+    const db = deps.db ?? c.get("db") ?? getDb();
+    const db_connected = await pingDb(db);
+    return c.json(
+      {
+        status: db_connected ? ("ready" as const) : ("unavailable" as const),
+        db_connected,
+      },
+      db_connected ? 200 : 503,
     );
   });
 }
