@@ -160,4 +160,63 @@ describe("request step", () => {
     const errorObj = row?.error as { code?: string } | null;
     expect(errorObj?.code).toBe("placeholder_unresolved");
   });
+
+  test("request body preserves native JSON types — whole-value ${ref} leaves stay number/array/object on the wire", async () => {
+    // Mirrors the resolvePlaceholdersTypePreserving suite
+    // (llm/substitution/tests/resolver.test.ts) at the dispatch level:
+    // a whole-value `"${ref}"` body leaf must reach the wire carrying its
+    // native type (so a typed-body API like Notion sees an array, not a
+    // JSON-stringified `"[…]"` that it rejects with `should be an array`).
+    // A mixed-string leaf still stringifies. Regression for the
+    // notion-append session where every nested body double-encoded.
+    let captured: Record<string, unknown> | null = null;
+    mock.setHandler(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const c of req) chunks.push(c as Buffer);
+      const raw = Buffer.concat(chunks).toString("utf8");
+      captured = raw.length > 0 ? (JSON.parse(raw) as Record<string, unknown>) : null;
+      jsonResponse(res, 200, { ok: true });
+    });
+
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "typed-body",
+      steps: [
+        {
+          kind: "request",
+          id: "post",
+          method: "POST",
+          url: `${mock.baseUrl}/ingest`,
+          body: {
+            limit: "${input.limit}",
+            children: "${input.children}",
+            filter: "${input.filter}",
+            note: "count=${input.limit}",
+          },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: {
+        limit: 7,
+        children: [{ a: 1 }, { b: 2 }],
+        filter: { id: { eq: "x" } },
+      },
+    });
+    expect(result.status).toBe("succeeded");
+    const body = captured as Record<string, unknown> | null;
+    expect(body).toBeTruthy();
+    // numeric leaf → native number, not "7"
+    expect(typeof body?.limit).toBe("number");
+    expect(body?.limit).toBe(7);
+    // array leaf → native array, not a JSON-stringified string
+    expect(Array.isArray(body?.children)).toBe(true);
+    expect(body?.children).toEqual([{ a: 1 }, { b: 2 }]);
+    // object leaf → native object
+    expect(body?.filter).toEqual({ id: { eq: "x" } });
+    // mixed string still stringifies (interpolation, not whole-value)
+    expect(body?.note).toBe("count=7");
+  });
 });

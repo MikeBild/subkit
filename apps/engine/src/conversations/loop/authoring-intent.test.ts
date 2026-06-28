@@ -151,12 +151,12 @@ describe("detectAuthoringIntent — non-authoring phrases", () => {
 });
 
 describe("AUTHORING_INITIAL_MODEL constant", () => {
-  it("seeds Opus 4.7", () => {
+  it("seeds Opus 4.8 (the ladder top)", () => {
     // Hard-wired here so a future rename surfaces as a failing test
-    // instead of a silent drift. Raised from Sonnet 4.6 → Opus 4.7
-    // after the publish-ready-essays incident (Sonnet-seeded authoring
-    // turns still mis-selected run_workflow).
-    expect(AUTHORING_INITIAL_MODEL).toBe("claude-opus-4-7");
+    // instead of a silent drift. Raised Sonnet 4.6 → Opus 4.7 → Opus 4.8:
+    // Sonnet-seeded authoring turns mis-selected run_workflow, and the
+    // ladder now tops out at opus-4-8 so the seed sits at the top tier.
+    expect(AUTHORING_INITIAL_MODEL).toBe("claude-opus-4-8");
   });
 });
 
@@ -176,7 +176,7 @@ describe("resolveInitialModel — FIX 2 loop seeding", () => {
       tenantDefault,
       recentUserMessage: "build a workflow called daily-report",
     });
-    expect(decision.modelId).toBe("claude-opus-4-7");
+    expect(decision.modelId).toBe("claude-opus-4-8");
     expect(decision.authoringSeeded).toBe(true);
   });
 
@@ -186,7 +186,7 @@ describe("resolveInitialModel — FIX 2 loop seeding", () => {
       tenantDefault,
       recentUserMessage: "erstelle einen workflow für den Tagesbericht",
     });
-    expect(decision.modelId).toBe("claude-opus-4-7");
+    expect(decision.modelId).toBe("claude-opus-4-8");
     expect(decision.authoringSeeded).toBe(true);
   });
 

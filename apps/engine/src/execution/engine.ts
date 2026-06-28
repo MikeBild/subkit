@@ -587,6 +587,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       // every iteration writes its own index, never appends.
       const items = collectionResult.items;
       const slots: (Record<string, unknown> | undefined)[] = new Array(items.length);
+      // First failed iteration body (status failed/aborted/timed_out). A
+      // for_each runs THIS step once per item, so the iteration's failure
+      // is the step's failure — without surfacing it the container always
+      // finalized "succeeded" and a write that 400'd inside a loop body was
+      // masked as a successful execution (silent data-loss class). The
+      // single-threaded check-and-set is race-free across bounded-parallel
+      // workers (no await between read and write).
+      let forEachFailure: import("./step-runner.ts").RunStepOutcome | null = null;
 
       const runIteration = async (itemIdx: number): Promise<void> => {
         const item = items[itemIdx];
@@ -641,6 +649,14 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         // aggregate after all iterations complete.
         childScope[step.id] = envelopeFor(iterOutcome);
         slots[itemIdx] = { [step.id]: bodyEnvelopeForLoopAccumulator(iterOutcome) };
+        if (
+          forEachFailure === null &&
+          (iterOutcome.result.status === "failed" ||
+            iterOutcome.result.status === "aborted" ||
+            iterOutcome.result.status === "timed_out")
+        ) {
+          forEachFailure = iterOutcome;
+        }
       };
 
       const concurrency = resolveForEachConcurrency(step, items.length);
@@ -736,14 +752,30 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         }
       }
       const forEachDurationMs = Date.now() - forEachStart;
+      // A failed iteration body is the for_each's failure: report the
+      // container's status as the failing iteration's status (not a blanket
+      // "succeeded") so the step row, the step summary, and the execution
+      // final_status all reflect it. on_error governs propagation exactly as
+      // for a non-loop step.
+      // The cast restores the declared union: TS resets `forEachFailure` to
+      // `null` at this read because its only assignment lives in the
+      // `runIteration` closure.
+      const failedOutcome = forEachFailure as import("./step-runner.ts").RunStepOutcome | null;
+      const forEachStatus: "succeeded" | "failed" | "aborted" | "timed_out" = failedOutcome
+        ? (failedOutcome.result.status as "failed" | "aborted" | "timed_out")
+        : "succeeded";
+      const forEachError = failedOutcome
+        ? (failedOutcome.result.error ?? { code: "loop_body_failed", message: "loop body failed" })
+        : null;
       await finalizeStepRow(
         db,
         step_row_id,
-        "succeeded",
+        forEachStatus,
         {
-          status: "succeeded",
+          status: forEachStatus,
           duration_ms: forEachDurationMs,
           retry_count: 0,
+          ...(forEachError ? { error: forEachError } : {}),
         },
         {
           output_preview: previewOffloadRefs(iterationResults),
@@ -755,13 +787,41 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         step_key: step.id,
         step_index: i,
         kind: step.kind,
-        status: "succeeded",
+        status: forEachStatus,
         duration_ms: forEachDurationMs,
         retry_count: 0,
-        error: null,
+        error: forEachError,
         request_meta: null,
         output_preview: previewOffloadRefs(iterationResults),
       });
+      if (forEachStatus !== "succeeded") {
+        const onError = step.on_error ?? "fail";
+        lastError = forEachError ?? { code: "step_failed", message: "step failed" };
+        if (onError === "fail") {
+          failedStepId = step.id;
+          if (forEachStatus === "aborted") finalStatus = "aborted";
+          else if (forEachStatus === "timed_out") finalStatus = "timed_out";
+          else finalStatus = "failed";
+          // Mark every remaining step in the topological order as skipped —
+          // same contract as the shared post-step failure handling below.
+          for (let j = topoIdx + 1; j < executionOrder.length; j++) {
+            const remainingId = executionOrder[j]!;
+            const remainingIdx = stepIndexById.get(remainingId) ?? j;
+            const s = def.steps[remainingIdx] as StepDef;
+            stepSummaries.push({
+              step_key: s.id,
+              step_index: remainingIdx,
+              kind: s.kind,
+              status: "skipped",
+              duration_ms: 0,
+              retry_count: 0,
+              error: { code: "skipped", message: "skipped due to upstream failure" },
+              request_meta: null,
+            });
+          }
+          break;
+        }
+      }
       continue;
     }
 
@@ -837,6 +897,16 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       const items = outcome.result.output;
       if (Array.isArray(items)) {
         const iterationResults: unknown[] = [];
+        // First failed body step (status failed/aborted/timed_out) whose own
+        // on_error is the default "fail". Pre-fix a write that 400'd inside a
+        // loop body was stored only in the per-iteration envelope and never
+        // propagated to the execution's final_status — the loop driver's
+        // outcome stayed "succeeded" (it only resolves the collection), so an
+        // operator saw `succeeded` over silently lost writes. A body step that
+        // sets on_error:"continue" opts out of this, exactly as in the linear
+        // walk.
+        let loopBodyFailure: { step_id: string; result: import("./types.ts").StepResult } | null =
+          null;
         for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
           const item = items[itemIdx];
           const childScope = buildLoopChildScope(loopStep, scope, item, itemIdx);
@@ -946,6 +1016,15 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             if (bodyOutcome.result.held) {
               iterationHeldIds.add(bodyStep.id);
             }
+            if (
+              loopBodyFailure === null &&
+              (bodyOutcome.result.status === "failed" ||
+                bodyOutcome.result.status === "aborted" ||
+                bodyOutcome.result.status === "timed_out") &&
+              (bodyStep.on_error ?? "fail") === "fail"
+            ) {
+              loopBodyFailure = { step_id: bodyStep.id, result: bodyOutcome.result };
+            }
           }
           iterationResults.push(bodyResults);
         }
@@ -1037,6 +1116,24 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               },
             });
           }
+        }
+        // Surface a failed loop-body step as the loop's outcome so the shared
+        // post-step handling below propagates it to final_status (honouring
+        // the LOOP step's on_error). The per-iteration envelopes already carry
+        // each iteration's error under `$scope.<loop>.data[i]`; here we only
+        // flip the container status that was masked as "succeeded".
+        if (loopBodyFailure) {
+          outcome = {
+            ...outcome,
+            result: {
+              ...outcome.result,
+              status: loopBodyFailure.result.status,
+              error: loopBodyFailure.result.error ?? {
+                code: "loop_body_failed",
+                message: `loop body step "${loopBodyFailure.step_id}" failed`,
+              },
+            },
+          };
         }
       }
     }

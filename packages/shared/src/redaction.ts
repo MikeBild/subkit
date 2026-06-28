@@ -260,7 +260,12 @@ function scanGenericTokens(
   while (g !== null) {
     const start = g.index;
     const end = g.index + g[0].length;
-    if (!isCodeLiteral(text, start, g[0]) && !isPresentableToken(g[0]) && !isCovered(start, end)) {
+    if (
+      !isCodeLiteral(text, start, g[0]) &&
+      !isPresentableToken(g[0]) &&
+      !isPresentableModelId(text, start) &&
+      !isCovered(start, end)
+    ) {
       out.push({ start, end, match: g[0] });
     }
     g = GENERIC_TOKEN_RE.exec(text);
@@ -335,6 +340,43 @@ const PRESENTABLE_TOKEN_RE = /^(?:[A-Za-z]+=)?skog_[A-Za-z0-9_-]{20,}$/;
 
 function isPresentableToken(match: string): boolean {
   return PRESENTABLE_TOKEN_RE.test(match);
+}
+
+/**
+ * Public `org/model` identifiers (e.g. the embedding model id
+ * `Xenova/paraphrase-multilingual-MiniLM-L12-v2`) are presentable NAMES,
+ * not credentials. The model-name half is a long mixed-case run with
+ * digits, so the generic high-entropy matcher fires on it and clobbers the
+ * field (caught live: `"model":"Xenova/***REDACTED:generic***"`). The `/`
+ * is outside the token charset, so the matched run is only the model half;
+ * we recover the org context from a bounded lookback and treat the run as
+ * presentable when it sits directly after a single `<org>/` slug.
+ *
+ * GENERALIZED BY SHAPE — no vendor name is encoded. The org segment must be
+ * a STANDALONE identifier: its left boundary is the absolute start of the
+ * text or a non-path delimiter (`"`, space, `=`, `:`, …), never `/` or `.`.
+ * That bound keeps a secret embedded in a multi-segment URL path
+ * (`https://host/dl/<token>`) or after a domain (`host.tld/<token>`) OUT of
+ * the allowlist — only a clean, standalone `org/model` value is exempted.
+ */
+const ORG_SEGMENT = "[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?";
+// A `<org>/` immediately before the run, with a non-path boundary in front
+// of the org so a longer path/URL segment cannot masquerade as the org.
+const ORG_MODEL_PREFIX_RE = new RegExp(`[^\\w./-]${ORG_SEGMENT}/$`);
+// Same, but the org sits at the very start of the text (no boundary char).
+const ORG_MODEL_PREFIX_AT_START_RE = new RegExp(`^${ORG_SEGMENT}/$`);
+const ORG_MODEL_MAX_LOOKBACK = 128;
+
+function isPresentableModelId(text: string, start: number): boolean {
+  // The run must sit directly after the `/` of an `<org>/<model>` id.
+  if (start === 0 || text[start - 1] !== "/") return false;
+  const floor = Math.max(0, start - ORG_MODEL_MAX_LOOKBACK);
+  const window = text.slice(floor, start); // ends with "<org>/"
+  if (ORG_MODEL_PREFIX_RE.test(window)) return true;
+  // Only honour the start-anchored form when `floor` is the true text start —
+  // a truncated window must require an explicit preceding boundary so a long
+  // org-shaped run can't smuggle a path-embedded secret past the bound.
+  return floor === 0 && ORG_MODEL_PREFIX_AT_START_RE.test(window);
 }
 
 export function scrubString(value: string): string {

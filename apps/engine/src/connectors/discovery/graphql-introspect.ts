@@ -298,6 +298,17 @@ async function postIntrospection(
       signal: controller.signal,
     });
     if (!res.ok) {
+      // 401/403 is the authentication status class — the endpoint exists
+      // and speaks GraphQL, it just needs credentials. Surface that
+      // distinctly from a generic transport failure so the orchestrator
+      // can tell the user "needs credentials" instead of "all strategies
+      // failed". Keyed on the status class, not any specific host.
+      if (res.status === 401 || res.status === 403) {
+        throw new DiscoveryError(
+          "auth_required",
+          `POST ${scrubUrl(url)} returned ${res.status} — credentials required for introspection`,
+        );
+      }
       throw new DiscoveryError(
         `http_${res.status}`,
         `POST ${scrubUrl(url)} returned ${res.status}`,

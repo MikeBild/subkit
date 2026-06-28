@@ -119,10 +119,19 @@ export interface PlaywrightChromiumLauncher {
  */
 let chromiumProvider: (() => Promise<PlaywrightChromiumLauncher>) | null = null;
 
+// Memoised module-availability probe. `canHandle` consults this once so a
+// host without playwright installed (notably the `bun build --compile`
+// single binary, where a bare `import("playwright")` resolves against the
+// embedded bunfs and fails) declines the strategy cleanly — the dispatcher
+// records `strategy_skipped` instead of launching and throwing on every
+// discovery. Reset whenever the test provider is swapped.
+let availabilityProbe: Promise<boolean> | null = null;
+
 export function setChromiumProviderForTesting(
   provider: (() => Promise<PlaywrightChromiumLauncher>) | null,
 ): void {
   chromiumProvider = provider;
+  availabilityProbe = null;
 }
 
 async function loadChromium(): Promise<PlaywrightChromiumLauncher> {
@@ -130,9 +139,17 @@ async function loadChromium(): Promise<PlaywrightChromiumLauncher> {
   try {
     // Indirected through a string + eval-like dynamic specifier so
     // TypeScript doesn't require the playwright type package at
-    // type-check time. The runtime resolves the real module when the
-    // strategy actually fires.
-    const specifier = "playwright";
+    // type-check time, and so the compiler never tries to bundle
+    // playwright into the `--compile` binary. The runtime resolves the
+    // real module when the strategy actually fires.
+    //
+    // In the compiled binary a bare `"playwright"` resolves against the
+    // embedded bunfs and fails; the deploy therefore points
+    // `SK_PLAYWRIGHT_ENTRY` at the on-disk package entry file (e.g.
+    // `/opt/sk/node_modules/playwright/index.mjs`). Bare `"playwright"`
+    // stays the dev fallback for `bun run`, where normal node_modules
+    // resolution works.
+    const specifier = process.env.SK_PLAYWRIGHT_ENTRY || "playwright";
     const mod = (await (Function("s", "return import(s)") as (s: string) => Promise<unknown>)(
       specifier,
     )) as { chromium: PlaywrightChromiumLauncher };
@@ -141,6 +158,23 @@ async function loadChromium(): Promise<PlaywrightChromiumLauncher> {
     const message = err instanceof Error ? err.message : String(err);
     throw new DiscoveryError("playwright_failed", `playwright module unavailable: ${message}`);
   }
+}
+
+/**
+ * Probe whether the playwright module can be resolved, memoising the
+ * result for the lifetime of the process (or until the test provider is
+ * swapped). Only checks module resolution — a successful probe does not
+ * guarantee the Chromium browser binary is installed; a missing browser
+ * surfaces later as a launch failure inside `fetch`.
+ */
+function isPlaywrightAvailable(): Promise<boolean> {
+  if (!availabilityProbe) {
+    availabilityProbe = loadChromium().then(
+      () => true,
+      () => false,
+    );
+  }
+  return availabilityProbe;
 }
 
 function originOf(url: string): string | null {
@@ -406,10 +440,13 @@ async function harvestPages(
 class PlaywrightCrawlStrategy implements DiscoveryStrategy {
   readonly name = "playwright-crawl" as const;
 
-  canHandle(_url: string): boolean {
-    // Last-resort strategy — always claims the URL so the chain reaches
-    // it after every other strategy has skipped or thrown.
-    return true;
+  canHandle(_url: string): Promise<boolean> {
+    // Last-resort strategy — claims any URL once it reaches the tail of
+    // the chain, BUT only when playwright is actually loadable. On a host
+    // without the module (e.g. the compiled binary with no on-disk
+    // install) it declines so the dispatcher records a clean
+    // `strategy_skipped` rather than launching Chromium and throwing.
+    return isPlaywrightAvailable();
   }
 
   async fetch(url: string, opts: DiscoveryStrategyOptions): Promise<DiscoveryResult> {

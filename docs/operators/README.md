@@ -24,3 +24,4 @@ Start at the quickstart, attach a credential, then put workflows on a schedule o
 | Notifications | Route run outcomes — succeeded, failed, aborted — to the right people, with per-rule failures logged. | [notifications.md](notifications.md) |
 | Observability & Resource Limits | Diagnose a run in minutes with metrics, logs, and traces, bounded so no single workflow runs away. | [observability.md](observability.md) |
 | Self-Healing in Operations | Detect upstream API breaks during real execution and apply a validated repair instead of a 3am page. | [self-healing.md](self-healing.md) |
+| Runtime Dependencies | The one host dependency outside the single binary — Chromium + playwright for SPA-docs discovery — and how it is provisioned. | [runtime-dependencies.md](runtime-dependencies.md) |

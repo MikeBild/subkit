@@ -654,9 +654,19 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   const urlRes = p.step.url ? await resolveStringPlaceholders(p.step.url, resolverCtx) : null;
   const headersRes = p.step.headers ? await resolvePlaceholders(p.step.headers, resolverCtx) : null;
   const queryRes = p.step.query ? await resolvePlaceholders(p.step.query, resolverCtx) : null;
+  // The HTTP request body must preserve native JSON types, exactly like
+  // the GraphQL variables path below: a whole-value `"${ref}"` leaf carries
+  // the native array/object/number it resolves to, while a mixed string
+  // still stringifies. Pre-fix the shared string-coercing
+  // `resolvePlaceholders` walker stringified every leaf, so a nested
+  // `{children:"${blocks}"}` was JSON.stringify'd here AND again by the
+  // HTTP driver — Notion (and every other typed-body API) received
+  // `{"children":"[…]"}` (a string) and rejected it with `should be an
+  // array`. Type-preserving resolution brings the body to parity with the
+  // GraphQL variables resolution.
   const bodyRes =
     p.step.body !== undefined && p.step.body !== null
-      ? await resolvePlaceholders(p.step.body, resolverCtx)
+      ? await resolvePlaceholdersTypePreserving(p.step.body, resolverCtx)
       : null;
   // Fail-fast when path/url has unresolved tokens — otherwise the literal
   // `${…}` reaches the wire and the operator sees an opaque 404.

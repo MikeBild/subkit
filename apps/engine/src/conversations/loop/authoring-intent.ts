@@ -21,7 +21,7 @@
 // Kept intentionally as a pure regex pass: no LLM classifier, no
 // network, no DB. Easy to unit-test, cheap to call once per turn.
 
-/** Opus 4.7 — authoring-quality seed for the FIRST step of an
+/** Opus 4.8 — authoring-quality seed for the FIRST step of an
  *  authoring turn. Raised from Sonnet 4.6 after the publish-ready-essays
  *  incident: even Sonnet-seeded authoring turns (the user message
  *  contained `build_workflow`, so `detectAuthoringIntent` matched and
@@ -32,9 +32,10 @@
  *  authoring-intent turns (infrequent), so the tenant's cheap default
  *  still covers enumeration / read / execute turns. Single string literal
  *  so the source-of-truth lives next to the detector that needs it;
- *  `claude-opus-4-7` is the same id the step-router escalation ladder
- *  uses. */
-export const AUTHORING_INITIAL_MODEL = "claude-opus-4-7";
+ *  `claude-opus-4-8` is the top of the step-router escalation ladder, so a
+ *  hard-turn escalation from this seed is a genuine no-op (already top)
+ *  rather than the dead 4-7→4-7 it used to be. */
+export const AUTHORING_INITIAL_MODEL = "claude-opus-4-8";
 
 // English + German authoring verbs the user actually types when
 // starting a workflow build. Verbs are anchored with `\b` so substrings

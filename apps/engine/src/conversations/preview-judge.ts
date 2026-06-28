@@ -18,12 +18,23 @@
 //     save path (`save_workflow_draft`, incl. `force_commit`) remains
 //     the operator escape hatch — the judge only gates the AUTOMATIC
 //     persist.
-//   - infrastructure failure (provider error, quota, contract drift)
-//     → typed `{verdict:"skipped", reason:"judge_unavailable"}`. The
-//     judge must NEVER turn an infra blip into a blocked commit, and it
-//     never throws.
+//   - infrastructure failure (provider error, quota) → typed
+//     `{verdict:"skipped", reason:"judge_unavailable"}`. The judge must
+//     NEVER turn an infra blip into a blocked commit, and it never throws.
 //   - missing goal is the caller's skip (`reason:"no_goal"`); the
 //     helper below exists so both skip shapes share one type.
+//
+// Bounded-field coercion (NOT a skip): the provider validates the model's
+// output against the JSON-Schema-7 projection of `JudgeVerdictSchema`,
+// which DROPS zod's `.max()` length bounds. A verdict whose `reason` runs
+// past 800 chars or whose `missing` array overflows therefore satisfies
+// the provider yet would fail a strict re-parse — the old code discarded
+// it as `judge_unavailable` and committed UNGATED (the fail-open bug).
+// We now CLAMP those bounded fields (`coerceVerdict`) so a valid verdict
+// is never skipped on a length overflow, and a genuinely malformed object
+// earns ONE bounded retry before the `judge_unavailable` fail-open. The
+// judge stays fail-OPEN, never fail-closed (an un-judgeable preview must
+// not deadlock authoring; the circuit-breaker bounds genuine misses).
 //
 // Circuit-breaker (anti-churn, P3): a miscalibrated judge must not
 // become the next authoring deadlock. The caller tracks
@@ -309,32 +320,88 @@ function extractRenderedOutput(params: JudgePreviewParams): {
 }
 
 /**
- * Run the judge. Never throws. Infrastructure failures (provider
- * error, quota exhaustion, contract drift) return the typed
- * `{verdict:"skipped", reason:"judge_unavailable"}` outcome with a
- * `judge.unavailable` warn log — the commit proceeds exactly as today.
+ * Clamp a raw judge object into the schema's bounded shape.
+ *
+ * The provider receives the JSON-Schema-7 projection of
+ * `JudgeVerdictSchema` (via `zodToJsonSchema7` in `invoke`), and that
+ * projection DROPS zod's `.max()` length bounds — no `maxLength` on
+ * `reason`, no `maxItems`/per-item `maxLength` on `missing`. So a verdict
+ * whose `reason` runs past 800 chars, or whose `missing` carries >12
+ * entries (or an entry >300 chars), satisfies the provider schema yet
+ * FAILS a strict re-parse. That drift was the fail-open bug: a usable
+ * verdict got discarded as `judge_unavailable` and the commit proceeded
+ * ungated. Coercing the bounded fields here means a valid verdict is
+ * NEVER skipped for a length overflow.
+ *
+ * Returns `null` only when the core `verdict` enum is absent or invalid —
+ * a genuinely malformed object, handled by the one bounded retry (then
+ * the `judge_unavailable` fail-open).
+ */
+function coerceVerdict(raw: unknown): PreviewJudgeVerdict | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (obj.verdict !== "passes" && obj.verdict !== "partial" && obj.verdict !== "failed") {
+    return null;
+  }
+  const reasonRaw = typeof obj.reason === "string" ? obj.reason.trim() : "";
+  // `reason` is `min(1)`: keep a non-empty fallback so the coerced verdict
+  // is always a structurally valid `PreviewJudgeVerdict`.
+  const reason = (reasonRaw.length > 0 ? reasonRaw : "(judge gave no reason)").slice(0, 800);
+  const missing = Array.isArray(obj.missing)
+    ? obj.missing
+        .filter((m): m is string => typeof m === "string" && m.trim().length > 0)
+        .map((m) => m.slice(0, 300))
+        .slice(0, 12)
+    : [];
+  return { verdict: obj.verdict, reason, missing };
+}
+
+/** One judge LLM round-trip — returns the raw structured object (or
+ *  whatever the provider produced) for `coerceVerdict` to clamp. */
+async function invokeJudgeOnce(prompt: string, params: JudgePreviewParams): Promise<unknown> {
+  const result = await invoke(
+    {
+      flow: "judge",
+      tenant_id: params.tenant_id,
+      user_turns: [{ role: "user", content: prompt }],
+      schema: JudgeVerdictSchema,
+      ...(params.signal ? { signal: params.signal } : {}),
+    },
+    params.db,
+  );
+  return result.object;
+}
+
+/**
+ * Run the judge. Never throws. Infrastructure failures (provider error,
+ * quota exhaustion) return the typed `{verdict:"skipped",
+ * reason:"judge_unavailable"}` outcome with a `judge.unavailable` warn log
+ * — the commit proceeds exactly as today. The bounded verdict fields are
+ * clamped (`coerceVerdict`) so a length overflow no longer fails open, and
+ * a genuinely malformed object earns ONE bounded retry before the skip.
+ * The judge stays fail-OPEN, never fail-closed (authoring-deadlock risk).
  */
 export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJudgeOutcome> {
   try {
-    const result = await invoke(
-      {
-        flow: "judge",
-        tenant_id: params.tenant_id,
-        user_turns: [{ role: "user", content: buildJudgePrompt(params) }],
-        schema: JudgeVerdictSchema,
-        ...(params.signal ? { signal: params.signal } : {}),
-      },
-      params.db,
-    );
-    const parsed = JudgeVerdictSchema.safeParse(result.object);
-    if (!parsed.success) {
-      logger.warn({
+    const prompt = buildJudgePrompt(params);
+    let verdict = coerceVerdict(await invokeJudgeOnce(prompt, params));
+    if (!verdict) {
+      // Parse-fail path (NOT a provider error): the structured output
+      // carried no valid `verdict` enum. Retry exactly once — bounded, so a
+      // transiently malformed response can't loop or run up the budget.
+      logger.info({
         module: "conversations",
-        action: "judge.unavailable",
-        msg: "preview judge returned no structured {verdict, reason, missing} object — skipping (commit proceeds)",
+        action: "judge.retry",
+        msg: "preview judge returned no parseable {verdict} object — retrying once",
         tenant_id: params.tenant_id,
       });
-      return { verdict: "skipped", reason: "judge_unavailable" };
+      verdict = coerceVerdict(await invokeJudgeOnce(prompt, params));
+    }
+    if (!verdict) {
+      // Still un-coercible after the retry. Route through the single skip
+      // site (the catch) so `judge_unavailable` has ONE owner — fail-open,
+      // never a blocked commit.
+      throw new Error("preview judge returned no parseable verdict after one retry");
     }
     // Deterministic format-fidelity guard. When the goal NAMES a concrete
     // output format and the judge would otherwise pass, verify the rendered
@@ -344,7 +411,7 @@ export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJ
     // goal naming a format, so plain-data goals are untouched (no false
     // blocks). The LLM rubric alone is unreliable here — this is the hard,
     // unit-testable guard.
-    if (parsed.data.verdict === "passes") {
+    if (verdict.verdict === "passes") {
       const fmt = detectNamedOutputFormat(params.goal);
       if (fmt) {
         const { rendered, source } = extractRenderedOutput(params);
@@ -424,15 +491,18 @@ export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJ
       }
     }
     return {
-      verdict: parsed.data.verdict,
-      reason: parsed.data.reason,
-      missing: parsed.data.missing,
+      verdict: verdict.verdict,
+      reason: verdict.reason,
+      missing: verdict.missing,
     };
   } catch (err) {
+    // Single `judge_unavailable` site: a provider/quota error from
+    // `invoke`, or an un-coercible structured output after one retry. Both
+    // fail OPEN — the commit proceeds, the judge never blocks on a failure.
     logger.warn({
       module: "conversations",
       action: "judge.unavailable",
-      msg: "preview judge LLM call failed — skipping (commit proceeds)",
+      msg: "preview judge could not produce a verdict — skipping (commit proceeds)",
       tenant_id: params.tenant_id,
       error: err instanceof Error ? err.message : String(err),
     });
