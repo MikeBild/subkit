@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { executions, workflowsSchedules } from "../../db/schema/index.ts";
 import { createWorkflowRow } from "../../execution/tests/setup.ts";
 import { registerExecutionRunHandler } from "../../queue/handlers/execution-run.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { parseCronExpression } from "../cron.ts";
 import { SchedulerReconciler } from "../reconciler.ts";
 import { createSchedulerCtx, type SchedulerTestCtx } from "./setup.ts";
@@ -84,5 +85,51 @@ describe("scheduler reconciler", () => {
     } finally {
       await reconciler.stop();
     }
+  }, 20_000);
+
+  // #17: a transient enqueue failure during a cron fire must NOT silently
+  // drop the occurrence. The watermark is stamped before firing; if the
+  // fire throws, the catch compensates by restoring it so the next tick
+  // retries — instead of the run being lost until the next natural cron.
+  test("a failed fire restores last_enqueued_at (the run is not lost)", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx.engine, {
+      name: "sched-compensate",
+      slug: "sched-compensate",
+      steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+    });
+    const [sched] = await ctx.engine.testDb.db
+      .insert(workflowsSchedules)
+      .values({
+        tenant_id: ctx.engine.tenantId,
+        workflow_id,
+        cron: "* * * * *", // due immediately (never fired)
+        timezone: "UTC",
+        paused: false,
+        input: { from: "test" },
+      })
+      .returning();
+
+    // Reconciler whose enqueue always throws (simulated transient blip).
+    const failingBoss = {
+      send: async () => {
+        throw new Error("transient enqueue failure");
+      },
+    } as unknown as typeof ctx.boss;
+    const reconciler = new SchedulerReconciler({
+      boss: failingBoss,
+      db: ctx.engine.testDb.db,
+      intervalMs: 60_000,
+    });
+
+    await reconciler.reconcileWorkflowSchedules(new Date(getTestNow()));
+
+    // The watermark must be back to NULL (compensated) — proving the
+    // occurrence will be retried, not silently consumed. Pre-fix it would
+    // be stamped to the fire time and the run lost.
+    const [after] = await ctx.engine.testDb.db
+      .select()
+      .from(workflowsSchedules)
+      .where(eq(workflowsSchedules.id, sched!.id));
+    expect(after?.last_enqueued_at).toBeNull();
   }, 20_000);
 });

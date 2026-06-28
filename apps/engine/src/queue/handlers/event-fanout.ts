@@ -37,7 +37,9 @@ export async function registerEventFanoutHandler(
     : undefined;
   const workerId = await boss.work<EventFanoutJob>(
     EVENT_FANOUT_QUEUE,
-    { batchSize: 5, pollingIntervalSeconds: 1 },
+    // batchSize:1 so one failing event doesn't drag its batch-mates: a
+    // failure now fails exactly its own job, which pg-boss then retries.
+    { batchSize: 1, pollingIntervalSeconds: 1 },
     async (jobs: Job<EventFanoutJob>[]) => {
       for (const j of jobs) {
         // Wrap the per-job body in the queue context bridge like every other
@@ -77,6 +79,13 @@ export async function registerEventFanoutHandler(
               msg: "event.fanout handler threw",
               ...errorFields(err),
             });
+            // Rethrow so pg-boss marks the job failed and RETRIES it.
+            // Previously the error was swallowed → pg-boss saw success →
+            // the event's webhook/notification deliveries were lost with no
+            // retry. The delivery event_id is derived deterministically from
+            // the outbox row id (see fanout.ts), so a retried fan-out is
+            // idempotent at the receiver.
+            throw err;
           }
         });
       }

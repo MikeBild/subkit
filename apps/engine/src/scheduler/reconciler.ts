@@ -92,7 +92,10 @@ export interface ReconcilerOptions {
 /** Desired sub-minute (`every:N`) schedules, keyed by schedule key.
  *  Cron-mode schedules are not part of desired state — they are fired
  *  directly by `reconcileWorkflowSchedules` on each 60s pass. */
-type EveryDesiredState = Map<string, { seconds: number; payload: ExecutionRunJob }>;
+type EveryDesiredState = Map<
+  string,
+  { schedule_id: string; seconds: number; payload: ExecutionRunJob }
+>;
 
 function scheduleKeyForRow(row: { id: string }): string {
   // Internal, process-local identifier for a schedule — the key of the
@@ -495,7 +498,7 @@ export class SchedulerReconciler {
       const prior = this.everyTimers.get(key);
       if (prior) clearInterval(prior);
       const timer = setInterval(() => {
-        void this.fireEvery(key, def.payload).catch((err) => {
+        void this.fireEvery(key, def).catch((err) => {
           logger.error({
             module: "scheduler",
             action: "schedule.fire_failed",
@@ -751,6 +754,33 @@ export class SchedulerReconciler {
           schedule_id: schedule.id,
           ...errorFields(err),
         });
+        // Compensate: we stamped last_enqueued_at = now BEFORE firing, but
+        // the fire threw (e.g. transient boss.send / DB blip). Without this,
+        // the occurrence is stamped "fired" yet never ran — silently lost
+        // until the next natural cron tick. Restore the prior watermark so
+        // the next reconcile tick retries it. Guarded on our own stamp
+        // (last_enqueued_at still == now) so a concurrent winner isn't
+        // clobbered. A process CRASH between stamp and fire runs no catch,
+        // so the deliberate at-most-once crash-safety is preserved.
+        try {
+          await this.opts.db
+            .update(workflowsSchedules)
+            .set({ last_enqueued_at: last })
+            .where(
+              and(
+                eq(workflowsSchedules.id, schedule.id),
+                sql`date_trunc('milliseconds', ${workflowsSchedules.last_enqueued_at}) = ${now}`,
+              ),
+            );
+        } catch (compErr) {
+          logger.error({
+            module: "scheduler",
+            action: "schedule.fanout_compensate_failed",
+            msg: "failed to restore last_enqueued_at after a failed fire",
+            schedule_id: schedule.id,
+            ...errorFields(compErr),
+          });
+        }
       }
     }
   }
@@ -1047,7 +1077,35 @@ export class SchedulerReconciler {
     });
   }
 
-  private async fireEvery(key: string, payload: ExecutionRunJob): Promise<void> {
+  private async fireEvery(
+    key: string,
+    def: { schedule_id: string; seconds: number; payload: ExecutionRunJob },
+  ): Promise<void> {
+    const { schedule_id, seconds, payload } = def;
+    // Cross-instance dedup: claim this cadence via a CAS on the schedule's
+    // last_enqueued_at before doing anything. The every-timer is per-process,
+    // so without this every running instance would fire the same cadence —
+    // an N× duplicate on any multi-instance deployment. Only claim if a full
+    // cadence (with jitter slack) has elapsed since the last fire; the loser
+    // (or a near-simultaneous peer) gets 0 rows back and skips. Reuses the
+    // existing column — no migration. (date_trunc keeps it microsecond-safe.)
+    const now = new Date();
+    const minGapMs = Math.max(1000, seconds * 1000 * 0.5);
+    const threshold = new Date(now.getTime() - minGapMs);
+    const claimed = await this.opts.db
+      .update(workflowsSchedules)
+      .set({ last_enqueued_at: now })
+      .where(
+        and(
+          eq(workflowsSchedules.id, schedule_id),
+          or(
+            isNull(workflowsSchedules.last_enqueued_at),
+            lt(workflowsSchedules.last_enqueued_at, threshold),
+          ),
+        ),
+      )
+      .returning({ id: workflowsSchedules.id });
+    if (claimed.length === 0) return;
     // Materialize the execution row here so the API can observe a
     // `queued` row immediately, mirroring the HTTP path.
     const workflow_version_id = await this.resolveWorkflowVersion(payload.workflow_id);
@@ -1136,7 +1194,7 @@ export class SchedulerReconciler {
       // `reconcileWorkflowSchedules`; only `every:N` schedules need a
       // local interval timer installed.
       if (parsed.mode === "every" && parsed.everySeconds !== undefined) {
-        every.set(key, { seconds: parsed.everySeconds, payload });
+        every.set(key, { schedule_id: schedule.id, seconds: parsed.everySeconds, payload });
       }
     }
     return every;
