@@ -35,7 +35,6 @@ import {
   DeployVersionSchema,
   SYSTEM_TENANT_ID,
 } from "../../audit/index.ts";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   getConfig,
   getDiagnostics,
@@ -64,7 +63,7 @@ import type { AppEnv } from "../openapi.ts";
 // principal explicitly granted the global settings scope). In the common
 // single-tenant deployment `?tenant` always equals the actor's own tenant,
 // so this branch never triggers.
-function canManageOtherTenants(principal: ResolvedPrincipal): boolean {
+function canManageOtherTenants(principal: ReturnType<typeof requireAuth>): boolean {
   if (principal.tenant_id === SYSTEM_TENANT_ID && principal.roles.includes("admin")) {
     return true;
   }
