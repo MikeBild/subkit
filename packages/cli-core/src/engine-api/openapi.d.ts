@@ -38,6 +38,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/readyz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Engine readiness (503 when the database is unreachable) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ready */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReadyResponse"];
+                    };
+                };
+                /** @description Not ready — database unreachable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReadyResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/install": {
         parameters: {
             query?: never;
@@ -2089,6 +2134,15 @@ export interface paths {
                 };
                 /** @description Invalid id_token */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description OIDC login not configured, or issuer not allow-listed */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -10668,6 +10722,11 @@ export interface components {
             version: string;
             db_connected: boolean;
             uptime_seconds: number;
+        };
+        ReadyResponse: {
+            /** @enum {string} */
+            status: "ready" | "unavailable";
+            db_connected: boolean;
         };
         SetupStatusResponse: {
             pending: boolean;

@@ -344,6 +344,25 @@
           "uptime_seconds"
         ]
       },
+      "ReadyResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "unavailable"
+            ]
+          },
+          "db_connected": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "db_connected"
+        ]
+      },
       "SetupStatusResponse": {
         "type": "object",
         "properties": {
@@ -13490,6 +13509,36 @@
         }
       }
     },
+    "/v1/readyz": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Engine readiness (503 when the database is unreachable)",
+        "responses": {
+          "200": {
+            "description": "Ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not ready — database unreachable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/install": {
       "get": {
         "tags": [
@@ -16000,6 +16049,16 @@
           },
           "401": {
             "description": "Invalid id_token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "OIDC login not configured, or issuer not allow-listed",
             "content": {
               "application/json": {
                 "schema": {
