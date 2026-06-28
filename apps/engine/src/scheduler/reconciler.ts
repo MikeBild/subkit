@@ -7,7 +7,7 @@
 // locally via setInterval because pg-boss' cron is minute-resolution.
 
 import { CronExpressionParser } from "cron-parser";
-import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -639,7 +639,17 @@ export class SchedulerReconciler {
       })
       .from(workflowsSchedules)
       .innerJoin(workflows, eq(workflows.id, workflowsSchedules.workflow_id))
-      .where(eq(workflowsSchedules.paused, false));
+      // Never fire schedules for soft-deleted or archived workflows. An
+      // archived workflow is retired; its schedule rows may still exist
+      // (archive does not unbind them), so gate here as well as pausing on
+      // archive, so a retired-but-scheduled workflow stops running.
+      .where(
+        and(
+          eq(workflowsSchedules.paused, false),
+          isNull(workflows.deleted_at),
+          ne(workflows.lifecycle, "archived"),
+        ),
+      );
 
     for (const { schedule, wf } of rows) {
       // Tenant-isolation guard: the schedule row must claim the same tenant
@@ -1086,7 +1096,17 @@ export class SchedulerReconciler {
       })
       .from(workflowsSchedules)
       .innerJoin(workflows, eq(workflows.id, workflowsSchedules.workflow_id))
-      .where(eq(workflowsSchedules.paused, false));
+      // Never fire schedules for soft-deleted or archived workflows. An
+      // archived workflow is retired; its schedule rows may still exist
+      // (archive does not unbind them), so gate here as well as pausing on
+      // archive, so a retired-but-scheduled workflow stops running.
+      .where(
+        and(
+          eq(workflowsSchedules.paused, false),
+          isNull(workflows.deleted_at),
+          ne(workflows.lifecycle, "archived"),
+        ),
+      );
 
     const every: EveryDesiredState = new Map();
     for (const { schedule, wf } of rows) {

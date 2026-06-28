@@ -97,4 +97,28 @@ describe("resolveDefinition — saved source", () => {
     });
     expect(resolved.workflow_version_id).toBe(versionAId);
   });
+
+  test("refuses to run an archived workflow (#12)", async () => {
+    const [c] = await testDb.db
+      .insert(workflows)
+      .values({ tenant_id: tenantId, slug: "wf-c", name: "Workflow C", lifecycle: "archived" })
+      .returning();
+    const [vc] = await testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: tenantId,
+        workflow_id: c!.id,
+        version: 1,
+        dag: { name: "c", steps: [{ id: "noop", kind: "transform", expression: "$input" }] },
+      })
+      .returning();
+    await testDb.db
+      .update(workflows)
+      .set({ current_version_id: vc!.id })
+      .where(eq(workflows.id, c!.id));
+
+    await expect(
+      resolveDefinition(testDb.db, tenantId, { kind: "saved", workflow_id: c!.id }),
+    ).rejects.toThrow(/archived/);
+  });
 });
