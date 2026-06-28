@@ -646,8 +646,9 @@ async function runServer(): Promise<void> {
   // do not pin startup events to any tenant. logger.info above
   // already captures the `engine.ready` line.
 
-  // Graceful shutdown. Drain pg-boss, stop reconciler, close listener,
-  // close HTTP, close pg pool. 15s hard-kill fallback.
+  // Graceful shutdown, in reverse order of boot: close HTTP first (stop
+  // accepting new requests + drain in-flight), then reconciler, pg-boss,
+  // fanout, listener, connector pools, db, tracing. 15s hard-kill fallback.
   let shutting = false;
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     if (shutting) return;
@@ -669,14 +670,19 @@ async function runServer(): Promise<void> {
     }, 15_000);
     (hardKill as unknown as { unref?: () => void }).unref?.();
     try {
-      await reconciler.stop();
-      await stopBoss(10_000);
-      for (const off of fanoutUnsubscribers) off();
-      await stopListener();
+      // Stop accepting new HTTP requests FIRST and let in-flight ones drain.
+      // Closing HTTP last (the previous order) meant a request arriving mid-
+      // shutdown could still be accepted after the queue and pub/sub it
+      // depends on were already torn down. Mirror of boot: HTTP came up last,
+      // so it goes down first.
       await new Promise<void>((resolve) => {
         (server as unknown as { close?: (cb: () => void) => void }).close?.(() => resolve()) ??
           resolve();
       });
+      await reconciler.stop();
+      await stopBoss(10_000);
+      for (const off of fanoutUnsubscribers) off();
+      await stopListener();
       // Drain every postgres-driver connection pool so the database
       // doesn't observe abandoned connections after the engine exits.
       try {

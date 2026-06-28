@@ -342,8 +342,26 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     SECURITY_SCHEMES.bearerAuth,
   );
 
-  // Scalar UI
-  app.get("/docs", (c) => c.html(SCALAR_HTML));
+  // Scalar UI. The page loads the Scalar bundle from jsdelivr; scope a
+  // Content-Security-Policy to this response so the API origin can't be
+  // turned into an arbitrary-script host — script/style are limited to
+  // self + the Scalar CDN, connect to self (for /openapi.json), and the
+  // page may not be framed.
+  app.get("/docs", (c) => {
+    c.header(
+      "Content-Security-Policy",
+      [
+        "default-src 'none'",
+        "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'",
+        "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'",
+        "img-src 'self' data: https:",
+        "font-src https://cdn.jsdelivr.net data:",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+      ].join("; "),
+    );
+    return c.html(SCALAR_HTML);
+  });
 
   return app;
 }

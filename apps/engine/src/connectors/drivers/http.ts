@@ -20,7 +20,7 @@ import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
-import { assertEgressAllowed, assertRobotsAllowed } from "../egress-guard.ts";
+import { assertEgressAllowedResolved, assertRobotsAllowed } from "../egress-guard.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import type { ConnectorView } from "../types.ts";
 import { signSigV4Request } from "./aws-sigv4.ts";
@@ -470,8 +470,9 @@ export async function buildRequestPlan(
     credential_id: credentialId,
     auth_method: deriveAppliedAuthMethod(credential, oauth2Refreshed),
   };
-  // SSRF guard: block private/loopback/link-local targets.
-  assertEgressAllowed(url, { tenant_id: p.tenant_id });
+  // SSRF guard: block private/loopback/link-local targets, including
+  // public names whose DNS resolves into private space.
+  await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id });
   // Web-scraper connector robots.txt gate. The template opts in via the
   // `respects_robots` field on its JSON entry, mirrored into
   // `template_snapshot` at draft mint time. Other templates (Stripe,

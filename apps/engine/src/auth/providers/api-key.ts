@@ -253,6 +253,8 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
             email: users.email,
             role_id: users.role_id,
             role_name: rolesTable.name,
+            status: users.status,
+            deleted_at: users.deleted_at,
           })
           .from(users)
           .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
@@ -263,6 +265,17 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
           log.auth.denied({
             provider: "api_key",
             reason: "user_missing",
+            api_key_id: row.id,
+          });
+          return null;
+        }
+        // Disabling or soft-deleting a user must immediately void their
+        // credentials — a still-valid API key for a deactivated account is
+        // exactly what an operator expects revocation to prevent.
+        if (u.deleted_at !== null || u.status !== "active") {
+          log.auth.denied({
+            provider: "api_key",
+            reason: u.deleted_at !== null ? "user_deleted" : "user_disabled",
             api_key_id: row.id,
           });
           return null;
@@ -281,6 +294,7 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
             id: systemAccounts.id,
             role_id: systemAccounts.role_id,
             role_name: rolesTable.name,
+            deleted_at: systemAccounts.deleted_at,
           })
           .from(systemAccounts)
           .leftJoin(rolesTable, eq(rolesTable.id, systemAccounts.role_id))
@@ -291,6 +305,15 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
           log.auth.denied({
             provider: "api_key",
             reason: "system_account_missing",
+            api_key_id: row.id,
+          });
+          return null;
+        }
+        // A soft-deleted system account must not authenticate.
+        if (acct.deleted_at !== null) {
+          log.auth.denied({
+            provider: "api_key",
+            reason: "system_account_deleted",
             api_key_id: row.id,
           });
           return null;

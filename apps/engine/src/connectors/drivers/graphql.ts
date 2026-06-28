@@ -15,7 +15,7 @@ import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
-import { assertEgressAllowed } from "../egress-guard.ts";
+import { assertEgressAllowedResolved } from "../egress-guard.ts";
 import type { ConnectorView } from "../types.ts";
 import {
   type AppliedAuthMethod,
@@ -195,8 +195,9 @@ export async function executeGraphQLRequest(p: {
     url.searchParams.set(k, String(v));
   }
 
-  // SSRF guard: block private/loopback/link-local targets.
-  assertEgressAllowed(url, { tenant_id: p.tenant_id });
+  // SSRF guard: block private/loopback/link-local targets, including
+  // public names whose DNS resolves into private space.
+  await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id });
 
   logger.debug({
     module: "connector",

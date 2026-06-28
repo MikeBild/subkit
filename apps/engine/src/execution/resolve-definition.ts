@@ -75,12 +75,30 @@ async function resolveSaved(
     .limit(1);
   const wfRow = wfRows[0];
   if (!wfRow) throw new Error(`workflow not found: ${workflow_id}`);
+  // An archived workflow is retired — it must not run, whether triggered
+  // manually (POST /v1/executions) or by a lingering schedule. Promote a
+  // version back to active to run it again.
+  if (wfRow.lifecycle === "archived") {
+    throw Object.assign(new Error(`workflow is archived: ${workflow_id}`), {
+      code: "workflow_archived",
+    });
+  }
   const versionId = version_id ?? wfRow.current_version_id;
   if (!versionId) throw new Error("workflow has no current version");
+  // Bind the version to THIS workflow, not just the tenant. Without the
+  // workflow_id predicate a caller could pass a version_id belonging to
+  // workflow B and have its DAG execute under workflow A's identity, RBAC
+  // resource grant, and audit lineage (cross-workflow injection).
   const versionRows = await db
     .select()
     .from(workflowVersions)
-    .where(and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.id, versionId)))
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, tenant_id),
+        eq(workflowVersions.workflow_id, workflow_id),
+        eq(workflowVersions.id, versionId),
+      ),
+    )
     .limit(1);
   const versionRow = versionRows[0];
   if (!versionRow) throw new Error("workflow version not found");

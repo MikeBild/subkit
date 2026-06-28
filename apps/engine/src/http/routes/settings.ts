@@ -33,6 +33,7 @@ import {
   AuditSourceEnum,
   auditAwait,
   DeployVersionSchema,
+  SYSTEM_TENANT_ID,
 } from "../../audit/index.ts";
 import {
   getConfig,
@@ -52,6 +53,22 @@ import { logger } from "../../logging/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+
+// Cross-tenant authority. A bare `roles.includes("admin")` is NOT a
+// platform-admin check: every tenant's own bootstrap admin holds the
+// shared built-in "admin" role (role definition tenant_id is null, but it
+// is assigned per-tenant), so that test let any tenant admin read/write
+// any OTHER tenant's settings. Per this route's documented contract,
+// cross-tenant management belongs to operators of the SYSTEM tenant (or a
+// principal explicitly granted the global settings scope). In the common
+// single-tenant deployment `?tenant` always equals the actor's own tenant,
+// so this branch never triggers.
+function canManageOtherTenants(principal: ReturnType<typeof requireAuth>): boolean {
+  if (principal.tenant_id === SYSTEM_TENANT_ID && principal.roles.includes("admin")) {
+    return true;
+  }
+  return principal.scopes?.includes("settings:write:global") ?? false;
+}
 
 // -------- schemas --------
 
@@ -290,15 +307,11 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const { tenant } = c.req.valid("query");
     const targetTenant = tenant ?? undefined;
-    if (
-      targetTenant &&
-      targetTenant !== principal.tenant_id &&
-      !principal.roles.includes("admin")
-    ) {
+    if (targetTenant && targetTenant !== principal.tenant_id && !canManageOtherTenants(principal)) {
       return c.json(
         {
           code: "scope_violation" as const,
-          message: `cannot read settings for tenant ${targetTenant} (admin role required for cross-tenant reads)`,
+          message: `cannot read settings for tenant ${targetTenant} (system-tenant operator required for cross-tenant reads)`,
         },
         403,
       );
@@ -321,11 +334,11 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const { path } = c.req.valid("param");
     const { tenant } = c.req.valid("query");
-    if (tenant && tenant !== principal.tenant_id && !principal.roles.includes("admin")) {
+    if (tenant && tenant !== principal.tenant_id && !canManageOtherTenants(principal)) {
       return c.json(
         {
           code: "scope_violation" as const,
-          message: `cannot read settings for tenant ${tenant} (admin role required for cross-tenant reads)`,
+          message: `cannot read settings for tenant ${tenant} (system-tenant operator required for cross-tenant reads)`,
         },
         403,
       );
@@ -376,15 +389,15 @@ export function registerSettingsRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Cross-tenant guard. Only the `admin` role may target a tenant
-    // overlay other than its own. Granular settings:write:global /
-    // settings:write:tenant RBAC scopes are scheduled for v3.6; in v3.5
-    // the role check is the supported gate.
-    if (tenant && tenant !== principal.tenant_id && !principal.roles.includes("admin")) {
+    // Cross-tenant guard. Only a SYSTEM-tenant operator (or a principal
+    // granted the global settings scope) may target a tenant overlay other
+    // than its own — a tenant's own "admin" role must not reach across the
+    // tenant boundary. See canManageOtherTenants.
+    if (tenant && tenant !== principal.tenant_id && !canManageOtherTenants(principal)) {
       return c.json(
         {
           code: "scope_violation" as const,
-          message: `cannot mutate settings for tenant ${tenant} (admin role required for cross-tenant writes)`,
+          message: `cannot mutate settings for tenant ${tenant} (system-tenant operator required for cross-tenant writes)`,
         },
         403,
       );

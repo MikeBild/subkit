@@ -40,6 +40,16 @@ export interface MockOidcHandle {
     claims: Record<string, unknown>,
     params: { state: string; redirect_uri: string },
   ) => { code: string; callbackUrl: string };
+  /**
+   * Directly sign an id_token with the provider's key. Used by flows that
+   * accept a raw id_token (e.g. `POST /v1/identity/sessions/oidc`) instead
+   * of running the full code exchange. `issuer`/`audience` default to this
+   * provider's issuer and `mock-client`; override to forge mismatches.
+   */
+  signIdToken: (
+    claims: Record<string, unknown>,
+    opts?: { issuer?: string; audience?: string; expiresInSec?: number },
+  ) => Promise<string>;
 }
 
 type KeyPairLike = Awaited<ReturnType<typeof generateKeyPair>>;
@@ -180,6 +190,17 @@ export async function startMockOidc(): Promise<MockOidcHandle> {
       dest.searchParams.set("code", code);
       dest.searchParams.set("state", params.state);
       return { code, callbackUrl: dest.toString() };
+    },
+    signIdToken: async (claims, opts = {}) => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      return await new SignJWT(claims)
+        .setProtectedHeader({ alg: "RS256", kid: jwk.kid ?? "mock-oidc-key-1" })
+        .setIssuer(opts.issuer ?? url)
+        .setAudience(opts.audience ?? "mock-client")
+        .setSubject(String(claims.sub ?? "mock-sub"))
+        .setIssuedAt(nowSec)
+        .setExpirationTime(nowSec + (opts.expiresInSec ?? 600))
+        .sign(keys.privateKey);
     },
   };
 }
