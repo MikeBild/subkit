@@ -23,11 +23,12 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
-import type {
-  ChatAdapter,
-  ChatAdapterRegistry,
-  ChatEvent,
-  ChatPlatform,
+import {
+  type ChatAdapter,
+  type ChatAdapterRegistry,
+  type ChatEvent,
+  type ChatPlatform,
+  ensureChatRegistryHydrated,
 } from "../../chat/index.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
@@ -181,7 +182,13 @@ async function ingest(
 export function registerChatRoutes(app: OpenAPIHono<AppEnv>, deps: ChatRoutesDeps): void {
   const handler =
     (platform: ChatPlatform) => async (c: { req: { raw: Request }; get: (k: "db") => Db }) => {
-      const adapter = deps.registry.findVerifier(platform);
+      let adapter = deps.registry.findVerifier(platform);
+      if (!adapter) {
+        // Boot-race / cold-registry miss: lazily rehydrate (idempotent,
+        // cooldown-guarded) and retry once before returning 503.
+        await ensureChatRegistryHydrated(c.get("db"), deps.registry);
+        adapter = deps.registry.findVerifier(platform);
+      }
       return ingest(platform, adapter, c.req.raw, deps, c.get("db"));
     };
 

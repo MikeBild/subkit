@@ -1102,9 +1102,26 @@ const WebScraperSection = z
   .prefault({})
   .describe("Web-scraper connector tunables. Every leaf has a useful default.");
 
+const ConnectorsHttpSection = z
+  .object({
+    max_response_bytes: z
+      .number()
+      .int()
+      .min(1_048_576)
+      .max(1_073_741_824)
+      .default(104_857_600)
+      .describe(
+        "Max bytes read from a single HTTP/GraphQL connector response before it is rejected as response_too_large. OOM guard; generous default (100 MB).",
+      )
+      .meta(tenant()),
+  })
+  .prefault({})
+  .describe("HTTP/GraphQL connector transport limits (shared by the http + graphql drivers).");
+
 const ConnectorsSection = z
   .object({
     web_scraper: WebScraperSection,
+    http: ConnectorsHttpSection,
   })
   .prefault({})
   .describe("Per-connector tunables. Each sub-section is owned by one connector template.");
@@ -1224,6 +1241,11 @@ const TenantOverlaySchema = z
                 min_runs_before_proposing: z.number().int().min(1).max(50).optional(),
               })
               .optional(),
+          })
+          .optional(),
+        http: z
+          .object({
+            max_response_bytes: z.number().int().min(1_048_576).max(1_073_741_824).optional(),
           })
           .optional(),
       })

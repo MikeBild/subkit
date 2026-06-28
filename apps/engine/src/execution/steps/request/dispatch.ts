@@ -57,6 +57,7 @@ import {
 } from "../../../llm/substitution/resolver.ts";
 import { logger } from "../../../logging/logger.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
+import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
 import { recordSuccessShape } from "../../../schema-versions/service.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import { combineSignals } from "../../abort.ts";
@@ -797,6 +798,32 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         auth_method: deriveAuthMethodFromAuthType(connector.auth_type),
         base_url: connector.base_url ?? null,
       };
+      // Visibility for the silent env fallback: when the requested execution
+      // environment couldn't be resolved to a same-env connector binding, the
+      // resolver returns the original (possibly dev) connector. The fallback
+      // is load-bearing for single-env tenants so it STAYS — but a prod run
+      // hitting a dev binding must be greppable, not silent.
+      if (connector.environment !== p.ctx.execution_mode) {
+        logger.warn({
+          module: "connectors",
+          action: "connector.environment.fallback",
+          msg: "connector resolved to a different environment than requested — the run may be hitting the dev binding",
+          tenant_id: p.ctx.tenant_id,
+          connector_id: connector.id,
+          connector_slug: connector.slug,
+          requested_environment: p.ctx.execution_mode,
+          resolved_environment: connector.environment,
+        });
+        try {
+          getMetrics().inc(METRIC_NAMES.CONNECTOR_ENV_FALLBACK_TOTAL, {
+            connector_id: connector.id,
+            requested_environment: p.ctx.execution_mode,
+            resolved_environment: connector.environment,
+          });
+        } catch {
+          /* metrics are best-effort */
+        }
+      }
       if (connector.driver === "graphql" || p.step.graphql) {
         clearTimeout(timer);
         if (!p.step.graphql) {

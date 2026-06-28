@@ -245,6 +245,7 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `connectors.http.max_response_bytes` | number | `104857600` | tenant | no | no | Max bytes read from a single HTTP/GraphQL connector response before it is rejected as response_too_large. OOM guard; generous default (100 MB). |
 | `connectors.web_scraper.authoring.extract_too_large_yellow_pct` | number | `30` | tenant | no | no | Past-run extract_too_large ratio (over last 20 runs) above which the gate Yellows. |
 | `connectors.web_scraper.authoring.red_sitemap_threshold` | number | `100000` | tenant | no | no | Sitemap entry count above which analyze_scrape_target refuses (Red). |
 | `connectors.web_scraper.authoring.yellow_sitemap_threshold` | number | `10000` | tenant | no | no | Sitemap entry count above which analyze_scrape_target returns Yellow. |

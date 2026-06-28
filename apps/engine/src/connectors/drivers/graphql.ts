@@ -10,6 +10,7 @@
 // `query()` with `operation: "subscription"` returns a typed
 // `not_implemented` error envelope.
 
+import { getConfig } from "../../config/loader.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
@@ -21,6 +22,8 @@ import {
   type AppliedAuthMethod,
   applyAuthMaterial,
   deriveAppliedAuthMethod,
+  FETCH_DEADLINE_MS,
+  readBodyCapped,
   resolveConnectorCredential,
   validateOutboundHeaders,
 } from "./http.ts";
@@ -236,9 +239,11 @@ export async function executeGraphQLRequest(p: {
         method: "POST",
         headers,
         body: JSON.stringify({ query: p.op.query, variables: p.op.variables ?? {} }),
+        signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
       }),
   });
-  const text = await res.text();
+  const maxResponseBytes = getConfig(p.tenant_id).connectors.http.max_response_bytes;
+  const text = await readBodyCapped(res, maxResponseBytes, url.toString());
   let parsed: { data?: unknown; errors?: unknown };
   try {
     parsed = text.length > 0 ? JSON.parse(text) : {};

@@ -21,6 +21,7 @@ import { eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { audit, auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { FETCH_DEADLINE_MS } from "../../connectors/drivers/http.ts";
 import { assertEgressAllowedResolved, EgressBlockedError } from "../../connectors/egress-guard.ts";
 import type { Db } from "../../db/client.ts";
 import { deliveries, subscriptions } from "../../db/schema/index.ts";
@@ -97,6 +98,7 @@ async function sendDelivery(
       method: "POST",
       headers,
       body,
+      signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
     });
     const respBody = await res.text().catch(() => "");
     return {

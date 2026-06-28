@@ -237,6 +237,9 @@
         "trivial_markdown_bytes": 512,
         "min_runs_before_proposing": 3
       }
+    },
+    "http": {
+      "max_response_bytes": 104857600
     }
   },
   "tenants": {}
