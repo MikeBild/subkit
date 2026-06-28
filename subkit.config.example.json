@@ -74,6 +74,7 @@
     }
   },
   "auth": {
+    "provider": "subkit",
     "oidc": {
       "issuer_url": "",
       "client_id": "",
@@ -85,7 +86,8 @@
     },
     "firebase": {
       "project_id": "",
-      "login_url": ""
+      "login_url": "",
+      "tenant_slug": "default"
     },
     "mcp_oauth": {
       "enabled": true,

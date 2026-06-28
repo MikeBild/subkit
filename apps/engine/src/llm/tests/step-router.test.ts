@@ -69,9 +69,17 @@ describe("routeUp / routeTop ladder", () => {
     expect(routeUp("anthropic", "claude-haiku-4-5")).toBe("claude-sonnet-4-5");
   });
 
-  it("returns identity at the top of the ladder", () => {
-    expect(routeUp("anthropic", "claude-opus-4-7")).toBe("claude-opus-4-7");
-    expect(routeTop("anthropic", "claude-opus-4-7")).toBe("claude-opus-4-7");
+  it("escalates opus-4-7 to opus-4-8 (the new ladder top)", () => {
+    // opus-4-7 used to be the top (identity → escalation no-op, which the
+    // runtime-logs review flagged via step_router.no_upgrade_available).
+    // opus-4-8 is now the top, so the authoring-seed tier escalates.
+    expect(routeUp("anthropic", "claude-opus-4-7")).toBe("claude-opus-4-8");
+    expect(routeTop("anthropic", "claude-opus-4-7")).toBe("claude-opus-4-8");
+  });
+
+  it("returns identity at the top of the ladder (opus-4-8)", () => {
+    expect(routeUp("anthropic", "claude-opus-4-8")).toBe("claude-opus-4-8");
+    expect(routeTop("anthropic", "claude-opus-4-8")).toBe("claude-opus-4-8");
   });
 
   it("routes through OpenAI tiers", () => {
@@ -161,20 +169,20 @@ describe("prepareStep — escalation rules", () => {
     expect(decision?.reason).toContain("hard_stage");
   });
 
-  it("escalates to top tier on priorCriticFail", () => {
+  it("escalates to top tier (opus-4-8) on priorCriticFail", () => {
     const decision = prepareStep(baseParams({ signals: { priorCriticFail: true } }));
-    expect(decision?.modelId).toBe("claude-opus-4-7");
+    expect(decision?.modelId).toBe("claude-opus-4-8");
     expect(decision?.reason).toContain("prior_critic_fail");
   });
 
   it("never downgrades from the top tier", () => {
     const decision = prepareStep(
       baseParams({
-        tenantDefaultModelId: "claude-opus-4-7",
+        tenantDefaultModelId: "claude-opus-4-8",
         signals: { priorCriticFail: true },
       }),
     );
-    // No-op upgrade — opus is already top, so modelId is not set.
+    // No-op upgrade — opus-4-8 is already top, so modelId is not set.
     expect(decision?.modelId).toBeUndefined();
   });
 

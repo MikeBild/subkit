@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 12
+version: 13
 ---
 
 # Authoring Workflows In A Conversation
@@ -89,6 +89,34 @@ the committed workflow.
 For request steps, use the current flattened shape: `connector_id`, `method`,
 `path`, `query`, `headers`, `body`, and `graphql` live directly on the step.
 Do not wrap them in `config`.
+
+## Typed JSON bodies and read-only POSTs
+
+Two general request-body rules worth getting right up front (the
+`http-connectors` skill has the full treatment):
+
+- **A whole-value placeholder leaf carries its native type.** A body field
+  that is exactly `"${ref}"` — nothing around it — reaches the wire as the
+  referenced value's real JSON type: a number stays a number, an array stays
+  an array, an object stays an object. Wrap the placeholder in surrounding
+  text (a mixed string like `"id-${ref}"`) and the value is stringified
+  instead. This is what lets a dynamically-built array ship as a real JSON
+  array — compute it in a transform, then reference it whole:
+
+  ```json
+  { "body": { "children": "${scope.build_blocks.data}" } }
+  ```
+
+  `build_blocks` returns an array, so the API receives
+  `{"children": [ … ]}`, not a quoted string.
+
+- **Mark read-only POSTs with `side_effects: "read"`.** Some search / query
+  endpoints use `POST` but mutate nothing. The runtime classifies steps as
+  write by HTTP method, so dry-run HOLDS them by default. Set
+  `side_effects: "read"` on such a step so dry-run runs it live and the judge
+  sees real data. Use it ONLY for endpoints that genuinely read; a `POST`
+  that creates / updates / sends stays a write. `side_effects` is an existing
+  step field — no new schema.
 
 ## Design rule: prefer one bulk list endpoint over a nested per-item loop
 

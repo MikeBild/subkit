@@ -284,6 +284,41 @@ describe("presentable tokens — OAuth start grants stay visible", () => {
   });
 });
 
+describe("presentable tokens — org/model identifiers stay visible", () => {
+  // Public `org/model` ids (HuggingFace-style) are presentable NAMES, not
+  // credentials. The model half is a long mixed-case run with digits, so the
+  // generic matcher used to clobber it — caught live as
+  // `"model":"Xenova/***REDACTED:generic***"`. Generalized by SHAPE: no
+  // vendor name is encoded.
+  const MODEL_ID = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+  // 37-char bare blob, same length as the model-name half — must still redact.
+  const BARE_SECRET = "Ab1Cd2Ef3Gh4Ij5Kl6Mn7Op8Qr9St0Uv1Wx2";
+
+  test("an org/model id survives in a JSON-ish field value", () => {
+    const text = `{"model":"${MODEL_ID}"}`;
+    expect(scrubString(text)).toBe(text);
+    expect(scrubStringsDeep({ model: MODEL_ID })).toEqual({ model: MODEL_ID });
+    expect(findSecretSpans(text)).toHaveLength(0);
+  });
+
+  test("an org/model id survives in prose and at the start of the text", () => {
+    expect(scrubString(`loaded model ${MODEL_ID} ok`)).toBe(`loaded model ${MODEL_ID} ok`);
+    expect(scrubString(`${MODEL_ID} loaded`)).toBe(`${MODEL_ID} loaded`);
+  });
+
+  test("a same-length bare secret (no org/ prefix) is still redacted", () => {
+    expect(scrubString(`token ${BARE_SECRET} leaked`)).toBe("token ***REDACTED:generic*** leaked");
+    expect(findSecretSpans(`token ${BARE_SECRET} leaked`)).toHaveLength(1);
+  });
+
+  test("a secret in a multi-segment URL path is NOT exempted by the org/ rule", () => {
+    // `dl/<token>` is preceded by another `/`, so it is not a standalone
+    // `org/model` slug — the path-embedded secret must still redact.
+    const text = `https://host.tld/dl/${BARE_SECRET}`;
+    expect(scrubString(text)).toBe("https://host.tld/dl/***REDACTED:generic***");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Generic-scan parity: `scrubString` (user-text) and `findSecretSpans`
 // (assistant-text) now share one `scanGenericTokens` helper, so they must

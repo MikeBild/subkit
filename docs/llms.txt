@@ -19,6 +19,7 @@ A robots.txt-style index of the sk documentation set for LLMs: every public page
 - [Notifications](docs/operators/notifications.md): Operators hear about what matters, not noise.
 - [Observability & Resource Limits](docs/operators/observability.md): See every run, catch drift before it costs you.
 - [Quickstart — Operator](docs/operators/quickstart.md): Outcome: a governed, audited automation engine your whole team can use — live in production in 15 minutes.
+- [Runtime Dependencies](docs/operators/runtime-dependencies.md): Outcome: discovery works against every documentation site, including JavaScript-rendered SPAs.
 - [Scheduling & Hooks (operator guide)](docs/operators/scheduling-and-hooks.md): Outcome: automation that fires on time or on event — verified at the door.
 - [Self-Healing in Operations](docs/operators/self-healing.md): Outcome: workflows survive upstream API changes without silent failure.
 

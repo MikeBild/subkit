@@ -308,6 +308,31 @@ describe("playwrightCrawlStrategy — total failure", () => {
   });
 });
 
+describe("playwrightCrawlStrategy — canHandle availability probe", () => {
+  test("declines when playwright cannot be loaded", async () => {
+    setChromiumProviderForTesting(() => Promise.reject(new Error("playwright not installed")));
+    expect(await playwrightCrawlStrategy.canHandle("https://docs.acme.example.com")).toBe(false);
+  });
+
+  test("claims the URL when playwright is loadable", async () => {
+    const stub = makeStubChromium(new Map(), []);
+    setChromiumProviderForTesting(() => Promise.resolve(stub.chromium));
+    expect(await playwrightCrawlStrategy.canHandle("https://docs.acme.example.com")).toBe(true);
+  });
+
+  test("memoises the probe — provider is consulted only once across calls", async () => {
+    let calls = 0;
+    const stub = makeStubChromium(new Map(), []);
+    setChromiumProviderForTesting(() => {
+      calls += 1;
+      return Promise.resolve(stub.chromium);
+    });
+    await playwrightCrawlStrategy.canHandle("https://a.example.com");
+    await playwrightCrawlStrategy.canHandle("https://b.example.com");
+    expect(calls).toBe(1);
+  });
+});
+
 describe("playwrightCrawlStrategy — caller signal honoured", () => {
   test("aborts on caller-provided signal", async () => {
     const sitemap = `<?xml version="1.0"?><urlset>

@@ -31,7 +31,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
-import { executionSteps, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { executionSteps, executions, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { maybeOffload } from "../../execution/offload.ts";
@@ -57,6 +57,7 @@ import {
 } from "./catalog-budget.ts";
 import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversations.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
+import { findBackgroundExecutionId } from "./run-workflow-async-ack.ts";
 import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
 
 const PROGRESS_POLL_MS = 250;
@@ -507,16 +508,30 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         // elicitation, resolve a `needs_confirm` gate by prompting the
         // operator via `elicitation/create` rather than handing back an
         // envelope the model cannot satisfy (it cannot set `_meta`).
+        //
+        // BUT the elicitation bridge is a FALLBACK, not the primary path:
+        // when the call ALREADY carries an in-band confirm marker
+        // (`_meta.sk_confirm` / `sk_confirm_id`), the caller is resolving a
+        // previously-issued durable confirmation out-of-band. Attaching the
+        // resolver here would force a SECOND interactive prompt and dead-end
+        // a programmatic driver that re-issues with the token but cannot
+        // answer an elicitation. Skip the resolver and let the dispatcher's
+        // `verifyMcpConfirmation` adjudicate the audit-backed token (a
+        // self-minted id still fails `unknown_confirmation`).
+        const carriesInbandConfirm =
+          (callMeta as { sk_confirm?: unknown } | undefined)?.sk_confirm === true ||
+          typeof (callMeta as { sk_confirm_id?: unknown } | undefined)?.sk_confirm_id === "string";
         const bridge = createElicitationBridge(server, extra);
-        const confirmResolver: ConfirmResolver | undefined = bridge.capabilities.form
-          ? async (confirm: ConfirmEnvelope): Promise<boolean> => {
-              const res = await bridge.elicitForm({
-                message: buildConfirmPrompt(confirm),
-                requestedSchema: CONFIRM_ELICIT_SCHEMA,
-              });
-              return res.action === "accept" && res.content?.confirm === true;
-            }
-          : undefined;
+        const confirmResolver: ConfirmResolver | undefined =
+          !carriesInbandConfirm && bridge.capabilities.form
+            ? async (confirm: ConfirmEnvelope): Promise<boolean> => {
+                const res = await bridge.elicitForm({
+                  message: buildConfirmPrompt(confirm),
+                  requestedSchema: CONFIRM_ELICIT_SCHEMA,
+                });
+                return res.action === "accept" && res.content?.confirm === true;
+              }
+            : undefined;
         // Bound the dispatch so a stalled call (e.g. event-loop pressure or a
         // slow downstream) returns a clear "engine busy" error instead of
         // hanging until the client's own (much longer) request timeout. The
@@ -533,6 +548,52 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           TOOLS_CALL_DEADLINE_MS,
         );
         if (raced.timedOut) {
+          // `run_workflow` kicks off a real execution that keeps running in
+          // the background past the inline deadline. Returning bare
+          // `engine_busy` orphaned that run, so a client retry RE-RAN the
+          // workflow (duplicate execution). Instead hand back the
+          // execution_id poll handle — the same async-ack the `wf_<slug>`
+          // path returns when it outlives its inline window — so the client
+          // polls `get_execution` rather than re-running. The dispatch
+          // promise is intentionally left running; we only stop blocking on
+          // it.
+          if (name === "run_workflow") {
+            const execId = await findBackgroundExecutionId({
+              db,
+              tenant_id: principal.tenant_id,
+              workflowRef: typeof args.workflow === "string" ? args.workflow : undefined,
+              since: started,
+            });
+            if (execId) {
+              logger.info({
+                module: "mcp",
+                action: "mcp.tool.result",
+                msg: "run_workflow exceeded inline deadline — returned polling handle",
+                tool: name,
+                duration_ms: Date.now() - started,
+                execution_id: execId,
+                principal_id: principal.id,
+                tenant_id: principal.tenant_id,
+              });
+              return {
+                isError: false,
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      status: "running",
+                      execution_id: execId,
+                      message: `Workflow run is still executing after ${Math.round(
+                        TOOLS_CALL_DEADLINE_MS / 1000,
+                      )}s. Poll get_execution with this execution_id for the result — do NOT re-run, it is already in progress.`,
+                      poll_with: "get_execution",
+                    }),
+                  },
+                ],
+                _meta: { subkit: { execution: { id: execId, status: "running" } } },
+              };
+            }
+          }
           logger.warn({
             module: "mcp",
             action: "mcp.tool.deadline_exceeded",
@@ -740,7 +801,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         // Small delay so the executions row lands before the first poll.
         setTimeout(async () => {
           try {
-            const { executions } = await import("../../db/schema/index.ts");
             const rows = await db
               .select({ id: executions.id })
               .from(executions)

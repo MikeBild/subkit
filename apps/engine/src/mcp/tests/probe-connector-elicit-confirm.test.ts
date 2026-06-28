@@ -44,8 +44,13 @@ afterAll(async () => {
 });
 
 // Connect a client that advertises the `elicitation` capability and
-// answers `elicitation/create` according to `decision`.
-async function connectElicitClient(decision: "accept" | "decline"): Promise<Client> {
+// answers `elicitation/create` according to `decision`. The returned
+// `elicitCount` ref lets a test assert how many in-band prompts fired —
+// used to prove the bridge is SKIPPED when an out-of-band confirm token
+// is supplied.
+async function connectElicitClient(
+  decision: "accept" | "decline",
+): Promise<{ client: Client; elicitCount: { n: number } }> {
   const transport = new StreamableHTTPClientTransport(new URL(`${suite.http.baseUrl}/mcp`), {
     requestInit: { headers: { authorization: `Bearer ${suite.http.apiKey}` } },
   });
@@ -53,13 +58,15 @@ async function connectElicitClient(decision: "accept" | "decline"): Promise<Clie
     { name: "subkit-mcp-elicit-tests", version: "0.0.0" },
     { capabilities: { elicitation: {} } },
   );
-  client.setRequestHandler(ElicitRequestSchema, async () =>
-    decision === "accept"
+  const elicitCount = { n: 0 };
+  client.setRequestHandler(ElicitRequestSchema, async () => {
+    elicitCount.n += 1;
+    return decision === "accept"
       ? { action: "accept" as const, content: { confirm: true } }
-      : { action: "decline" as const },
-  );
+      : { action: "decline" as const };
+  });
   await client.connect(transport as unknown as Transport);
-  return client;
+  return { client, elicitCount };
 }
 
 describe("probe_connector confirm gate — resolvable over MCP", () => {
@@ -77,7 +84,7 @@ describe("probe_connector confirm gate — resolvable over MCP", () => {
         and(eq(auditLog.tenant_id, suite.http.tenantId), eq(auditLog.action, "approval.approved")),
       );
 
-    const client = await connectElicitClient("accept");
+    const { client } = await connectElicitClient("accept");
     try {
       // An elicitation-capable client must NOT be offered the fallback tool.
       const listed = await client.listTools();
@@ -115,14 +122,14 @@ describe("probe_connector confirm gate — resolvable over MCP", () => {
     expect((approvedAfter[0]?.c ?? 0) - (approvedBaseline[0]?.c ?? 0)).toBe(1);
   });
 
-  test("elicitation-capable client: in-band decline → call is NOT executed", async () => {
+  test("elicitation-capable client: in-band decline → NOT executed, but durable confirm envelope is returned (gate stays reachable)", async () => {
     await suite.seedConnector({
       slug: "elicit-decline",
       environment: "prod",
       base_url: mock.baseUrl,
     });
 
-    const client = await connectElicitClient("decline");
+    const { client } = await connectElicitClient("decline");
     try {
       const result = await client.callTool({
         name: "probe_connector",
@@ -136,12 +143,127 @@ describe("probe_connector confirm gate — resolvable over MCP", () => {
       });
       expect(result.isError).toBeFalsy();
       const payload = JSON.parse((result.content as Array<{ text: string }>)[0]!.text) as {
-        status?: string;
+        policy_mode?: string;
+        tool_call_id?: string;
         status_code?: number;
       };
-      expect(payload.status).toBe("declined");
-      // No HTTP execution happened.
+      // Declining the in-band prompt must NOT execute the call...
       expect(payload.status_code).toBeUndefined();
+      // ...but it returns the durable, audit-backed confirm envelope so a
+      // programmatic / non-interactive driver can still satisfy the gate
+      // out-of-band via confirm_tool_call / _meta.sk_confirm. Pre-fix this
+      // was a terminal "declined" payload with no usable tool_call_id —
+      // the deadlock this change closes.
+      expect(payload.policy_mode).toBe("confirm_before_execution");
+      expect(payload.tool_call_id).toMatch(/^[0-9a-f-]{36}$/);
+      const meta = result._meta as { subkit?: { confirm?: { tool_call_id?: string } } };
+      expect(meta?.subkit?.confirm?.tool_call_id).toBe(payload.tool_call_id);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("elicitation-capable client: out-of-band _meta.sk_confirm bypasses the bridge and executes via the durable token", async () => {
+    await suite.seedConnector({
+      slug: "elicit-fallback",
+      environment: "prod",
+      base_url: mock.baseUrl,
+    });
+
+    // The handler DECLINES every in-band prompt and counts how many fired.
+    // After the first (declined) call hands back the durable id, the
+    // re-issue carries _meta.sk_confirm — the bridge MUST be skipped (no
+    // second prompt) and verifyMcpConfirmation adjudicates the token.
+    const { client, elicitCount } = await connectElicitClient("decline");
+    const probeArgs = {
+      connector_slug: "elicit-fallback",
+      method: "POST" as const,
+      path: "/orders",
+      environment: "prod" as const,
+      body: { qty: 5 },
+    };
+    try {
+      const first = await client.callTool({ name: "probe_connector", arguments: probeArgs });
+      const firstPayload = JSON.parse((first.content as Array<{ text: string }>)[0]!.text) as {
+        tool_call_id?: string;
+        status_code?: number;
+      };
+      expect(firstPayload.status_code).toBeUndefined();
+      const toolCallId = firstPayload.tool_call_id!;
+      expect(toolCallId).toBeTruthy();
+      expect(elicitCount.n).toBe(1);
+
+      const approvedBaseline = await suite.http.db
+        .select({ c: count() })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, suite.http.tenantId),
+            eq(auditLog.action, "approval.approved"),
+          ),
+        );
+
+      // Re-issue with the out-of-band confirm marker. With the bridge as a
+      // FALLBACK, the resolver is not attached, so no second elicitation
+      // prompt fires and the audit-backed token is adjudicated directly.
+      const second = await client.callTool({
+        name: "probe_connector",
+        arguments: probeArgs,
+        _meta: { sk_confirm: true, sk_confirm_id: toolCallId },
+      });
+      expect(second.isError).toBeFalsy();
+      const secondPayload = JSON.parse((second.content as Array<{ text: string }>)[0]!.text) as {
+        status_code?: number;
+      };
+      expect(secondPayload.status_code).toBe(201);
+      // The decisive assertion: the in-band bridge was NOT re-invoked.
+      expect(elicitCount.n).toBe(1);
+
+      const approvedAfter = await suite.http.db
+        .select({ c: count() })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, suite.http.tenantId),
+            eq(auditLog.action, "approval.approved"),
+          ),
+        );
+      expect((approvedAfter[0]?.c ?? 0) - (approvedBaseline[0]?.c ?? 0)).toBe(1);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("elicitation-capable client: a self-minted sk_confirm_id still fails the gate (no execution)", async () => {
+    await suite.seedConnector({
+      slug: "elicit-forged",
+      environment: "prod",
+      base_url: mock.baseUrl,
+    });
+
+    const { client, elicitCount } = await connectElicitClient("decline");
+    try {
+      const res = await client.callTool({
+        name: "probe_connector",
+        arguments: {
+          connector_slug: "elicit-forged",
+          method: "POST",
+          path: "/orders",
+          environment: "prod",
+          body: { qty: 1 },
+        },
+        _meta: { sk_confirm: true, sk_confirm_id: "00000000-0000-0000-0000-000000000000" },
+      });
+      // The bridge is skipped (a confirm marker is present) but the token is
+      // forged → verifyMcpConfirmation rejects it. No execution, no prompt.
+      expect(res.isError).toBe(true);
+      const payload = JSON.parse((res.content as Array<{ text: string }>)[0]!.text) as {
+        error_code?: string;
+        status_code?: number;
+      };
+      expect(payload.error_code).toBe("unknown_confirmation");
+      expect(payload.status_code).toBeUndefined();
+      expect(elicitCount.n).toBe(0);
     } finally {
       await client.close();
     }

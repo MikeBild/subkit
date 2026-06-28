@@ -157,4 +157,123 @@ describe("onError modes", () => {
     expect(result.steps[0]?.status).toBe("failed");
     expect(result.steps[1]?.status).toBe("succeeded");
   });
+
+  test("a write that fails inside a for_each body surfaces in execution final_status", async () => {
+    // Pre-fix the for_each container always finalized "succeeded" — a write
+    // that 400'd/404'd inside the loop body was masked as a successful
+    // execution (silent data-loss class). The failing iteration must now
+    // drive final_status to "failed" under the default on_error.
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "for-each-write-fail",
+      steps: [
+        {
+          kind: "request",
+          id: "post_each",
+          method: "POST",
+          url: `${mock.baseUrl}/fail/x`,
+          for_each: "(scope) => [1, 2]",
+          max_retries: 0,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+    const container = result.steps.find((s) => s.step_key === "post_each");
+    expect(container?.status).toBe("failed");
+  });
+
+  test("for_each body failure with on_error=continue does NOT fail the execution", async () => {
+    // The opt-out path: a body that sets on_error:"continue" tolerates its
+    // own failure exactly as a non-loop step does — final_status stays
+    // succeeded even though the iteration failed.
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "for-each-write-continue",
+      steps: [
+        {
+          kind: "request",
+          id: "post_each",
+          method: "POST",
+          url: `${mock.baseUrl}/fail/x`,
+          for_each: "(scope) => [1, 2]",
+          on_error: "continue",
+          max_retries: 0,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("succeeded");
+  });
+
+  test("a write that fails inside a legacy loop body surfaces in execution final_status", async () => {
+    // The loop driver only resolves the collection (status "succeeded");
+    // pre-fix a failed body write was stored only in the per-iteration
+    // envelope and never propagated. The body step's default on_error must
+    // drive final_status to "failed".
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "loop-write-fail",
+      steps: [
+        {
+          kind: "loop",
+          id: "each",
+          over: "$input",
+          body: ["write_it"],
+        },
+        {
+          kind: "request",
+          id: "write_it",
+          method: "POST",
+          url: `${mock.baseUrl}/fail/x`,
+          max_retries: 0,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: [1, 2],
+    });
+    expect(result.status).toBe("failed");
+    const container = result.steps.find((s) => s.step_key === "each");
+    expect(container?.status).toBe("failed");
+  });
+
+  test("legacy loop body failure with on_error=continue does NOT fail the execution", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "loop-write-continue",
+      steps: [
+        {
+          kind: "loop",
+          id: "each",
+          over: "$input",
+          body: ["write_it"],
+        },
+        {
+          kind: "request",
+          id: "write_it",
+          method: "POST",
+          url: `${mock.baseUrl}/fail/x`,
+          on_error: "continue",
+          max_retries: 0,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: [1, 2],
+    });
+    expect(result.status).toBe("succeeded");
+  });
 });

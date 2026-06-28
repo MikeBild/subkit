@@ -150,6 +150,12 @@ interface UpgradeLadder {
 // `bareModelId` strips date suffixes, so each ladder entry is keyed
 // on the canonical base id. `claude-haiku-4-5-20251001` and
 // `gpt-4o-2024-11-20` collapse to their base equivalents before lookup.
+// `claude-opus-4-8` is the top of the Anthropic ladder. The `oneUp`
+// edge `claude-opus-4-7 → claude-opus-4-8` is what makes a hard-turn
+// escalation from the authoring seed (which runs on opus-4-7's
+// successor opus-4-8) a real upgrade instead of the dead 4-7→4-7
+// identity that logged `step_router.no_upgrade_available` on every
+// authoring turn. `top` jumps straight to opus-4-8 from any tier.
 const ANTHROPIC_LADDER: UpgradeLadder = {
   oneUp: {
     "claude-3-5-haiku": "claude-3-5-sonnet",
@@ -159,15 +165,17 @@ const ANTHROPIC_LADDER: UpgradeLadder = {
     "claude-sonnet-4-5": "claude-opus-4-7",
     "claude-sonnet-4-6": "claude-opus-4-7",
     "claude-opus-4-6": "claude-opus-4-7",
+    "claude-opus-4-7": "claude-opus-4-8",
   },
   top: {
-    "claude-3-5-haiku": "claude-opus-4-7",
-    "claude-3-5-sonnet": "claude-opus-4-7",
-    "claude-3-opus": "claude-opus-4-7",
-    "claude-haiku-4-5": "claude-opus-4-7",
-    "claude-sonnet-4-5": "claude-opus-4-7",
-    "claude-sonnet-4-6": "claude-opus-4-7",
-    "claude-opus-4-6": "claude-opus-4-7",
+    "claude-3-5-haiku": "claude-opus-4-8",
+    "claude-3-5-sonnet": "claude-opus-4-8",
+    "claude-3-opus": "claude-opus-4-8",
+    "claude-haiku-4-5": "claude-opus-4-8",
+    "claude-sonnet-4-5": "claude-opus-4-8",
+    "claude-sonnet-4-6": "claude-opus-4-8",
+    "claude-opus-4-6": "claude-opus-4-8",
+    "claude-opus-4-7": "claude-opus-4-8",
   },
 };
 

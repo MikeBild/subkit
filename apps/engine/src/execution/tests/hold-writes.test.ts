@@ -298,7 +298,11 @@ describe("hold-writes · HTTP", () => {
       expect(iter.notify.held).toBe(true);
       expect(iter.notify.held_request?.method).toBe("POST");
       // Per-iteration materialization: each artifact carries ITS item.
-      expect(iter.notify.held_request?.body).toEqual({ id: String(idx + 1) });
+      // The whole-value `"${item.id}"` body leaf preserves the native type
+      // of the resolved value — the ids are numbers, so the materialized
+      // body carries a number (type-preserving request-body resolution,
+      // parity with GraphQL variables), not the legacy stringified "1".
+      expect(iter.notify.held_request?.body).toEqual({ id: idx + 1 });
     }
     // The hold-preview of an all-writes loop body must not trip the
     // empty-loop heuristic — held iterations are intentional.

@@ -8,7 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, http, rest]
-version: 3
+version: 4
 ---
 
 # HTTP Connectors
@@ -137,6 +137,74 @@ the matching `content-type` header explicitly:
   "body": "code=${input.code}&client_id=${cred.slack_oauth.client_id}&client_secret=${cred.slack_oauth.client_secret}"
 }
 ```
+
+## Typed JSON bodies and arrays
+
+A body leaf whose value is a **whole-value placeholder** — the field is
+exactly `"${ref}"` with nothing around it — carries the referenced value's
+**native JSON type** onto the wire. A number stays a number, an array stays
+an array, an object stays an object. Only when you wrap the placeholder in
+surrounding text (a **mixed string**, e.g. `"id-${ref}"`) does the engine
+stringify the substituted value. So choose the form deliberately:
+
+```json
+{
+  "body": {
+    "limit": "${input.limit}",          // whole-value → wire gets a number 100
+    "fields": "${scope.pick.data.cols}", // whole-value → wire gets an array
+    "label": "batch-${input.run_id}"      // mixed string → wire gets "batch-42"
+  }
+}
+```
+
+This is what lets a dynamically-built array reach the API as a real JSON
+array rather than a quoted string. Compute the array in a prior transform,
+then reference it whole:
+
+```json
+{
+  "id": "append_children",
+  "kind": "request",
+  "method": "PATCH",
+  "connector_id": "<connector_id>",
+  "path": "/blocks/${input.parent_id}/children",
+  "headers": { "content-type": "application/json" },
+  "body": { "children": "${scope.build_blocks.data}" }
+}
+```
+
+Here `build_blocks` returns an array; because `children` is a whole-value
+leaf, the upstream API receives `{"children": [ … ]}` with a genuine array,
+not `{"children": "[object Object],…"}`. If you instead need a single
+templated string built from several refs, use a mixed string and accept that
+the result is text.
+
+## Read-only POSTs — mark them `side_effects: "read"`
+
+Method does not equal intent. Plenty of APIs expose **search / query**
+endpoints over `POST` (the criteria are too big for a query string) that
+mutate nothing — they only read. The runtime classifies steps as write by
+HTTP method by default, so a dry-run will **HOLD** such a step as if it were
+a send. Tell the runtime the truth: set `side_effects: "read"` on the step
+so dry-run executes it live and the judge sees real data.
+
+```json
+{
+  "id": "search_records",
+  "kind": "request",
+  "method": "POST",
+  "connector_id": "<connector_id>",
+  "path": "/v1/records/search",
+  "headers": { "content-type": "application/json" },
+  "body": { "filter": { "status": "open" }, "limit": 50 },
+  "side_effects": "read"
+}
+```
+
+Use this ONLY for endpoints that genuinely read (search, query, list,
+lookup, report). A `POST` that creates, updates, or sends stays a write —
+do not mislabel it to dodge the dry-run hold. `side_effects` is an existing
+step field; there is no new schema to invent.
 
 ## Auth modes
 

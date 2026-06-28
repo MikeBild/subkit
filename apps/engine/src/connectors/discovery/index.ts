@@ -163,6 +163,11 @@ export async function discoverConnectorEndpoints(
   };
 
   const warnings: DiscoveryWarning[] = [];
+  // First strategy that failed because the endpoint needs credentials
+  // (HTTP 401/403). If no strategy succeeds, this takes precedence over
+  // the generic `all_strategies_failed` so the caller can prompt for
+  // credentials instead of reporting a flat failure.
+  let authRequired: DiscoveryWarning | null = null;
 
   for (const strategy of strategies) {
     try {
@@ -179,8 +184,26 @@ export async function discoverConnectorEndpoints(
     } catch (err) {
       const code = err instanceof DiscoveryError ? err.code : "strategy_failed";
       const message = err instanceof Error ? err.message : String(err);
-      warnings.push({ code: `${strategy.name}:${code}`, message });
+      const warning: DiscoveryWarning = { code: `${strategy.name}:${code}`, message };
+      warnings.push(warning);
+      if (!authRequired && isAuthRequiredCode(code)) {
+        authRequired = warning;
+      }
     }
+  }
+
+  if (authRequired) {
+    log.warn({
+      module: "connector",
+      action: "discovery.auth_required",
+      url: scrubUrl(url),
+      code: authRequired.code,
+      attempts: warnings.length,
+    });
+    throw new DiscoveryError(
+      "auth_required",
+      `discovery for ${scrubUrl(url)} needs credentials — ${authRequired.message}`,
+    );
   }
 
   log.warn({
@@ -195,4 +218,14 @@ export async function discoverConnectorEndpoints(
     "all_strategies_failed",
     `discovery failed for ${scrubUrl(url)} — ${aggregated || "no strategies attempted"}`,
   );
+}
+
+/**
+ * True when a strategy's `DiscoveryError.code` signals an authentication
+ * failure — either the explicit `auth_required` code or any `http_401` /
+ * `http_403` (and `*_401` / `*_403`) variant. Keyed on the HTTP status
+ * class so it generalises across strategies and hosts.
+ */
+function isAuthRequiredCode(code: string): boolean {
+  return code === "auth_required" || /(^|_)40[13]$/.test(code);
 }

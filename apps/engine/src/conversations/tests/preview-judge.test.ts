@@ -731,6 +731,90 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
   });
 });
 
+describe("preview judge · bounded-field coercion + retry (fail-open fix)", () => {
+  // Root cause: `invoke` validates the model output against the JSON-Schema-7
+  // projection of JudgeVerdictSchema, which DROPS zod's `.max()` length
+  // bounds. A verdict with an over-long `reason` / oversized `missing`
+  // satisfied the provider but FAILED the old strict re-parse → it was
+  // discarded as `judge_unavailable` and the commit proceeded UNGATED. The
+  // fix clamps the bounded fields so a valid verdict is never skipped on a
+  // length overflow.
+  const GOAL_PLAIN = "email me the droplet specs for each project";
+
+  test("over-bounds verdict is CLAMPED, not skipped (no fail-open)", async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "failed",
+      reason: "x".repeat(2000), // > 800-char bound
+      missing: Array.from({ length: 30 }, (_, i) => `${"m".repeat(500)}-${i}`), // > 12 entries, each > 300
+    });
+
+    const outcome = await judgePreview({
+      goal: GOAL_PLAIN,
+      definition_summary: "- shape (transform): collect specs",
+      step_artifacts: [
+        { step_id: "shape", kind: "transform", status: "succeeded", output_preview: { ok: true } },
+      ],
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    // The verdict survives (was a real "failed" — must not become a skip).
+    expect(outcome.verdict).toBe("failed");
+    if (outcome.verdict === "failed") {
+      // reason clamped to the 800-char bound, missing clamped to ≤12 entries
+      // each ≤300 chars — the bounds the JSON schema dropped.
+      expect(outcome.reason.length).toBeLessThanOrEqual(800);
+      expect(outcome.missing.length).toBeLessThanOrEqual(12);
+      for (const m of outcome.missing) expect(m.length).toBeLessThanOrEqual(300);
+    }
+    // Exactly one judge call — a coercible verdict does NOT trigger the retry.
+    expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(1);
+  });
+
+  test("a malformed object recovers on the ONE bounded retry", async () => {
+    let n = 0;
+    getMockProvider().generateOverrides.judge = () =>
+      n++ === 0
+        ? // first response carries no valid `verdict` enum
+          ({ nonsense: true } as never)
+        : { verdict: "passes", reason: "ok on retry", missing: [] };
+
+    const outcome = await judgePreview({
+      goal: GOAL_PLAIN,
+      definition_summary: "- shape (transform): collect specs",
+      step_artifacts: [
+        { step_id: "shape", kind: "transform", status: "succeeded", output_preview: { ok: true } },
+      ],
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    expect(outcome.verdict).toBe("passes");
+    // Retried exactly once.
+    expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(2);
+  });
+
+  test("malformed on both the call AND the retry → judge_unavailable (fail-open, never fail-closed)", async () => {
+    getMockProvider().generateOverrides.judge = () => ({ no: "verdict" }) as never;
+
+    const outcome = await judgePreview({
+      goal: GOAL_PLAIN,
+      definition_summary: "- shape (transform): collect specs",
+      step_artifacts: [
+        { step_id: "shape", kind: "transform", status: "succeeded", output_preview: { ok: true } },
+      ],
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+
+    // Fail-OPEN — a persistently un-judgeable preview skips (commit proceeds),
+    // it does NOT block (that would deadlock authoring).
+    expect(outcome).toEqual({ verdict: "skipped", reason: "judge_unavailable" });
+    // One initial call + one bounded retry.
+    expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(2);
+  });
+});
+
 describe("preview judge · helpers", () => {
   test("buildJudgeDefinitionSummary renders ids, kinds, descriptions", () => {
     const summary = buildJudgeDefinitionSummary([

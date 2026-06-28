@@ -270,6 +270,30 @@ describe("graphqlIntrospectStrategy", () => {
     expect(caught?.code).toBe("http_404");
   });
 
+  seamTest("maps 401 to auth_required (needs credentials, not generic failure)", async () => {
+    fetchSpy.mockResolvedValue(new Response(null, { status: 401 }));
+
+    let caught: DiscoveryError | null = null;
+    try {
+      await graphqlIntrospectStrategy.fetch("https://api.example.com/graphql", {});
+    } catch (e) {
+      if (e instanceof DiscoveryError) caught = e;
+    }
+    expect(caught?.code).toBe("auth_required");
+  });
+
+  seamTest("maps 403 to auth_required", async () => {
+    fetchSpy.mockResolvedValue(new Response(null, { status: 403 }));
+
+    let caught: DiscoveryError | null = null;
+    try {
+      await graphqlIntrospectStrategy.fetch("https://api.example.com/graphql", {});
+    } catch (e) {
+      if (e instanceof DiscoveryError) caught = e;
+    }
+    expect(caught?.code).toBe("auth_required");
+  });
+
   seamTest("emits SDL text_corpus alongside normalised endpoints", async () => {
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify(SAMPLE_SCHEMA), {

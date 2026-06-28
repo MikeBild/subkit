@@ -140,6 +140,49 @@ describe("discoverConnectorEndpoints — fallback chain", () => {
     },
   );
 
+  test("surfaces auth_required (not all_strategies_failed) when a strategy needs credentials", async () => {
+    const fail1 = makeStrategy("openapi-direct", () =>
+      Promise.reject(new DiscoveryError("http_404", "no spec here")),
+    );
+    const needsAuth = makeStrategy("graphql-introspect", () =>
+      Promise.reject(new DiscoveryError("auth_required", "POST … returned 401")),
+    );
+    const fail3 = makeStrategy("html-scrape", () =>
+      Promise.reject(new DiscoveryError("spec_not_found", "nothing")),
+    );
+
+    let caught: DiscoveryError | null = null;
+    try {
+      await discoverConnectorEndpoints({
+        ingestion_url: "https://api.example.com/graphql",
+        strategies: [fail1, needsAuth, fail3],
+      });
+    } catch (e) {
+      if (e instanceof DiscoveryError) caught = e;
+    }
+    expect(caught?.code).toBe("auth_required");
+    // The originating 401 reason still surfaces in the message.
+    expect(caught?.message).toContain("needs credentials");
+    expect(caught?.message).toContain("401");
+  });
+
+  test("treats a raw http_401 strategy code as auth_required (generalised by status class)", async () => {
+    const needsAuth = makeStrategy("openapi-direct", () =>
+      Promise.reject(new DiscoveryError("http_401", "spec endpoint 401")),
+    );
+
+    let caught: DiscoveryError | null = null;
+    try {
+      await discoverConnectorEndpoints({
+        ingestion_url: "https://api.example.com/openapi.json",
+        strategies: [needsAuth],
+      });
+    } catch (e) {
+      if (e instanceof DiscoveryError) caught = e;
+    }
+    expect(caught?.code).toBe("auth_required");
+  });
+
   test("template_id throws template_not_found for unknown slug", async () => {
     let caught: DiscoveryError | null = null;
     try {

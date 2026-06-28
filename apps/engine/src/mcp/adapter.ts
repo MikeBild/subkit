@@ -242,20 +242,18 @@ export async function callToolViaDispatcher(opts: {
   if (envelope.status === "needs_confirm" && opts.confirmResolver) {
     const approved = await opts.confirmResolver(envelope.confirm);
     if (!approved) {
-      return {
-        isError: false,
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              status: "declined",
-              tool: envelope.confirm.tool,
-              tool_call_id: envelope.confirm.tool_call_id,
-              message: "Operator declined the confirmation; the call was not executed.",
-            }),
-          },
-        ],
-      };
+      // Operator declined the in-band elicitation. Do NOT execute — but
+      // hand back the durable `needs_confirm` envelope (carrying the
+      // audit-backed `confirm.tool_call_id`) rather than a terminal
+      // "declined" payload. A programmatic / non-interactive driver that
+      // cannot answer the in-band prompt can then still satisfy the gate
+      // out-of-band by re-issuing the call with `confirm_tool_call` /
+      // `_meta.sk_confirm` against this tool_call_id. The token stays
+      // single-use and audit-validated (verifyMcpConfirmation), so this
+      // does NOT weaken the gate — it only makes it reachable, closing the
+      // elicitation-decline → deadlock hole where the durable id was never
+      // returned to the caller.
+      return envelopeToMcpResponse(envelope);
     }
     // Re-issue the identical call with the confirm marker the dispatcher's
     // `isConfirmed` looks for, carrying the original tool_call_id so the
