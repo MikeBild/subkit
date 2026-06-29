@@ -13,6 +13,8 @@ import { closePoolForConnector } from "./drivers/postgres.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
 import {
+  type ConnectorSelfDescription,
+  type ConnectorSelfDescriptionLink,
   type ConnectorView,
   type CreateConnectorInput,
   type DriverName,
@@ -50,6 +52,7 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
     template_source: row.template_source ?? null,
     template_version: row.template_version ?? null,
     template_snapshot: (row.template_snapshot as Record<string, unknown> | null) ?? null,
+    self_description: (row.self_description as ConnectorView["self_description"]) ?? {},
     created_at: row.created_at,
     updated_at: row.updated_at,
     circuit_state: (row.circuit_state as ConnectorView["circuit_state"]) ?? "closed",
@@ -571,4 +574,47 @@ export async function deleteConnector(
     await closePoolForConnector(result.evict as never).catch(() => {});
   }
   return ok;
+}
+
+/**
+ * Non-destructive upsert of connector self-description LINKS (llms.txt /
+ * llms-full / OpenAPI / GraphQL). LINKS ONLY — never document bodies. At most
+ * one link per `kind`; the newest `discovered_at` wins. Only the
+ * `self_description` column is touched, so it never disturbs a working
+ * connector's config/auth. Used by create-time link capture and the
+ * self-healing enrichment pass. Returns the merged links (or null if the
+ * connector row is gone).
+ */
+export async function attachConnectorSelfDescriptionLinks(
+  p: {
+    tenant_id: string;
+    connector_id: string;
+    links: ConnectorSelfDescriptionLink[];
+  },
+  exec?: Executor,
+): Promise<ConnectorSelfDescriptionLink[] | null> {
+  if (p.links.length === 0) return null;
+  const db = exec ?? getDb();
+  const rows = await db
+    .select({ self_description: connectors.self_description })
+    .from(connectors)
+    .where(and(eq(connectors.id, p.connector_id), eq(connectors.tenant_id, p.tenant_id)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+
+  const current = (row.self_description as ConnectorSelfDescription) ?? {};
+  const byKind = new Map<string, ConnectorSelfDescriptionLink>();
+  for (const link of [...(current.links ?? []), ...p.links]) {
+    const existing = byKind.get(link.kind);
+    // Newest discovered_at wins; incoming wins ties (it was just observed).
+    if (!existing || link.discovered_at >= existing.discovered_at) byKind.set(link.kind, link);
+  }
+  const merged = [...byKind.values()].sort((a, b) => a.kind.localeCompare(b.kind));
+
+  await db
+    .update(connectors)
+    .set({ self_description: { links: merged } })
+    .where(and(eq(connectors.id, p.connector_id), eq(connectors.tenant_id, p.tenant_id)));
+  return merged;
 }

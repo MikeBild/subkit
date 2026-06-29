@@ -6595,6 +6595,48 @@
               "nullable": true
             }
           },
+          "self_description": {
+            "type": "object",
+            "properties": {
+              "links": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "llms_txt",
+                        "llms_full",
+                        "openapi",
+                        "graphql"
+                      ]
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "discovery",
+                        "self_healing",
+                        "manual"
+                      ]
+                    },
+                    "discovered_at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "url",
+                    "source",
+                    "discovered_at"
+                  ]
+                }
+              }
+            }
+          },
           "needs_reauth": {
             "type": "boolean"
           },
@@ -14719,7 +14761,28 @@
           "docs"
         ],
         "summary": "llms-txt index of the sk documentation set",
-        "description": "A robots.txt-style index (https://llmstxt.org) of the sk docs for LLMs: every public page with its title, path, and one-line summary. See /llms-full.txt for the full text in one fetch.",
+        "description": "A robots.txt-style index (https://llmstxt.org) of the sk docs for LLMs: every public page with its title, link, and one-line summary, plus an Optional section. Links drill down to /llms/{path}; see /llms-full.txt for the full text in one fetch.",
+        "responses": {
+          "200": {
+            "description": "llms-txt index",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/llms.txt": {
+      "get": {
+        "tags": [
+          "docs"
+        ],
+        "summary": "llms-txt index (well-known alias)",
+        "description": "Alias of /llms.txt at the well-known location consumers probe.",
         "responses": {
           "200": {
             "description": "llms-txt index",

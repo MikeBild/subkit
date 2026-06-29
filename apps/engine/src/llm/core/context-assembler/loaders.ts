@@ -4,6 +4,7 @@
 
 import { and, desc, eq } from "drizzle-orm";
 import { readDiscoveryIndexForBaseUrl } from "../../../connectors/discovery/service.ts";
+import type { ConnectorSelfDescription } from "../../../connectors/types.ts";
 import type { Executor } from "../../../db/client.ts";
 import { connectors, conversationElicitations, conversations } from "../../../db/schema/index.ts";
 import { searchDocs } from "../../../docs-ingestion/service.ts";
@@ -72,6 +73,11 @@ export async function loadConnectorAuthoringAids(
     tenant_id: p.tenant_id,
     connector_ids: p.authoring_connector_ids.length,
     schema_summaries: schemaSummaries.length,
+    // How many in-scope connectors advertised a self-description link this
+    // turn — surfaced as a compact "fetch on demand" hint in the schema
+    // block (the body is never fetched here; the LLM pulls it lazily via
+    // fetch_connector_self_description).
+    self_descriptions: schemaSummaries.filter((s) => s.self_description_line).length,
     probe_shapes: shapeExamples.length,
   });
   return {
@@ -322,6 +328,37 @@ export interface ConnectorSchemaSummary {
    *  shapes (enum values, input-object fields) stay one `discover_connector_endpoints`
    *  / `search_knowledge` drill-down away. */
   operations: string[];
+  /** Compact "this connector publishes its own docs — fetch with
+   *  fetch_connector_self_description: …" line, built from the connector's
+   *  `self_description.links`. Links only (never bodies); the LLM fetches
+   *  on demand. Omitted when the connector advertises no self-description. */
+  self_description_line?: string;
+}
+
+/**
+ * Build the compact self-description hint line for a connector from its
+ * `self_description.links`. Links only — the LLM fetches the bodies on
+ * demand via `fetch_connector_self_description`. Returns null when no
+ * links are recorded so the caller omits the line entirely.
+ *
+ * `llms` prefers the full-content variant (`llms_full`) over the index
+ * (`llms_txt`); OpenAPI + GraphQL surface their single link each.
+ */
+export function buildSelfDescriptionLine(
+  self_description: ConnectorSelfDescription | null | undefined,
+): string | null {
+  const links = self_description?.links ?? [];
+  if (links.length === 0) return null;
+  const parts: string[] = [];
+  const llms =
+    links.find((l) => l.kind === "llms_full") ?? links.find((l) => l.kind === "llms_txt");
+  if (llms) parts.push(`${llms.kind === "llms_full" ? "llms-full" : "llms.txt"} ${llms.url}`);
+  const openapi = links.find((l) => l.kind === "openapi");
+  if (openapi) parts.push(`OpenAPI ${openapi.url}`);
+  const graphql = links.find((l) => l.kind === "graphql");
+  if (graphql) parts.push(`GraphQL introspection ${graphql.url}`);
+  if (parts.length === 0) return null;
+  return `This connector publishes its own docs — fetch on demand with fetch_connector_self_description: ${parts.join(", ")}.`;
 }
 
 /** Per-connector caps — this rides EVERY authoring turn for a connector in
@@ -352,25 +389,48 @@ export async function loadConnectorSchemaSummaries(
     const out: ConnectorSchemaSummary[] = [];
     for (const connector_id of ids) {
       const rows = await exec
-        .select({ slug: connectors.slug, base_url: connectors.base_url })
+        .select({
+          slug: connectors.slug,
+          base_url: connectors.base_url,
+          self_description: connectors.self_description,
+        })
         .from(connectors)
         .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.id, connector_id)))
         .limit(1);
       const c = rows[0];
-      if (!c?.base_url) continue;
-      const index = await readDiscoveryIndexForBaseUrl(exec, tenant_id, c.base_url);
-      if (!index || index.endpoints.length === 0) continue;
+      if (!c) continue;
+      // Discovered/introspected operations — only when the connector has a
+      // base_url AND a cached discovery index. A connector can advertise
+      // self-description links without either, so the index lookup is
+      // guarded rather than an early `continue`.
       const operations: string[] = [];
-      let budget = SCHEMA_CHARS_BUDGET;
-      for (const e of index.endpoints.slice(0, SCHEMA_MAX_OPERATIONS)) {
-        const args = (e.params ?? []).map((p) => `${p.name}: ${p.type ?? "?"}`).join(", ");
-        const name = e.operation_id ?? `${e.method} ${e.path}`;
-        const sig = `${name}(${args})`;
-        if (sig.length > budget) break;
-        budget -= sig.length;
-        operations.push(sig);
+      if (c.base_url) {
+        const index = await readDiscoveryIndexForBaseUrl(exec, tenant_id, c.base_url);
+        if (index && index.endpoints.length > 0) {
+          let budget = SCHEMA_CHARS_BUDGET;
+          for (const e of index.endpoints.slice(0, SCHEMA_MAX_OPERATIONS)) {
+            const args = (e.params ?? []).map((p) => `${p.name}: ${p.type ?? "?"}`).join(", ");
+            const name = e.operation_id ?? `${e.method} ${e.path}`;
+            const sig = `${name}(${args})`;
+            if (sig.length > budget) break;
+            budget -= sig.length;
+            operations.push(sig);
+          }
+        }
       }
-      if (operations.length > 0) out.push({ connector_slug: c.slug, operations });
+      // Self-description links (llms.txt / OpenAPI / GraphQL) the connector
+      // publishes — surfaced as a compact hint so the LLM knows it can
+      // fetch them on demand. Links only; never fetched here (lazy).
+      const selfDescriptionLine = buildSelfDescriptionLine(
+        c.self_description as ConnectorSelfDescription | null,
+      );
+      if (operations.length > 0 || selfDescriptionLine) {
+        out.push({
+          connector_slug: c.slug,
+          operations,
+          ...(selfDescriptionLine ? { self_description_line: selfDescriptionLine } : {}),
+        });
+      }
     }
     return out;
   } catch (err) {

@@ -259,6 +259,23 @@ export const UpdateConnectorSchema = z
 
 export type UpdateConnectorInput = z.infer<typeof UpdateConnectorSchema>;
 
+/** A single fetchable self-description link a connector publishes. LINKS ONLY —
+ *  never the document body. The full content lives in the discovery cache or is
+ *  fetched on demand at authoring time. */
+export interface ConnectorSelfDescriptionLink {
+  kind: "llms_txt" | "llms_full" | "openapi" | "graphql";
+  url: string;
+  source: "discovery" | "self_healing" | "manual";
+  /** ISO-8601 timestamp the link was discovered/last refreshed. */
+  discovered_at: string;
+}
+
+/** Lightweight metadata recording where a connector publishes its own machine
+ *  docs. Surfaced to authoring + API/MCP consumers so they can fetch on demand. */
+export interface ConnectorSelfDescription {
+  links?: ConnectorSelfDescriptionLink[];
+}
+
 export interface ConnectorView {
   id: string;
   tenant_id: string;
@@ -276,6 +293,9 @@ export interface ConnectorView {
   template_source: ConnectorTemplateSource | null;
   template_version: number | null;
   template_snapshot: Record<string, unknown> | null;
+  /** Fetchable self-description links (llms.txt / llms-full / OpenAPI / GraphQL)
+   *  the connector publishes — links only, never the document bodies. */
+  self_description: ConnectorSelfDescription;
   created_at: Date;
   updated_at: Date;
   circuit_state: "closed" | "open" | "half-open";

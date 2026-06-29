@@ -33,6 +33,7 @@ import { dryRunWorkflowTool } from "./dry-run-workflow.ts";
 import { editRoleTool } from "./edit-role.ts";
 import { editWorkflowPatchTool } from "./edit-workflow-patch.ts";
 import { fetchConnectorDocsTool } from "./fetch-connector-docs.ts";
+import { fetchConnectorSelfDescriptionTool } from "./fetch-connector-self-description.ts";
 import { findConnectorTool } from "./find-connector.ts";
 import { findRoleTool } from "./find-role.ts";
 import { findSkillTool } from "./find-skill.ts";
@@ -323,6 +324,7 @@ function register(tool: ConversationTool): void {
 
 register(listSkillsTool);
 register(fetchConnectorDocsTool);
+register(fetchConnectorSelfDescriptionTool);
 register(inspectAuthoringContextTool);
 register(inspectConnectorDraftTool);
 register(inspectWorkflowDraftTool);

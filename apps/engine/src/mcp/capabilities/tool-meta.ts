@@ -62,6 +62,7 @@ const EXTERNAL_REACHING_TOOLS: ReadonlySet<string> = new Set([
   "probe_connector_draft",
   "test_connector",
   "fetch_connector_docs",
+  "fetch_connector_self_description",
   "discover_connector_endpoints",
   "authenticate_oauth",
   "request_connector_reauth",

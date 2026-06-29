@@ -1,6 +1,7 @@
 # sk Documentation — Full Text
 
-The complete sk documentation set for LLMs in a single file: every public page's full Markdown, grouped by audience, each preceded by a source marker. For just the index, see llms.txt.
+> The complete sk documentation set for LLMs in a single file: every public page's full Markdown, grouped by audience, each preceded by a source marker.
+> For the index see [llms.txt](llms.txt).
 
 <!-- Source: docs/concepts/README.md -->
 

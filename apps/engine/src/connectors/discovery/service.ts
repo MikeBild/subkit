@@ -23,12 +23,29 @@ import type { Db, Executor } from "../../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { logger } from "../../logging/logger.ts";
 import { applyAuthMaterial, resolveConnectorCredential } from "../drivers/http.ts";
-import { getConnectorForEnvironment } from "../service.ts";
+import { attachConnectorSelfDescriptionLinks, getConnectorForEnvironment } from "../service.ts";
+import type { ConnectorSelfDescriptionLink } from "../types.ts";
 import { type DiscoverConnectorEndpointsInput, discoverConnectorEndpoints } from "./index.ts";
 import { DiscoveryError, type DiscoveryResult } from "./types.ts";
 
-/** 24h freshness window for cached endpoint indexes. */
+/** 24h freshness window for a USEFUL cached endpoint index. */
 export const KNOWLEDGE_SOURCE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Short freshness window for an EMPTY/negative result (no endpoints AND no
+ *  text corpus). A negative discovery — e.g. an upstream that wasn't reachable
+ *  or hadn't published its docs yet — must not be cached for a full day, or a
+ *  connector created against an already-probed host keeps getting the stale
+ *  miss and never picks up the now-available docs. Re-probe ~30 min later
+ *  instead, without hammering expensive crawls on every request. */
+export const NEGATIVE_TTL_MS = 30 * 60 * 1000;
+
+/** A cached discovery is "useful" when it carries either structured endpoints
+ *  or a prose corpus; otherwise it's a negative result on the short TTL. Auth
+ *  schemes alone do NOT count — the prod stale-cache trap was exactly a thin
+ *  auth-only index blocking a later corpus fetch. */
+export function isUsefulDiscovery(result: DiscoveryResult): boolean {
+  return (result.endpoints?.length ?? 0) > 0 || Boolean(result.text_corpus);
+}
 
 /** 30s discovery network budget, shared by both surfaces. */
 export const DISCOVERY_TIMEOUT_MS = 30_000;
@@ -106,10 +123,63 @@ function deriveCacheKey(args: DiscoveryServiceArgs): CacheKey {
   return { key: `url:${url}`, slug, source_uri: url };
 }
 
-function isFresh(last_refreshed_at: Date | null): boolean {
+/**
+ * Map a discovery result to the connector self-description LINK it implies
+ * (links only — never the body). The winning strategy + its source_url tell us
+ * which machine-doc the connector publishes. The self-healing pass (which probes
+ * ALL candidate sources) fills in the others over time.
+ */
+export function selfDescriptionLinksFromResult(
+  result: DiscoveryResult,
+): ConnectorSelfDescriptionLink[] {
+  const url = result.source_url;
+  if (!url) return [];
+  const discovered_at = result.fetched_at || new Date().toISOString();
+  const mk = (kind: ConnectorSelfDescriptionLink["kind"]): ConnectorSelfDescriptionLink[] => [
+    { kind, url, source: "discovery", discovered_at },
+  ];
+  switch (result.strategy) {
+    case "llms-txt":
+      return mk(url.endsWith("llms-full.txt") ? "llms_full" : "llms_txt");
+    case "openapi-direct":
+    case "swagger-ui-scrape":
+      return mk("openapi");
+    case "graphql-introspect":
+      return mk("graphql");
+    default:
+      return [];
+  }
+}
+
+/** Non-fatal: record the connector's self-description link from a discovery
+ *  result. Touches only the lightweight `self_description` metadata. */
+async function captureConnectorSelfDescription(
+  ctx: DiscoveryServiceContext,
+  connector_id: string,
+  result: DiscoveryResult,
+): Promise<void> {
+  const links = selfDescriptionLinksFromResult(result);
+  if (links.length === 0) return;
+  try {
+    await attachConnectorSelfDescriptionLinks(
+      { tenant_id: ctx.tenant_id, connector_id, links },
+      ctx.db,
+    );
+  } catch (err) {
+    logger.warn({
+      module: "connector_service",
+      action: "discover_connector_endpoints.self_description_capture_failed",
+      tenant_id: ctx.tenant_id,
+      connector_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+function isFresh(last_refreshed_at: Date | null, ttl_ms: number): boolean {
   if (!last_refreshed_at) return false;
   const age = Date.now() - last_refreshed_at.getTime();
-  return age >= 0 && age < KNOWLEDGE_SOURCE_TTL_MS;
+  return age >= 0 && age < ttl_ms;
 }
 
 interface CachedResult {
@@ -130,7 +200,6 @@ async function readCache(
   const row = rows[0];
   if (!row) return null;
   if (row.source_type !== DISCOVERY_SOURCE_TYPE) return null;
-  if (!isFresh(row.last_refreshed_at)) return null;
   const chunkRows = await db
     .select()
     .from(knowledgeChunks)
@@ -143,15 +212,20 @@ async function readCache(
     .limit(1);
   const chunk = chunkRows[0];
   if (!chunk) return null;
+  let parsed: DiscoveryResult;
   try {
-    const parsed = JSON.parse(chunk.content) as DiscoveryResult;
-    return {
-      result: parsed,
-      fetched_at: row.last_refreshed_at?.toISOString() ?? parsed.fetched_at,
-    };
+    parsed = JSON.parse(chunk.content) as DiscoveryResult;
   } catch {
     return null;
   }
+  // Tiered freshness: a useful index lives 24h; a negative/empty one only
+  // ~30 min, so a stale miss can't keep blocking a now-available corpus.
+  const ttl = isUsefulDiscovery(parsed) ? KNOWLEDGE_SOURCE_TTL_MS : NEGATIVE_TTL_MS;
+  if (!isFresh(row.last_refreshed_at, ttl)) return null;
+  return {
+    result: parsed,
+    fetched_at: row.last_refreshed_at?.toISOString() ?? parsed.fetched_at,
+  };
 }
 
 /**
@@ -319,6 +393,9 @@ export async function runDiscoveryCached(
         cache_key: cache.key,
         fetched_at: cached.fetched_at,
       });
+      if (args.connector_id) {
+        await captureConnectorSelfDescription(ctx, args.connector_id, cached.result);
+      }
       return { source: "cache", result: cached.result, cache_key: cache.key };
     }
   }
@@ -394,6 +471,9 @@ export async function runDiscoveryCached(
       endpoint_count: result.endpoints.length,
       strategy: result.strategy,
     });
+    if (args.connector_id) {
+      await captureConnectorSelfDescription(ctx, args.connector_id, result);
+    }
     return { source: "fresh", result, cache_key: cache.key };
   } finally {
     clearTimeout(timeout);

@@ -49,6 +49,24 @@ export const ConnectorSchema = z
     // is internally typed; callers that need the narrower shape
     // re-validate via `parseTemplateSnapshot`.
     template_snapshot: z.record(z.string(), z.unknown()).nullable(),
+    // Fetchable self-description LINKS (llms.txt / llms-full / OpenAPI / GraphQL)
+    // the connector publishes — links only, never the document bodies. Lets a
+    // consumer (MCP client, authoring loop) fetch the connector's own docs on
+    // demand. Discovered on create + refreshed by the scheduler.
+    self_description: z
+      .object({
+        links: z
+          .array(
+            z.object({
+              kind: z.enum(["llms_txt", "llms_full", "openapi", "graphql"]),
+              url: z.string(),
+              source: z.enum(["discovery", "self_healing", "manual"]),
+              discovered_at: z.string(),
+            }),
+          )
+          .optional(),
+      })
+      .optional(),
     // Re-auth health. `needs_reauth` flips true when the connector's
     // credential goes stale (OAuth refresh revoked, API key rotated, login
     // lapsed) and stays unusable until a human reconnects it. The
@@ -176,6 +194,7 @@ export function serialize(c: ConnectorView) {
     template_source: c.template_source,
     template_version: c.template_version,
     template_snapshot: c.template_snapshot,
+    self_description: c.self_description,
     needs_reauth: c.needs_reauth,
     auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
     auth_failed_reason: c.auth_failed_reason,

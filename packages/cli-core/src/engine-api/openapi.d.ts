@@ -847,7 +847,46 @@ export interface paths {
         };
         /**
          * llms-txt index of the sk documentation set
-         * @description A robots.txt-style index (https://llmstxt.org) of the sk docs for LLMs: every public page with its title, path, and one-line summary. See /llms-full.txt for the full text in one fetch.
+         * @description A robots.txt-style index (https://llmstxt.org) of the sk docs for LLMs: every public page with its title, link, and one-line summary, plus an Optional section. Links drill down to /llms/{path}; see /llms-full.txt for the full text in one fetch.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description llms-txt index */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/markdown": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/llms.txt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * llms-txt index (well-known alias)
+         * @description Alias of /llms.txt at the well-known location consumers probe.
          */
         get: {
             parameters: {
@@ -12428,6 +12467,16 @@ export interface components {
             template_snapshot: {
                 [key: string]: unknown;
             } | null;
+            self_description?: {
+                links?: {
+                    /** @enum {string} */
+                    kind: "llms_txt" | "llms_full" | "openapi" | "graphql";
+                    url: string;
+                    /** @enum {string} */
+                    source: "discovery" | "self_healing" | "manual";
+                    discovered_at: string;
+                }[];
+            };
             needs_reauth: boolean;
             /** Format: date-time */
             auth_failed_at: string | null;

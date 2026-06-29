@@ -92,6 +92,7 @@ export async function runConnectorReauthScanForTenant(
       template_source: row.template_source,
       template_version: row.template_version,
       template_snapshot: row.template_snapshot as Record<string, unknown> | null,
+      self_description: (row.self_description as ConnectorView["self_description"]) ?? {},
       created_at: row.created_at,
       updated_at: row.updated_at,
       circuit_state: row.circuit_state as "closed" | "open" | "half-open",

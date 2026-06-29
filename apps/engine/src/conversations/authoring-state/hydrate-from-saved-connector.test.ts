@@ -24,6 +24,7 @@ function makeView(overrides: Partial<ConnectorView> = {}): ConnectorView {
     template_source: "builtin",
     template_version: 1,
     template_snapshot: null,
+    self_description: {},
     created_at: new Date("2024-01-01"),
     updated_at: new Date("2024-01-02"),
     circuit_state: "closed",

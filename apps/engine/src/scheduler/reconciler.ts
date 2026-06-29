@@ -7,10 +7,11 @@
 // locally via setInterval because pg-boss' cron is minute-resolution.
 
 import { CronExpressionParser } from "cron-parser";
-import { and, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { runDiscoveryCached } from "../connectors/discovery/service.ts";
 import type { Db } from "../db/client.ts";
 import {
   connectors,
@@ -82,11 +83,32 @@ const CHAT_DEDUP_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
  *  idempotent (WHERE embedding IS NULL) so multi-instance overlap is safe. */
 const EMBEDDING_BACKFILL_CADENCE_MS = 5 * 60 * 1000;
 
+/** Cadence + batch cap for the connector self-description enrichment sweep.
+ *  Every HTTP/GraphQL connector with a base_url has its discovery cache +
+ *  self-description LINKS refreshed at most once per cadence — connectors get
+ *  richer the more they exist, which lifts authoring quality. The per-tick
+ *  batch is capped so a large estate drains over several cadence cycles
+ *  (oldest-first, enrichment-needed-first) instead of fanning out N bounded
+ *  discovery HTTP calls at once. In-process throttle (like the cleanup
+ *  sweeps) — multi-instance overlap is safe because runDiscoveryCached is
+ *  idempotent: it only rewrites the discovery cache + the connector's
+ *  self_description metadata, never config/auth. */
+const CONNECTOR_SELF_DESCRIPTION_CADENCE_MS = 24 * 60 * 60 * 1000;
+const CONNECTOR_SELF_DESCRIPTION_BATCH = 10;
+/** Per-connector bound for one discovery refresh. runDiscoveryCached has its
+ *  own internal 30s timeout; this tighter abort caps the sweep's own wait so a
+ *  single slow upstream cannot stall the whole batch. */
+const CONNECTOR_SELF_DESCRIPTION_DISCOVERY_TIMEOUT_MS = 8_000;
+
 export interface ReconcilerOptions {
   boss: PgBoss;
   db: Db;
   /** Reconcile cadence in ms. Defaults to 60_000. */
   intervalMs?: number;
+  /** Discovery runner seam. Defaults to runDiscoveryCached; overridable in
+   *  tests so the self-description enrichment sweep's selection + non-fatal
+   *  per-connector behavior can be asserted without real outbound HTTP. */
+  discoveryRunner?: typeof runDiscoveryCached;
 }
 
 /** Desired sub-minute (`every:N`) schedules, keyed by schedule key.
@@ -294,7 +316,18 @@ export class SchedulerReconciler {
    *  EMBEDDING_BACKFILL_CADENCE_MS; the sweep is idempotent so overlap is safe. */
   private lastEmbeddingBackfillAt: Date | null = null;
 
-  constructor(private readonly opts: ReconcilerOptions) {}
+  /** Last instant the connector self-description enrichment sweep ran. Same
+   *  in-process throttle as the cleanup sweeps; deferred off the boot path
+   *  because the first sweep makes bounded outbound discovery HTTP calls. */
+  private lastConnectorSelfDescriptionAt: Date | null = null;
+
+  /** Resolved discovery runner — the injectable seam, defaulting to the real
+   *  cached discovery pipeline. */
+  private readonly discoveryRunner: typeof runDiscoveryCached;
+
+  constructor(private readonly opts: ReconcilerOptions) {
+    this.discoveryRunner = opts.discoveryRunner ?? runDiscoveryCached;
+  }
 
   async start(): Promise<void> {
     this.stopped = false;
@@ -350,6 +383,21 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "knowledge_refresh_failed",
         msg: "scheduler knowledge auto-refresh pass failed",
+        ...errorFields(err),
+      });
+    });
+    // Connector self-description enrichment runs on the same tick. Throttled
+    // in-process to one sweep per cadence; each sweep refreshes a small,
+    // oldest-first batch of HTTP/GraphQL connectors via runDiscoveryCached,
+    // which re-warms the discovery cache and records the connector's
+    // self-description LINKS. Per-connector failures are non-fatal.
+    await retryTransient(() => this.reconcileConnectorSelfDescription(), {
+      label: "connector_self_description",
+    }).catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "connector_self_description_failed",
+        msg: "scheduler connector self-description enrichment pass failed",
         ...errorFields(err),
       });
     });
@@ -1022,6 +1070,107 @@ export class SchedulerReconciler {
     // Small per-tick cap: the WASM embedder's arena only grows, so a large
     // sweep sets a high RSS water mark. Drain the backlog gradually instead.
     await backfillEmbeddings({ maxBatches: 4 }, this.opts.db);
+  }
+
+  /**
+   * Connector self-description enrichment. Throttled in-process to one sweep
+   * per CONNECTOR_SELF_DESCRIPTION_CADENCE_MS so every HTTP/GraphQL connector
+   * is refreshed at most once per cadence. Each sweep re-runs cached discovery
+   * (force_refresh) for a small, oldest-first batch — re-warming the discovery
+   * cache and recording the connector's self-description LINKS — so connectors
+   * get richer the longer they exist and authoring quality improves with use.
+   *
+   * Deferred off the boot path (first call only seeds the watermark): the
+   * initial reconcileOnce() is awaited during boot before the HTTP listener
+   * binds, and this sweep makes bounded outbound discovery HTTP calls, so
+   * running it on boot would delay /v1/health.
+   *
+   * Multi-instance overlap is safe — runDiscoveryCached is idempotent (it only
+   * rewrites the discovery cache + the connector's self_description metadata,
+   * never config/auth).
+   */
+  async reconcileConnectorSelfDescription(now: Date = new Date()): Promise<void> {
+    if (this.lastConnectorSelfDescriptionAt === null) {
+      this.lastConnectorSelfDescriptionAt = now;
+      return;
+    }
+    const elapsed = now.getTime() - this.lastConnectorSelfDescriptionAt.getTime();
+    if (elapsed < CONNECTOR_SELF_DESCRIPTION_CADENCE_MS) return;
+    this.lastConnectorSelfDescriptionAt = now;
+    await instrument({
+      module: "scheduler",
+      action: "connector_self_description.run",
+      fn: () => this.reconcileConnectorSelfDescriptionPass(),
+    });
+  }
+
+  private async reconcileConnectorSelfDescriptionPass(): Promise<void> {
+    // tenant-filter:exempt — enrichment sweep walks every tenant; row carries tenant_id forward
+    const rows = await this.opts.db
+      .select({
+        id: connectors.id,
+        tenant_id: connectors.tenant_id,
+        base_url: connectors.base_url,
+      })
+      .from(connectors)
+      .where(
+        and(
+          inArray(connectors.driver, ["http", "graphql"]),
+          isNotNull(connectors.base_url),
+          isNull(connectors.deleted_at),
+        ),
+      )
+      // Connectors whose self_description.links is empty/missing sort first
+      // (newly needing enrichment — the boolean is `false` for them, and
+      // `false < true` in Postgres ascending order); then least-recently-
+      // updated so the sweep walks the estate oldest-first across cadences.
+      .orderBy(
+        asc(
+          sql<boolean>`jsonb_array_length(coalesce(${connectors.self_description}->'links', '[]'::jsonb)) > 0`,
+        ),
+        asc(connectors.updated_at),
+      )
+      .limit(CONNECTOR_SELF_DESCRIPTION_BATCH);
+
+    let attempted = 0;
+    let succeeded = 0;
+    let failed = 0;
+    for (const row of rows) {
+      // base_url is non-null by the query filter; narrow for the type checker.
+      if (!row.base_url) continue;
+      attempted += 1;
+      try {
+        // Non-fatal per connector: one bad upstream must not abort the sweep.
+        await this.discoveryRunner(
+          {
+            db: this.opts.db,
+            tenant_id: row.tenant_id,
+            actor_id: null,
+            abortSignal: AbortSignal.timeout(CONNECTOR_SELF_DESCRIPTION_DISCOVERY_TIMEOUT_MS),
+          },
+          { base_url: row.base_url, connector_id: row.id, force_refresh: true },
+        );
+        succeeded += 1;
+      } catch (err) {
+        failed += 1;
+        logger.warn({
+          module: "scheduler",
+          action: "connector_self_description_refresh_failed",
+          msg: "connector self-description refresh failed — continuing with the rest",
+          connector_id: row.id,
+          tenant_id: row.tenant_id,
+          ...errorFields(err),
+        });
+      }
+    }
+    logger.info({
+      module: "scheduler",
+      action: "connector_self_description_refreshed",
+      msg: "connector self-description enrichment sweep complete",
+      attempted,
+      succeeded,
+      failed,
+    });
   }
 
   private async fireWorkflowSchedule(
