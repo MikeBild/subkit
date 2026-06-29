@@ -175,6 +175,21 @@ function main(): void {
     });
   }
 
+  // Deterministic order (audience, README-first, path) — `walkMarkdown` returns
+  // `readdirSync` order, which differs across filesystems (macOS vs CI Linux).
+  // The index/full outputs re-sort per audience, but the manifest emits `pages`
+  // verbatim, so without this its array order — and thus the byte output — drifts
+  // between environments and fails the drift gate.
+  const audienceRank = (a: string): number => AUDIENCE_ORDER.findIndex((x) => x.dir === a);
+  entries.sort((a, b) => {
+    const ar = audienceRank(a.audience) - audienceRank(b.audience);
+    if (ar !== 0) return ar;
+    const aReadme = a.path.endsWith("/README.md");
+    const bReadme = b.path.endsWith("/README.md");
+    if (aReadme !== bReadme) return aReadme ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+
   // Strip content for the shared renderer + the manifest — both carry only the
   // structured index, never the full body.
   const pages: LlmsPage[] = entries.map(({ content: _content, ...page }) => page);
