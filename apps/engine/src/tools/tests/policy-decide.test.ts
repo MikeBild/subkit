@@ -229,3 +229,143 @@ describe("tools/policy.policyDecide (active parity)", () => {
     expect(mcp.kind).toBe("needs_confirm");
   });
 });
+
+// call_connector is category tenant_read but issues arbitrary side
+// effects. The prod incident: a direct PATCH to a Notion endpoint over
+// MCP executed with NO confirm gate, because call_connector was absent
+// from TOOL_POLICIES and fell back to the tenant_read default
+// (no_confirm). These pin the fix: gate on the ACTUAL side effect, on
+// both surfaces, and don't let permission_mode=auto auto-approve a write.
+describe("tools/policy.policyDecide — call_connector gates on real side effect", () => {
+  const read = (extra: Record<string, unknown>) => ({ connector_id: "c", ...extra });
+
+  test("GET reads proceed on BOTH surfaces", () => {
+    for (const surface of ["chat", "mcp"] as const) {
+      expect(
+        policyDecide({
+          tool: "call_connector",
+          category: "tenant_read",
+          surface,
+          args: read({ method: "GET", path: "/x" }),
+        }),
+      ).toEqual({ kind: "proceed" });
+    }
+  });
+
+  test("regression — POST/PATCH/DELETE writes confirm on BOTH surfaces", () => {
+    for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
+      for (const surface of ["chat", "mcp"] as const) {
+        const decision = policyDecide({
+          tool: "call_connector",
+          category: "tenant_read",
+          surface,
+          args: read({ method, path: "/x" }),
+        });
+        expect(decision.kind).toBe("needs_confirm");
+        if (decision.kind === "needs_confirm") {
+          expect(decision.envelope.reason).toBe("destructive_action");
+        }
+      }
+    }
+  });
+
+  test("postgres SELECT proceeds, non-SELECT / allow_writes confirms", () => {
+    expect(
+      policyDecide({
+        tool: "call_connector",
+        category: "tenant_read",
+        surface: "mcp",
+        args: read({ sql: "SELECT 1" }),
+      }),
+    ).toEqual({ kind: "proceed" });
+    expect(
+      policyDecide({
+        tool: "call_connector",
+        category: "tenant_read",
+        surface: "mcp",
+        args: read({ sql: "DELETE FROM t" }),
+      }).kind,
+    ).toBe("needs_confirm");
+    expect(
+      policyDecide({
+        tool: "call_connector",
+        category: "tenant_read",
+        surface: "mcp",
+        args: read({ sql: "SELECT 1", allow_writes: true }),
+      }).kind,
+    ).toBe("needs_confirm");
+  });
+
+  test("graphql query proceeds, mutation confirms", () => {
+    expect(
+      policyDecide({
+        tool: "call_connector",
+        category: "tenant_read",
+        surface: "mcp",
+        args: read({ body: { query: "query { me }" } }),
+      }),
+    ).toEqual({ kind: "proceed" });
+    expect(
+      policyDecide({
+        tool: "call_connector",
+        category: "tenant_read",
+        surface: "mcp",
+        args: read({ body: { operation: "mutation", query: "mutation { x }" } }),
+      }).kind,
+    ).toBe("needs_confirm");
+  });
+
+  test("S3 LIST is a read (proceeds); PUT confirms", () => {
+    expect(
+      policyDecide({
+        tool: "call_connector",
+        category: "tenant_read",
+        surface: "mcp",
+        args: read({ method: "LIST", path: "/" }),
+      }),
+    ).toEqual({ kind: "proceed" });
+    expect(
+      policyDecide({
+        tool: "call_connector",
+        category: "tenant_read",
+        surface: "mcp",
+        args: read({ method: "PUT", path: "/k" }),
+      }).kind,
+    ).toBe("needs_confirm");
+  });
+
+  test("a write still confirms under permission_mode=auto (ordering fix)", () => {
+    const decision = policyDecide({
+      tool: "call_connector",
+      category: "tenant_read",
+      surface: "chat",
+      args: read({ method: "PATCH", path: "/x" }),
+      permission_mode: "auto",
+    });
+    expect(decision.kind).toBe("needs_confirm");
+  });
+
+  test("a read auto-runs under permission_mode=auto", () => {
+    expect(
+      policyDecide({
+        tool: "call_connector",
+        category: "tenant_read",
+        surface: "chat",
+        args: read({ method: "GET", path: "/x" }),
+        permission_mode: "auto",
+      }),
+    ).toEqual({ kind: "proceed" });
+  });
+
+  test("yolo honours the user's armed override even for a write", () => {
+    expect(
+      policyDecide({
+        tool: "call_connector",
+        category: "tenant_read",
+        surface: "chat",
+        args: read({ method: "DELETE", path: "/x" }),
+        permission_mode: "yolo",
+      }),
+    ).toEqual({ kind: "proceed" });
+  });
+});

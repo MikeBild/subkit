@@ -132,7 +132,15 @@ export type StepWarningCode =
   // Emitted by the graphql driver when error_policy:"all" is set and the
   // response carries both data and errors. The step succeeds; errors surface
   // here so the operator sees them without the step failing.
-  | "graphql_partial_errors";
+  | "graphql_partial_errors"
+  // Emitted by the engine when a hold-writes preview held a write step (or
+  // skipped a step behind a held write) and NOTHING was persisted. The run
+  // still succeeds; this MANDATORY warning tells the caller the returned
+  // output is an upstream read/transform value, no external write happened,
+  // and how to actually write (execute_writes:true). `step_key` is the
+  // sentinel "$holds"; `details` carries held_steps / skipped_steps /
+  // would_write. Prevents the "reported ≠ written" silent no-op.
+  | "held_preview_no_writes";
 
 export interface StepWarning {
   code: StepWarningCode;

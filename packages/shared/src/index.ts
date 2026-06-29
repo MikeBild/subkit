@@ -33,6 +33,13 @@ export {
   scrubSecrets,
   scrubString,
 } from "./redaction.ts";
+export type { GraphqlOperation, SideEffect, SideEffectInput } from "./side-effects.ts";
+export {
+  classifyHttpSideEffect,
+  httpMethodIsRead,
+  inferGraphqlOperation,
+  sqlIsSelect,
+} from "./side-effects.ts";
 export type { UxGatingPermission } from "./ux-gating.ts";
 export { UX_GATING_PERMISSIONS } from "./ux-gating.ts";
 export type { ValidationIssue, ValidationResult } from "./validation-result.ts";

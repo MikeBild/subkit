@@ -1468,6 +1468,42 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       held_or_skipped: heldOrSkippedStepIds.size,
     });
   }
+  // Honest preview (Fix A). When a hold-writes preview held a write — or
+  // skipped a step behind a held write — the run still reports
+  // `succeeded`, and `lastOutput` is whatever upstream read/transform last
+  // produced. Without a signal this is indistinguishable from a real run:
+  // exactly the "gemeldet ≠ geschrieben" no-op (a search-over-POST held →
+  // the whole write chain skipped → the caller saw the converted blocks
+  // and reported success while nothing was written). Emit a MANDATORY
+  // warning (rides RunResult.warnings → the MCP envelope) so the caller
+  // knows nothing was persisted and how to actually write. Step ids +
+  // method/url only — never the (already-redacted) held bodies.
+  if (outputUnavailableDueToHolds && finalStatus === "succeeded") {
+    const heldWriteSteps = stepSummaries.filter((s) => s.held === true);
+    const skippedDepSteps = stepSummaries.filter(
+      (s) =>
+        s.status === "skipped" &&
+        (s.error as { code?: string } | null)?.code === "skipped_dependency_held",
+    );
+    warningsAccum.push({
+      code: "held_preview_no_writes",
+      message:
+        `Preview run (hold_writes): ${heldWriteSteps.length} write step(s) held` +
+        `${skippedDepSteps.length > 0 ? ` and ${skippedDepSteps.length} dependent step(s) skipped` : ""}` +
+        ` — NOTHING was written to any external system. The returned output is from upstream` +
+        ` read/transform steps only. Re-run with execute_writes:true to perform the writes.`,
+      step_key: "$holds",
+      details: {
+        held_steps: heldWriteSteps.map((s) => s.step_key),
+        skipped_steps: skippedDepSteps.map((s) => s.step_key),
+        would_write: heldWriteSteps.map((s) => ({
+          step: s.step_key,
+          method: s.held_request?.method ?? null,
+          url: s.held_request?.url ?? null,
+        })),
+      },
+    });
+  }
   if (
     def.output_schema &&
     lastOutput !== undefined &&

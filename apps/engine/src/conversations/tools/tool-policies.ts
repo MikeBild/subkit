@@ -21,6 +21,7 @@
 // execution mode.
 
 import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
+import { callConnectorSideEffect } from "../tool-policies.ts";
 
 export type ExecutionMode = "auto" | "confirm_before_execution" | "confirm_after_execution";
 
@@ -316,11 +317,20 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
     reason: "Persists workflow",
   },
   // ---- External calls -----------------------------------------------------
+  // Gate on the ACTUAL side effect via the SAME shared classifier the
+  // execution engine's hold-writes mechanism and the MCP dispatcher gate
+  // use (classifyHttpSideEffect). A read (GET / SELECT / GraphQL query /
+  // S3 LIST) auto-runs — call_connector's whole purpose is sampling a
+  // saved connector's response during authoring; a write (PATCH / INSERT
+  // / mutation / S3 PUT) confirms. Keeps both surfaces consistent.
   {
     name: "call_connector",
-    defaultMode: "confirm_before_execution",
+    defaultMode: "auto",
+    computeModeFromInput: (input) =>
+      callConnectorSideEffect(input) === "write" ? "confirm_before_execution" : "auto",
     confirmationKind: "external_call",
-    reason: "Invokes external API",
+    reason:
+      "Confirms when the call writes (mutating HTTP method / SQL / GraphQL mutation / S3 write)",
   },
   {
     name: "run_workflow",

@@ -52,6 +52,57 @@ describe("mcp tools/call", () => {
     expect(rows[0]?.c).toBeGreaterThanOrEqual(1);
   });
 
+  // Honest preview regression (gemeldet ≠ geschrieben): a wf_* run holds
+  // writes by default. The default run must NOT return a clean payload
+  // that looks like a real write — it must carry a `preview` envelope +
+  // `_meta.subkit.execution.preview` so the model knows nothing was
+  // written. This is the exact failure the notion-append no-op exposed.
+  test("a held-writes preview returns a preview envelope + _meta, not a bare result", async () => {
+    const wf = await suite.seedWorkflow({
+      name: "call preview",
+      slug: "call-preview",
+      steps: [
+        { kind: "request", id: "fetch", method: "GET", url: `${mock.baseUrl}/data` },
+        {
+          kind: "request",
+          id: "send",
+          method: "POST",
+          url: `${mock.baseUrl}/send`,
+          body: { ok: true },
+        },
+      ],
+    });
+    const client = await suite.connect();
+    const result = await client.callTool({ name: "wf_call-preview", arguments: {} });
+    expect(result.isError).toBeFalsy();
+
+    const content = result.content as Array<{ type: string; text: string }>;
+    const body = JSON.parse(content[0]!.text) as {
+      preview?: boolean;
+      writes_held?: boolean;
+      held_steps?: string[];
+      would_write?: Array<{ step: string; method: string | null }>;
+      message?: string;
+    };
+    expect(body.preview).toBe(true);
+    expect(body.writes_held).toBe(true);
+    expect(body.held_steps).toEqual(["send"]);
+    expect(body.would_write?.[0]?.step).toBe("send");
+    expect(body.would_write?.[0]?.method).toBe("POST");
+    expect(body.message).toContain("execute_writes:true");
+
+    const meta = (result as { _meta?: { subkit?: { execution?: { preview?: boolean } } } })._meta;
+    expect(meta?.subkit?.execution?.preview).toBe(true);
+
+    // The execution materialized but the write never hit the wire (the
+    // POST /send mock would have returned hello:world if it had run).
+    const rows = await suite.http.db
+      .select({ c: count() })
+      .from(executions)
+      .where(eq(executions.workflow_id, wf.id));
+    expect(rows[0]?.c).toBeGreaterThanOrEqual(1);
+  });
+
   // Affordance regression guard: when a workflow tool result exceeds
   // MCP_OFFLOAD_CHAR_CAP (20 KB), the engine MUST return a native
   // `resource_link` content block so MCP clients can auto-fetch the

@@ -204,10 +204,34 @@ describe("resolveExecutionMode — table coverage", () => {
     );
   });
 
-  it("call_connector — external_call, always confirm_before", () => {
-    const r = resolveExecutionMode("call_connector", { endpoint: "GET /x" }, CTX);
-    expect(r.mode).toBe("confirm_before_execution");
-    expect(r.confirmationKind).toBe("external_call");
+  it("call_connector — gates on the real side effect (read auto, write confirm)", () => {
+    // A read (GET / SELECT / GraphQL query / S3 LIST) auto-runs — sampling
+    // a saved connector is the tool's purpose; a write confirms via the
+    // SAME shared classifier the engine hold + MCP gate use.
+    const read = resolveExecutionMode(
+      "call_connector",
+      { connector_id: "c", method: "GET", path: "/x" },
+      CTX,
+    );
+    expect(read.mode).toBe("auto");
+    const write = resolveExecutionMode(
+      "call_connector",
+      { connector_id: "c", method: "PATCH", path: "/x" },
+      CTX,
+    );
+    expect(write.mode).toBe("confirm_before_execution");
+    expect(write.confirmationKind).toBe("external_call");
+    // Postgres + GraphQL writes confirm too.
+    expect(
+      resolveExecutionMode("call_connector", { connector_id: "c", sql: "DELETE FROM t" }, CTX).mode,
+    ).toBe("confirm_before_execution");
+    expect(
+      resolveExecutionMode(
+        "call_connector",
+        { connector_id: "c", body: { operation: "mutation", query: "mutation { x }" } },
+        CTX,
+      ).mode,
+    ).toBe("confirm_before_execution");
   });
 
   it("save_workflow_draft / save_connector_draft — confirm_before", () => {
