@@ -1,0 +1,114 @@
+// Regression guard for thesis T1: the MCP poll surfaces (conversation_get,
+// tasks/result) must return a LEAN turn envelope — no live-streaming replay
+// frames, oversized payloads truncated with a raw_ref pointer, terminal/
+// meaningful frames preserved. Pairs with conversations/tests/verbosity-
+// evidence.test.ts (which measures the BEFORE state on the raw event log).
+//
+// Run: bun test apps/engine/src/mcp/tests/turn-projection.test.ts
+
+import { describe, expect, it } from "bun:test";
+import {
+  projectTurnEnvelopeForClient,
+  projectTurnEventsForClient,
+} from "../capabilities/turn-projection.ts";
+
+function bytes(v: unknown): number {
+  return JSON.stringify(v)?.length ?? 0;
+}
+
+/** A finished turn that ran a workflow with a large (40KB) deck input,
+ *  streamed token-by-token — the exact shape that bloated the prod payload. */
+function rawTurnEnvelope(markdownBytes: number) {
+  const bigMarkdown = "#".repeat(markdownBytes);
+  const events: unknown[] = [];
+  for (const w of "Ich rendere und lade das Deck hoch.".split(" ")) {
+    events.push({ type: "text_delta", text: `${w} ` });
+  }
+  events.push({ type: "tool_call_start", call_id: "c1", tool: "run_workflow" });
+  for (let i = 0; i < bigMarkdown.length; i += 1024) {
+    events.push({
+      type: "tool_call_delta",
+      call_id: "c1",
+      input_patch: bigMarkdown.slice(i, i + 1024),
+    });
+  }
+  events.push({ type: "tool_call_end", call_id: "c1", input: { markdown: bigMarkdown } });
+  events.push({
+    type: "tool_log",
+    call_id: "c1",
+    tool: "run_workflow",
+    level: "info",
+    message: "uploading",
+    ts: "t",
+  });
+  events.push({
+    type: "tool_result",
+    call_id: "c1",
+    tool: "run_workflow",
+    output: { status: "succeeded", public_url: "https://x/deck.html", echo: bigMarkdown },
+  });
+  events.push({ type: "message", role: "assistant", content: { text: "Hochgeladen ✓" }, id: "m1" });
+  events.push({ type: "completed", status: "active" });
+  return { conversation_id: "conv1", status: "active" as const, events };
+}
+
+describe("turn-projection — lean MCP poll envelope (T1 fix)", () => {
+  it("drops live-streaming replay frames", () => {
+    const lean = projectTurnEventsForClient(rawTurnEnvelope(40_000).events);
+    const types = new Set(lean.map((e) => (e as { type?: string }).type));
+    for (const dropped of [
+      "text_delta",
+      "tool_call_start",
+      "tool_call_delta",
+      "tool_call_end",
+      "tool_log",
+      "activity",
+    ]) {
+      expect(types.has(dropped)).toBe(false);
+    }
+  });
+
+  it("preserves the terminal/meaningful frames", () => {
+    const lean = projectTurnEventsForClient(rawTurnEnvelope(40_000).events);
+    const types = new Set(lean.map((e) => (e as { type?: string }).type));
+    expect(types.has("message")).toBe(true);
+    expect(types.has("tool_result")).toBe(true);
+    expect(types.has("completed")).toBe(true);
+    // the final assistant text survives verbatim (it is small)
+    const msg = lean.find((e) => (e as { type?: string }).type === "message") as {
+      content: { text: string };
+    };
+    expect(msg.content.text).toBe("Hochgeladen ✓");
+  });
+
+  it("truncates oversized tool_result output and attaches a raw_ref pointer", () => {
+    const lean = projectTurnEventsForClient(rawTurnEnvelope(40_000).events);
+    const tr = lean.find((e) => (e as { type?: string }).type === "tool_result") as Record<
+      string,
+      unknown
+    >;
+    // the 40KB echo is gone from the inline view, replaced by a pointer
+    expect(bytes(tr.output)).toBeLessThan(5_000);
+    expect(typeof tr.output_raw_ref).toBe("string");
+  });
+
+  it("collapses the envelope from ~125KB to a small bounded payload", () => {
+    const raw = rawTurnEnvelope(40_000);
+    const rawBytes = bytes(raw);
+    const lean = projectTurnEnvelopeForClient(raw);
+    const leanBytes = bytes(lean);
+    console.log(
+      JSON.stringify({
+        evidence: "T1_fix",
+        raw_envelope_bytes: rawBytes,
+        lean_envelope_bytes: leanBytes,
+        reduction_ratio: Math.round(rawBytes / Math.max(1, leanBytes)),
+      }),
+    );
+    expect(rawBytes).toBeGreaterThan(100_000);
+    expect(leanBytes).toBeLessThan(8_000);
+    // even a 5MB deck stays bounded — the cap is on the frame, not the input
+    const huge = projectTurnEnvelopeForClient(rawTurnEnvelope(5_000_000));
+    expect(bytes(huge)).toBeLessThan(8_000);
+  });
+});

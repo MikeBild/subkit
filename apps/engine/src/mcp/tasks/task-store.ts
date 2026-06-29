@@ -33,6 +33,7 @@ import { cancelConversationAbort } from "../../conversations/abort.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { projectTurnEnvelopeForClient } from "../capabilities/turn-projection.ts";
 import {
   getMcpTask,
   listMcpTasks,
@@ -104,9 +105,12 @@ export class ConversationTaskStore implements TaskStore {
         throw new Error(`task ${taskId} is awaiting input — not terminal`);
       }
       // The terminal CallToolResult is a text envelope so non-Tasks
-      // clients and Tasks clients see the identical body.
+      // clients and Tasks clients see the identical body. Lean projection
+      // matches `conversation_get`: drop replay frames, truncate oversized
+      // payloads (thesis T1) — same shape, no token-by-token replay.
+      const leanResult = projectTurnEnvelopeForClient(row.result);
       return {
-        content: [{ type: "text", text: JSON.stringify(row.result) }],
+        content: [{ type: "text", text: JSON.stringify(leanResult) }],
         isError: false,
       } as Result;
     }

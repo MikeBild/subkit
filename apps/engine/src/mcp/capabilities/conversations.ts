@@ -42,6 +42,7 @@ import {
   CONVERSATION_TASK_TTL_MS,
 } from "../tasks/task-store.ts";
 import { buildToolAnnotations } from "./tool-meta.ts";
+import { projectTurnEnvelopeForClient } from "./turn-projection.ts";
 
 export const CONVERSATION_TOOL_PREFIX = "conversation_";
 
@@ -486,24 +487,28 @@ async function conversationGet(
       : undefined;
 
   if (latest.result) {
+    // Lean projection: drop the live-streaming replay frames and truncate
+    // oversized payloads so a poll client gets status + final message + tool
+    // outcomes, not the token-by-token replay (thesis T1). Shape preserved.
+    const leanResult = projectTurnEnvelopeForClient(latest.result);
     if (pending) {
       return successText({
         status: "input_required",
         conversation_id,
         pending_elicitation_id: pending.id,
         input: pending.input,
-        events: latest.result.events,
-        result: latest.result,
+        events: leanResult.events,
+        result: leanResult,
       });
     }
     return successText({
       status: "completed",
       conversation_id,
-      events: latest.result.events,
-      ...(latest.result.committed_workflow_id
-        ? { committed_workflow_id: latest.result.committed_workflow_id }
+      events: leanResult.events,
+      ...(leanResult.committed_workflow_id
+        ? { committed_workflow_id: leanResult.committed_workflow_id }
         : {}),
-      result: latest.result,
+      result: leanResult,
     });
   }
 
