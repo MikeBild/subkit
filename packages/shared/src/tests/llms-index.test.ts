@@ -24,7 +24,12 @@ const pages: LlmsPage[] = [
     title: "Connectors",
     summary: "What a connector is.",
   }),
-  page({ audience: "developers", path: "docs/developers/api.md", title: "API", summary: "" }),
+  page({
+    audience: "developers",
+    path: "docs/developers/tool-palette.md",
+    title: "API",
+    summary: "",
+  }),
   // Two optional (auto-generated reference) pages.
   page({
     audience: "developers",
@@ -68,8 +73,8 @@ describe("renderLlmsIndex", () => {
   });
 
   test("omits `: summary` when summary is empty", () => {
-    expect(out).toContain("- [API](https://x/llms/developers/api.md)\n");
-    expect(out).not.toContain("[API](https://x/llms/developers/api.md):");
+    expect(out).toContain("- [API](https://x/llms/developers/tool-palette.md)\n");
+    expect(out).not.toContain("[API](https://x/llms/developers/tool-palette.md):");
   });
 
   test("optional pages land under ## Optional and are excluded from audience sections", () => {
