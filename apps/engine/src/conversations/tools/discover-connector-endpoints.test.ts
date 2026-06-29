@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 import * as discoveryModule from "../../connectors/discovery/index.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { createConnector } from "../../connectors/service.ts";
+import { connectors } from "../../db/schema/connectors.ts";
 import { tenants } from "../../db/schema/identity.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -440,6 +441,59 @@ describe("discover_connector_endpoints — tenant isolation", () => {
       expect(bRows).toHaveLength(1);
     } finally {
       spy.mockRestore();
+    }
+  });
+});
+
+describe("discover_connector_endpoints — self-description capture", () => {
+  test("forwards connector_id so the discovered llms link is recorded on the connector", async () => {
+    const connector = await createConnector(
+      {
+        tenant_id,
+        actor_id: null,
+        input: {
+          name: "SD Cap",
+          slug: "sd-cap",
+          driver: "http",
+          base_url: "https://sd-cap.example.com",
+          environment: "dev",
+          auth_type: "none",
+        },
+      },
+      ctx.db,
+    );
+    const llmsResult: DiscoveryResult = {
+      ...SAMPLE_RESULT,
+      strategy: "llms-txt",
+      source_url: "https://sd-cap.example.com/llms-full.txt",
+      spec_version: null,
+      endpoints: [],
+      auth_schemes: [],
+      text_corpus: "# docs",
+    };
+    const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(llmsResult);
+    try {
+      const r = await discoverConnectorEndpointsTool.execute(makeCtx(), {
+        connector_id: connector.id,
+        force_refresh: true,
+      });
+      expect(r.ok).toBe(true);
+      const rows = await ctx.db.select().from(connectors).where(eq(connectors.id, connector.id));
+      const links =
+        (
+          rows[0]?.self_description as {
+            links?: Array<{ kind: string; url: string; source: string }>;
+          }
+        )?.links ?? [];
+      expect(
+        links.some(
+          (l) =>
+            l.kind === "llms_full" && l.url.endsWith("/llms-full.txt") && l.source === "discovery",
+        ),
+      ).toBe(true);
+    } finally {
+      spy.mockRestore();
+      await ctx.db.delete(connectors).where(eq(connectors.id, connector.id));
     }
   });
 });
