@@ -1,178 +1,221 @@
 # Changelog
 
-## [7.22.1]
+## [7.22.1] – 2026-06-29
+- fix(authoring): ground request paths in discovered endpoints — no invented routes (v7.22.1)
+- fix(docker): retry bun install in image build to survive flaky QEMU tarball extraction
 
-Closes a grounding hole that let the workflow author invent connector routes
-after a successful OpenAPI discovery. Discovery would correctly capture an
-API's endpoints, but the one-shot generation flow never received them, so the
-model reconstructed paths from its own prior — emitting undocumented routes
-(e.g. `/sites` instead of the discovered `/v1/sites`) and JSON-wrapping a body
-the spec declared as `text/markdown`. Nothing cross-checked the authored paths,
-so the wrong routes only surfaced as live 4xx/5xx during preview.
+## [7.22.0] – 2026-06-29
+- chore(release): v7.22.0 — lean MCP conversation poll envelope
+- fix(mcp): drop redundant top-level `events` from conversation_get (v7.21.8)
+- fix(mcp): lean conversation poll envelope — stop shipping the full streaming replay log (v7.21.8)
 
-- **Discovered endpoints are now authoritative grounding.** The authoring
-  pipeline loads each bound connector's discovered endpoint index (resolved by
-  connector identity, not just `base_url`, so an index cached under a spec URL
-  still resolves) and renders it into the generation prompt as the closed set of
-  routes the connector exposes — method, path, and the declared request media
-  type.
-- **A deterministic endpoint-grounding gate.** Every `request` step's
-  method+path is checked against the discovered set (tolerant of `{param}` and
-  `${placeholder}` segments); an undocumented route folds into the regenerate
-  pass, and the model-supplied-draft path (`build_workflow`) hard-blocks with
-  `endpoint_not_in_discovered_spec` plus the nearest documented routes. The gate
-  is fail-open: a connector with no discovered spec is never penalised.
-- **Request Content-Type is captured from the spec.** Discovery now records the
-  declared request media type per endpoint, so a `text/markdown` body is no
-  longer silently encoded as JSON.
+## [7.21.7] – 2026-06-29
+- fix(mcp): always expose confirm_tool_call + bound elicitation so the gate never dead-ends (v7.21.7)
 
-## [7.7.1]
+## [7.21.6] – 2026-06-29
+- fix(engine): unify write-safety on one side-effect classifier + honest hold-writes preview
 
-Fixes a latent migration-runner bug that let a new migration silently skip on
-long-lived databases — the one that left v7.7.0's `conversations.turn_count`
-uncreated on prod.
+## [7.21.5] – 2026-06-29
+- feat(connectors): capture ALL self-description variants + document grounding
 
-- **Migrations are tracked by stable tag, not row position.** `migrate.ts`
-  previously recognised an already-applied migration with a positional fallback
-  (`tracking-row-count > migration-idx`). On any database whose
-  `drizzle.__drizzle_migrations` carries more rows than the embedded set — the
-  normal state after the v6 baseline squash, which left the pre-squash rows in
-  place — that fallback mis-fired and skipped every genuinely-new migration. The
-  runner now records and matches each migration by its `tag`: an edited `.sql`
-  still backfills its hash without re-running, the synthetic squashed baseline is
-  stamped rather than re-run, and a genuinely-new migration always applies
-  regardless of how many historical rows the tracking table holds. Legacy
-  hash-only rows are adopted (tag stamped) on first boot. Adds a regression test
-  that reproduces the inflated-count state fresh test DBs never exhibited.
-- Prod was hot-patched for v7.7.0 (the `turn_count` column + `loaded_skills`
-  conversion applied by hand); this release prevents recurrence on the next
-  migration.
+## [7.21.4] – 2026-06-29
+- fix(tests): update catalogues/goldens for the new tool; keep http warm lazy
 
-## [7.7.0]
+## [7.21.3] – 2026-06-29
+- fix(connectors): forward connector_id from discover tool so self-description links attach
 
-The conversation prompt stops paying the full cost of every skill it has ever
-loaded. Loaded skills now render their full body only while they are *relevant
-to the current turn*, and fall back to a one-line index entry once they age out
-— so a long session keeps its skill palette without the prompt growing without
-bound.
+## [7.21.2] – 2026-06-29
+- fix(docs): make llms-manifest.json byte-stable across filesystems
 
-- **Recency-gated skill loading (K=3).** `conversations.loaded_skills` moves
-  from a one-way `string[]` ratchet to `{slug, last_turn}` recency entries with
-  a new monotonic `turn_count` clock. A skill renders its full body while it
-  was touched within the last K=3 turns; beyond that it is demoted to the
-  "Loaded" index (one line) but stays referenceable and `load_skill`-reaffirmable
-  until a wider retention horizon (K·8 = 24 turns). Nothing disappears, nothing
-  is truncated — the dominant controllable LLM cost (full skill bodies) is now
-  bounded by recency.
-- **Tenant-isolation hardening.** The `load_skill` and tool-call autoload writes
-  to `loaded_skills` are now scoped on `(tenant_id, id)`, not `id` alone, and
-  every read validates the persisted shape at the boundary (malformed/legacy
-  rows are dropped with a structured warning instead of poisoning the prompt).
-- **Atomic per-turn clock.** `turn_count` is incremented via a single
-  `UPDATE … RETURNING`, so concurrent turns on one conversation can no longer
-  collapse a recency index.
+## [7.21.1] – 2026-06-29
+- fix(shared): point llms-index test fixture at a real doc page
 
-Also includes the Gmail-send redaction fix (#239) and the `sk` startup
-health-digest in-context chrome (#240).
+## [7.21.0] – 2026-06-29
+- feat(connectors): self-description links, lazy fetch, self-healing refresh
 
-## [7.6.0]
+## [7.20.0] – 2026-06-28
+- feat(llms-txt): serve sk's own llms.txt/llms-full.txt and probe connectors' per spec
 
-Runtime incidents become diagnosable in one pass, and the engine now warns
-operators *before* a failure — the bounce that took manual `journalctl` grepping
-to root-cause is now a structured, classified, correlated log line plus a
-leading-indicator risk surfaced at the `sk` REPL, in `/v1/operator/health-digest`,
-and to a connecting MCP client.
+## [7.19.1] – 2026-06-28
+- fix(connectors): resolve response cap without a hard config dependency
+- fix(engine): bound connector transport, uploads and chat registry rehydrate
 
-- **Errors are discoverable.** Every `errorFields(err)` log now carries an
-  `error_class` facet (`transient` / `upstream_4xx` / `timeout` / `validation` /
-  `logic` / …, mapped from the existing DB/HTTP/provider classifiers) plus the
-  error's `cause` and `stack` — so "all transient DB errors" or "the real reason
-  behind a DrizzleQueryError" is a single grep, not a forensic reconstruction.
-- **A request's trace survives the queue boundary.** Worker handlers re-establish
-  the enqueuing request's `trace_id` / `tenant_id` and a `request_source:"queue"`
-  via a context bridge, so one trace_id now stitches HTTP → queued job → execution.
-  A configurable per-field log truncation cap bounds a tool that interpolates a
-  large payload into a message.
-- **Predictive-maintenance telemetry.** New gauges/counters for DB-pool
-  saturation, a *windowed* transient-retry rate, dead-letter-queue depth,
-  connector health mix, LLM latency + fallback fraction, and RSS high-water —
-  all on `/metrics`. They feed six leading-indicator risk signals (pool, DLQ,
-  retry-rate, connector-unhealthy, LLM-fallback, memory) computed once in the
-  operator health digest.
-- **The digest speaks first.** `GET /v1/operator/health-digest` gains a
-  deterministic `risk[]` block (gated on `stats:read`); the `sk` REPL renders it
-  at startup and `sk login` shows a one-line risk summary; a connecting MCP
-  client receives the same summary as `initialize` instructions and can pull the
-  live `subkit://operator/health-digest` resource — all RBAC-gated, with
-  `operator.risk_signal_raised` / `_cleared` audited on the transition edge under
-  the system tenant.
+## [7.18.0] – 2026-06-28
+- fix(engine): type-preserving HTTP bodies, MCP confirm-gate + async-ack, judge & discovery fixes
 
-## [7.4.0]
+## [7.17.2] – 2026-06-28
+- chore(release): 7.17.2
+- fix(queue/scheduler): outbox replay, lost cron runs, fanout retry, every:N dedup (#280)
 
-Runtime-log hardening, authoring-quality lints, and a count-consistency critic check — all grounded in production runtime-log analysis.
+## [7.17.1] – 2026-06-28
+- chore(release): 7.17.1
+- Security & integrity hardening from verified code review (P0 + P1 + key P2/P3) (#279)
 
-- **Scheduler survives a transient PostgreSQL bounce.** A short PG restart (e.g. an unattended-upgrade point release) used to drop per-cadence scheduler jobs — docs/knowledge refresh, schedule fan-out, drift/reauth/endpoint/skill-candidate scans — for a full cadence (1–6h). Each reconcile pass now retries on a transient DB error with jittered backoff, absorbing a ~10s bounce within the tick.
-- **Silent-data-loss warnings now fire.** `transform_empty_extraction` (blocking at dry-run) and `transform_dropped_fields` (informational) were defined and consumed by the repair loop but never emitted; the transform step now produces them, so a projection that quietly drops fields or extracts nothing surfaces during authoring instead of shipping green.
-- **New `supabase-graphql` connector template** (graphql driver at `/graphql/v1`, apikey + Bearer) with matching skills, plus a GraphQL `404 → remote_resource_not_found` probe classification so the authoring agent gets a "wrong endpoint" signal instead of a generic upstream error.
-- **Authoring guidance:** independent reads should use `for_each` (auto-parallel) over `loop` (sequential); a bounded recursive/tree-traversal pattern (`has_children`, no nested loops); the authoring critic now flags avoidable sequential reads, silent data loss, and incomplete traversal.
-- **Chat-critic count consistency:** a deterministic check rejects a self-contradictory assistant tally (total ≠ sum of parts) or a stated count that over-claims the items actually listed — caught from a bulk-delete summary that claimed more workflows than existed.
-- **`tool.failed` carries the reason:** a structured `ok:false` rejection (e.g. `credential_form_mismatch`) now logs its `error_code`/`message` instead of a bare `ok:false` with only `data_keys`.
+## [7.17.0] – 2026-06-28
+- chore(release): 7.17.0
+- style: drop unused userInvites import in identity service
+- fix: export drawio
+- chore(connectors): trim catalog to 55 verified-tier templates
+- docs: fix factual drift, add per-folder index pages, gate generated docs
+- feat(knowledge): ship default platform reference for MCP clients
+- docs(tapes): drop the version segment from the sk REPL banner
+- docs: restyle the Tier-B deep reference pages with Mermaid + outcome-first framing
+- docs: reorganize docs/ into an audience-based tree with Mermaid + sk REPL tapes + llms.txt
 
-## [7.3.1]
+## [7.16.0] – 2026-06-27
+- chore(release): v7.16.0
+- feat(mcp): author custom skills over MCP + enforce knowledge/skill write scopes (#276) (#277)
 
-Make Biome honor `.gitignore` so local lint/pre-push stays green after the docker tests.
+## [7.15.0] – 2026-06-27
+- fix(connectors): lead Supabase auth with bearer, apikey is the Cloud-only addition
+- chore(release): v7.15.0
+- fix(observability): cut boot-heartbeat and discovery-cascade log noise (#275)
+- fix(connectors): correct Supabase auth guidance to dual-header (apikey + Authorization: Bearer) (#274)
+- feat(auth): auth.provider selector + local admin-invite provisioning (#273)
+- ci: checkout/cache@v5 (Node 24), fix nightly judge-calibration, atomic SHA256SUMS
 
-- `biome.json` had `vcs.enabled: false`, which silently disabled the already-set `useIgnoreFile: true` — so Biome ignored `.gitignore` entirely. Running `bun run test:docker` leaves git-ignored scratch homes (`.docker-repl-home/`, `.docker-sk-home/`) in the working tree, and the next `bun run lint` / pre-push hook then failed on those JSON artifacts. Setting `vcs.enabled: true` brings lint and git back in sync (also covers `coverage/`, `subkit.config.json`, `.claude/settings.local.json`, …). No effect in CI (fresh checkout) and no tracked source is git-ignored.
+## [7.14.0] – 2026-06-26
+- test(authoring): next_prompt carries the skill-candidate notice on commit
+- feat(engine): graphql retry + partial-success, MCP principal, self-describing workflows
 
-## [7.3.0]
+## [7.13.4] – 2026-06-26
+- chore(release): v7.13.4 — official release of the MCP catalog budget-fit
+- test(rbac): allowlist resources.ts in the quiet-flag guard
 
-Upgrade the bundled database to PostgreSQL 18.
+## [7.13.3] – 2026-06-26
+- chore(release): v7.13.3 — MCP catalog budget-fit + probe/log hygiene
+- refactor(mcp): extract tools/list budget-fit into catalog-budget.ts
+- fix(engine): log benign migration drift at info, not warn
+- fix(mcp): quiet the stats:read enumeration probe on resources/list
+- fix(conversations): gate probe_connector confirm on environment, not HTTP method
+- fix(mcp): fit tools/list to the strict-client token budget (search-first, essentials-first)
+- docs: drop numeric prefixes from concept-doc filenames
+- chore: move strategy/vision docs to Notion-bound set; keep only the 4 executable drivers
 
-- The all-in-one image (`mikebild/subkit`) now embeds **PostgreSQL 18** (`postgres:18-bookworm` runtime stage); the dev `docker-compose.yml` and CI/nightly/weekly service containers move to `postgres:18-alpine`. Docs and the operations topology diagram are updated to match.
-- **Breaking (embedded DB only):** the embedded cluster's on-disk format changes across the major version. An existing `/data` volume initialized by PostgreSQL 16 will not start under PG18 — back up and recreate the volume, or point the engine at an external `DATABASE_URL`. External-database deployments are unaffected.
+## [7.13.2] – 2026-06-26
+- fix(authoring): resolve Notion-by-name failure + harden authoring loop
 
-## [7.2.2]
+## [7.13.1] – 2026-06-26
+- chore(release): v7.13.1 — pace backfill embedding off the event loop
+- fix(embeddings): pace backfill embedding to keep the event loop responsive
 
-Fix connector reauth for Cognito `USER_PASSWORD_AUTH` connectors.
+## [7.13.0] – 2026-06-25
+- chore(release): v7.13.0 — grounding enforcement + embedded embeddings
+- feat(grounding): honest answers, semantic retrieval, embedded embeddings (#263)
 
-- `request_connector_reauth` no longer mints a dead browser sign-in link for `cognito_user_password` connectors (e.g. AppSync/Cognito). Cognito is a password grant — the engine never stores the password — so reauth now routes to the in-chat email+password re-issue and re-mints via `InitiateAuth`, rotating the credential in place. Previously the browser dance hit the Cognito endpoint and failed with "unexpected HTTP response status code", showing a misleading "this link has been used up" page.
-- `beginConnectorOAuthDance` now fails fast with a clear error for non-browser grants instead of the opaque transport error.
+## [7.11.0] – 2026-06-25
+- ci(security): exempt private-key rule in *.test.ts fixtures
+- chore(release): v7.11.0 — RBAC permission transparency + MCP SDK 1.29 adoption
+- feat(mcp): adopt SDK 1.29 — M2M OAuth, typed JSON-schema converter, connect banner (#260)
+- feat(rbac): permission transparency — displayed permissions equal enforced (#258)
+- chore(release): drop dead subkit-v* tag scheme from release workflow (#262)
+- ci: scope gitleaks scan to the pushed commit, not the whole object graph
+- docs(mcp): scrub product names, dates and version refs from code comments
+- refactor(mcp): vendor-neutral catalog-budget naming, no client special-casing (v7.10.13)
+- feat(mcp): explicit tool annotations, catalog-size logging, bounded wf_ runs (v7.10.12)
+- fix(mcp): validate model-driven confirmations; correct elicitation docs (v7.10.11)
+- fix(mcp): make confirm-before-execution gate resolvable over MCP (v7.10.10)
+- fix(mcp): ChatGPT/codex connector — consent scopes, refresh dedup, tool annotations (v7.10.5 + v7.10.6) (#259)
+- feat(telemetry): per-run cost attribution, quality stats, runtime diagnostics + sk surfacing (#255)
 
-## [7.2.1]
+## [7.10.4] – 2026-06-24
+- refactor(mcp): drop duplicate tenant_* tool aliases — halve the MCP catalog (v7.10.4) (#257)
+- feat(llm): user-level token usage attribution, budgets, and reporting (#256)
 
-Closes the last onboarding rough edges.
+## [7.10.3] – 2026-06-24
+- fix(mcp): hide draft_write tools from tools/list — unblock authoring over claude.ai (v7.10.3) (#254)
+- fix(llm): register claude-opus-4-8 in model capability tables
+- docs(deps): add npm dependency review report (#253)
+- feat(oauth): operator-elected scope selection on the MCP consent screen (#252)
 
-- `sk credentials list <connector-id>` now shows attached credentials (redacted: id, mode, environment, oauth-refresh flag, created_at). The single-connector GET embeds the same summary; secret material never leaves the vault.
-- `engine --issue-admin-key` prints a complete, copy-paste `sk login --engine-url … --api-key …` line so logging the host CLI in is one paste.
-- Quickstart now covers the conversational `sk` REPL (approve-to-commit loop, slash commands) and connecting from an MCP client — Codex `config.toml` (streamable-HTTP + `bearer_token_env_var`) and the `sk mcp` stdio proxy.
-- New docker-backed smoke (`bun run smoke:surfaces`) verifies the Codex MCP handshake (`/mcp` initialize + tools/list) and the headless REPL loop against a released image.
+## [7.10.2] – 2026-06-24
+- chore(release): v7.10.2 — default-deny execution tools (build-new hijack fix)
+- fix(conversations): default-deny execution tools so build-new can't run a lookalike (#251)
 
-## [7.2.0]
+## [7.10.1] – 2026-06-24
+- chore(release): v7.10.1 — OAuth cleanup keeps active DCR clients
+- fix(oauth): keep actively-used DCR clients in retention sweep (#249)
+- feat(ci): docs-reference + phantom-dependency gates, plus housekeeping workflow (#250)
 
-Onboarding polish: scriptable setup and a friction-free first run.
+## [7.10.0] – 2026-06-24
+- chore(release): v7.10.0 — judge hardening + conversation/workflow fixes
+- fix(conversations): block build-new hijack, tenant-scope suggest_next, resolve Notion page ids (#248)
+- feat(judge): deterministic wrong-filter guard + multi-trial calibration → blocking nightly (#247)
+- fix(workflows): only reconcile trigger bindings when the trigger block changes (#246)
+- refactor(ci): one rule for the nightly LLM creds — SK_OVERRIDE_ provider + key, no duplication
+- fix(eval): judge-calibration runner must loadConfig() — was silently on the gateway provider in CI
+- fix(ci): nightly real-LLM jobs supply anthropic creds as SK_OVERRIDE_* (config-first)
 
-- New `sk credentials set <connector-id> --mode bearer|header|query|basic|aws_sigv4|none …` attaches a credential without a conversation, so key-based connectors can be provisioned fully headless (create `--skip-checks` → `credentials set` → `connectors test`).
-- All-in-one image: `sk init` auto-detects the one-time bootstrap token from the volume — no more `docker logs | grep`. The engine writes it to `SUBKIT_BOOTSTRAP_TOKEN_FILE` on mint and deletes it on consume.
-- Switching `llm.provider` no longer lets the previous provider's generic key leak into the new provider (clear "not configured" error instead of a wrong-key failure).
-- A clean local install is fully green: the missing `server.public_base_url` is now an advisory recommendation, not a setup warning.
-- Guide: documents `--llm-provider mock` for a zero-API-key tour.
+## [7.9.0] – 2026-06-24
+- fix: authoring-flow integrity + grant-type-aware reauth + oauth2 refresh storm (v7.9.0) (#245)
 
-## [7.1.0]
+## [7.8.2] – 2026-06-22
+- fix(audit): list_audit action filter was silently dropped + gap cleanup (v7.8.2) (#244)
 
-Onboarding hardening and a zero-to-running quickstart.
+## [7.8.1] – 2026-06-22
+- fix(conversations): load_skill must not gate on confirm (regression from tenant_write flip) (#243)
 
-- LLM key set via `sk init --llm-api-key` (or the generic `llm.api_key` / `SK_OVERRIDE_LLM_API_KEY`) now propagates to the provider-specific config leaf, so the first AI call works without a manual fix.
-- Provider-misconfiguration now returns a clear `400 llm_provider_misconfigured` with a hint instead of a masked `internal error`.
-- All-in-one image: file-storage persistence override is honored (uploads land on the `/data` volume, not an ephemeral tmpdir), and benign EACCES boot warnings are gone.
-- New `sk executions result <id>` prints the value a workflow produced.
-- `sk connectors list` shows the connector name; `sk doctor` no longer points at a non-existent command and exits 0 on a healthy (warn-only) install.
-- Explicit `--tags` on `sk knowledge-sources create` are authoritative (no surprise AI-generated tags).
-- New docs: `docs/quickstart/zero-to-running.md` and `docs/quickstart/using-the-repl.md`.
+## [7.8.0] – 2026-06-22
+- fix: PR-review backlog v7.8.0 — 10 verified regressions (connectors, redaction, audit, risk-signals) (#242)
 
-## [7.0.1]
+## [7.7.1] – 2026-06-22
+- fix(db): track applied migrations by tag, not row position (v7.7.1)
 
-Release pipeline now emits an event-driven deploy notification on publish, replacing a scheduled poll.
+## [7.7.0] – 2026-06-22
+- chore(release): v7.7.0 — recency-gated skill loading
+- feat(conversations): context-aware recency-gated skill loading (K=3) (#241)
+- fix: redaction no longer corrupts authored code (Gmail send outage) (#239)
+- fix(sk): render startup health digest as in-context chrome, not a pre-Ink stdout dump (#240)
+- feat(observability): complete error_class taxonomy across all connector drivers
 
-## [7.0.0]
+## [7.6.0] – 2026-06-22
+- chore(release): v7.6.0 — observability + predictive-maintenance telemetry
+- Observability: error-discoverable logs + predictive-maintenance telemetry (#238)
 
-Initial baseline release. History reset to a single `init` commit; prior changelog removed.
+## [7.5.1] – 2026-06-21
+- fix(release): green the v7.5.0 gate (v7.5.1) (#237)
+
+## [7.5.0] – 2026-06-21
+- fix: browserless hardening + Gmail send-outage durable fix (v7.5.0) (#236)
+
+## [7.4.0] – 2026-06-21
+- chore(release): v7.4.0
+- Runtime-log hardening + authoring-quality lints + count-consistency critic (#235)
+
+## [7.3.1] – 2026-06-21
+- fix(lint): enable Biome vcs so it honors .gitignore (v7.3.1)
+
+## [7.3.0] – 2026-06-21
+- chore(docker): upgrade bundled PostgreSQL 16 → 18 (v7.3.0) (#234)
+- fix(e2e): bound PTY teardown so REPL suites pass within timeout (fixes red main) (#233)
+- test(e2e): make missing expect a loud CI failure, not a silent skip (#232)
+- ci: install expect so PTY REPL tests run instead of silently skipping (#231)
+- test(e2e): add docker + multi-surface smoke/e2e coverage (#230)
+- docs(quickstart): make the conversational REPL the primary interface
+
+## [7.2.2] – 2026-06-20
+- chore(release): 7.2.2
+- fix(connectors): cognito reauth routes to in-chat re-issue, not a dead browser link
+
+## [7.2.1] – 2026-06-20
+- docs(quickstart): add repl walkthrough + mcp/codex embedding + smoke
+- chore(release): 7.2.1
+- feat(onboarding): show attached credentials (A4) + copy-paste host login
+
+## [7.2.0] – 2026-06-20
+- fix(test): setup diagnostics — public_base_url is advisory, not a warning
+- chore(release): 7.2.0
+- feat(onboarding): scriptable credentials, token auto-detect, provider-switch safety
+
+## [7.1.0] – 2026-06-19
+- chore(release): 7.1.0
+- fix(onboarding): resolve setup/install/onboarding friction (F1–F10)
+
+## [7.0.1] – 2026-06-19
+- chore(release): drop cross-repo reference from 7.0.1 changelog
+- chore(release): 7.0.1
+- ci(release): dispatch deploy-release to subkit-deploy after publish
+
+## [7.0.0] – 2026-06-19
+- chore: init
+
