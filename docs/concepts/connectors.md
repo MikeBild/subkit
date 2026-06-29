@@ -144,6 +144,29 @@ The response is `{ source: "cache" | "fresh", cache_key, result: DiscoveryResult
 
 ---
 
+## Connector Self-Description
+
+Outcome: the AI grounds a workflow in a connector's *own* published docs instead of guessing from general training data — and it does so without burning the token budget on prose nobody asked for.
+
+Many target systems publish their own machine-readable docs: an `llms.txt` index, a full `llms-full.txt` corpus, an OpenAPI spec, or a GraphQL introspection endpoint. Each Connector remembers where those live in lightweight `self_description.links[]` metadata. Four link kinds are tracked:
+
+| `kind` | What it points at |
+|---|---|
+| `llms_txt` | The connector target's [llms-txt](https://llmstxt.org) index — a curated map of its docs. |
+| `llms_full` | The full single-fetch prose corpus (e.g. `llms-full.txt`). |
+| `openapi` | The OpenAPI / Swagger spec. |
+| `graphql` | The GraphQL introspection endpoint. |
+
+**Links only — never bodies.** Each entry records the URL, a `source` (`discovery`, `self_healing`, or `manual`), and a `discovered_at` timestamp. The full document bodies are *not* copied into a new store; the connector keeps only the pointer. (The discovery cache, described above, is a separate store that holds richer parsed content; self-description deliberately stays a thin set of links so it never bloats.)
+
+**How links are captured.** A link is recorded whenever discovery runs against a connector — the `discover_connector_endpoints` call forwards the `connector_id`, so a successful spec fetch leaves a remembered pointer behind. A bounded self-healing scheduler pass then broadens and refreshes the set, probing every published surface so the links stay current as the target's docs move.
+
+**How links ground authoring.** When a connector is in scope during workflow authoring, the context-assembler surfaces a single pointer line — *"This connector publishes its own docs — fetch on demand with `fetch_connector_self_description`: …"* — covering the connector's llms / OpenAPI / GraphQL links. Compact endpoint signatures (operation names plus arguments) come inline from the discovery index for OpenAPI and GraphQL connectors. The full prose corpus is **not** eagerly inlined; the authoring LLM fetches it lazily, only when it needs deeper detail, which keeps the prompt budget bounded.
+
+The fetch itself is the conversational / MCP tool `fetch_connector_self_description` — `{ connector_id?, kind?: "llms" | "openapi" | "graphql" | "all" }`. It live-fetches the remembered link transiently (egress-guarded and size-capped) and persists nothing. It is an MCP tool, not an HTTP route, so it does not appear in the engine OpenAPI spec.
+
+---
+
 ## Ad-hoc Invocation
 
 Once a connector is persisted, the agent can invoke any endpoint against it for sampling, pagination validation, or response-shape inspection. The conversational tool `call_connector` accepts `{ connector_id, method, path, query?, headers?, body?, timeout_ms? }` and returns the response status, headers, body, latency, and a truncation flag.

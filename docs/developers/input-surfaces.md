@@ -139,6 +139,8 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 **Callable hints.** Every listed callable entry carries `_meta.subkit = {category, confirm_required, destructive}` so clients can render destructive warnings and skip self-authored pre-confirms. Clients that honour `confirm_required` from the listing avoid the two-elicitation trap.
 
+**Connector docs on demand.** `tools/list` includes `fetch_connector_self_description` — an MCP tool (not an HTTP route, so it is absent from the OpenAPI spec) that live-fetches a connector's *own* published docs (its `llms.txt` / `llms-full.txt`, OpenAPI spec, or GraphQL introspection) from the links the connector remembers. The fetch is transient, egress-guarded, and persists nothing. See [Connectors → Connector Self-Description](../concepts/connectors.md#connector-self-description).
+
 **Workflow inputs.** Each `wf.<slug>` callable entry advertises an `inputSchema`. When the workflow declares `input_schema` on its DAG, that is passed through verbatim. When it doesn't, sk synthesises one by scanning the DAG for `${input.X}` placeholders in request steps and `input.input.X` references in JavaScript transforms, yielding `{type:"object", properties:{X:{type:"string"}}, additionalProperties: true}`.
 
 **Non-fatal warnings.** When a workflow run hits a soft signal — for example a `loop.over` JSONata expression that resolved to a non-array because it referenced a step id not in scope — the MCP response wraps the output as `{output, warnings: [{code:"loop_over_unresolved", identifier, step_key, message}]}`. The run still reports `status: "succeeded"` but the client can surface the diagnostic so operators know why a payload looks partial.

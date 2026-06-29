@@ -23,7 +23,7 @@ import {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_HTML_BYTES = 4 * 1024 * 1024;
 
-const WELL_KNOWN_PATHS: string[] = [
+export const WELL_KNOWN_PATHS: string[] = [
   "/openapi.json",
   "/openapi.yaml",
   "/openapi.yml",

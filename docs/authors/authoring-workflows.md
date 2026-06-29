@@ -193,7 +193,10 @@ The assembler pre-loads Skills + docs + Knowledge chunks before every turn. On-d
 | 1 | `search_knowledge` | semantic search over tenant Knowledge Sources |
 | 2 | `search_docs` | ranked search over a connector's ingested docs (OpenAPI/GraphQL/HTML/Markdown); hits carry a `match_type` (endpoint / auth / schema / text). Use when `search_knowledge` is empty and the answer is connector-specific |
 | 3 | `fetch_connector_docs` | full doc overview for a connector |
-| 4 | `web_search` | Anthropic-native server-side web search (billed per search; Claude models only). On by default; advisory escalation in `policies/web-search-escalation.ts`; gated per tenant by `llm.web_search` (toggle via /settings) |
+| 4 | `fetch_connector_self_description` | live-fetch the connector's *own* published docs — its `llms.txt` / `llms-full.txt`, OpenAPI spec, or GraphQL introspection (`kind: "llms" \| "openapi" \| "graphql" \| "all"`). Use to pull deeper detail the inline endpoint signatures don't carry |
+| 5 | `web_search` | Anthropic-native server-side web search (billed per search; Claude models only). On by default; advisory escalation in `policies/web-search-escalation.ts`; gated per tenant by `llm.web_search` (toggle via /settings) |
+
+When a connector is in scope, the assembler doesn't inline its full doc corpus — that would blow the token budget. Instead it surfaces a one-line pointer (*"this connector publishes its own docs — fetch on demand with `fetch_connector_self_description`"*) alongside compact endpoint signatures pulled from the discovery index. sk fetches the connector's own published docs lazily, only when the model needs more than the signatures, so the workflow is grounded in the target's real documentation without paying for prose it never reads. The remembered links are described in [Connectors → Connector Self-Description](../concepts/connectors.md#connector-self-description).
 
 ### Self-healing retry
 
