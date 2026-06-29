@@ -176,6 +176,78 @@ describe("hold-writes · HTTP", () => {
     expect(stepRows.find((r) => r.step_key === "send")?.status).toBe("succeeded");
   });
 
+  test("honest preview — a held write surfaces a mandatory held_preview_no_writes warning (gemeldet ≠ geschrieben)", async () => {
+    hits.length = 0;
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-honest-preview",
+      steps: [
+        { kind: "request", id: "fetch", method: "GET", url: `${mock.baseUrl}/data` },
+        {
+          kind: "request",
+          id: "send",
+          method: "POST",
+          url: `${mock.baseUrl}/send`,
+          body: { to: "${scope.fetch.data.email}" },
+        },
+        {
+          kind: "transform",
+          id: "confirm",
+          language: "javascript",
+          expression: "return input.scope.send.data;",
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(hitsFor("/send")).toHaveLength(0);
+
+    const warning = (result.warnings ?? []).find(
+      (w) => (w as { code?: string }).code === "held_preview_no_writes",
+    ) as { message?: string; step_key?: string; details?: Record<string, unknown> } | undefined;
+    expect(warning).toBeTruthy();
+    expect(warning?.step_key).toBe("$holds");
+    expect(warning?.message).toContain("execute_writes:true");
+    expect(warning?.message).toContain("NOTHING was written");
+    expect(warning?.details?.held_steps).toEqual(["send"]);
+    expect(warning?.details?.skipped_steps).toEqual(["confirm"]);
+    expect(warning?.details?.would_write).toEqual([
+      { step: "send", method: "POST", url: `${mock.baseUrl}/send` },
+    ]);
+  });
+
+  test("honest preview — a hold_writes run with NO writes emits no held_preview warning", async () => {
+    hits.length = 0;
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "hold-read-only",
+      steps: [
+        { kind: "request", id: "fetch", method: "GET", url: `${mock.baseUrl}/data` },
+        {
+          kind: "transform",
+          id: "shape",
+          language: "javascript",
+          expression: "return input.scope.fetch.data;",
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+    expect(result.status).toBe("succeeded");
+    const codes = (result.warnings ?? []).map((w) => (w as { code?: string }).code);
+    expect(codes).not.toContain("held_preview_no_writes");
+  });
+
   test("output_schema contract is SKIPPED when the output-producing chain was held (interplay regression)", async () => {
     // A send-terminated workflow with an output_schema (e.g. the Gmail
     // {id, threadId} contract) must not go permanently red under

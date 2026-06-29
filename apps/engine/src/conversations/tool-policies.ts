@@ -11,6 +11,7 @@
 // reads them once per turn; write tools can stage their own confirmation
 // via the confirmation state machine when no policy forces one.
 
+import { classifyHttpSideEffect, type SideEffect } from "@shared/index.ts";
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import {
@@ -189,6 +190,13 @@ export function defaultModeForCategory(
  * - `computeModeFromInput` — promote the mode based on the actual call
  *   payload (prod env, mutating verb, sensitive credential present).
  *   Returning null falls through to defaultMode.
+ * - `computeDangerFromInput` — promote the tool to "dangerous" based on
+ *   the actual payload. A static name can't see that `call_connector`
+ *   with `method:"PATCH"` mutates while `method:"GET"` reads; this hook
+ *   lets the resolver treat the write case like a dangerous tool so the
+ *   `permission_mode=auto/ask/plan` short-circuits don't auto-approve it.
+ *   (yolo still honours the user's explicitly-armed override — same as
+ *   for the statically-dangerous tools.)
  * - `credentialFields` — top-level dotted paths in the input that, if
  *   non-empty, force `confirm_before_execution` regardless of the
  *   user's permission_mode. Catches the "auto-mode silently persists
@@ -205,6 +213,7 @@ export function defaultModeForCategory(
 interface ToolPolicyDefinition {
   defaultMode?: ToolPolicyMode;
   computeModeFromInput?: (input: unknown) => ToolPolicyMode | null;
+  computeDangerFromInput?: (input: unknown) => boolean;
   credentialFields?: ReadonlyArray<string>;
   prerequisites?: ReadonlyArray<string>;
   buildPendingOutput?: (input: unknown) => Record<string, unknown> | null;
@@ -269,6 +278,45 @@ function pickFields(input: unknown, fields: ReadonlyArray<string>): Record<strin
     if (obj[f] !== undefined) out[f] = obj[f];
   }
   return out;
+}
+
+/**
+ * Classify a `call_connector` call as read or write from its arguments
+ * alone, via the SAME shared classifier the execution engine's
+ * hold-writes mechanism uses. The connector's driver is not known at
+ * policy-resolution time (it's looked up at execute time), so we read the
+ * intent from the args that the four driver branches consume:
+ *   - postgres: `sql` (+ `allow_writes`). The tool rejects any non-SELECT
+ *     unless `allow_writes:true`, so a true `allow_writes` is the explicit
+ *     write signal; otherwise SELECT-detection decides.
+ *   - graphql: `body.{query, operation}` — mutation/subscription = write.
+ *   - http / s3: `method`. `LIST` is an S3 read (no HTTP `LIST` verb), so
+ *     it maps onto the classifier's s3 read-method set.
+ */
+export function callConnectorSideEffect(input: unknown): SideEffect {
+  const obj = asObj(input);
+  if (typeof obj.sql === "string") {
+    return classifyHttpSideEffect({
+      override: obj.allow_writes === true ? "write" : null,
+      sql: { query: obj.sql },
+    });
+  }
+  const body = asObj(obj.body);
+  if (typeof body.query === "string" || typeof body.operation === "string") {
+    return classifyHttpSideEffect({
+      graphql: {
+        operation:
+          body.operation === "query" ||
+          body.operation === "mutation" ||
+          body.operation === "subscription"
+            ? body.operation
+            : null,
+        query: typeof body.query === "string" ? body.query : null,
+      },
+    });
+  }
+  const method = typeof obj.method === "string" ? obj.method.toUpperCase() : "GET";
+  return classifyHttpSideEffect({ method, s3: method === "LIST" });
 }
 
 export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
@@ -450,6 +498,20 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       };
     },
   },
+  // call_connector invokes a *persisted* connector with its real
+  // credential. Its category is `tenant_read` (visibility), but a single
+  // tool can issue a read (GET / SELECT / GraphQL query / S3 LIST) OR a
+  // write (PATCH / INSERT / mutation / S3 PUT). Gate on the ACTUAL side
+  // effect — the same `classifyHttpSideEffect` the engine's hold-writes
+  // mechanism uses — not the static category. A read auto-runs; a write
+  // confirms (and is treated as dangerous so permission_mode=auto/ask/plan
+  // cannot auto-approve it; yolo still honours the user's armed override).
+  call_connector: {
+    defaultMode: "no_confirm",
+    computeModeFromInput: (input) =>
+      callConnectorSideEffect(input) === "write" ? "confirm_before_execution" : "no_confirm",
+    computeDangerFromInput: (input) => callConnectorSideEffect(input) === "write",
+  },
   // web_search leaves the tenant perimeter — confirm by default.
   web_search: { defaultMode: "confirm_before_execution" },
   // probe_connector is a diagnostic call against the vendor's surface. Confirm
@@ -500,8 +562,13 @@ export function resolveToolMode(args: {
 }): ToolPolicyMode {
   const { tool, category, input, overrides, permission_mode } = args;
 
-  const isDangerous = isDangerousTool(tool);
   const def = TOOL_POLICIES[tool];
+  // A tool is dangerous if it is statically listed OR its payload makes
+  // this particular call hazardous (e.g. a write via call_connector).
+  // Dangerous tools skip the permission_mode=auto/ask/plan auto-approval
+  // short-circuits below, so the write falls through to
+  // computeModeFromInput and confirms — while yolo still honours it.
+  const isDangerous = isDangerousTool(tool) || (def?.computeDangerFromInput?.(input) ?? false);
 
   // Inline-credential safeguard — fires before the permission_mode
   // short-circuit so `auto` cannot silently persist a secret the user

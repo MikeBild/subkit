@@ -56,6 +56,7 @@ import {
   TOOL_PREFIX,
 } from "./catalog-budget.ts";
 import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversations.ts";
+import { buildResultEnvelope } from "./held-preview.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
 import { findBackgroundExecutionId } from "./run-workflow-async-ack.ts";
 import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
@@ -877,12 +878,14 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           await notifier.send(1, 1, "completed").catch(() => {});
         }
         // When a run produced non-fatal warnings (e.g. jsonata
-        // `unresolved_identifier`), wrap the output so the MCP client
-        // sees them alongside the payload. No wrapping when clean.
+        // `unresolved_identifier`), wrap the output so the MCP client sees
+        // them alongside the payload. On top of that, a held-writes preview
+        // (the default wf_* run) gets a first-class `preview` envelope +
+        // `_meta` flag so the model cannot mistake it for a real write —
+        // the "gemeldet ≠ geschrieben" no-op. See held-preview.ts.
         const hasWarnings = (result.warnings?.length ?? 0) > 0;
-        const rawBody: unknown = hasWarnings
-          ? { output: result.output ?? null, warnings: result.warnings }
-          : (result.output ?? null);
+        const envelope = buildResultEnvelope(result);
+        const { rawBody, previewMeta } = envelope;
         // Offload if oversize. Warnings travel with the envelope.
         const serialized = JSON.stringify(rawBody);
         if (serialized.length > MCP_OFFLOAD_CHAR_CAP) {
@@ -903,6 +906,9 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           const summaryLines: string[] = [
             `Execution ${result.execution_id} ${result.status}; result is ${off.size_bytes} bytes (offloaded — inline cap is ${MCP_OFFLOAD_CHAR_CAP} bytes).`,
           ];
+          if (envelope.isHeldPreview) {
+            summaryLines.push(`⚠ PREVIEW — no writes performed. ${envelope.heldMessage}`);
+          }
           if (off.preview) summaryLines.push(`Preview: ${off.preview}`);
           if (hasWarnings) {
             summaryLines.push(`Warnings: ${JSON.stringify(result.warnings)}`);
@@ -917,6 +923,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             return {
               isError: result.status !== "succeeded",
               content: [{ type: "text" as const, text: serialized }],
+              ...previewMeta,
             };
           }
           const resourceLink = {
@@ -937,12 +944,14 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             bytes,
             execution_id: result.execution_id,
             warnings_count: result.warnings?.length ?? 0,
+            preview: envelope.isHeldPreview,
             storage_uri: storageUri,
             size_bytes: off.size_bytes,
           });
           return {
             isError: result.status !== "succeeded",
             content: [{ type: "text" as const, text: summaryLines.join("\n\n") }, resourceLink],
+            ...previewMeta,
           };
         }
         const text = serialized;
@@ -955,10 +964,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           bytes: text.length,
           execution_id: result.execution_id,
           warnings_count: result.warnings?.length ?? 0,
+          preview: envelope.isHeldPreview,
         });
         return {
           isError: result.status !== "succeeded",
           content: [{ type: "text" as const, text }],
+          ...previewMeta,
         };
       } catch (err) {
         state.bridge?.stop();
