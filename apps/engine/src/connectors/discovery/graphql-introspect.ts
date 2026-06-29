@@ -237,6 +237,8 @@ function fieldToEndpoint(
     scopes: [],
     params,
     request_body_schema: requestBodySchema,
+    // GraphQL always speaks JSON over the wire (`{ query, variables }`).
+    request_content_type: "application/json",
     response_schemas: { "200": responseSchema },
     pagination_hint: null,
     deprecated: field.isDeprecated ?? false,

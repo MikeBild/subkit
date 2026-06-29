@@ -89,6 +89,14 @@ export interface DiscoveredEndpoint {
   scopes: string[];
   params: DiscoveredEndpointParam[];
   request_body_schema: unknown | null;
+  /**
+   * The media type the operation's request body is declared under in the
+   * spec (e.g. `application/json`, `text/markdown`). Captured so authoring
+   * can encode the body as the API actually expects instead of defaulting
+   * every object body to JSON — the markdown-as-JSON failure class. `null`
+   * when the operation declares no request body (or none could be read).
+   */
+  request_content_type: string | null;
   /** Keyed by HTTP status code (e.g. "200", "default"). */
   response_schemas: Record<string, unknown>;
   pagination_hint: DiscoveredEndpointPaginationHint | null;

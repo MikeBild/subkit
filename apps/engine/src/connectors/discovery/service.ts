@@ -251,6 +251,50 @@ export async function readDiscoveryIndexForBaseUrl(
   return cached?.result ?? null;
 }
 
+/**
+ * Resolve a connector's discovery index robustly, independent of which key
+ * the discover tool cached under. The base_url-only lookup ({@link
+ * readDiscoveryIndexForBaseUrl}) misses whenever discovery ran via an
+ * `ingestion_url` (e.g. `…/openapi.json`) or a `template_id` — the row is
+ * keyed under that URI, not the bare base_url. This widens the lookup to the
+ * URIs a connector can legitimately be discovered under:
+ *   1. the bare `base_url`,
+ *   2. the common spec path `<base_url>/openapi.json`,
+ *   3. every `source_uri` recorded on the connector's `self_description`
+ *      links (the OpenAPI / llms.txt URLs discovery itself captured).
+ * First useful hit wins. Returns null when none resolve (fail-open — the
+ * caller degrades to the on-demand discover tool). Tenant-scoped throughout.
+ */
+export async function readDiscoveryIndexForConnector(
+  db: Executor,
+  tenant_id: string,
+  connector: {
+    base_url?: string | null;
+    self_description?: { links?: { url?: string }[] } | null;
+  },
+): Promise<DiscoveryResult | null> {
+  const candidates: string[] = [];
+  const push = (u: string | null | undefined): void => {
+    if (u && !candidates.includes(u)) candidates.push(u);
+  };
+  if (connector.base_url) {
+    push(connector.base_url);
+    push(`${connector.base_url.replace(/\/+$/, "")}/openapi.json`);
+  }
+  for (const link of connector.self_description?.links ?? []) push(link.url);
+  for (const uri of candidates) {
+    let slug: string;
+    try {
+      slug = deriveCacheKey({ base_url: uri }).slug;
+    } catch {
+      continue;
+    }
+    const cached = await readCache(db, tenant_id, slug);
+    if (cached && isUsefulDiscovery(cached.result)) return cached.result;
+  }
+  return null;
+}
+
 async function writeCache(
   ctx: DiscoveryServiceContext,
   cache: CacheKey,

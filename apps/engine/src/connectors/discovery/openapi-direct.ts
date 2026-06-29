@@ -343,22 +343,47 @@ function extractParams(operation: LooseObject, pathItem: LooseObject): Discovere
   return out;
 }
 
-function extractRequestBody(operation: LooseObject, isV2: boolean): unknown | null {
+/** The request body of an operation: its schema plus the media type the
+ *  spec declares it under. `content_type` lets authoring encode the body as
+ *  the API expects (e.g. `text/markdown`) instead of always JSON-wrapping. */
+interface ExtractedRequestBody {
+  schema: unknown;
+  content_type: string | null;
+}
+
+function extractRequestBody(operation: LooseObject, isV2: boolean): ExtractedRequestBody | null {
   if (isV2) {
+    // Swagger 2 declares body media types on the operation's `consumes`
+    // (or the spec root, which the caller can't see here); a `body`
+    // parameter carries the schema.
     const params = Array.isArray(operation.parameters) ? operation.parameters : [];
+    const consumes = Array.isArray(operation.consumes)
+      ? operation.consumes.filter((c): c is string => typeof c === "string")
+      : [];
+    const content_type = consumes.find((c) => c.includes("json")) ?? consumes[0] ?? null;
     for (const p of params) {
-      if (isObject(p) && p.in === "body" && isObject(p.schema)) return p.schema;
+      if (isObject(p) && p.in === "body" && isObject(p.schema)) {
+        return { schema: p.schema, content_type };
+      }
     }
     return null;
   }
   const body = asRecord(operation.requestBody);
   const content = asRecord(body.content);
-  // Prefer JSON body schema; fall back to first content type.
+  // Prefer JSON body schema; fall back to first declared content type. Carry
+  // whichever media type the schema came from so a non-JSON body (e.g.
+  // `text/markdown`) is not silently treated as JSON downstream.
   const json = asRecord(content["application/json"]);
-  if (isObject(json.schema)) return json.schema;
-  for (const value of Object.values(content)) {
-    if (isObject(value) && isObject(value.schema)) return value.schema;
+  if (isObject(json.schema)) return { schema: json.schema, content_type: "application/json" };
+  for (const [mediaType, value] of Object.entries(content)) {
+    if (isObject(value) && isObject(value.schema)) {
+      return { schema: value.schema, content_type: mediaType };
+    }
   }
+  // A body declared with a media type but no schema (e.g. raw `text/markdown`
+  // with no shape) still tells authoring the expected encoding.
+  const firstMediaType = Object.keys(content)[0];
+  if (firstMediaType) return { schema: null, content_type: firstMediaType };
   return null;
 }
 
@@ -454,6 +479,7 @@ function buildEndpoints(
       if (!isObject(opRaw)) continue;
 
       const params = extractParams(opRaw, pathItemRaw);
+      const requestBody = extractRequestBody(opRaw, isV2);
       const responses = extractResponses(opRaw, isV2);
       let pagination: DiscoveredEndpointPaginationHint | null = detectPaginationFromParams(params);
       if (!pagination) pagination = detectPaginationFromResponse(responses);
@@ -476,7 +502,8 @@ function buildEndpoints(
         operation_id: asString(opRaw.operationId),
         scopes: extractScopes(opRaw),
         params,
-        request_body_schema: extractRequestBody(opRaw, isV2),
+        request_body_schema: requestBody?.schema ?? null,
+        request_content_type: requestBody?.content_type ?? null,
         response_schemas: responses,
         pagination_hint: pagination,
         deprecated: opRaw.deprecated === true,

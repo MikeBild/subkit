@@ -41,6 +41,7 @@ export const DiscoveredEndpointSchema = z
     scopes: z.array(z.string()),
     params: z.array(DiscoveredEndpointParamSchema),
     request_body_schema: z.unknown().nullable(),
+    request_content_type: z.string().nullable(),
     response_schemas: z.record(z.string(), z.unknown()),
     pagination_hint: DiscoveredEndpointPaginationHintSchema.nullable(),
     deprecated: z.boolean(),

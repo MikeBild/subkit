@@ -530,6 +530,7 @@ const AUTHORING_GATE_CODES = new Set<string>([
   "loop_authoring_requires_inspect",
   "transform_authoring_requires_inspect",
   "transform_hand_rolled_codec",
+  "endpoint_not_in_discovered_spec",
   "repair_loop_detected",
   "critic_rejected",
   "principal_required",

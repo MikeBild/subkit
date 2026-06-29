@@ -12670,6 +12670,7 @@ export interface components {
             scopes: string[];
             params: components["schemas"]["DiscoveredEndpointParam"][];
             request_body_schema?: unknown;
+            request_content_type: string | null;
             response_schemas: {
                 [key: string]: unknown;
             };

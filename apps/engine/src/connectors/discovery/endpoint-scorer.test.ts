@@ -21,6 +21,7 @@ function makeEndpoint(over: Partial<DiscoveredEndpoint> & { path: string }): Dis
     scopes: over.scopes ?? [],
     params: over.params ?? [],
     request_body_schema: null,
+    request_content_type: null,
     response_schemas: {},
     pagination_hint: null,
     deprecated: false,

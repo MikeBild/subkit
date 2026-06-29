@@ -1,0 +1,256 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the sk placeholder grammar this module parses and matches — never JS template strings.
+// `evaluateEndpointGrounding` — refuses a workflow draft whose `request`
+// steps target a path the connector's discovered spec does not document.
+//
+// The failure mode (prod conversation 48cc3e4b): discovery correctly found
+// the connector's OpenAPI (`POST /v1/sites`, `POST /v1/sites/{site}/content`,
+// …), but the authoring model built the draft from its own generic-CMS prior
+// and emitted undocumented routes (`/sites`, `/sites/{site}/items`,
+// `/sites/{site}/keys`) plus a JSON body where the spec declares
+// `text/markdown`. Nothing cross-checked the authored paths against the
+// discovered set, so the wrong paths only surfaced reactively as live 404/500s
+// during preview — after real writes had already fired and tripped the
+// connector circuit breaker.
+//
+// This module is the missing check: a deterministic set-membership test of
+// each request step's (method, path) against the connector's discovered
+// endpoints, treating the discovered set as the CLOSED set of allowed routes.
+// It is **fail-open** — a connector with no discovered index (or an empty one)
+// is never penalised; the check only fires when there is ground truth to check
+// against. General by construction: keyed on "this connector has a discovered
+// spec", never on a vendor string.
+
+import { suggestClosest } from "../workflows/levenshtein.ts";
+
+/** A connector's discovered endpoint surface, projected to exactly what the
+ *  grounding check needs. Built by the caller from the persisted discovery
+ *  index (tenant-scoped). */
+export interface DiscoveredConnectorEndpoints {
+  slug: string;
+  base_url: string | null;
+  endpoints: ReadonlyArray<{
+    method: string;
+    path: string;
+    request_content_type: string | null;
+  }>;
+}
+
+export interface EndpointGroundingBlock {
+  /** id of the request step that targets an undocumented path / wrong body. */
+  step_id: string;
+  /** Connector the step is bound to. */
+  connector_slug: string;
+  /** HTTP method of the step. */
+  method: string;
+  /** Normalised relative path the step targets (placeholders kept verbatim). */
+  path: string;
+  reason: "path_not_in_discovered_spec" | "content_type_mismatch";
+  /** For a path block: nearest documented `METHOD /path` routes. For a
+   *  content-type block: the single expected media type. */
+  nearest: string[];
+}
+
+export interface EndpointGroundingResult {
+  ok: boolean;
+  blocks: EndpointGroundingBlock[];
+}
+
+/** One-line human rendering of a block — single source for every surface
+ *  that reports an endpoint-grounding verdict. */
+export function describeEndpointGroundingBlock(b: EndpointGroundingBlock): string {
+  if (b.reason === "content_type_mismatch") {
+    return `request \`${b.step_id}\` sends a JSON object body to \`${b.method} ${b.path}\`, but \`${b.connector_slug}\` declares this endpoint as \`${b.nearest[0]}\` — encode the body as that media type (e.g. a raw string), not a JSON object`;
+  }
+  const hint =
+    b.nearest.length > 0
+      ? ` Did you mean: ${b.nearest.join(", ")}?`
+      : " Re-check the connector's discovered endpoints (discover_connector_endpoints).";
+  return `request \`${b.step_id}\` targets \`${b.method} ${b.path}\` — not a documented endpoint of \`${b.connector_slug}\`.${hint}`;
+}
+
+/**
+ * Normalise a request step's target into a relative, query-less path.
+ * Strips an absolute `url`'s scheme+host (the connector base_url or a
+ * `${connector.<slug>.*}` placeholder prefix), drops the query string, and
+ * guarantees a single leading slash. `${…}` placeholder substrings are kept
+ * verbatim — they are matched as wildcards against `{param}` template
+ * segments downstream.
+ */
+export function normalizeRequestPath(rawTarget: string, base_url: string | null): string {
+  let s = rawTarget.trim();
+  // Strip a `${connector.<slug>.base_url|url}` prefix the model may have
+  // prepended to an otherwise-relative path.
+  s = s.replace(/^\$\{\s*connector\.[a-zA-Z0-9_-]+\.(?:base_url|url)\s*\}/, "");
+  // Strip an absolute base_url prefix.
+  if (base_url && s.startsWith(base_url)) s = s.slice(base_url.length);
+  // Strip any remaining absolute scheme://host prefix.
+  const abs = /^https?:\/\/[^/]+/i;
+  if (abs.test(s)) s = s.replace(abs, "");
+  // Drop query + fragment.
+  const q = s.search(/[?#]/);
+  if (q >= 0) s = s.slice(0, q);
+  s = s.trim();
+  if (s === "") return "/";
+  if (!s.startsWith("/")) s = `/${s}`;
+  // Collapse a trailing slash (but keep root "/").
+  if (s.length > 1) s = s.replace(/\/+$/, "");
+  return s;
+}
+
+function splitSegments(path: string): string[] {
+  return path.split("/").filter((seg) => seg.length > 0);
+}
+
+function isTemplateSegment(seg: string): boolean {
+  // OpenAPI `{id}`, Express-style `:id`.
+  return (seg.startsWith("{") && seg.endsWith("}")) || seg.startsWith(":");
+}
+
+function isPlaceholderSegment(seg: string): boolean {
+  // A whole-segment sk placeholder, e.g. `${input.site}` / `${scope.x.data.id}`.
+  return seg.includes("${") && seg.includes("}");
+}
+
+/**
+ * Does an authored path match a discovered path-template? Segment counts
+ * must be equal. A template `{param}` (or `:param`) segment matches any
+ * single non-empty actual segment. An authored `${…}` placeholder segment
+ * matches any single template segment (its runtime value is unknown). All
+ * other segments must be literally equal (case-sensitive — REST paths are).
+ */
+export function pathMatchesTemplate(actualPath: string, templatePath: string): boolean {
+  const a = splitSegments(actualPath);
+  const t = splitSegments(templatePath);
+  if (a.length !== t.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const as = a[i] as string;
+    const ts = t[i] as string;
+    if (isTemplateSegment(ts)) continue; // template param matches any value
+    if (isPlaceholderSegment(as)) continue; // unknown runtime value matches anything
+    if (as !== ts) return false;
+  }
+  return true;
+}
+
+interface RequestLike {
+  id: string;
+  kind: "request";
+  connector_id?: unknown;
+  method?: unknown;
+  path?: unknown;
+  url?: unknown;
+  body?: unknown;
+  headers?: unknown;
+}
+
+function isRequestStep(step: unknown): step is RequestLike {
+  return (
+    typeof step === "object" &&
+    step !== null &&
+    (step as { kind?: unknown }).kind === "request" &&
+    typeof (step as { id?: unknown }).id === "string"
+  );
+}
+
+/** Resolve the connector a request step is bound to: explicit `connector_id`
+ *  first, else a `${connector.<slug>.*}` placeholder in its url/path. */
+function resolveConnectorKey(step: RequestLike): string | null {
+  if (typeof step.connector_id === "string" && step.connector_id) return step.connector_id;
+  const target =
+    typeof step.url === "string" ? step.url : typeof step.path === "string" ? step.path : "";
+  const m = /\$\{\s*connector\.([a-zA-Z0-9_-]+)\./.exec(target);
+  return m ? (m[1] as string) : null;
+}
+
+function hasExplicitContentType(headers: unknown): boolean {
+  if (typeof headers !== "object" || headers === null) return false;
+  return Object.keys(headers as Record<string, unknown>).some(
+    (k) => k.toLowerCase() === "content-type",
+  );
+}
+
+/**
+ * Validate every `request` step's (method, path) — and, when matched, its
+ * body media type — against the bound connector's discovered endpoints.
+ *
+ * `index` is keyed by BOTH connector_id and connector slug so a step bound
+ * either way resolves. A connector absent from `index`, or present with an
+ * empty endpoint list, is skipped (fail-open). Returns the blocks; empty ⇒ ok.
+ */
+export function evaluateEndpointGrounding(
+  steps: ReadonlyArray<Record<string, unknown>>,
+  index: ReadonlyMap<string, DiscoveredConnectorEndpoints>,
+): EndpointGroundingResult {
+  const blocks: EndpointGroundingBlock[] = [];
+
+  for (const step of steps) {
+    if (!isRequestStep(step)) continue;
+    const key = resolveConnectorKey(step);
+    if (!key) continue;
+    const discovered = index.get(key);
+    // Fail-open: no discovered ground truth ⇒ nothing to enforce.
+    if (!discovered || discovered.endpoints.length === 0) continue;
+
+    const method = (typeof step.method === "string" ? step.method : "GET").toUpperCase();
+    const rawTarget =
+      typeof step.path === "string" && step.path
+        ? step.path
+        : typeof step.url === "string"
+          ? step.url
+          : "";
+    if (!rawTarget) continue;
+    const path = normalizeRequestPath(rawTarget, discovered.base_url);
+
+    const sameMethod = discovered.endpoints.filter((e) => e.method.toUpperCase() === method);
+    const match = sameMethod.find((e) => pathMatchesTemplate(path, e.path));
+
+    if (!match) {
+      // Nearest documented routes — prefer same-method paths, fall back to
+      // any method so a method/path mix-up still gets a useful pointer.
+      const sameMethodPaths = sameMethod.map((e) => e.path);
+      const nearestPaths =
+        suggestClosest(path, sameMethodPaths, 3).length > 0
+          ? suggestClosest(path, sameMethodPaths, 3).map((p) => `${method} ${p}`)
+          : suggestClosest(
+              path,
+              discovered.endpoints.map((e) => e.path),
+              3,
+            ).map((p) => {
+              const e = discovered.endpoints.find((x) => x.path === p);
+              return `${e?.method ?? method} ${p}`;
+            });
+      blocks.push({
+        step_id: step.id,
+        connector_slug: discovered.slug,
+        method,
+        path,
+        reason: "path_not_in_discovered_spec",
+        nearest: nearestPaths,
+      });
+      continue;
+    }
+
+    // Content-type fidelity: the endpoint declares a non-JSON request media
+    // type, but the step sends an object body (the http driver JSON-encodes
+    // object bodies by default) without an explicit Content-Type header.
+    const declared = match.request_content_type;
+    const bodyIsObject = typeof step.body === "object" && step.body !== null;
+    if (
+      declared &&
+      !declared.includes("json") &&
+      bodyIsObject &&
+      !hasExplicitContentType(step.headers)
+    ) {
+      blocks.push({
+        step_id: step.id,
+        connector_slug: discovered.slug,
+        method,
+        path,
+        reason: "content_type_mismatch",
+        nearest: [declared],
+      });
+    }
+  }
+
+  return { ok: blocks.length === 0, blocks };
+}

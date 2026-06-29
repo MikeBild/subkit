@@ -75,6 +75,7 @@ describe("discoverConnectorEndpoints — fallback chain", () => {
             scopes: [],
             params: [],
             request_body_schema: null,
+            request_content_type: null,
             response_schemas: {},
             pagination_hint: null,
             deprecated: false,

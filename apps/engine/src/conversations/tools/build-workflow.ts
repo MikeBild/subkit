@@ -19,7 +19,8 @@
 // the next turn.
 
 import { z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { readDiscoveryIndexForConnector } from "../../connectors/discovery/service.ts";
 import {
   connectors as connectorsTable,
   conversations,
@@ -39,6 +40,11 @@ import { runCriticAgent } from "../authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "../authoring-critic/gating.ts";
 import type { AuthoringCriticVerdict, CriticRejectedDetails } from "../authoring-critic/types.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
+import {
+  type DiscoveredConnectorEndpoints,
+  describeEndpointGroundingBlock,
+  evaluateEndpointGrounding,
+} from "../endpoint-grounding.ts";
 import { emitRecordedEvalSignals, runRecordedEval } from "../recorded-eval.ts";
 import { canonicalJson } from "../text-line-diff.ts";
 import type { DraftDocument, WorkflowDraftDocument } from "../types.ts";
@@ -482,6 +488,77 @@ export const buildWorkflowTool: ConversationTool = {
           errors: verdict.errors,
           warnings: verdict.warnings,
           infos: verdict.infos,
+        },
+      });
+      return {
+        ok: false,
+        data: buildWorkflowErrorPayload(gateError),
+      };
+    }
+
+    // Endpoint grounding — request steps must target a route the bound
+    // connector's discovered spec actually documents. The model-supplied
+    // draft (this tool) gets no engine-side endpoint grounding, so without
+    // this check an invented path (`/sites` for `/v1/sites`, a JSON body
+    // where the spec wants `text/markdown`) sails through to dry_run and
+    // fires real 4xx/5xx writes. Fail-open: connectors with no discovered
+    // index are not checked.
+    const groundingIndex = new Map<string, DiscoveredConnectorEndpoints>();
+    if (referencedConnectorIds.size > 0) {
+      const connectorRows = await ctx.db
+        .select({
+          id: connectorsTable.id,
+          slug: connectorsTable.slug,
+          base_url: connectorsTable.base_url,
+          self_description: connectorsTable.self_description,
+        })
+        .from(connectorsTable)
+        .where(
+          and(
+            eq(connectorsTable.tenant_id, ctx.tenant_id),
+            inArray(connectorsTable.id, [...referencedConnectorIds]),
+          ),
+        );
+      for (const row of connectorRows) {
+        const index = await readDiscoveryIndexForConnector(ctx.db, ctx.tenant_id, {
+          base_url: row.base_url,
+          self_description: row.self_description as { links?: { url?: string }[] } | null,
+        });
+        if (!index || index.endpoints.length === 0) continue;
+        const projected: DiscoveredConnectorEndpoints = {
+          slug: row.slug,
+          base_url: row.base_url,
+          endpoints: index.endpoints.map((e) => ({
+            method: e.method,
+            path: e.path,
+            request_content_type: e.request_content_type,
+          })),
+        };
+        groundingIndex.set(row.id, projected);
+        groundingIndex.set(row.slug, projected);
+      }
+    }
+    const grounding = evaluateEndpointGrounding(args.steps, groundingIndex);
+    if (!grounding.ok) {
+      recordAuthoringGateBlock({
+        code: "endpoint_not_in_discovered_spec",
+        tool: "build_workflow",
+      });
+      const gateError = buildGateError(currentDraft, {
+        error_code: "endpoint_not_in_discovered_spec",
+        message: `${grounding.blocks.length} request step(s) target routes the connector's discovered spec does not document — use the discovered endpoints verbatim (discover_connector_endpoints lists them), do not invent or REST-ify paths`,
+        recommended_mode: "workflow",
+        next_best_actions: ["discover_connector_endpoints", "update_param", "edit_workflow_patch"],
+        extra: {
+          endpoint_grounding: grounding.blocks.map((b) => ({
+            step_id: b.step_id,
+            connector_slug: b.connector_slug,
+            method: b.method,
+            path: b.path,
+            reason: b.reason,
+            nearest: b.nearest,
+            message: describeEndpointGroundingBlock(b),
+          })),
         },
       });
       return {

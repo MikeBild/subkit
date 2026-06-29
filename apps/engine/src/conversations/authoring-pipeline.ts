@@ -39,6 +39,8 @@
 
 import { and, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
+import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
+import type { DiscoveryResult } from "../connectors/discovery/types.ts";
 import { connectors as connectorsTable } from "../db/schema/index.ts";
 import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatters.ts";
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
@@ -47,6 +49,11 @@ import { logger } from "../logging/logger.ts";
 import { TriggerSchema } from "../workflows/types.ts";
 import { type ValidationError, validateWorkflowDef } from "../workflows/validator.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
+import {
+  type DiscoveredConnectorEndpoints,
+  describeEndpointGroundingBlock,
+  evaluateEndpointGrounding,
+} from "./endpoint-grounding.ts";
 import { detectNamedOutputFormat } from "./output-format.ts";
 import { type RecordedEvalReport, runRecordedEval } from "./recorded-eval.ts";
 import type { ToolContext } from "./tools/index.ts";
@@ -80,6 +87,46 @@ const DOCS_EXCERPT_CAP_CHARS = 1_500;
 const DOCS_SNIPPETS_PER_CONNECTOR = 4;
 /** Char budget for the inlined `input_example` JSON. */
 const INPUT_EXAMPLE_CAP_CHARS = 1_000;
+/** Max discovered endpoints listed per connector in the authoritative
+ *  source-of-truth section. Large specs are truncated with a note; the model
+ *  still has `discover_connector_endpoints` for the long tail. */
+const DISCOVERED_ENDPOINTS_PER_CONNECTOR = 40;
+
+/**
+ * Render the authoritative "discovered endpoints" prompt section: for every
+ * resolved connector that has a cached discovery index, the EXACT method +
+ * path + declared request media type the spec documents. This is the
+ * grounding the generate flow lacked — without it the model reconstructs
+ * routes from its own prior and invents undocumented paths. Returns null
+ * when no connector has a discovered spec (the section is then omitted).
+ */
+function formatDiscoveredEndpoints(
+  connectors: GroundedConnector[],
+  discoveredById: Map<string, DiscoveryResult>,
+): string | null {
+  const blocks: string[] = [];
+  for (const c of connectors) {
+    const index = discoveredById.get(c.id);
+    if (!index || index.endpoints.length === 0) continue;
+    const lines = index.endpoints.slice(0, DISCOVERED_ENDPOINTS_PER_CONNECTOR).map((e) => {
+      const ct = e.request_content_type ? ` [${e.request_content_type}]` : "";
+      const summary = e.summary ? ` — ${e.summary}` : "";
+      return `- ${e.method} ${e.path}${ct}${summary}`;
+    });
+    if (index.endpoints.length > DISCOVERED_ENDPOINTS_PER_CONNECTOR) {
+      lines.push(
+        `- …and ${index.endpoints.length - DISCOVERED_ENDPOINTS_PER_CONNECTOR} more (call discover_connector_endpoints for the full list).`,
+      );
+    }
+    blocks.push(`### \`${c.slug}\` (base_url ${c.base_url ?? "(none)"})`, ...lines);
+  }
+  if (blocks.length === 0) return null;
+  return [
+    "## Discovered endpoints — authoritative source of truth",
+    "The connector(s) below publish a machine-readable spec. These are the ONLY routes they expose. Bind every request step to one of these EXACT `method` + `path` pairs — do NOT invent, guess, drop a version prefix, or REST-ify routes (e.g. never turn `/v1/sites/{site}/content` into `/sites/{site}/items`). When an endpoint declares a request media type in `[brackets]`, encode the body that way — for `text/markdown` send the raw markdown string as the body, NOT a JSON object wrapping it.",
+    ...blocks,
+  ].join("\n");
+}
 
 /**
  * The authorable subset of `WorkflowDefSchema` the generate flow is
@@ -152,6 +199,7 @@ interface GroundedConnector {
   base_url: string | null;
   auth_type: string;
   description: string | null;
+  self_description: { links?: { url?: string }[] } | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -178,6 +226,7 @@ async function resolveConnectors(
       base_url: connectorsTable.base_url,
       auth_type: connectorsTable.auth_type,
       config: connectorsTable.config,
+      self_description: connectorsTable.self_description,
     })
     .from(connectorsTable)
     .where(and(eq(connectorsTable.tenant_id, ctx.tenant_id), refFilter));
@@ -192,6 +241,7 @@ async function resolveConnectors(
       typeof (row.config as Record<string, unknown> | null)?.description === "string"
         ? ((row.config as Record<string, unknown>).description as string)
         : null,
+    self_description: (row.self_description as { links?: { url?: string }[] } | null) ?? null,
   }));
   const seen = new Set<string>();
   for (const r of resolved) {
@@ -232,6 +282,9 @@ export function buildGenerationPrompt(args: {
   connectors: GroundedConnector[];
   docsByConnector: Map<string, string[]>;
   samplesSection: string | null;
+  /** The authoritative discovered-endpoints section (method+path+media type)
+   *  — the closed set of routes the bound connectors actually expose. */
+  discoveredSection?: string | null;
   input_example?: unknown;
   priorFindings?: string[] | null;
 }): string {
@@ -274,6 +327,10 @@ export function buildGenerationPrompt(args: {
       "",
       "Bind request steps to a connector via `connector_id` + relative `path` (the connector's base_url is prepended). Use the connector ids above verbatim.",
     );
+  }
+
+  if (args.discoveredSection) {
+    lines.push("", args.discoveredSection);
   }
 
   if (args.samplesSection) {
@@ -365,7 +422,7 @@ export async function runAuthoringPipeline(
   // connector at a time (a 5-connector goal paid 5× the slowest docs
   // search serially). Order is reconstructed deterministically below, so
   // the generation prompt is byte-identical to the sequential version.
-  const [samples, docExcerpts] = await Promise.all([
+  const [samples, docExcerpts, discoveredIndexes] = await Promise.all([
     loadProbeShapeExamples(
       ctx.tenant_id,
       connectors.map((c) => c.id),
@@ -374,11 +431,49 @@ export async function runAuthoringPipeline(
     Promise.all(
       connectors.map(async (c) => ({ id: c.id, excerpt: await loadDocsExcerpt(ctx, goal, c) })),
     ),
+    // The discovered endpoint index per connector — the authoritative route
+    // set the generate flow previously never saw (root cause of invented
+    // paths). Resolved by connector identity, not bare base_url, so an index
+    // cached under an `…/openapi.json` ingestion URL still resolves.
+    Promise.all(
+      connectors.map(async (c) => ({
+        id: c.id,
+        index: await readDiscoveryIndexForConnector(ctx.db, ctx.tenant_id, {
+          base_url: c.base_url,
+          self_description: c.self_description,
+        }),
+      })),
+    ),
   ]);
   const samplesSection = formatProbeShapeExamples(samples);
   const docsByConnector = new Map<string, string[]>();
   for (const { id, excerpt } of docExcerpts) {
     if (excerpt.length > 0) docsByConnector.set(id, excerpt);
+  }
+  // Discovered routes feed BOTH the prompt (authoritative grounding) and the
+  // post-generation membership check (the gate that rejects invented paths).
+  const discoveredById = new Map<string, DiscoveryResult>();
+  for (const { id, index } of discoveredIndexes) {
+    if (index && index.endpoints.length > 0) discoveredById.set(id, index);
+  }
+  const discoveredSection = formatDiscoveredEndpoints(connectors, discoveredById);
+  // Grounding index for `evaluateEndpointGrounding`, keyed by BOTH connector_id
+  // and slug so a request step bound either way resolves.
+  const groundingIndex = new Map<string, DiscoveredConnectorEndpoints>();
+  for (const c of connectors) {
+    const index = discoveredById.get(c.id);
+    if (!index) continue;
+    const projected: DiscoveredConnectorEndpoints = {
+      slug: c.slug,
+      base_url: c.base_url,
+      endpoints: index.endpoints.map((e) => ({
+        method: e.method,
+        path: e.path,
+        request_content_type: e.request_content_type,
+      })),
+    };
+    groundingIndex.set(c.id, projected);
+    groundingIndex.set(c.slug, projected);
   }
 
   // ---------------------------------------------------- GENERATE/EVALUATE
@@ -430,6 +525,7 @@ export async function runAuthoringPipeline(
       connectors,
       docsByConnector,
       samplesSection,
+      discoveredSection,
       ...(params.input_example !== undefined ? { input_example: params.input_example } : {}),
       priorFindings,
     });
@@ -493,10 +589,33 @@ export async function runAuthoringPipeline(
       // Strict validation — the one-shot artifact must be complete, so
       // forward-ref leniency does not apply.
       const validation = validateWorkflowDef(candidate);
+      // Endpoint grounding: reject request steps whose path is not in the
+      // connector's discovered spec (fail-open when no index exists). An
+      // invented path becomes a validation-class finding that triggers the
+      // single regenerate pass with a precise, actionable message — and, if
+      // it survives, rides `validationErrors` to the model so it never reaches
+      // a live preview as a guessed route.
+      const grounding = evaluateEndpointGrounding(candidate.steps, groundingIndex);
+      const groundingErrors: ValidationError[] = grounding.blocks.map((b) => ({
+        path: `steps.${b.step_id}.${b.reason === "content_type_mismatch" ? "body" : "path"}`,
+        message: describeEndpointGroundingBlock(b),
+      }));
+      if (groundingErrors.length > 0) {
+        logger.info({
+          module: "conversations",
+          action: "authoring_pipeline.endpoint_grounding_block",
+          msg: "generated draft targets undocumented connector path(s) — regenerating with the discovered routes",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          pass,
+          block_count: groundingErrors.length,
+          reasons: grounding.blocks.map((b) => b.reason),
+        });
+      }
       definition = candidate;
-      validationErrors = validation.errors;
-      passErrors = validation.errors;
-      if (validation.ok) break;
+      validationErrors = [...validation.errors, ...groundingErrors];
+      passErrors = validationErrors;
+      if (validation.ok && grounding.ok) break;
     } else if (!definition) {
       // No definition materialised yet — surface this pass's errors.
       validationErrors = passErrors;

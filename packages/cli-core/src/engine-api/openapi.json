@@ -7373,6 +7373,10 @@
           "request_body_schema": {
             "nullable": true
           },
+          "request_content_type": {
+            "type": "string",
+            "nullable": true
+          },
           "response_schemas": {
             "type": "object",
             "additionalProperties": {
@@ -7394,6 +7398,7 @@
           "operation_id",
           "scopes",
           "params",
+          "request_content_type",
           "response_schemas",
           "pagination_hint",
           "deprecated"

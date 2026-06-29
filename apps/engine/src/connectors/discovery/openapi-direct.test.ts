@@ -150,6 +150,8 @@ describe("openApiDirectStrategy — OpenAPI 3", () => {
 
     const createCustomer = result.endpoints.find((e) => e.operation_id === "createCustomer");
     expect(createCustomer?.request_body_schema).toBeDefined();
+    expect(createCustomer?.request_content_type).toBe("application/json");
+    expect(listCustomers?.request_content_type).toBeNull();
 
     // Path-level parameter is inherited by operations in the path.
     const retrieveCustomer = result.endpoints.find((e) => e.operation_id === "retrieveCustomer");
@@ -162,6 +164,33 @@ describe("openApiDirectStrategy — OpenAPI 3", () => {
     const oauth = result.auth_schemes.find((s) => s.name === "oauthFlow");
     expect(oauth?.type).toBe("oauth2");
     expect(oauth?.flows?.authorizationCode?.token_url).toBe("https://login.example.com/token");
+  });
+
+  seamTest("captures a non-JSON request media type (text/markdown)", async () => {
+    const SPEC = {
+      openapi: "3.0.0",
+      info: { title: "x", version: "1" },
+      paths: {
+        "/v1/sites/{site}/content": {
+          post: {
+            operationId: "putContent",
+            requestBody: {
+              required: true,
+              content: { "text/markdown": { schema: { type: "string" } } },
+            },
+            responses: { "201": { description: "created" } },
+          },
+        },
+      },
+    };
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify(SPEC), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await openApiDirectStrategy.fetch("https://api.example.com/openapi.json", {});
+    expect(result.endpoints[0]?.request_content_type).toBe("text/markdown");
   });
 
   seamTest("detects link_header pagination on a GET response", async () => {

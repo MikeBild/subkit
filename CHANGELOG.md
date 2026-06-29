@@ -1,5 +1,31 @@
 # Changelog
 
+## [7.22.1]
+
+Closes a grounding hole that let the workflow author invent connector routes
+after a successful OpenAPI discovery. Discovery would correctly capture an
+API's endpoints, but the one-shot generation flow never received them, so the
+model reconstructed paths from its own prior — emitting undocumented routes
+(e.g. `/sites` instead of the discovered `/v1/sites`) and JSON-wrapping a body
+the spec declared as `text/markdown`. Nothing cross-checked the authored paths,
+so the wrong routes only surfaced as live 4xx/5xx during preview.
+
+- **Discovered endpoints are now authoritative grounding.** The authoring
+  pipeline loads each bound connector's discovered endpoint index (resolved by
+  connector identity, not just `base_url`, so an index cached under a spec URL
+  still resolves) and renders it into the generation prompt as the closed set of
+  routes the connector exposes — method, path, and the declared request media
+  type.
+- **A deterministic endpoint-grounding gate.** Every `request` step's
+  method+path is checked against the discovered set (tolerant of `{param}` and
+  `${placeholder}` segments); an undocumented route folds into the regenerate
+  pass, and the model-supplied-draft path (`build_workflow`) hard-blocks with
+  `endpoint_not_in_discovered_spec` plus the nearest documented routes. The gate
+  is fail-open: a connector with no discovered spec is never penalised.
+- **Request Content-Type is captured from the spec.** Discovery now records the
+  declared request media type per endpoint, so a `text/markdown` body is no
+  longer silently encoded as JSON.
+
 ## [7.7.1]
 
 Fixes a latent migration-runner bug that let a new migration silently skip on

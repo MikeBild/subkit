@@ -146,6 +146,9 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // Connector authoring gates — auth_type must be set before credentials are collected.
   connector_auth_unset:
     "the connector draft has no auth_type — call update_connector_draft with the correct auth_type (bearer, basic, api_key, oauth2, or none) before asking for credentials",
+  // Endpoint grounding — request steps must target a discovered route.
+  endpoint_not_in_discovered_spec:
+    "a request step targets a path the connector's discovered spec does not document — do NOT invent or REST-ify routes; call discover_connector_endpoints (or read the listed nearest routes in the error) and bind each request step to a documented method + path verbatim, encoding the body in the declared media type",
   // Loops & repair.
   verifier_rejected:
     "the workflow verifier rejected the change — read the rejection reason and either revise the patch or call ask_user_confirm to confirm an exception",

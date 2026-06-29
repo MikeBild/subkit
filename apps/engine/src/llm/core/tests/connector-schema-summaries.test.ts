@@ -49,6 +49,7 @@ const GQL_INDEX: DiscoveryResult = {
         { name: "first", in: "body", required: false, type: "Int" },
       ],
       request_body_schema: null,
+      request_content_type: null,
       response_schemas: { "200": { type: "object" } },
       pagination_hint: null,
       deprecated: false,
