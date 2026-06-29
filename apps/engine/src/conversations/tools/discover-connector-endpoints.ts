@@ -122,6 +122,12 @@ export const discoverConnectorEndpointsTool: ConversationTool = {
           ...(args.template_id ? { template_id: args.template_id } : {}),
           ...(resolvedBaseUrl ? { base_url: resolvedBaseUrl } : {}),
           ...(args.ingestion_url ? { ingestion_url: args.ingestion_url } : {}),
+          // Forward connector_id so discovery (a) injects the connector's
+          // credential for auth-gated introspection and (b) records the
+          // discovered self-description LINK on the connector. Without it this
+          // path resolved the base_url but dropped the binding, so link capture
+          // was silently skipped.
+          ...(args.connector_id ? { connector_id: args.connector_id } : {}),
           force_refresh: args.force_refresh,
         },
       );
