@@ -28,7 +28,15 @@ COPY . .
 
 # --frozen-lockfile matches the committed bun.lock. setup-hooks postinstall
 # self-skips when there's no .git (it's there inside the image build).
-RUN bun install --frozen-lockfile
+# Retry: under buildx/QEMU emulation, extracting large optional native
+# tarballs (e.g. @img/sharp-libvips-*) occasionally fails transiently
+# ("Fail extracting tarball"). A bounded retry makes the layer reproducible.
+RUN set -eux; \
+    for attempt in 1 2 3 4 5; do \
+      bun install --frozen-lockfile && break; \
+      if [ "$attempt" = 5 ]; then echo "bun install failed after $attempt attempts" >&2; exit 1; fi; \
+      echo "bun install failed (attempt $attempt) — retrying"; sleep 5; \
+    done
 
 # ssh2 pulls an OPTIONAL `cpu-features` native addon. It is not built in this
 # image (nor on the dev mac), so its `.node` is absent; left in place, the
