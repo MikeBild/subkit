@@ -1,36 +1,37 @@
 # Skills Index
 
-Project-local skills for Claude Code, stored under `.claude/skills/<slug>/SKILL.md`.
-Each skill is a self-contained guide that can be invoked via `/<slug>` or referenced
-by an agent. See `AGENTS.md` for the canonical repo-wide contract and
-`.claude/CLAUDE.md` for the Claude Code bootstrap.
+Project-local skills for Claude Code, stored under a local-only `.claude/skills/<slug>/SKILL.md`
+(the `.claude/` directory is gitignored and not part of the repository). Each skill is a
+self-contained guide that can be invoked via `/<slug>` or referenced by an agent. See
+`AGENTS.md` for the canonical repo-wide contract and `.claude/CLAUDE.md` for the Claude Code
+bootstrap.
 
 ## Guardrail / routing
 
-- [`subkit-operating-model`](.claude/skills/subkit-operating-model/SKILL.md) —
+- `subkit-operating-model` —
   Map a task intent to the right engine subsystem + canonical doc. Start here when
   the task description is generic.
-- [`subkit-testing-and-validation`](.claude/skills/subkit-testing-and-validation/SKILL.md) —
+- `subkit-testing-and-validation` —
   Pick the right test layer (unit / integration / e2e) and run the quality gate.
-- [`subkit-api-and-openapi`](.claude/skills/subkit-api-and-openapi/SKILL.md) —
+- `subkit-api-and-openapi` —
   Zod-first discipline for HTTP routes and MCP tools. OpenAPI is generated; don't
   hand-edit.
-- [`subkit-rbac-and-policy`](.claude/skills/subkit-rbac-and-policy/SKILL.md) —
+- `subkit-rbac-and-policy` —
   Permissions, roles, resource grants, API keys, portal tokens, before-request hooks.
   Every surface enforces the same policy engine.
-- [`subkit-observability`](.claude/skills/subkit-observability/SKILL.md) —
+- `subkit-observability` —
   Metrics, structured logs, traces, drift signals, token-budget accounting.
   Structured logger only; low-cardinality metric labels.
 
 ## Domain / procedural
 
-- [`subkit-connector-patterns`](.claude/skills/subkit-connector-patterns/SKILL.md) —
+- `subkit-connector-patterns` —
   Add a connector template, driver tweak, or OAuth2 flow. References the 93 existing
   templates and 4 drivers.
-- [`subkit-ai-context-pipeline`](.claude/skills/subkit-ai-context-pipeline/SKILL.md) —
+- `subkit-ai-context-pipeline` —
   Work on Skills, Knowledge Sources, Skill Candidates, Conversations, Self-Healing,
   and Discovery. Human-in-the-loop rules are strict.
-- [`subkit-self-healing`](.claude/skills/subkit-self-healing/SKILL.md) —
+- `subkit-self-healing` —
   Drift detection, bounded repair loop, Execution Fixture dry-runs, Patch Candidates.
   Never auto-apply.
 
@@ -53,7 +54,7 @@ by an agent. See `AGENTS.md` for the canonical repo-wide contract and
 
 ## Sub-agents (not skills, but related)
 
-Specialists under `.claude/agents/`:
+Specialists under the local-only `.claude/agents/`:
 
 - `domain-architect` (opus) — plan cross-subsystem features.
 - `connector-builder` (sonnet) — implement bounded connector work.
@@ -61,7 +62,7 @@ Specialists under `.claude/agents/`:
 
 ## Commands
 
-Under `.claude/commands/`:
+Under the local-only `.claude/commands/`:
 
 - `/verify` — run the full local release gate (`bun run verify`).
 - `/review` — audit the current diff against subkit's non-negotiables.

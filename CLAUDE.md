@@ -5,12 +5,14 @@
 > else orbits that file.
 
 This file exists so Claude Code's default project-memory loader has an explicit
-pointer. The real content lives in:
+pointer. The canonical content lives in:
 
 - [`AGENTS.md`](AGENTS.md) — canonical rules.
 - [`SKILLS.md`](SKILLS.md) — index of project-local skills.
-- [`.claude/CLAUDE.md`](.claude/CLAUDE.md) — bootstrap index for agents, commands, hooks.
-- [`.claude/docs/agent-navigation.md`](.claude/docs/agent-navigation.md) — task → subsystem map.
+
+Claude Code bootstrap, navigation, agents, commands, and hooks live under a
+local-only `.claude/` directory (`.claude/CLAUDE.md`, `.claude/docs/agent-navigation.md`,
+…). That directory is gitignored and not part of the repository.
 
 For the nearest directory-local rules when editing code, see
 [`apps/engine/AGENTS.md`](apps/engine/AGENTS.md),
