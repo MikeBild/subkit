@@ -60,9 +60,11 @@ into a single fetch (per [llmstxt.org](https://llmstxt.org)). To feed a single
 page in verbatim, append `?raw=1` (or open the **Raw** view) on any `.md` file in
 this directory — that gives the model the plain Markdown with no rendering chrome.
 
-A running engine serves the same two files unauthenticated at `/llms.txt` and
-`/llms-full.txt`, so MCP clients and the engine's own authoring loop can ground
-themselves on the live deployment.
+A running engine serves these unauthenticated, with the index's drill-down links
+resolved to the engine's own origin: `/llms.txt` (also at `/.well-known/llms.txt`),
+`/llms-full.txt`, and each page at `/llms/<path>` (e.g. `/llms/concepts/connectors.md`).
+So MCP clients and the engine's own authoring loop can ground themselves on the live
+deployment — index first, then fetch just the pages they need.
 
 ---
 

@@ -28,6 +28,7 @@ import sql0007SlimyAbomination from "./0007_slimy_abomination.sql" with { type: 
 import sql0008OutstandingMakkari from "./0008_outstanding_makkari.sql" with { type: "text" };
 import sql0009AuthoringCapabilityCandidate from "./0009_authoring_capability_candidate.sql" with { type: "text" };
 import sql0010LocalInviteProvisioning from "./0010_local_invite_provisioning.sql" with { type: "text" };
+import sql0011AmbiguousFalcon from "./0011_ambiguous_falcon.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -63,6 +64,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0008_outstanding_makkari": sql0008OutstandingMakkari,
   "0009_authoring_capability_candidate": sql0009AuthoringCapabilityCandidate,
   "0010_local_invite_provisioning": sql0010LocalInviteProvisioning,
+  "0011_ambiguous_falcon": sql0011AmbiguousFalcon,
 };
 
 const journal = journalMeta as unknown as Journal;

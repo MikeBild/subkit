@@ -1,38 +1,50 @@
-// Generate docs/llms.txt and docs/llms-full.txt for LLMs (see llmstxt.org).
+// Generate docs/llms.txt, docs/llms-full.txt, and docs/llms-manifest.json for
+// LLMs (see llmstxt.org).
 //
-// Both walk docs/**/*.md (excluding docs/internal/ and docs/_tapes/) in the
-// same audience-then-path order, so they stay in lockstep:
+// All three walk docs/**/*.md (excluding docs/internal/ and docs/_tapes/) in
+// the same audience-then-path order, so they stay in lockstep:
 //
-//   docs/llms.txt       — a robots.txt-style index: a title line, a one-line
-//                         description of the docs set, then a Markdown list
-//                         grouped by audience. Each entry is
-//                           - [Title](docs/relative/path.md): one-line summary
-//                         where Title is the page's first H1 and the summary is
-//                         its first non-heading sentence, trimmed aggressively.
+//   docs/llms.txt          — a robots.txt-style index rendered by the SHARED
+//                            renderer (@shared/llms-index renderLlmsIndex): an
+//                            H1, a `>` blockquote lede, then a Markdown list
+//                            grouped by audience, each entry
+//                              - [Title](relative/path.md): one-line summary
+//                            plus a final `## Optional` section for the
+//                            auto-generated reference pages. Links here are
+//                            repo-relative (the `docs/` prefix stripped) so
+//                            they resolve under docs/ in GitHub AND against the
+//                            origin over HTTP.
 //
-//   docs/llms-full.txt  — the full-content variant: every indexed page's
-//                         complete Markdown concatenated inline, each preceded
-//                         by a `<!-- Source: docs/path.md -->` marker, so a
-//                         model can ground itself on the whole docs set in a
-//                         single fetch.
+//   docs/llms-full.txt     — the full-content variant: an H1, a `>` blockquote
+//                            with a relative back-link to the index, then every
+//                            indexed page's complete Markdown concatenated
+//                            inline, each preceded by a
+//                            `<!-- Source: docs/path.md -->` marker, so a model
+//                            can ground itself on the whole docs set in one
+//                            fetch.
 //
-// Paths use the raw GitHub-relative form (repo-root-relative, e.g.
-// `docs/concepts/connectors.md`). Output is byte-stable: audiences in
-// AUDIENCE_ORDER, entries sorted by path within each audience. No timestamps,
-// no absolute paths.
+//   docs/llms-manifest.json — `{ pages: LlmsPage[] }`, the structured index
+//                            (audience/path/title/summary, no content). Embedded
+//                            into the engine so its /llms.txt route renders the
+//                            SAME index with self-hosted origin links.
+//
+// Output is byte-stable: audiences in AUDIENCE_ORDER, entries sorted by path
+// within each audience (README first). No timestamps, no absolute paths.
 //
 // Wired into `bun run verify` as a docs drift gate (see package.json:
 // gen:llms-txt / check:llms-txt-drift), mirroring the settings-doc gate.
 //
 // Usage:
-//   bun run scripts/gen-llms-txt.ts   (writes docs/llms.txt + docs/llms-full.txt)
+//   bun run scripts/gen-llms-txt.ts
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { type LlmsPage, OPTIONAL_PATHS, renderLlmsIndex } from "@shared/llms-index.ts";
 
 const DOCS_DIR = "docs";
 const OUTPUT = join(DOCS_DIR, "llms.txt");
 const OUTPUT_FULL = join(DOCS_DIR, "llms-full.txt");
+const OUTPUT_MANIFEST = join(DOCS_DIR, "llms-manifest.json");
 const EXCLUDE_DIRS = new Set(["internal", "_tapes"]);
 
 // Audience folder -> section heading, in emission order.
@@ -44,11 +56,7 @@ const AUDIENCE_ORDER: ReadonlyArray<{ dir: string; label: string }> = [
   { dir: "admins", label: "Admins" },
 ];
 
-interface Entry {
-  audience: string;
-  path: string; // repo-root-relative, e.g. docs/concepts/connectors.md
-  title: string;
-  summary: string;
+interface Entry extends LlmsPage {
   content: string; // full, verbatim Markdown body
 }
 
@@ -167,21 +175,29 @@ function main(): void {
     });
   }
 
-  // The index (llms.txt): title, set description, then a grouped link list.
-  const indexLines: string[] = [
-    "# sk Documentation",
-    "",
-    "A robots.txt-style index of the sk documentation set for LLMs: every public page grouped by audience, each with its title, path, and one-line summary.",
-  ];
+  // Strip content for the shared renderer + the manifest — both carry only the
+  // structured index, never the full body.
+  const pages: LlmsPage[] = entries.map(({ content: _content, ...page }) => page);
 
-  // The full text (llms-full.txt): every page's complete Markdown inline.
+  // The index (llms.txt): rendered by the SHARED renderer with repo-relative
+  // links (the `docs/` prefix stripped) so they resolve under docs/ in GitHub
+  // AND against the origin over HTTP.
+  const index = renderLlmsIndex(pages, {
+    linkFor: (p) => p.path.replace(/^docs\//, ""),
+    fullUrl: "llms-full.txt",
+    optional: (p) => OPTIONAL_PATHS.has(p.path),
+  });
+
+  // The full text (llms-full.txt): H1, a `>` blockquote with a relative
+  // back-link, then every page's complete Markdown inline.
   const fullLines: string[] = [
     "# sk Documentation — Full Text",
     "",
-    "The complete sk documentation set for LLMs in a single file: every public page's full Markdown, grouped by audience, each preceded by a source marker. For just the index, see llms.txt.",
+    "> The complete sk documentation set for LLMs in a single file: every public page's full Markdown, grouped by audience, each preceded by a source marker.",
+    "> For the index see [llms.txt](llms.txt).",
   ];
 
-  for (const { dir, label } of AUDIENCE_ORDER) {
+  for (const { dir } of AUDIENCE_ORDER) {
     const group = entries
       .filter((e) => e.audience === dir)
       .sort((a, b) => {
@@ -190,14 +206,6 @@ function main(): void {
         if (ar !== br) return ar ? -1 : 1;
         return a.path.localeCompare(b.path);
       });
-    if (group.length === 0) continue;
-
-    indexLines.push("", `## ${label}`, "");
-    for (const e of group) {
-      const summary = e.summary ? `: ${e.summary}` : "";
-      indexLines.push(`- [${e.title}](${e.path})${summary}`);
-    }
-
     for (const e of group) {
       // Source marker + verbatim body; trailing whitespace trimmed so the
       // separator spacing is identical regardless of how each file ends.
@@ -205,8 +213,9 @@ function main(): void {
     }
   }
 
-  writeFileSync(OUTPUT, `${indexLines.join("\n")}\n`);
+  writeFileSync(OUTPUT, `${index}\n`);
   writeFileSync(OUTPUT_FULL, `${fullLines.join("\n")}\n`);
+  writeFileSync(OUTPUT_MANIFEST, `${JSON.stringify({ pages }, null, 2)}\n`);
 }
 
 main();

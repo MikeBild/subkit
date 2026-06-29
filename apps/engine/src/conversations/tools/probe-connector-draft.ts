@@ -198,6 +198,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       template_source: connector.template_source ?? null,
       template_version: null,
       template_snapshot: null,
+      self_description: {},
       created_at: new Date(),
       updated_at: new Date(),
       circuit_state: "closed" as const,

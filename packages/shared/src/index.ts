@@ -23,6 +23,8 @@ export {
   MAX_INLINE_BYTES,
 } from "./files-constants.ts";
 export { type JsonlTrimOptions, trimJsonlFile } from "./jsonl-ring.ts";
+export type { LlmsPage, RenderLlmsIndexOptions } from "./llms-index.ts";
+export { OPTIONAL_PATHS, renderLlmsIndex } from "./llms-index.ts";
 export type { SecretKind, SecretPattern } from "./redaction.ts";
 export {
   redactWithMaxDepth,

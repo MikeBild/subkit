@@ -449,6 +449,9 @@ export function formatConnectorSchemaSummaries(summaries: ConnectorSchemaSummary
   for (const s of summaries) {
     lines.push(`## ${s.connector_slug}`);
     for (const op of s.operations) lines.push(`- ${op}`);
+    // Self-description hint — links only; the LLM fetches the body on
+    // demand via fetch_connector_self_description (never fetched here).
+    if (s.self_description_line) lines.push(s.self_description_line);
   }
   return lines.join("\n");
 }

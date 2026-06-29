@@ -121,6 +121,7 @@ describe("buildTemplateBindingFields", () => {
       health_error_code: null,
       sunset_at: null,
       successor_uri: null,
+      self_description: {},
     };
     const serialized = serialize(view);
     const parsed = ConnectorSchema.safeParse(serialized);

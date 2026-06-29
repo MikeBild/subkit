@@ -63,6 +63,23 @@ export const connectors = pgTable(
       .$type<Partial<Record<string, string>>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
+    // Self-description LINKS the connector publishes (llms.txt / llms-full.txt /
+    // OpenAPI spec / GraphQL endpoint). LINKS ONLY — never the document bodies;
+    // the full content lives in the discovery cache or is fetched on demand at
+    // authoring time. Discovered on create + refreshed/enriched by the scheduler
+    // (source: "discovery" | "self_healing" | "manual"). Surfaced to authoring
+    // and to API/MCP consumers so they can fetch the docs themselves.
+    self_description: jsonb("self_description")
+      .$type<{
+        links?: Array<{
+          kind: "llms_txt" | "llms_full" | "openapi" | "graphql";
+          url: string;
+          source: "discovery" | "self_healing" | "manual";
+          discovered_at: string;
+        }>;
+      }>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     template_slug: text("template_slug"),
     template_name: text("template_name"),
     template_source: connectorTemplateSourceEnum("template_source"),
