@@ -101,7 +101,6 @@ describe("fitCatalogToBudget", () => {
   const base = {
     principal: principal([]), // no scopes → product mode
     readOnly: false,
-    elicitationCapable: false, // → confirm_tool_call appended
     fullPalette: PALETTE,
   };
 
@@ -113,7 +112,7 @@ describe("fitCatalogToBudget", () => {
     expect(fit.estTokensAfter).toBeLessThan(5000);
     // Palette trimmed to the Top-N floor.
     expect(fit.paletteLimit).toBe(10);
-    // Core present (confirm_tool_call included for this non-elicitation client).
+    // Core present (confirm_tool_call always included).
     const names = new Set(fit.tools.map((t) => t.name));
     for (const core of MCP_CORE_TOOL_NAMES) expect(names.has(core)).toBe(true);
   });

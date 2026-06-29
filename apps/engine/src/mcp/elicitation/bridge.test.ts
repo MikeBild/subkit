@@ -94,8 +94,9 @@ describe("ElicitationBridge.elicitForm", () => {
     expect(params.message).toBe("What is your name?");
     expect(params.requestedSchema).toEqual(FLAT_SCHEMA);
     // relatedRequestId is mandatory — it routes the server→client request
-    // onto the same SSE stream as the in-flight tools/call.
-    expect(calls[0]!.options).toEqual({ relatedRequestId: "req-42" });
+    // onto the same SSE stream as the in-flight tools/call. The bounded
+    // timeout keeps an unfulfilled elicitation from hanging the tools/call.
+    expect(calls[0]!.options).toEqual({ relatedRequestId: "req-42", timeout: 10_000 });
     expect(result).toEqual({ action: "accept", content: { value: "hi" } });
   });
 
@@ -157,7 +158,7 @@ describe("ElicitationBridge.elicitOob", () => {
     expect(params.mode).toBe("url");
     expect(params.url).toBe("https://accounts.example.test/authorize?state=abc");
     expect(params.elicitationId).toBe("state-abc");
-    expect(calls[0]!.options).toEqual({ relatedRequestId: "req-7" });
+    expect(calls[0]!.options).toEqual({ relatedRequestId: "req-7", timeout: 10_000 });
   });
 
   test("throws ElicitationUnsupportedError for oob when capability absent", async () => {

@@ -49,7 +49,7 @@ afterAll(async () => {
 // used to prove the bridge is SKIPPED when an out-of-band confirm token
 // is supplied.
 async function connectElicitClient(
-  decision: "accept" | "decline",
+  decision: "accept" | "decline" | "error",
 ): Promise<{ client: Client; elicitCount: { n: number } }> {
   const transport = new StreamableHTTPClientTransport(new URL(`${suite.http.baseUrl}/mcp`), {
     requestInit: { headers: { authorization: `Bearer ${suite.http.apiKey}` } },
@@ -61,6 +61,12 @@ async function connectElicitClient(
   const elicitCount = { n: 0 };
   client.setRequestHandler(ElicitRequestSchema, async () => {
     elicitCount.n += 1;
+    // "error" models a client that ADVERTISES elicitation but does not
+    // fulfil the round-trip (throwing stands in for a non-answer / timeout
+    // without a real wall-clock wait). The server's elicitInput then
+    // rejects, the resolver swallows it, and the gate falls back to the
+    // always-present confirm_tool_call responder.
+    if (decision === "error") throw new Error("client cannot fulfil elicitation");
     return decision === "accept"
       ? { action: "accept" as const, content: { confirm: true } }
       : { action: "decline" as const };
@@ -86,9 +92,12 @@ describe("probe_connector confirm gate — resolvable over MCP", () => {
 
     const { client } = await connectElicitClient("accept");
     try {
-      // An elicitation-capable client must NOT be offered the fallback tool.
+      // The confirm fallback responder is always listed, even for an
+      // elicitation-capable client (it confirms in-band and simply never
+      // calls it). Always-present so a client whose elicitation does not
+      // fulfil still has a reachable confirm path.
       const listed = await client.listTools();
-      expect(listed.tools.some((t) => t.name === "confirm_tool_call")).toBe(false);
+      expect(listed.tools.some((t) => t.name === "confirm_tool_call")).toBe(true);
 
       const result = await client.callTool({
         name: "probe_connector",
@@ -264,6 +273,65 @@ describe("probe_connector confirm gate — resolvable over MCP", () => {
       expect(payload.error_code).toBe("unknown_confirmation");
       expect(payload.status_code).toBeUndefined();
       expect(elicitCount.n).toBe(0);
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("elicitation-capable client whose elicitation does not fulfil: bounded → durable needs_confirm, then confirm_tool_call approves", async () => {
+    await suite.seedConnector({
+      slug: "elicit-unfulfilled",
+      environment: "prod",
+      base_url: mock.baseUrl,
+    });
+
+    // Advertises elicitation but its handler throws — modelling the hosted
+    // clients that advertise the capability yet never answer. Pre-fix this
+    // dead-ended: the resolver threw, the call hung to the inline deadline,
+    // and the responder was withheld from elicitation-capable clients, so the
+    // model had no reachable confirm path and narrated "no confirm_tool_call".
+    const { client, elicitCount } = await connectElicitClient("error");
+    try {
+      // The fallback responder is listed even for an elicitation-capable client.
+      const listed = await client.listTools();
+      expect(listed.tools.some((t) => t.name === "confirm_tool_call")).toBe(true);
+
+      const probeArgs = {
+        connector_slug: "elicit-unfulfilled",
+        method: "POST" as const,
+        path: "/orders",
+        environment: "prod" as const,
+        body: { qty: 7 },
+      };
+
+      // First call: the elicitation fails → the resolver returns a decline →
+      // the durable, audit-backed needs_confirm envelope (NOT engine_busy,
+      // NOT an execution).
+      const first = await client.callTool({ name: "probe_connector", arguments: probeArgs });
+      expect(first.isError).toBeFalsy();
+      const firstPayload = JSON.parse((first.content as Array<{ text: string }>)[0]!.text) as {
+        policy_mode?: string;
+        tool_call_id?: string;
+        status_code?: number;
+        error_code?: string;
+      };
+      expect(firstPayload.error_code).toBeUndefined();
+      expect(firstPayload.status_code).toBeUndefined();
+      expect(firstPayload.policy_mode).toBe("confirm_before_execution");
+      const toolCallId = firstPayload.tool_call_id!;
+      expect(toolCallId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(elicitCount.n).toBe(1); // the bridge WAS attempted, then fell back
+
+      // Approve out-of-band via the always-present responder → executes.
+      const approved = await client.callTool({
+        name: "confirm_tool_call",
+        arguments: { tool: "probe_connector", arguments: probeArgs, confirm_id: toolCallId },
+      });
+      expect(approved.isError).toBeFalsy();
+      const approvedPayload = JSON.parse(
+        (approved.content as Array<{ text: string }>)[0]!.text,
+      ) as { status_code?: number };
+      expect(approvedPayload.status_code).toBe(201);
     } finally {
       await client.close();
     }

@@ -27,12 +27,17 @@
 // documented deviation, not a bug.
 //
 // ── Capability derivation ────────────────────────────────────────────
-// SDK 1.29's `ClientCapabilities.elicitation` is a single (optional)
+// The SDK's `ClientCapabilities.elicitation` is a single (optional)
 // object — there is NO separate sub-flag distinguishing form-capable
 // from url/oob-capable clients. We therefore treat the PRESENCE of the
-// `elicitation` capability object as both `form: true` AND `oob: true`.
-// Clients that advertise elicitation at all (claude.ai, Cursor) accept
-// both modes. If a future SDK adds a sub-flag, narrow `oob` here.
+// `elicitation` capability object as both `form: true` AND `oob: true`
+// for SCHEMA purposes. If a future SDK adds a sub-flag, narrow `oob` here.
+//
+// Advertising the capability is NOT a guarantee that the client will
+// fulfil an elicitation/create round-trip — some clients advertise it yet
+// never answer. So every elicit is best-effort and bounded by
+// ELICIT_REQUEST_TIMEOUT_MS; past that window the caller falls back to the
+// always-present confirm_tool_call responder.
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
@@ -51,6 +56,14 @@ import {
   ElicitOobParamsSchema,
   ElicitResultSchema,
 } from "../../conversations/elicitation-bridge.ts";
+
+// Bound on a server→client elicitation/create round-trip. Advertising the
+// elicitation capability does not guarantee the client answers it, so past
+// this window we abort the elicitation (the SDK raises an McpError) and the
+// caller falls back to the always-present confirm_tool_call responder. Kept
+// well under the tools/call inline deadline so the client still receives a
+// usable needs_confirm envelope rather than an engine-busy timeout.
+const ELICIT_REQUEST_TIMEOUT_MS = 10_000;
 
 export class ElicitationBridge implements ElicitationBridgeContract {
   /**
@@ -82,7 +95,7 @@ export class ElicitationBridge implements ElicitationBridgeContract {
         message: params.message,
         requestedSchema: params.requestedSchema,
       },
-      { relatedRequestId: this.extra.requestId },
+      { relatedRequestId: this.extra.requestId, timeout: ELICIT_REQUEST_TIMEOUT_MS },
     );
     return ElicitResultSchema.parse({
       action: result.action,
@@ -115,7 +128,7 @@ export class ElicitationBridge implements ElicitationBridgeContract {
         url: params.url,
         elicitationId: params.elicitationId,
       },
-      { relatedRequestId: this.extra.requestId },
+      { relatedRequestId: this.extra.requestId, timeout: ELICIT_REQUEST_TIMEOUT_MS },
     );
     return ElicitResultSchema.parse({
       action: result.action,

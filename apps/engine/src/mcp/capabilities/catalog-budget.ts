@@ -37,18 +37,17 @@ const MAX_SCHEMA_DESC_CHARS = 80;
 const CONVERSATION_START_TOOL_NAME = "conversation_start";
 
 /**
- * Fallback responder tool for MCP clients that do NOT advertise the
- * `elicitation` capability. A `confirm_before_execution` gate returns a
- * `_meta.subkit.confirm` envelope to such clients; the model then approves
- * the paused call by invoking this tool with the original `tool`,
- * `arguments`, and `confirm_id` (the envelope's `tool_call_id`).
+ * Guaranteed confirm-fallback responder tool, present in every client's
+ * catalog. A `confirm_before_execution` gate returns a `_meta.subkit.confirm`
+ * envelope; the model approves the paused call by invoking this tool with the
+ * original `tool`, `arguments`, and `confirm_id` (the envelope's
+ * `tool_call_id`), and the dispatcher's `APPROVAL_REQUESTED` check gates it.
  *
- * Reality check (verified via runtime logs + client capability research):
- * the hosted flagship clients do NOT advertise `elicitation`, so they DO see
- * this tool and confirm through it (model-driven, gated by the dispatcher's
- * APPROVAL_REQUESTED check). The in-band `elicitation/create` path is
- * reserved for clients that advertise the elicitation capability, which then
- * never see this tool.
+ * In-band `elicitation/create` is a best-effort optimization layered on top
+ * for clients that actually fulfil the round-trip — but advertising the
+ * elicitation capability is not a guarantee of fulfilment, so this responder
+ * is always listed as the reachable fallback. A client that confirms in-band
+ * simply never calls it.
  */
 export const CONFIRM_TOOL_CALL_NAME = "confirm_tool_call";
 export const CONFIRM_TOOL_CALL_TOOL: Tool = {
@@ -128,7 +127,6 @@ export interface AssembleTierParams {
   mode: McpMode;
   paletteLimit: number;
   compress: boolean;
-  elicitationCapable: boolean;
   /** Full `wf_` palette, fetched once; sliced to `paletteLimit` per tier. */
   fullPalette: Tool[];
 }
@@ -153,9 +151,10 @@ function orderEssentialsFirst(tools: Tool[]): Tool[] {
 
 /** Assemble one catalog tier (in-memory; no DB). The `wf_` palette is sliced
  *  from the pre-fetched full list, the registry + conversation tools follow the
- *  mode, and `confirm_tool_call` is appended for non-elicitation clients so it
- *  is always part of the measured floor. The result is ordered essentials-first
- *  so a strict client that truncates keeps the tools that matter. */
+ *  mode, and `confirm_tool_call` is always appended as the guaranteed confirm
+ *  fallback so it is part of the measured floor for every client. The result is
+ *  ordered essentials-first so a strict client that truncates keeps the tools
+ *  that matter. */
 export function assembleTier(p: AssembleTierParams): Tool[] {
   const flags = modeFlags(p.mode, p.readOnly);
   const tools: Tool[] = [];
@@ -168,7 +167,7 @@ export function assembleTier(p: AssembleTierParams): Tool[] {
     }),
   );
   if (flags.showConversationTools) tools.push(...listConversationTools());
-  if (!p.elicitationCapable) tools.push(CONFIRM_TOOL_CALL_TOOL);
+  tools.push(CONFIRM_TOOL_CALL_TOOL);
   const compressed = p.compress ? tools.map(compressToolSchema) : tools;
   return orderEssentialsFirst(compressed);
 }

@@ -192,11 +192,14 @@ Tenant-write / destructive tools are guarded by a confirm gate. The flow:
    (same resource id, joining the lifecycle) and executes.
 
 Client paths:
-- **Elicitation-capable clients** are prompted in-band via
-  `elicitation/create` — the engine resolves the gate for you; no manual `_meta`.
-- **Non-elicitation clients** call the `confirm_tool_call` tool
-  (`tool`, `arguments`, `confirm_id`) to approve. This responder is in the core
-  floor for those clients.
+- The `confirm_tool_call` tool (`tool`, `arguments`, `confirm_id`) is in the core
+  floor for **every** client — always listed as the guaranteed way to approve a
+  paused call.
+- **Elicitation-capable clients** may additionally be prompted in-band via
+  `elicitation/create`, which resolves the gate for you with no manual `_meta`.
+  This is a best-effort optimization: if the in-band prompt is not fulfilled, the
+  engine hands back the durable `needs_confirm` envelope and you approve via
+  `confirm_tool_call` as above.
 
 A confirm without a matching un-consumed `APPROVAL_REQUESTED` is rejected — you
 cannot approve a call that was never gated.

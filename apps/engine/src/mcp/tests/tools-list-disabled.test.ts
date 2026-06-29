@@ -68,9 +68,8 @@ describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
     const client = await suite.connect();
     const result = await client.listTools();
     // Deliberate ceiling, raised as tools are consciously added:
-    //   +1 `confirm_tool_call` — this client advertises no elicitation
-    //      capability, so it is offered the model-drivable confirm responder
-    //      (elicitation-capable clients never see it);
+    //   +1 `confirm_tool_call` — the model-drivable confirm responder is
+    //      always listed as the guaranteed confirm fallback for every client;
     //   +2 grounding read tools — `list_capability_gaps` (durable capability
     //      gaps) and `suggest_related_conversations` (topic routing).
     //   +1 `run_workflow` — the search-first workflow runner is now exempt

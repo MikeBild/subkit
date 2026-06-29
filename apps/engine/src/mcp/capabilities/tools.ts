@@ -39,12 +39,13 @@ import { logger } from "../../logging/logger.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
-import type { ConfirmEnvelope, ToolInvocation } from "../../tools/types.ts";
+import type { ToolInvocation } from "../../tools/types.ts";
 import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
-import { type ConfirmResolver, callToolViaDispatcher } from "../adapter.ts";
+import { callToolViaDispatcher } from "../adapter.ts";
 import { createElicitationBridge } from "../elicitation/bridge.ts";
+import { buildElicitConfirmResolver } from "../elicitation/confirm-resolver.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
@@ -79,32 +80,6 @@ const TOOLS_CALL_DEADLINE_MS = 30_000;
 // single client-facing ping, not a storm. Trailing-window from the first
 // event of a burst.
 const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
-
-/** One-line operator prompt for an in-band confirm elicitation. */
-function buildConfirmPrompt(confirm: ConfirmEnvelope): string {
-  const reason = confirm.reason.replace(/_/g, " ");
-  let argsPreview = "";
-  try {
-    const json = JSON.stringify(confirm.args);
-    argsPreview = json.length > 300 ? `${json.slice(0, 300)}…` : json;
-  } catch {
-    argsPreview = "(unserializable)";
-  }
-  return `Approve ${confirm.tool} (${reason})? Arguments: ${argsPreview}`;
-}
-
-/** Single-field confirm schema accepted by MCP `elicitation/create` form mode. */
-const CONFIRM_ELICIT_SCHEMA = {
-  type: "object" as const,
-  properties: {
-    confirm: {
-      type: "boolean" as const,
-      title: "Proceed?",
-      description: "Confirm to run the call; decline to cancel.",
-    },
-  },
-  required: ["confirm"],
-};
 
 interface ListToolsParams {
   db: Db;
@@ -319,14 +294,15 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     //                             plus every visible conversation tool under
     //                             its bare name.
     //   - listConversationTools — MCP-only conversation.* session tools.
-    //   - CONFIRM_TOOL_CALL_TOOL — appended for non-elicitation clients.
+    //   - CONFIRM_TOOL_CALL_TOOL — always appended as the confirm fallback.
     // The trimmed long tail stays reachable via find_workflow /
     // run_workflow(slug) (search-first) — nothing becomes unreachable.
     const initialMode = resolveMcpMode(principal);
-    // Surface the confirm responder ONLY for clients without MCP elicitation.
-    // The hosted flagship clients do NOT advertise elicitation, so they receive
-    // it and confirm through it; only clients that advertise elicitation are
-    // prompted in-band and skip it.
+    // The confirm responder is always surfaced (see assembleTier) — a client
+    // that advertises elicitation simply never calls it. We still read the
+    // client's elicitation capability, but only as a logged signal: it tells
+    // us which confirm path a given call is expected to take (in-band
+    // elicitation vs. the model-driven confirm_tool_call fallback).
     const clientCaps = server.getClientCapabilities();
     const elicitationCapable = clientCaps?.elicitation != null;
     // Pin which confirm path a given client gets, so we can prove from logs
@@ -354,19 +330,15 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       principal,
       readOnly,
       initialMode,
-      elicitationCapable,
       fullPalette,
     });
     // Defense-in-depth: the search-first floor must survive the trim. The
     // leanest tier preserves it by construction (product allow-list +
     // static + appended confirm), but assert it so a future regression is
-    // loud rather than silent. confirm_tool_call is core only for
-    // non-elicitation clients (elicitation-capable ones confirm in-band).
+    // loud rather than silent. confirm_tool_call is an unconditional floor
+    // member for every client (the guaranteed confirm fallback).
     const presentNames = new Set(fit.tools.map((t) => t.name));
-    const missingCore = [...MCP_CORE_TOOL_NAMES].filter(
-      (coreName) =>
-        !presentNames.has(coreName) && !(coreName === CONFIRM_TOOL_CALL_NAME && elicitationCapable),
-    );
+    const missingCore = [...MCP_CORE_TOOL_NAMES].filter((coreName) => !presentNames.has(coreName));
     if (missingCore.length > 0) {
       logger.warn({
         module: "mcp",
@@ -505,34 +477,22 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           args: args as Record<string, unknown>,
           ...(callMeta ? { meta: callMeta } : {}),
         };
-        // In-band human-in-the-loop: when the client advertises
-        // elicitation, resolve a `needs_confirm` gate by prompting the
-        // operator via `elicitation/create` rather than handing back an
-        // envelope the model cannot satisfy (it cannot set `_meta`).
-        //
-        // BUT the elicitation bridge is a FALLBACK, not the primary path:
-        // when the call ALREADY carries an in-band confirm marker
-        // (`_meta.sk_confirm` / `sk_confirm_id`), the caller is resolving a
-        // previously-issued durable confirmation out-of-band. Attaching the
-        // resolver here would force a SECOND interactive prompt and dead-end
-        // a programmatic driver that re-issues with the token but cannot
-        // answer an elicitation. Skip the resolver and let the dispatcher's
-        // `verifyMcpConfirmation` adjudicate the audit-backed token (a
-        // self-minted id still fails `unknown_confirmation`).
+        // In-band human-in-the-loop: when the client advertises elicitation
+        // (and is not already resolving an out-of-band confirm token), attach
+        // a resolver that prompts the operator via `elicitation/create`. It is
+        // a best-effort optimization over the always-present confirm_tool_call
+        // responder — see buildElicitConfirmResolver for the full rationale.
         const carriesInbandConfirm =
           (callMeta as { sk_confirm?: unknown } | undefined)?.sk_confirm === true ||
           typeof (callMeta as { sk_confirm_id?: unknown } | undefined)?.sk_confirm_id === "string";
         const bridge = createElicitationBridge(server, extra);
-        const confirmResolver: ConfirmResolver | undefined =
-          !carriesInbandConfirm && bridge.capabilities.form
-            ? async (confirm: ConfirmEnvelope): Promise<boolean> => {
-                const res = await bridge.elicitForm({
-                  message: buildConfirmPrompt(confirm),
-                  requestedSchema: CONFIRM_ELICIT_SCHEMA,
-                });
-                return res.action === "accept" && res.content?.confirm === true;
-              }
-            : undefined;
+        const confirmResolver = buildElicitConfirmResolver({
+          bridge,
+          carriesInbandConfirm,
+          toolName: name,
+          principalId: principal.id,
+          tenantId: principal.tenant_id,
+        });
         // Bound the dispatch so a stalled call (e.g. event-loop pressure or a
         // slow downstream) returns a clear "engine busy" error instead of
         // hanging until the client's own (much longer) request timeout. The
