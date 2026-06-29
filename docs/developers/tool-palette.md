@@ -216,6 +216,24 @@ inside a conversation, never by the external client.
 Listing them as callable — even badged disabled — only traps clients that ignore
 the badge into calling and churning, so they are hidden outright.
 
+### External-reaching tools are in-palette, not a side channel
+
+A few tools reach *outside* the engine's own state to live upstream surfaces —
+`call_connector` (invokes a saved connector), `discover_connector_endpoints`
+(fetches and parses a spec), and `fetch_connector_self_description` (live-fetches
+a connector's *own* published docs). These are open-world by nature, but they are
+still ordinary palette entries: same registry, same `policyDecide()` gate, same
+`tool.dispatch.invoke` audit. Egress is guarded and size-capped inside the
+executor; nothing about reaching the network earns a bypass.
+
+`fetch_connector_self_description` (`{ connector_id?, kind?: "llms" | "openapi" |
+"graphql" | "all" }`) is a `tenant_read` MCP tool — it appears in `tools/list`
+and live-fetches the link the connector remembers in its `self_description.links[]`
+metadata, transiently, persisting nothing. It is **not** an HTTP route, so it does
+**not** appear in the engine OpenAPI spec; the connector's own machine docs
+(`llms_txt`, `llms_full`, `openapi`, `graphql`) are described in
+[Connectors → Connector Self-Description](../concepts/connectors.md#connector-self-description).
+
 ### Status-discriminated envelope vs. flat `ok` boolean
 
 The legacy `ToolResult` carried `pause` on both `ok:true` and `ok:false`

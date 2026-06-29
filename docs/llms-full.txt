@@ -185,6 +185,29 @@ The response is `{ source: "cache" | "fresh", cache_key, result: DiscoveryResult
 
 ---
 
+## Connector Self-Description
+
+Outcome: the AI grounds a workflow in a connector's *own* published docs instead of guessing from general training data — and it does so without burning the token budget on prose nobody asked for.
+
+Many target systems publish their own machine-readable docs: an `llms.txt` index, a full `llms-full.txt` corpus, an OpenAPI spec, or a GraphQL introspection endpoint. Each Connector remembers where those live in lightweight `self_description.links[]` metadata. Four link kinds are tracked:
+
+| `kind` | What it points at |
+|---|---|
+| `llms_txt` | The connector target's [llms-txt](https://llmstxt.org) index — a curated map of its docs. |
+| `llms_full` | The full single-fetch prose corpus (e.g. `llms-full.txt`). |
+| `openapi` | The OpenAPI / Swagger spec. |
+| `graphql` | The GraphQL introspection endpoint. |
+
+**Links only — never bodies.** Each entry records the URL, a `source` (`discovery`, `self_healing`, or `manual`), and a `discovered_at` timestamp. The full document bodies are *not* copied into a new store; the connector keeps only the pointer. (The discovery cache, described above, is a separate store that holds richer parsed content; self-description deliberately stays a thin set of links so it never bloats.)
+
+**How links are captured.** A link is recorded whenever discovery runs against a connector — the `discover_connector_endpoints` call forwards the `connector_id`, so a successful spec fetch leaves a remembered pointer behind. A bounded self-healing scheduler pass then broadens and refreshes the set, probing every published surface so the links stay current as the target's docs move.
+
+**How links ground authoring.** When a connector is in scope during workflow authoring, the context-assembler surfaces a single pointer line — *"This connector publishes its own docs — fetch on demand with `fetch_connector_self_description`: …"* — covering the connector's llms / OpenAPI / GraphQL links. Compact endpoint signatures (operation names plus arguments) come inline from the discovery index for OpenAPI and GraphQL connectors. The full prose corpus is **not** eagerly inlined; the authoring LLM fetches it lazily, only when it needs deeper detail, which keeps the prompt budget bounded.
+
+The fetch itself is the conversational / MCP tool `fetch_connector_self_description` — `{ connector_id?, kind?: "llms" | "openapi" | "graphql" | "all" }`. It live-fetches the remembered link transiently (egress-guarded and size-capped) and persists nothing. It is an MCP tool, not an HTTP route, so it does not appear in the engine OpenAPI spec.
+
+---
+
 ## Ad-hoc Invocation
 
 Once a connector is persisted, the agent can invoke any endpoint against it for sampling, pagination validation, or response-shape inspection. The conversational tool `call_connector` accepts `{ connector_id, method, path, query?, headers?, body?, timeout_ms? }` and returns the response status, headers, body, latency, and a truncation flag.
@@ -2437,7 +2460,10 @@ The assembler pre-loads Skills + docs + Knowledge chunks before every turn. On-d
 | 1 | `search_knowledge` | semantic search over tenant Knowledge Sources |
 | 2 | `search_docs` | ranked search over a connector's ingested docs (OpenAPI/GraphQL/HTML/Markdown); hits carry a `match_type` (endpoint / auth / schema / text). Use when `search_knowledge` is empty and the answer is connector-specific |
 | 3 | `fetch_connector_docs` | full doc overview for a connector |
-| 4 | `web_search` | Anthropic-native server-side web search (billed per search; Claude models only). On by default; advisory escalation in `policies/web-search-escalation.ts`; gated per tenant by `llm.web_search` (toggle via /settings) |
+| 4 | `fetch_connector_self_description` | live-fetch the connector's *own* published docs — its `llms.txt` / `llms-full.txt`, OpenAPI spec, or GraphQL introspection (`kind: "llms" \| "openapi" \| "graphql" \| "all"`). Use to pull deeper detail the inline endpoint signatures don't carry |
+| 5 | `web_search` | Anthropic-native server-side web search (billed per search; Claude models only). On by default; advisory escalation in `policies/web-search-escalation.ts`; gated per tenant by `llm.web_search` (toggle via /settings) |
+
+When a connector is in scope, the assembler doesn't inline its full doc corpus — that would blow the token budget. Instead it surfaces a one-line pointer (*"this connector publishes its own docs — fetch on demand with `fetch_connector_self_description`"*) alongside compact endpoint signatures pulled from the discovery index. sk fetches the connector's own published docs lazily, only when the model needs more than the signatures, so the workflow is grounded in the target's real documentation without paying for prose it never reads. The remembered links are described in [Connectors → Connector Self-Description](../concepts/connectors.md#connector-self-description).
 
 ### Self-healing retry
 
@@ -4180,6 +4206,8 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 **Callable hints.** Every listed callable entry carries `_meta.subkit = {category, confirm_required, destructive}` so clients can render destructive warnings and skip self-authored pre-confirms. Clients that honour `confirm_required` from the listing avoid the two-elicitation trap.
 
+**Connector docs on demand.** `tools/list` includes `fetch_connector_self_description` — an MCP tool (not an HTTP route, so it is absent from the OpenAPI spec) that live-fetches a connector's *own* published docs (its `llms.txt` / `llms-full.txt`, OpenAPI spec, or GraphQL introspection) from the links the connector remembers. The fetch is transient, egress-guarded, and persists nothing. See [Connectors → Connector Self-Description](../concepts/connectors.md#connector-self-description).
+
 **Workflow inputs.** Each `wf.<slug>` callable entry advertises an `inputSchema`. When the workflow declares `input_schema` on its DAG, that is passed through verbatim. When it doesn't, sk synthesises one by scanning the DAG for `${input.X}` placeholders in request steps and `input.input.X` references in JavaScript transforms, yielding `{type:"object", properties:{X:{type:"string"}}, additionalProperties: true}`.
 
 **Non-fatal warnings.** When a workflow run hits a soft signal — for example a `loop.over` JSONata expression that resolved to a non-array because it referenced a step id not in scope — the MCP response wraps the output as `{output, warnings: [{code:"loop_over_unresolved", identifier, step_key, message}]}`. The run still reports `status: "succeeded"` but the client can surface the diagnostic so operators know why a payload looks partial.
@@ -5123,6 +5151,24 @@ inside a conversation, never by the external client.
 
 Listing them as callable — even badged disabled — only traps clients that ignore
 the badge into calling and churning, so they are hidden outright.
+
+### External-reaching tools are in-palette, not a side channel
+
+A few tools reach *outside* the engine's own state to live upstream surfaces —
+`call_connector` (invokes a saved connector), `discover_connector_endpoints`
+(fetches and parses a spec), and `fetch_connector_self_description` (live-fetches
+a connector's *own* published docs). These are open-world by nature, but they are
+still ordinary palette entries: same registry, same `policyDecide()` gate, same
+`tool.dispatch.invoke` audit. Egress is guarded and size-capped inside the
+executor; nothing about reaching the network earns a bypass.
+
+`fetch_connector_self_description` (`{ connector_id?, kind?: "llms" | "openapi" |
+"graphql" | "all" }`) is a `tenant_read` MCP tool — it appears in `tools/list`
+and live-fetches the link the connector remembers in its `self_description.links[]`
+metadata, transiently, persisting nothing. It is **not** an HTTP route, so it does
+**not** appear in the engine OpenAPI spec; the connector's own machine docs
+(`llms_txt`, `llms_full`, `openapi`, `graphql`) are described in
+[Connectors → Connector Self-Description](../concepts/connectors.md#connector-self-description).
 
 ### Status-discriminated envelope vs. flat `ok` boolean
 

@@ -36,7 +36,7 @@ const MIN_FULL_BODY_CHARS = 200;
 // Probed richest-first: full-content before index, root before `.well-known`.
 // Root is the llms-txt spec's canonical location; `.well-known` is a common
 // mirror, so we try both rather than assume one.
-const CANDIDATE_PATHS: { path: string; preferred: boolean }[] = [
+export const CANDIDATE_PATHS: { path: string; preferred: boolean }[] = [
   { path: "/llms-full.txt", preferred: true },
   { path: "/.well-known/llms-full.txt", preferred: true },
   { path: "/llms.txt", preferred: false },

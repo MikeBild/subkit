@@ -11,7 +11,9 @@ import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizz
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { probeAllSelfDescriptionLinks } from "../connectors/discovery/self-description-probe.ts";
 import { runDiscoveryCached } from "../connectors/discovery/service.ts";
+import { attachConnectorSelfDescriptionLinks } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
 import {
   connectors,
@@ -109,6 +111,10 @@ export interface ReconcilerOptions {
    *  tests so the self-description enrichment sweep's selection + non-fatal
    *  per-connector behavior can be asserted without real outbound HTTP. */
   discoveryRunner?: typeof runDiscoveryCached;
+  /** All-surface probe seam. Defaults to probeAllSelfDescriptionLinks;
+   *  overridable in tests so multi-kind link attachment and non-fatal probe
+   *  failure can be asserted without real outbound HTTP. */
+  probeRunner?: typeof probeAllSelfDescriptionLinks;
 }
 
 /** Desired sub-minute (`every:N`) schedules, keyed by schedule key.
@@ -325,8 +331,13 @@ export class SchedulerReconciler {
    *  cached discovery pipeline. */
   private readonly discoveryRunner: typeof runDiscoveryCached;
 
+  /** Resolved all-surface probe — the injectable seam, defaulting to the
+   *  real concurrent probe implementation. */
+  private readonly probeRunner: typeof probeAllSelfDescriptionLinks;
+
   constructor(private readonly opts: ReconcilerOptions) {
     this.discoveryRunner = opts.discoveryRunner ?? runDiscoveryCached;
+    this.probeRunner = opts.probeRunner ?? probeAllSelfDescriptionLinks;
   }
 
   async start(): Promise<void> {
@@ -1160,6 +1171,31 @@ export class SchedulerReconciler {
           connector_id: row.id,
           tenant_id: row.tenant_id,
           ...errorFields(err),
+        });
+      }
+      // Probe ALL self-description surfaces independently. The single-winner
+      // interactive discovery above only captures the FIRST successful
+      // strategy; the probe below broadens coverage by recording every surface
+      // found (OpenAPI + llms.txt + GraphQL may all be present). Non-fatal:
+      // a probe failure must not abort the sweep for the remaining connectors.
+      try {
+        const probeLinks = await this.probeRunner(row.base_url, {
+          signal: AbortSignal.timeout(CONNECTOR_SELF_DESCRIPTION_DISCOVERY_TIMEOUT_MS),
+        });
+        if (probeLinks.length > 0) {
+          await attachConnectorSelfDescriptionLinks(
+            { tenant_id: row.tenant_id, connector_id: row.id, links: probeLinks },
+            this.opts.db,
+          );
+        }
+      } catch (probeErr) {
+        logger.warn({
+          module: "scheduler",
+          action: "connector_self_description_probe_failed",
+          msg: "connector self-description probe failed — continuing with the rest",
+          connector_id: row.id,
+          tenant_id: row.tenant_id,
+          ...errorFields(probeErr),
         });
       }
     }
