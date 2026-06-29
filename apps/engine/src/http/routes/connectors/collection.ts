@@ -19,22 +19,22 @@ import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { ConnectorListResponse, ConnectorSchema, serialize } from "./schemas.ts";
 
-/** Warm a connector's self-description at creation. For a GraphQL connector this
- *  runs `__schema` introspection; for an HTTP connector the discovery chain
- *  probes OpenAPI / llms.txt / etc. Either way `runDiscoveryCached` (with the
- *  connector_id) records the discovered self-description LINK on the connector
- *  (links only — never the body) so the authoring context can fetch the
- *  connector's own docs on demand, and warms the discovery cache. Bounded +
- *  non-fatal: connector creation must never block on, or fail because of, a
- *  slow/unreachable upstream. */
-async function warmConnectorSelfDescription(
+/** OPT-D: warm a GraphQL connector's schema at creation. A GraphQL API is
+ *  introspectable, so the moment a connector is created we run `__schema`
+ *  introspection and ingest the SDL as searchable knowledge (and record its
+ *  self-description LINK) — the authoring agent then has the relay/enum/filter
+ *  shapes in context WITHOUT a discover_connector_endpoints round-trip. Bounded +
+ *  non-fatal. HTTP connectors are deliberately NOT warmed here: their
+ *  self-description LINKS are captured lazily on the first
+ *  `discover_connector_endpoints` call (which forwards connector_id) and enriched
+ *  by the self-healing scheduler pass — no synchronous network cost on create. */
+async function warmGraphqlSchema(
   db: AppEnv["Variables"]["db"],
   tenant_id: string,
   actor_id: string | null,
   connector: { id: string; driver: string; base_url: string | null },
 ): Promise<void> {
-  if ((connector.driver !== "graphql" && connector.driver !== "http") || !connector.base_url)
-    return;
+  if (connector.driver !== "graphql" || !connector.base_url) return;
   try {
     await runDiscoveryCached(
       { db, tenant_id, actor_id, abortSignal: AbortSignal.timeout(6_000) },
@@ -43,7 +43,7 @@ async function warmConnectorSelfDescription(
   } catch (err) {
     logger.warn({
       module: "connectors",
-      action: "connector_self_description_warm.failed",
+      action: "graphql_schema_warm.failed",
       connector_id: connector.id,
       error: err instanceof Error ? err.message : String(err),
     });
@@ -142,7 +142,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     // OPT-D: introspect + ingest the schema for a GraphQL connector so the SDL
     // is searchable knowledge before any authoring. Bounded + non-fatal.
-    await warmConnectorSelfDescription(db, principal.tenant_id, principal.id, created);
+    await warmGraphqlSchema(db, principal.tenant_id, principal.id, created);
     return c.json(serialize(created), 201);
   });
 

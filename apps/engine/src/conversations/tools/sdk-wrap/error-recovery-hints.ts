@@ -31,6 +31,13 @@ import {
  * the cap surfaces only the generic "ask the user" hint.
  */
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  // Connector self-description / lazy-fetch signals (fetch_connector_self_description).
+  no_connector_in_scope:
+    "no connector is in scope — pass an explicit connector_id (find it via find_connector / list_connectors), or run the call from a conversation already bound to a connector",
+  no_self_description_link:
+    "this connector has no recorded self-description link of that kind yet — run discover_connector_endpoints (with the connector_id) first to detect and record the connector's llms.txt / OpenAPI / GraphQL link, then retry; or search its ingested docs with fetch_connector_docs",
+  self_description_fetch_failed:
+    "the connector's self-description URL could not be fetched (unreachable, timeout, or non-2xx) — verify the connector's base_url is live and the docs path still exists, then re-run discover_connector_endpoints to refresh the recorded link",
   // Surface-restriction signals from the unified tool dispatcher.
   not_available_on_surface:
     "this tool exists in the catalog but cannot be invoked from the current surface — for draft_write tools (save_workflow_draft, dry_run_workflow), the operator must drive the call from a chat conversation, not a headless MCP session",

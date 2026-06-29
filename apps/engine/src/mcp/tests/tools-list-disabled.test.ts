@@ -78,7 +78,7 @@ describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
     //      (RBAC still gates execution); it was previously hidden here.
     // Keep the guard tight so further additions stay a conscious choice,
     // not drift.
-    expect(result.tools.length).toBeLessThan(84);
+    expect(result.tools.length).toBeLessThan(85);
     // No tenant_* alias should remain in the catalog.
     expect(result.tools.filter((t) => t.name.startsWith("tenant_")).length).toBe(0);
   });
