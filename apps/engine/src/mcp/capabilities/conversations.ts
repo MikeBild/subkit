@@ -497,14 +497,12 @@ async function conversationGet(
         conversation_id,
         pending_elicitation_id: pending.id,
         input: pending.input,
-        events: leanResult.events,
         result: leanResult,
       });
     }
     return successText({
       status: "completed",
       conversation_id,
-      events: leanResult.events,
       ...(leanResult.committed_workflow_id
         ? { committed_workflow_id: leanResult.committed_workflow_id }
         : {}),
