@@ -26,6 +26,7 @@ describe("conversation tools — registration", () => {
     "dry_run_transform",
     "dry_run_workflow",
     "fetch_connector_docs",
+    "fetch_connector_self_description",
     "inspect_authoring_context",
     "inspect_connector_draft",
     "inspect_execution",
