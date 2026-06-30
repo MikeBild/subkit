@@ -935,11 +935,16 @@ export const dryRunWorkflowTool: ConversationTool = {
         typeof commitResult.data === "object" && commitResult.data !== null
           ? (commitResult.data as Record<string, unknown>)
           : {};
+      const versionChanged = committed.version_changed !== false;
       const totalDryRunMs = run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0);
       logger.info({
         module: "conversation_tool",
-        action: "dry_run_workflow.auto_committed",
-        msg: "green dry-run auto-persisted workflow inline",
+        action: versionChanged
+          ? "dry_run_workflow.auto_committed"
+          : "dry_run_workflow.already_persisted",
+        msg: versionChanged
+          ? "green dry-run auto-persisted workflow inline"
+          : "green dry-run matched the current workflow version",
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         workflow_id:
@@ -956,7 +961,7 @@ export const dryRunWorkflowTool: ConversationTool = {
         ok: true,
         data: {
           ...committed,
-          auto_committed: true,
+          auto_committed: versionChanged,
           auto_commit_reason: "auto_persist_on_green_dry_run",
           // The judge outcome rides the commit envelope: `passes`
           // verdicts, skips (no_goal / judge_unavailable), and

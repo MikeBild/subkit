@@ -35,6 +35,54 @@ describe("committedStopCondition", () => {
     ).toBe(false);
   });
 
+  test("returns false for an idempotent save result that only reports the existing workflow", () => {
+    expect(
+      committedStopCondition({
+        steps: [
+          {
+            toolResults: [
+              {
+                toolName: "save_workflow_draft",
+                output: {
+                  ok: true,
+                  data: {
+                    already_persisted: true,
+                    version_changed: false,
+                    workflow_id: "wf_existing",
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  test("returns false for a mixed idempotent envelope that accidentally carries a top-level id", () => {
+    expect(
+      committedStopCondition({
+        steps: [
+          {
+            toolResults: [
+              {
+                toolName: "save_workflow_draft",
+                output: {
+                  committed_workflow_id: "wf_existing",
+                  data: {
+                    already_persisted: true,
+                    version_changed: false,
+                    workflow_id: "wf_existing",
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   test("returns true when save_workflow_draft produced committed_workflow_id", () => {
     expect(
       committedStopCondition({

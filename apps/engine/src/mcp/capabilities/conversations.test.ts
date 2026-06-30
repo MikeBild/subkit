@@ -412,4 +412,60 @@ describe("conversation_get — derived status before any task settles", () => {
     const body = JSON.parse(got.content[0]?.text ?? "{}") as { status: string };
     expect(body.status).toBe("working");
   });
+
+  test("a settled no-op save turn reports completed without committed_workflow_id", async () => {
+    const [conv] = await testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: principal.tenant_id,
+        owner_id: principal.id,
+        status: "active",
+        draft: {},
+      })
+      .returning();
+    if (!conv) throw new Error("seed conversation failed");
+    await testDb.db.insert(mcpTasks).values({
+      tenant_id: principal.tenant_id,
+      conversation_id: conv.id,
+      turn_seq: 1,
+      kind: "respond_elicitation",
+      actor_id: principal.id,
+      request_source: "mcp",
+      result: {
+        conversation_id: conv.id,
+        status: "active",
+        events: [
+          {
+            type: "tool_result",
+            tool: "save_workflow_draft",
+            output: {
+              ok: true,
+              data: {
+                already_persisted: true,
+                version_changed: false,
+                workflow_id: "wf_existing",
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    const got = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_get",
+      args: { conversation_id: conv.id },
+    });
+    expect(got.isError).toBe(false);
+    const body = JSON.parse(got.content[0]?.text ?? "{}") as {
+      status: string;
+      committed_workflow_id?: string;
+      result?: { committed_workflow_id?: string; status?: string };
+    };
+    expect(body.status).toBe("completed");
+    expect(body.committed_workflow_id).toBeUndefined();
+    expect(body.result?.status).toBe("active");
+    expect(body.result?.committed_workflow_id).toBeUndefined();
+  });
 });

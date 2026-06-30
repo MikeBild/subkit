@@ -681,6 +681,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       ok: true,
       data: {
         already_persisted: true,
+        version_changed: false,
         workflow_id: workflowId,
         workflow_version_id: wf.current_version_id,
         version,
@@ -690,7 +691,6 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
         next_best_actions: ["run_workflow", "inspect_workflow"],
         next_prompt: usage.follow_up,
       },
-      committed_workflow_id: workflowId,
     };
   }
 
@@ -996,6 +996,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       workflow_id: workflow.id,
       workflow_version_id: workflow.current_version_id,
       version: workflow.current_version,
+      version_changed: true,
       slug: workflow.slug,
       name: workflow.name,
       usage,

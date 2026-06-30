@@ -33,9 +33,9 @@ interface StepShape {
 export const MAX_STALLED_REPAIR_PREVIEWS = 3;
 
 /**
- * Stop after a step that invoked `save_workflow_draft` and produced a
- * `committed_workflow_id` — the loop is done the moment the workflow
- * row is persisted.
+ * Stop after a step that invoked `save_workflow_draft` and produced a real
+ * commit signal. Idempotent saves report the existing workflow under `data`
+ * and must not advance the conversation to `committed`.
  */
 export const committedStopCondition = ({
   steps,
@@ -47,12 +47,16 @@ export const committedStopCondition = ({
   return last.toolResults.some((r) => {
     if (r.toolName !== "save_workflow_draft") return false;
     const output = r.output;
-    return (
-      !!output &&
-      typeof output === "object" &&
-      "committed_workflow_id" in (output as Record<string, unknown>) &&
-      typeof (output as { committed_workflow_id?: unknown }).committed_workflow_id === "string"
-    );
+    if (!output || typeof output !== "object") return false;
+    const record = output as Record<string, unknown>;
+    const data = record.data;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const dataRecord = data as Record<string, unknown>;
+      if (dataRecord.already_persisted === true || dataRecord.version_changed === false) {
+        return false;
+      }
+    }
+    return typeof record.committed_workflow_id === "string";
   });
 };
 

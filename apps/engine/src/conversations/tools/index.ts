@@ -207,7 +207,7 @@ export type ToolResult =
       data: unknown;
       /** When set, the driver pauses the loop on a pending elicitation. */
       pause?: ToolResultPause;
-      /** When set, a successful commit bound its new workflow id. */
+      /** When set, this tool call created or updated a persisted workflow version. */
       committed_workflow_id?: string;
     }
   | {
@@ -228,7 +228,7 @@ export type ToolResult =
       next_best_actions?: string[];
       /** When set, the driver pauses the loop on a pending elicitation. */
       pause?: ToolResultPause;
-      /** When set, a successful commit bound its new workflow id. */
+      /** When set, this tool call created or updated a persisted workflow version. */
       committed_workflow_id?: string;
     };
 

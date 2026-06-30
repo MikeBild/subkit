@@ -170,6 +170,38 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(toolCtx.current().state?.judge_breaker ?? null).toBeNull();
   });
 
+  test("passing fixture re-run against the same draft is already_persisted, not a second commit", async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "Output contains project names and droplet specs.",
+      missing: [],
+    });
+    const toolCtx = makeCtx(wrongContentDraft("judge-passes-idempotent", GOAL));
+
+    const first = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(first.ok).toBe(true);
+    const firstData = first.data as JudgeEnvelope & {
+      workflow_id?: string;
+      version_changed?: boolean;
+    };
+    expect(firstData.auto_committed).toBe(true);
+    expect(firstData.version_changed).toBe(true);
+    expect(first.committed_workflow_id).toBe(firstData.workflow_id);
+
+    const second = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(second.ok).toBe(true);
+    const secondData = second.data as JudgeEnvelope & {
+      already_persisted?: boolean;
+      version_changed?: boolean;
+      workflow_id?: string;
+    };
+    expect(secondData.already_persisted).toBe(true);
+    expect(secondData.auto_committed).toBe(false);
+    expect(secondData.version_changed).toBe(false);
+    expect(secondData.workflow_id).toBe(firstData.workflow_id);
+    expect(second.committed_workflow_id).toBeUndefined();
+  });
+
   test("goal absent: judge skipped with no_goal, green preview is NOT auto-committed", async () => {
     // Override would FAIL the preview if the judge ran — proving the
     // skip really skipped the LLM call rather than passing by luck.

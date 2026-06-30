@@ -65,7 +65,11 @@ async function seedApprovedConfirm(conversationId: string): Promise<void> {
     conversation_id: conversationId,
     tool_name: "ask_user_confirm",
     summary: "commit",
-    input: { kind: "save_workflow_draft", summary: "commit" },
+    input: {
+      kind: "save_workflow_draft",
+      summary: "commit",
+      commit_intent: { kind: "save_workflow_draft", payload: {}, description: "commit" },
+    },
     output: { confirmed: true },
     status: "resolved",
   });
@@ -187,8 +191,14 @@ describe("commitWorkflowAtomic · hash-dedup on unchanged re-commit", () => {
       commitIntentKind: "save_workflow_draft",
     });
     expect(first.ok).toBe(true);
-    const firstData = first.data as { workflow_id: string; version: number };
+    const firstData = first.data as {
+      workflow_id: string;
+      version: number;
+      version_changed?: boolean;
+    };
     expect(firstData.version).toBe(1);
+    expect(firstData.version_changed).toBe(true);
+    expect(first.committed_workflow_id).toBe(firstData.workflow_id);
 
     // Second commit of the SAME draft — must dedup, not rotate. The
     // commit still succeeds; it just resolves to the unchanged version.
@@ -200,8 +210,17 @@ describe("commitWorkflowAtomic · hash-dedup on unchanged re-commit", () => {
       commitIntentKind: "save_workflow_draft",
     });
     expect(second.ok).toBe(true);
-    const secondData = second.data as { version: number };
+    const secondData = second.data as {
+      already_persisted?: boolean;
+      version: number;
+      version_changed?: boolean;
+      workflow_id: string;
+    };
+    expect(secondData.already_persisted).toBe(true);
     expect(secondData.version).toBe(1);
+    expect(secondData.version_changed).toBe(false);
+    expect(secondData.workflow_id).toBe(firstData.workflow_id);
+    expect(second.committed_workflow_id).toBeUndefined();
 
     // Exactly one workflow_versions row exists — the second commit
     // did not append a redundant version.
@@ -215,5 +234,18 @@ describe("commitWorkflowAtomic · hash-dedup on unchanged re-commit", () => {
         ),
       );
     expect(versionRows.length).toBe(1);
+
+    await seedApprovedConfirm(conv.id);
+    const toolResult = await saveWorkflowDraftTool.execute(tc, {});
+    expect(toolResult.ok).toBe(true);
+    const toolData = toolResult.data as {
+      already_persisted?: boolean;
+      version_changed?: boolean;
+      workflow_id: string;
+    };
+    expect(toolData.already_persisted).toBe(true);
+    expect(toolData.version_changed).toBe(false);
+    expect(toolData.workflow_id).toBe(firstData.workflow_id);
+    expect(toolResult.committed_workflow_id).toBeUndefined();
   });
 });

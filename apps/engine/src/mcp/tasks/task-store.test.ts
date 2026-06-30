@@ -276,6 +276,43 @@ describe("ConversationTaskStore.getTaskResult — the tasks/result surface", () 
     expect(JSON.parse(result.content[0]?.text ?? "{}")).toEqual(envelope);
   });
 
+  test("a completed no-op authoring turn does not synthesize committed_workflow_id", async () => {
+    const conv = await seedConversation("active");
+    const envelope = {
+      conversation_id: conv,
+      status: "active",
+      events: [
+        {
+          type: "tool_result",
+          tool: "save_workflow_draft",
+          output: {
+            ok: true,
+            data: {
+              already_persisted: true,
+              version_changed: false,
+              workflow_id: "wf_existing",
+            },
+          },
+        },
+      ],
+    };
+    const taskId = await seedTask(conv, { result: envelope });
+    const store = new ConversationTaskStore({ db: testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(taskId);
+    expect(task?.status).toBe("completed");
+    const result = (await store.getTaskResult(taskId)) as {
+      content: Array<{ type: string; text: string }>;
+      isError: boolean;
+    };
+    expect(result.isError).toBe(false);
+    const body = JSON.parse(result.content[0]?.text ?? "{}") as {
+      committed_workflow_id?: string;
+      events: Array<{ output?: { data?: { already_persisted?: boolean } } }>;
+    };
+    expect(body.committed_workflow_id).toBeUndefined();
+    expect(body.events[0]?.output?.data?.already_persisted).toBe(true);
+  });
+
   test("a failed task returns an isError text body carrying the failure reason", async () => {
     const conv = await seedConversation("active");
     const taskId = await seedTask(conv, { failure_reason: "llm_overloaded" });

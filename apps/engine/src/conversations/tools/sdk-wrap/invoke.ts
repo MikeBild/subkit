@@ -111,6 +111,17 @@ export function toInputExamples(
   return {};
 }
 
+function committedWorkflowIdFromResult(result: ToolResult): string | null {
+  const workflowId = result.committed_workflow_id;
+  if (typeof workflowId !== "string") return null;
+  const data = "data" in result ? result.data : undefined;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const record = data as Record<string, unknown>;
+    if (record.already_persisted === true || record.version_changed === false) return null;
+  }
+  return workflowId;
+}
+
 export function wrapOne(
   inner: ConversationTool,
   ctx: ToolContext,
@@ -1489,12 +1500,13 @@ export function wrapOne(
         });
 
         const dataSummary = summarizeToolData(resultPayload);
+        const committedWorkflowId = committedWorkflowIdFromResult(result);
         const logCtx = {
           conversation_id: ctx.conversation_id,
           tool: inner.name,
           ok: result.ok,
           paused: Boolean(result.pause),
-          committed: Boolean(result.committed_workflow_id),
+          committed: Boolean(committedWorkflowId),
           duration_ms: Date.now() - startedAt,
           ...dataSummary,
           // Lift a structured `ok:false` reason (top-level error_code/message)
@@ -1702,15 +1714,15 @@ export function wrapOne(
           };
         }
 
-        if (result.committed_workflow_id) {
-          events.push({ type: "committed", workflow_id: result.committed_workflow_id });
+        if (committedWorkflowId) {
+          events.push({ type: "committed", workflow_id: committedWorkflowId });
           log.conversation.completed({
             conversation_id: ctx.conversation_id,
             final_status: "committed",
-            committed_workflow_id: result.committed_workflow_id,
+            committed_workflow_id: committedWorkflowId,
             steps_taken: step + 1,
           });
-          signals.committed = { workflow_id: result.committed_workflow_id };
+          signals.committed = { workflow_id: committedWorkflowId };
         }
 
         // Post-execution review pause (`confirm_after_execution`).
@@ -1808,9 +1820,7 @@ export function wrapOne(
                 target: { tool: inner.name, args: rawArgs },
               },
             },
-            ...(result.committed_workflow_id
-              ? { committed_workflow_id: result.committed_workflow_id }
-              : {}),
+            ...(committedWorkflowId ? { committed_workflow_id: committedWorkflowId } : {}),
           };
         }
 
@@ -1818,9 +1828,7 @@ export function wrapOne(
           ok: result.ok,
           data: resultPayload,
           ...(result.pause ? { pause: result.pause } : {}),
-          ...(result.committed_workflow_id
-            ? { committed_workflow_id: result.committed_workflow_id }
-            : {}),
+          ...(committedWorkflowId ? { committed_workflow_id: committedWorkflowId } : {}),
         };
       };
 

@@ -211,6 +211,7 @@ export interface WrappedToolOutput {
   ok: boolean;
   data: unknown;
   pause?: ToolResultPause;
+  /** Present only when the tool call created or updated a persisted workflow version. */
   committed_workflow_id?: string;
 }
 

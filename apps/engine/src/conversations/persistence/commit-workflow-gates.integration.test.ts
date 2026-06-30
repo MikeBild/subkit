@@ -307,9 +307,15 @@ describe("C.3 — already_persisted idempotency", () => {
       ctx: stubToolCtx(conversationId, draft),
     });
     expect(second.ok).toBe(true);
-    const secondData = second.data as { already_persisted?: boolean; workflow_id: string };
+    const secondData = second.data as {
+      already_persisted?: boolean;
+      version_changed?: boolean;
+      workflow_id: string;
+    };
     expect(secondData.already_persisted).toBe(true);
+    expect(secondData.version_changed).toBe(false);
     expect(secondData.workflow_id).toBe(firstData.workflow_id);
+    expect(second.committed_workflow_id).toBeUndefined();
 
     // Still exactly one WORKFLOW_CREATED audit row — no second write.
     const auditAfterSecond = await ctx.testDb.db
