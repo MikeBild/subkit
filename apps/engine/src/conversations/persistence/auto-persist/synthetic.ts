@@ -160,16 +160,23 @@ export async function injectSyntheticToolCall(p: {
   tenant_id: string;
   conversation_id: string;
   synthetic: SyntheticToolResult;
-  intent: CommitIntent;
+  /** The commit_intent that drove the dispatch. Absent for the
+   *  no-commit_intent honest-failure path (`write_not_dispatched`),
+   *  where there is no intent — `description` then falls back to a
+   *  short note so the synthetic row still carries context. */
+  intent?: CommitIntent;
+  /** Used as the synthetic row's `description` when `intent` is absent. */
+  description?: string;
 }): Promise<string> {
+  const commitIntentKind = p.intent?.kind ?? null;
   const callId = await insertToolCall(p.db, {
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     tool: p.synthetic.tool,
     input: {
       _harness_auto_persist: true,
-      commit_intent_kind: p.intent.kind,
-      description: p.intent.description,
+      commit_intent_kind: commitIntentKind,
+      description: p.intent?.description ?? p.description ?? null,
     },
     approval_required: false,
   });
@@ -180,7 +187,7 @@ export async function injectSyntheticToolCall(p: {
     .update(conversationToolCalls)
     .set({
       confirmation_state: p.synthetic.ok ? "confirmed" : "declined",
-      confirmation_data: { source: "harness_auto_persist", commit_intent_kind: p.intent.kind },
+      confirmation_data: { source: "harness_auto_persist", commit_intent_kind: commitIntentKind },
     })
     .where(eq(conversationToolCalls.id, callId));
   await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", {

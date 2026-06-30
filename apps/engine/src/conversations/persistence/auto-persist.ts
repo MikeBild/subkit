@@ -61,6 +61,7 @@ import { runExecution } from "../../execution/engine.ts";
 import { logger } from "../../logging/logger.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
+import { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
 import { createApiKeyTool } from "../tools/generated/writes/create-api-key.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { mergeFormIntoCredential } from "./auto-persist/credential-cache.ts";
@@ -162,6 +163,7 @@ export async function maybeAutoPersistFromElicitation(
       p.elicitation.input && typeof p.elicitation.input === "object" && p.elicitation.input !== null
         ? ((p.elicitation.input as { kind?: unknown }).kind ?? null)
         : null;
+    const inputKind = typeof elicitationInputKind === "string" ? elicitationInputKind : null;
     logger.info({
       module: "conversation_persistence",
       action: "auto_persist.skipped",
@@ -170,9 +172,46 @@ export async function maybeAutoPersistFromElicitation(
       conversation_id: p.conversation_id,
       elicitation_id: p.elicitation.id,
       elicitation_tool_name: p.elicitation.tool_name,
-      elicitation_input_kind:
-        typeof elicitationInputKind === "string" ? elicitationInputKind : null,
+      elicitation_input_kind: inputKind,
     });
+
+    // Honest-failure signal. An `ask_user_confirm` whose `kind` declares a
+    // WRITE (external_write / save_workflow_draft) that the operator
+    // APPROVED, yet carries no commit_intent the harness can dispatch, is
+    // the "reported ≠ written" trap: the harness writes nothing, and pre-
+    // fix the LLM got no signal back, so it narrated success it never
+    // achieved (render-upload-slides session: the model tagged a
+    // description-edit confirm `kind:external_write` after drifting, the
+    // approval no-op'd, and the description stayed unchanged while chat
+    // claimed it was updated). The drift itself is fixed by the
+    // DATA-NOT-INSTRUCTIONS rule; this is the durable safety net for any
+    // future mis-tagged write-confirm. Inject a synthetic tool result so
+    // the model's next turn MUST acknowledge nothing was written and
+    // either attach a commit_intent or call the real write tool. Plain
+    // `generic` confirms (yes/no questions) and declined/ambiguous
+    // answers keep the silent skip — only an approved write-shaped confirm
+    // is a write the operator expected to happen.
+    const isWriteShapedConfirm =
+      p.elicitation.tool_name === "ask_user_confirm" &&
+      (inputKind === "external_write" || inputKind === "save_workflow_draft");
+    if (isWriteShapedConfirm && interpretConfirmDecision(p.elicitation_output) === "confirmed") {
+      const synthetic: SyntheticToolResult = {
+        tool: "ask_user_confirm",
+        ok: false,
+        error_code: "write_not_dispatched",
+        message: `You approved a write confirmation (kind=${inputKind}) but it carried no commit_intent, so the harness performed NO write — nothing was persisted or executed. Do NOT report success. To actually perform it, re-issue ask_user_confirm with a commit_intent (e.g. {kind: "save_workflow_draft"} for a workflow edit, {kind: "run_workflow", payload:{workflow_id,…}} for a run), OR call the underlying write tool now and confirm its result before telling the user it succeeded.`,
+        next_best_actions: ["ask_user_confirm", "save_workflow_draft"],
+        source: "harness_auto_persist",
+      };
+      const callId = await injectSyntheticToolCall({
+        db: p.db,
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        synthetic,
+        description: `write confirmation approved without commit_intent (kind=${inputKind})`,
+      });
+      return { dispatched: true, synthetic_result: synthetic, synthetic_tool_call_id: callId };
+    }
     return { dispatched: false };
   }
 
