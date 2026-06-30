@@ -15,6 +15,7 @@
 // (confirmed:false / declined:true) must always get through.
 
 import { type FormFieldDefinition, validateFormFieldValue } from "./form.ts";
+import { interpretConfirmDecision } from "./interpret-confirm.ts";
 
 export interface ElicitationFieldError {
   name: string;
@@ -32,7 +33,7 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 }
 
 function isDecline(output: Record<string, unknown>): boolean {
-  return output.confirmed === false || output.declined === true;
+  return interpretConfirmDecision(output) === "declined";
 }
 
 /** Read the answered value map for ask_user_form. The DB-pause portal
@@ -166,6 +167,27 @@ export function validateElicitationAnswer(
         });
       }
       return field_errors.length > 0 ? { ok: false, field_errors } : { ok: true };
+    }
+
+    case "ask_user_confirm": {
+      // A confirm answer must carry a recognizable decision. Declines
+      // already short-circuited above (isDecline), so reaching here with
+      // anything other than an explicit confirm means the client sent an
+      // ambiguous payload (e.g. `{}` or an unknown key). Reject it so the
+      // row stays pending and the client re-prompts, rather than letting
+      // it silently resolve as a `user_declined` non-confirmation.
+      if (interpretConfirmDecision(outputObj) !== "confirmed") {
+        return {
+          ok: false,
+          field_errors: [
+            {
+              name: "confirmed",
+              message: "confirm answer must set confirmed (or approved) to true or false",
+            },
+          ],
+        };
+      }
+      return { ok: true };
     }
 
     default:

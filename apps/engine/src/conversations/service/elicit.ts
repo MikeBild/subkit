@@ -13,6 +13,10 @@ import { log } from "../../logging/logger.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { runLoop } from "../loop.ts";
 import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
+import {
+  interpretConfirmDecision,
+  normalizeConfirmOutput,
+} from "../tools/ask-user/interpret-confirm.ts";
 import type { ConversationPermissionMode } from "../types.ts";
 import { getConversation } from "./get.ts";
 import {
@@ -191,9 +195,18 @@ export async function respondElicitation(
   // through unvalidated (see validate-answer.ts).
   const { getElicitation, resolveElicitation } = await import("../elicitations.ts");
   const pendingRow = await getElicitation(p.tenant_id, p.elicitation_id, exec);
+  // Canonicalise an `ask_user_confirm` answer up front so the stored
+  // row, the interaction-log mirror, and the auto-persist write gate all
+  // read the same `{ confirmed: boolean }` shape. The portal posts
+  // `{ approved: true }`; without this every downstream reader would have
+  // to re-derive the decision, and a missed spelling silently turns an
+  // approval into a `user_declined` decline (the save_workflow_draft
+  // commit that never persisted).
+  const output =
+    pendingRow?.tool_name === "ask_user_confirm" ? normalizeConfirmOutput(p.output) : p.output;
   if (pendingRow && pendingRow.status === "pending") {
     const { validateElicitationAnswer } = await import("../tools/ask-user/validate-answer.ts");
-    const verdict = validateElicitationAnswer(pendingRow.tool_name, pendingRow.input, p.output);
+    const verdict = validateElicitationAnswer(pendingRow.tool_name, pendingRow.input, output);
     if (!verdict.ok) {
       throw new ElicitationValidationError(p.elicitation_id, verdict.field_errors, {
         id: pendingRow.id,
@@ -211,7 +224,7 @@ export async function respondElicitation(
     {
       tenant_id: p.tenant_id,
       id: p.elicitation_id,
-      output: p.output,
+      output,
       decided_by: p.actor_id,
       ...(p.reason ? { reason: p.reason } : {}),
     },
@@ -278,12 +291,12 @@ export async function respondElicitation(
   // turn instead of reading only the raw output payload.
   if (originatingToolCall) {
     const { recordTransition } = await import("../confirmation.ts");
-    const out = (p.output ?? {}) as Record<string, unknown>;
+    const out = (output ?? {}) as Record<string, unknown>;
     let to_state: "confirmed" | "declined" | "partial" | "tested" = "confirmed";
     if (out.tested === true) to_state = "tested";
     else if (out.partial === true) to_state = "partial";
-    else if (out.confirmed === false || out.declined === true) to_state = "declined";
-    else if (out.confirmed === true) to_state = "confirmed";
+    else if (interpretConfirmDecision(out) === "declined") to_state = "declined";
+    else to_state = "confirmed";
     await recordTransition(exec, {
       tool_call_id: originatingToolCall.id,
       tenant_id: p.tenant_id,
@@ -324,7 +337,7 @@ export async function respondElicitation(
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
     ...(p.principal !== undefined ? { principal: p.principal } : {}),
-    output: p.output,
+    output,
     elicitation: {
       id: resolved.id,
       tool_name: resolved.tool_name,

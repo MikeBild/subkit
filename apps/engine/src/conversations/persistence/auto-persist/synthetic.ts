@@ -9,6 +9,7 @@ import type { Db } from "../../../db/client.ts";
 import { conversationToolCalls } from "../../../db/schema/index.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import { COMMIT_INTENT_KINDS, type CommitIntent } from "../../tools/ask-user/commit-intent.ts";
+import { interpretConfirmDecision } from "../../tools/ask-user/interpret-confirm.ts";
 import type { ToolResult } from "../../tools/index.ts";
 
 /**
@@ -55,10 +56,15 @@ export function checkDecline(toolName: string, output: unknown): DeclineSignal |
   }
   const out = (output ?? {}) as Record<string, unknown>;
   if (toolName === "ask_user_confirm") {
-    if (out.confirmed === false || out.declined === true) {
+    // Route through the shared interpreter so the portal (`approved`),
+    // MCP, and sk-cli spellings are read identically. Write-safety: only
+    // an explicit `"confirmed"` clears the gate — `"ambiguous"` stays a
+    // decline so we never auto-persist a write on an unclear answer.
+    const decision = interpretConfirmDecision(out);
+    if (decision === "declined") {
       return { error_code: "user_declined", reason: "operator_rejected_confirmation" };
     }
-    if (out.confirmed !== true) {
+    if (decision !== "confirmed") {
       return { error_code: "user_declined", reason: "operator_did_not_confirm" };
     }
     return null;

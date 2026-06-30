@@ -168,6 +168,52 @@ describe("auto-persist — decline path", () => {
     expect(out.source).toBe("harness_auto_persist");
   });
 
+  test("ask_user_confirm portal-approved {approved:true} → write gate clears (NOT user_declined)", async () => {
+    // Regression for the portal-approval bug: the web portal posts
+    // `{ approved: true }`, not `{ confirmed: true }`. The decline gate
+    // must read it as an approval and run the underlying write. Pre-fix
+    // this exact shape was turned into a `user_declined` synthetic and
+    // the save_workflow_draft / save_connector_draft commit was silently
+    // skipped. We assert the gate CLEARED — the dispatcher reached the
+    // real write path — by checking the synthetic is not a decline.
+    // (The save then reports `credential_required` because the real
+    // respondElicitation flow caches the credential before dispatch;
+    // that plumbing is orthogonal to the decline-gate fix under test.)
+    const conversation_id = await seedConversationWithDraft("ap-approved");
+    const elicitation = await insertCarrier({
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      input: {
+        question: "Save the connector?",
+        kind: "generic",
+        commit_intent: {
+          kind: "save_connector_draft",
+          payload: {
+            credential: { mode: "bearer", token: "would-be-secret" },
+            environment: "dev",
+          },
+          description: "Save",
+        },
+      },
+      output: { approved: true },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      elicitation_output: { approved: true },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    // The decisive assertion: the portal approval was NOT mis-read as a
+    // decline. Pre-fix this was exactly `user_declined`.
+    expect(dispatch.synthetic_result?.error_code).not.toBe("user_declined");
+    expect(dispatch.synthetic_result?.tool).toBe("save_connector_draft");
+  });
+
   test("ask_user_form empty submission → synthetic error_code=empty_submission, no DB write", async () => {
     const conversation_id = await seedConversationWithDraft("ap-empty");
     const elicitation = await insertCarrier({
