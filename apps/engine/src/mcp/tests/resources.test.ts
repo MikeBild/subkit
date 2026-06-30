@@ -20,6 +20,17 @@ function mintKey(): { plaintext: string; prefix: string; hash: string } {
 
 let suite: McpTestSuite;
 
+async function listAllResourceUris(client: Client): Promise<string[]> {
+  const uris: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await client.listResources({ ...(cursor ? { cursor } : {}) });
+    uris.push(...page.resources.map((r) => r.uri));
+    cursor = page.nextCursor;
+  } while (cursor);
+  return uris;
+}
+
 beforeAll(async () => {
   suite = await startMcpTestSuite("resources");
 });
@@ -53,6 +64,39 @@ describe("mcp resources", () => {
     expect(body.id).toBe(id);
     expect(body.driver).toBe("http");
     expect(body.base_url).toBe("https://api.probe.test");
+  });
+
+  test("lists resource templates for readable resource families", async () => {
+    const client = await suite.connect();
+    const list = await client.listResourceTemplates();
+    const templates = list.resourceTemplates.map((t) => t.uriTemplate);
+    expect(templates).toContain("connector://{id}");
+    expect(templates).toContain("knowledge://{id}");
+    expect(templates).toContain("skill-candidate://{id}");
+    expect(templates).toContain("workflow://{id}");
+    expect(templates).toContain("file://{id}");
+    expect(templates).toContain("fixture://{id}");
+    expect(templates).toContain("subkit://operator/health-digest");
+  });
+
+  test("list paginates with nextCursor and rejects malformed cursors", async () => {
+    for (let i = 0; i < 101; i++) {
+      await suite.seedConnector({
+        slug: `paged-res-${i}`,
+        display_name: `Paged Resource ${i}`,
+      });
+    }
+    const client = await suite.connect();
+    const first = await client.listResources();
+    expect(first.resources).toHaveLength(100);
+    expect(typeof first.nextCursor).toBe("string");
+    const second = await client.listResources({ cursor: first.nextCursor });
+    expect(second.resources.length).toBeGreaterThanOrEqual(1);
+    expect(second.nextCursor).toBeUndefined();
+
+    await expect(client.listResources({ cursor: "not-base64-json" })).rejects.toThrow(
+      /Invalid pagination cursor for resources\/list/,
+    );
   });
 
   // Regression guard for the MCP round-trip failure: when a `wf.*`
@@ -150,8 +194,8 @@ describe("mcp resources", () => {
 
     try {
       // The digest URI must not appear in the member's resource list.
-      const list = await memberClient.listResources();
-      expect(list.resources.map((r) => r.uri)).not.toContain("subkit://operator/health-digest");
+      const memberUris = await listAllResourceUris(memberClient);
+      expect(memberUris).not.toContain("subkit://operator/health-digest");
 
       // A direct read must be rejected with a permission_denied JSON-RPC error.
       await expect(
@@ -163,7 +207,7 @@ describe("mcp resources", () => {
 
     // Confirm the gate is permission-based: admin sees the digest URI.
     const adminClient = await suite.connect();
-    const adminList = await adminClient.listResources();
-    expect(adminList.resources.map((r) => r.uri)).toContain("subkit://operator/health-digest");
+    const adminUris = await listAllResourceUris(adminClient);
+    expect(adminUris).toContain("subkit://operator/health-digest");
   });
 });

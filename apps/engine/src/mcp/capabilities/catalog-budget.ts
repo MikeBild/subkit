@@ -52,6 +52,7 @@ const CONVERSATION_START_TOOL_NAME = "conversation_start";
 export const CONFIRM_TOOL_CALL_NAME = "confirm_tool_call";
 export const CONFIRM_TOOL_CALL_TOOL: Tool = {
   name: CONFIRM_TOOL_CALL_NAME,
+  title: "Confirm tool call",
   description:
     "Approve a tool call that paused for confirmation (status:needs_confirm). Re-runs the " +
     "named tool with the operator's approval. Pass the same `tool` and `arguments` from the " +
@@ -77,6 +78,7 @@ export const CONFIRM_TOOL_CALL_TOOL: Tool = {
     idempotentHint: false,
     openWorldHint: false,
   },
+  execution: { taskSupport: "forbidden" },
 };
 
 /** Estimate the combined tools/list schema token cost (~4 chars/token). */

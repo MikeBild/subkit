@@ -120,4 +120,68 @@ describe("mcp completion/complete", () => {
     );
     expect(res.completion.values).toEqual([]);
   });
+
+  test("prompt completions do not leak argument metadata without skill:read", async () => {
+    const { id } = await suite.seedSkill({
+      title: "Hidden prompt",
+      body: "Do hidden work.",
+      arguments: [
+        { name: "secret_customer_id", description: "sensitive argument" },
+        { name: "secret_region", description: "sensitive argument" },
+      ],
+    });
+    const { plaintext } = await suite.issueApiKey(["workflow:read"]);
+    const client = await suite.connectWithApiKey(plaintext);
+
+    const res = await client.request(
+      {
+        method: "completion/complete",
+        params: {
+          ref: { type: "ref/prompt", name: `skill_${id}` },
+          argument: { name: "name", value: "secret" },
+        },
+      } as unknown as Parameters<typeof client.request>[0],
+      CompletionResultSchema,
+    );
+
+    expect(res.completion.values).toEqual([]);
+    expect(res.completion.total).toBe(0);
+  });
+
+  test("tool completions do not leak workflow input schema without workflow:read", async () => {
+    await suite.seedWorkflow({
+      name: "hidden workflow",
+      slug: "hidden-workflow",
+      input_schema: {
+        type: "object",
+        properties: {
+          secret_limit: { type: "number" },
+          secret_filter: { type: "string" },
+        },
+      },
+      steps: [
+        {
+          kind: "transform",
+          id: "echo",
+          expression: "$input",
+        },
+      ],
+    });
+    const { plaintext } = await suite.issueApiKey(["skill:read"]);
+    const client = await suite.connectWithApiKey(plaintext);
+
+    const res = await client.request(
+      {
+        method: "completion/complete",
+        params: {
+          ref: { type: "ref/tool", name: "wf_hidden-workflow" },
+          argument: { name: "name", value: "secret" },
+        },
+      } as unknown as Parameters<typeof client.request>[0],
+      CompletionResultSchema,
+    );
+
+    expect(res.completion.values).toEqual([]);
+    expect(res.completion.total).toBe(0);
+  });
 });

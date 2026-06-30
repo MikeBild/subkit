@@ -29,6 +29,8 @@ describe("GET /.well-known/oauth-protected-resource", () => {
     expect(typeof body.resource).toBe("string");
     expect(Array.isArray(body.authorization_servers)).toBe(true);
     expect((body.authorization_servers as string[]).length).toBeGreaterThan(0);
+    expect(Array.isArray(body.scopes_supported)).toBe(true);
+    expect(body.scopes_supported).toContain("mcp:read");
   });
 
   test("/mcp variant also returns RFC 9728 document", async () => {
@@ -37,6 +39,36 @@ describe("GET /.well-known/oauth-protected-resource", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(typeof body.resource).toBe("string");
     expect(Array.isArray(body.authorization_servers)).toBe(true);
+    expect(Array.isArray(body.scopes_supported)).toBe(true);
+    expect(body.scopes_supported).toContain("mcp:read");
+  });
+});
+
+describe("POST /mcp unauthenticated challenge", () => {
+  test("returns RFC 9728 resource metadata plus least-privilege scope guidance", async () => {
+    const res = await fetch(`${ctx.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "oauth-discovery-test", version: "0.0.0" },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(401);
+    const challenge = res.headers.get("www-authenticate") ?? "";
+    expect(challenge).toContain("Bearer");
+    expect(challenge).toContain("resource_metadata=");
+    expect(challenge).toContain('scope="mcp:read"');
   });
 });
 

@@ -18,6 +18,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { eq } from "drizzle-orm";
 import {
+  apiKeys,
   connectors,
   executionSteps,
   executions,
@@ -26,18 +27,27 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import { generateKey } from "../../identity/api-key.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
 
 export interface McpTestSuite {
   http: HttpTestServer;
   cleanup: () => Promise<void>;
   connect: () => Promise<Client>;
+  connectWithApiKey: (apiKey: string) => Promise<Client>;
+  issueApiKey: (scopes: string[]) => Promise<{ plaintext: string }>;
+  issueApiKeyForTenant: (
+    tenantId: string,
+    userId: string,
+    scopes: string[],
+  ) => Promise<{ plaintext: string }>;
   /**
    * Connect a client that advertises the MCP async-Tasks (SEP-1686)
    * capability — `tasks/get|result|list|cancel` plus task-augmented
    * `tools/call`. Required to exercise the `CreateTaskResult` path.
    */
   connectTasks: () => Promise<Client>;
+  connectTasksWithApiKey: (apiKey: string) => Promise<Client>;
   seedWorkflow: (def: WorkflowDef & { slug: string }) => Promise<{ id: string; slug: string }>;
   seedConnector: (overrides?: Partial<ConnectorSeed>) => Promise<{ id: string }>;
   seedSkill: (overrides?: Partial<SkillSeed>) => Promise<{ id: string }>;
@@ -79,6 +89,7 @@ interface SkillSeed {
   title: string;
   body: string;
   examples: unknown[];
+  arguments: unknown[];
 }
 
 export async function startMcpTestSuite(
@@ -107,9 +118,13 @@ export async function startMcpTestSuite(
   const openClients: Client[] = [];
 
   const connect = async (): Promise<Client> => {
+    return connectWithApiKey(http.apiKey);
+  };
+
+  const connectWithApiKey = async (apiKey: string): Promise<Client> => {
     const transport = new StreamableHTTPClientTransport(new URL(`${http.baseUrl}/mcp`), {
       requestInit: {
-        headers: { authorization: `Bearer ${http.apiKey}` },
+        headers: { authorization: `Bearer ${apiKey}` },
       },
     });
     const client = new Client({ name: "subkit-mcp-tests", version: "0.0.0" });
@@ -119,9 +134,13 @@ export async function startMcpTestSuite(
   };
 
   const connectTasks = async (): Promise<Client> => {
+    return connectTasksWithApiKey(http.apiKey);
+  };
+
+  const connectTasksWithApiKey = async (apiKey: string): Promise<Client> => {
     const transport = new StreamableHTTPClientTransport(new URL(`${http.baseUrl}/mcp`), {
       requestInit: {
-        headers: { authorization: `Bearer ${http.apiKey}` },
+        headers: { authorization: `Bearer ${apiKey}` },
       },
     });
     const client = new Client(
@@ -131,6 +150,30 @@ export async function startMcpTestSuite(
     await client.connect(transport as unknown as Transport);
     openClients.push(client);
     return client;
+  };
+
+  const issueApiKey = async (scopes: string[]): Promise<{ plaintext: string }> => {
+    return issueApiKeyForTenant(http.tenantId, http.userId, scopes);
+  };
+
+  const issueApiKeyForTenant = async (
+    tenantId: string,
+    userId: string,
+    scopes: string[],
+  ): Promise<{ plaintext: string }> => {
+    const key = generateKey();
+    const [row] = await http.db
+      .insert(apiKeys)
+      .values({
+        tenant_id: tenantId,
+        user_id: userId,
+        prefix: key.prefix,
+        token_sha256: key.hash,
+        scopes,
+      })
+      .returning({ id: apiKeys.id });
+    if (!row) throw new Error("seed api key failed");
+    return { plaintext: key.plaintext };
   };
 
   const seedWorkflow = async (
@@ -190,6 +233,7 @@ export async function startMcpTestSuite(
         title: overrides.title ?? "How to bake bread",
         body: overrides.body ?? "Mix flour, water, salt. Bake.",
         examples: overrides.examples ?? ["example one", "example two"],
+        arguments: overrides.arguments ?? [],
         lifecycle: "active",
         version: 1,
       })
@@ -251,7 +295,11 @@ export async function startMcpTestSuite(
     http,
     cleanup,
     connect,
+    connectWithApiKey,
+    issueApiKey,
+    issueApiKeyForTenant,
     connectTasks,
+    connectTasksWithApiKey,
     seedWorkflow,
     seedConnector,
     seedSkill,

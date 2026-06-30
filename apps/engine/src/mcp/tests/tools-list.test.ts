@@ -56,4 +56,19 @@ describe("mcp tools/list", () => {
       required: ["who"],
     });
   });
+
+  test("rejects malformed cursors", async () => {
+    for (let i = 0; i < 101; i++) {
+      await suite.seedWorkflow({
+        name: `Paged Tool ${i}`,
+        slug: `paged-tool-${i}`,
+        steps: [],
+      });
+    }
+
+    const client = await suite.connect();
+    await expect(client.listTools({ cursor: "not-base64-json" })).rejects.toThrow(
+      /Invalid pagination cursor for tools\/list/,
+    );
+  });
 });

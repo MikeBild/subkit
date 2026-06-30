@@ -59,6 +59,7 @@ import {
 import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversations.ts";
 import { buildResultEnvelope } from "./held-preview.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
+import { paginate } from "./pagination.ts";
 import { findBackgroundExecutionId } from "./run-workflow-async-ack.ts";
 import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
 
@@ -95,6 +96,7 @@ async function listWorkflowTools({ db, principal, limit }: ListToolsParams): Pro
   });
   return catalog.map((entry) => ({
     name: `${TOOL_PREFIX}${entry.slug}`,
+    title: entry.name,
     // Frame the tool as an executable action, not a passive description.
     // Without this, a workflow description like "Lists all Test Plan issues…"
     // reads as documentation and the model re-derives the query with
@@ -104,6 +106,7 @@ async function listWorkflowTools({ db, principal, limit }: ListToolsParams): Pro
     inputSchema: entry.inputSchema as Tool["inputSchema"],
     ...(entry.outputSchema ? { outputSchema: entry.outputSchema as Tool["outputSchema"] } : {}),
     annotations: buildWorkflowToolAnnotations(),
+    execution: { taskSupport: "forbidden" as const },
     _meta: buildWorkflowToolMeta(),
   }));
 }
@@ -284,7 +287,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     /* loader not initialised */
   }
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
+  server.setRequestHandler(ListToolsRequestSchema, async (request) => {
     // The catalog is assembled per mcp mode, then trimmed to fit the strict
     // tools/list token budget (fitCatalogToBudget) so strict clients never
     // silently drop tools. Sources per tier:
@@ -369,7 +372,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
-    return { tools: fit.tools };
+    const page = paginate("tools/list", fit.tools, request.params?.cursor);
+    return { tools: page.page, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
   });
 
   server.setRequestHandler(

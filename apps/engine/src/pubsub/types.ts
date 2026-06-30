@@ -129,6 +129,7 @@ export const LISTENER_CHANNELS = [
   "execution.status",
   "workflow.chain",
   "workflow.lifecycle",
+  "skill.lifecycle",
   "connector.oauth",
   "conversation.stream",
   "event.emitted",

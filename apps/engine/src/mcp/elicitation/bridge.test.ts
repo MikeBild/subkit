@@ -6,7 +6,7 @@
 // routes the server→client request onto the in-flight `tools/call` SSE
 // stream, `ElicitationUnsupportedError` when a capability is absent, the
 // accept/decline/cancel result parsing, and the `mode: "form"` vs
-// `mode: "url"` wire shape (the deliberate SDK-vs-spec deviation).
+// `mode: "url"` wire shape.
 //
 // No DB, no network — the MCP `Server` is a hand-rolled stub.
 
@@ -56,8 +56,26 @@ const FLAT_SCHEMA: ElicitRequestedSchema = {
 };
 
 describe("ElicitationBridge — capability detection", () => {
-  test("presence of the elicitation capability object → form AND oob both true", () => {
+  test("empty elicitation capability object → backwards-compatible form only", () => {
     const { server } = makeServerStub({ elicitationCap: {} });
+    const bridge = new ElicitationBridge(server, makeExtra("req-1"));
+    expect(bridge.capabilities).toEqual({ form: true, oob: false });
+  });
+
+  test("form-only elicitation capability → form true, url/oob false", () => {
+    const { server } = makeServerStub({ elicitationCap: { form: {} } });
+    const bridge = new ElicitationBridge(server, makeExtra("req-1"));
+    expect(bridge.capabilities).toEqual({ form: true, oob: false });
+  });
+
+  test("url-only elicitation capability → form false, url/oob true", () => {
+    const { server } = makeServerStub({ elicitationCap: { url: {} } });
+    const bridge = new ElicitationBridge(server, makeExtra("req-1"));
+    expect(bridge.capabilities).toEqual({ form: false, oob: true });
+  });
+
+  test("form+url elicitation capability → both modes true", () => {
+    const { server } = makeServerStub({ elicitationCap: { form: {}, url: {} } });
     const bridge = new ElicitationBridge(server, makeExtra("req-1"));
     expect(bridge.capabilities).toEqual({ form: true, oob: true });
   });
@@ -79,7 +97,7 @@ describe("ElicitationBridge — capability detection", () => {
 describe("ElicitationBridge.elicitForm", () => {
   test("sends mode:form, the message + requestedSchema, and forwards relatedRequestId", async () => {
     const { server, calls } = makeServerStub({
-      elicitationCap: {},
+      elicitationCap: { form: {} },
       elicitResult: { action: "accept", content: { value: "hi" } },
     });
     const bridge = new ElicitationBridge(server, makeExtra("req-42"));
@@ -117,7 +135,7 @@ describe("ElicitationBridge.elicitForm", () => {
 
   test("decline result parses with no content", async () => {
     const { server } = makeServerStub({
-      elicitationCap: {},
+      elicitationCap: { form: {} },
       elicitResult: { action: "decline" },
     });
     const bridge = new ElicitationBridge(server, makeExtra("req-1"));
@@ -128,7 +146,7 @@ describe("ElicitationBridge.elicitForm", () => {
 
   test("cancel result parses with no content", async () => {
     const { server } = makeServerStub({
-      elicitationCap: {},
+      elicitationCap: { form: {} },
       elicitResult: { action: "cancel" },
     });
     const bridge = new ElicitationBridge(server, makeExtra("req-1"));
@@ -141,7 +159,7 @@ describe("ElicitationBridge.elicitForm", () => {
 describe("ElicitationBridge.elicitOob", () => {
   test("sends mode:url on the wire (SDK contract) with the URL + elicitationId", async () => {
     const { server, calls } = makeServerStub({
-      elicitationCap: {},
+      elicitationCap: { url: {} },
       elicitResult: { action: "accept" },
     });
     const bridge = new ElicitationBridge(server, makeExtra("req-7"));
@@ -153,8 +171,6 @@ describe("ElicitationBridge.elicitOob", () => {
 
     expect(calls).toHaveLength(1);
     const params = calls[0]!.params as Record<string, unknown>;
-    // The method is named `elicitOob` for spec vocabulary, but SDK 1.29's
-    // ElicitRequestURLParamsSchema enforces `mode: "url"` on the wire.
     expect(params.mode).toBe("url");
     expect(params.url).toBe("https://accounts.example.test/authorize?state=abc");
     expect(params.elicitationId).toBe("state-abc");
@@ -176,5 +192,23 @@ describe("ElicitationBridge.elicitOob", () => {
     }
     expect(thrown).toBeInstanceOf(ElicitationUnsupportedError);
     expect((thrown as ElicitationUnsupportedError).capability).toBe("oob");
+  });
+
+  test("throws ElicitationUnsupportedError for oob when client is form-only", async () => {
+    const { server, calls } = makeServerStub({ elicitationCap: { form: {} } });
+    const bridge = new ElicitationBridge(server, makeExtra("req-1"));
+    let thrown: unknown;
+    try {
+      await bridge.elicitOob({
+        message: "x",
+        url: "https://example.test/auth",
+        elicitationId: "id-1",
+      });
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(ElicitationUnsupportedError);
+    expect((thrown as ElicitationUnsupportedError).capability).toBe("oob");
+    expect(calls).toHaveLength(0);
   });
 });

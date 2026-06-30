@@ -17,21 +17,16 @@
 // Importers needing the contract symbols import them straight from
 // `conversations/elicitation-bridge.ts`, the contract owner.
 //
-// ── SDK-vs-spec discrepancy (intentional) ────────────────────────────
-// The MCP spec prose calls out-of-band elicitation "oob", and this
-// module names its method `elicitOob` to match that vocabulary. BUT the
-// installed SDK (`@modelcontextprotocol/sdk` 1.29) ships
-// `ElicitRequestURLParamsSchema` with `mode: z.literal("url")` — it
-// REJECTS `mode: "oob"` on the wire. So `elicitOob` sends `mode: "url"`.
-// The SDK contract wins over the spec prose; this is a deliberate,
-// documented deviation, not a bug.
+// ── Spec vocabulary ──────────────────────────────────────────────────
+// MCP 2025-11-25 names the out-of-band mode `url`. The conversation-side
+// interface still uses the older `elicitOob` method name, but this bridge
+// sends `mode: "url"` on the wire.
 //
 // ── Capability derivation ────────────────────────────────────────────
-// The SDK's `ClientCapabilities.elicitation` is a single (optional)
-// object — there is NO separate sub-flag distinguishing form-capable
-// from url/oob-capable clients. We therefore treat the PRESENCE of the
-// `elicitation` capability object as both `form: true` AND `oob: true`
-// for SCHEMA purposes. If a future SDK adds a sub-flag, narrow `oob` here.
+// MCP 2025-11-25 distinguishes `elicitation.form` and `elicitation.url`.
+// For backwards compatibility, an empty `elicitation` object means form-only.
+// Servers must not send a mode the client did not advertise, so URL support
+// is opt-in via `elicitation.url`.
 //
 // Advertising the capability is NOT a guarantee that the client will
 // fulfil an elicitation/create round-trip — some clients advertise it yet
@@ -67,8 +62,7 @@ const ELICIT_REQUEST_TIMEOUT_MS = 10_000;
 
 export class ElicitationBridge implements ElicitationBridgeContract {
   /**
-   * `form` and `oob` both track the presence of the single SDK 1.29
-   * `elicitation` capability object — see the file header.
+   * `oob` maps to the MCP wire `url` mode — see the file header.
    */
   readonly capabilities: { form: boolean; oob: boolean };
 
@@ -77,8 +71,16 @@ export class ElicitationBridge implements ElicitationBridgeContract {
     private readonly extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
   ) {
     const elicitationCap = server.getClientCapabilities()?.elicitation;
-    const present = elicitationCap != null;
-    this.capabilities = { form: present, oob: present };
+    if (elicitationCap == null || typeof elicitationCap !== "object") {
+      this.capabilities = { form: false, oob: false };
+      return;
+    }
+    const cap = elicitationCap as { form?: unknown; url?: unknown };
+    const keys = Object.keys(cap);
+    this.capabilities = {
+      form: keys.length === 0 || cap.form != null,
+      oob: cap.url != null,
+    };
   }
 
   /**
@@ -108,21 +110,14 @@ export class ElicitationBridge implements ElicitationBridgeContract {
    * acknowledgement. Throws `ElicitationUnsupportedError` when the client
    * did not advertise the elicitation capability.
    *
-   * Wire-mode note: although the MCP spec prose calls this "oob" (and the
-   * method keeps that vocabulary), the installed SDK 1.29 ships
-   * `ElicitRequestURLParamsSchema` with `mode: z.literal("url")` and
-   * REJECTS `mode: "oob"`. This method therefore sends `mode: "url"` on
-   * the wire — a deliberate, documented deviation, not a bug. If a future
-   * SDK restores `"oob"`, change it here.
+   * Wire-mode note: the conversation contract's `Oob` name maps to MCP
+   * 2025-11-25 URL-mode elicitation.
    */
   async elicitOob(rawParams: ElicitOobParams): Promise<ElicitationResult> {
     if (!this.capabilities.oob) throw new ElicitationUnsupportedError("oob");
     const params = ElicitOobParamsSchema.parse(rawParams);
     const result: ElicitResult = await this.server.elicitInput(
       {
-        // `mode: "url"` — the SDK schema (ElicitRequestURLParamsSchema)
-        // enforces "url"; the spec prose says "oob". Method name keeps
-        // the spec vocabulary; the wire keeps the SDK contract.
         mode: "url",
         message: params.message,
         url: params.url,

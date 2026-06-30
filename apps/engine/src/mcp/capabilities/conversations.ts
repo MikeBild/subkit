@@ -83,6 +83,7 @@ export function listConversationTools(): Tool[] {
   return [
     {
       name: "conversation_start",
+      title: "Start conversation",
       // IMPORTANT: do NOT name the engine-internal authoring steps here. A
       // strict client (ChatGPT/codex) reads identifiers in a description as
       // callable tool names and tries to invoke a phantom `author_workflow`
@@ -94,39 +95,50 @@ export function listConversationTools(): Tool[] {
       // conversation; the real mutations stay confirm-gated inside the turn.
       // Without this hint a strict client (ChatGPT/codex) blocks the call.
       annotations: buildToolAnnotations("tenant_write", "conversation_start"),
+      execution: { taskSupport: "optional" },
     },
     {
       name: "conversation_append",
+      title: "Append to conversation",
       description: `Continue an authoring conversation — append a user message and run another turn in the background. Returns immediately with a task to poll; use this to answer the engine's questions or steer connector/workflow authoring. ${MCP_ELICITATION_BLURB}.`,
       inputSchema: jsonSchema(AppendArgs),
       annotations: buildToolAnnotations("tenant_write", "conversation_append"),
+      execution: { taskSupport: "optional" },
     },
     {
       name: "conversation_respond_elicitation",
+      title: "Respond to elicitation",
       description:
         "Resolve a pending ask_user_* elicitation with the user's answer and resume the loop in the background. Returns immediately with a task to poll.",
       inputSchema: jsonSchema(RespondElicitationArgs),
       annotations: buildToolAnnotations("tenant_write", "conversation_respond_elicitation"),
+      execution: { taskSupport: "optional" },
     },
     {
       name: "conversation_get",
+      title: "Get conversation",
       description:
         "Poll the state of a backgrounded conversation turn. Returns status (working | completed | failed | input_required), the turn events when finished, the pending elicitation form when input is required, and the committed workflow id when committed.",
       inputSchema: jsonSchema(GetArgs),
       annotations: buildToolAnnotations("tenant_read", "conversation_get"),
+      execution: { taskSupport: "forbidden" },
     },
     {
       name: "conversation_commit",
+      title: "Get committed workflow",
       description: "Return the committed workflow id for a committed conversation.",
       inputSchema: jsonSchema(CommitArgs),
       annotations: buildToolAnnotations("tenant_read", "conversation_commit"),
+      execution: { taskSupport: "forbidden" },
     },
     {
       name: "suggest_related_conversations",
+      title: "Suggest related conversations",
       description:
         "Before starting a NEW conversation, check whether this prompt continues a prior one. Returns your prior conversations whose topic is semantically related (ranked, the caller's own only), so you can resume with conversation_append(conversation_id) instead of losing the earlier context — or start fresh if none is returned. Suggestion only: it never resumes anything itself.",
       inputSchema: jsonSchema(SuggestRelatedArgs),
       annotations: buildToolAnnotations("tenant_read", "suggest_related_conversations"),
+      execution: { taskSupport: "forbidden" },
     },
   ];
 }

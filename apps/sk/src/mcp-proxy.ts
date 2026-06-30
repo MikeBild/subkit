@@ -30,11 +30,14 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
     tools: [
       {
         name: "sk.ping",
+        title: "sk.ping",
         description: `Ping the engine at ${profile.engine_url} and return its health status.`,
-        inputSchema: { type: "object", properties: {} },
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execution: { taskSupport: "forbidden" },
       },
       {
         name: "sk.conversation.create",
+        title: "sk.conversation.create",
         description: "Create a new conversation and optionally drive the first turn.",
         inputSchema: {
           type: "object",
@@ -46,10 +49,13 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
             model: { type: "string" },
             title: { type: "string" },
           },
+          additionalProperties: false,
         },
+        execution: { taskSupport: "forbidden" },
       },
       {
         name: "sk.conversation.append",
+        title: "sk.conversation.append",
         description: "Append a user message to an existing conversation and drive another turn.",
         inputSchema: {
           type: "object",
@@ -59,24 +65,32 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
             message: { type: "string" },
             memory: { type: "string" },
           },
+          additionalProperties: false,
         },
+        execution: { taskSupport: "forbidden" },
       },
       {
         name: "sk.conversation.get",
+        title: "sk.conversation.get",
         description: "Fetch a conversation detail (messages, call history, draft, approvals).",
         inputSchema: {
           type: "object",
           required: ["conversation_id"],
           properties: { conversation_id: { type: "string" } },
+          additionalProperties: false,
         },
+        execution: { taskSupport: "forbidden" },
       },
       {
         name: "sk.conversation.list",
+        title: "sk.conversation.list",
         description: "List conversations owned by the caller (owner=me).",
         inputSchema: {
           type: "object",
           properties: { limit: { type: "integer", minimum: 1, maximum: 200 } },
+          additionalProperties: false,
         },
+        execution: { taskSupport: "forbidden" },
       },
     ],
   }));

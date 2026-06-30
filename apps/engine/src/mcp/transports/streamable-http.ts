@@ -32,6 +32,7 @@ import { requireAuth } from "../../http/middleware/auth.ts";
 import type { AppEnv } from "../../http/openapi.ts";
 import { logger } from "../../logging/logger.ts";
 import { createMcpServer } from "../server.ts";
+import { validateMcpStreamableHttpRequest } from "./guards.ts";
 
 interface Session {
   transport: WebStandardStreamableHTTPServerTransport;
@@ -48,6 +49,16 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
     // When no principal resolved, emit the RFC 9728 resource_metadata discovery
     // header so OAuth-only clients (ChatGPT, Claude.ai, Cursor) can perform
     // the authorization server discovery handshake.
+    const guarded = validateMcpStreamableHttpRequest(c.req.raw);
+    if (!guarded.ok) {
+      logger.debug({
+        module: "mcp",
+        action: `mcp.transport.${guarded.reason}`,
+        msg: "mcp streamable-http request rejected by transport guard",
+      });
+      return guarded.response;
+    }
+
     if (!c.get("principal")) {
       let baseUrl = "";
       try {
@@ -56,8 +67,8 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
         /* config not loaded yet — degrade gracefully */
       }
       const wwwAuth = baseUrl
-        ? `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`
-        : "Bearer";
+        ? `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource", scope="mcp:read"`
+        : 'Bearer scope="mcp:read"';
       throw new UnauthorizedError("missing_or_invalid_credentials", wwwAuth);
     }
     const principal = requireAuth(c);

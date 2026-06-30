@@ -29,6 +29,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { skills, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { can } from "../../rbac/evaluator.ts";
 
 // Custom request schema that allows the forward-looking `ref/tool` shape
 // alongside the standard `ref/prompt` and `ref/resource` discriminators.
@@ -123,6 +124,14 @@ export function registerCompletionCapability(p: RegisterCompletionParams): void 
         .limit(1);
       const row = rows[0];
       if (!row) return { completion: { values: [], total: 0, hasMore: false } };
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "skill:read",
+        resource: { type: "skill", id },
+        quiet: true,
+      });
+      if (!decision.allow) return { completion: { values: [], total: 0, hasMore: false } };
       const args = Array.isArray(row.arguments) ? (row.arguments as SkillArgument[]) : [];
       // Response shape:
       //   - The client asks for completions of an `argument.name`. If
@@ -192,6 +201,14 @@ export function registerCompletionCapability(p: RegisterCompletionParams): void 
       if (!wf?.current_version_id) {
         return { completion: { values: [], total: 0, hasMore: false } };
       }
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "workflow:read",
+        resource: { type: "workflow", id: wf.id },
+        quiet: true,
+      });
+      if (!decision.allow) return { completion: { values: [], total: 0, hasMore: false } };
       const versionRows = await db
         .select({ dag: workflowVersions.dag })
         .from(workflowVersions)

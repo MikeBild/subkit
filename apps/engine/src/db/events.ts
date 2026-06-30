@@ -10,6 +10,7 @@ export type OutboxChannel =
   | "execution.status"
   | "workflow.chain"
   | "workflow.lifecycle"
+  | "skill.lifecycle"
   | "connector.oauth"
   | "conversation.stream"
   | "event.emitted"

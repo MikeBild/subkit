@@ -56,11 +56,15 @@ function zodToMcpSchema(schema: unknown): Tool["inputSchema"] {
 function descriptorToMcpTool(d: ToolDescriptor): Tool {
   const tool: Tool = {
     name: d.name,
+    title: d.name,
     description: d.description,
     inputSchema: zodToMcpSchema(d.inputSchema),
     // Spec-standard hints so a generic strict MCP client can tell a
     // read tool from a write and permit the call without its own gate.
     annotations: buildToolAnnotations(d.category, d.name),
+    execution: {
+      taskSupport: d.name.startsWith("conversation_") ? "optional" : "forbidden",
+    },
   };
   // Attach _meta.subkit.* hints — keep parity with the legacy tenant.*
   // alias path (capabilities/tenant-tools.ts:77) so the same conversation

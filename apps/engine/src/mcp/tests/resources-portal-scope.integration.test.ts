@@ -15,13 +15,20 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type {
   ListResourcesRequest,
   ListResourcesResult,
+  ReadResourceRequest,
   SubscribeRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { tenants } from "../../db/schema/identity.ts";
-import { workflows, workflowVersions } from "../../db/schema/index.ts";
+import {
+  files,
+  knowledgeSources,
+  skillCandidates,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { PubSubEmitter } from "../../pubsub/emitter.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
@@ -38,6 +45,7 @@ interface StubServer {
   setRequestHandler: (schema: unknown, handler: (req: unknown) => Promise<unknown>) => void;
   registerCapabilities: (caps: unknown) => void;
   sendResourceUpdated: (params: { uri: string }) => Promise<void>;
+  sendResourceListChanged: () => Promise<void>;
   onclose?: () => void;
   handlers: RequestHandlerEntry[];
   notifications: string[];
@@ -56,6 +64,7 @@ function newStubServer(): StubServer {
     sendResourceUpdated: async ({ uri }) => {
       notifications.push(uri);
     },
+    sendResourceListChanged: async () => {},
   };
 }
 
@@ -69,6 +78,9 @@ let testDb: TestDb;
 let tenantId = "";
 let scopedWorkflowId = "";
 let hiddenWorkflowId = "";
+let knowledgeSourceId = "";
+let skillCandidateId = "";
+let fileId = "";
 
 beforeAll(async () => {
   testDb = await createTestDb("mcp-resources-portal-scope");
@@ -108,6 +120,54 @@ beforeAll(async () => {
     if (slug === "scoped") scopedWorkflowId = wf.id;
     else hiddenWorkflowId = wf.id;
   }
+
+  const [knowledge] = await testDb.db
+    .insert(knowledgeSources)
+    .values({
+      tenant_id: tenantId,
+      name: "RBAC hidden knowledge",
+      slug: "rbac-hidden-knowledge",
+      source_type: "inline",
+      source_uri: "inline://rbac-hidden-knowledge",
+      version: "v1",
+      status: "active",
+    })
+    .returning({ id: knowledgeSources.id });
+  if (!knowledge) throw new Error("seed knowledge source");
+  knowledgeSourceId = knowledge.id;
+
+  const [skillCandidate] = await testDb.db
+    .insert(skillCandidates)
+    .values({
+      tenant_id: tenantId,
+      scope: "global",
+      pattern_kind: "success_pattern",
+      title: "RBAC hidden skill candidate",
+      body: "Do not leak this candidate through MCP resources/list.",
+      examples: [],
+      evidence: {},
+      confidence: "medium",
+      status: "proposed",
+      fingerprint: "rbac-hidden-skill-candidate",
+    })
+    .returning({ id: skillCandidates.id });
+  if (!skillCandidate) throw new Error("seed skill candidate");
+  skillCandidateId = skillCandidate.id;
+
+  const [file] = await testDb.db
+    .insert(files)
+    .values({
+      tenant_id: tenantId,
+      status: "ready",
+      filename: "rbac-hidden.txt",
+      content_type: "text/plain",
+      size_bytes: 12,
+      storage_uri: "local://rbac-hidden.txt",
+      sha256: "rbac-hidden-file",
+    })
+    .returning({ id: files.id });
+  if (!file) throw new Error("seed file");
+  fileId = file.id;
 });
 
 afterAll(async () => {
@@ -189,6 +249,43 @@ describe("listResources filters by allowed_workflows", () => {
   });
 });
 
+describe("list/read RBAC parity", () => {
+  it("hides and rejects knowledge, skill candidates, files, and operator digest without read permissions", async () => {
+    const stub = newStubServer();
+    const emitter = new PubSubEmitter();
+    registerResourcesCapability({
+      server: stub as unknown as Parameters<typeof registerResourcesCapability>[0]["server"],
+      db: testDb.db as unknown as Db,
+      principal: nonPortalPrincipalWithoutWorkflowRead(),
+      emitter,
+    });
+
+    const listHandler = handlerFor(stub, "resources/list");
+    const list = (await listHandler({
+      method: "resources/list",
+      params: {},
+    } as ListResourcesRequest)) as ListResourcesResult;
+    const uris = list.resources.map((r) => r.uri);
+
+    expect(uris).not.toContain(`knowledge://${knowledgeSourceId}`);
+    expect(uris).not.toContain(`skill-candidate://${skillCandidateId}`);
+    expect(uris).not.toContain(`file://${fileId}`);
+    expect(uris).not.toContain("subkit://operator/health-digest");
+
+    const readHandler = handlerFor(stub, "resources/read");
+    for (const uri of [
+      `knowledge://${knowledgeSourceId}`,
+      `skill-candidate://${skillCandidateId}`,
+      `file://${fileId}`,
+      "subkit://operator/health-digest",
+    ]) {
+      await expect(
+        readHandler({ method: "resources/read", params: { uri } } as ReadResourceRequest),
+      ).rejects.toThrow();
+    }
+  });
+});
+
 describe("lifecycle dispatcher re-checks RBAC", () => {
   it("does NOT forward workflow.lifecycle notifications when allowed_workflows excludes the id", async () => {
     const stub = newStubServer();
@@ -254,6 +351,43 @@ describe("lifecycle dispatcher re-checks RBAC", () => {
       await new Promise((r) => setTimeout(r, 25)); // allow-wall-clock: pub/sub propagation cadence
     }
     expect(stub.notifications).toContain(`workflow://${scopedWorkflowId}`);
+  });
+
+  it("does NOT forward workflow.lifecycle notifications after permission is revoked post-subscribe", async () => {
+    const stub = newStubServer();
+    const emitter = new PubSubEmitter();
+    const principal: ResolvedPrincipal = {
+      id: "00000000-0000-0000-0000-00000000a003",
+      tenant_id: tenantId,
+      provider: "api_key",
+      kind: "user",
+      roles: ["admin"],
+    };
+    registerResourcesCapability({
+      server: stub as unknown as Parameters<typeof registerResourcesCapability>[0]["server"],
+      db: testDb.db as unknown as Db,
+      principal,
+      emitter,
+    });
+
+    const subscribeHandler = handlerFor(stub, "resources/subscribe");
+    await subscribeHandler({
+      method: "resources/subscribe",
+      params: { uri: `workflow://${scopedWorkflowId}` },
+    } as SubscribeRequest);
+
+    principal.roles = ["metrics_scraper"];
+    await emitter.dispatch({
+      id: 4,
+      tenant_id: tenantId,
+      channel: "workflow.lifecycle",
+      type: "workflow.updated",
+      payload: { workflow_id: scopedWorkflowId, slug: "w178-scoped", version: 4 },
+      created_at: new Date(TEST_NOW_MS),
+    });
+
+    await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: pub/sub propagation cadence
+    expect(stub.notifications).toHaveLength(0);
   });
 });
 

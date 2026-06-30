@@ -3401,11 +3401,21 @@ export const InkApp: React.FC<InkAppProps> = ({
         setInput((prev) => applyInput(prev, { type: "newline" }));
         return;
       }
-      if (key.shift && key.return) {
+      const lineBreakIndex =
+        !key.ctrl && !key.meta && !char.includes("\x1b[200~") ? char.search(/[\r\n]/) : -1;
+      if (lineBreakIndex >= 0) {
+        const beforeBreak = char.slice(0, lineBreakIndex);
+        const submitted =
+          input.value.slice(0, input.cursor) + beforeBreak + input.value.slice(input.cursor);
+        void handleSubmit(submitted);
+        return;
+      }
+      const plainReturn = key.return || char === "\r" || char === "\n";
+      if (key.shift && plainReturn) {
         setInput((prev) => applyInput(prev, { type: "newline" }));
         return;
       }
-      if (key.return) {
+      if (plainReturn) {
         // Backslash + Enter line-continuation: strip the trailing `\`
         // and insert a newline. Only fires when the cursor is past a
         // single trailing backslash (avoids munging "C:\foo" pastes

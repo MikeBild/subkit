@@ -17,12 +17,11 @@
 // `resources/subscribe` is wired to outbox pub/sub: events for
 // subscribed resources push `notifications/resources/updated`.
 //
-// Delivery semantics. `resources/listChanged` is registered as `false`
-// and the per-channel forwarders are best-effort: a logger.warn on a
-// failed `sendResourceUpdated` is the only retry. Clients that need
-// strict consistency on a `workflow://<id>` / `connector://<id>` /
-// `knowledge://<id>` / `file://<fid>` resource should poll
-// `readResource` on critical paths.
+// Delivery semantics. Per-channel forwarders and `resources/listChanged`
+// are best-effort: a logger.warn on a failed notification is the only retry.
+// Clients that need strict consistency on a `workflow://<id>` /
+// `connector://<id>` / `knowledge://<id>` / `file://<fid>` resource should
+// poll `readResource` on critical paths.
 //
 // Notification payload is empty by MCP spec. `sendResourceUpdated`
 // carries only the URI; the lifecycle event's `type` discriminator
@@ -56,8 +55,10 @@
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
   type Resource,
+  type ResourceTemplate,
   SubscribeRequestSchema,
   UnsubscribeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -83,6 +84,7 @@ import { can } from "../../rbac/evaluator.ts";
 import * as skillCandidateSvc from "../../skill-candidates/service.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import * as workflowSvc from "../../workflows/service.ts";
+import { paginate } from "./pagination.ts";
 
 export interface RegisterResourcesParams {
   server: Server;
@@ -131,11 +133,29 @@ const SUBSCRIBE_URI_PREFIXES: readonly string[] = [
  *  subscriptions are rejected with a logged warn — the legitimate
  *  client sees no behavioural change. */
 const SUBSCRIBE_CAP = 256;
+const RESOURCE_LIST_CHANGED_DEBOUNCE_MS = 250;
 
 export function registerResourcesCapability(p: RegisterResourcesParams): void {
   const { server, db, principal } = p;
   const emitter = p.emitter ?? globalEmitter;
   const subscribed = new Set<string>();
+  let listChangedTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function scheduleResourceListChanged(): void {
+    if (listChangedTimer) return;
+    listChangedTimer = setTimeout(() => {
+      listChangedTimer = undefined;
+      void server.sendResourceListChanged().catch((err: unknown) => {
+        logger.warn({
+          module: "mcp",
+          action: "mcp.resources.list_changed.failed",
+          msg: "failed to send mcp resources list_changed",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, RESOURCE_LIST_CHANGED_DEBOUNCE_MS);
+    listChangedTimer.unref?.();
+  }
 
   /**
    * Single forwarder for every emitter → MCP notification path.
@@ -210,6 +230,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     const payload = (event.payload ?? {}) as { connector_id?: string };
     const connectorId = payload.connector_id;
     if (!connectorId) return;
+    scheduleResourceListChanged();
     await forwardIfSubscribed({ event, uri: connectorUri(connectorId) });
   });
 
@@ -224,6 +245,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       const payload = (event.payload ?? {}) as { workflow_id?: string };
       const workflowId = payload.workflow_id;
       if (!workflowId) return;
+      scheduleResourceListChanged();
       await forwardIfSubscribed({
         event,
         uri: workflowUri(workflowId),
@@ -248,10 +270,16 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       const payload = (event.payload ?? {}) as Record<string, unknown>;
 
       const ksId = payload.knowledge_source_id as string | undefined;
-      if (ksId) await forwardIfSubscribed({ event, uri: knowledgeUri(ksId) });
+      if (ksId) {
+        scheduleResourceListChanged();
+        await forwardIfSubscribed({ event, uri: knowledgeUri(ksId) });
+      }
 
       const scId = payload.skill_candidate_id as string | undefined;
-      if (scId) await forwardIfSubscribed({ event, uri: skillCandidateUri(scId) });
+      if (scId) {
+        scheduleResourceListChanged();
+        await forwardIfSubscribed({ event, uri: skillCandidateUri(scId) });
+      }
 
       // File finalize / status-change pings — matches `knowledge://` /
       // `skill-candidate://` shape. The forwarder is gated on
@@ -260,6 +288,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       // lifecycle event.
       const fileId = payload.file_id as string | undefined;
       if (fileId) {
+        scheduleResourceListChanged();
         await forwardIfSubscribed({
           event,
           uri: fileUri(fileId),
@@ -285,6 +314,10 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     offNotification();
     offWorkflowLifecycle();
     subscribed.clear();
+    if (listChangedTimer) {
+      clearTimeout(listChangedTimer);
+      listChangedTimer = undefined;
+    }
     if (typeof priorOnClose === "function") {
       try {
         priorOnClose();
@@ -295,33 +328,50 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   };
 
   server.registerCapabilities({
-    resources: { listChanged: false, subscribe: true },
+    resources: { listChanged: true, subscribe: true },
   });
 
-  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  server.setRequestHandler(ListResourcesRequestSchema, async (req) => {
     const { rows: items } = await connectorSvc.listConnectors(principal.tenant_id, {}, db);
-    const resources: Resource[] = items
-      .filter((cn) => {
-        if (principal.allowed_connectors && principal.allowed_connectors !== "all") {
-          return principal.allowed_connectors.includes(cn.id);
-        }
-        return true;
-      })
-      .map((cn) => ({
+    const resources: Resource[] = [];
+    for (const cn of items) {
+      if (principal.allowed_connectors && principal.allowed_connectors !== "all") {
+        if (!principal.allowed_connectors.includes(cn.id)) continue;
+      }
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "connector:read",
+        resource: { type: "connector", id: cn.id },
+        quiet: true,
+      });
+      if (!decision.allow) continue;
+      resources.push({
         uri: connectorUri(cn.id),
         name: cn.display_name,
+        title: cn.display_name,
         description: `${cn.driver} (${cn.environment})`,
         mimeType: "application/json",
-      }));
+      });
+    }
     // Knowledge Sources
     const knowledgeSources = await knowledgeSvc.listKnowledgeSources(
       { tenant_id: principal.tenant_id, status: "active" },
       db,
     );
     for (const ks of knowledgeSources) {
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "knowledge:read",
+        resource: { type: "knowledge", id: ks.id },
+        quiet: true,
+      });
+      if (!decision.allow) continue;
       resources.push({
         uri: knowledgeUri(ks.id),
         name: ks.name,
+        title: ks.name,
         description: `Knowledge (${ks.scope})${ks.tags.length > 0 ? ` [${ks.tags.join(", ")}]` : ""}: ${ks.description ?? ks.source_uri}`,
         mimeType: "application/json",
       });
@@ -333,9 +383,18 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       db,
     );
     for (const sc of candidates) {
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "skill:read",
+        resource: { type: "skill_candidate", id: sc.id },
+        quiet: true,
+      });
+      if (!decision.allow) continue;
       resources.push({
         uri: skillCandidateUri(sc.id),
         name: `Suggestion: ${sc.title}`,
+        title: sc.title,
         description: `${sc.pattern_kind} (${sc.confidence}) — ${sc.body.slice(0, 120)}`,
         mimeType: "application/json",
       });
@@ -363,9 +422,18 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       if (principal.allowed_workflows && principal.allowed_workflows !== "all") {
         if (!principal.allowed_workflows.includes(wf.id)) continue;
       }
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "workflow:read",
+        resource: { type: "workflow", id: wf.id },
+        quiet: true,
+      });
+      if (!decision.allow) continue;
       resources.push({
         uri: workflowUri(wf.id),
         name: wf.name,
+        title: wf.name,
         description: `Workflow (${wf.slug}) — v${wf.current_version ?? 0}, ${wf.step_count} steps`,
         mimeType: "application/json",
       });
@@ -395,11 +463,21 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         ),
       );
     for (const f of fileRows) {
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "file:read",
+        resource: { type: "file", id: f.id },
+        quiet: true,
+      });
+      if (!decision.allow) continue;
       resources.push({
         uri: fileUri(f.id),
         name: f.filename,
+        title: f.filename,
         description: `File (${f.content_type ?? "application/octet-stream"}, ${f.size_bytes} bytes)`,
         mimeType: f.content_type ?? "application/octet-stream",
+        size: f.size_bytes,
       });
     }
 
@@ -424,13 +502,108 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       resources.push({
         uri: OPERATOR_HEALTH_DIGEST_URI,
         name: "Operator health digest",
+        title: "Operator health digest",
         description:
           "Deterministic, LLM-free summary of failing runs, pending self-healing fixes, and leading-indicator risk signals.",
         mimeType: "application/json",
       });
     }
 
-    return { resources };
+    const page = paginate("resources/list", resources, req.params?.cursor);
+    return { resources: page.page, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
+  });
+
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req) => {
+    const templates: ResourceTemplate[] = [];
+    const checks: Array<{
+      permission: string;
+      template: ResourceTemplate;
+    }> = [
+      {
+        permission: "connector:read",
+        template: {
+          uriTemplate: "connector://{id}",
+          name: "Connector",
+          title: "Connector",
+          description: "Tenant connector metadata without credentials.",
+          mimeType: "application/json",
+        },
+      },
+      {
+        permission: "knowledge:read",
+        template: {
+          uriTemplate: "knowledge://{id}",
+          name: "Knowledge source",
+          title: "Knowledge source",
+          description: "Tenant knowledge source metadata.",
+          mimeType: "application/json",
+        },
+      },
+      {
+        permission: "skill:read",
+        template: {
+          uriTemplate: "skill-candidate://{id}",
+          name: "Skill candidate",
+          title: "Skill candidate",
+          description: "Proposed skill improvement awaiting operator approval.",
+          mimeType: "application/json",
+        },
+      },
+      {
+        permission: "workflow:read",
+        template: {
+          uriTemplate: "workflow://{id}",
+          name: "Workflow",
+          title: "Workflow",
+          description: "Committed workflow definition.",
+          mimeType: "application/json",
+        },
+      },
+      {
+        permission: "file:read",
+        template: {
+          uriTemplate: "file://{id}",
+          name: "File",
+          title: "File",
+          description: "Tenant file metadata and content.",
+          mimeType: "application/octet-stream",
+        },
+      },
+      {
+        permission: "execution:read",
+        template: {
+          uriTemplate: "fixture://{id}",
+          name: "Execution fixture",
+          title: "Execution fixture",
+          description: "Offloaded execution payload returned from a tool result.",
+          mimeType: "application/json",
+        },
+      },
+      {
+        permission: "stats:read",
+        template: {
+          uriTemplate: OPERATOR_HEALTH_DIGEST_URI,
+          name: "Operator health digest",
+          title: "Operator health digest",
+          description: "Singleton tenant operator health digest.",
+          mimeType: "application/json",
+        },
+      },
+    ];
+    for (const check of checks) {
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: check.permission,
+        quiet: true,
+      });
+      if (decision.allow) templates.push(check.template);
+    }
+    const page = paginate("resources/templates/list", templates, req.params?.cursor);
+    return {
+      resourceTemplates: page.page,
+      ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+    };
   });
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {

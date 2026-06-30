@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { count, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { executions } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -51,6 +52,100 @@ describe("mcp tools/call", () => {
       .where(eq(executions.workflow_id, wf.id));
     expect(rows[0]?.c).toBeGreaterThanOrEqual(1);
   });
+
+  test("emits progress notifications when the caller requests progress", async () => {
+    await suite.seedWorkflow({
+      name: "call progress",
+      slug: "call-progress",
+      steps: [
+        {
+          kind: "request",
+          id: "u",
+          method: "GET",
+          url: `${mock.baseUrl}/ping`,
+        },
+      ],
+    });
+    const client = await suite.connect();
+    const progress: Array<{
+      progress: number;
+      total?: number | undefined;
+      message?: string | undefined;
+    }> = [];
+
+    const result = await client.callTool({ name: "wf_call-progress", arguments: {} }, undefined, {
+      onprogress: (item) => {
+        progress.push(item);
+      },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(
+      progress.some(
+        (item) => item.progress === 1 && item.total === 1 && item.message === "completed",
+      ),
+    ).toBe(true);
+  });
+
+  test("client cancellation aborts an in-flight workflow call", async () => {
+    const slowMock = await createMockServer(async (_req, res) => {
+      await new Promise((r) => setTimeout(r, 3_000)); // allow-wall-clock: request stays open until MCP cancellation arrives
+      jsonResponse(res, 200, { ok: true });
+    });
+    try {
+      const wf = await suite.seedWorkflow({
+        name: "call cancel",
+        slug: "call-cancel",
+        steps: [
+          {
+            kind: "request",
+            id: "slow",
+            method: "GET",
+            url: `${slowMock.baseUrl}/slow`,
+            timeout_ms: 30_000,
+            max_retries: 0,
+          },
+        ],
+      });
+      const client = await suite.connect();
+      const ac = new AbortController();
+      const call = client.callTool({ name: "wf_call-cancel", arguments: {} }, undefined, {
+        signal: ac.signal,
+        timeout: 10_000,
+      });
+
+      await waitFor(
+        async () => {
+          const rows = await suite.http.db
+            .select({ id: executions.id })
+            .from(executions)
+            .where(eq(executions.workflow_id, wf.id))
+            .limit(1);
+          return rows[0]?.id ?? false;
+        },
+        { tries: 30, sleepMs: 100, label: "mcp workflow execution materialized" },
+      );
+
+      ac.abort("test_cancelled");
+      await expect(call).rejects.toThrow(/test_cancelled/);
+
+      const status = await waitFor(
+        async () => {
+          const rows = await suite.http.db
+            .select({ status: executions.status })
+            .from(executions)
+            .where(eq(executions.workflow_id, wf.id))
+            .orderBy(desc(executions.created_at))
+            .limit(1);
+          return rows[0]?.status === "aborted" ? rows[0].status : false;
+        },
+        { tries: 30, sleepMs: 100, label: "mcp workflow execution aborted" },
+      );
+      expect(status).toBe("aborted");
+    } finally {
+      await slowMock.close();
+    }
+  }, 10_000);
 
   // Honest preview regression (gemeldet ≠ geschrieben): a wf_* run holds
   // writes by default. The default run must NOT return a clean payload

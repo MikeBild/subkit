@@ -8,6 +8,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
+import { writeEvent } from "../db/events.ts";
 import { auditLog, skills } from "../db/schema/index.ts";
 import { HttpError, NotFoundError } from "../http/errors.ts";
 import { log } from "../logging/logger.ts";
@@ -153,6 +154,17 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
       source: row.source,
       lifecycle: row.lifecycle,
     });
+    await writeEvent(tx, {
+      tenant_id: p.tenant_id,
+      channel: "skill.lifecycle",
+      type: "skill.created",
+      payload: {
+        skill_id: row.id,
+        actor_id: p.actor_id ?? null,
+        lifecycle: row.lifecycle,
+        title: row.title,
+      },
+    });
     return rowToSkill(row);
   });
 }
@@ -281,6 +293,17 @@ export async function updateSkill(
       version: row.version,
       actor_id,
     });
+    await writeEvent(tx, {
+      tenant_id,
+      channel: "skill.lifecycle",
+      type: "skill.updated",
+      payload: {
+        skill_id: id,
+        actor_id,
+        lifecycle: row.lifecycle,
+        title: row.title,
+      },
+    });
     return rowToSkill(row);
   });
 }
@@ -326,6 +349,17 @@ export async function activateSkill(
       from: prior.lifecycle,
       to: "active",
       actor_id,
+    });
+    await writeEvent(tx, {
+      tenant_id,
+      channel: "skill.lifecycle",
+      type: "skill.activated",
+      payload: {
+        skill_id: id,
+        actor_id,
+        lifecycle: row.lifecycle,
+        title: row.title,
+      },
     });
     return rowToSkill(row);
   });
@@ -373,6 +407,17 @@ export async function archiveSkill(
       to: "archived",
       actor_id,
     });
+    await writeEvent(tx, {
+      tenant_id,
+      channel: "skill.lifecycle",
+      type: "skill.archived",
+      payload: {
+        skill_id: id,
+        actor_id,
+        lifecycle: row.lifecycle,
+        title: row.title,
+      },
+    });
     return rowToSkill(row);
   });
 }
@@ -413,6 +458,15 @@ export async function deleteSkill(
       skill_id: id,
       tenant_id,
       actor_id,
+    });
+    await writeEvent(tx, {
+      tenant_id,
+      channel: "skill.lifecycle",
+      type: "skill.deleted",
+      payload: {
+        skill_id: id,
+        actor_id,
+      },
     });
     return true;
   });
