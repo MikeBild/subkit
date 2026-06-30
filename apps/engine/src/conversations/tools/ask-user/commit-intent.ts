@@ -36,6 +36,13 @@ export const COMMIT_INTENT_KINDS = [
   // looped back into the same form.
   "run_workflow",
   "create_api_key",
+  // Metadata-only workflow edit (rename / re-describe / archive). Routes the
+  // confirm approval straight to the `update_workflow` tool so a description or
+  // name change auto-persists without the model issuing a second tool call —
+  // and without the heavyweight dry_run/save_workflow_draft cycle a text-only
+  // edit never needed. The preview-free path that fixes the authoring drift
+  // where editing a description felt like it required running the workflow.
+  "update_workflow_metadata",
 ] as const;
 
 export type CommitIntentKind = (typeof COMMIT_INTENT_KINDS)[number];
@@ -85,6 +92,12 @@ export const commitIntentSchema = z
      * The harness mints the key directly after approval so the model
      * cannot forget to re-issue the write and leave the operator with
      * an approved no-op.
+     *
+     * For `update_workflow_metadata` — the `update_workflow` tool input
+     * shape: `{ id (uuid), slug?, name?, description?, lifecycle? }`. The
+     * harness applies the metadata patch directly after approval (no draft,
+     * no dry_run, no version rotation). Resolve the workflow `id` first via
+     * find_workflow / get_workflow.
      *
      * For `rollback_after_execute` — `{ execution_id }` (NOT
      * implemented yet; harness emits a no-op result).

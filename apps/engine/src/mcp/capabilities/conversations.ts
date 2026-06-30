@@ -26,6 +26,8 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { loadDraft } from "../../conversations/draft.ts";
+import { classifyDraftVsPersisted } from "../../conversations/persistence/draft-diff.ts";
 import * as svc from "../../conversations/service.ts";
 import { buildWorkflowUsage } from "../../conversations/tools/usage-guidance.ts";
 import { suggestConversationsByTopic } from "../../conversations/topic-routing.ts";
@@ -407,6 +409,23 @@ export async function handleConversationTool(
       if (!detail) return errorText("conversation not found");
       if (!detail.conversation.target_workflow_id) {
         return errorText("conversation has no committed workflow");
+      }
+      // Honest reporting (RC2): conversation_commit is a read-only status tool —
+      // it does NOT persist the draft. If the working draft still holds workflow
+      // STEP edits that are not in the live version, echoing "committed" + usage
+      // is a "reported ≠ written" lie (the model narrates success the user never
+      // got). Detect that and return a directive error instead. `clean` (draft
+      // matches live) and `no_target` (nothing to compare) keep the accurate echo.
+      const draftState = await classifyDraftVsPersisted(
+        db,
+        principal.tenant_id,
+        await loadDraft(principal.tenant_id, detail.conversation.id, db),
+        detail.conversation.target_workflow_id,
+      );
+      if (draftState === "structural") {
+        return errorText(
+          "NOT COMMITTED: this conversation's working draft has uncommitted workflow edits — its steps differ from the live version. conversation_commit only reports status; it does not persist. To persist step edits, call save_workflow_draft (after a successful dry_run_workflow). For a metadata-only change (name/description/lifecycle), call update_workflow. Do not tell the user it is committed until a save tool returns ok.",
+        );
       }
       // Attach the usage block so external MCP clients (claude.ai) can
       // tell the user what was committed and every real way to run it.

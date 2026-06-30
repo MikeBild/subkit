@@ -39,6 +39,14 @@ describe("converse base prompt — authoring focus blocks", () => {
     expect(prompt).toContain("When the user asks to edit such text, change the text");
   });
 
+  it("steers metadata-only edits to update_workflow, not the build/preview cycle", async () => {
+    // B1: editing an existing workflow's description must use the preview-free
+    // update_workflow verb, never run/preview/save_workflow_draft.
+    const prompt = await basePromptFor("converse", "sk_interactive");
+    expect(prompt).toContain("WORKFLOW EDIT VERBS");
+    expect(prompt).toContain("Editing a description is never a reason to run or preview");
+  });
+
   it("renders the connector focus block when connector authoring is active", async () => {
     const prompt = await basePromptFor(
       "converse",

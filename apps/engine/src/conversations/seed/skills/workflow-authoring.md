@@ -405,6 +405,25 @@ than re-running dry-run hoping for an auto-commit that will not come. This
 is what stops a single authoring session from minting a dozen intermediate
 versions.
 
+## Metadata-only edits — `update_workflow`, never the build/preview cycle
+
+Changing an EXISTING workflow's **description, display name, or
+lifecycle/archive** (and nothing about its steps) is a metadata edit. Call
+`update_workflow` directly with the workflow `id` and only the field(s) that
+change. It writes the `workflows.description` column (the source of the
+`wf_<slug>` tool description), does NOT roll a new version, and needs NO
+draft, dry_run, or `save_workflow_draft`. **Do not run or preview the
+workflow to change its description** — editing text is never a reason to
+execute. Resolve the `id` first via `find_workflow` / `get_workflow`.
+
+If the edit is gated by a confirmation, attach
+`commit_intent: { kind: "update_workflow_metadata", payload: { id, description } }`
+to `ask_user_confirm` so the approval persists the change directly (no second
+tool call). `update_workflow` is metadata-only: if the draft also has STEP
+edits it refuses with `uncommitted_step_edits` — commit those via
+`save_workflow_draft` first. Step / schema / trigger changes always go through
+the draft + `save_workflow_draft`, never `update_workflow`.
+
 ## `author_workflow` vs `build_workflow` vs the micro-tools
 
 | Situation | Tool |

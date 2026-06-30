@@ -23,7 +23,11 @@ import type { ResolvedPrincipal } from "../../../../auth/types.ts";
 import { conversations, roles, systemAccounts, users } from "../../../../db/schema/index.ts";
 import { can } from "../../../../rbac/evaluator.ts";
 import { bindPersistedWorkflow } from "../../../authoring-state.ts";
-import { translateAutoPersistError } from "../../../persistence/auto-persist.ts";
+// Import from the leaf module, not the auto-persist barrel: the barrel
+// (auto-persist.ts) imports this tool for the update_workflow_metadata
+// commit_intent dispatch, so pulling the barrel here would form a cycle.
+import { translateAutoPersistError } from "../../../persistence/auto-persist/error-translation.ts";
+import { classifyDraftVsPersisted } from "../../../persistence/draft-diff.ts";
 import type { ConversationTool, ToolContext } from "../../index.ts";
 
 const UpdateWorkflowInput = z
@@ -170,6 +174,32 @@ export const updateWorkflowTool: ConversationTool = {
       id: args.id,
     });
     if (!auth.allow) return permissionDenied("workflow:write", auth.reason);
+
+    // Anti silent step-loss (B3): update_workflow writes METADATA only
+    // (slug/name/description/lifecycle) and rolls no version. If the
+    // conversation's working draft has uncommitted STEP edits for THIS workflow,
+    // persisting metadata here leaves those edits unsaved while the model reports
+    // success — the wrong-verb trap behind the render-upload-slides incident.
+    // Refuse and point at the durable step path; metadata-only / clean / unbound
+    // drafts proceed. classifyDraftVsPersisted is read-only and resolves any
+    // ambiguity to "no_target", so this never blocks a legitimate metadata edit.
+    const draftState = await classifyDraftVsPersisted(
+      ctx.db,
+      ctx.tenant_id,
+      ctx.getDraft(),
+      args.id,
+    );
+    if (draftState === "structural") {
+      return {
+        ok: false as const,
+        data: {
+          error: "uncommitted_step_edits",
+          message:
+            "This conversation's draft has uncommitted step edits for this workflow. update_workflow changes metadata only (name/slug/description/lifecycle) and would NOT persist those step changes. Commit the step edits first with save_workflow_draft (after a successful dry_run_workflow), then call update_workflow for any metadata change.",
+          next_best_actions: ["dry_run_workflow", "save_workflow_draft"],
+        },
+      };
+    }
 
     let result: Awaited<ReturnType<typeof ctx.engineClient.workflows.update>>;
     try {

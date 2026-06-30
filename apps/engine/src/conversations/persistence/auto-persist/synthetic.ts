@@ -103,6 +103,8 @@ export function intentToolName(kind: CommitIntent["kind"]): string {
       return "run_workflow";
     case "create_api_key":
       return "create_api_key";
+    case "update_workflow_metadata":
+      return "update_workflow";
   }
 }
 

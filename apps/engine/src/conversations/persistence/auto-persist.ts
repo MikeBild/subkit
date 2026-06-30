@@ -63,6 +63,7 @@ import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
 import { createApiKeyTool } from "../tools/generated/writes/create-api-key.ts";
+import { updateWorkflowTool } from "../tools/generated/writes/update-workflow.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { mergeFormIntoCredential } from "./auto-persist/credential-cache.ts";
 import {
@@ -199,7 +200,7 @@ export async function maybeAutoPersistFromElicitation(
         tool: "ask_user_confirm",
         ok: false,
         error_code: "write_not_dispatched",
-        message: `You approved a write confirmation (kind=${inputKind}) but it carried no commit_intent, so the harness performed NO write — nothing was persisted or executed. Do NOT report success. To actually perform it, re-issue ask_user_confirm with a commit_intent (e.g. {kind: "save_workflow_draft"} for a workflow edit, {kind: "run_workflow", payload:{workflow_id,…}} for a run), OR call the underlying write tool now and confirm its result before telling the user it succeeded.`,
+        message: `You approved a write confirmation (kind=${inputKind}) but it carried no commit_intent, so the harness performed NO write — nothing was persisted or executed. Do NOT report success. To actually perform it, re-issue ask_user_confirm with a commit_intent (e.g. {kind: "save_workflow_draft"} for a workflow step edit, {kind: "update_workflow_metadata", payload:{id,description}} for a metadata/description edit, {kind: "run_workflow", payload:{workflow_id,…}} for a run), OR call the underlying write tool now and confirm its result before telling the user it succeeded.`,
         next_best_actions: ["ask_user_confirm", "save_workflow_draft"],
         source: "harness_auto_persist",
       };
@@ -407,6 +408,17 @@ export async function maybeAutoPersistFromElicitation(
       case "create_api_key": {
         toolName = "create_api_key";
         result = await createApiKeyTool.execute(ctx, intent.payload);
+        break;
+      }
+      case "update_workflow_metadata": {
+        // Metadata-only workflow edit. Reuse the update_workflow tool so the
+        // approval auto-persists the patch directly (RBAC, Postgres-error
+        // translation, and conversation rebind come for free) — the model does
+        // NOT re-issue update_workflow itself. updateWorkflowMetadata writes the
+        // column without rolling a version, so a description edit needs no
+        // dry_run/preview.
+        toolName = "update_workflow";
+        result = await updateWorkflowTool.execute(ctx, intent.payload);
         break;
       }
       case "oauth_completed": {
