@@ -272,6 +272,130 @@ describe("mcp tools/call", () => {
     }
   });
 
+  // C1 — MCP 2025-11-25 tools §Output Schema: when a workflow declares an
+  // `output_schema` AND the run is a clean (non-preview) success with an
+  // object output, tools/call MUST return `structuredContent` mirroring
+  // the output. The text content block is always present (back-compat SHOULD).
+  test("C1: workflow with output_schema returns structuredContent on clean success", async () => {
+    await suite.seedWorkflow({
+      name: "structured output probe",
+      slug: "structured-output-probe",
+      output_schema: {
+        type: "object",
+        properties: { result: { type: "string" } },
+      },
+      steps: [
+        {
+          kind: "transform",
+          id: "shape",
+          // Transform-only workflow: no write steps → hold_writes produces no
+          // held steps → isHeldPreview = false → structuredContent is emitted.
+          expression: "return { result: 'hello-structured' };",
+          language: "javascript",
+        },
+      ],
+    });
+    const client = await suite.connect();
+    const result = await client.callTool({
+      name: "wf_structured-output-probe",
+      arguments: {},
+    });
+    expect(result.isError).toBeFalsy();
+    // Text block is always present for back-compat.
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content.length).toBeGreaterThanOrEqual(1);
+    expect(content[0]?.type).toBe("text");
+    // structuredContent mirrors the workflow output object.
+    expect(result.structuredContent).toBeDefined();
+    expect((result.structuredContent as { result?: string })?.result).toBe("hello-structured");
+  });
+
+  test("C1: workflow WITHOUT output_schema returns no structuredContent", async () => {
+    await suite.seedWorkflow({
+      name: "no schema probe",
+      slug: "no-schema-probe",
+      // No output_schema declared → structuredContent must be absent.
+      steps: [
+        {
+          kind: "transform",
+          id: "shape",
+          expression: "return { data: 'plain' };",
+          language: "javascript",
+        },
+      ],
+    });
+    const client = await suite.connect();
+    const result = await client.callTool({ name: "wf_no-schema-probe", arguments: {} });
+    expect(result.isError).toBeFalsy();
+    // No output_schema → no structuredContent at all.
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  test("C1: offloaded result (>20KB) does not carry structuredContent even with output_schema", async () => {
+    // The offload path returns a resource_link; it intentionally omits
+    // structuredContent to avoid inlining a multi-KB object. This guards the
+    // off-ramp so the engine never emits both a resource_link AND structuredContent.
+    const big = "x".repeat(30_000);
+    const bigSchemaWfMock = await createMockServer((_req, res) => {
+      jsonResponse(res, 200, { blob: big });
+    });
+    try {
+      await suite.seedWorkflow({
+        name: "call schema offload",
+        slug: "call-schema-offload",
+        output_schema: {
+          type: "object",
+          properties: { blob: { type: "string" } },
+        },
+        steps: [
+          {
+            kind: "request",
+            id: "fetch",
+            method: "GET",
+            url: `${bigSchemaWfMock.baseUrl}/big`,
+          },
+        ],
+      });
+      const client = await suite.connect();
+      const result = await client.callTool({ name: "wf_call-schema-offload", arguments: {} });
+      expect(result.isError).toBeFalsy();
+      // Offloaded path: resource_link present, structuredContent absent.
+      const content = result.content as Array<Record<string, unknown>>;
+      expect(content.some((c) => c.type === "resource_link")).toBe(true);
+      expect(result.structuredContent).toBeUndefined();
+    } finally {
+      await bigSchemaWfMock.close();
+    }
+  });
+
+  // B3 — Deliberate protocol deviation: subkit returns isError:true RESULTS
+  // (not -32602 protocol errors) for unknown tools. This lets the LLM agent
+  // observe the error text and self-correct without aborting the tool-call
+  // chain. Consistent with the -32000 init-params decision in
+  // streamable-http-jsonrpc.test.ts; both are intentional deviations from
+  // the spec recommendation.
+  test("B3 (deviation pin): unknown tool name returns isError:true result, not a -32602 protocol error", async () => {
+    // A -32602 would throw in the SDK client; isError:true does NOT throw.
+    // That means the model receives the error as content and can self-correct.
+    const client = await suite.connect();
+    const result = await client.callTool({
+      name: "totally_unknown_xyzzy_tool",
+      arguments: {},
+    });
+    expect(result.isError).toBe(true);
+  });
+
+  test("B3 (deviation pin): wf_<unknownslug> returns isError:true with 'workflow not found' message", async () => {
+    const client = await suite.connect();
+    const result = await client.callTool({
+      name: "wf_does-not-exist-anywhere",
+      arguments: {},
+    });
+    expect(result.isError).toBe(true);
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0]?.text).toMatch(/workflow not found/i);
+  });
+
   test("maps structured workflow parameters through the workflow tool surface", async () => {
     await suite.seedWorkflow({
       name: "call input probe",

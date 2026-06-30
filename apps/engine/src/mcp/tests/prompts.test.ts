@@ -105,6 +105,26 @@ describe("mcp prompts", () => {
     );
   });
 
+  // B2 — MCP 2025-11-25 compliance: prompts/get for unknown names MUST return
+  // JSON-RPC -32602 (InvalidParams). Two cases:
+  //   1. A name that does not start with the "skill_" prefix.
+  //   2. A well-formed "skill_<id>" name where the id does not exist.
+  test("B2: getPrompt with a bad prefix (not skill_) returns JSON-RPC -32602", async () => {
+    const client = await suite.connect();
+    const err = await client
+      .getPrompt({ name: "unknown_prefix_notaskill" })
+      .catch((e: unknown) => e);
+    expect((err as { code?: number }).code).toBe(-32602);
+  });
+
+  test("B2: getPrompt with skill_ prefix but non-existent UUID returns JSON-RPC -32602", async () => {
+    const client = await suite.connect();
+    const err = await client
+      .getPrompt({ name: "skill_00000000-0000-0000-0000-000000000000" })
+      .catch((e: unknown) => e);
+    expect((err as { code?: number }).code).toBe(-32602);
+  });
+
   test("skill lifecycle events fire prompt list_changed only within the tenant", async () => {
     const client = await suite.connect();
     let changedCount = 0;

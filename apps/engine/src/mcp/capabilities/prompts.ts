@@ -142,7 +142,8 @@ export function registerPromptsCapability(p: RegisterPromptsParams): void {
 
   server.setRequestHandler(GetPromptRequestSchema, async (req) => {
     const name = req.params.name;
-    if (!name.startsWith(PREFIX)) throw new Error(`unknown prompt: ${name}`);
+    if (!name.startsWith(PREFIX))
+      throw new McpError(ErrorCode.InvalidParams, `unknown prompt: ${name}`);
     const id = name.slice(PREFIX.length);
     const rows = await db
       .select()
@@ -150,7 +151,7 @@ export function registerPromptsCapability(p: RegisterPromptsParams): void {
       .where(and(eq(skills.tenant_id, principal.tenant_id), eq(skills.id, id)))
       .limit(1);
     const row = rows[0];
-    if (!row) throw new Error(`prompt not found: ${id}`);
+    if (!row) throw new McpError(ErrorCode.InvalidParams, `prompt not found: ${id}`);
     const decision = await can(db, {
       tenant_id: principal.tenant_id,
       principal,

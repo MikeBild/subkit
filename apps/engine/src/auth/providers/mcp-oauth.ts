@@ -12,6 +12,7 @@
 import { and, eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { getConfig } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { mcpOauthAccessTokens, roles as rolesTable, users } from "../../db/schema/index.ts";
 import { sha256Hex } from "../../identity/api-key.ts";
@@ -23,6 +24,25 @@ import {
   TOKEN_PREFIX_LENGTH,
 } from "../oauth/tokens.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
+
+/**
+ * RFC 8707 canonical form of a resource indicator URI.
+ * Lowercases scheme+authority (the URL spec already does this on parse)
+ * and normalises the path to exactly one trailing slash.
+ * Pure function — no I/O — safe to target directly from unit tests.
+ */
+export function canonicalizeResourceUri(raw: string): string {
+  try {
+    const u = new URL(raw);
+    // URL spec normalises scheme+host to lowercase on parse.
+    // Pin exactly one trailing slash on the path component.
+    const path = u.pathname.replace(/\/+$/, "") + "/";
+    return `${u.protocol}//${u.host}${path}${u.search}${u.hash}`;
+  } catch {
+    // Not a parseable absolute URL — lowercase and trim as best-effort.
+    return raw.trim().toLowerCase();
+  }
+}
 
 const FLUSH_INTERVAL_MS = 60_000;
 const lastFlush = new Map<string, number>();
@@ -162,6 +182,44 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         recordAuthFailure(ip);
         log.auth.denied({ provider: "mcp_oauth", reason: "expired", token_id: row.id });
         return null;
+      }
+
+      // ── RFC 8707 resource (audience) validation ────────────────────────
+      // Tokens from RFC 8707-compliant clients carry a `resource` column
+      // that names the protected resource they were issued for. A mismatch
+      // means the token was issued for a different server and is being
+      // replayed here — reject it.
+      //
+      // Tokens issued before this column was populated carry null (legacy).
+      // Accept them and trace at DEBUG — this fires on EVERY request for every
+      // pre-RFC-8707 token, so a WARN here floods the operator log and buries
+      // the genuine `audience_mismatch` denial below. Debug keeps the signal
+      // available without the noise; a token-`resource` backfill is the durable
+      // fix that lets the check later be enforced strictly.
+      //
+      // Skip the check entirely when `server.public_base_url` is empty or
+      // when config has not yet been initialised (test environment, startup
+      // timing) — a non-fatal config gap must never hard-block all tokens.
+      let baseUrl: string | undefined;
+      try {
+        baseUrl = getConfig().server.public_base_url || undefined;
+      } catch {
+        // ConfigLoaderError: loadConfig() not yet called — skip check.
+      }
+      if (baseUrl) {
+        const expected = canonicalizeResourceUri(`${baseUrl}/mcp`);
+        if (row.resource === null) {
+          logger.debug({
+            module: "auth",
+            action: "mcp_oauth.audience_legacy_null",
+            msg: "accepting legacy token with null resource (audience unverified)",
+            token_id: row.id,
+          });
+        } else if (canonicalizeResourceUri(row.resource) !== expected) {
+          recordAuthFailure(ip);
+          log.auth.denied({ provider: "mcp_oauth", reason: "audience_mismatch", token_id: row.id });
+          return null;
+        }
       }
 
       // Resolve user roles. The token row's tenant_id is the trusted

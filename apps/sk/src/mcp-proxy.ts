@@ -29,15 +29,15 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       {
-        name: "sk.ping",
-        title: "sk.ping",
+        name: "sk_ping",
+        title: "sk_ping",
         description: `Ping the engine at ${profile.engine_url} and return its health status.`,
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         execution: { taskSupport: "forbidden" },
       },
       {
-        name: "sk.conversation.create",
-        title: "sk.conversation.create",
+        name: "sk_conversation_create",
+        title: "sk_conversation_create",
         description: "Create a new conversation and optionally drive the first turn.",
         inputSchema: {
           type: "object",
@@ -54,8 +54,8 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
         execution: { taskSupport: "forbidden" },
       },
       {
-        name: "sk.conversation.append",
-        title: "sk.conversation.append",
+        name: "sk_conversation_append",
+        title: "sk_conversation_append",
         description: "Append a user message to an existing conversation and drive another turn.",
         inputSchema: {
           type: "object",
@@ -70,8 +70,8 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
         execution: { taskSupport: "forbidden" },
       },
       {
-        name: "sk.conversation.get",
-        title: "sk.conversation.get",
+        name: "sk_conversation_get",
+        title: "sk_conversation_get",
         description: "Fetch a conversation detail (messages, call history, draft, approvals).",
         inputSchema: {
           type: "object",
@@ -82,8 +82,8 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
         execution: { taskSupport: "forbidden" },
       },
       {
-        name: "sk.conversation.list",
-        title: "sk.conversation.list",
+        name: "sk_conversation_list",
+        title: "sk_conversation_list",
         description: "List conversations owned by the caller (owner=me).",
         inputSchema: {
           type: "object",
@@ -99,7 +99,7 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
     const name = request.params.name;
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
     try {
-      if (name === "sk.ping") {
+      if (name === "sk_ping") {
         const h = await client.health();
         return {
           content: [
@@ -110,7 +110,7 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
           ],
         };
       }
-      if (name === "sk.conversation.create") {
+      if (name === "sk_conversation_create") {
         const created = await client.createConversation({
           ...(typeof args.initial_message === "string"
             ? { initial_message: args.initial_message }
@@ -123,7 +123,7 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
         });
         return { content: [{ type: "text", text: JSON.stringify(created, null, 2) }] };
       }
-      if (name === "sk.conversation.append") {
+      if (name === "sk_conversation_append") {
         const convId = String(args.conversation_id);
         const message = String(args.message);
         const out = await client.appendConversationMessage(convId, {
@@ -132,12 +132,12 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
         });
         return { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] };
       }
-      if (name === "sk.conversation.get") {
+      if (name === "sk_conversation_get") {
         const convId = String(args.conversation_id);
         const detail = await client.getConversation(convId);
         return { content: [{ type: "text", text: JSON.stringify(detail, null, 2) }] };
       }
-      if (name === "sk.conversation.list") {
+      if (name === "sk_conversation_list") {
         const limit = typeof args.limit === "number" ? args.limit : 20;
         const res = await client.listConversations({ owner: "me", limit });
         return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };

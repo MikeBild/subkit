@@ -77,13 +77,18 @@ describe("sk mcp stdio proxy", () => {
       const list = await client.listTools();
       const byName = new Map(list.tools.map((tool) => [tool.name, tool]));
       expect([...byName.keys()]).toEqual([
-        "sk.ping",
-        "sk.conversation.create",
-        "sk.conversation.append",
-        "sk.conversation.get",
-        "sk.conversation.list",
+        "sk_ping",
+        "sk_conversation_create",
+        "sk_conversation_append",
+        "sk_conversation_get",
+        "sk_conversation_list",
       ]);
+      // MCP tool names must match the dot-free charset Anthropic/claude.ai
+      // accept — the same invariant the engine surface asserts in
+      // tools-list.test.ts. The proxy previously shipped dotted names.
+      const MCP_TOOL_NAME = /^[a-zA-Z0-9_-]{1,64}$/;
       for (const tool of byName.values()) {
+        expect(tool.name).toMatch(MCP_TOOL_NAME);
         expect(tool.title).toBe(tool.name);
         expect(tool.inputSchema.type).toBe("object");
         expect(tool.inputSchema.additionalProperties).toBe(false);
@@ -97,11 +102,11 @@ describe("sk mcp stdio proxy", () => {
   test("callTool covers ping and the conversation proxy helpers", async () => {
     const client = await connectProxy();
     try {
-      const ping = await client.callTool({ name: "sk.ping", arguments: {} });
+      const ping = await client.callTool({ name: "sk_ping", arguments: {} });
       expect(textContent(ping)).toContain(`engine=${env.baseUrl} status=ok`);
 
       const created = await client.callTool({
-        name: "sk.conversation.create",
+        name: "sk_conversation_create",
         arguments: { title: "stdio proxy e2e" },
       });
       expect(created.isError).toBeFalsy();
@@ -113,13 +118,13 @@ describe("sk mcp stdio proxy", () => {
       expect(createPayload.conversation?.title).toBe("stdio proxy e2e");
 
       const appended = await client.callTool({
-        name: "sk.conversation.append",
+        name: "sk_conversation_append",
         arguments: { conversation_id: conversationId, message: "Summarize the current surface." },
       });
       expect(appended.isError).toBeFalsy();
 
       const detail = await client.callTool({
-        name: "sk.conversation.get",
+        name: "sk_conversation_get",
         arguments: { conversation_id: conversationId },
       });
       const detailPayload = JSON.parse(textContent(detail)) as {
@@ -130,7 +135,7 @@ describe("sk mcp stdio proxy", () => {
       expect(Array.isArray(detailPayload.messages)).toBe(true);
 
       const listed = await client.callTool({
-        name: "sk.conversation.list",
+        name: "sk_conversation_list",
         arguments: { limit: 5 },
       });
       const listPayload = JSON.parse(textContent(listed)) as {
@@ -138,9 +143,9 @@ describe("sk mcp stdio proxy", () => {
       };
       expect(listPayload.items?.some((item) => item.id === conversationId)).toBe(true);
 
-      const unknown = await client.callTool({ name: "sk.unknown", arguments: {} });
+      const unknown = await client.callTool({ name: "sk_unknown", arguments: {} });
       expect(unknown.isError).toBe(true);
-      expect(textContent(unknown)).toContain("unknown tool: sk.unknown");
+      expect(textContent(unknown)).toContain("unknown tool: sk_unknown");
     } finally {
       await client.close();
     }

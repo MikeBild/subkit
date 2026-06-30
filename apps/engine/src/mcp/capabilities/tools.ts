@@ -686,8 +686,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }
 
       // Work out how many steps the current version has for the
-      // progress bridge's total estimate.
+      // progress bridge's total estimate. The same DAG parse tells us
+      // whether the workflow declares an `output_schema` — when it does,
+      // tools/list advertised an `outputSchema`, so tools/call MUST return
+      // a conforming `structuredContent` (MCP 2025-11-25 tools §Output Schema).
       let totalSteps = 1;
+      let outputSchemaDeclared = false;
       try {
         const wfRows = await db
           .select({ current_version_id: workflows.current_version_id })
@@ -707,7 +711,10 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             )
             .limit(1);
           const parsed = vRows[0]?.dag ? WorkflowDefSchema.safeParse(vRows[0].dag) : null;
-          if (parsed?.success) totalSteps = parsed.data.steps.length;
+          if (parsed?.success) {
+            totalSteps = parsed.data.steps.length;
+            outputSchemaDeclared = parsed.data.output_schema != null;
+          }
         }
       } catch {
         // best effort
@@ -930,9 +937,25 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           warnings_count: result.warnings?.length ?? 0,
           preview: envelope.isHeldPreview,
         });
+        // structuredContent mirrors the workflow `output` (which the declared
+        // `output_schema` describes) — only for a clean, non-preview success
+        // where `output` is an object, so it always conforms to the advertised
+        // schema. The serialized text block stays for back-compat (spec SHOULD).
+        // The offloaded (>cap) branch above intentionally omits it — a
+        // resource_link, not an inlined large object.
+        const structured =
+          outputSchemaDeclared &&
+          !envelope.isHeldPreview &&
+          result.status === "succeeded" &&
+          result.output != null &&
+          typeof result.output === "object" &&
+          !Array.isArray(result.output)
+            ? { structuredContent: result.output as Record<string, unknown> }
+            : {};
         return {
           isError: result.status !== "succeeded",
           content: [{ type: "text" as const, text }],
+          ...structured,
           ...previewMeta,
         };
       } catch (err) {

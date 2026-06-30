@@ -112,12 +112,17 @@ export class ConversationTaskStore implements TaskStore {
       return {
         content: [{ type: "text", text: JSON.stringify(leanResult) }],
         isError: false,
+        // MCP 2025-11-25 tasks: tasks/result MUST carry the related-task
+        // linkage (the result structure itself has no taskId). subkit
+        // bypasses the SDK task store, so we attach it explicitly.
+        _meta: { "io.modelcontextprotocol/related-task": { taskId } },
       } as Result;
     }
     if (row.failure_reason) {
       return {
         content: [{ type: "text", text: row.failure_reason }],
         isError: true,
+        _meta: { "io.modelcontextprotocol/related-task": { taskId } },
       } as Result;
     }
     // Not terminal — the protocol only calls this for terminal tasks,

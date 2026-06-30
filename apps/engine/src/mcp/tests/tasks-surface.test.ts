@@ -124,6 +124,63 @@ describe("MCP tasks surface", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  // A4 — MCP 2025-11-25 tasks: tasks/result MUST carry
+  // _meta["io.modelcontextprotocol/related-task"].taskId.
+  // subkit bypasses the SDK task-store result path (the worker writes directly),
+  // so this is attached explicitly in ConversationTaskStore.getTaskResult.
+  // Both the success path (result set) and failure path (failure_reason set)
+  // must include the linkage.
+  test("A4: tasks/result for a completed task carries _meta related-task taskId", async () => {
+    const conversationId = await seedConversation();
+    const taskId = await seedTask(conversationId, {
+      result: {
+        conversation_id: conversationId,
+        status: "active",
+        events: [{ type: "completed" }],
+      },
+    });
+    const client = await suite.connectTasks();
+
+    const result = await client.experimental.tasks.getTaskResult(taskId, CallToolResultSchema);
+    expect(result.isError).toBe(false);
+
+    const meta = (result as { _meta?: Record<string, unknown> })._meta;
+    const relatedTask = meta?.["io.modelcontextprotocol/related-task"] as
+      | { taskId?: string }
+      | undefined;
+    expect(relatedTask?.taskId).toBe(taskId);
+  });
+
+  test("A4: tasks/result for a failed task carries _meta related-task taskId", async () => {
+    const conversationId = await seedConversation();
+    const taskId = await seedTask(conversationId, {
+      failureReason: "simulated_worker_failure",
+    });
+    const client = await suite.connectTasks();
+
+    const result = await client.experimental.tasks.getTaskResult(taskId, CallToolResultSchema);
+    expect(result.isError).toBe(true);
+
+    const meta = (result as { _meta?: Record<string, unknown> })._meta;
+    const relatedTask = meta?.["io.modelcontextprotocol/related-task"] as
+      | { taskId?: string }
+      | undefined;
+    expect(relatedTask?.taskId).toBe(taskId);
+  });
+
+  // P2 — tasks status derivation: a task row with failure_reason set derives
+  // status=failed and exposes the reason as statusMessage.
+  test("P2: task with failure_reason derives status=failed with the failure reason as statusMessage", async () => {
+    const conversationId = await seedConversation();
+    const failureMsg = "connector_timeout_simulated";
+    const taskId = await seedTask(conversationId, { failureReason: failureMsg });
+    const client = await suite.connectTasks();
+
+    const task = await client.experimental.tasks.getTask(taskId);
+    expect(task.status).toBe("failed");
+    expect(task.statusMessage).toBe(failureMsg);
+  });
+
   test("tasks are tenant-isolated across get/result/cancel/list", async () => {
     const conversationId = await seedConversation();
     const taskId = await seedTask(conversationId, {

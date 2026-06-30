@@ -24,8 +24,61 @@ export interface SubkitToolMetaEnvelope {
   [k: string]: unknown;
 }
 
+/**
+ * Tools deliberately categorized `tenant_read` for VISIBILITY (so they stay
+ * available in read-only MCP mode) but which CAN mutate external or tenant
+ * state. Their advertised MCP side-effect must be honest (write) so a trusted
+ * client (claude.ai) files them under its approval-gated group instead of
+ * "always allow":
+ *   - call_connector — issues GET/SELECT/query (read) OR PATCH/POST/DELETE/
+ *     mutation/S3-PUT (write); conservatively advertised as write/destructive.
+ *   - authenticate / self_healing_scan — change state (reauth / repair scan).
+ * The runtime gate already treats these correctly via `computeDangerFromInput`
+ * (tool-policies.ts); this set keeps the STATIC manifest honest in lockstep.
+ */
+const WRITE_DESPITE_READ_CATEGORY: ReadonlySet<string> = new Set([
+  "call_connector",
+  "authenticate",
+  "self_healing_scan",
+]);
+
+/**
+ * Writes that only create/append session state — they never destroy,
+ * overwrite, delete, send, or spend. They are honest writes
+ * (`readOnlyHint:false`) but carry `destructiveHint:false` so a client does not
+ * gate the core authoring loop on every turn. Every other write-classified
+ * tool is advertised destructive so it lands in the approval-required group.
+ */
+const ADDITIVE_WRITES: ReadonlySet<string> = new Set([
+  "conversation_start",
+  "conversation_append",
+  "conversation_respond_elicitation",
+]);
+
+/**
+ * Honest "this tool only reads" signal — the single source the MCP annotations
+ * AND the vendor `_meta` derive from. A tool is advertised read-only iff its
+ * visibility category is `tenant_read` and it is not a known write-capable
+ * tool mislabeled `tenant_read`. Mirrors the runtime side-effect intent so the
+ * static manifest and the runtime gate cannot drift.
+ */
+function advertisedReadOnly(category: ToolCategory | "workflow_run", toolName: string): boolean {
+  if (category !== "tenant_read") return false;
+  return !WRITE_DESPITE_READ_CATEGORY.has(toolName);
+}
+
+/** Honest "this tool may perform a destructive update" signal — true for every
+ *  write except the additive session-only writes (and reads). */
+function advertisedDestructive(category: ToolCategory | "workflow_run", toolName: string): boolean {
+  if (advertisedReadOnly(category, toolName)) return false;
+  return !ADDITIVE_WRITES.has(toolName);
+}
+
 /** Conservative "could this ever need confirm?" probe. */
 function couldRequireConfirmation(category: ToolCategory, toolName: string): boolean {
+  // call_connector/authenticate/self_healing_scan are tenant_read for
+  // visibility but can write — so they CAN require confirm on the write path.
+  if (WRITE_DESPITE_READ_CATEGORY.has(toolName)) return true;
   if (category === "tenant_read") return false;
   // Probe the resolver with an empty input — if the tool demands
   // confirm even without concrete args, flag it. This intentionally
@@ -40,11 +93,6 @@ function couldRequireConfirmation(category: ToolCategory, toolName: string): boo
     overrides: {},
   });
   return mode === "confirm_before_execution";
-}
-
-/** Heuristic for the "destructive" badge — purely cosmetic hint. */
-function isDestructive(toolName: string): boolean {
-  return /^(delete_|revoke_|archive_|remove_)/.test(toolName);
 }
 
 /**
@@ -82,7 +130,7 @@ export function buildConversationToolMeta(
     subkit: {
       category,
       confirm_required: couldRequireConfirmation(category, toolName),
-      destructive: isDestructive(toolName),
+      destructive: advertisedDestructive(category, toolName),
     },
   };
 }
@@ -104,14 +152,19 @@ export function buildToolAnnotations(
   category: ToolCategory | "workflow_run",
   toolName: string,
 ): McpToolAnnotations {
-  const readOnly = category === "tenant_read";
+  const readOnly = advertisedReadOnly(category, toolName);
   // All four spec hints are set EXPLICITLY: a strict client's validator
   // treats an absent hint as unknown and may gate the tool as a write
   // (per-call approval). Explicit values let it apply its native approval
   // UI precisely — reads run without confirm, writes/externals surface it.
   return {
     readOnlyHint: readOnly,
-    destructiveHint: isDestructive(toolName),
+    // The MCP default for a non-read-only tool is `destructiveHint:true`.
+    // NEVER assert `false` on a real write — a trusted client (claude.ai)
+    // reads that as a benign "always allow" action and skips its approval
+    // prompt, letting a model fire connector writes / live workflow runs with
+    // no human in the loop. Only the additive session-only writes opt out.
+    destructiveHint: advertisedDestructive(category, toolName),
     // A pure read never mutates, so it is trivially idempotent. Writes make
     // no such guarantee.
     idempotentHint: readOnly,
@@ -121,15 +174,17 @@ export function buildToolAnnotations(
 
 /**
  * MCP-standard `annotations` for a `wf_<slug>` workflow-run tool. A saved
- * workflow executes its stored steps/connectors — it may write to external
- * systems (sends, commits) but never destroys subkit-tenant data, and prod
- * runs stay confirm-gated by the policy gate. So: not read-only, not
- * destructive, open-world (it reaches external systems).
+ * workflow executes its stored steps/connectors — it can send, commit,
+ * overwrite, or delete in external systems. So it is advertised as a write
+ * AND destructive, so a trusted client gates the run for approval (prod runs
+ * also stay confirm-gated by the policy gate); open-world (reaches external
+ * systems). Asserting `destructiveHint:false` here would let a model fire a
+ * live workflow run with no approval prompt — exactly what we must avoid.
  */
 export function buildWorkflowToolAnnotations(): McpToolAnnotations {
   return {
     readOnlyHint: false,
-    destructiveHint: false,
+    destructiveHint: true,
     idempotentHint: false,
     openWorldHint: true,
   };
@@ -145,7 +200,7 @@ export function buildWorkflowToolMeta(): SubkitToolMetaEnvelope {
     subkit: {
       category: "workflow_run",
       confirm_required: true,
-      destructive: false,
+      destructive: true,
     },
   };
 }

@@ -54,8 +54,10 @@
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
+  type ErrorCode,
   ListResourcesRequestSchema,
   ListResourceTemplatesRequestSchema,
+  McpError,
   ReadResourceRequestSchema,
   type Resource,
   type ResourceTemplate,
@@ -85,6 +87,11 @@ import * as skillCandidateSvc from "../../skill-candidates/service.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import * as workflowSvc from "../../workflows/service.ts";
 import { paginate } from "./pagination.ts";
+
+// MCP resources §Error Handling pins resource-not-found to JSON-RPC -32002.
+// The SDK's `ErrorCode` enum does not include it (it stops at -32001), so we
+// use the spec literal with a cast and a single named constant.
+const RESOURCE_NOT_FOUND = -32002 as ErrorCode;
 
 export interface RegisterResourcesParams {
   server: Server;
@@ -653,7 +660,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         row = await requireFileForTenant(db, principal.tenant_id, fid);
       } catch (err) {
         if (err instanceof FileNotFoundError) {
-          throw new Error(`file not found: ${fid}`);
+          throw new McpError(RESOURCE_NOT_FOUND, `file not found: ${fid}`);
         }
         throw err;
       }
@@ -709,7 +716,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     if (uri.startsWith("knowledge://")) {
       const id = uri.slice("knowledge://".length);
       const ks = await knowledgeSvc.getKnowledgeSource(principal.tenant_id, id, db);
-      if (!ks) throw new Error(`knowledge source not found: ${id}`);
+      if (!ks) throw new McpError(RESOURCE_NOT_FOUND, `knowledge source not found: ${id}`);
       const decision = await can(db, {
         tenant_id: principal.tenant_id,
         principal,
@@ -748,7 +755,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     if (uri.startsWith("skill-candidate://")) {
       const id = uri.slice("skill-candidate://".length);
       const sc = await skillCandidateSvc.getSkillCandidate(principal.tenant_id, id, db);
-      if (!sc) throw new Error(`skill candidate not found: ${id}`);
+      if (!sc) throw new McpError(RESOURCE_NOT_FOUND, `skill candidate not found: ${id}`);
       const decision = await can(db, {
         tenant_id: principal.tenant_id,
         principal,
@@ -788,7 +795,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     if (uri.startsWith("workflow://")) {
       const id = uri.slice("workflow://".length);
       const wf = await workflowSvc.getWorkflow(principal.tenant_id, id, db);
-      if (!wf) throw new Error(`workflow not found: ${id}`);
+      if (!wf) throw new McpError(RESOURCE_NOT_FOUND, `workflow not found: ${id}`);
       const decision = await can(db, {
         tenant_id: principal.tenant_id,
         principal,
@@ -858,7 +865,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         )
         .limit(1);
       const row = rows[0];
-      if (!row) throw new Error(`fixture not found: ${id}`);
+      if (!row) throw new McpError(RESOURCE_NOT_FOUND, `fixture not found: ${id}`);
       if (row.execution_id) {
         const decision = await can(db, {
           tenant_id: principal.tenant_id,
@@ -900,7 +907,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     const id = uri.slice("connector://".length);
     const cn = await connectorSvc.getConnector(principal.tenant_id, id, db);
     if (!cn) {
-      throw new Error(`connector not found: ${id}`);
+      throw new McpError(RESOURCE_NOT_FOUND, `connector not found: ${id}`);
     }
     // Pass-2 C6: gate resource reads on `connector:read`.
     const decision = await can(db, {

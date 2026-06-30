@@ -60,6 +60,15 @@ export function buildResultEnvelope(
       preview: true,
       writes_held: true,
       message: heldPreview.message,
+      // Name the concrete remedy so the model (and both ChatGPT/claude.ai,
+      // which looped here) stops re-running the same held preview: a POST is
+      // classified as a write by default, so a render/search step gets held
+      // and its dependents are skipped. Tell the caller how to resolve it.
+      remedy:
+        "Held steps are POST/write by default, so each one is held in preview and its " +
+        "dependents are skipped. If a held step only READS (e.g. a render or search endpoint), " +
+        'set `side_effects: "read"` on that step so it runs in preview and downstream steps are ' +
+        "not skipped. To actually perform the writes, re-run with `execute_writes: true`.",
       held_steps: heldSteps,
       would_write: wouldWrite,
       output: result.output ?? null,

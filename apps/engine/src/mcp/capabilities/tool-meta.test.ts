@@ -17,15 +17,41 @@ describe("buildToolAnnotations", () => {
     expect(a.destructiveHint).toBe(false);
   });
 
-  test("write tools are not read-only and (by default) not destructive", () => {
+  test("write tools are not read-only AND are advertised destructive (spec default)", () => {
+    // A non-read-only tool defaults to destructiveHint:true in MCP. Asserting
+    // false here (the old bug) let claude.ai file writes under "always allow".
     const a = buildToolAnnotations("tenant_write", "save_settings");
     expect(a.readOnlyHint).toBe(false);
     expect(a.idempotentHint).toBe(false);
-    expect(a.destructiveHint).toBe(false);
+    expect(a.destructiveHint).toBe(true);
   });
 
-  test("delete/revoke/archive/remove verbs are flagged destructive", () => {
-    for (const name of ["delete_workflow", "revoke_api_key", "archive_skill", "remove_member"]) {
+  test("write-capable tools mislabeled tenant_read are advertised as writes", () => {
+    // call_connector / authenticate / self_healing_scan are tenant_read for
+    // VISIBILITY but mutate state — they must NOT advertise read-only, or a
+    // model fires connector PATCH/DELETE with no approval prompt.
+    for (const name of ["call_connector", "authenticate", "self_healing_scan"]) {
+      const a = buildToolAnnotations("tenant_read", name);
+      expect(a.readOnlyHint).toBe(false);
+      expect(a.destructiveHint).toBe(true);
+    }
+  });
+
+  test("additive session-only writes are not read-only but not destructive", () => {
+    // The authoring loop must not be gated on every turn.
+    for (const name of [
+      "conversation_start",
+      "conversation_append",
+      "conversation_respond_elicitation",
+    ]) {
+      const a = buildToolAnnotations("tenant_write", name);
+      expect(a.readOnlyHint).toBe(false);
+      expect(a.destructiveHint).toBe(false);
+    }
+  });
+
+  test("no real write ever asserts destructiveHint:false", () => {
+    for (const name of ["save_workflow_draft", "import_connector_from_spec", "delete_workflow"]) {
       expect(buildToolAnnotations("tenant_write", name).destructiveHint).toBe(true);
     }
   });
@@ -53,10 +79,10 @@ describe("buildToolAnnotations", () => {
 });
 
 describe("buildWorkflowToolAnnotations", () => {
-  test("workflow runs are open-world, not read-only, not destructive", () => {
+  test("workflow runs are open-world, not read-only, AND destructive (gated by client)", () => {
     const a = buildWorkflowToolAnnotations();
     expect(a.readOnlyHint).toBe(false);
-    expect(a.destructiveHint).toBe(false);
+    expect(a.destructiveHint).toBe(true);
     expect(a.openWorldHint).toBe(true);
   });
 });

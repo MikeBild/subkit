@@ -19,6 +19,7 @@
 // The loop treats any `ToolResult.pause` the same way it treats the
 // existing approval pause, so the pause contract stays compatible.
 
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { logger } from "../../../logging/logger.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { ElicitationUnsupportedError } from "../../elicitation-bridge.ts";
@@ -69,7 +70,82 @@ export async function pauseForUserInput(
   const bridge = ctx.elicitationBridge;
   if (bridge?.capabilities.form) {
     const mapped = mapAskUserToPrimitiveSchema(p.tool_name as FormBridgeToolName, p.input);
+
+    // ── Sensitive-field guard ───────────────────────────────────────────
+    // Spec MUST: form-mode elicitation MUST NOT request passwords/API
+    // keys/secrets. The mapper returns { degrade: true; sensitive: true }
+    // when a sensitive field is detected — `degrade: true` keeps the
+    // existing `if (!mapped.degrade)` block from running, and `sensitive`
+    // lets us distinguish this arm from an ordinary schema-mapping failure
+    // so we can raise the right signal.
+    if (mapped.degrade && "sensitive" in mapped) {
+      // Open the governance row (APPROVAL_REQUESTED audit) so the audit
+      // trail has a paired entry regardless of which path we take.
+      const sensitiveRow = await createNativeElicitation(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          tool_call_id: ctx.tool_call_id ?? null,
+          ...(ctx.assistant_message_id ? { parent_message_id: ctx.assistant_message_id } : {}),
+          tool_name: p.tool_name,
+          summary: p.summary,
+          input: p.input,
+          actor_id: ctx.actor_id,
+        },
+        ctx.db,
+      );
+
+      if (bridge.capabilities.oob) {
+        // Cancel the governance row (APPROVAL_REJECTED) before raising
+        // the error so APPROVAL_REQUESTED stays paired — no orphan row.
+        await resolveElicitationAndReactivate(
+          {
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            id: sensitiveRow.id,
+            output: null,
+            decided_by: ctx.actor_id,
+            status: "cancelled",
+            reason: "sensitive_field_requires_url_elicitation",
+            transport: "failed",
+          },
+          ctx.db,
+        );
+        // Raise the SDK's canonical signal: the client MUST use URL/oob
+        // mode to collect a secret — form-mode is not permitted.
+        throw new McpError(
+          ErrorCode.UrlElicitationRequired,
+          "Secret/password fields must be collected via URL-mode elicitation (oob/url), not form-mode. Re-issue the request using elicitation mode: url.",
+        );
+      }
+
+      // No oob capability: demote the native row to portal so the operator
+      // can submit the secret through the portal DB-pause path. The
+      // ELICITATION_DEMOTED_TO_PORTAL audit row is emitted inside demote.
+      await demoteElicitationToPortal(ctx.tenant_id, sensitiveRow.id, ctx.db);
+      logger.warn({
+        module: "conversation",
+        action: "elicitation.sensitive_field_demoted_to_portal",
+        msg: "sensitive form field — client has no oob capability; demoting to portal DB-pause",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        elicitation_id: sensitiveRow.id,
+        tool_name: p.tool_name,
+      });
+      return {
+        ok: true,
+        data: { status: "awaiting_input", elicitation_id: sensitiveRow.id },
+        pause: {
+          tool_name: p.tool_name,
+          summary: p.summary,
+          elicitation_id: sensitiveRow.id,
+          input: p.input,
+        },
+      };
+    }
+
     if (!mapped.degrade) {
+      // ── Normal form-mode path ───────────────────────────────────────
       // Still persist the row — audit trail + single-pending-elicitation
       // invariant — but mark it protocol_native so observability can
       // distinguish a wire elicitation from a DB-pause one.

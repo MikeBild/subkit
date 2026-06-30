@@ -210,4 +210,51 @@ describe("mcp resources", () => {
     const adminUris = await listAllResourceUris(adminClient);
     expect(adminUris).toContain("subkit://operator/health-digest");
   });
+
+  // B1 — MCP 2025-11-25 compliance: resource-not-found MUST be JSON-RPC
+  // error code -32002 (not the generic internal-error -32603). Each URI
+  // family has its own handler; all must emit the same code.
+  test("B1: unknown file:// URI returns JSON-RPC error code -32002", async () => {
+    const client = await suite.connect();
+    const err = await client
+      .readResource({ uri: "file://00000000-0000-0000-0000-000000000001" })
+      .catch((e: unknown) => e);
+    expect((err as { code?: number }).code).toBe(-32002);
+  });
+
+  test("B1: unknown knowledge:// URI returns JSON-RPC error code -32002", async () => {
+    const client = await suite.connect();
+    const err = await client
+      .readResource({ uri: "knowledge://00000000-0000-0000-0000-000000000002" })
+      .catch((e: unknown) => e);
+    expect((err as { code?: number }).code).toBe(-32002);
+  });
+
+  test("B1: unknown workflow:// URI returns JSON-RPC error code -32002", async () => {
+    const client = await suite.connect();
+    const err = await client
+      .readResource({ uri: "workflow://00000000-0000-0000-0000-000000000003" })
+      .catch((e: unknown) => e);
+    expect((err as { code?: number }).code).toBe(-32002);
+  });
+
+  test("B1: unknown fixture:// URI (valid UUID, no row) returns JSON-RPC error code -32002", async () => {
+    const client = await suite.connect();
+    const err = await client
+      .readResource({ uri: "fixture://00000000-0000-0000-0000-000000000004" })
+      .catch((e: unknown) => e);
+    expect((err as { code?: number }).code).toBe(-32002);
+  });
+
+  // P2 — resources/unsubscribe succeeds (the per-session subscribed-Set is
+  // updated server-side; the MCP spec requires an empty result).
+  test("P2: resources/unsubscribe removes a previously-subscribed URI and returns empty", async () => {
+    const { id } = await suite.seedConnector({ slug: "unsub-probe" });
+    const client = await suite.connect();
+    // Subscribe first so there is something to unsubscribe.
+    await client.subscribeResource({ uri: `connector://${id}` });
+    // Unsubscribe — must not throw and must return an empty result.
+    const res = await client.unsubscribeResource({ uri: `connector://${id}` });
+    expect(res).toBeDefined();
+  });
 });

@@ -1,14 +1,17 @@
 // Integration tests for createMcpOAuthAuthProvider.
 // Exercises the full resolve() path against a real Postgres DB.
 // No mocks — uses testcontainers via createTestDb.
+//
+// Also covers canonicalizeResourceUri as pure unit tests (no DB needed).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { mcpOauthAccessTokens, mcpOauthClients, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { generateAccessToken, generateRefreshToken } from "../oauth/tokens.ts";
-import { createMcpOAuthAuthProvider } from "./mcp-oauth.ts";
+import { canonicalizeResourceUri, createMcpOAuthAuthProvider } from "./mcp-oauth.ts";
 
 let testDb: TestDb;
 let db: Db;
@@ -16,6 +19,10 @@ let tenantId: string;
 let userId: string;
 
 beforeAll(async () => {
+  // Load config once for the whole suite so that resolve()'s audience check
+  // can read getConfig().server.public_base_url. The audience describe's
+  // beforeAll then overrides only that key via setConfigKey().
+  await loadConfig();
   testDb = await createTestDb("mcp-oauth-auth-provider");
   db = testDb.db;
 
@@ -60,6 +67,8 @@ async function seedAccessToken(opts?: {
   userIdOverride?: string;
   expiresAt?: Date;
   revokedAt?: Date;
+  /** RFC 8707 resource indicator. Omit to use the DB default (null = legacy token). */
+  resource?: string | null;
 }): Promise<{ plaintext: string; tokenId: string }> {
   const clientId = await seedClient();
   const token = generateAccessToken();
@@ -77,6 +86,9 @@ async function seedAccessToken(opts?: {
       scope: opts?.scope ?? "mcp:read",
       expires_at: expiresAt,
       revoked_at: opts?.revokedAt ?? null,
+      // resource: null is the default (legacy token); callers pass a string
+      // to test RFC 8707 audience validation.
+      ...(opts?.resource !== undefined ? { resource: opts.resource } : {}),
     })
     .returning({ id: mcpOauthAccessTokens.id });
   if (!row) throw new Error("seed access token failed");
@@ -211,5 +223,104 @@ describe("createMcpOAuthAuthProvider — tenant isolation", () => {
     // The principal's tenant_id must be A (not B)
     expect(principal?.tenant_id).toBe(tenantId);
     expect(principal?.tenant_id).not.toBe(tenantB.id);
+  });
+});
+
+// ── canonicalizeResourceUri — pure unit tests (no DB) ─────────────────────────
+
+describe("canonicalizeResourceUri", () => {
+  test("adds a single trailing slash when path has none", () => {
+    expect(canonicalizeResourceUri("https://example.com/mcp")).toBe("https://example.com/mcp/");
+  });
+
+  test("normalises multiple trailing slashes to exactly one", () => {
+    expect(canonicalizeResourceUri("https://example.com/mcp///")).toBe("https://example.com/mcp/");
+  });
+
+  test("preserves a single trailing slash that already exists", () => {
+    expect(canonicalizeResourceUri("https://example.com/mcp/")).toBe("https://example.com/mcp/");
+  });
+
+  test("lowercases scheme (URL spec normalises on parse)", () => {
+    // HTTPS:// → https://
+    expect(canonicalizeResourceUri("HTTPS://example.com/mcp")).toBe("https://example.com/mcp/");
+  });
+
+  test("lowercases host (URL spec normalises on parse)", () => {
+    expect(canonicalizeResourceUri("https://EXAMPLE.COM/mcp")).toBe("https://example.com/mcp/");
+  });
+
+  test("handles root path (no path component)", () => {
+    expect(canonicalizeResourceUri("https://example.com")).toBe("https://example.com/");
+  });
+});
+
+// ── Audience (RFC 8707 resource indicator) validation ─────────────────────────
+
+describe("createMcpOAuthAuthProvider — audience validation", () => {
+  const TEST_BASE_URL = "https://aud-test.example.com";
+  let priorBaseUrl: string;
+
+  beforeAll(async () => {
+    priorBaseUrl = getConfig().server.public_base_url;
+    await setConfigKey("server.public_base_url", TEST_BASE_URL, { force: true });
+  });
+
+  afterAll(async () => {
+    await setConfigKey("server.public_base_url", priorBaseUrl, { force: true });
+  });
+
+  test("accepts token whose resource matches the server's canonical /mcp URI", async () => {
+    // canonicalizeResourceUri("https://aud-test.example.com/mcp") = "https://aud-test.example.com/mcp/"
+    const { plaintext } = await seedAccessToken({
+      resource: `${TEST_BASE_URL}/mcp`,
+    });
+    const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
+    const principal = await provider.resolve(makeRequest(plaintext));
+    expect(principal).not.toBeNull();
+  });
+
+  test("accepts token with trailing-slash variant of the expected resource", async () => {
+    // "https://aud-test.example.com/mcp/" canonicalises to the same value
+    const { plaintext } = await seedAccessToken({
+      resource: `${TEST_BASE_URL}/mcp/`,
+    });
+    const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
+    const principal = await provider.resolve(makeRequest(plaintext));
+    expect(principal).not.toBeNull();
+  });
+
+  test("rejects token whose resource points to a different server (returns null)", async () => {
+    const { plaintext } = await seedAccessToken({
+      resource: "https://other-server.example.com/mcp",
+    });
+    const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
+    const principal = await provider.resolve(makeRequest(plaintext));
+    expect(principal).toBeNull();
+  });
+
+  test("accepts legacy token with null resource and does not reject", async () => {
+    // resource: null → legacy token issued before RFC 8707 enforcement
+    const { plaintext } = await seedAccessToken({ resource: null });
+    const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
+    const principal = await provider.resolve(makeRequest(plaintext));
+    // Must resolve (with a logged warn) — never rejected
+    expect(principal).not.toBeNull();
+  });
+
+  test("skips audience check when base_url is empty (no rejection)", async () => {
+    await setConfigKey("server.public_base_url", "", { force: true });
+    try {
+      // Even a clearly wrong resource is accepted when base_url is unset
+      const { plaintext } = await seedAccessToken({
+        resource: "https://completely-wrong.example.com/mcp",
+      });
+      const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
+      const principal = await provider.resolve(makeRequest(plaintext));
+      expect(principal).not.toBeNull();
+    } finally {
+      // Restore so subsequent tests in this describe see the test base_url
+      await setConfigKey("server.public_base_url", TEST_BASE_URL, { force: true });
+    }
   });
 });

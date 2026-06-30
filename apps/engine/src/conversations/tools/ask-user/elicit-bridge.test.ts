@@ -138,12 +138,15 @@ describe("mapAskUserToPrimitiveSchema — ask_user_form", () => {
     expect(r.requestedSchema.required).toEqual(["key"]);
   });
 
-  test("password fields map to plain string primitives", () => {
-    const r = expectMapped("ask_user_form", {
+  test("password fields route to the sensitive arm — never a form property (A3)", () => {
+    // MCP 2025-11-25 MUST: form-mode elicitation must not request secrets.
+    // A password field no longer becomes a `{type:"string"}` form property;
+    // the mapper returns the sensitive arm so the caller uses URL/portal mode.
+    const r = mapAskUserToPrimitiveSchema("ask_user_form", {
       question: "Secret",
       fields: [{ name: "token", label: "Token", type: "password" }],
     });
-    expect(r.requestedSchema.properties.token).toMatchObject({ type: "string" });
+    expect(r).toEqual({ degrade: true, sensitive: true, message: "Secret" });
   });
 
   test("degrades the whole form when ANY field is type json", () => {
@@ -410,13 +413,13 @@ describe("mapAskUserToPrimitiveSchema — default forwarding", () => {
     });
   });
 
-  test("ask_user_form password field NEVER carries a default on the property", () => {
-    // password/sensitive fields reject `default` at the Zod schema level;
-    // even if one slipped through to the bridge, the mapper must not emit it.
-    const r = expectMapped("ask_user_form", {
+  test("a field flagged sensitive:true (non-password) also routes to the sensitive arm (A3)", () => {
+    // The sensitivity predicate is `type === "password" || sensitive === true`,
+    // so a plain text field marked sensitive must not become a form property.
+    const r = mapAskUserToPrimitiveSchema("ask_user_form", {
       question: "Credentials",
-      fields: [{ name: "token", label: "Token", type: "password" }],
+      fields: [{ name: "token", label: "Token", type: "text", sensitive: true }],
     });
-    expect((r.requestedSchema.properties.token as Record<string, unknown>).default).toBeUndefined();
+    expect(r).toEqual({ degrade: true, sensitive: true, message: "Credentials" });
   });
 });

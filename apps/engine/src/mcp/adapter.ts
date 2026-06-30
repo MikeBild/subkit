@@ -53,10 +53,44 @@ function zodToMcpSchema(schema: unknown): Tool["inputSchema"] {
   return { type: "object", properties: {} };
 }
 
+// Acronyms / proper nouns that must not be naively Title-Cased when deriving a
+// human-readable `title` from a snake_case tool `name`.
+const TITLE_ACRONYMS: Readonly<Record<string, string>> = {
+  oauth: "OAuth",
+  rbac: "RBAC",
+  graphql: "GraphQL",
+  mcp: "MCP",
+  llm: "LLM",
+  api: "API",
+  url: "URL",
+  id: "ID",
+  sql: "SQL",
+  csv: "CSV",
+  json: "JSON",
+  html: "HTML",
+  db: "DB",
+  rid: "RID",
+};
+
+/**
+ * Derive an MCP `title` (human display name) from a machine `name`. MCP clients
+ * render `title` when present and fall back to the raw `name` otherwise — so
+ * `title: d.name` (the prior behaviour) made tools show as `analyze_scrape_target`
+ * / `call_connector` in claude.ai. `name` is the snake_case machine id; `title`
+ * is the Title-Cased label.
+ */
+function titleFromName(name: string): string {
+  return name
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((w) => TITLE_ACRONYMS[w.toLowerCase()] ?? w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 function descriptorToMcpTool(d: ToolDescriptor): Tool {
   const tool: Tool = {
     name: d.name,
-    title: d.name,
+    title: titleFromName(d.name),
     description: d.description,
     inputSchema: zodToMcpSchema(d.inputSchema),
     // Spec-standard hints so a generic strict MCP client can tell a
@@ -130,10 +164,25 @@ export function envelopeToMcpResponse(envelope: ToolEnvelope): {
     };
   }
   if (envelope.status === "needs_confirm") {
+    const c = envelope.confirm;
+    // Keep the content a single VALID JSON object (clients/the confirm_tool_call
+    // fallback parse it) but enrich it so a text-only client that does not read
+    // `_meta` (e.g. ChatGPT) still sees this is an actionable "needs approval —
+    // re-call confirm_tool_call" state, not a refusal/decline. `status` +
+    // `instruction` make the intent explicit; `resume` (already in `c`) is the
+    // human one-liner. `_meta.subkit.confirm` is unchanged.
+    const payload = {
+      status: "needs_confirm",
+      instruction:
+        `This tool call is PAUSED awaiting approval (reason: ${c.reason}) — it was NOT refused. ` +
+        `To approve and run it, call \`confirm_tool_call\` with tool="${c.tool}", ` +
+        `confirm_id="${c.tool_call_id}", and the same arguments.`,
+      ...c,
+    };
     return {
       isError: false,
-      content: [{ type: "text", text: JSON.stringify(envelope.confirm) }],
-      _meta: { subkit: { confirm: envelope.confirm } },
+      content: [{ type: "text", text: JSON.stringify(payload) }],
+      _meta: { subkit: { confirm: c } },
     };
   }
   if (envelope.status === "paused") {

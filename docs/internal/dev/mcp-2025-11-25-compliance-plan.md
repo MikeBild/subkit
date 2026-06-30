@@ -307,8 +307,8 @@ sk/E2E tests:
 - Add an E2E task-capable client scenario for `conversation_start` if not already
   covered by engine integration.
 - Add a `sk mcp` stdio E2E that starts the compiled `sk mcp` server with an MCP
-  client, calls `tools/list`, `sk.ping`, `sk.conversation.create`, and
-  `sk.conversation.list`.
+  client, calls `tools/list`, `sk_ping`, `sk_conversation_create`, and
+  `sk_conversation_list`.
 
 Acceptance evidence:
 
@@ -564,14 +564,14 @@ Scenarios:
 - Build and spawn compiled `dist/sk mcp` with persona config.
 - Connect using MCP stdio client.
 - `initialize` returns `serverInfo.name = "sk-cli"` and tool capability only.
-- `tools/list` returns `sk.ping`, `sk.conversation.create`,
-  `sk.conversation.append`, `sk.conversation.get`, `sk.conversation.list`.
+- `tools/list` returns `sk_ping`, `sk_conversation_create`,
+  `sk_conversation_append`, `sk_conversation_get`, `sk_conversation_list`.
 - Each proxy tool has `title`, `description`, and object `inputSchema`.
-- `sk.ping` calls live engine health.
-- `sk.conversation.create` creates a conversation through the engine.
-- `sk.conversation.append` appends to that conversation.
-- `sk.conversation.get` returns messages/tool history.
-- `sk.conversation.list` includes the created conversation.
+- `sk_ping` calls live engine health.
+- `sk_conversation_create` creates a conversation through the engine.
+- `sk_conversation_append` appends to that conversation.
+- `sk_conversation_get` returns messages/tool history.
+- `sk_conversation_list` includes the created conversation.
 - Unknown tool returns `isError: true` without killing stdio.
 - Missing login/profile exits with a clear error and non-zero status.
 
@@ -583,6 +583,12 @@ Negative and edge tests:
 - No secrets are printed in tool errors.
 
 ### `sk` REPL `/mcp` catalog
+
+Note: the `/mcp` catalog is rendered in `apps/sk/src/repl/slash/handlers/inspect.ts`
+(Ink path) and `apps/sk/src/repl.ts` (readline path), gated by `mcp:read` via
+`apps/sk/src/slash.ts`. It is **not** in `apps/sk/src/ink-app.tsx` (that file has
+no MCP code). Coverage lives in `tests/e2e/repl-conversational.e2e.test.ts`
+(`admin renders /mcp catalog pane`, `member renders /mcp catalog pane`).
 
 Add `tests/e2e/repl-mcp-catalog.e2e.test.ts`.
 
@@ -651,32 +657,80 @@ are inner-loop evidence only.
 
 ## Current Gap Checklist
 
-Track this list during implementation. Every item needs either a test name or
-an unsupported-by-design assertion.
+A forensic re-read against the real spec (transports, authorization, lifecycle,
+tools, resources, prompts, completion, elicitation, tasks) found the earlier
+all-`[x]` state was optimistic. This section reflects actual status. Every item
+names the test that proves it or the by-design decision that closes it.
+
+Already covered (verified):
 
 - [x] Live E2E initializes with `2025-11-25`, not an older sample version.
 - [x] Initialize capability snapshots exist for engine and `sk mcp` stdio proxy.
-- [x] JSON-RPC parse/unknown-method/malformed-params behavior is pinned.
-  `streamable-http-jsonrpc.test.ts` records the current SDK transport behavior:
-  malformed initialize params return a controlled JSON-RPC error with code
-  `-32000`, not the stricter JSON-RPC `-32602`. Treat this as an explicit
-  compatibility decision before calling the transport fully spec-normalized.
-- [x] Ping, cancellation, progress metadata, and batch behavior are implemented
-  or tested unsupported-by-design.
-- [x] Live E2E covers invalid origin and invalid protocol version.
-- [x] `tools/list` live E2E asserts `title` and `execution.taskSupport`.
-- [x] Live E2E covers `resources/templates/list`.
-- [x] Live E2E covers `prompts/get` with arguments.
-- [x] RBAC list/read parity includes knowledge, skill candidates, files, and
-  operator digest.
-- [x] Notification tests include permission revoked after subscription.
-- [x] Completion tests include RBAC non-leak.
-- [x] Async task tests include task list/result/cancel and cross-tenant negative.
-- [x] Unsupported capability snapshot exists.
-- [x] `sk mcp` stdio proxy E2E exists.
-- [x] REPL `/mcp` PTY E2E exists for admin and member.
-- [x] Full `test:integration` and `test:e2e` are run before final compliance
-  completion.
+- [x] JSON-RPC parse/unknown-method/malformed-params behavior is pinned in
+  `streamable-http-jsonrpc.test.ts` (malformed initialize params return `-32000`,
+  not `-32602` — recorded as a deliberate compatibility decision; see Deviations).
+- [x] Live E2E covers invalid origin and invalid protocol version,
+  `resources/templates/list`, `prompts/get` with arguments.
+- [x] RBAC list/read parity (knowledge, skill candidates, files, operator digest)
+  in `resources-portal-scope.integration.test.ts`.
+- [x] Notification permission-revoked-after-subscribe; completion RBAC non-leak;
+  async task list/result/cancel + cross-tenant negative.
+
+Closed by this change (MUST-violations + deviations fixed, with tests):
+
+- [x] **A1** Token audience (RFC 8707) validated in
+  `auth/providers/mcp-oauth.ts:resolve()` — mismatched `resource` → 401;
+  legacy `null` → accept+warn. Proof: `auth/providers/mcp-oauth.test.ts`
+  (`createMcpOAuthAuthProvider — audience validation`, `canonicalizeResourceUri`).
+- [x] **A2** `sk mcp` proxy tool names are dot-free (`sk_ping`,
+  `sk_conversation_*`) per `^[a-zA-Z0-9_-]{1,64}$`. Proof:
+  `tests/e2e/sk-mcp-proxy.e2e.test.ts` (charset assertion).
+- [x] **A3** Secret/`password` fields never use form-mode elicitation — routed to
+  URL mode (`-32042 UrlElicitationRequired`) or portal DB-pause. Proof:
+  `conversations/tools/ask-user/elicit-bridge.test.ts` (sensitive-arm tests).
+- [x] **A4** `tasks/result` carries `io.modelcontextprotocol/related-task` `_meta`.
+  Proof: `mcp/tests/tasks-surface.test.ts` (completed + failed).
+- [x] **B1** Resource-not-found → `-32002`; **B2** unknown prompt → `-32602`.
+  Proof: `mcp/tests/resources.test.ts`, `mcp/tests/prompts.test.ts`.
+- [x] **C1** wf_ tools that declare `output_schema` return conforming
+  `structuredContent`; **C2** no-arg schema is closed
+  (`additionalProperties:false`). Proof: `mcp/tests/tools-call.test.ts`,
+  `tools-list.test.ts`.
+
+Test pins added against silent SDK/coverage regression:
+
+- [x] Transport SDK behavior pinned (missing session→400, DELETE→200/404,
+  unsupported method→405+Allow, bare notification→202, 406/415, GET-as-SSE,
+  absent/older protocol version) in the `streamable-http-*` tests.
+- [x] Tool `annotations` (four hints) and `execution.taskSupport` asserted on the
+  wire; resource blob/base64 read, `resources/unsubscribe`, `list_changed`
+  delivery; completion enum branch + limit cap; task `failed`/`input_required`.
+- [x] `sk mcp` stdio proxy E2E; REPL `/mcp` PTY E2E for admin and member.
+- [x] Full `test:integration` and `test:e2e` run before final compliance.
+
+## Deliberate Deviations & By-Design Decisions
+
+These are spec points subkit knowingly does not implement literally. Each is
+pinned by a test so an upgrade cannot silently change the behavior.
+
+- **B3 — unknown tool returns `isError:true`, not `-32602`.** The spec classes an
+  unknown tool as a protocol error. subkit returns a tool-execution error so the
+  model can self-correct mid-conversation (same rationale as the `-32000`
+  init-params decision). Pinned in `tools-call.test.ts`.
+- **D3 — `client_id_metadata_document_supported` not advertised.** CIMD intake is
+  unimplemented; AS metadata advertises DCR (`registration_endpoint`) instead.
+  Pinned absent in `mcp-oauth-discovery.test.ts`.
+- **D4/D5 — no SSE `retry:` field and no `Last-Event-ID` resumability.** The SDK
+  emits the priming event, `retry:`, and replay only when an `eventStore` is
+  configured. subkit configures none on purpose: an in-memory event store is
+  unbounded per-session memory and the engine droplet has prior OOM history.
+  Non-resumability is acceptable (spec SHOULD/MAY) and pinned in the transport
+  tests.
+- **A3 follow-up (`defer-with-evidence`)** — secret collection currently routes to
+  `-32042`/portal; a dedicated hosted secret-entry page (a full URL-mode form for
+  arbitrary secrets) is deferred. The only existing URL-mode flow is OAuth; a new
+  secret-collection portal page is out of proportion for this change. Trigger:
+  a connector that needs in-band secret entry without an OAuth flow.
 
 ## Acceptance Definition
 

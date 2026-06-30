@@ -40,7 +40,14 @@ export interface WorkflowToolDescriptor {
   last_executed_at: Date | null;
 }
 
-const EMPTY_OBJECT_SCHEMA = { type: "object" as const, properties: {} };
+// MCP recommends the closed no-arg shape `{type:"object", additionalProperties:false}`
+// so clients know a parameterless tool accepts only an empty object. Matches the
+// registry/zod tools (json-schema-parity.test.ts).
+const EMPTY_OBJECT_SCHEMA = {
+  type: "object" as const,
+  properties: {},
+  additionalProperties: false as const,
+};
 
 function toInputSchema(raw: unknown): WorkflowToolDescriptor["inputSchema"] {
   if (

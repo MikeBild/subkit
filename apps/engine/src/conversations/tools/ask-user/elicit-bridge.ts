@@ -26,7 +26,20 @@ export type FormBridgeToolName =
 
 export type MapToPrimitiveResult =
   | { degrade: true }
-  | { degrade: false; requestedSchema: ElicitRequestedSchema; message: string };
+  | { degrade: false; requestedSchema: ElicitRequestedSchema; message: string }
+  /**
+   * The tool input contains a sensitive field (password / sensitive:true).
+   * Form-mode MUST NOT expose secrets as form properties — the caller must
+   * use URL/oob elicitation instead (or portal DB-pause when the client has
+   * no oob capability).
+   *
+   * `degrade: true` so the existing `if (r.degrade)` guards in callers still
+   * exclude this arm when they only want a fully-mapped schema. The
+   * `sensitive: true` discriminant lets the `pauseForUserInput` handler
+   * distinguish a secret field from an ordinary schema-mapping failure and
+   * route it to URL/portal handling before any form-mode elicitation.
+   */
+  | { degrade: true; sensitive: true; message: string };
 
 interface SelectOption {
   value: string;
@@ -144,6 +157,11 @@ export function mapAskUserToPrimitiveSchema(
       const question = typeof obj.question === "string" ? obj.question : null;
       const fields = Array.isArray(obj.fields) ? (obj.fields as FormFieldDefinition[]) : null;
       if (!question || !fields || fields.length < 1) return { degrade: true };
+      // Spec MUST: form-mode elicitation MUST NOT request passwords/API keys/secrets.
+      // Detect sensitive fields BEFORE any mapping so no secret can reach the
+      // form-schema path regardless of what `mapFormFieldToPrimitive` does.
+      const hasSensitive = fields.some((f) => f.type === "password" || f.sensitive === true);
+      if (hasSensitive) return { degrade: true, sensitive: true, message: question };
       const properties: Record<string, SchemaProperty> = {};
       const required: string[] = [];
       for (const field of fields) {
@@ -183,8 +201,11 @@ function mapFormFieldToPrimitive(field: FormFieldDefinition): SchemaProperty | n
         ...base,
         ...(typeof field.default === "string" ? { default: field.default } : {}),
       };
-    case "password":
-      return { type: "string", ...base };
+    // "password" is intentionally absent: the sensitive-field guard in
+    // mapAskUserToPrimitiveSchema catches password fields before this
+    // function is ever called, returning the { sensitive: true } arm.
+    // Removing the case here is defence-in-depth: no code path can
+    // silently emit a password field as a form property.
     case "number":
       return {
         type: "number",
