@@ -1,5 +1,10 @@
 # Changelog
 
+## [7.22.6] – 2026-06-30
+- fix(conversations): workflow-edit verb hygiene + honest conversation_commit (v7.22.6) — RC2 conversation_commit no longer reports success while a draft has uncommitted structural edits; `update_workflow` (metadata-only, preview-free) is steered by prompt+skill and refuses structural-dirty drafts; new `update_workflow_metadata` commit_intent kind auto-persists metadata edits
+- fix(conversations): stop authoring drift + silent write no-op (v7.22.5) — DATA-NOT-INSTRUCTIONS guard so a stored workflow description is read as data not commands; auto-persist emits an honest `write_not_dispatched` signal on an approved write-confirm that carried no commit_intent
+- fix(conversations): honor portal {approved:true} confirmations in auto-persist (v7.22.4)
+
 ## [7.22.1] – 2026-06-29
 - fix(authoring): ground request paths in discovered endpoints — no invented routes (v7.22.1)
 - fix(docker): retry bun install in image build to survive flaky QEMU tarball extraction
