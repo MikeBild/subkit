@@ -57,6 +57,11 @@ const QUIET_TRUE = /quiet\s*:\s*true\b/;
 //   - the same operator-digest `stats:read` probe on the resources/list
 //     enumeration (runs on every connect too; visibility == access, so a
 //     member lacking stats:read is routine — the digest READ handler stays loud)
+//   - the MCP argument-completion probes (`skill:read` / `workflow:read`
+//     before returning completion values for a skill/workflow id). A
+//     "no" returns empty completions — the user is typing an argument
+//     that may reference a resource they cannot read, which is routine,
+//     not an operator-actionable deny.
 //   - the evaluator's own type definition (the `quiet?: boolean` doc) and
 //     the `connectorAccessLevel` probe (read/write level introspection —
 //     a "no" on write is a routine level outcome, not an incident)
@@ -66,6 +71,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/http/routes/oauth/shared.ts",
   "apps/engine/src/mcp/server.ts",
   "apps/engine/src/mcp/capabilities/resources.ts",
+  "apps/engine/src/mcp/capabilities/completion.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",
   "apps/engine/src/rbac/tests/quiet-flag-guard.test.ts",
