@@ -193,7 +193,10 @@ describe("MCP tool surface", () => {
     // object schema via zodToMcpSchema.
     const listWorkflows = tools.find((t) => t.name === "list_workflows");
     expect(listWorkflows).toBeDefined();
-    expect(listWorkflows?.title).toBe("list_workflows");
+    // `title` is the human-readable label derived Title-Case from the
+    // snake_case `name` (titleFromName in adapter.ts) — MCP clients render
+    // `title` and fall back to `name` only when it is absent.
+    expect(listWorkflows?.title).toBe("List Workflows");
     expect(listWorkflows?.execution?.taskSupport).toBe("forbidden");
     const schema = listWorkflows?.inputSchema as {
       type?: string;
