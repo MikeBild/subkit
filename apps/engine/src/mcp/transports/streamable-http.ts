@@ -26,6 +26,7 @@ import { randomUUID } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { UnauthorizedError } from "../../http/errors.ts";
 import { requireAuth } from "../../http/middleware/auth.ts";
@@ -37,6 +38,21 @@ import { validateMcpStreamableHttpRequest } from "./guards.ts";
 interface Session {
   transport: WebStandardStreamableHTTPServerTransport;
   server: Server;
+  // Owner identity captured at `initialize`. The per-session `server` closes
+  // over this principal's tenant/permissions, so every later request on this
+  // session id MUST come from the same principal — otherwise a leaked session
+  // id would let a second valid token execute inside the owner's tenant
+  // context (MCP Security Best Practices: sessions MUST NOT be used for
+  // authentication; bind the session id to the authorized user).
+  owner: string;
+}
+
+// Stable key for the principal that owns a session. Ties the session to the
+// authenticated identity (tenant + actor + credential), not to the session id
+// alone. Two distinct tokens — even for the same user — produce different keys
+// so a token swap cannot ride an existing session.
+function ownerKey(p: ResolvedPrincipal): string {
+  return `${p.tenant_id}:${p.id}:${p.api_key_id ?? p.session_id ?? p.provider}`;
 }
 
 export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -104,6 +120,30 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
           { status: 404, headers: { "content-type": "application/json" } },
         );
       }
+      // The session id resolved, but the credential on THIS request must match
+      // the principal that opened the session. A valid token belonging to a
+      // different tenant/user (or a different credential for the same user)
+      // that presents a leaked session id would otherwise execute inside the
+      // owner's server instance — a session-hijack / confused-deputy path. Do
+      // not disclose that the id exists: answer with the same 404 the
+      // stale-session branch returns.
+      if (session.owner !== ownerKey(principal)) {
+        logger.warn({
+          module: "mcp",
+          action: "mcp.session.principal_mismatch",
+          msg: "mcp session id presented by a different principal — rejecting",
+          session_id: sessionHeader,
+          principal_id: principal.id,
+        });
+        return new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Session not found" },
+            id: null,
+          }),
+          { status: 404, headers: { "content-type": "application/json" } },
+        );
+      }
     }
 
     if (!session) {
@@ -116,7 +156,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
         // requests require the POST to keep an SSE stream open.
         enableJsonResponse: false,
         onsessioninitialized: (sid) => {
-          sessions.set(sid, { transport, server });
+          sessions.set(sid, { transport, server, owner: ownerKey(principal) });
           logger.info({
             module: "mcp",
             action: "mcp.session.init",
@@ -181,7 +221,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
         });
       };
       await server.connect(transport);
-      session = { transport, server };
+      session = { transport, server, owner: ownerKey(principal) };
     }
 
     // Standalone GET SSE stream: the SDK permits exactly ONE per session

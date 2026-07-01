@@ -141,7 +141,12 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
   const server = new Server(
     {
       name: "subkit-engine",
+      title: "sk",
       version: resolveEngineVersion(),
+      description:
+        "Run your business workflows as governed, audited, versioned executions — " +
+        "every run permission-checked, recorded, and replayable. Describe an outcome " +
+        "in plain language and sk turns it into a runnable, governed workflow.",
     },
     {
       capabilities: {
