@@ -1,6 +1,5 @@
-// Unit tests for the auto-upload preprocessor that turns absolute
-// local paths in chat prompts into `@file:fid_…` mentions before the
-// message reaches the agent. Two surfaces under test:
+// Unit tests for the local-path preprocessor. Text-like local paths
+// are read into prompt context; binary paths are uploaded as files.
 //
 // - `extractCandidatePaths` — pure regex + sanitization. No I/O.
 //   Pins the regression where a `.md` directory component (e.g.
@@ -9,16 +8,18 @@
 //   " in sk") would be glued onto the path token.
 //
 // - `autoUploadLocalPaths` — exercises the orchestrator with a real
-//   temp file and a fake EngineClient. Verifies that uploaded paths
-//   get replaced by `@file:fid_…` mentions and missing paths are
-//   skipped silently.
+//   temp file and a fake EngineClient.
 
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EngineClient } from "../engine-client.ts";
-import { autoUploadLocalPaths, extractCandidatePaths } from "./path-preprocessor.ts";
+import {
+  autoUploadLocalPaths,
+  extractCandidatePaths,
+  inferLocalPathMode,
+} from "./path-preprocessor.ts";
 
 describe("extractCandidatePaths", () => {
   test("extracts a bare absolute path from a natural-language prompt", () => {
@@ -28,7 +29,7 @@ describe("extractCandidatePaths", () => {
   });
 
   test("preserves the .md file extension when a directory in the path also ends in .md", () => {
-    // Regression: the existing `/knowledge` / `/attach` slash handlers
+    // Regression: earlier slash-path handling
     // would mangle this path into `OCPP-2.0.1.` or `OCPP-2.0.1` after
     // paste artifacts. The extractor must keep the file suffix intact.
     const path = "/Users/me/ocpp.md/docs/OCPP-2.0.1.md";
@@ -67,16 +68,34 @@ describe("extractCandidatePaths", () => {
     expect(out.map((c) => c.cleaned)).toEqual(["~/notes/foo.md", "./local.md"]);
   });
 
+  test("recognises quoted paths with spaces", () => {
+    const out = extractCandidatePaths('ingest "/tmp/invoice draft.md" now');
+    expect(out[0]?.raw).toBe('"/tmp/invoice draft.md"');
+    expect(out[0]?.cleaned).toBe("/tmp/invoice draft.md");
+  });
+
+  test("recognises shell-escaped spaces", () => {
+    const out = extractCandidatePaths("ingest /tmp/invoice\\ draft.md now");
+    expect(out[0]?.raw).toBe("/tmp/invoice\\ draft.md");
+    expect(out[0]?.cleaned).toBe("/tmp/invoice draft.md");
+  });
+
+  test("recognises file URLs from terminal drag/drop", () => {
+    const out = extractCandidatePaths("ingest file:///tmp/invoice%20draft.md now");
+    expect(out[0]?.raw).toBe("file:///tmp/invoice%20draft.md");
+    expect(out[0]?.cleaned).toBe("/tmp/invoice draft.md");
+  });
+
   test("returns no candidates for messages without paths", () => {
     expect(extractCandidatePaths("list my workflows")).toHaveLength(0);
   });
 
   test("does not glue an in-prose word onto the path", () => {
-    // The error reported from the slash-handler showed " in sk" being
+    // The error reported from path handling showed " in sk" being
     // treated as part of the path after a paste. The path regex stops
     // at whitespace, so this can't happen in the preprocessor.
-    const out = extractCandidatePaths("/attach /Users/me/foo.md in sk");
-    expect(out.map((c) => c.cleaned)).toEqual(["/attach", "/Users/me/foo.md"]);
+    const out = extractCandidatePaths("use /Users/me/foo.md in sk");
+    expect(out.map((c) => c.cleaned)).toEqual(["/Users/me/foo.md"]);
   });
 });
 
@@ -116,17 +135,47 @@ describe("autoUploadLocalPaths", () => {
     return { client, uploads, links };
   }
 
-  test("rewrites a single absolute path to @file:fid_… and uploads once", async () => {
-    const path = makeTempFile("doc.md");
+  test("infers knowledge-source wording as upload mode", () => {
+    expect(inferLocalPathMode("ingest /tmp/doc.md as knowledge source")).toBe("knowledge_source");
+    expect(inferLocalPathMode("render /tmp/doc.md with render-upload-slides")).toBe(
+      "workflow_input",
+    );
+  });
+
+  test("reads a single text path into prompt context without uploading", async () => {
+    const path = makeTempFile("doc.md", "# Deck\n\nHello");
     const { client, uploads, links } = fakeClient();
-    const result = await autoUploadLocalPaths(`ingest ${path} as knowledge`, client, "/", "conv-1");
+    const result = await autoUploadLocalPaths(
+      `render ${path} with render-upload-slides`,
+      client,
+      "/",
+      "conv-1",
+    );
+    expect(uploads).toHaveLength(0);
+    expect(links).toHaveLength(0);
+    expect(result.uploaded).toHaveLength(0);
+    expect(result.inlined).toHaveLength(1);
+    expect(result.rewritten).toContain(path);
+    expect(result.rewritten).toContain("## Local file contents: doc.md");
+    expect(result.rewritten).toContain("# Deck");
+  });
+
+  test("uploads a text path for knowledge-source intent", async () => {
+    const path = makeTempFile("doc.md", "# Knowledge\n\nHello");
+    const { client, uploads, links } = fakeClient();
+    const result = await autoUploadLocalPaths(
+      `ingest ${path} as knowledge source`,
+      client,
+      "/",
+      "conv-1",
+    );
     expect(uploads).toHaveLength(1);
     expect(uploads[0]?.filename).toBe("doc.md");
     expect(links).toHaveLength(1);
-    expect(links[0]?.resource_id).toBe("conv-1");
+    expect(result.inlined).toHaveLength(0);
     expect(result.uploaded).toHaveLength(1);
     expect(result.rewritten).toContain("@file:fid_00000000-0000-0000-0000-000000000001");
-    expect(result.rewritten).not.toContain(path);
+    expect(result.rewritten).not.toContain("## Local file contents");
   });
 
   test("silently skips non-existent paths and leaves them in the prompt", async () => {
@@ -143,34 +192,39 @@ describe("autoUploadLocalPaths", () => {
     expect(result.rewritten).toContain("/tmp/definitely-not-a-real-file-xyz123.md");
   });
 
-  test("uploads multiple paths and rewrites each one", async () => {
+  test("reads multiple text paths and appends each content block", async () => {
     const a = makeTempFile("a.md", "aaa");
     const b = makeTempFile("b.md", "bbb");
-    const fids = [
-      "fid_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      "fid_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-    ];
-    let i = 0;
-    const client = {
-      async uploadInline(file: { filename: string }) {
-        const fid = fids[i++] ?? "fid_00000000-0000-0000-0000-000000000000";
-        return {
-          id: fid,
-          filename: file.filename,
-          content_type: "text/markdown",
-          size_bytes: 3,
-          sha256: "x",
-          created_at: "2024-11-14T22:13:20.000Z", // FROZEN_NOW
-        };
-      },
-      async linkFile() {
-        return { id: "fl", file_id: "x", resource_id: "y" };
-      },
-    } as unknown as EngineClient;
+    const { client } = fakeClient();
     const result = await autoUploadLocalPaths(`merge ${a} and ${b}`, client, "/", "c-1");
-    expect(result.uploaded).toHaveLength(2);
-    expect(result.rewritten).toContain(`@file:${fids[0]}`);
-    expect(result.rewritten).toContain(`@file:${fids[1]}`);
+    expect(result.uploaded).toHaveLength(0);
+    expect(result.inlined).toHaveLength(2);
+    expect(result.rewritten).toContain("## Local file contents: a.md");
+    expect(result.rewritten).toContain("aaa");
+    expect(result.rewritten).toContain("## Local file contents: b.md");
+    expect(result.rewritten).toContain("bbb");
+  });
+
+  test("reads a quoted text path with spaces on submit", async () => {
+    const path = makeTempFile("invoice draft.md", "invoice text");
+    const { client } = fakeClient();
+    const result = await autoUploadLocalPaths(`render "${path}"`, client, "/", "conv-1");
+    expect(result.inlined).toHaveLength(1);
+    expect(result.uploaded).toHaveLength(0);
+    expect(result.rewritten).toContain("invoice text");
+  });
+
+  test("uploads a binary path and rewrites it to @file:fid_…", async () => {
+    const path = makeTempFile("image.png", "not really png");
+    const { client, uploads, links } = fakeClient();
+    const result = await autoUploadLocalPaths(`attach ${path}`, client, "/", "conv-1");
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]?.filename).toBe("image.png");
+    expect(links).toHaveLength(1);
+    expect(result.inlined).toHaveLength(0);
+    expect(result.uploaded).toHaveLength(1);
+    expect(result.rewritten).toContain("@file:fid_00000000-0000-0000-0000-000000000001");
+    expect(result.rewritten).not.toContain(path);
   });
 
   test("returns the input unchanged when no paths are present", async () => {
@@ -178,12 +232,13 @@ describe("autoUploadLocalPaths", () => {
     const result = await autoUploadLocalPaths("list my workflows", client, "/", "c");
     expect(uploads).toHaveLength(0);
     expect(result.rewritten).toBe("list my workflows");
+    expect(result.inlined).toHaveLength(0);
     expect(result.uploaded).toHaveLength(0);
     expect(result.skipped).toHaveLength(0);
   });
 
   test("upload failure is reported in skipped, prompt left unchanged", async () => {
-    const path = makeTempFile("doc.md");
+    const path = makeTempFile("blob.pdf");
     const client = {
       async uploadInline() {
         throw new Error("network blew up");

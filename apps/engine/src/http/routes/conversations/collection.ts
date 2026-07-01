@@ -141,6 +141,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(body.model ? { model: body.model } : {}),
       ...(body.title ? { title: body.title } : {}),
       ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
+      ...(body.playground ? { playground: body.playground } : {}),
     } as const;
     const runtimeContext = buildRuntimeContextFromRequest(c, principal);
 

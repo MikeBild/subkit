@@ -298,7 +298,7 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
   const firstPreviewIdx = obs.results.findIndex((r) => r.tool === "dry_run_workflow");
   const editedBeforePreview = obs.results
     .slice(0, firstPreviewIdx < 0 ? obs.results.length : firstPreviewIdx)
-    .some((r) => ["edit_workflow_patch", "update_param", "connect_steps"].includes(r.tool));
+    .some((r) => ["edit_workflow_patch"].includes(r.tool));
   if (editedBeforePreview) {
     notes.push("NON-ISOLATED: edit tool fired before first preview — exclude trial");
   }
@@ -306,7 +306,7 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
   // Trajectory metrics (orchestration eval): score the tool-call SEQUENCE, not
   // just the final output — the harness for the T-C question (do loop skills
   // steer better tool choice?). Pure ordering reads of the existing tool stream.
-  const AUTHOR_TOOLS = ["author_workflow", "build_workflow"];
+  const AUTHOR_TOOLS = ["author_workflow"];
   const authorIdx = obs.results.findIndex((r) => AUTHOR_TOOLS.includes(r.tool));
   // probe_before_author: did a probe_connector/call_connector precede the FIRST
   // author step? Authoring against real recorded shapes (vs guesses) is the

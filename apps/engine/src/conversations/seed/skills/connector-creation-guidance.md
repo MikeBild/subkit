@@ -36,7 +36,7 @@ save_workflow  ◄──  author_workflow  ◄──  test_connector  ◄──�
 | 2. create_connector_draft | `start_connector_from_description` / `start_connector_from_template` / `import_connector_from_spec` | `connector_inspected`, then `connector_validated` |
 | 3. authenticate_connector | • `auth_type=bearer/header/query/basic/aws_sigv4`: `ask_user_form(type=password,sensitive=true)` — credential lands on the draft only, persistence happens at probe time<br>• `auth_type=oauth2`: `ask_user_form` carries `commit_intent: save_connector` so the harness saves the draft on submit, then `authenticate_oauth` runs against the persisted row | `connector_authenticated` |
 | 4. test_connector | `probe_connector_draft` | `connector_probed` AND (on green probe) `connector_persisted` — the probe tool calls `saveConnectorAtomic` inline; no separate save call |
-| 5. author_workflow | `author_workflow` (one call generates + evaluates the complete draft; `build_workflow` when you already hold the exact definition). `propose_step` / `update_param` / `edit_workflow_patch` are repair tools for specific findings — the first two refuse with `authoring_stage_violation` until a preview or findings exist | `workflow_inspected` → `workflow_validated` → `workflow_previewed` |
+| 5. author_workflow | `author_workflow` (one call generates + evaluates the complete draft — the grounded pipeline builder). `edit_workflow_patch` is THE editor for targeted findings (path fix, repaired expression, limit change) afterwards | `workflow_inspected` → `workflow_validated` → `workflow_previewed` |
 | 6. save_workflow | `dry_run_workflow` (holds writes; auto-commits on a clean preview with a passing judge verdict) | `workflow_previewed` AND (on green, judged preview) `workflow_persisted` |
 
 `config.oauth` is **never** written by hand on the draft — it is owned by the
@@ -96,7 +96,7 @@ Order of operations after a URL paste:
 
 1. `match_connector_template_by_url({ url })` — read all three signals above.
 2. If `existing_connector_candidates[0].reuse_recommendation === "exact_match_reuse"`,
-   skip directly to `build_workflow` against the existing connector.
+   skip directly to `author_workflow` against the existing connector.
 3. Otherwise, follow the happy path below — but pass `resolved_resource` (when
    present) into the first request step so the dry-run hits the real resource.
 

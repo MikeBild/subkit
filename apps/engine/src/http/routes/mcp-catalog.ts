@@ -84,16 +84,16 @@ const toolsRoute = createRoute({
 // surface does not pull in the loop module.
 const CONVERSATION_TOOLS = [
   {
-    name: "propose_step",
-    description: "Propose a new step for the current workflow draft",
+    name: "author_workflow",
+    description: "Author a complete workflow draft in one grounded call",
   },
   {
-    name: "update_param",
-    description: "Update a parameter on an existing step",
+    name: "edit_workflow_patch",
+    description: "Apply an RFC 6902 JSON Patch to the current workflow draft",
   },
   {
-    name: "connect_steps",
-    description: "Wire two steps together with an explicit data path",
+    name: "dry_run_workflow",
+    description: "Preview the draft end-to-end; a green preview auto-commits",
   },
   {
     name: "dry_run_step",

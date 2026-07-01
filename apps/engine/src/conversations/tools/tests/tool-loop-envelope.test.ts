@@ -127,13 +127,26 @@ describe("adaptive loop-breaker structured envelope", () => {
       ["workflow-authoring"],
       {},
     );
-    const propose = wrapped.propose_step;
-    expect(propose).toBeDefined();
+    const editPatch = wrapped.edit_workflow_patch;
+    expect(editPatch).toBeDefined();
     // Same args three times in a row → trips on the 3rd.
-    const sameArgs = { step: { id: "x", kind: "transform", expression: "$input.n" } };
+    const sameArgs = {
+      patches: [
+        {
+          op: "add",
+          path: "/steps/-",
+          value: {
+            id: "x",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.n;",
+          },
+        },
+      ],
+    };
     for (let i = 1; i <= 2; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-      const result = await (propose!.execute as any)(sameArgs, {
+      const result = await (editPatch!.execute as any)(sameArgs, {
         toolCallId: `t${i}`,
         messages: [],
       });
@@ -142,7 +155,7 @@ describe("adaptive loop-breaker structured envelope", () => {
     }
     // 3rd identical call trips.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const result3 = await (propose!.execute as any)(sameArgs, {
+    const result3 = await (editPatch!.execute as any)(sameArgs, {
       toolCallId: "t3",
       messages: [],
     });
@@ -188,14 +201,27 @@ describe("adaptive loop-breaker structured envelope", () => {
       ["workflow-authoring"],
       {},
     );
-    const propose = wrapped.propose_step;
-    // Five propose_step calls with DIFFERENT step ids — the canonical
-    // 5-step workflow build. Pre-fix this tripped the cap at call 6.
-    // Post-fix the args differ each time so no repeat is detected.
+    const editPatch = wrapped.edit_workflow_patch;
+    // Five edit_workflow_patch calls with DIFFERENT step ids — the
+    // canonical incremental build. The args differ each time so no
+    // repeat is detected.
     for (let i = 1; i <= 5; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-      const result = await (propose!.execute as any)(
-        { step: { id: `s${i}`, kind: "transform", expression: "$input.n" } },
+      const result = await (editPatch!.execute as any)(
+        {
+          patches: [
+            {
+              op: "add",
+              path: "/steps/-",
+              value: {
+                id: `s${i}`,
+                kind: "transform",
+                language: "javascript",
+                expression: "return input.n;",
+              },
+            },
+          ],
+        },
         { toolCallId: `t${i}`, messages: [] },
       );
       const data = result.data as { error_code?: string };

@@ -1,8 +1,8 @@
 // Shared MIME map for sk CLI surfaces that upload local files.
 //
 // Single source of truth: `sk files upload`, `sk knowledge-sources
-// create --file`, `sk discovery create --file`, `sk attach`, the REPL
-// `/upload` slash, and the headless `--attach` flag all funnel through
+// create --file`, `sk discovery create --file`, REPL file-paste
+// auto-upload, and the headless `--attach` flag all funnel through
 // `detectMime(path)` before handing bytes to the engine. Duplicated
 // extension tables in command files used to drift — this module is the
 // one place that table lives now.

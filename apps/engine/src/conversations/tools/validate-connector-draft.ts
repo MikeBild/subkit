@@ -13,6 +13,7 @@ export const validateConnectorDraftTool: ConversationTool = {
     "Validate the current connector draft and persist the validation result back into the conversation draft.",
   inputSchema,
   category: "draft_write",
+  requires_draft: true,
   async execute(ctx): Promise<ToolResult> {
     const draft = ctx.getDraft();
     const connector = draft.connector ?? null;

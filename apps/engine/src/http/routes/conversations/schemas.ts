@@ -124,6 +124,10 @@ export const CreateBody = z
     title: z.string().optional(),
     permission_mode: PermissionModeSchema.optional(),
     step_budget: z.number().int().min(1).max(64).optional(),
+    // Additive optional: start this conversation as a playground/sandbox
+    // authoring surface (scratch draft, workflow-authoring preloaded,
+    // commit persists nothing). Durable on the draft row, never an env flag.
+    playground: z.boolean().optional(),
   })
   .openapi("CreateConversationBody");
 

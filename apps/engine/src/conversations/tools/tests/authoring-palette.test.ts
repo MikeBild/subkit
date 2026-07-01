@@ -160,7 +160,7 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
       { name: "probe_connector_draft" },
       { name: "save_connector_draft" },
       { name: "authenticate_oauth" },
-      { name: "build_workflow" }, // workflow-only
+      { name: "edit_workflow_patch" }, // workflow-only
     ] as const;
     const filtered = filterByAuthoringPalette(tools, draft, ONLY_CONNECTOR);
     const names = filtered.map((t) => t.name);
@@ -168,7 +168,7 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
     expect(names).toContain("inspect_connector_draft");
     expect(names).toContain("save_connector_draft");
     expect(names).toContain("authenticate_oauth");
-    expect(names).not.toContain("build_workflow");
+    expect(names).not.toContain("edit_workflow_patch");
   });
 
   test("workflow-authoring loaded ⇒ workflow + persistence + execution tools exposed", () => {
@@ -176,9 +176,9 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
       workflow: { name: "", steps: [] } as never,
     };
     const tools = [
-      { name: "build_workflow" },
+      { name: "edit_workflow_patch" },
       { name: "start_workflow_from_recipe" },
-      { name: "propose_step" },
+      { name: "author_workflow" },
       { name: "validate_draft" },
       { name: "dry_run_workflow" },
       { name: "save_workflow_draft" },
@@ -188,10 +188,10 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
     ] as const;
     const filtered = filterByAuthoringPalette(tools, draft, ONLY_WORKFLOW);
     const names = filtered.map((t) => t.name);
-    expect(names).toContain("build_workflow");
+    expect(names).toContain("edit_workflow_patch");
     // Regression: start_workflow_from_recipe must be exposed in the
     // authoring conversation so recipes can be cloned (pre-fix it was
-    // omitted, forcing error-prone free-form build_workflow).
+    // omitted, forcing error-prone free-form edit_workflow_patch).
     expect(names).toContain("start_workflow_from_recipe");
     expect(names).toContain("save_workflow_draft");
     expect(names).toContain("run_workflow");
@@ -210,7 +210,7 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
       { name: "list_connectors" },
       { name: "delete_connector" },
       { name: "save_connector_draft" }, // connector-skill required
-      { name: "build_workflow" }, // workflow-skill required
+      { name: "edit_workflow_patch" }, // workflow-skill required
     ] as const;
     const filtered = filterByAuthoringPalette(tools, draft, NO_SKILLS);
     const names = filtered.map((t) => t.name);
@@ -219,7 +219,7 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
     expect(names).toContain("list_connectors");
     expect(names).toContain("delete_connector");
     expect(names).not.toContain("save_connector_draft");
-    expect(names).not.toContain("build_workflow");
+    expect(names).not.toContain("edit_workflow_patch");
   });
 });
 

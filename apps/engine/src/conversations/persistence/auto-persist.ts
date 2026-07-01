@@ -55,16 +55,23 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
-import { conversationToolCalls } from "../../db/schema/index.ts";
+import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { logger } from "../../logging/logger.ts";
+import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
+import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
+import type { WorkflowDef } from "../../workflows/types.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
+import { partitionDiffs, type ToolDiff } from "../json-patch-apply.ts";
+import { describePatchOps } from "../tools/ask-user/commit-intent.ts";
 import { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
+import { applyWorkflowPatchToDraft } from "../tools/edit-workflow-patch.ts";
 import { createApiKeyTool } from "../tools/generated/writes/create-api-key.ts";
 import { updateWorkflowTool } from "../tools/generated/writes/update-workflow.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { normalizeWorkflowInput, workflowInputRecord } from "../tools/workflow-input-normalize.ts";
 import { mergeFormIntoCredential } from "./auto-persist/credential-cache.ts";
 import {
   dispatchDeleteConnector,
@@ -146,6 +153,30 @@ function readFormValues(output: unknown): Record<string, unknown> {
   return obj;
 }
 
+function readSubmittedWorkflowInput(toolName: string, output: unknown): Record<string, unknown> {
+  return toolName === "ask_user_form" ? readFormValues(output) : {};
+}
+
+/**
+ * Read the operator's per-op selection from a `partial_diff_approval`
+ * confirm answer (D3). Returns:
+ *   - `null`   → no explicit selection on this surface (accept-all). The
+ *                MCP-native boolean-confirm bridge cannot express a subset,
+ *                so a bare `confirmed: true` accepts every op.
+ *   - `[...]`  → the accepted op indices, de-duped, in-range, sorted. An
+ *                explicit empty array means "none accepted" (honest no-op).
+ */
+function readApprovedIndices(output: unknown, total: number): number[] | null {
+  const o = output && typeof output === "object" ? (output as Record<string, unknown>) : null;
+  const raw = o?.approved_indices;
+  if (!Array.isArray(raw)) return null;
+  const seen = new Set<number>();
+  for (const n of raw) {
+    if (typeof n === "number" && Number.isInteger(n) && n >= 0 && n < total) seen.add(n);
+  }
+  return [...seen].sort((a, b) => a - b);
+}
+
 export async function maybeAutoPersistFromElicitation(
   p: AutoPersistInput,
 ): Promise<AutoPersistDispatch> {
@@ -201,7 +232,10 @@ export async function maybeAutoPersistFromElicitation(
         ok: false,
         error_code: "write_not_dispatched",
         message: `You approved a write confirmation (kind=${inputKind}) but it carried no commit_intent, so the harness performed NO write — nothing was persisted or executed. Do NOT report success. To actually perform it, re-issue ask_user_confirm with a commit_intent (e.g. {kind: "save_workflow_draft"} for a workflow step edit, {kind: "update_workflow_metadata", payload:{id,description}} for a metadata/description edit, {kind: "run_workflow", payload:{workflow_id,…}} for a run), OR call the underlying write tool now and confirm its result before telling the user it succeeded.`,
-        next_best_actions: ["ask_user_confirm", "save_workflow_draft"],
+        next_best_actions:
+          inputKind === "external_write"
+            ? ["run_workflow", "ask_user_confirm"]
+            : ["ask_user_confirm", "save_workflow_draft"],
         source: "harness_auto_persist",
       };
       const callId = await injectSyntheticToolCall({
@@ -313,6 +347,82 @@ export async function maybeAutoPersistFromElicitation(
         });
         break;
       }
+      case "apply_workflow_patch": {
+        // D3 — partial-accept of a workflow-draft edit. The commit_intent
+        // carries the full RFC-6902 patch array; the operator's per-op
+        // selection rides on `output.approved_indices`. Apply ONLY the
+        // accepted subset to the draft (via the SAME apply core the
+        // edit_workflow_patch tool uses, so every gate is identical), then
+        // report exactly which ops landed vs were skipped. The draft was
+        // never mutated before this point, so a decline (caught by
+        // checkDecline above) is a true no-op — nothing to roll back.
+        toolName = "edit_workflow_patch";
+        const rawPatches = intent.payload.patches;
+        const patches = Array.isArray(rawPatches) ? (rawPatches as ToolDiff[]) : null;
+        if (!patches || patches.length === 0) {
+          result = {
+            ok: false,
+            error_code: "invalid_commit_intent",
+            message: "apply_workflow_patch commit_intent is missing payload.patches",
+            data: {},
+          };
+          break;
+        }
+        const selection = readApprovedIndices(p.elicitation_output, patches.length);
+        const approvedIndices = selection ?? patches.map((_, i) => i);
+        const { approved, rejected } = partitionDiffs(patches, approvedIndices);
+        if (approved.length === 0) {
+          // The partial card sends `confirmed: false` when nothing is
+          // accepted (a decline, already handled by checkDecline). Reaching
+          // here means an explicit empty selection slipped through — honest
+          // no-op, NEVER a silent apply-all.
+          result = {
+            ok: false,
+            error_code: "no_ops_accepted",
+            message:
+              "no patch ops were accepted — the draft was left unchanged. Re-propose the edit or accept at least one op.",
+            data: {
+              applied_count: 0,
+              skipped_count: rejected.length,
+              skipped_ops: describePatchOps(rejected),
+            },
+          };
+          break;
+        }
+        const applyResult = await applyWorkflowPatchToDraft(ctx, approved);
+        if (applyResult.ok) {
+          const partial = rejected.length > 0;
+          const baseData =
+            applyResult.data && typeof applyResult.data === "object"
+              ? (applyResult.data as Record<string, unknown>)
+              : {};
+          result = {
+            ...applyResult,
+            data: {
+              ...baseData,
+              partial,
+              applied_count: approved.length,
+              skipped_count: rejected.length,
+              applied_ops: describePatchOps(approved),
+              ...(partial ? { skipped_ops: describePatchOps(rejected) } : {}),
+            },
+          };
+          logger.info({
+            module: "conversation_persistence",
+            action: "auto_persist.apply_workflow_patch",
+            msg: partial
+              ? "operator partially accepted a workflow-draft edit — applied a subset of ops"
+              : "operator accepted a workflow-draft edit — applied all ops",
+            tenant_id: p.tenant_id,
+            conversation_id: p.conversation_id,
+            applied_count: approved.length,
+            skipped_count: rejected.length,
+          });
+        } else {
+          result = applyResult;
+        }
+        break;
+      }
       case "delete_connector": {
         toolName = "delete_connector";
         result = await dispatchDeleteConnector(ctx, intent);
@@ -334,17 +444,32 @@ export async function maybeAutoPersistFromElicitation(
         // NOT trusted to re-issue the call with the answers (observed
         // live on 6.14.1: it re-called with empty input and looped).
         toolName = "run_workflow";
-        const workflowId = readString(intent.payload, "workflow_id");
-        const workflowSlug = readString(intent.payload, "workflow_slug") ?? workflowId ?? "";
-        if (!workflowId) {
+        const workflowRef =
+          readString(intent.payload, "workflow_id") ?? readString(intent.payload, "workflow");
+        if (!workflowRef) {
           result = {
             ok: false,
             error_code: "invalid_commit_intent",
-            message: "run_workflow commit_intent is missing payload.workflow_id",
+            message:
+              "run_workflow commit_intent is missing payload.workflow_id or payload.workflow",
             data: {},
           };
           break;
         }
+        const resolved = await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, workflowRef, {
+          require_published: true,
+        });
+        if (!resolved) {
+          result = {
+            ok: false,
+            error_code: "workflow_not_found",
+            message: `no workflow matched the reference '${workflowRef}'`,
+            data: { workflow: workflowRef },
+          };
+          break;
+        }
+        const workflowId = resolved.id;
+        const workflowSlug = readString(intent.payload, "workflow_slug") ?? resolved.slug;
         if (!p.principal) {
           result = {
             ok: false,
@@ -372,13 +497,72 @@ export async function maybeAutoPersistFromElicitation(
           };
           break;
         }
-        const partial =
-          intent.payload.input_partial && typeof intent.payload.input_partial === "object"
-            ? (intent.payload.input_partial as Record<string, unknown>)
-            : {};
-        const answers = readFormValues(p.elicitation_output);
-        const input = { ...partial, ...answers };
+        const normalizedPartial = normalizeWorkflowInput(intent.payload.input_partial);
+        const partial = workflowInputRecord(normalizedPartial);
+        const hasStructuredInput = normalizedPartial !== undefined && normalizedPartial !== null;
+        const answers = readSubmittedWorkflowInput(p.elicitation.tool_name, p.elicitation_output);
+        const input =
+          hasStructuredInput &&
+          (typeof normalizedPartial !== "object" || Array.isArray(normalizedPartial))
+            ? normalizedPartial
+            : { ...partial, ...answers };
+        // Missing-required guard. Resolve the workflow's effective input
+        // contract (declared input_schema OR the schema synthesized from
+        // `${input.*}` placeholders) and, when the merged form input is
+        // still missing a REQUIRED field, return a DIRECTIVE error naming
+        // the unbound fields + how to supply them — instead of letting the
+        // driver throw the opaque `input_schema_violation` at runtime (the
+        // `dispatch.threw` symptom: a {markdown, filename} workflow whose
+        // form collected only one field reached the driver and failed with
+        // "required field '<k>' is missing"). Only checked for the
+        // field-merge path (object input); a raw scalar/array passthrough
+        // is dispatched verbatim.
+        const inputIsObject = input !== null && typeof input === "object" && !Array.isArray(input);
+        if (inputIsObject) {
+          const wfForContract = await ctx.engineClient.workflows.get(workflowId);
+          const contract = wfForContract?.definition
+            ? resolveWorkflowInputContract(wfForContract.definition as WorkflowDef)
+            : null;
+          if (contract && contract.required.length > 0) {
+            const inputMap = workflowInputRecord(input);
+            const missing = contract.required.filter((k) => {
+              const v = inputMap[k];
+              return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
+            });
+            if (missing.length > 0) {
+              const fmt = (keys: string[]) => keys.map((k) => `\`${k}\``).join(", ");
+              result = {
+                ok: false,
+                error_code: "missing_workflow_input",
+                message: `Workflow "${workflowSlug}" cannot run: required input ${
+                  missing.length === 1 ? "field" : "fields"
+                } ${fmt(missing)} ${
+                  missing.length === 1 ? "is" : "are"
+                } missing from the submitted input. Re-issue run_workflow so it pauses with an ask_user_form that collects EVERY required field (${fmt(
+                  contract.required,
+                )}) — do NOT use a single ask_user_text; the harness runs the workflow with the submitted form values.`,
+                data: {
+                  workflow_id: workflowId,
+                  workflow_slug: workflowSlug,
+                  missing_fields: missing,
+                  required_fields: contract.required,
+                },
+              };
+              logger.info({
+                module: "conversation_persistence",
+                action: "auto_persist.run_workflow.missing_input",
+                msg: "run_workflow auto-dispatch blocked before dispatch: required input fields unbound",
+                tenant_id: p.tenant_id,
+                conversation_id: p.conversation_id,
+                workflow_id: workflowId,
+                missing_fields: missing,
+              });
+              break;
+            }
+          }
+        }
         const environment = readEnvironment(intent);
+        const executeWrites = intent.payload.execute_writes === true;
         const run = await runExecution({
           db: p.db,
           tenant_id: p.tenant_id,
@@ -389,8 +573,13 @@ export async function maybeAutoPersistFromElicitation(
             trace_id: null,
             principal: p.principal,
             execution_mode: environment,
+            ...(executeWrites ? {} : { hold_writes: true }),
           },
         });
+        await p.db
+          .update(conversations)
+          .set({ target_workflow_id: workflowId, updated_at: new Date() })
+          .where(eq(conversations.id, p.conversation_id));
         result = {
           ok: run.status === "succeeded",
           data: {
@@ -400,6 +589,7 @@ export async function maybeAutoPersistFromElicitation(
             workflow_slug: workflowSlug,
             input,
             output: run.output,
+            execute_writes: executeWrites,
             ...(run.warnings && run.warnings.length > 0 ? { warnings: run.warnings } : {}),
           },
         };

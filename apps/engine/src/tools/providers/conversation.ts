@@ -228,6 +228,7 @@ function descriptorFor(t: ConversationTool, surface: ToolSurface): ToolDescripto
     inputSchema: t.inputSchema,
     ...(disabled ? { disabled } : {}),
     ...(t.requires_skill ? { requires_skill: t.requires_skill } : {}),
+    ...(t.requires_draft ? { requires_draft: true } : {}),
     ...(rbac ? { rbac } : {}),
   };
 }

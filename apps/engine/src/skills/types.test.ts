@@ -25,8 +25,8 @@ describe("SkillActivationSchema — discriminated union", () => {
     expect(
       SkillActivationSchema.safeParse({
         kind: "tool_arg",
-        tool: "propose_step",
-        path: "step.kind",
+        tool: "edit_workflow_patch",
+        path: "patches[*].value.kind",
         equals: "request",
       }).success,
     ).toBe(true);

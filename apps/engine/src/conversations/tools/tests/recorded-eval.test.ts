@@ -60,7 +60,7 @@ describe("runRecordedEval — compile findings", () => {
     expect(typeof finding?.message).toBe("string");
     expect((finding?.message ?? "").length).toBeGreaterThan(0);
     expect(report.ok).toBe(false);
-    expect(report.next_actions).toContain("update_param");
+    expect(report.next_actions).toContain("edit_workflow_patch");
   });
 });
 
@@ -183,7 +183,7 @@ describe("runRecordedEval — bare-iteration-identifier lint (item_var retiremen
     expect(finding?.message).toContain("`item`");
     expect(finding?.message).toContain("$item");
     expect(report.ok).toBe(false);
-    expect(report.next_actions).toContain("update_param");
+    expect(report.next_actions).toContain("edit_workflow_patch");
   });
 
   test("a JavaScript loop-body transform is unaffected by the JSONata lint", async () => {

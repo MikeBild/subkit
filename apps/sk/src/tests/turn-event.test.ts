@@ -27,13 +27,13 @@ describe("sk turn-event reducer", () => {
     s = applyTurnEvent(s, {
       type: "tool_call_start",
       call_id: "t1",
-      tool: "propose_step",
+      tool: "edit_workflow_patch",
       input_partial: { x: 1 },
     });
     s = applyTurnEvent(s, {
       type: "tool_result",
       call_id: "t1",
-      tool: "propose_step",
+      tool: "edit_workflow_patch",
       output: { ok: true },
     });
     expect(s.toolCalls.length).toBe(1);
@@ -144,7 +144,7 @@ describe("sk turn-event reducer", () => {
     s = applyTurnEvent(s, {
       type: "tool_call_start",
       call_id: "call-2",
-      tool: "build_workflow",
+      tool: "author_workflow",
     });
     expect(s.validationErrors).toEqual([]);
     expect(s.status).toBe("running");

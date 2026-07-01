@@ -52,7 +52,7 @@ describe("extractWorkflowIntent", () => {
   };
 
   test("valid payload returns WorkflowIntent with name, slug, trigger, steps", () => {
-    const call = withResult("build_workflow", validWorkflowData);
+    const call = withResult("edit_workflow_patch", validWorkflowData);
     const result = extractWorkflowIntent(call);
     expect(result).not.toBeNull();
     expect(result?.kind).toBe("workflow");
@@ -69,13 +69,13 @@ describe("extractWorkflowIntent", () => {
   });
 
   test("steps without connector_slug do not include that field", () => {
-    const call = withResult("build_workflow", validWorkflowData);
+    const call = withResult("edit_workflow_patch", validWorkflowData);
     const result = extractWorkflowIntent(call);
     expect(result?.steps[1]).not.toHaveProperty("connector_slug");
   });
 
   test("webhook trigger is extracted correctly", () => {
-    const call = withResult("build_workflow", {
+    const call = withResult("edit_workflow_patch", {
       workflow: {
         name: "PR Handler",
         definition: {
@@ -93,7 +93,7 @@ describe("extractWorkflowIntent", () => {
   });
 
   test("request trigger (no events or cron) falls back to {kind: 'request'}", () => {
-    const call = withResult("build_workflow", {
+    const call = withResult("edit_workflow_patch", {
       workflow: {
         name: "On Demand",
         definition: {
@@ -107,7 +107,7 @@ describe("extractWorkflowIntent", () => {
   });
 
   test("steps can live at top-level workflow.steps (no definition wrapper)", () => {
-    const call = withResult("build_workflow", {
+    const call = withResult("edit_workflow_patch", {
       workflow: {
         name: "Flat Steps",
         steps: [{ key: "s1", kind: "request" }],
@@ -120,14 +120,14 @@ describe("extractWorkflowIntent", () => {
   });
 
   test("missing steps → returns null", () => {
-    const call = withResult("build_workflow", {
+    const call = withResult("edit_workflow_patch", {
       workflow: { name: "No Steps", definition: { trigger: { kind: "request" } } },
     });
     expect(extractWorkflowIntent(call)).toBeNull();
   });
 
   test("missing name → returns null", () => {
-    const call = withResult("build_workflow", {
+    const call = withResult("edit_workflow_patch", {
       workflow: {
         definition: {
           trigger: { kind: "request" },
@@ -139,22 +139,25 @@ describe("extractWorkflowIntent", () => {
   });
 
   test("result is null → returns null", () => {
-    const call = makeCall({ name: "build_workflow", result: null });
+    const call = makeCall({ name: "edit_workflow_patch", result: null });
     expect(extractWorkflowIntent(call)).toBeNull();
   });
 
   test("result.data is null → returns null", () => {
-    const call = makeCall({ name: "build_workflow", result: { ok: true, data: null } });
+    const call = makeCall({ name: "edit_workflow_patch", result: { ok: true, data: null } });
     expect(extractWorkflowIntent(call)).toBeNull();
   });
 
   test("result.data is a string → returns null", () => {
-    const call = makeCall({ name: "build_workflow", result: { ok: true, data: "unexpected" } });
+    const call = makeCall({
+      name: "edit_workflow_patch",
+      result: { ok: true, data: "unexpected" },
+    });
     expect(extractWorkflowIntent(call)).toBeNull();
   });
 
   test("steps array contains non-objects → they are filtered out", () => {
-    const call = withResult("build_workflow", {
+    const call = withResult("edit_workflow_patch", {
       workflow: {
         name: "Mixed Steps",
         definition: {
@@ -169,7 +172,7 @@ describe("extractWorkflowIntent", () => {
   });
 
   test("name is a number → returns null", () => {
-    const call = withResult("build_workflow", {
+    const call = withResult("edit_workflow_patch", {
       workflow: {
         name: 123,
         definition: {
@@ -185,7 +188,7 @@ describe("extractWorkflowIntent", () => {
     // The extractors operate on result payload, not call.status
     const call: ToolCallState = {
       id: "tc-err",
-      name: "build_workflow",
+      name: "edit_workflow_patch",
       args: {},
       status: "failed",
       result: { ok: false, data: validWorkflowData },

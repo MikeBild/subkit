@@ -1,22 +1,13 @@
-// build_workflow / propose_step / update_param /
-// inspect_workflow are gated on the `workflow-authoring` skill being
-// loaded — the
-// model cannot author a workflow without first reading the contract.
+// edit_workflow_patch / inspect_workflow are gated on the
+// `workflow-authoring` skill being loaded — the model cannot edit a
+// workflow draft without first reading the contract.
 
 import { describe, expect, test } from "bun:test";
 import { filterBySkillGate, SKILL_GATED_TOOLS } from "../gated.ts";
 
 describe("skill-gated tool exposure", () => {
-  test("build_workflow requires workflow-authoring", () => {
-    expect(SKILL_GATED_TOOLS.build_workflow).toBe("workflow-authoring");
-  });
-
-  test("propose_step requires workflow-authoring", () => {
-    expect(SKILL_GATED_TOOLS.propose_step).toBe("workflow-authoring");
-  });
-
-  test("update_param requires workflow-authoring", () => {
-    expect(SKILL_GATED_TOOLS.update_param).toBe("workflow-authoring");
+  test("edit_workflow_patch requires workflow-authoring", () => {
+    expect(SKILL_GATED_TOOLS.edit_workflow_patch).toBe("workflow-authoring");
   });
 
   test("inspect_workflow requires workflow-authoring", () => {
@@ -29,18 +20,18 @@ describe("skill-gated tool exposure", () => {
     expect(SKILL_GATED_TOOLS.update_connector_draft).toBe("connector-creation-guidance");
   });
 
-  test("filterBySkillGate hides build_workflow until workflow-authoring is loaded", () => {
+  test("filterBySkillGate hides edit_workflow_patch until workflow-authoring is loaded", () => {
     const tools = [
-      { name: "build_workflow" },
+      { name: "edit_workflow_patch" },
       { name: "list_connectors" },
-      { name: "propose_step" },
+      { name: "inspect_workflow" },
     ];
     const visibleEmpty = filterBySkillGate(tools, []);
     expect(visibleEmpty.map((t) => t.name)).toEqual(["list_connectors"]);
 
     const visibleAfterLoad = filterBySkillGate(tools, ["workflow-authoring"]);
     expect(visibleAfterLoad.map((t) => t.name).sort()).toEqual(
-      ["build_workflow", "list_connectors", "propose_step"].sort(),
+      ["edit_workflow_patch", "inspect_workflow", "list_connectors"].sort(),
     );
   });
 

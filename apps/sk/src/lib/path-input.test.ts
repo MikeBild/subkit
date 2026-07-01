@@ -1,6 +1,5 @@
-// Unit tests for the path-input sanitizer used by `/attach` and
-// `/knowledge` in the Ink composer. Pins the regression for the
-// "file exists but `/attach` says not found" report where invisible
+// Unit tests for the path-input sanitizer used by file-path paste and
+// `/knowledge` in the Ink composer. Pins the regression where invisible
 // Unicode rode along with the user's pasted path.
 
 import { describe, expect, test } from "bun:test";

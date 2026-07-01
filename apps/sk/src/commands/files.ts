@@ -103,9 +103,9 @@ function finishProgress(opts: UploadProgressOpts): void {
 }
 
 /** Upload a local path, picking inline or presigned-PUT based on size.
- *  Returns the resulting `FileWire` row. Shared by the `upload` /
- *  `attach` verbs and (later) the rewired knowledge / discovery /
- *  workflow / headless flows.
+ *  Returns the resulting `FileWire` row. Shared by file upload
+ *  commands, REPL file-paste, knowledge / discovery / workflow, and
+ *  headless flows.
  *
  *  `opts.onProgress` is invoked once per uploaded chunk during the
  *  presigned PUT phase. Callers that want a custom UX (e.g. the Ink
@@ -123,7 +123,7 @@ export async function uploadPath(
     onProgress?: (ev: UploadProgressEvent) => void;
   } = {},
 ): Promise<FileWire> {
-  // Single chokepoint for *every* file-upload surface (Ink `/attach`,
+  // Single chokepoint for *every* file-upload surface (Ink file-paste,
   // Ink `/knowledge`, `sk file upload`, `sk file attach`, `sk
   // knowledge-sources create`). Stripping invisible Unicode here means
   // copy-paste from any source (Slack, Markdown, browser) survives —

@@ -1,6 +1,5 @@
 // Cross-platform clipboard reader. Used by the `/paste` slash command
-// (insert clipboard content into the composer) and as the
-// image-paste path for `/attach`. Writes go through cli-core's
+// to insert clipboard content into the composer. Writes go through cli-core's
 // osc52Copy; reads need a platform-specific shell-out because OSC 52
 // paste is rarely supported.
 //
@@ -176,7 +175,7 @@ function writeTempImage(buf: Buffer, ext: string): string {
   return path;
 }
 
-// ---------- /attach helper ----------
+// ---------- Attachment classification helper ----------
 
 /**
  * Classify a filesystem path into a paste-store kind. Images go into

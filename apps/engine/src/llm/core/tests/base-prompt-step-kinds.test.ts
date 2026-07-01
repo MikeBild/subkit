@@ -36,7 +36,7 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
       expect(p).toContain(`\`${k}\``);
     }
     expect(p).toContain("WORKFLOW STEP KINDS");
-    expect(p).toContain("propose_step");
+    expect(p).toContain("edit_workflow_patch");
   });
 
   it("converse prompt (mcp, connector mode) lists all 7 kinds", async () => {

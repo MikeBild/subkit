@@ -1,5 +1,5 @@
-// Path-input sanitizer for sk slash commands that take a filesystem
-// path (`/attach`, `/knowledge`, future `/upload` variants).
+// Path-input sanitizer for sk surfaces that take a filesystem path
+// (`/knowledge`, file-paste auto-upload, and file-oriented CLI commands).
 //
 // Copy-paste from browsers, Markdown renderers, terminal autocomplete,
 // or chat clients regularly drags along invisible Unicode that turns a

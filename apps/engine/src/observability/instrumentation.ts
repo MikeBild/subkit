@@ -537,9 +537,7 @@ const AUTHORING_GATE_CODES = new Set<string>([
 ]);
 /** Allow-list for `tool` label values. */
 const AUTHORING_GATE_TOOLS = new Set<string>([
-  "build_workflow",
-  "propose_step",
-  "update_param",
+  "author_workflow",
   "edit_workflow_patch",
   "dry_run_workflow",
   "run_workflow",

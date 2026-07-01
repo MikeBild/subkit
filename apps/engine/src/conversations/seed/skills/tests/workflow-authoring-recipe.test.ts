@@ -14,9 +14,9 @@ const errorRecovery = readFileSync(join(ROOT, "error-recovery.md"), "utf-8");
 const dataHandling = readFileSync(join(ROOT, "data-handling.md"), "utf-8");
 
 describe("workflow-authoring.md · Build Recipe (mandatory preflight)", () => {
-  test("declares the recipe is mandatory before author_workflow / build_workflow / propose_step", () => {
+  test("declares the recipe is mandatory before author_workflow / edit_workflow_patch", () => {
     expect(workflowAuthoring).toMatch(
-      /Authoring recipe \(mandatory order before `author_workflow` \/ `build_workflow` \/ `propose_step`\)/i,
+      /Authoring recipe \(mandatory order before `author_workflow` \/ `edit_workflow_patch`\)/i,
     );
   });
 
@@ -88,10 +88,10 @@ describe("workflow-authoring.md · requires_repair gating (not warning count)", 
 });
 
 describe("workflow-authoring.md · inspect-before-patching", () => {
-  test("recommends inspect_workflow before update_param's third call on the same field", () => {
+  test("recommends inspect_workflow before edit_workflow_patch's third call on the same field", () => {
     expect(workflowAuthoring).toMatch(/inspect_workflow/);
     // Trimmed phrasing — same intent.
-    expect(workflowAuthoring).toMatch(/before the third `update_param` on the same field/i);
+    expect(workflowAuthoring).toMatch(/before the third `edit_workflow_patch` on the same field/i);
   });
 
   test("documents the inspect_workflow API shape (sections + per-step include)", () => {

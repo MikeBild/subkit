@@ -351,6 +351,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     connector_id: p.connector_id,
     workflow_id: workflowIdForTurn,
     permission_mode: p.permission_mode ?? null,
+    // Surface travels onto every per-call tool ctx (via the `{ ...ctx }`
+    // spread in sdk-wrap/invoke) so tools can distinguish a backgrounded
+    // MCP turn (`surface: "mcp"`, no live session) from an attended
+    // sk-cli / web turn.
+    ...(p.surface ? { surface: p.surface } : {}),
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
       actor_id: p.actor_id,
@@ -408,7 +413,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     hadRepairThisTurn: false,
     strongRunIntent:
       detectedIntent.forceTool === "run_workflow" ||
-      detectedIntent.forceTool === "build_workflow" ||
       detectedIntent.forceTool === "save_workflow_draft",
     multiArtifactIntent: detectMultiArtifactIntent(ingestedUserMessage),
     priorCriticFail: false,

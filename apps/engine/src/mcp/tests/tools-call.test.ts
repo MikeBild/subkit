@@ -385,15 +385,25 @@ describe("mcp tools/call", () => {
     expect(result.isError).toBe(true);
   });
 
-  test("B3 (deviation pin): wf_<unknownslug> returns isError:true with 'workflow not found' message", async () => {
+  test("B3 (deviation pin): wf_<unknownslug> returns a terminal, actionable workflow_not_found envelope", async () => {
     const client = await suite.connect();
     const result = await client.callTool({
       name: "wf_does-not-exist-anywhere",
       arguments: {},
     });
     expect(result.isError).toBe(true);
+    // W4.5 anti-spiral: the dead-end is a structured, terminal envelope
+    // naming the recovery path — not a bare "workflow not found" string a
+    // client can loop on.
     const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0]?.text).toMatch(/workflow not found/i);
+    const body = JSON.parse(content[0]!.text) as {
+      status: string;
+      error_code: string;
+      next_best_actions: string[];
+    };
+    expect(body.status).toBe("cannot_help");
+    expect(body.error_code).toBe("workflow_not_found");
+    expect(body.next_best_actions).toContain("find_workflow");
   });
 
   test("maps structured workflow parameters through the workflow tool surface", async () => {

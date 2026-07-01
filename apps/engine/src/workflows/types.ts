@@ -987,6 +987,23 @@ const _baseWorkflowDefSchema = z.object({
   derived_from_skill_id: z.string().nullable().optional(),
   input_schema: z.record(z.string(), z.unknown()).optional(),
   /**
+   * Optional literal example input payload (NOT a JSON Schema). Unlike
+   * `input_schema` it is never enforced at runtime — it is the concrete
+   * shape the author (or a dry-run) supplied. `resolveWorkflowInputContract`
+   * (`input-schema-synth.ts`) turns it into a tight, `required`-carrying
+   * contract via `sampleToSchema` when no explicit `input_schema` is
+   * declared, so `run_workflow` gets a real form for a saved workflow
+   * instead of a single free-text prompt. Persisted in the versioned
+   * definition JSON so the sample-derived tier fires for SAVED workflows,
+   * not just in-flight drafts. Kept as a permissive `unknown` because a
+   * sample is any JSON value; only an object-with-keys sample yields a
+   * usable contract (a scalar/array/empty-object sample falls through to
+   * the structural synth). This is an internal definition field — it is
+   * NOT the workflow's public `wf_<slug>` MCP tool input schema (that is
+   * the resolved contract, computed from this).
+   */
+  input_schema_sample: z.unknown().optional(),
+  /**
    * Optional JSON-Schema contract for the workflow's FINAL output
    * (post `output_transform` / `response_filters`). The convergence
    * signal of the authoring loop: `dry_run_workflow` validates the
@@ -1117,6 +1134,21 @@ export const WorkflowDefSchema = _baseWorkflowDefSchema
   .openapi("WorkflowDef");
 
 export type WorkflowDef = z.infer<typeof WorkflowDefSchema>;
+
+/**
+ * Authoritative list of every persistable `WorkflowDef` field, sourced
+ * directly from the schema shape. The conversation-draft → WorkflowDef
+ * projection (`conversations/persistence/commit-workflow.ts`) iterates this
+ * ONE list instead of hand-maintaining a parallel field roster, so a new
+ * persistable field added to `WorkflowDefSchema` is projected automatically
+ * and can never silently drop on commit. Keyed on the schema (NOT the draft
+ * document) so transient draft-only state — `goal`, previews, checkpoints,
+ * judge breaker, connector scratch — is deliberately excluded.
+ */
+export const WORKFLOW_DEF_FIELD_KEYS = Object.keys(_baseWorkflowDefSchema.shape) as Array<
+  keyof WorkflowDef
+>;
+
 export type StepDef = z.infer<typeof StepSchema>;
 export type RequestStep = z.infer<typeof RequestStepSchema>;
 export type TransformStep = z.infer<typeof TransformStepSchema>;

@@ -49,10 +49,27 @@ describe("0026_mcp_tasks migration", () => {
       "result",
       "failure_reason",
       "cancelled_at",
+      // 0012_mcp_task_heartbeat — worker-stamped progress heartbeat.
+      "phase",
+      "last_action",
+      "progress_step",
+      "heartbeat_at",
       "created_at",
       "updated_at",
     ]) {
       expect(cols.has(c)).toBe(true);
+    }
+  });
+
+  test("0012_mcp_task_heartbeat added the four progress columns as nullable", async () => {
+    const res = (await testDb.db.execute(
+      sql`SELECT column_name, is_nullable FROM information_schema.columns
+          WHERE table_name = 'mcp_tasks'
+            AND column_name IN ('phase','last_action','progress_step','heartbeat_at')`,
+    )) as unknown as { rows: Array<{ column_name: string; is_nullable: string }> };
+    const byName = new Map(res.rows.map((r) => [r.column_name, r.is_nullable]));
+    for (const c of ["phase", "last_action", "progress_step", "heartbeat_at"]) {
+      expect(byName.get(c)).toBe("YES");
     }
   });
 

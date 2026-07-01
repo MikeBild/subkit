@@ -30,16 +30,15 @@ export function describeApprovalTarget(target: unknown, maxChars = 80): string |
     const idHint = readString(args, [
       "target_workflow_id",
       "workflow_id",
+      "workflow",
       "slug",
       "connector_id",
       "id",
     ]);
     const environment = readString(args, ["environment"]);
-    const summary = idHint
-      ? `${tool} ${idHint}`
-      : environment
-        ? `${tool} env=${environment}`
-        : tool;
+    const summary = [tool, idHint, environment ? `env=${environment}` : null]
+      .filter(Boolean)
+      .join(" ");
     return truncateSummary(summary, maxChars);
   }
   const url = readString(obj, ["url", "path"]);

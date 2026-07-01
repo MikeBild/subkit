@@ -12,6 +12,7 @@ export const inspectConnectorDraftTool: ConversationTool = {
     "Inspect the current connector draft, including missing fields, validation state, latest probe, and the recommended next action.",
   inputSchema,
   category: "draft_write",
+  requires_draft: true,
   async execute(ctx): Promise<ToolResult> {
     const nextDraft = withConnectorInspection(ctx.getDraft());
     await ctx.setDraft(nextDraft);

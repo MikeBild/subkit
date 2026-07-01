@@ -36,7 +36,27 @@ export interface CreateConversationParams {
   title?: string | null;
   /** Client-supplied permission mode — persisted on the draft session. */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  /**
+   * Start this conversation as a playground/sandbox authoring surface.
+   * Durable (persisted on `draft.session.playground`, not an env flag):
+   * the workflow-authoring skill is preloaded so the author_workflow /
+   * dry_run_workflow / edit_workflow_patch triad is available on turn one,
+   * no saved workflow is bound (the draft is pure scratch), and a commit
+   * persists nothing (`commitWorkflowAtomic` returns `playground_no_persist`).
+   * `hold_writes` stays on so dry-runs are safe.
+   */
+  playground?: boolean;
 }
+
+/**
+ * The workflow-authoring skill. Preloaded into `loaded_skills` on a
+ * playground conversation so its body is warm on turn one and the
+ * authoring triad palette is exposed immediately (the palette already
+ * auto-loads it, but seeding the recency slot puts the guidance in the
+ * prompt from the first turn). Kept in sync with
+ * `WORKFLOW_AUTHORING_SKILL` in `tools/authoring-palette.ts`.
+ */
+const PLAYGROUND_PRELOADED_SKILL = "workflow-authoring";
 
 export interface CreateConversationResult {
   conversation: ConversationRecord;
@@ -71,8 +91,12 @@ export async function createConversation(
   const memory = typeof p.memory === "string" ? p.memory : null;
   const initialPermissionMode = normalizePermissionMode(p.permission_mode);
   const initialDraft = createEmptyDraftDocument();
-  if (initialPermissionMode) {
-    initialDraft.session = { permission_mode: initialPermissionMode };
+  const playground = p.playground === true;
+  if (initialPermissionMode || playground) {
+    initialDraft.session = {
+      ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
+      ...(playground ? { playground: true } : {}),
+    };
   }
   // Seed every conversation with the baseline skills (those with a
   // `kind:"baseline"` activation rule) so the LLM has the core mental
@@ -80,19 +104,28 @@ export async function createConversation(
   // skills as the conversation evolves.
   const catalog = await loadActivationCatalog(p.tenant_id, exec);
   const baselineSlugs = listBaselineSlugs(catalog);
+  // A playground conversation preloads the workflow-authoring skill so
+  // the authoring triad is available (and its guidance in-prompt) from
+  // turn one. Deduped against the baseline set so we never seed it twice.
+  const seedSlugs = playground
+    ? [...new Set([...baselineSlugs, PLAYGROUND_PRELOADED_SKILL])]
+    : baselineSlugs;
   const [row] = await exec
     .insert(conversations)
     .values({
       tenant_id: p.tenant_id,
       target_connector_id: p.connector_id ?? null,
-      target_workflow_id: p.workflow_id ?? null,
+      // Playground is a scratch surface — never bind a saved workflow, even
+      // if a workflow_id was supplied, so a commit can never in-place update
+      // a real workflow.
+      target_workflow_id: playground ? null : (p.workflow_id ?? null),
       status: "active",
       draft: initialDraft,
       owner_id: p.actor_id ?? null,
       // Seed at last_turn 0 (turn_count defaults to 0; the first turn
       // becomes 1, so baseline skills satisfy the K-turn full-body window
       // immediately).
-      loaded_skills: baselineSlugs.map((slug) => ({ slug, last_turn: 0 })),
+      loaded_skills: seedSlugs.map((slug) => ({ slug, last_turn: 0 })),
       ...(p.model ? { model: p.model } : {}),
       ...(p.title ? { title: p.title } : {}),
       ...(memory ? { memory } : {}),
@@ -121,11 +154,12 @@ export async function createConversation(
       result: "success",
       metadata: {
         connector_id: p.connector_id ?? null,
-        workflow_id: p.workflow_id ?? null,
+        workflow_id: playground ? null : (p.workflow_id ?? null),
         owner_id: p.actor_id ?? null,
         model: p.model ?? null,
         title: p.title ?? null,
         memory_included: Boolean(memory),
+        playground,
       },
     },
     exec,
@@ -152,12 +186,11 @@ export async function createConversation(
   // provider to `mock` in setup.
   if (p.initial_message) {
     const msg = p.initial_message;
-    // The propose_step-based canned plans model the legacy incremental
-    // (repair-stage) flow. Since the Fix-A initial-stage gate made
-    // propose_step / update_param repair-stage-only, those fixtures
-    // additionally seed minimal preview evidence on the draft so the
-    // gate sees a repair-stage session — production is untouched (this
-    // whole branch is mock-provider-only).
+    // The edit_workflow_patch-based canned plans assemble the whole
+    // draft in one editor call. Some fixtures additionally seed minimal
+    // preview evidence on the draft so the preview-before-commit gate is
+    // satisfied deterministically — production is untouched (this whole
+    // branch is mock-provider-only).
     let seedRepairStageEvidence = false;
     if (/open.?meteo|berlin.*weather|tomorrow.*forecast/i.test(msg)) {
       const { cannedOpenMeteoBerlinPlan } = await import("../../llm/mock-provider.ts");

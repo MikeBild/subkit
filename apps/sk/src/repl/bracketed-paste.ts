@@ -17,10 +17,10 @@
 //        - partial frames across `data` events are buffered.
 //
 // The wrapper returns the cleaned text exactly as typed plus a trailing
-// newline from the closing marker if the user pasted one. Callers that
-// want to distinguish a bracketed paste from a regular keystroke burst
-// can inspect `readLastPaste()` immediately after the key event lands —
-// see `apps/sk/src/ink-app.tsx` for the consumer pattern.
+// newline from the closing marker if the user pasted one. The Ink
+// composer also handles already-framed paste chunks directly because
+// test harnesses and some terminals can deliver the raw markers to
+// `useInput`.
 
 import { Readable } from "node:stream";
 

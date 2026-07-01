@@ -36,6 +36,16 @@ export const COMMIT_INTENT_KINDS = [
   // looped back into the same form.
   "run_workflow",
   "create_api_key",
+  // Partial-accept of a workflow-draft edit (D3). Carries the full RFC-6902
+  // patch array (`payload.patches`) proposed by `edit_workflow_patch`. When
+  // the operator resolves the `partial_diff_approval` confirm, the harness
+  // reads `output.approved_indices` and applies ONLY the accepted subset of
+  // ops to the draft — accept-all, decline-all, or partial — then re-previews
+  // and reports exactly which ops landed vs were skipped. The draft is NOT
+  // mutated until approval, so a decline is a true no-op (nothing to roll
+  // back). Surface-agnostic: sk-cli local, portal, and MCP all funnel the
+  // selection through this one commit_intent.
+  "apply_workflow_patch",
   // Metadata-only workflow edit (rename / re-describe / archive). Routes the
   // confirm approval straight to the `update_workflow` tool so a description or
   // name change auto-persists without the model issuing a second tool call —
@@ -115,3 +125,40 @@ export const commitIntentSchema = z
   );
 
 export type CommitIntent = z.infer<typeof commitIntentSchema>;
+
+/**
+ * One per-op review row shown by the `partial_diff_approval` confirm card
+ * (`PartialApprovalPrompt`). `label` is the human-readable op summary
+ * (`replace /steps/0/id`); `preview` is the compact value it sets, when the
+ * op carries one. Derived from the `apply_workflow_patch` commit_intent's
+ * `payload.patches` so the model never has to duplicate the diff list.
+ */
+export interface PatchOpEntry {
+  label: string;
+  preview?: string;
+}
+
+/**
+ * Describe an RFC-6902 patch array as per-op review rows for the
+ * partial-accept confirm card AND the applied/skipped report the harness
+ * injects after dispatch. Tolerant of loosely-typed ops (reads from the
+ * open commit_intent payload). Pure + deterministic.
+ */
+export function describePatchOps(patches: ReadonlyArray<unknown>): PatchOpEntry[] {
+  return patches.map((raw) => {
+    const op = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const opName = typeof op.op === "string" ? op.op : "?";
+    const path = typeof op.path === "string" ? op.path : "?";
+    const from = typeof op.from === "string" ? op.from : null;
+    const label = from ? `${opName} ${path} ← ${from}` : `${opName} ${path}`;
+    if ("value" in op) {
+      const v = op.value;
+      const s = typeof v === "string" ? v : JSON.stringify(v);
+      if (typeof s === "string") {
+        const preview = s.length > 120 ? `${s.slice(0, 119)}…` : s;
+        return { label, preview };
+      }
+    }
+    return { label };
+  });
+}

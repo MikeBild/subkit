@@ -3,7 +3,7 @@ slug: data-handling
 scope: global
 title: Data Handling Between Steps
 description: The envelope, JSONata cheatsheet, data_selector vs transform vs the workflow-level output transform, and how to keep scope small.
-activates_when: [{"kind":"tool_arg","tool":"propose_step","path":"step.kind","equals":"transform"}]
+activates_when: [{"kind":"tool_arg","tool":"edit_workflow_patch","path":"patches[*].value.kind","equals":"transform"}]
 side_effects: read
 idempotency: none
 maturity: stable

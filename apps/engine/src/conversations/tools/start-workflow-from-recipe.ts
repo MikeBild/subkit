@@ -103,7 +103,7 @@ function rebindConnectorIds(workflow: unknown, bindings: Record<string, string>)
 export const startWorkflowFromRecipeTool: ConversationTool = {
   name: "start_workflow_from_recipe",
   description:
-    "Clone a per-template executable recipe into a workflow draft. Use this before authoring from scratch — recipes carry guaranteed-valid step shapes (auth, paths, pagination) so the saved workflow does not need propose_step rework loops.",
+    "Clone a per-template executable recipe into a workflow draft. Use this before authoring from scratch — recipes carry guaranteed-valid step shapes (auth, paths, pagination) so the saved workflow does not need edit_workflow_patch rework loops.",
   use_case:
     'Operator says "list my last 10 Stripe customers" → call `start_workflow_from_recipe(template_slug="stripe", recipe_slug="list-customers")` and edit the draft instead of authoring from prose + OpenAPI.',
   important_notes: [
@@ -114,6 +114,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
   ],
   inputSchema,
   category: "draft_write" as const,
+  requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const template = getBuiltinTemplate(args.template_slug);

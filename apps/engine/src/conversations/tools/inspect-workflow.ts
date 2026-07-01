@@ -13,7 +13,9 @@
 // next patch is authored against the real shape, not an imagined one.
 
 import { z } from "@hono/zod-openapi";
+import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { deriveOutputBehavior } from "../../workflows/output-behavior.ts";
+import type { WorkflowDef } from "../../workflows/types.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -55,7 +57,7 @@ export const inspectWorkflowTool: ConversationTool = {
   description:
     "Inspect specific parts of the current workflow draft and the captured results from its most recent dry_run / run, in one call. Multi-section + multi-step. Returns each step's config side-by-side with its actual output_preview so subsequent patches reference the real scope shape, not a guessed path.",
   use_case:
-    "Before calling update_param for the third time on the same field, call this once to see the captured shape of every step. Author the next patch against the returned shape, not an imagined one.",
+    "Before calling edit_workflow_patch for the third time on the same field, call this once to see the captured shape of every step. Author the next patch against the returned shape, not an imagined one.",
   important_notes: [
     "Both `sections` and `steps` accept multiple items — combine all the introspection you need into one call instead of round-tripping per step.",
     "`result` returns the per-step output_preview from the most recent dry_run_workflow / run_workflow attached to the draft. If no preview has run yet, the field is { status: 'no_result' }.",
@@ -96,9 +98,30 @@ export const inspectWorkflowTool: ConversationTool = {
           case "instruction":
             result.instruction = workflow.description ?? null;
             break;
-          case "input_schema":
+          case "input_schema": {
+            // Raw declared schema (may be absent — that is the whole point of
+            // the payload-first idiom).
             result.input_schema = wf.input_schema ?? null;
+            // Payload-first (D4): surface the RESOLVED input contract the
+            // run/dry-run actually present — declared `input_schema`, else the
+            // sample-derived tier, else the structural synth — carrying its
+            // real required-list and the tier that won. Plus the literal
+            // `input_schema_sample` it can be derived from. Lets the model see
+            // WHAT a run will require (and whether that is a real declared/
+            // sampled shape or a best-effort structural guess) instead of
+            // inferring it from the raw declared schema alone.
+            const contract = resolveWorkflowInputContract(wf as unknown as WorkflowDef);
+            result.input_contract = contract
+              ? {
+                  schema: contract.schema,
+                  source: contract.source,
+                  required: contract.required,
+                  properties: contract.properties,
+                }
+              : null;
+            result.input_schema_sample = wf.input_schema_sample ?? null;
             break;
+          }
           case "output_schema":
             result.output_schema = wf.output_schema ?? null;
             break;

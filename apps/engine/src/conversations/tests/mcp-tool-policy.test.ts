@@ -26,7 +26,7 @@ describe("isDangerousTool — mcp_ prefix", () => {
 
   it("non-mcp tools that are not on the list are NOT dangerous", () => {
     expect(isDangerousTool("list_workflows")).toBe(false);
-    expect(isDangerousTool("propose_step")).toBe(false);
+    expect(isDangerousTool("edit_workflow_patch")).toBe(false);
   });
 });
 

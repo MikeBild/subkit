@@ -3,7 +3,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { PersonaProbe } from "./slash.ts";
-import { searchSlashCommands } from "./slash.ts";
+import { SLASH_COMMANDS, searchSlashCommands } from "./slash.ts";
 
 const ALL: PersonaProbe = { allows: () => true };
 const NONE: PersonaProbe = { allows: () => false };
@@ -34,10 +34,18 @@ describe("searchSlashCommands — empty query", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Non-empty query — fuzzy match
+// Non-empty query — exact/prefix match
 // ---------------------------------------------------------------------------
 
-describe("searchSlashCommands — fuzzy match", () => {
+describe("searchSlashCommands — prefix match", () => {
+  test("file upload slash commands are not registered", () => {
+    const names = new Set(SLASH_COMMANDS.map((cmd) => cmd.name));
+    const aliases = new Set(SLASH_COMMANDS.flatMap((cmd) => cmd.aliases ?? []));
+    expect(names.has("attach")).toBe(false);
+    expect(names.has("upload")).toBe(false);
+    expect(aliases.has("file")).toBe(false);
+  });
+
   test("exact name match appears in results", () => {
     const results = searchSlashCommands("workflows", ALL);
     const names = results.map((c) => c.name);
@@ -98,19 +106,12 @@ describe("searchSlashCommands — frequency bias", () => {
     expect(names).toContain("connectors");
   });
 
-  test("biased sort: manually verify that frequencyBias is called for non-empty query", () => {
-    // When there's a non-empty query, Fuse runs and the bias blends in.
-    // We verify that the effective score formula (fuzzy - bias) is applied
-    // by checking that the result set is ordered (no hard assertion on
-    // which specific command wins since usage counts are test-environment
-    // specific).
+  test("non-empty query uses predictable exact/prefix matching", () => {
     const results = searchSlashCommands("work", ALL, 5);
     expect(results.length).toBeGreaterThanOrEqual(1);
-    // All returned commands must have 'work' somewhere in their name or help
     for (const cmd of results) {
-      const combined = `${cmd.name} ${cmd.help} ${cmd.aliases?.join(" ") ?? ""}`.toLowerCase();
-      // Fuse threshold 0.3 — a match exists in name or help
-      expect(combined.length).toBeGreaterThan(0);
+      const names = [cmd.name, ...(cmd.aliases ?? [])].map((name) => name.toLowerCase());
+      expect(names.some((name) => name === "work" || name.startsWith("work"))).toBe(true);
     }
   });
 });

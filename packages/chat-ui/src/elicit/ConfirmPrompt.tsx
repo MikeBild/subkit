@@ -68,6 +68,53 @@ function describePendingValue(value: unknown): string {
   return String(value);
 }
 
+function compactText(value: string, maxChars: number): string {
+  const singleLine = value.replace(/\s+/g, " ").trim();
+  return singleLine.length > maxChars
+    ? `${singleLine.slice(0, Math.max(0, maxChars - 1))}…`
+    : singleLine;
+}
+
+function readString(
+  obj: Record<string, unknown> | undefined,
+  keys: readonly string[],
+): string | null {
+  if (!obj) return null;
+  for (const key of keys) {
+    const value = obj[key];
+    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+  }
+  return null;
+}
+
+function describeTarget(target: unknown): string {
+  if (typeof target === "string") return compactText(target, 160);
+  if (target && typeof target === "object") {
+    const obj = target as Record<string, unknown>;
+    const args =
+      obj.args && typeof obj.args === "object" ? (obj.args as Record<string, unknown>) : {};
+    const tool = typeof obj.tool === "string" && obj.tool.trim() ? obj.tool.trim() : null;
+    if (tool) {
+      const idHint = readString(args, [
+        "target_workflow_id",
+        "workflow_id",
+        "workflow",
+        "slug",
+        "connector_id",
+        "id",
+      ]);
+      const environment = readString(args, ["environment"]);
+      const parts = [tool, idHint, environment ? `env=${environment}` : null].filter(Boolean);
+      return compactText(parts.join(" "), 160);
+    }
+    const method = readString(obj, ["method"]);
+    const url = readString(obj, ["url", "path"]);
+    if (url) return compactText(method ? `${method} ${url}` : url, 160);
+    return compactText(`{${Object.keys(obj).slice(0, 5).join(", ")}}`, 160);
+  }
+  return compactText(String(target), 160);
+}
+
 export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
   question,
   summary,
@@ -141,6 +188,7 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
 
   const titleColor = destructive ? theme.emphasis.destructive : theme.severity.warning;
   const kindLabel = destructive ? `${kind} (DESTRUCTIVE)` : kind;
+  const displaySummary = summary ? compactText(summary, 360) : undefined;
 
   return (
     <Box
@@ -154,8 +202,8 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
         confirm: {kindLabel}
       </Text>
       <Text bold>{question}</Text>
-      {summary && summary.trim() !== question.trim() ? (
-        <Text>{renderTextWithLinks(summary)}</Text>
+      {displaySummary && displaySummary !== question.trim() ? (
+        <Text>{renderTextWithLinks(displaySummary)}</Text>
       ) : null}
       {riskLevel || targetLabel || reversible !== undefined ? (
         <Box flexDirection="column" marginTop={1}>
@@ -192,7 +240,7 @@ export const ConfirmPrompt: React.FC<ConfirmPromptProps> = ({
       {kind === "external_write" && target !== undefined ? (
         <Text>
           <Text color={theme.severity.dim}>target: </Text>
-          {typeof target === "string" ? target : JSON.stringify(target)}
+          {describeTarget(target)}
         </Text>
       ) : null}
       {diff !== undefined ? <StructuredDiff diff={diff} /> : null}

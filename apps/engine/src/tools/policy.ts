@@ -47,6 +47,16 @@ export const MCP_ELICITATION_BLURB =
  */
 export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON = `This tool mutates a conversation-scoped working draft and is only available inside an authoring conversation. Call conversation_start to begin connector/workflow authoring; ${MCP_ELICITATION_BLURB}.`;
 
+/**
+ * Reason surfaced when a draft-DEPENDENT tool (`requires_draft`) is reached
+ * on the MCP stub-context path. Distinct from
+ * `DRAFT_WRITE_MCP_UNAVAILABLE_REASON` because such a tool may be
+ * `tenant_read`/`tenant_write` (not `draft_write`) yet still needs a live
+ * conversation draft for its DATA — running it against the empty MCP stub
+ * draft would be a silent no-op. The dispatcher returns this instead.
+ */
+export const DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON = `This tool operates on a conversation-scoped working draft and is only available inside an authoring conversation. Call conversation_start to begin connector/workflow authoring; ${MCP_ELICITATION_BLURB}.`;
+
 /** Confirmation marker the client sets when re-issuing a previously
  *  paused call. Two aliases for symmetry with the legacy sdk-wrap /
  *  policy-gate code: `_meta.sk_confirm` on MCP, `__policy_confirmed`

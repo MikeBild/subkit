@@ -30,17 +30,16 @@ function describeItem(item: StoredPaste): string {
   return [item.filename, size].filter(Boolean).join(" · ");
 }
 
-interface PendingAttachmentsProps {
+interface PendingPasteRefsProps {
   items: readonly StoredPaste[];
 }
 
-const PendingAttachmentsImpl: React.FC<PendingAttachmentsProps> = ({ items }) => {
+const PendingPasteRefsImpl: React.FC<PendingPasteRefsProps> = ({ items }) => {
   if (items.length === 0) return null;
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text dimColor>
-        attachments · {items.length} pending · remove: /attach remove {"<id>"} · clear: /attach
-        clear
+        paste refs · {items.length} pending · remove: /paste remove {"<id>"} · clear: /paste clear
       </Text>
       {items.map((item) => (
         <Box key={item.id}>
@@ -53,4 +52,4 @@ const PendingAttachmentsImpl: React.FC<PendingAttachmentsProps> = ({ items }) =>
   );
 };
 
-export const PendingAttachments = memo(PendingAttachmentsImpl);
+export const PendingPasteRefs = memo(PendingPasteRefsImpl);

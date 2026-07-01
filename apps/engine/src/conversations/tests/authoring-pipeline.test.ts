@@ -21,7 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getConfig, loadConfig } from "../../config/loader.ts";
+import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -487,4 +487,117 @@ describe("author_workflow — tool envelope", () => {
     const data = result.data as { error_code: string };
     expect(data.error_code).toBe("authoring_generation_failed");
   });
+});
+
+describe("runAuthoringPipeline — semantic critic wire-in", () => {
+  // A repaired variant, distinct from VALID_DEF by slug so a
+  // critic-triggered regenerate is observable in the final definition.
+  const DRIFT_FIXED_DEF = {
+    ...VALID_DEF,
+    name: "Top repos digest (repaired)",
+    slug: "top-repos-digest-repaired",
+  };
+
+  tw(
+    "default-off: a static-clean draft is returned unchanged and the critic never runs",
+    async () => {
+      await setConfigKey(["llm", "critic", "enabled"], false);
+      getMockProvider().generateOverrides.generate = () => VALID_DEF;
+      const toolCtx = makeCtx();
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "top repos please" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.attempts).toBe(1);
+      expect(result.definition.slug).toBe("top-repos-digest");
+      expect(result.critic_rejection).toBeUndefined();
+      expect(getMockProvider().calls.filter((c) => c.flow === "critic_authoring")).toHaveLength(0);
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
+  tw(
+    "enabled: a green-static but semantically-drifted draft is caught by the critic and repaired via one more grounded pass",
+    async () => {
+      try {
+        await setConfigKey(["llm", "critic", "enabled"], true);
+        await setConfigKey(["llm", "critic", "min_steps"], 2);
+
+        let genCalls = 0;
+        getMockProvider().generateOverrides.generate = () => {
+          genCalls += 1;
+          // Pass 1: the drifted-but-static-valid draft. Pass 2 (triggered
+          // by the critic): the repaired draft.
+          return genCalls === 1 ? VALID_DEF : DRIFT_FIXED_DEF;
+        };
+        // The critic rejects the first draft with a concrete repair.
+        getMockProvider().generateOverrides.critic_authoring = () => ({
+          passed: false,
+          repairs: ["Reorder shape_repos before fetch_repos consumes it"],
+          rationale: "step order drift",
+        });
+
+        const toolCtx = makeCtx();
+        const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "top repos with names" });
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error("unreachable");
+
+        // Critic ran EXACTLY once and drove exactly one regenerate pass.
+        expect(getMockProvider().calls.filter((c) => c.flow === "critic_authoring")).toHaveLength(
+          1,
+        );
+        expect(genCalls).toBe(2);
+        expect(result.attempts).toBe(2);
+        // The regenerated (repaired) draft replaced the drifted one.
+        expect(result.definition.slug).toBe("top-repos-digest-repaired");
+        // The rejection advisory rides the SUCCESSFUL result for the next turn.
+        expect(result.critic_rejection).toBeDefined();
+        expect(result.critic_rejection?.repairs[0]).toContain("Reorder shape_repos");
+        expect(result.critic_rejection?.gating_reason).toBe("step_count");
+        // Repairs reached the regenerate prompt through the findings channel.
+        const genPrompts = getMockProvider().calls.filter((c) => c.flow === "generate");
+        expect(genPrompts).toHaveLength(2);
+        expect(genPrompts[1]?.last_user).toContain("Findings from the previous attempt");
+        expect(genPrompts[1]?.last_user).toContain("Reorder shape_repos");
+        expect(fetchCalls).toBe(0);
+      } finally {
+        await setConfigKey(["llm", "critic", "enabled"], false);
+        await setConfigKey(["llm", "critic", "min_steps"], 3);
+      }
+    },
+  );
+
+  tw(
+    "author_workflow surfaces the critic_rejection advisory on its SUCCESSFUL result (feeds the next-turn signal)",
+    async () => {
+      try {
+        await setConfigKey(["llm", "critic", "enabled"], true);
+        await setConfigKey(["llm", "critic", "min_steps"], 2);
+        getMockProvider().generateOverrides.generate = () => VALID_DEF;
+        getMockProvider().generateOverrides.critic_authoring = () => ({
+          passed: false,
+          repairs: ["Add an idempotency_key to the POST step"],
+          rationale: "missing idempotency",
+        });
+        const toolCtx = makeCtx();
+        const result = await authorWorkflowTool.execute(toolCtx, { goal: "repos digest" });
+        // The tool still SUCCEEDS — the draft was stashed + repaired.
+        expect(result.ok).toBe(true);
+        const data = result.data as {
+          persistence: string;
+          critic_rejection?: { repairs: string[]; rationale: string; gating_reason: string };
+        };
+        expect(data.persistence).toBe("draft_only");
+        // Advisory present so the next turn's expandPriorFailuresFromToolCalls
+        // escalates via prior_failures — and it is NOT an error_code (the
+        // humanizer must not read the successful call as a failure).
+        expect(data.critic_rejection).toBeDefined();
+        expect(data.critic_rejection?.repairs[0]).toContain("idempotency_key");
+        expect((data as { error_code?: string }).error_code).toBeUndefined();
+        expect(fetchCalls).toBe(0);
+      } finally {
+        await setConfigKey(["llm", "critic", "enabled"], false);
+        await setConfigKey(["llm", "critic", "min_steps"], 3);
+      }
+    },
+  );
 });

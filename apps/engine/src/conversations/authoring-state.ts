@@ -290,16 +290,24 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
     ...(typeof raw.mode === "string" ? { mode: raw.mode as AuthoringMode } : {}),
     workflow,
     connector,
-    ...(isRecord(raw.session) &&
-    (raw.session.permission_mode === "auto" ||
-      raw.session.permission_mode === "ask" ||
-      raw.session.permission_mode === "plan")
-      ? {
-          session: {
-            permission_mode: raw.session.permission_mode,
-          },
-        }
-      : {}),
+    ...(() => {
+      // Carry the durable session sub-document across the DB round-trip.
+      // Both `permission_mode` (auto/ask/plan — `yolo` is intentionally
+      // non-persistent) and the `playground` sandbox flag must survive, or
+      // the loop would silently lose them on the next turn's read
+      // (the authoring-drift data-loss class).
+      if (!isRecord(raw.session)) return {};
+      const session: DraftDocument["session"] = {};
+      if (
+        raw.session.permission_mode === "auto" ||
+        raw.session.permission_mode === "ask" ||
+        raw.session.permission_mode === "plan"
+      ) {
+        session.permission_mode = raw.session.permission_mode;
+      }
+      if (raw.session.playground === true) session.playground = true;
+      return Object.keys(session).length > 0 ? { session } : {};
+    })(),
     ...(isRecord(raw.latest_preview)
       ? {
           latest_preview: {

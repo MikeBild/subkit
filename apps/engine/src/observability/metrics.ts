@@ -642,7 +642,7 @@ function buildRegistry(): MetricsRegistry {
   });
   reg.registerCounter({
     name: METRIC_NAMES.WORKFLOW_SCHEDULE_NOT_BOUND_TOTAL,
-    help: "Workflow commits whose name+description carry cadence phrasing but `trigger.kind` remained `request` (root A defence-in-depth). Non-zero counts are a regression signal — the seed skill teaches the LLM to bind the schedule trigger inline with `build_workflow`.",
+    help: "Workflow commits whose name+description carry cadence phrasing but `trigger.kind` remained `request` (root A defence-in-depth). Non-zero counts are a regression signal — the seed skill teaches the LLM to bind the schedule trigger inline with `author_workflow`.",
     labels: ["tenant_id"],
   });
   reg.registerCounter({

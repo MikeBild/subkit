@@ -157,24 +157,6 @@ describe("sdk helper parity — find_workflow (defaulted field in required)", ()
 // is byte-identical to what shipped before.
 // ---------------------------------------------------------------------------
 
-describe("sdk helper parity — propose_step (z.record → no propertyNames)", () => {
-  it("step property has no propertyNames node (WS2 fix #3)", () => {
-    const s = schema("propose_step");
-
-    expect(s.type).toBe("object");
-    expect(s.additionalProperties).toBe(false);
-    expect(s.required).toContain("step");
-
-    const props = s.properties as Record<string, Record<string, unknown>>;
-    const stepProp = props.step ?? {};
-    expect(stepProp.type).toBe("object");
-    // The record's key schema must not appear as `propertyNames`.
-    expect(stepProp.propertyNames).toBeUndefined();
-    // The value schema is z.unknown() — it becomes an empty additionalProperties.
-    expect("additionalProperties" in stepProp).toBe(true);
-  });
-});
-
 // ---------------------------------------------------------------------------
 // edit_workflow_patch — discriminated union structural check
 //

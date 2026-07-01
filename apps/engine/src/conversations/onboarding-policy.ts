@@ -182,7 +182,7 @@ export function nextQuestion(input: PolicyInput): NextQuestion | null {
             detail: "Start a new connector draft",
           },
           {
-            id: "build_workflow",
+            id: "author_workflow",
             label: "Build a workflow",
             detail: "Author a multi-step workflow",
           },

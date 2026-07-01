@@ -55,9 +55,7 @@ describe("conversations/audit-trail", () => {
     const expectedToolsPause = [
       "list_skills",
       "fetch_connector_docs",
-      "propose_step",
-      "propose_step",
-      "propose_step",
+      "edit_workflow_patch",
       "inspect_workflow_draft",
       "validate_draft",
       "dry_run_step",

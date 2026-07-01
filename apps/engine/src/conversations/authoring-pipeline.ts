@@ -37,17 +37,19 @@
 // QuickJS against recorded evidence only. `dry_run_workflow` stays the
 // explicit preview step.
 
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../connectors/discovery/types.ts";
-import { connectors as connectorsTable } from "../db/schema/index.ts";
+import { connectors as connectorsTable, conversationToolCalls } from "../db/schema/index.ts";
 import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatters.ts";
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import { TriggerSchema } from "../workflows/types.ts";
 import { type ValidationError, validateWorkflowDef } from "../workflows/validator.ts";
+import { runCriticAgent } from "./authoring-critic/critic-agent.ts";
+import { shouldRunCritic } from "./authoring-critic/gating.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
 import {
   type DiscoveredConnectorEndpoints,
@@ -165,6 +167,19 @@ export interface AuthoringPipelineParams {
   input_example?: unknown;
 }
 
+/**
+ * Advisory carried on a SUCCESSFUL pipeline result when the second-stage
+ * semantic critic fired and rejected the draft. Its `repairs` were
+ * already fed back into the bounded generation-repair loop (one grounded
+ * regenerate); this record rides the tool result so the conversation
+ * loop's `expandPriorFailuresFromToolCalls` can escalate the next turn.
+ * Shape mirrors `CriticRejectedDetailsSchema`. */
+export interface CriticRejectionDetail {
+  repairs: string[];
+  rationale: string;
+  gating_reason: string;
+}
+
 export type AuthoringPipelineResult =
   | {
       ok: true;
@@ -180,6 +195,10 @@ export type AuthoringPipelineResult =
        *  far and the model should refine it from `recorded_eval`'s
        *  findings rather than expecting a clean artifact. */
       note?: string;
+      /** Set when the gated semantic critic ran and rejected the draft.
+       *  The repairs already drove one regenerate pass; the tool
+       *  surfaces this so the next turn escalates. */
+      critic_rejection?: CriticRejectionDetail;
       next: "dry_run_workflow";
     }
   | {
@@ -385,6 +404,56 @@ function renderValidationFindings(errors: ValidationError[]): string[] {
   return errors.map((e) => `${e.path}: ${e.message}`);
 }
 
+/** Project a generated definition into the draft-document shape the
+ *  authoring critic renders. Mirrors the EMIT block's stash shape so the
+ *  critic reviews exactly the artifact the model will preview. */
+function toWorkflowDraftDocument(def: GeneratedWorkflow): WorkflowDraftDocument {
+  return {
+    name: def.name,
+    slug: def.slug,
+    ...(def.description ? { description: def.description } : {}),
+    ...(def.input_schema ? { input_schema: def.input_schema } : {}),
+    ...(def.output_schema ? { output_schema: def.output_schema } : {}),
+    ...(def.output_transform ? { output_transform: def.output_transform } : {}),
+    ...(def.trigger ? { trigger: def.trigger } : {}),
+    steps: def.steps,
+  };
+}
+
+/** Count consecutive prior `author_workflow` calls whose result carried a
+ *  `critic_rejection` advisory, most-recent first. Feeds the critic
+ *  gate's anti-loop guard so a conversation stuck on the same semantic
+ *  rejection stops paying for the critic. Tenant-scoped; the current
+ *  in-flight call's row is not yet written, so this reads strictly prior
+ *  rows. One small indexed read per static-clean draft — negligible
+ *  beside the pipeline's generation passes. */
+async function countConsecutiveCriticRejections(ctx: ToolContext): Promise<number> {
+  const rows = await ctx.db
+    .select({ tool: conversationToolCalls.tool, output: conversationToolCalls.output })
+    .from(conversationToolCalls)
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+        eq(conversationToolCalls.conversation_id, ctx.conversation_id),
+      ),
+    )
+    .orderBy(desc(conversationToolCalls.created_at))
+    .limit(8);
+  let streak = 0;
+  for (const row of rows) {
+    if (row.tool !== "author_workflow") continue;
+    const out = row.output as Record<string, unknown> | null;
+    if (out && typeof out === "object" && out.critic_rejection !== undefined) {
+      streak += 1;
+    } else {
+      // First prior author_workflow result WITHOUT a rejection ends the
+      // consecutive streak.
+      break;
+    }
+  }
+  return streak;
+}
+
 /**
  * Run the one-shot authoring pipeline. Never fires live HTTP; LLM cost
  * is bounded to `MAX_GENERATION_PASSES` generation calls plus
@@ -496,6 +565,70 @@ export async function runAuthoringPipeline(
    *  signal — the pipeline returns the best draft so far with a clear
    *  note instead of throwing or hanging. */
   let deadlineExceeded = false;
+  /** The gated semantic critic runs AT MOST once per pipeline call
+   *  (default off). This guard lets a critic-triggered regenerate consume
+   *  one of the existing bounded passes without re-running the critic on
+   *  the regenerated draft. */
+  let criticRan = false;
+  /** Set when the critic rejected — surfaced on the successful result so
+   *  the next conversation turn escalates via `prior_failures`. */
+  let criticRejection: CriticRejectionDetail | null = null;
+
+  /** The second-stage semantic critic, gated + fail-open. Returns the
+   *  rejection detail plus the repairs rendered as findings (the SAME
+   *  channel the validation loop uses) when the draft should be
+   *  regenerated once more; `null` when the critic is not gated on,
+   *  passed, or produced no actionable repairs. */
+  const runCriticGate = async (
+    candidate: GeneratedWorkflow,
+  ): Promise<{ rejection: CriticRejectionDetail; priorFindings: string[] } | null> => {
+    const recentDriftCount = ctx.getDraft().latest_preview?.warnings?.length ?? 0;
+    const consecutiveRejections = await countConsecutiveCriticRejections(ctx);
+    const gate = shouldRunCritic({
+      stepCount: candidate.steps.length,
+      recentDriftCount,
+      consecutiveRejections,
+      tenantId: ctx.tenant_id,
+    });
+    if (!gate.run) return null;
+    // `runCriticAgent` records the run (passed/rejected/fail_open) and
+    // never throws — a provider error or the shared deadline degrades to
+    // a fail-open `passed:true`, so the pipeline never hangs on it.
+    const verdict = await runCriticAgent({
+      draft: toWorkflowDraftDocument(candidate),
+      tenant_id: ctx.tenant_id,
+      db: ctx.db,
+      signal: deadlineSignal,
+    });
+    if (verdict.passed || verdict.repairs.length === 0) {
+      // Passed, or rejected with no actionable repairs → nothing to feed
+      // back and no hint to escalate on.
+      return null;
+    }
+    logger.info({
+      module: "conversations",
+      action: "authoring_pipeline.critic_rejected",
+      msg: "semantic critic rejected a static-clean draft — feeding repairs into one more grounded regenerate pass",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      gating_reason: gate.reason,
+      repair_count: verdict.repairs.length,
+    });
+    return {
+      rejection: {
+        repairs: verdict.repairs,
+        rationale: verdict.rationale,
+        gating_reason: gate.reason,
+      },
+      // Feed the critic's semantic repairs through the SAME findings
+      // channel the validation loop uses, tagged `critic` so the
+      // regenerate prompt lists them under "Findings from the previous
+      // attempt (fix ALL of these)".
+      priorFindings: renderValidationFindings(
+        verdict.repairs.map((r) => ({ path: "critic", message: r })),
+      ),
+    };
+  };
 
   // Output-format grounding signal: when the goal names a concrete output
   // format, the design rule in `buildGenerationPrompt` carries the
@@ -615,7 +748,23 @@ export async function runAuthoringPipeline(
       definition = candidate;
       validationErrors = [...validation.errors, ...groundingErrors];
       passErrors = validationErrors;
-      if (validation.ok && grounding.ok) break;
+      if (validation.ok && grounding.ok) {
+        // Static gates cleared. The second-stage semantic critic (default
+        // off) runs at most once; a rejection feeds its repairs back
+        // through the existing bounded-repair loop as one more grounded
+        // regenerate pass rather than a synthetic critic_rejected tool
+        // result. The critic invoke shares the pipeline deadline.
+        if (!criticRan && !deadlineSignal.aborted) {
+          criticRan = true;
+          const critic = await runCriticGate(candidate);
+          if (critic) {
+            criticRejection = critic.rejection;
+            priorFindings = critic.priorFindings;
+            continue;
+          }
+        }
+        break;
+      }
     } else if (!definition) {
       // No definition materialised yet — surface this pass's errors.
       validationErrors = passErrors;
@@ -699,7 +848,7 @@ export async function runAuthoringPipeline(
 
   const findingCount = recordedEval.expressions.filter((f) => f.status !== "ok").length;
   const note = deadlineExceeded
-    ? `generation/repair time budget exceeded — returning the current draft with ${findingCount} finding(s) for you to refine (edit_workflow_patch / update_param from recorded_eval.expressions)`
+    ? `generation/repair time budget exceeded — returning the current draft with ${findingCount} finding(s) for you to refine (edit_workflow_patch from recorded_eval.expressions)`
     : undefined;
 
   return {
@@ -710,6 +859,7 @@ export async function runAuthoringPipeline(
     attempts,
     unresolved_connectors: unresolved,
     ...(note ? { note } : {}),
+    ...(criticRejection ? { critic_rejection: criticRejection } : {}),
     next: "dry_run_workflow",
   };
 }

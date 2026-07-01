@@ -193,6 +193,31 @@ describe("ConfirmPrompt — decision metadata", () => {
     expect(frame).toContain("reversible:");
     expect(frame).toContain("no");
   });
+
+  test("summarizes external-write tool targets without dumping large args", () => {
+    const markdown = `# Slides\n\n${"do not render this markdown body\n".repeat(200)}`;
+    const instance = render(
+      <ConfirmPrompt
+        question="Approve workflow run?"
+        kind="external_write"
+        target={{
+          tool: "run_workflow",
+          args: {
+            workflow: "render-upload-slides",
+            environment: "dev",
+            markdown,
+            theme: "light",
+          },
+        }}
+        onResponse={mock()}
+      />,
+    );
+    const frame = instance.lastFrame() ?? "";
+    expect(frame).toContain("target:");
+    expect(frame).toContain("run_workflow render-upload-slides env=dev");
+    expect(frame).not.toContain("do not render this markdown body");
+    expect(frame).not.toContain('"markdown"');
+  });
 });
 
 describe("ConfirmPrompt — URL hyperlinks in summary", () => {

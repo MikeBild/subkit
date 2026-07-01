@@ -403,3 +403,87 @@ describe("pauseForUserInput — degrade-to-DB-pause for non-flat tool input", ()
     expect(rows[0]!.protocol_native).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// D7 — no secret is elicited as chat text over MCP. The guard is scoped to
+// `surface === "mcp"`; sk-cli / web input surfaces are untouched.
+// ---------------------------------------------------------------------------
+describe("pauseForUserInput — D7 secret-elicitation guard (surface gated)", () => {
+  test("ask_user_form(password) over MCP → directive, NO pause, NO elicitation row", async () => {
+    const conversation_id = await freshConversation();
+    // Capable bridge present — the guard must still preempt it: the secret
+    // must never reach the wire, and no DB elicitation row may be opened.
+    const bridge = makeBridge({ kind: "accept", content: { token: "s3cr3t" } });
+    const result = await pauseForUserInput(
+      { ...buildCtx(conversation_id, bridge), surface: "mcp" },
+      {
+        tool_name: "ask_user_form",
+        summary: "Enter your API key",
+        input: {
+          question: "Enter your API key",
+          fields: [{ name: "token", label: "Token", type: "password" }],
+        },
+      },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error_code).toBe("secret_elicitation_blocked");
+      expect(result.next_best_actions).toContain("request_connector_reauth");
+      expect(result.pause).toBeUndefined();
+    }
+    // No row opened — the elicitation never happened.
+    expect(await readElicitation(conversation_id)).toHaveLength(0);
+    // Conversation stays active (never flipped to awaiting_input).
+    expect(await readConversationStatus(conversation_id)).toBe("active");
+  });
+
+  test("ask_user_text secret question over MCP → directive", async () => {
+    const conversation_id = await freshConversation();
+    const result = await pauseForUserInput(
+      { ...buildCtx(conversation_id), surface: "mcp" },
+      {
+        tool_name: "ask_user_text",
+        summary: "Paste your personal access token",
+        input: { question: "Paste your personal access token" },
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error_code).toBe("secret_elicitation_blocked");
+    expect(await readElicitation(conversation_id)).toHaveLength(0);
+  });
+
+  test("non-secret ask_user_text over MCP is NOT blocked (normal DB-pause)", async () => {
+    const conversation_id = await freshConversation();
+    const result = await pauseForUserInput(
+      { ...buildCtx(conversation_id), surface: "mcp" },
+      {
+        tool_name: "ask_user_text",
+        summary: "What should the workflow be named?",
+        input: { question: "What should the workflow be named?" },
+      },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.pause).toBeDefined();
+  });
+
+  test("sk-cli local surface is NOT weakened — a password form still pauses for input", async () => {
+    const conversation_id = await freshConversation();
+    const result = await pauseForUserInput(
+      { ...buildCtx(conversation_id), surface: "sk_interactive" },
+      {
+        tool_name: "ask_user_form",
+        summary: "Enter your API key",
+        input: {
+          question: "Enter your API key",
+          fields: [{ name: "token", label: "Token", type: "password" }],
+        },
+      },
+    );
+    // On sk-cli the operator can paste into the masked field — the DB-pause
+    // proceeds and an elicitation row is opened, exactly as before.
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.pause?.tool_name).toBe("ask_user_form");
+    expect(await readElicitation(conversation_id)).toHaveLength(1);
+  });
+});

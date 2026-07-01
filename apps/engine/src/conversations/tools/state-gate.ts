@@ -81,18 +81,18 @@ const WORKFLOW_STAGE_PROGRESSION: Readonly<
   Partial<Record<AuthoringStage, Partial<Record<AuthoringStage, string[]>>>>
 > = {
   idle: {
-    workflow_targeted: ["author_workflow", "build_workflow"],
+    workflow_targeted: ["author_workflow"],
     workflow_inspected: ["author_workflow", "inspect_workflow_draft"],
     workflow_validated: ["author_workflow", "validate_draft"],
     workflow_previewed: ["author_workflow", "dry_run_workflow"],
   },
   workflow_targeted: {
-    workflow_inspected: ["update_param", "inspect_workflow_draft"],
+    workflow_inspected: ["edit_workflow_patch", "inspect_workflow_draft"],
     workflow_validated: ["inspect_workflow_draft", "validate_draft"],
     workflow_previewed: ["inspect_workflow_draft", "validate_draft", "dry_run_workflow"],
   },
   workflow_draft_started: {
-    workflow_inspected: ["update_param", "inspect_workflow_draft"],
+    workflow_inspected: ["edit_workflow_patch", "inspect_workflow_draft"],
     workflow_validated: ["inspect_workflow_draft", "validate_draft"],
     workflow_previewed: ["inspect_workflow_draft", "validate_draft", "dry_run_workflow"],
   },
@@ -233,7 +233,7 @@ export function requireWorkflowDraft(draft: DraftDocument, toolName: string): To
   return unavailableEnvelope({
     toolName,
     message: `${toolName} requires an active workflow draft with at least one step`,
-    next_best_actions: ["author_workflow", "build_workflow", "propose_step"],
+    next_best_actions: ["author_workflow", "edit_workflow_patch"],
     details: { current_stage: draft.summary?.stage ?? null },
   });
 }

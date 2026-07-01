@@ -6,7 +6,7 @@
 //   * Scriptable status line with rate-limited rebuild ticker
 //   * Animated thinking spinner (rotating verbs + elapsed + tokens)
 //   * Blinking `●` tool-call dot
-//   * Fuzzy slash-command autocomplete footer (Fuse.js)
+//   * Prefix-based slash-command autocomplete footer
 //   * Ctrl-T alternate-screen transcript toggle
 //   * useDeferredValue on the message list so long histories stay
 //     responsive when typing
@@ -104,10 +104,11 @@ import {
   createPasteStore,
   expandRefs,
   looksLikePaste,
+  MAX_USER_INPUT_TEXT_CHARS,
   type PasteStore,
   type StoredPaste,
 } from "./repl/paste-store.ts";
-import { PendingAttachments } from "./repl/pending-attachments.tsx";
+import { PendingPasteRefs } from "./repl/pending-attachments.tsx";
 import { detectProseOptions } from "./repl/prose-options-detector.ts";
 import { createQueue } from "./repl/queue.ts";
 import type { PaneSpec } from "./repl/slash/handler.ts";
@@ -142,7 +143,6 @@ import { ResizeBoundary } from "./shell/ResizeBoundary.tsx";
 import { type ToastInput, ToastQueue, useToast } from "./shell/ToastQueue.tsx";
 import { type PagerEntry, TranscriptPager } from "./shell/TranscriptPager.tsx";
 import { findSlashCommand, type PersonaProbe, renderHelp, searchSlashCommands } from "./slash.ts";
-import { formatFileRef as formatFileLeaf } from "./utils/file-ref.ts";
 import { renderProgressLine, type UploadProgressEvent } from "./utils/upload-progress.ts";
 
 export interface InkAppProps {
@@ -1594,7 +1594,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   // prompt is never flushed past a freshly-opened dialog.
   const pendingElicitationRef = useRef(false);
   const [queuedCount, setQueuedCount] = useState(0);
-  const [pendingAttachments, setPendingAttachments] = useState<StoredPaste[]>([]);
+  const [pendingPasteRefs, setPendingPasteRefs] = useState<StoredPaste[]>([]);
   // Transient status-line message channel. Upload progress writes
   // here on every chunk; the next status-line tick (≤500 ms) folds
   // it into `status_message`. The string is cleared synchronously
@@ -1610,8 +1610,8 @@ export const InkApp: React.FC<InkAppProps> = ({
   // Map<cacheKey, rows[]> so `/files <n>` can resolve the n-th row
   // without re-listing.
   const recentListsRef = useRef<Map<string, unknown[]>>(new Map());
-  const syncPendingAttachments = useCallback(() => {
-    setPendingAttachments([...pasteStoreRef.current.all()]);
+  const syncPendingPasteRefs = useCallback(() => {
+    setPendingPasteRefs([...pasteStoreRef.current.all()]);
   }, []);
   const pushNotice = useCallback((tone: NoticeTone, message: string, persistent = false) => {
     setNotices((current) => {
@@ -1690,6 +1690,20 @@ export const InkApp: React.FC<InkAppProps> = ({
       }
     },
     [pushNotice, toast],
+  );
+  const insertPasteChunk = useCallback(
+    (pasted: string): void => {
+      if (!looksLikePaste(pasted)) {
+        setInput((prev) => applyInput(prev, { type: "insert", text: pasted }));
+        return;
+      }
+      const normalized = pasted.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const { ref } = pasteStoreRef.current.addText(normalized);
+      syncPendingPasteRefs();
+      setInput((prev) => applyInput(prev, { type: "insert", text: ref }));
+      showInfo(`pasted ${ref} — sent inline at submit`);
+    },
+    [showInfo, syncPendingPasteRefs],
   );
 
   useEffect(() => {
@@ -1849,8 +1863,8 @@ export const InkApp: React.FC<InkAppProps> = ({
         tokens_today: statusSnapshot?.tokens_today ?? null,
         connectors_count: statusSnapshot?.connectors_count ?? null,
         // Surface transient upload progress (and any other short-lived
-        // status messages) here. The ref is set by `/upload` /
-        // `/attach` while a presigned PUT is in flight and cleared on
+        // status messages) here. The ref is set by file-paste and
+        // knowledge uploads while a presigned PUT is in flight and cleared on
         // completion or failure — matches the upload-progress callback
         // cadence (per-chunk).
         status_message: transientStatusRef.current,
@@ -1899,8 +1913,6 @@ export const InkApp: React.FC<InkAppProps> = ({
   //
   // `/paste` — read the system clipboard, classify as text / image,
   // push into the paste store, insert the ref at the cursor.
-  // `/attach <path>` — read a file path, classify by extension, add
-  // to paste store, insert ref at cursor.
   // `/queue` — print queued prompts into the transient banner.
   // `/history` — show / clear the persistent history file.
   //
@@ -1909,33 +1921,33 @@ export const InkApp: React.FC<InkAppProps> = ({
     async (trimmed: string): Promise<boolean> => {
       const [head, ...rest] = trimmed.split(/\s+/);
       const name = (head ?? "").replace(/^\//, "");
-      const mutatePending = (source: "paste" | "attach"): boolean => {
+      const mutatePendingPaste = (): boolean => {
         const sub = (rest[0] ?? "").toLowerCase();
         if (sub !== "clear" && sub !== "remove" && sub !== "rm") return false;
         if (sub === "clear") {
           const count = pasteStoreRef.current.all().length;
           pasteStoreRef.current.clear();
-          syncPendingAttachments();
-          showInfo(`/${source}: cleared ${count} pending item(s)`);
+          syncPendingPasteRefs();
+          showInfo(`/paste: cleared ${count} pending item(s)`);
           return true;
         }
         const rawId = rest[1];
         const id = Number.parseInt(rawId ?? "", 10);
         if (!Number.isFinite(id)) {
-          showError(`/${source}: usage \`/${source} remove <id>\``);
+          showError("/paste: usage `/paste remove <id>`");
           return true;
         }
         if (!pasteStoreRef.current.get(id)) {
-          showError(`/${source}: no pending item #${id}`);
+          showError(`/paste: no pending item #${id}`);
           return true;
         }
         pasteStoreRef.current.delete(id);
-        syncPendingAttachments();
-        showInfo(`/${source}: removed #${id}`);
+        syncPendingPasteRefs();
+        showInfo(`/paste: removed #${id}`);
         return true;
       };
       if (name === "paste") {
-        if (mutatePending("paste")) return true;
+        if (mutatePendingPaste()) return true;
         const clip = readClipboard();
         if (clip.kind === "none") {
           showInfo("/paste: clipboard is empty");
@@ -1943,7 +1955,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         }
         if (clip.kind === "text") {
           const { ref, lines } = pasteStoreRef.current.addText(clip.text);
-          syncPendingAttachments();
+          syncPendingPasteRefs();
           setInput((prev) => applyInput(prev, { type: "insert", text: ref }));
           showInfo(`/paste: inserted ${ref} (${lines + 1} line${lines === 0 ? "" : "s"})`);
           return true;
@@ -1953,75 +1965,14 @@ export const InkApp: React.FC<InkAppProps> = ({
           mediaType: clip.mediaType,
           bytes: clip.bytes,
         });
-        syncPendingAttachments();
+        syncPendingPasteRefs();
         setInput((prev) => applyInput(prev, { type: "insert", text: img.ref }));
         showInfo(`/paste: inserted ${img.ref} (${clip.bytes} bytes)`);
         return true;
       }
-      if (name === "attach" || name === "file" || name === "upload") {
-        if (mutatePending("attach")) return true;
-        const raw = sanitizePathInput(rest.join(" "));
-        if (raw.length === 0) {
-          showError(`/${name}: needs a path — e.g. \`/${name} ./invoice.pdf\``);
-          return true;
-        }
-        if (!engineClient) {
-          showError(`/${name}: no engine client — restart sk to wire the upload path`);
-          return true;
-        }
-        const { statSync, existsSync: exists } = await import("node:fs");
-        const { resolve: res } = await import("node:path");
-        const abs = res(cwd ?? process.cwd(), raw);
-        if (!exists(abs)) {
-          showError(
-            `/${name}: not found: ${raw} (resolved to ${abs})${renderSuspiciousCodepoints(raw)}`,
-          );
-          return true;
-        }
-        const st = statSync(abs);
-        if (!st.isFile()) {
-          showError(`/${name}: not a file: ${raw}`);
-          return true;
-        }
-        // Upload to the engine's unified Files resource and splice a
-        // `{"$file":"fid_..."}` leaf at the cursor. The status-line
-        // ticker reads `transientStatusRef.current` every 500 ms and
-        // surfaces the rendered progress line. Errors are surfaced
-        // via `showError` and leave the composer untouched.
-        const onProgress = (ev: UploadProgressEvent): void => {
-          setTransientStatus(renderProgressLine(ev));
-        };
-        try {
-          const row = await uploadPath(engineClient, abs, {
-            quiet: true,
-            onProgress,
-          });
-          // Best-effort link to the active conversation so the file
-          // shows up in `/files` and the snapshot for this turn.
-          if (session.conversationId) {
-            try {
-              await engineClient.linkFile(row.id, {
-                resource_type: "conversation",
-                resource_id: session.conversationId,
-                role: "attachment",
-              });
-            } catch {
-              /* link is best-effort — the upload itself succeeded */
-            }
-          }
-          const leaf = JSON.stringify(formatFileLeaf(row.id));
-          setInput((prev) => applyInput(prev, { type: "insert", text: leaf }));
-          showInfo(`/${name}: uploaded ${row.id} (${row.filename}, ${st.size} bytes)`);
-        } catch (err) {
-          showError(`/${name}: ${err instanceof Error ? err.message : String(err)}`);
-        } finally {
-          setTransientStatus(null);
-        }
-        return true;
-      }
       if (name === "knowledge" || name === "ks") {
         // Upload a local file AND ingest it as a Knowledge Source in one
-        // step. Same upload chokepoint as `/attach` (so the file shows
+        // step. Same upload chokepoint as binary path preprocessing (so the file shows
         // up in /files), then POSTs to /v1/knowledge-sources with the
         // metadata derived from --name / --scope / --workflow-id flags.
         // Direct HTTP — no LLM round-trip — for deterministic, instant
@@ -2094,7 +2045,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           setTransientStatus(renderProgressLine(ev));
         };
         try {
-          // Upload to the unified Files store first — same as /attach —
+          // Upload to the unified Files store first.
           // so the bytes are deduped, audited, and linkable.
           const row = await uploadPath(engineClient, abs, {
             quiet: true,
@@ -2179,7 +2130,9 @@ export const InkApp: React.FC<InkAppProps> = ({
             limit: 50,
           });
           if (res.items.length === 0) {
-            showInfo("/files: no files linked to this conversation yet — try /upload");
+            showInfo(
+              "/files: no files linked to this conversation yet — paste or drop a file path into the composer",
+            );
             return true;
           }
           const rows: FileRow[] = res.items.map((f) => ({
@@ -2246,7 +2199,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       effectiveHistoryPath,
       showError,
       showInfo,
-      syncPendingAttachments,
+      syncPendingPasteRefs,
       transcriptMode,
       engineClient,
       session.conversationId,
@@ -2537,7 +2490,7 @@ export const InkApp: React.FC<InkAppProps> = ({
               pasteStoreRef.current.delete(item.id);
             }
           }
-          syncPendingAttachments();
+          syncPendingPasteRefs();
           setPendingSecretRedirect({ kind: shape.kind, sample: shape.sample });
           setInput(buffer(secretRedirectHint(shape)));
           return;
@@ -2548,26 +2501,22 @@ export const InkApp: React.FC<InkAppProps> = ({
         onExit?.();
         return;
       }
-      if (trimmed.startsWith("/")) {
-        // Built-in slash commands that ink-app owns (paste, attach,
-        // queue, history). Short-circuit so the host's `onSlash`
+      const slashHead = trimmed.startsWith("/") ? (trimmed.split(/\s+/)[0] ?? "") : "";
+      const pathShapedUnknownSlash =
+        slashHead.length > 0 &&
+        !findSlashCommand(slashHead) &&
+        (slashHead.slice(1).includes("/") ||
+          /^\/[^/]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}$/.test(slashHead) ||
+          slashHead.startsWith("~/") ||
+          slashHead.startsWith("./"));
+      if (trimmed.startsWith("/") && !pathShapedUnknownSlash) {
+        // Built-in slash commands that ink-app owns (paste, queue,
+        // history). Short-circuit so the host's `onSlash`
         // doesn't see them.
         if (await handleBuiltinSlash(trimmed)) return;
         const head = trimmed.split(/\s+/)[0] ?? "";
         const cmd = findSlashCommand(head);
         if (!cmd) {
-          // Heuristic: `head` like `/Users/...`, `/home/...`, `/tmp/...`
-          // is a Unix path, not a slash command. `~/foo` and `./foo`
-          // also count. Built-in slash names never contain `/`, so the
-          // tail check cannot accidentally match `/help`, `/attach`, …
-          const looksLikePath =
-            head.slice(1).includes("/") || head.startsWith("~/") || head.startsWith("./");
-          if (looksLikePath) {
-            showError(
-              `Looks like a file path, not a slash command. Did you mean \`/knowledge ${head}\` to ingest as a knowledge source, or \`/attach ${head}\` to upload as an attachment?`,
-            );
-            return;
-          }
           showError(`unknown slash: ${trimmed}`);
           return;
         }
@@ -2791,61 +2740,60 @@ export const InkApp: React.FC<InkAppProps> = ({
       busyRef.current = true;
       setBusy(true);
 
-      // Auto-ingest local filesystem paths the user wrote into the
-      // natural-language prompt (e.g. "create a knowledge source from
-      // /Users/.../OCPP-2.0.1.md"). Each existing absolute / home /
-      // dot-relative path is uploaded via the same chokepoint
-      // `/attach` uses and the raw token is replaced with an
-      // `@file:fid_…` mention that `rewriteFileMentions` (inside
-      // `expandRefs`) turns into the canonical `{"$file":"fid_…"}`
-      // leaf. Result: the agent receives a normal attachment ref and
-      // can call `create_knowledge_source` directly, instead of
-      // bouncing the user to `/knowledge <path>`. Slash commands run
-      // before this point (handleBuiltinSlash short-circuits at line
-      // ~2527) so `/attach` / `/knowledge` payloads are not double-
-      // processed.
-      let preprocessed = trimmed;
+      // Expand paste-store refs back inline, fan out image / file
+      // refs as `@path` mentions so the existing mention resolver can
+      // attach their contents. This runs before local path preprocessing
+      // so a pasted path hidden behind a paste-ref is still detected.
+      const {
+        prompt: expandedRefsPrompt,
+        attachmentPaths,
+        consumedIds,
+      } = expandRefs(trimmed, pasteStoreRef.current);
+      let finalPrompt =
+        attachmentPaths.length > 0
+          ? `${expandedRefsPrompt}${attachmentPaths.map((p) => ` @${p}`).join("")}`
+          : expandedRefsPrompt;
+
+      // Auto-ingest local filesystem paths from the expanded prompt.
+      // The user-facing transcript keeps `trimmed`; this branch only
+      // prepares the engine payload.
       if (engineClient) {
         try {
           const result = await autoUploadLocalPaths(
-            trimmed,
+            finalPrompt,
             engineClient,
             cwd ?? process.cwd(),
             session.conversationId,
           );
-          preprocessed = result.rewritten;
+          finalPrompt = result.rewritten;
+          for (const f of result.inlined) {
+            showInfo(`read ${f.filename} (${f.bytes} bytes)`);
+          }
           for (const u of result.uploaded) {
-            showInfo(`auto-uploaded ${u.filename} → ${u.fid} (${u.bytes} bytes)`);
+            showInfo(`attached ${u.filename} (${u.bytes} bytes)`);
           }
           for (const s of result.skipped) {
-            // not_found / not_file are silent: the extraction regex
-            // is permissive on purpose; false positives are expected
-            // and shouldn't spam the operator's notice stack.
             if (s.reason === "upload_failed") {
-              showError(`auto-upload failed for ${s.raw}: ${s.detail ?? ""}`);
+              showError(`file upload failed for ${s.raw}: ${s.detail ?? ""}`);
+            } else if (s.reason === "read_failed") {
+              showError(`file read failed for ${s.raw}: ${s.detail ?? ""}`);
             }
           }
         } catch (err) {
-          // Preprocessor errors must never block submit. Surface and
-          // continue with the original prompt.
-          showError(
-            `auto-upload preprocessor: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          showError(`local path preprocessor: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
+      finalPrompt = expandRefs(finalPrompt, pasteStoreRef.current).prompt;
 
-      // Expand paste-store refs back inline, fan out image / file
-      // refs as `@path` mentions so the existing mention resolver
-      // can attach their contents.
-      const {
-        prompt: expanded,
-        attachmentPaths,
-        consumedIds,
-      } = expandRefs(preprocessed, pasteStoreRef.current);
-      const finalPrompt =
-        attachmentPaths.length > 0
-          ? `${expanded}${attachmentPaths.map((p) => ` @${p}`).join("")}`
-          : expanded;
+      const finalPromptChars = [...finalPrompt].length;
+      if (finalPromptChars > MAX_USER_INPUT_TEXT_CHARS) {
+        showError(
+          `Message exceeds the maximum length of ${MAX_USER_INPUT_TEXT_CHARS} characters (${finalPromptChars} provided).`,
+        );
+        busyRef.current = false;
+        setBusy(false);
+        return;
+      }
 
       // Record in the in-memory ring + persist (subkit-tenant scoped).
       historyRef.current.push(trimmed);
@@ -2855,10 +2803,6 @@ export const InkApp: React.FC<InkAppProps> = ({
       } catch {
         // best-effort
       }
-      // Free consumed paste items after a successful submit.
-      for (const id of consumedIds) pasteStoreRef.current.delete(id);
-      syncPendingAttachments();
-
       // Captured from the resolved turn so the `finally` drain can tell
       // whether a dialog opened mid-turn — `session` in this closure is
       // stale by then.
@@ -2899,6 +2843,8 @@ export const InkApp: React.FC<InkAppProps> = ({
           events,
           conversationId,
         );
+        for (const id of consumedIds) pasteStoreRef.current.delete(id);
+        syncPendingPasteRefs();
         turnOpenedElicitation = finalState.pendingElicitation !== null;
       } catch (err) {
         showStructuredError(err);
@@ -2944,7 +2890,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       showError,
       showInfo,
       submitElicitationResponse,
-      syncPendingAttachments,
+      syncPendingPasteRefs,
     ],
   );
 
@@ -3466,10 +3412,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           const suffix = char.slice(endIdx + BP_END.length);
           if (prefix) setInput((prev) => applyInput(prev, { type: "insert", text: prefix }));
           if (pasted) {
-            const { ref } = pasteStoreRef.current.addText(pasted);
-            syncPendingAttachments();
-            setInput((prev) => applyInput(prev, { type: "insert", text: ref }));
-            showInfo(`pasted ${ref} — sent inline at submit`);
+            insertPasteChunk(pasted);
           }
           if (suffix) setInput((prev) => applyInput(prev, { type: "insert", text: suffix }));
           return;
@@ -3482,18 +3425,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           // forcing it on a 6-character word produced the confusing
           // `[2] text · 1 line · siemens-stock-price` dialog over the
           // composer in session 64db7189.
-          const newlineCount = (char.match(/\n/g) ?? []).length;
-          const inlineThreshold = 200; // ~one terminal row
-          if (newlineCount === 0 && char.length <= inlineThreshold) {
-            setInput((prev) => applyInput(prev, { type: "insert", text: char }));
-            return;
-          }
-          // Big chunk — stash in the paste store, insert the ref
-          // inline. Keeps the buffer compact and cursor math sane.
-          const { ref } = pasteStoreRef.current.addText(char);
-          syncPendingAttachments();
-          setInput((prev) => applyInput(prev, { type: "insert", text: ref }));
-          showInfo(`pasted ${ref} — sent inline at submit`);
+          insertPasteChunk(char);
           return;
         }
         setInput((prev) => applyInput(prev, { type: "insert", text: char }));
@@ -4390,7 +4322,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       {/* Thinking spinner — surfaces the in-flight tool name so the
           user sees concrete progress instead of just "thinking…" for
           long turns. Pre-fix session 86de186b sat on "thinking…
-          1m16s" while the engine ran build_workflow → validate_draft
+          1m16s" while the engine ran author_workflow → validate_draft
           → dry_run_workflow with no visibility. */}
       {(() => {
         const running = session.toolCalls.find(
@@ -4462,7 +4394,7 @@ export const InkApp: React.FC<InkAppProps> = ({
           footer's identity chrome stays on the last two rows. */}
       <StatusBar statusLine={statusLine} columns={columns} />
 
-      <PendingAttachments items={pendingAttachments} />
+      <PendingPasteRefs items={pendingPasteRefs} />
 
       {/* Bordered composer — ────── / ❯ input / ────── */}
       <Composer input={input} busy={busy} />
@@ -4526,7 +4458,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         </Box>
       ) : null}
 
-      {/* Fuzzy slash-command suggestions (hidden while a pane is open).
+      {/* Prefix slash-command suggestions (hidden while a pane is open).
           The legacy SuggestionList drives ranked picks once the user
           starts typing; the new SlashSuggest adds the discovery
           welcome hint when the buffer is empty so first-time users

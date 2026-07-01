@@ -17,15 +17,12 @@
 
 import { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { recordToolPolicyConfirmationRequired } from "../../../audit/recorders/index.ts";
 import type { Db } from "../../../db/client.ts";
-import {
-  conversationElicitations,
-  conversationMessages,
-  conversations,
-} from "../../../db/schema/index.ts";
+import { conversations } from "../../../db/schema/index.ts";
 import { log, logger } from "../../../logging/logger.ts";
+import { stampMcpTaskProgress } from "../../../mcp/tasks/store.ts";
 import {
   recordConversationToolCall,
   recordToolCircuitOpen,
@@ -59,16 +56,13 @@ import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import { resolveExecutionMode } from "../tool-policies.ts";
 import { truncateForLlm } from "../truncate.ts";
+import { decideConfirm } from "./confirm-decision.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
 import {
   buildPolicyGateCommitIntent,
   confirmationMetadataForTool,
-  extractText,
-  isAffirmation,
   mapToolToCommitIntentKind,
-  proseConfirmationApplies,
   REVIEW_AFTER_EXECUTION_KIND,
-  referencesProseConfirmation,
   summarizeToolData,
   summarizeToolFailure,
   topLevelElicitationKindForTool,
@@ -82,6 +76,11 @@ import {
   type TurnSignals,
   type WrappedToolOutput,
 } from "./state.ts";
+
+// Freshness window for a durable prior save-workflow approval. Beyond
+// this, the pre-confirm gate re-pauses (asks again) rather than reusing
+// a stale approval — the safe direction.
+const PRIOR_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 
 // One heap snapshot per process (SUBKIT_HEAP_DIAG=1 only) — the spike
 // recurs every step, so the first capture is representative and repeat
@@ -232,8 +231,8 @@ export function wrapOne(
       });
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
-        // Skill prerequisite gate. Some tools (propose_step,
-        // build_workflow, update_param, connect_steps) declare a
+        // Skill prerequisite gate. Some tools (author_workflow,
+        // edit_workflow_patch) declare a
         // required skill in `tool-policies.ts#prerequisites`. If the
         // skill is not loaded, return a structured error instead of
         // running the tool — the model receives a clear "load
@@ -420,18 +419,17 @@ export function wrapOne(
 
         // Adaptive loop-breaker. A single global step cap that trusts
         // the model is too coarse — but plain per-tool counters fire
-        // even on legitimate
-        // incremental authoring (session a128deba 15:13:16:
-        // propose_step capped mid-build of a 4-step workflow).
+        // even on legitimate iterative authoring where the model applies
+        // several distinct edit_workflow_patch calls in sequence.
         //
         // Adaptive shape:
         //   - tenant_read tools have NO repeat cap. Reads are
         //     idempotent — the model needs them.
         //   - draft_write / tenant_write tools trip ONLY when the
         //     SAME args are submitted REPEAT_THRESHOLD times in a
-        //     row. Five propose_step calls with five different step
-        //     ids = fine. Three propose_step calls with the same
-        //     args = repair spiral, halt.
+        //     row. Five edit_workflow_patch calls with five different
+        //     patch sets = fine. Three edit_workflow_patch calls with
+        //     the same args = repair spiral, halt.
         //   - The global step ceiling lives in the outer loop's
         //     `stopWhen: stepCountIs(N)` (matches reference's
         //     stopWhen contract). Per-tool repeat detection here
@@ -648,6 +646,12 @@ export function wrapOne(
           input: rawArgs,
           approval_required: inner.name.startsWith("ask_user_"),
         });
+        // Option-B worker heartbeat: stamp the live `mcp_tasks` row with
+        // this tool's phase/last_action/step + a fresh `heartbeat_at` as
+        // the tool starts executing. For a backgrounded MCP turn this is
+        // what `conversation_get` reports as accurate, monotonic progress;
+        // for an inline sk-REPL turn (no `mcp_tasks` row) it no-ops.
+        await stampMcpTaskProgress(ctx.tenant_id, ctx.conversation_id, inner.name, rawArgs, db);
         signals.pendingChildToolCallIds.push(toolCallId);
         events.push({
           type: "tool_call_start",
@@ -726,202 +730,67 @@ export function wrapOne(
           permission_mode: permissionMode,
         });
         const policyMarker = (rawArgs as { __policy_confirmed?: boolean }).__policy_confirmed;
-        // Cross-prompt dedup: if the LLM has *already* surfaced an
-        // `ask_user_confirm` for this same tool intent in the recent
-        // conversation history (and the user said yes), skip the
-        // policy-gate elicitation — that would otherwise produce the
-        // back-to-back "yes / approve" double-prompt the operator sees
-        // when committing a workflow draft. Maps the current tool to
-        // the elicitation `commit_intent.kind` the LLM uses; resolves
-        // the most recent matching elicitation; skips the gate when
-        // that elicitation was confirmed within the last 5 minutes.
+        // Retained purely for the forensic gate log below — it is no
+        // longer a gate INPUT. `buildPolicyGateCommitIntent` (below)
+        // still routes on `mapToolToCommitIntentKind` when it attaches
+        // the auto-persist carrier.
         const intentKindForCurrentTool = mapToolToCommitIntentKind(inner.name);
-        // Dedup decision: "did the operator already confirm THIS tool's
-        // intent recently?" — if so, skip the policy-gate pre-confirm.
+        // Durable prior-approval lookup — ONLY for the save-workflow
+        // path, and ONLY via the SHARED `findPriorSaveWorkflowApproval`
+        // predicate that `commitWorkflowAtomic` also authorizes on
+        // (`persistence/commit-workflow.ts`). Keying the pre-confirm gate
+        // and the commit backstop on the same predicate is what makes
+        // them impossible to disagree: if the pre-confirm skips on an
+        // approval, the commit gate would have accepted the same one.
         //
-        // For `save_workflow_draft` the dedup MUST use the exact same
-        // predicate the commit gate authorizes on
-        // (`findPriorSaveWorkflowApproval`, keyed on
-        // `input.commit_intent.kind`). If the two diverged, the policy
-        // gate could skip the pre-confirm on an approval the commit gate
-        // then rejects (the production dead-end), or pause redundantly
-        // on an approval the commit gate would accept.
-        //
-        // For every other tool the dedup matches on the ORIGINATING
-        // tool (`input.target.tool` — stamped on every policy-gate
-        // elicitation), NOT a shared top-level `kind` bucket. Keying on
-        // the cosmetic `kind` enum let a `run_workflow` confirm dedup
-        // against an unrelated `web_search` confirm (both bucket to
-        // `external_write`) — the cross-intent false positive.
-        let recentlyConfirmedByLLM = false;
-        if (intentKindForCurrentTool) {
+        // Every OTHER write tool has NO prior-approval shortcut here —
+        // it relies on the deterministic `decideConfirm` rule, which
+        // pauses unless `__policy_confirmed` is present. The pause emits
+        // an `ask_user_confirm` carrying a `commit_intent`, and the
+        // harness auto-persist path applies the write on approve. The
+        // fuzzy natural-language heuristics (a generic 20-row
+        // elicitation scan keyed on the cosmetic `kind` bucket, plus a
+        // prose-affirmation regex over recent messages) were deleted:
+        // they guessed at operator intent over a security-critical write.
+        let priorApproval = false;
+        if (inner.name === "save_workflow_draft") {
           try {
-            if (inner.name === "save_workflow_draft") {
-              const approval = await findPriorSaveWorkflowApproval(
-                db,
-                ctx.tenant_id,
-                ctx.conversation_id,
-              );
-              if (approval && Date.now() - (approval.created_at?.getTime() ?? 0) < 5 * 60 * 1000) {
-                recentlyConfirmedByLLM = true;
-              }
-            } else {
-              const recent = await db
-                .select({
-                  id: conversationElicitations.id,
-                  status: conversationElicitations.status,
-                  input: conversationElicitations.input,
-                  output: conversationElicitations.output,
-                  created_at: conversationElicitations.created_at,
-                })
-                .from(conversationElicitations)
-                .where(
-                  and(
-                    eq(conversationElicitations.tenant_id, ctx.tenant_id),
-                    eq(conversationElicitations.conversation_id, ctx.conversation_id),
-                    eq(conversationElicitations.tool_name, "ask_user_confirm"),
-                  ),
-                )
-                .orderBy(desc(conversationElicitations.created_at))
-                // 20-row scan is a safe-direction bound: a matching
-                // confirm beyond the 20 most-recent rows simply isn't
-                // found, so the gate re-pauses (asks again) rather than
-                // skips — never the other way round. Mirrors the
-                // `5 * 60 * 1000` freshness window below.
-                .limit(20);
-              const head = recent.find((row) => {
-                const input = row.input;
-                if (typeof input !== "object" || input === null) return false;
-                const target = (input as { target?: unknown }).target;
-                if (typeof target !== "object" || target === null) return false;
-                return (target as { tool?: unknown }).tool === inner.name;
-              });
-              if (
-                head?.status === "resolved" &&
-                typeof head.output === "object" &&
-                head.output !== null &&
-                (head.output as { confirmed?: unknown }).confirmed === true &&
-                Date.now() - (head.created_at?.getTime() ?? 0) < 5 * 60 * 1000
-              ) {
-                recentlyConfirmedByLLM = true;
-              }
+            const approval = await findPriorSaveWorkflowApproval(
+              db,
+              ctx.tenant_id,
+              ctx.conversation_id,
+            );
+            if (
+              approval &&
+              Date.now() - (approval.created_at?.getTime() ?? 0) < PRIOR_APPROVAL_WINDOW_MS
+            ) {
+              priorApproval = true;
             }
           } catch {
             // DB blip: fall back to gating. Better to ask twice than
             // silently elide a security-critical confirm.
           }
         }
-        // Prose-pre-confirmation dedupe: when the LLM wrote a prose
-        // pre-confirmation ("Shall I proceed to delete all 6
-        // workflows?", "Confirm if I should delete the connector?")
-        // and the user immediately answered with a clear affirmation
-        // ("yes" / "go ahead" / "do it") in the next user message,
-        // treat that exchange as the confirmation and skip the
-        // policy-gate elicitation. Pre-fix the LLM kept writing prose
-        // pre-confirmations across 6+ versions despite skill rules
-        // forbidding them, producing the visible "ask twice" anti-
-        // pattern (session abeefb33: prose "Shall I proceed?" + user
-        // "yes" + structured ConfirmPrompt for the same delete).
-        // Heuristic is scoped to the IMMEDIATELY-PRECEDING two
-        // messages and a 5-minute freshness window so the path
-        // cannot retroactively wave through an unrelated approval.
-        //
-        // The recent-messages query only runs for tools where prose
-        // dedupe can actually apply (`delete_*` / `revoke_*`). For every
-        // other tool `referencesProseConfirmation` short-circuits to
-        // false, so running the query would be a guaranteed no-op DB
-        // round-trip on every tool call (FIX 7 / INCONSISTENCY-2).
-        let recentlyConfirmedByProse = false;
-        if (proseConfirmationApplies(inner.name)) {
-          try {
-            const recentMessages = await db
-              .select({
-                role: conversationMessages.role,
-                content: conversationMessages.content,
-                created_at: conversationMessages.created_at,
-              })
-              .from(conversationMessages)
-              .where(
-                and(
-                  eq(conversationMessages.tenant_id, ctx.tenant_id),
-                  eq(conversationMessages.conversation_id, ctx.conversation_id),
-                ),
-              )
-              .orderBy(desc(conversationMessages.created_at))
-              .limit(4);
-            // Walk newest → older, looking for [user-affirm, assistant-question]
-            // pairs where the assistant question references the same tool
-            // (or destructive verb) the gate is about to fire on.
-            const FIVE_MIN_MS = 5 * 60 * 1000;
-            for (let i = 0; i < recentMessages.length - 1; i++) {
-              const userMsg = recentMessages[i];
-              const asstMsg = recentMessages[i + 1];
-              if (!userMsg || !asstMsg) continue;
-              if (userMsg.role !== "user" || asstMsg.role !== "assistant") continue;
-              if (userMsg.created_at && Date.now() - userMsg.created_at.getTime() > FIVE_MIN_MS)
-                break;
-              const userText = extractText(userMsg.content);
-              const asstText = extractText(asstMsg.content);
-              if (!isAffirmation(userText)) continue;
-              if (!referencesProseConfirmation(asstText, inner.name)) continue;
-              recentlyConfirmedByProse = true;
-              break;
-            }
-          } catch {
-            // DB blip: fall back to gating. Better to ask twice than
-            // silently elide a security-critical confirm.
-          }
-        }
-        // Gate decision is driven by `resolvedMode` ALONE — not by
-        // `inner.category`. The legacy `category === "tenant_write"`
-        // filter conflated "needs confirmation" with "stages a
-        // confirmation-state-machine row" and silently let `draft_write`
-        // tools that demand confirm_before_execution (notably
-        // `save_workflow_draft`) bypass the gate, where they then died with
-        // `no_prior_approval` because no elicitation was ever created.
-        // The state-machine recording at `recordTransition` below stays
-        // scoped to `tenant_write` — that part of the original guard
-        // is still correct.
-        const needsPreConfirmation =
-          resolvedMode === "confirm_before_execution" &&
-          !policyMarker &&
-          !recentlyConfirmedByLLM &&
-          !recentlyConfirmedByProse;
-        if (recentlyConfirmedByLLM && resolvedMode === "confirm_before_execution") {
-          logger.info({
-            module: "conversation_tool",
-            action: "tool_policy.confirmation_deduped",
-            msg: "skipping policy-gate confirm — LLM already elicited and user approved",
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            tool: inner.name,
-            intent_kind: intentKindForCurrentTool,
-          });
-        }
-        if (recentlyConfirmedByProse && resolvedMode === "confirm_before_execution") {
-          logger.info({
-            module: "conversation_tool",
-            action: "tool_policy.prose_confirmation_deduped",
-            msg: "skipping policy-gate confirm — prose pre-confirmation matched + user affirmed",
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            tool: inner.name,
-          });
-        }
-        // Forensic log when the gate was evaluated but skipped, so the
-        // next "tool ran without confirmation" investigation can read
-        // why directly from engine logs instead of bisecting the
-        // wrapper. Pre-fix this exact failure mode silently swallowed
-        // a save_workflow_draft call (session dca36b29 — `paused: false,
-        // committed: false, error: no_prior_approval`).
+        // The ONE confirm-gate decision — the same pure rule the
+        // MCP-direct gate (`mcp/capabilities/policy-gate.ts`) evaluates,
+        // so both surfaces pause or proceed IDENTICALLY for the same
+        // tool/args. Biased to pause: reads auto-run; a write proceeds
+        // only with `policyMarker` OR a fresh durable `priorApproval`.
+        const confirmDecision = decideConfirm({
+          resolvedMode,
+          policyMarker: Boolean(policyMarker),
+          priorApproval,
+          category: inner.category,
+        });
+        const needsPreConfirmation = confirmDecision.pause;
+        // Forensic log when the gate was evaluated for a
+        // confirm_before_execution tool but skipped, so the next "tool
+        // ran without confirmation" investigation can read WHY directly
+        // from engine logs instead of bisecting the wrapper. Pre-fix
+        // this exact failure mode silently swallowed a save_workflow_draft
+        // call (session dca36b29 — `paused: false, committed: false,
+        // error: no_prior_approval`).
         if (resolvedMode === "confirm_before_execution" && !needsPreConfirmation) {
-          const skipReason = policyMarker
-            ? "policy_marker_present"
-            : recentlyConfirmedByLLM
-              ? "recently_confirmed_by_llm"
-              : recentlyConfirmedByProse
-                ? "recently_confirmed_by_prose"
-                : "unknown";
           logger.info({
             module: "conversation_tool",
             action: "policy.gate_skipped",
@@ -930,7 +799,7 @@ export function wrapOne(
             conversation_id: ctx.conversation_id,
             tool: inner.name,
             category: inner.category,
-            skip_reason: skipReason,
+            skip_reason: confirmDecision.reason,
             ...(intentKindForCurrentTool ? { intent_kind: intentKindForCurrentTool } : {}),
           });
         }
@@ -1027,8 +896,17 @@ export function wrapOne(
           const buildPolicyGateSummary = (): string => {
             if (inner.name === "run_workflow") {
               const draft = ctx.getDraft();
+              const explicitWorkflow =
+                typeof rawArgs.workflow === "string"
+                  ? rawArgs.workflow
+                  : typeof rawArgs.workflow_id === "string"
+                    ? rawArgs.workflow_id
+                    : null;
               const wfName =
-                draft.summary?.active_target?.name ?? draft.workflow?.name ?? "(unnamed)";
+                explicitWorkflow ??
+                draft.summary?.active_target?.name ??
+                draft.workflow?.name ??
+                "(unnamed)";
               const env =
                 (rawArgs &&
                   typeof rawArgs === "object" &&
@@ -1157,7 +1035,7 @@ export function wrapOne(
             elicitation_id: elicitation.id,
             tool_name: "ask_user_confirm",
             kind: topLevelKind,
-            summary: `Confirm ${inner.name}`,
+            summary: policyGateSummary,
             input: elicitation.input,
           };
           recordConversationToolCall({
@@ -1172,7 +1050,7 @@ export function wrapOne(
             pause: {
               elicitation_id: elicitation.id,
               tool_name: "ask_user_confirm",
-              summary: `Confirm ${inner.name}`,
+              summary: policyGateSummary,
               kind: topLevelKind,
               input: elicitationInput,
             },

@@ -138,6 +138,7 @@ export const probeConnectorDraftTool: ConversationTool = {
     "Probe the current connector draft before saving it. Use this as the normal verification step for HTTP and GraphQL connectors.",
   inputSchema,
   category: "draft_write",
+  requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const currentDraft = ctx.getDraft();

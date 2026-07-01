@@ -5,9 +5,11 @@
 //
 //   - `commit-workflow.ts` — the prior-approval gate inside
 //     `commitWorkflowAtomic` (`commit_gate.denied` / `no_prior_approval`).
-//   - `tools/sdk-wrap/invoke.ts` — the policy gate's
-//     `recentlyConfirmedByLLM` dedup, which skips the pre-execution
-//     confirm IFF the commit gate would accept the approval.
+//   - `tools/sdk-wrap/invoke.ts` — the loop confirm gate's `priorApproval`
+//     input to `decideConfirm`, which skips the pre-execution confirm IFF
+//     the commit gate would accept the same approval. This is the ONLY
+//     durable-approval shortcut left on the save path; every other write
+//     relies on `__policy_confirmed` alone.
 //
 // Authorization is keyed on the AUTHORITATIVE field —
 // `input.commit_intent.kind === "save_workflow_draft"` — NOT the

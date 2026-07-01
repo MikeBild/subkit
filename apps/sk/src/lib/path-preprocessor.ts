@@ -1,13 +1,9 @@
-// Auto-uploads local filesystem paths that appear in natural-language
-// chat prompts so the user never has to copy the bytes by hand. When a
-// user submits "create a knowledge source from /Users/.../foo.md", the
-// preprocessor extracts the path, uploads it via the same chokepoint
-// `/attach` uses, links the file to the active conversation, and
-// splices an `@file:fid_…` mention in place of the raw path. The
-// existing `expandRefs` rewrite turns that mention into the canonical
-// `{"$file":"fid_…"}` leaf at submit time — so the agent receives a
-// normal attachment ref and can call `create_knowledge_source` with
-// `mode='from_attachment'` directly.
+// Preprocesses local filesystem paths that appear in natural-language
+// chat prompts so the user never has to copy bytes by hand. Text-like
+// files are read locally and appended to the prompt as visible context
+// for workflow-style inputs; knowledge-source intents still upload text
+// files through the shared Files chokepoint so the engine ingests the
+// original file artifact.
 //
 // The architectural premise is: the engine cannot read the operator's
 // local filesystem, but `sk` runs on the operator's machine and can.
@@ -15,11 +11,14 @@
 // slash command they then have to copy-paste — a UX failure that no
 // amount of slash-command hardening fixes.
 
-import { existsSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { uploadPath } from "../commands/files.ts";
 import type { EngineClient } from "../engine-client.ts";
+import { detectMime } from "../utils/mime.ts";
 import { sanitizePathInput } from "./path-input.ts";
+
+export const MAX_INLINE_LOCAL_PATH_BYTES = 262144;
 
 export interface PathCandidate {
   /** Exact substring as it appears in the input, including surrounding
@@ -40,28 +39,44 @@ export interface UploadedPath {
   bytes: number;
 }
 
+export interface InlinedPath {
+  raw: string;
+  path: string;
+  filename: string;
+  bytes: number;
+  truncated: boolean;
+}
+
 export interface SkippedPath {
   raw: string;
-  reason: "not_found" | "not_file" | "upload_failed";
+  reason: "not_found" | "not_file" | "upload_failed" | "read_failed";
   detail?: string;
 }
 
 export interface AutoUploadResult {
   rewritten: string;
+  inlined: InlinedPath[];
   uploaded: UploadedPath[];
   skipped: SkippedPath[];
 }
 
-// Path-shaped tokens. Anchored at a non-path char on the left (start
-// of string OR whitespace), then `~/`, `./`, `../`, or `/`, then a run
-// of non-whitespace, non-quote, non-bracket chars. Brackets and quotes
-// are excluded so paths embedded in markdown links `[name](/p)` or
-// quoted args `"/p"` extract cleanly.
-const PATH_RE = /(?:^|(?<=\s))(?:~\/|\.{1,2}\/|\/)[^\s"'<>`(){}[\]]+/g;
+export type LocalPathMode = "workflow_input" | "knowledge_source";
+
+export interface AutoUploadOptions {
+  mode?: LocalPathMode;
+}
+
+// Path-shaped tokens. Handles bare, shell-escaped, quoted, and file://
+// forms that terminals commonly emit for drag/drop.
+const PATH_RE =
+  /(["'])(?:file:\/\/|~\/|\.{1,2}\/|\/)(?:\\.|(?!\1)[^\r\n])*?\1|(?:^|(?<=\s))(?:file:\/\/|~\/|\.{1,2}\/|\/)(?:\\.|[^\s"'<>`(){}[\]])+/g;
 
 // Trailing characters to strip when they sit after an alphanumeric —
 // markdown renderers love attaching these to paths in prose.
 const TRAILING_PUNCT_RE = /[.,;:!?)\]>]+$/;
+
+const KNOWLEDGE_SOURCE_INTENT_RE =
+  /\b(?:knowledge\s*sources?|knowledge[-_\s]?source|wissensquelle|wissensquellen|knowledge\s*base|kb|ingest(?:e|ion)?|index(?:iere|ieren|ing)?|als\s+(?:wissen|knowledge)|suchbar(?:e|en)?|einlesen\s+als\s+wissen)\b/i;
 
 export function extractCandidatePaths(input: string): PathCandidate[] {
   const out: PathCandidate[] = [];
@@ -72,7 +87,7 @@ export function extractCandidatePaths(input: string): PathCandidate[] {
     // Keeps "/tmp/x.md" (ends in 'd') trimming "/tmp/x.md," correctly,
     // and leaves "/tmp/foo." (a literal path ending in dot, rare) as
     // existsSync's problem.
-    let cleaned = sanitizePathInput(raw);
+    let cleaned = normalizeCandidatePath(raw);
     const trail = cleaned.match(TRAILING_PUNCT_RE);
     if (trail && trail.index !== undefined && trail.index > 0) {
       const beforePunct = cleaned[trail.index - 1] ?? "";
@@ -90,6 +105,22 @@ export function extractCandidatePaths(input: string): PathCandidate[] {
   return out;
 }
 
+function normalizeCandidatePath(raw: string): string {
+  let cleaned = sanitizePathInput(raw);
+  const quoted =
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"));
+  if (quoted) cleaned = sanitizePathInput(cleaned.slice(1, -1));
+  if (cleaned.startsWith("file://")) {
+    try {
+      cleaned = decodeURIComponent(new URL(cleaned).pathname);
+    } catch {
+      return cleaned;
+    }
+  }
+  return cleaned.replace(/\\([ "'()&;<>[\]{}$`!#])/g, "$1");
+}
+
 function resolveCandidate(cwd: string, cleaned: string): string {
   if (cleaned.startsWith("~/")) {
     const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
@@ -98,19 +129,60 @@ function resolveCandidate(cwd: string, cleaned: string): string {
   return resolve(cwd, cleaned);
 }
 
+function shouldInlinePath(abs: string): boolean {
+  const mime = detectMime(abs);
+  return (
+    mime.startsWith("text/") ||
+    mime === "application/json" ||
+    mime === "application/xml" ||
+    mime === "application/javascript" ||
+    mime === "application/x-javascript"
+  );
+}
+
+export function inferLocalPathMode(input: string): LocalPathMode {
+  return KNOWLEDGE_SOURCE_INTENT_RE.test(input) ? "knowledge_source" : "workflow_input";
+}
+
+function inlineBlock(item: InlinedPath, body: string): string {
+  const lang = detectMime(item.path).includes("markdown")
+    ? "markdown"
+    : detectMime(item.path).includes("json")
+      ? "json"
+      : detectMime(item.path).includes("html")
+        ? "html"
+        : "";
+  const truncated = item.truncated
+    ? `\n\n[sk: file truncated at ${MAX_INLINE_LOCAL_PATH_BYTES} bytes]`
+    : "";
+  return [
+    `## Local file contents: ${item.filename}`,
+    `Path: ${item.path}`,
+    "Use this content when the user refers to this local file path.",
+    "",
+    `\`\`\`${lang}`,
+    `${body}${truncated}`,
+    "```",
+  ].join("\n");
+}
+
 export async function autoUploadLocalPaths(
   input: string,
   client: EngineClient,
   cwd: string,
   conversationId: string | null | undefined,
+  opts: AutoUploadOptions = {},
 ): Promise<AutoUploadResult> {
   const candidates = extractCandidatePaths(input);
   if (candidates.length === 0) {
-    return { rewritten: input, uploaded: [], skipped: [] };
+    return { rewritten: input, inlined: [], uploaded: [], skipped: [] };
   }
+  const mode = opts.mode ?? inferLocalPathMode(input);
 
+  const inlined: InlinedPath[] = [];
   const uploaded: UploadedPath[] = [];
   const skipped: SkippedPath[] = [];
+  const inlineBlocks: string[] = [];
   // Map of `start` offset → replacement text, applied right-to-left so
   // earlier offsets stay valid.
   const replacements: Array<{ start: number; end: number; with: string }> = [];
@@ -124,6 +196,34 @@ export async function autoUploadLocalPaths(
     const st = statSync(abs);
     if (!st.isFile()) {
       skipped.push({ raw: c.raw, reason: "not_file" });
+      continue;
+    }
+    if (shouldInlinePath(abs) && mode === "workflow_input") {
+      try {
+        const bytes = st.size;
+        let body = readFileSync(abs, "utf8");
+        const truncated = Buffer.byteLength(body, "utf8") > MAX_INLINE_LOCAL_PATH_BYTES;
+        if (truncated) {
+          body = Buffer.from(body, "utf8")
+            .subarray(0, MAX_INLINE_LOCAL_PATH_BYTES)
+            .toString("utf8");
+        }
+        const item = {
+          raw: c.raw,
+          path: abs,
+          filename: basename(abs),
+          bytes,
+          truncated,
+        };
+        inlined.push(item);
+        inlineBlocks.push(inlineBlock(item, body));
+      } catch (err) {
+        skipped.push({
+          raw: c.raw,
+          reason: "read_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
       continue;
     }
     try {
@@ -153,9 +253,8 @@ export async function autoUploadLocalPaths(
         end: c.end,
         // The `@file:fid_…` mention is rewritten by `expandRefs` →
         // `rewriteFileMentions` to the canonical `{"$file":"fid_…"}`
-        // leaf at submit. Keeping the mention shape here means the
-        // user sees a readable token in the optimistic echo and the
-        // wire payload matches `/attach`-inserted leaves byte-for-byte.
+        // leaf at submit. Keeping the mention shape here gives the
+        // REPL one internal form before the final wire payload.
         with: `@file:${row.id}`,
       });
     } catch (err) {
@@ -168,7 +267,9 @@ export async function autoUploadLocalPaths(
   }
 
   if (replacements.length === 0) {
-    return { rewritten: input, uploaded, skipped };
+    const rewritten =
+      inlineBlocks.length > 0 ? `${input}\n\n---\n${inlineBlocks.join("\n\n")}` : input;
+    return { rewritten, inlined, uploaded, skipped };
   }
 
   let rewritten = input;
@@ -176,5 +277,8 @@ export async function autoUploadLocalPaths(
   for (const r of replacements) {
     rewritten = rewritten.slice(0, r.start) + r.with + rewritten.slice(r.end);
   }
-  return { rewritten, uploaded, skipped };
+  if (inlineBlocks.length > 0) {
+    rewritten = `${rewritten}\n\n---\n${inlineBlocks.join("\n\n")}`;
+  }
+  return { rewritten, inlined, uploaded, skipped };
 }

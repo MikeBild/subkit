@@ -112,7 +112,7 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
       // the MCP catalog in every mode (a direct tools/call short-circuits to
       // not_available_on_surface — see tools-list-disabled.test.ts). They
       // used to surface here as disabled-badged descriptors.
-      expect(names.has("propose_step")).toBe(false);
+      expect(names.has("edit_workflow_patch")).toBe(false);
       expect(names.has("save_workflow_draft")).toBe(false);
     } finally {
       await client.close();
@@ -148,7 +148,7 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
 
   test("REST GET /v1/mcp/tools returns the static structured-intent palette", async () => {
     // Note: the REST /v1/mcp/tools endpoint returns the static structured-intent
-    // conversation tools (propose_step, save_workflow_draft, etc.). The wf_<slug>
+    // conversation tools (author_workflow, save_workflow_draft, etc.). The wf_<slug>
     // dynamic catalog only appears via the live MCP protocol (tools/list over
     // StreamableHTTP). This test verifies the REST endpoint itself is healthy.
     const res = await journeyFetch(ctx, "/v1/mcp/tools");
@@ -157,7 +157,7 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
     expect(Array.isArray(body.items)).toBe(true);
     // Static tools are always present
     const names = new Set(body.items.map((t) => t.name));
-    expect(names.has("propose_step")).toBe(true);
+    expect(names.has("author_workflow")).toBe(true);
   });
 
   test("workflow with is_tool=false is NOT surfaced in tools/list", async () => {
@@ -232,6 +232,116 @@ describe("MCP tools/call — wf_<slug> end-to-end (T7)", () => {
       });
       // MCP wraps errors in isError=true content
       expect(result.isError).toBe(true);
+      // W4.5 anti-spiral: the dead-end is a TERMINAL, actionable envelope,
+      // not a bare "workflow not found" string a client can loop on.
+      const text = (result.content as Array<{ type: string; text?: string }>).find(
+        (b) => b.type === "text",
+      )?.text;
+      const body = JSON.parse(text!) as {
+        status: string;
+        error_code: string;
+        next_best_actions: string[];
+      };
+      expect(body.status).toBe("cannot_help");
+      expect(body.error_code).toBe("workflow_not_found");
+      expect(body.next_best_actions).toContain("find_workflow");
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("tools/call for a tool absent from this surface returns a terminal cannot_help", async () => {
+    // A strict client that reaches for a tool name that is neither a
+    // wf_<slug>, a conversation_ RPC, nor a registry tool used to get a
+    // bare "unknown tool: X" string — an ambiguous dead-end. It must now
+    // be a terminal, actionable cannot_help naming the recovery path.
+    const client = await connect();
+    try {
+      const result = await client.callTool({
+        name: "totally_made_up_tool_xyz",
+        arguments: {},
+      });
+      expect(result.isError).toBe(true);
+      const text = (result.content as Array<{ type: string; text?: string }>).find(
+        (b) => b.type === "text",
+      )?.text;
+      const body = JSON.parse(text!) as {
+        status: string;
+        error_code: string;
+        next_best_actions: string[];
+      };
+      expect(body.status).toBe("cannot_help");
+      expect(body.error_code).toBe("unknown_tool");
+      expect(body.next_best_actions).toContain("conversation_start");
+    } finally {
+      await client.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W4.5: run_workflow over MCP with a missing required input must return ONE
+// terminal, actionable `needs_input` envelope naming the fields — never an
+// orphan `awaiting_input` + unresolvable elicitation_id the client can loop
+// on (the ChatGPT canvas-spiral trigger).
+// ---------------------------------------------------------------------------
+
+describe("MCP tools/call — run_workflow missing required input (W4.5 anti-spiral)", () => {
+  test("returns a single terminal needs_input envelope naming the missing field", async () => {
+    const slug = "needs-input-city-wf";
+    // The `${input.city}` placeholder synthesizes a required `city` input,
+    // so a run with no input pauses on the missing-input gate.
+    const createRes = await journeyFetch(ctx, "/v1/workflows", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Needs Input City WF",
+        slug,
+        steps: [
+          {
+            kind: "request",
+            id: "probe",
+            method: "GET",
+            url: `${mockBase}/test?city=` + "${input.city}",
+          },
+        ],
+      }),
+    });
+    expect(createRes.status).toBeLessThan(300);
+
+    const client = await connect();
+    try {
+      const result = await client.callTool({
+        name: "run_workflow",
+        // Explicit dev environment is no_confirm (the policy reads the raw
+        // arg, not the tool's schema default), so the call reaches the tool
+        // body and hits the missing-input gate — no confirm detour.
+        arguments: { workflow: slug, environment: "dev" },
+      });
+      // Terminal + actionable — NOT an isError hard-fail, and NOT a silent
+      // loop.
+      expect(result.isError).toBeFalsy();
+      const textBlocks = (result.content as Array<{ type: string; text?: string }>).filter(
+        (b) => b.type === "text",
+      );
+      // A SINGLE terminal block — no ambiguity for the client to spiral on.
+      expect(textBlocks.length).toBe(1);
+      const body = JSON.parse(textBlocks[0]!.text!) as {
+        status: string;
+        error_code: string;
+        message: string;
+        missing_fields: string[];
+        fields: Array<{ name: string }>;
+      };
+      expect(body.status).toBe("needs_input");
+      expect(body.error_code).toBe("missing_input");
+      // The envelope NAMES the exact missing field inline (a text-only
+      // client that ignores _meta can still act in one step).
+      expect(body.missing_fields).toContain("city");
+      expect(body.message).toContain("city");
+      expect(body.fields.map((f) => f.name)).toContain("city");
+      // No unresolvable orphan elicitation leaked to the client.
+      expect(body.status).not.toBe("awaiting_input");
+      expect(textBlocks[0]!.text!).not.toContain("elicitation_id");
     } finally {
       await client.close();
     }

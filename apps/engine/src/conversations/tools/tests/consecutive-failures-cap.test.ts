@@ -90,15 +90,15 @@ describe("consecutive-failures cap", () => {
       ["workflow-authoring"],
       {},
     );
-    // update_param is a workflow-authoring tool that the LLM was
-    // hammering in session 16d6e46a's 30-iteration loop. Once the cap
-    // is reached, the next call returns the structured "ask the user"
-    // envelope without running the tool body.
-    const updateParam = wrapped.update_param;
-    expect(updateParam).toBeDefined();
+    // edit_workflow_patch is a workflow-authoring tool the LLM can
+    // hammer in a repair loop. Once the cap is reached, the next call
+    // returns the structured "ask the user" envelope without running the
+    // tool body.
+    const editPatch = wrapped.edit_workflow_patch;
+    expect(editPatch).toBeDefined();
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const result = await (updateParam!.execute as any)(
-      { workflow_step_id: "fetch", field: "method", value: "POST" },
+    const result = await (editPatch!.execute as any)(
+      { patches: [{ op: "replace", path: "/steps/0/method", value: "POST" }] },
       { toolCallId: "t1", messages: [] },
     );
     expect(result.data?.error_code ?? result.error_code).toBe("consecutive_failures_cap");
@@ -144,11 +144,11 @@ describe("consecutive-failures cap", () => {
       ["workflow-authoring"],
       {},
     );
-    const updateParam = wrapped.update_param;
-    expect(updateParam).toBeDefined();
+    const editPatch = wrapped.edit_workflow_patch;
+    expect(editPatch).toBeDefined();
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const result = await (updateParam!.execute as any)(
-      { workflow_step_id: "fetch", field: "method", value: "POST" },
+    const result = await (editPatch!.execute as any)(
+      { patches: [{ op: "replace", path: "/steps/0/method", value: "POST" }] },
       { toolCallId: "t1", messages: [] },
     );
     // Turn-ending signal the SDK stopWhen condition watches for.

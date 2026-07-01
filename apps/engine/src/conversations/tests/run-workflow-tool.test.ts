@@ -208,6 +208,9 @@ describe("run_workflow tool", () => {
     expect((result.data as { status: string }).status).toMatch(
       /^(succeeded|failed|partial_success)$/,
     );
+    expect((result.data as { output: { date?: unknown } }).output).toMatchObject({
+      date: "tomorrow +1",
+    });
   });
 
   test("returns status:failed when no workflow_id is resolvable", async () => {
@@ -436,5 +439,276 @@ describe("run_workflow tool", () => {
     expect(pauseInput.fields).toEqual([
       expect.objectContaining({ name: "ticket_key", type: "text", required: true }),
     ]);
+  });
+
+  test("multi-field synthesized contract (multipart upload) → ask_user_form carries BOTH fields, never a single free-text ask", async () => {
+    // Regression: a render-and-upload workflow needing {markdown,
+    // filename} carried both `${input.*}` placeholders on a request
+    // step's MULTIPART parts (value + part filename) — a surface the
+    // synthesiser did not scan, so `resolveWorkflowInputContract`
+    // returned null, run_workflow never paused with a form, and the run
+    // reached the driver where the required fields threw
+    // `input_schema_violation`. The model then hand-rolled a single
+    // free-text ask_user_text. With every string leaf now scanned, the
+    // contract resolves BOTH fields and the form is the only path.
+    const [workflow] = await ctx.testDb.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenant_id,
+        slug: "render-upload-multipart",
+        name: "Render Upload Multipart",
+        lifecycle: "active",
+      })
+      .returning();
+    if (!workflow) throw new Error("workflow insert failed");
+    const [version] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: workflow.id,
+        version: 1,
+        dag: {
+          name: "Render Upload Multipart",
+          slug: "render-upload-multipart",
+          // NO declared input_schema — both fields come from the
+          // multipart part value + filename `${input.*}` placeholders.
+          steps: [
+            {
+              id: "upload",
+              kind: "request",
+              method: "POST",
+              url: "https://files.example.test/upload",
+              multipart: [
+                {
+                  name: "file",
+                  value: "${input.markdown}",
+                  filename: "${input.filename}",
+                },
+              ],
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!version) throw new Error("version insert failed");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(eq(workflows.id, workflow.id));
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        draft: {
+          workflow: { name: "new-workflow", steps: [] },
+          state: {
+            mode: "execution",
+            stage: "workflow_executed",
+            connector_mutation_seq: 0,
+            workflow_mutation_seq: 0,
+            checkpoints: {},
+            persisted_resources: [],
+            latest_execution: null,
+            latest_diagnosis: null,
+          },
+        },
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: conversation.draft as DraftDocument,
+        setDraft: async () => {},
+      }),
+      { workflow: workflow.id, environment: "dev" /* no input */ },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.pause?.tool_name).toBe("ask_user_form");
+    const pauseInput = result.pause?.input as {
+      fields: Array<{ name: string; type: string; required: boolean }>;
+    };
+    const fieldNames = pauseInput.fields.map((f) => f.name).sort();
+    expect(fieldNames).toEqual(["filename", "markdown"]);
+    for (const f of pauseInput.fields) {
+      expect(f).toMatchObject({ type: "text", required: true });
+    }
+  });
+
+  test("W4: a SAVED workflow carrying input_schema_sample resolves the payload-derived contract end-to-end", async () => {
+    // The render-upload-slides {markdown, filename} case. The persisted
+    // step body ONLY interpolates `${input.markdown}`, so the structural
+    // synth alone sees a single key. The author supplied an
+    // `input_schema_sample` naming BOTH keys — and that field is now a
+    // persisted `WorkflowDef` field (survives normalize + the commit
+    // projection), so `resolveWorkflowInputContract` reads it off the
+    // saved dag and the run_workflow gate pauses with a form requiring
+    // BOTH fields. Pre-W4 the sample was dropped by normalizeWorkflowDraft
+    // and never persisted, so the tier only ever fired for in-flight
+    // drafts and the saved workflow silently under-required `filename`.
+    const [workflow] = await ctx.testDb.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenant_id,
+        slug: "render-upload-slides-sample",
+        name: "Render Upload Slides (sample)",
+        lifecycle: "active",
+      })
+      .returning();
+    if (!workflow) throw new Error("workflow insert failed");
+    const [version] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: workflow.id,
+        version: 1,
+        dag: {
+          name: "Render Upload Slides (sample)",
+          slug: "render-upload-slides-sample",
+          // NO declared input_schema. The body interpolates ONLY
+          // `${input.markdown}` — the structural synth would miss
+          // `filename`. The literal sample supplies both keys.
+          input_schema_sample: { markdown: "# Slides", filename: "deck.md" },
+          steps: [
+            {
+              id: "upload",
+              kind: "request",
+              method: "POST",
+              url: "https://files.example.test/upload/${input.filename}",
+              body: { content: "${input.markdown}" },
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!version) throw new Error("version insert failed");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(eq(workflows.id, workflow.id));
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        draft: {
+          workflow: { name: "new-workflow", steps: [] },
+          state: {
+            mode: "execution",
+            stage: "workflow_executed",
+            connector_mutation_seq: 0,
+            workflow_mutation_seq: 0,
+            checkpoints: {},
+            persisted_resources: [],
+            latest_execution: null,
+            latest_diagnosis: null,
+          },
+        },
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: conversation.draft as DraftDocument,
+        setDraft: async () => {},
+      }),
+      { workflow: workflow.id, environment: "dev" /* no input */ },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.pause?.tool_name).toBe("ask_user_form");
+    const pauseInput = result.pause?.input as {
+      fields: Array<{ name: string; type: string; required: boolean }>;
+    };
+    const fieldNames = pauseInput.fields.map((f) => f.name).sort();
+    // BOTH sample keys are required — `filename` proves the sample-derived
+    // tier fired off the persisted dag, not the structural placeholder scan.
+    expect(fieldNames).toEqual(["filename", "markdown"]);
+    for (const f of pauseInput.fields) {
+      expect(f).toMatchObject({ required: true });
+    }
+  });
+
+  test("W4 no-regression: the SAME saved workflow WITHOUT a sample yields only the structurally-synthesized key", async () => {
+    // Identical step shape as the sample case but no `input_schema_sample`
+    // on the persisted dag: the structural synth is the only signal, and
+    // the body interpolates a single `${input.markdown}` placeholder. The
+    // form must require exactly `markdown` — confirming the sample tier is
+    // additive and does not alter the structural path when absent.
+    const [workflow] = await ctx.testDb.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenant_id,
+        slug: "render-upload-slides-no-sample",
+        name: "Render Upload Slides (no sample)",
+        lifecycle: "active",
+      })
+      .returning();
+    if (!workflow) throw new Error("workflow insert failed");
+    const [version] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: workflow.id,
+        version: 1,
+        dag: {
+          name: "Render Upload Slides (no sample)",
+          slug: "render-upload-slides-no-sample",
+          steps: [
+            {
+              id: "upload",
+              kind: "request",
+              method: "POST",
+              url: "https://files.example.test/upload",
+              body: { content: "${input.markdown}" },
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!version) throw new Error("version insert failed");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(eq(workflows.id, workflow.id));
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        draft: {
+          workflow: { name: "new-workflow", steps: [] },
+          state: {
+            mode: "execution",
+            stage: "workflow_executed",
+            connector_mutation_seq: 0,
+            workflow_mutation_seq: 0,
+            checkpoints: {},
+            persisted_resources: [],
+            latest_execution: null,
+            latest_diagnosis: null,
+          },
+        },
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: conversation.draft as DraftDocument,
+        setDraft: async () => {},
+      }),
+      { workflow: workflow.id, environment: "dev" /* no input */ },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.pause?.tool_name).toBe("ask_user_form");
+    const pauseInput = result.pause?.input as {
+      fields: Array<{ name: string; type: string; required: boolean }>;
+    };
+    expect(pauseInput.fields.map((f) => f.name)).toEqual(["markdown"]);
   });
 });

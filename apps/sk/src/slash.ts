@@ -11,11 +11,9 @@
 // invocation side effects. This module is a pure catalog + filter
 // so unit tests can assert on the shape without standing up Ink.
 //
-// `searchSlashCommands(query, persona)` runs a Fuse.js fuzzy match
-// against the visible-for-persona set, weighted so command names
-// dominate over help-string matches.
+// `searchSlashCommands(query, persona)` is deliberately predictable:
+// empty `/` uses frequency bias, typed text uses exact/prefix matches.
 
-import Fuse from "fuse.js";
 import { z } from "zod";
 import { frequencyBias } from "./usage-stats.ts";
 
@@ -58,11 +56,6 @@ export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
   // /exit / /quit are handled at the readline input loop (process exit);
   // `handleSlash` is never reached for these.
   "exit",
-  // `/upload` uploads a local file via the engine's unified Files
-  // resource and inserts a `{"$file":"fid_..."}` leaf at the cursor.
-  // The Ink host owns the cursor + paste-store, so it intercepts the
-  // slash directly.
-  "upload",
   // `/files` opens an interactive picker over files linked to the
   // active conversation. Inserts an `@file:fid_...` mention at the
   // cursor on selection — composer state lives in the Ink host.
@@ -81,7 +74,7 @@ export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
  *     (`ink-app.tsx:2020-2057`)
  *   - /yolo — toggles the destructive-action confirmation gate
  *     in-session (`ink-app.tsx:2062`)
- *   - /paste, /attach, /queue, /view — input/transcript-side
+ *   - /paste, /queue, /view — input/transcript-side
  *     intercepts (`ink-app.tsx:1660,1684,1725,1746`)
  *
  * The contract test asserts every `routing: "engine"` slash
@@ -93,7 +86,6 @@ export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
   "reject",
   "yolo",
   "paste",
-  "attach",
   "queue",
   "view",
 ] as const);
@@ -364,7 +356,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     routing: "local",
     // The Usage tab aggregates the same `llm.invocation` audit events
     // that /audit reads, so it shares /audit's permission. Hiding it
-    // from members also keeps fuzzy autocomplete from picking /usage
+    // from members also keeps autocomplete from picking /usage
     // when the operator types /audit (which they cannot see either).
     requires: "audit:read",
   },
@@ -422,25 +414,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     name: "paste",
     help: "Insert clipboard content (text or image) as a paste ref",
     category: "context",
-  },
-  {
-    name: "attach",
-    aliases: ["file"],
-    help: "Upload a local file and insert a $file ref (`/attach path/to/file.pdf`)",
-    category: "context",
-  },
-  {
-    // `/upload <path>` is the explicit verb form of `/attach`. The
-    // slash is routed locally because the Ink host owns the composer
-    // + paste-store; the actual upload talks to the engine via
-    // `EngineClient.uploadInline` / presigned PUT (RBAC + audit run
-    // server-side).
-    name: "upload",
-    help: "Upload a local file and insert a $file ref (`/upload path/to/file.pdf`)",
-    category: "context",
-    routing: "local",
-    requires: "file:write",
-    argsSchema: z.tuple([z.string().min(1, "path required")]).rest(z.string()),
   },
   {
     // `/files` lists files already linked to the active conversation
@@ -666,33 +639,20 @@ export function searchSlashCommands(
     const sorted = [...visible].sort((a, b) => frequencyBias(b.name) - frequencyBias(a.name));
     return sorted.slice(0, limit);
   }
-  const fuse = new Fuse(visible, {
-    includeScore: true,
-    threshold: 0.3,
-    ignoreLocation: true,
-    keys: [
-      { name: "name", weight: 3 },
-      { name: "aliases", weight: 2 },
-      { name: "help", weight: 0.5 },
-    ],
-  });
-  // Blend Fuse fuzzy score (0 = best, 1 = worst) with persisted usage
-  // frequency. The weight is small enough to only break near-ties — a
-  // command with a clearly-better fuzzy match must never be bumped by
-  // a heavily-used unrelated one. Exact matches (score ≤ 0.001) get
-  // no bias applied: when the user typed precisely this name, surprising
-  // them with a different selection is worse than a missed bias lift.
-  const FREQUENCY_WEIGHT = 0.005;
-  const scored = fuse.search(trimmed).map((r) => {
-    const fuzzy = r.score ?? 0.5;
-    // Threshold 0.01 covers near-exact Fuse matches like `approvals`
-    // when the user typed `approve` (score ≈ 0.002): bias would
-    // otherwise lift the wrong-but-close name over the exact one.
-    const bias = fuzzy <= 0.01 ? 0 : frequencyBias(r.item.name) * FREQUENCY_WEIGHT;
-    return { item: r.item, effective: fuzzy - bias };
-  });
-  scored.sort((a, b) => a.effective - b.effective);
-  return scored.slice(0, limit).map((r) => r.item);
+  const lower = trimmed.toLowerCase();
+  const exact: SlashCommand[] = [];
+  const prefix: SlashCommand[] = [];
+  for (const cmd of visible) {
+    const names = [cmd.name, ...(cmd.aliases ?? [])].map((name) => name.toLowerCase());
+    if (names.some((name) => name === lower)) {
+      exact.push(cmd);
+      continue;
+    }
+    if (names.some((name) => name.startsWith(lower))) {
+      prefix.push(cmd);
+    }
+  }
+  return [...exact, ...prefix].slice(0, limit);
 }
 
 /**

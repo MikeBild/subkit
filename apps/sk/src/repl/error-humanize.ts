@@ -138,10 +138,11 @@ export function humanizeValidationError(e: RawValidationError): HumanizedValidat
 }
 
 /**
- * Render the structured payload propose_step returns on failure
- * (with valid_kinds, attempted_kind, example_for_kind, etc.) into a
- * single short line for the ToolCard failure body. Falls back to a
- * generic shape when the payload looks unrelated.
+ * Render the structured payload an authoring write tool
+ * (edit_workflow_patch) returns on failure (with valid_kinds,
+ * attempted_kind, example_for_kind, etc.) into a single short line for
+ * the ToolCard failure body. Falls back to a generic shape when the
+ * payload looks unrelated.
  */
 export function summarizeToolFailure(
   toolName: string,
@@ -151,8 +152,8 @@ export function summarizeToolFailure(
     return { label: `${toolName} failed` };
   }
   const obj = data as Record<string, unknown>;
-  // Stage-gated authoring tools (propose_step / update_param) refuse
-  // with `authoring_stage_violation` while the draft has no preview or
+  // The stage-gated repair tool (edit_workflow_patch) refuses with
+  // `authoring_stage_violation` while the draft has no preview or
   // recorded-eval evidence yet. The engine's message is written for the
   // LLM; the operator gets the one-line version of the same contract.
   const errCode =

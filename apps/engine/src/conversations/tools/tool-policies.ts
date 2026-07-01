@@ -301,7 +301,6 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
     confirmationKind: "sensitive_input",
     reason: "Confirms when the draft patch carries an inline credential",
   },
-  { name: "update_param", defaultMode: "auto" },
 
   // ---- Saves / commits: explicit save IS the diagnostic path -------------
   {
@@ -446,9 +445,6 @@ export const TOOL_POLICIES: ReadonlyArray<ToolPolicy> = [
   { name: "validate_connector_draft", defaultMode: "auto" },
   { name: "validate_draft", defaultMode: "auto" },
   { name: "author_workflow", defaultMode: "auto" },
-  { name: "build_workflow", defaultMode: "auto" },
-  { name: "connect_steps", defaultMode: "auto" },
-  { name: "propose_step", defaultMode: "auto" },
   { name: "propose_skill", defaultMode: "auto" },
   { name: "diagnose_latest_execution", defaultMode: "auto" },
   { name: "start_connector_from_description", defaultMode: "auto" },

@@ -2,7 +2,7 @@
 
 # Slash commands
 
-Slash commands run from the `sk` REPL. Type `/` to open the fuzzy
+Slash commands run from the `sk` REPL. Type `/` to open the prefix
 picker, or `/help` for the persona-filtered cheat sheet. A command
 with a `requires` permission is hidden from any persona that cannot
 invoke it — the engine still enforces the permission on every call,
@@ -47,7 +47,6 @@ so this column is the UX gate, not the security boundary.
 
 | command | aliases | requires | description |
 | ------- | ------- | -------- | ----------- |
-| `/attach` | `/file` | — | Upload a local file and insert a $file ref (`/attach path/to/file.pdf`) |
 | `/connectors` | — | `connector:read` | List connectors in this tenant |
 | `/context` | — | `conversation:read` | Inspect the conversation context currently in scope |
 | `/files` | — | `file:read` | Browse files linked to this conversation and insert an @file mention |
@@ -57,7 +56,6 @@ so this column is the UX gate, not the security boundary.
 | `/mention` | — | — | Open the inline @-mention fuzzy picker (file / connector / workflow) |
 | `/paste` | — | — | Insert clipboard content (text or image) as a paste ref |
 | `/skills` | — | `skill:read` | List active skills in scope (includes pending suggestions) |
-| `/upload` | — | `file:write` | Upload a local file and insert a $file ref (`/upload path/to/file.pdf`) |
 | `/workflows` | — | `workflow:read` | List workflows in this tenant |
 
 ## MCP

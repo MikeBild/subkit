@@ -133,22 +133,20 @@ const CONNECTOR_PERSISTENCE: ReadonlySet<string> = new Set(["save_connector_draf
  *  connector. */
 const CONNECTOR_OAUTH: ReadonlySet<string> = new Set(["authenticate_oauth"]);
 
-/** Workflow authoring tools — exposed once `workflow-authoring` is loaded. */
+/** Workflow authoring tools — exposed once `workflow-authoring` is loaded.
+ *  The triad: `author_workflow` is THE builder (one-shot grounded
+ *  pipeline), `edit_workflow_patch` is THE editor (RFC 6902 JSON Patch
+ *  over the whole draft — append a step, retarget refs, set any single
+ *  field/header, add an edge), and `dry_run_workflow` (in WORKFLOW_PREVIEW)
+ *  is the always-available runner. */
 const WORKFLOW_AUTHORING: ReadonlySet<string> = new Set([
   "author_workflow",
-  "build_workflow",
-  "connect_steps",
   "edit_workflow_patch",
   "inspect_workflow_draft",
-  "propose_step",
-  // Clone a builtin/tenant recipe into the draft. Pre-fix this was
-  // omitted, so the conversation could never clone a recipe — the LLM
-  // fell back to free-form build_workflow and hand-authored step bodies
-  // (e.g. the LinkedIn create-post post body) with placeholder/schema
-  // mistakes. It is a draft_write tool like build_workflow and only
-  // clones a tenant-scoped recipe; safe to expose.
+  // Clone a builtin/tenant recipe into the draft. It is a draft_write
+  // tool like author_workflow and only clones a tenant-scoped recipe;
+  // safe to expose.
   "start_workflow_from_recipe",
-  "update_param",
   "validate_draft",
 ]);
 
@@ -359,6 +357,13 @@ export function collectSyntheticWorkflowSlugs(toolNames: Iterable<string>): Set<
  * exposed, delete `run_workflow` and every synthetic `wf_<slug>` peer. Mutates
  * `tools` in place and returns the number of tools removed (for logging). The
  * loop and its tests both call this so the removal contract has a single home.
+ *
+ * NOTE: `dry_run_workflow` (the DRAFT runner) intentionally survives this gate —
+ * `isExecutionToolName` matches only `run_workflow` / `wf_<slug>`. That is
+ * deliberate: when the model reaches for a gated saved-workflow tool to TEST
+ * its fresh draft, the repair handler (`llm/core/repair-tool-call.ts`) rewrites
+ * the call to `dry_run_workflow`, so a draft-run target is always reachable
+ * without ever running a saved lookalike.
  */
 export function applyExecutionToolGate(
   tools: Record<string, unknown>,

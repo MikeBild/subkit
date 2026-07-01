@@ -81,7 +81,7 @@ describe("humanizeValidationError", () => {
 
 describe("summarizeToolFailure", () => {
   it("flags the wrong-key case loudly", () => {
-    const r = summarizeToolFailure("propose_step", {
+    const r = summarizeToolFailure("edit_workflow_patch", {
       used_wrong_key: true,
       attempted_kind: "trigger.manual",
       errors: [{ path: "steps.0.kind", message: "Invalid input" }],
@@ -93,7 +93,7 @@ describe("summarizeToolFailure", () => {
   });
 
   it("flags an invalid kind with the valid-kinds hint", () => {
-    const r = summarizeToolFailure("propose_step", {
+    const r = summarizeToolFailure("edit_workflow_patch", {
       used_wrong_key: false,
       attempted_kind: "flow.approval",
       errors: [{ path: "steps.0.kind", message: "Invalid input" }],
@@ -114,13 +114,13 @@ describe("summarizeToolFailure", () => {
   });
 
   it("maps authoring_stage_violation to the repair-stage explanation", () => {
-    // Stage-gated micro-tools (propose_step / update_param) refuse with
-    // this code while the draft has no preview / recorded-eval evidence.
+    // Stage-gated repair tool (edit_workflow_patch) refuses with this
+    // code while the draft has no preview / recorded-eval evidence.
     // The operator must read "use author_workflow first", not the raw code.
-    const r = summarizeToolFailure("propose_step", {
+    const r = summarizeToolFailure("edit_workflow_patch", {
       error: "authoring_stage_violation",
       error_code: "authoring_stage_violation",
-      message: "`propose_step` is a repair-stage tool — …",
+      message: "`edit_workflow_patch` is a repair-stage tool — …",
       recoverable: true,
     });
     expect(r.label).toBe("This tool is for repairing an existing draft.");
@@ -130,7 +130,7 @@ describe("summarizeToolFailure", () => {
   });
 
   it("recognises authoring_stage_violation via the bare `error` key too", () => {
-    const r = summarizeToolFailure("update_param", { error: "authoring_stage_violation" });
+    const r = summarizeToolFailure("edit_workflow_patch", { error: "authoring_stage_violation" });
     expect(r.label).toContain("repairing an existing draft");
     expect(r.hint).toContain("author_workflow");
   });

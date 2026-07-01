@@ -41,7 +41,7 @@ describe.skipIf(skip)("loadActivationCatalog + autoloadForToolCall — tenant-au
       source: "manual",
       version: 1,
       side_effects: "read",
-      activates_when: [{ kind: "tool", tool: "propose_step" }],
+      activates_when: [{ kind: "tool", tool: "edit_workflow_patch" }],
       gates_tools: [],
       tags: [],
     });
@@ -51,7 +51,10 @@ describe.skipIf(skip)("loadActivationCatalog + autoloadForToolCall — tenant-au
     expect(slugs).toContain("tenant-stripe-policy");
 
     const out = autoloadForToolCall(
-      { tool: "propose_step", input: { step: { kind: "request" } } },
+      {
+        tool: "edit_workflow_patch",
+        input: { patches: [{ op: "add", path: "/steps/-", value: { kind: "request" } }] },
+      },
       catalog,
       [],
     );
@@ -71,7 +74,7 @@ describe.skipIf(skip)("loadActivationCatalog + autoloadForToolCall — tenant-au
       version: 1,
       side_effects: "read",
       maturity: "experimental",
-      activates_when: [{ kind: "tool", tool: "propose_step" }],
+      activates_when: [{ kind: "tool", tool: "edit_workflow_patch" }],
       gates_tools: [],
       tags: [],
     });

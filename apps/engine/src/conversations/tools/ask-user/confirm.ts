@@ -7,7 +7,7 @@
 
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool, ToolResult } from "../index.ts";
-import { type CommitIntent, commitIntentSchema } from "./commit-intent.ts";
+import { type CommitIntent, commitIntentSchema, describePatchOps } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
 
 function buildOverrideWarning(intent: CommitIntent | undefined): string | null {
@@ -35,10 +35,21 @@ function defaultCommitIntent(args: z.infer<typeof inputSchema>): CommitIntent | 
 const inputSchema = z
   .object({
     question: z.string().min(1),
-    kind: z.enum(["save_workflow_draft", "external_write", "generic"]).default("generic"),
+    kind: z
+      .enum(["save_workflow_draft", "external_write", "generic", "partial_diff_approval"])
+      .default("generic"),
     summary: z.string().optional(),
     /** Structured before/after JSON for save_workflow_draft kinds. */
     diff: z.unknown().optional(),
+    /**
+     * Per-op review rows for `partial_diff_approval` kinds (D3). Optional —
+     * when omitted the engine derives them from the `apply_workflow_patch`
+     * commit_intent's `payload.patches`, so the model never has to duplicate
+     * the diff list. Each row is `{ label, preview? }`; the client renders a
+     * per-row accept/reject toggle and the operator's selection rides back on
+     * `output.approved_indices`.
+     */
+    diffs: z.array(z.object({ label: z.string(), preview: z.string().optional() })).optional(),
     /** Free-form target descriptor for external_write kinds. */
     target: z.unknown().optional(),
     /**
@@ -107,16 +118,25 @@ export const askUserConfirmTool: ConversationTool = {
     const overrideWarning = buildOverrideWarning(effectiveCommitIntent);
     const baseSummary = args.summary ?? args.question;
     const summary = overrideWarning ? `${overrideWarning}\n\n${baseSummary}` : baseSummary;
+    // Per-op review rows for the partial-accept card (D3). Derive them
+    // from the `apply_workflow_patch` commit_intent's patches when the model
+    // did not supply an explicit `diffs` list, so the client's
+    // PartialApprovalPrompt can render one accept/reject toggle per op.
+    const partialDiffs =
+      args.kind === "partial_diff_approval"
+        ? (args.diffs ??
+          (effectiveCommitIntent?.kind === "apply_workflow_patch" &&
+          Array.isArray(effectiveCommitIntent.payload.patches)
+            ? describePatchOps(effectiveCommitIntent.payload.patches)
+            : undefined))
+        : undefined;
+    const input: Record<string, unknown> = { ...args };
+    if (effectiveCommitIntent !== undefined) input.commit_intent = effectiveCommitIntent;
+    if (partialDiffs !== undefined) input.diffs = partialDiffs;
     return pauseForUserInput(ctx, {
       tool_name: "ask_user_confirm",
       summary,
-      input:
-        effectiveCommitIntent === undefined
-          ? args
-          : {
-              ...args,
-              commit_intent: effectiveCommitIntent,
-            },
+      input,
     });
   },
 };

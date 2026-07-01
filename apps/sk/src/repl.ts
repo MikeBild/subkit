@@ -285,8 +285,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           if (looksLikePath) {
             writeErr(
               `sk: '${slashHead}' looks like a file path, not a slash command. ` +
-                `Did you mean \`/knowledge ${slashHead}\` (ingest as a knowledge source) ` +
-                `or \`/attach ${slashHead}\` (upload as an attachment)?\n`,
+                "Paste or drop an existing file path into the Ink REPL, or mention the path in a prompt.\n",
             );
           } else {
             writeErr(`sk: unknown slash command '${input}'. Try /help.\n`);

@@ -379,7 +379,12 @@ export function planTurnRouting(args: {
       action:
         "Drive workflow authoring with one high-signal question at a time. Ground the trigger, involved systems, and expected result, then preview before commit.",
       question: "What should trigger this workflow, and what should success look like?",
-      required_grounding: ["inspect_workflow_draft", "build_workflow", "dry_run_workflow"],
+      required_grounding: [
+        "author_workflow",
+        "inspect_workflow_draft",
+        "dry_run_workflow",
+        "edit_workflow_patch",
+      ],
       notes: ["Keep the workflow grounded in real connectors and concrete output shape."],
       forbidden_fallbacks: fallbackList(),
     };

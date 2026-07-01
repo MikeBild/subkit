@@ -1,12 +1,15 @@
 // Authoring-time LLM critic — second-stage verifier for workflow drafts.
 //
 // Runs ONLY when `shouldRunCritic` returns `run:true`, on a draft that
-// has already cleared every static gate. Returns a structured verdict
-// that the build_workflow tool either:
+// has already cleared every static gate inside `runAuthoringPipeline`
+// (the `author_workflow` one-shot pipeline). Returns a structured
+// verdict the pipeline either:
 //   - ignores when passed=true, OR
-//   - turns into `ok:false {error_code:"critic_rejected", repairs}` so
-//     the LLM re-authors on the next turn with the repair hints folded
-//     into prior_failures.
+//   - on passed=false feeds its `repairs` back into the SAME bounded
+//     generation-repair loop as the static findings (one more grounded
+//     regenerate pass), and surfaces the rejection as an advisory
+//     `critic_rejection` on the successful tool result so the next
+//     conversation turn escalates via `prior_failures`.
 //
 // The critic does NOT patch the draft. The verdict is hints only.
 //
@@ -50,6 +53,10 @@ export interface RunCriticAgentParams {
   tenant_id: string;
   /** Optional DB executor — passed through to `invoke()`. */
   db?: Executor;
+  /** Optional abort signal — the pipeline threads its shared 120s
+   *  deadline here so a critic call started late in the budget fails
+   *  fast (fail-open) instead of overrunning the wall-clock ceiling. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -78,6 +85,7 @@ export async function runCriticAgent(
           },
         ],
         schema: AuthoringCriticVerdictSchema,
+        ...(params.signal ? { signal: params.signal } : {}),
       },
       params.db,
     );

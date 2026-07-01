@@ -1,4 +1,4 @@
-// Unit tests for the Fuse.js fuzzy slash-command search.
+// Unit tests for predictable slash-command search.
 
 import { describe, expect, test } from "bun:test";
 import { type PersonaProbe, searchSlashCommands } from "../slash.ts";
@@ -36,9 +36,9 @@ describe("sk slash search", () => {
     expect(hits.find((h) => h.name === "audit")).toBeUndefined();
   });
 
-  test("typos fall within the 0.3 threshold", () => {
+  test("typos do not match prefix-only search", () => {
     const hits = searchSlashCommands("compct", adminPersona);
-    expect(hits.find((h) => h.name === "compact")).toBeDefined();
+    expect(hits.find((h) => h.name === "compact")).toBeUndefined();
   });
 
   test("leading slash is stripped before searching", () => {

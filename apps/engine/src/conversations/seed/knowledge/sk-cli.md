@@ -93,7 +93,7 @@ Session/authoring: `/clear`, `/compact`, `/resume`, `/fork`, `/rename`, `/draft`
 Approvals/policy: `/approvals`, `/approve`, `/reject`, `/yolo` (arms a typed-confirmation bypass of the destructive-action gate; auto-disarms; `/yolo off`), `/policy <tool> <auto|ask|review|reset>`, `/permissions`.
 Status/usage: `/status`, `/cost`, `/usage`, `/exec [execution_id]`, `/verbose`, `/model`, `/queue`, `/history`.
 Identity: `/login`, `/logout`, `/profile [name]`, `/tenant`.
-Context/files: `/memory` (open `SK.md` in `$EDITOR`), `/init` (generate a starter `SK.md`), `/attach <path>`, `/upload <path>`, `/files`, `/paste`, `/mention`, `/copy`, `/export`, `/view chat|inspect`.
+Context/files: `/memory` (open `SK.md` in `$EDITOR`), `/init` (generate a starter `SK.md`), `/files`, `/paste`, `/mention`, `/copy`, `/export`, `/view chat|inspect`. In the interactive REPL, pasted or dropped local file paths are handled directly by the composer; do not route users to `/attach` or `/upload`.
 Discovery: `/skills`, `/knowledge`, `/mcp`, `/mcp-servers`, `/connectors`, `/workflows`, `/executions`.
 Admin/config: `/config`, `/config-form`, `/settings` (5-tab palette: Status / Config / Usage / Skills / Knowledge), `/admin`, `/audit`, `/logs [limit] [trace_id]`, `/debug on|off|tail`, `/session <workflow-id>` (mint a short-lived portal token + QR code), `/actions`, `/feedback`, `/help`, `/exit`.
 

@@ -7,7 +7,7 @@
 //   - an inline highlight on the typed slash token (color depends on
 //     whether it resolves to a command for the persona),
 //   - an autocomplete list while the cursor is on a slash token,
-//     ranked by `searchSlashCommands` (Fuse + persona filter).
+//     ranked by `searchSlashCommands` (prefix + persona filter).
 //
 // The panel is purely visual; it doesn't dispatch the command itself —
 // the input handler decides what to do when Enter or Tab is pressed.

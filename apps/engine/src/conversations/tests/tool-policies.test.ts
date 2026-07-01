@@ -91,7 +91,7 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   it("registered draft tools default no_confirm even though they are draft_write", () => {
     expect(
       resolveToolMode({
-        tool: "propose_step",
+        tool: "edit_workflow_patch",
         category: "draft_write",
         input: {},
         overrides: {},

@@ -15,6 +15,7 @@
 // Records are redacted before they hit disk so secrets do not leak
 // into local artifacts.
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -23,6 +24,8 @@ import { redact } from "@cli-core/index.ts";
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
 const ROTATION_BYTES = 2 * 1024 * 1024;
 const ROTATION_KEEP = 2; // keep debug.log.1 and debug.log.2
+const MAX_STRING_FIELD_CHARS = 2000;
+const MAX_DEBUG_DEPTH = 10;
 
 export type DebugMode = "ink" | "repl" | "headless" | "command" | "unknown";
 
@@ -264,6 +267,25 @@ function appendRecord(rec: DebugRecord): void {
   }
 }
 
+function summarizeLongString(value: string): string {
+  const hash = createHash("sha256").update(value).digest("hex").slice(0, 16);
+  return `[truncated ${value.length} chars sha256=${hash}]`;
+}
+
+function compactDebugValue(value: unknown, depth = 0): unknown {
+  if (typeof value === "string") {
+    return value.length > MAX_STRING_FIELD_CHARS ? summarizeLongString(value) : value;
+  }
+  if (value === null || typeof value !== "object") return value;
+  if (depth >= MAX_DEBUG_DEPTH) return "[truncated nested object]";
+  if (Array.isArray(value)) return value.map((item) => compactDebugValue(item, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = compactDebugValue(item, depth + 1);
+  }
+  return out;
+}
+
 export function debugLog(
   kind: DebugRecordKind,
   fields: Record<string, unknown> = {},
@@ -276,7 +298,7 @@ export function debugLog(
     ...context,
     ...fields,
   };
-  appendRecord(redact(raw) as DebugRecord);
+  appendRecord(compactDebugValue(redact(raw)) as DebugRecord);
 }
 
 /**

@@ -226,6 +226,6 @@ describe("runRecordedEval — JS findings ride the repair stage with their langu
     expect(finding?.repair?.repaired).toBe(true);
     if (!finding?.repair?.repaired) throw new Error("unreachable");
     expect(finding.repair.after).toBe("return input.scope.fetch.data.items;");
-    expect(report.next_actions).toContain("update_param");
+    expect(report.next_actions).toContain("edit_workflow_patch");
   });
 });

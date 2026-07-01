@@ -217,12 +217,13 @@ describe("workflow save regressions", () => {
 
     getMockProvider().setConversePlan(created.conversation.id, [
       {
-        tool: "build_workflow",
+        tool: "edit_workflow_patch",
         args: {
-          name: "GitHub Private Repos by Owner",
-          slug: "github-private-repos-mikebild",
-          steps: [{ id: "shape", kind: "wait", duration_ms: 1 }],
-          environment: "dev",
+          patches: [
+            { op: "replace", path: "/name", value: "GitHub Private Repos by Owner" },
+            { op: "add", path: "/slug", value: "github-private-repos-mikebild" },
+            { op: "add", path: "/steps/-", value: { id: "shape", kind: "wait", duration_ms: 1 } },
+          ],
         },
       },
     ]);

@@ -279,6 +279,50 @@ export const requestConnectorReauthTool: ConversationTool = {
           { next_best_actions: ["probe_connector", "update_connector_draft"] },
         );
       }
+
+      // D7: over MCP the in-chat `ask_user_form` credential re-issue is
+      // NOT reachable — a secret must never be collected as chat text
+      // there (see `ask-user/common.ts`). Route to the secure
+      // credential-setup URL (`/v1/connectors/:id/credentials`) instead,
+      // presented verbatim for the operator to open in a browser. On
+      // sk-cli / web the masked in-chat form stays (a local operator may
+      // paste the secret), so this branch is scoped to `surface === "mcp"`.
+      if (ctx.surface === "mcp") {
+        const { reauth_url } = buildReauthUrl(connector);
+        if (!reauth_url) {
+          return structuredError(
+            "engine_public_url_missing",
+            "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL so a secure credential-setup URL can be minted",
+          );
+        }
+        logger.info({
+          module: "conversation_tool",
+          action: "request_connector_reauth.portal_setup_url_issued",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          connector_id: connector.id,
+          auth_type: connector.auth_type,
+        });
+        return {
+          ok: true,
+          data: {
+            connector: connector.slug,
+            method: "portal_setup",
+            mode: "credential_re_issue",
+            auth_type: connector.auth_type,
+            ...(isCognito ? { grant_type: "cognito_user_password" } : {}),
+            setup_url: reauth_url,
+            needs_reauth: connector.needs_reauth,
+            auth_failed_at: connector.auth_failed_at?.toISOString() ?? null,
+            instructions:
+              "Present this URL verbatim on its own line as a bare URL — no markdown wrapper, no shortening. " +
+              "Opening it takes the user to a secure page to enter the new secret; it rotates in place on the " +
+              "existing connector (the id and every dependent workflow stay intact). " +
+              "Never ask the user to paste the secret in chat.",
+          },
+        };
+      }
+
       const draftConnector = hydrateDraftFromSavedConnector(connector);
       const nextDraft = withConnectorDraft(
         ctx.getDraft(),

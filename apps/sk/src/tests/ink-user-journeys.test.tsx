@@ -227,8 +227,10 @@ describe("Ink journey — elicit_request flow (confirm_before_execution)", () =>
     // ask_user_confirm pause payload.
     expect(frame).toContain("Policy requires confirmation");
     expect(frame).toContain("run_workflow");
-    expect(frame).toContain("environment");
-    expect(frame).toContain("prod");
+    // The confirm card renders the target compactly via ConfirmPrompt's
+    // `env=<environment>` label (the same shape confirmation-summary /
+    // approval-card assert), not the raw arg key.
+    expect(frame).toContain("env=prod");
   });
 });
 

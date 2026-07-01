@@ -132,7 +132,7 @@ export const chatFirstScanner: Scanner = {
         kind: violation.kind,
         message:
           violation.kind === "chat_first.curl_in_chat"
-            ? "The assistant told the user to run a curl command. The chat-first contract requires calling the equivalent tool (build_workflow / save_connector_draft / dry_run_step) instead of pushing the user to an external terminal."
+            ? "The assistant told the user to run a curl command. The chat-first contract requires calling the equivalent tool (author_workflow / save_connector_draft / dry_run_step) instead of pushing the user to an external terminal."
             : "The assistant pasted a shell command for the user to execute. The chat-first contract requires calling the equivalent tool instead of pushing work into an external terminal.",
         span: { start: fullStart, end: fullEnd },
         details: { command_head: violation.cmd.split(/\s+/)[0] ?? null },

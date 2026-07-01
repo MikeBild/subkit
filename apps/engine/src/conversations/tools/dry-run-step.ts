@@ -45,6 +45,7 @@ export const dryRunStepTool: ConversationTool = {
     "Run a single draft step in isolation through the real driver pipeline. Produces an executions row (source_kind=step) so the run is auditable and traceable. Read steps execute for real; a WRITE step (send/publish/mutation) is HELD by default — resolved but never dispatched — same cannot-publish contract as dry_run_workflow. Pass execute_writes: true only after explicit user confirmation.",
   inputSchema,
   category: "draft_write" as const,
+  requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const workflowDraft = getWorkflowDraft(ctx.getDraft());

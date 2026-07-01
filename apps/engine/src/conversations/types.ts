@@ -322,6 +322,17 @@ export interface WorkflowDraftDocument {
   goal?: string;
   steps: Array<Record<string, unknown>>;
   input_schema?: Record<string, unknown>;
+  /**
+   * Optional literal example input payload — a concrete value, NOT a JSON
+   * Schema (see `WorkflowDef.input_schema_sample`). Read by
+   * `resolveWorkflowInputContract` to synthesize a `required`-carrying
+   * contract when no explicit `input_schema` is declared, and projected
+   * into the persisted WorkflowDef at commit time
+   * (`commit-workflow.ts#workflowDefFromDraft`) so the sample-derived tier
+   * survives into SAVED workflows. Must survive the `normalizeWorkflowDraft`
+   * round-trip or a hydrated draft silently loses it.
+   */
+  input_schema_sample?: unknown;
   output_schema?: Record<string, unknown>;
   output_transform?: string;
   edges?: Array<{ from: string; to: string }>;
@@ -329,7 +340,7 @@ export interface WorkflowDraftDocument {
    *  (typically via `start_workflow_from_recipe`). Read by the
    *  workflow validator's skill-schema gate at save time. */
   derived_from_skill_id?: string | null;
-  /** Workflow-level trigger. Authored alongside steps via `build_workflow`
+  /** Workflow-level trigger. Authored alongside steps via `author_workflow`
    *  and persisted into `WorkflowDef.trigger` at commit time. A schedule
    *  trigger then binds a `workflows_schedules` row via
    *  `applyTriggerBindings` so cron firing is part of the workflow
@@ -513,6 +524,16 @@ export interface DraftDocument {
   state?: AuthoringState;
   session?: {
     permission_mode?: ConversationPermissionMode | null;
+    /**
+     * Durable playground/sandbox flag. When true this conversation is a
+     * scratch authoring surface: the workflow-authoring triad is preloaded
+     * so the user can experiment immediately, dry-runs behave normally
+     * (hold_writes stays on), but a commit persists NOTHING —
+     * `commitWorkflowAtomic` short-circuits with `playground_no_persist`.
+     * Set at creation from the `playground` start param / `_meta.sk_playground`
+     * and carried across turns by `normalizeDraftDocument`. Never an env flag.
+     */
+    playground?: boolean | null;
   };
 }
 

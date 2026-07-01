@@ -163,7 +163,7 @@ describe("runRecordedEval — javascript transform evaluation", () => {
     expect((finding?.message ?? "").length).toBeGreaterThan(0);
     expect(report.ok).toBe(false);
     expect(report.summary).toContain("JavaScript compile error");
-    expect(report.next_actions).toContain("update_param");
+    expect(report.next_actions).toContain("edit_workflow_patch");
   });
 
   test("a non-evaluable body (no scope refs) still gets a parse-only syntax check", async () => {

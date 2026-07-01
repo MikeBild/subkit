@@ -50,35 +50,6 @@ describe("StepSchema — retired `tool` step is rejected", () => {
     ]);
   });
 
-  test("propose-step's VALID_KINDS is a subset of StepSchema's discriminator", async () => {
-    // The LLM authoring palette (apps/engine/src/conversations/tools/
-    // propose-step.ts) deliberately exposes a SUBSET of the schema's
-    // kinds — wait_for_event is omitted because the LLM can't
-    // reliably author it (requires planning around external events).
-    // This fence catches drift in two directions:
-    //   - StepSchema LOSES a kind that propose-step still exposes →
-    //     propose-step would offer the LLM a kind that doesn't parse;
-    //     fence fires.
-    //   - propose-step adds a kind StepSchema never had → typo or
-    //     stale literal; fence fires.
-    const { VALID_KINDS } = await import("../conversations/tools/propose-step.ts");
-    const options = (StepSchema as unknown as { options: ReadonlyArray<unknown> }).options;
-    const schemaKinds = new Set(
-      options
-        .map((o) => {
-          const shape = (o as { shape?: { kind?: { value?: string } } }).shape;
-          return shape?.kind?.value ?? null;
-        })
-        .filter((k): k is string => typeof k === "string"),
-    );
-    for (const k of VALID_KINDS) {
-      expect(
-        schemaKinds.has(k),
-        `propose-step exposes kind="${k}" which is not in StepSchema discriminator`,
-      ).toBe(true);
-    }
-  });
-
   test("the supported kinds still parse", () => {
     const baseFields = { id: "x" };
     const samples: Array<Record<string, unknown>> = [

@@ -13,7 +13,10 @@ import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { dispatchTool } from "../dispatcher.ts";
 import { conversationToolProvider, staticToolProvider } from "../index.ts";
-import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
+import {
+  DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
+  DRAFT_WRITE_MCP_UNAVAILABLE_REASON,
+} from "../policy.ts";
 import { buildRegistry, type ToolProvider } from "../registry.ts";
 import type { ToolDescriptor, ToolEnvelope } from "../types.ts";
 
@@ -288,6 +291,86 @@ describe("tools/dispatcher (active)", () => {
       expect(envelope.message).toBe("no thing");
       expect(envelope.next_best_actions).toEqual(["create_thing"]);
     }
+  });
+});
+
+describe("tools/dispatcher — draft-dependency (requires_draft) stub-ctx guard", () => {
+  // A tenant_read tool marked requires_draft: it reads the conversation's
+  // working draft. On the MCP stub-context path that draft is EMPTY, so the
+  // dispatcher must reject the call with not_available_on_surface instead of
+  // letting the executor run against nothing (the silent empty-draft no-op).
+  function draftDependentProvider(onExecute: () => void): ToolProvider {
+    const descriptor: ToolDescriptor = {
+      name: "_test_requires_draft",
+      description: "reads the working draft",
+      category: "tenant_read",
+      inputSchema: { type: "object" },
+      requires_draft: true,
+    };
+    return {
+      name: "DraftDependentProvider",
+      list: () => [descriptor],
+      resolve: (n) =>
+        n === "_test_requires_draft"
+          ? {
+              descriptor,
+              executor: {
+                kind: "conversation",
+                tool: undefined as never,
+                execute: async () => {
+                  onExecute();
+                  return { ok: true, data: { ran: true } };
+                },
+              },
+            }
+          : undefined,
+    };
+  }
+
+  test("MCP + stub ctx → not_available_on_surface, executor NOT called", async () => {
+    let executed = false;
+    const registry = buildRegistry([
+      draftDependentProvider(() => {
+        executed = true;
+      }),
+    ]);
+    const envelope = await dispatchTool(
+      {
+        registry,
+        db: DB_STUB,
+        principal: PRINCIPAL,
+        mcpMode: "authoring",
+        // The MCP adapter always supplies a stub-ctx builder off-chat.
+        buildMcpStubCtx: () => ({}) as never,
+      },
+      { surface: "mcp", name: "_test_requires_draft", args: {} },
+    );
+    expect(envelope.status).toBe("not_available_on_surface");
+    if (envelope.status === "not_available_on_surface") {
+      expect(envelope.reason).toBe(DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON);
+    }
+    // The empty-draft no-op never happened.
+    expect(executed).toBe(false);
+  });
+
+  test("chat + real conversationCtx → executes normally (guard does not fire)", async () => {
+    let executed = false;
+    const registry = buildRegistry([
+      draftDependentProvider(() => {
+        executed = true;
+      }),
+    ]);
+    const envelope = await dispatchTool(
+      {
+        registry,
+        db: DB_STUB,
+        principal: PRINCIPAL,
+        conversationCtx: {} as never,
+      },
+      { surface: "chat", name: "_test_requires_draft", args: {} },
+    );
+    expect(envelope.status).toBe("ok");
+    expect(executed).toBe(true);
   });
 });
 

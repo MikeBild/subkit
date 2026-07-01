@@ -53,34 +53,73 @@ export async function repairToolCall<TOOLS extends ToolSet>(
   });
   const tool = (tools as Record<string, Tool>)[toolCall.toolName];
   if (!tool) {
-    // `wf_<slug>` hallucination: the model named a per-workflow tool that
-    // is not in this turn's palette (LRU-capped catalog, or an invented
-    // name like `wf_org_top_repos`). The INTENT is unambiguous — run that
-    // workflow — and `run_workflow` is always available, so rewrite the
-    // call instead of dead-ending. If the de-prefixed slug doesn't match
-    // a real workflow, run_workflow returns its own instructional
-    // workflow-not-found error, which still beats a silent skip.
-    // (Production: 3 such hallucinations in one 4h window, each a wasted
-    // turn.)
-    if (toolCall.toolName.startsWith("wf_") && (tools as Record<string, Tool>).run_workflow) {
-      const slug = toolCall.toolName.slice(3).replace(/_/g, "-");
-      const rawInput =
-        typeof toolCall.input === "string" && toolCall.input.trim().length > 0
-          ? toolCall.input
-          : JSON.stringify(toolCall.input ?? {});
-      logger.info({
-        module: "llm",
-        action: "repair_tool_call.wf_alias_rewrite",
-        msg: "model called a wf_* tool missing from the palette — rewriting to run_workflow",
-        tool: toolCall.toolName,
-        workflow: slug,
-      });
-      onRepair?.();
-      return {
-        ...toolCall,
-        toolName: "run_workflow",
-        input: JSON.stringify({ workflow: slug, input: rawInput }),
-      };
+    // The model named a tool the palette does not carry. Two shapes hit
+    // this branch during authoring conversations, both meaning "test the
+    // workflow I just built":
+    //
+    //   1. `wf_<slug>` — a per-workflow tool missing from this turn's
+    //      palette (LRU-capped catalog, an invented name like
+    //      `wf_org_top_repos`, or removed by the execution-tool gate on a
+    //      draft-only conversation).
+    //   2. bare `run_workflow` — removed by that same gate when no SAVED
+    //      workflow is bound, yet the model still reaches for it to run
+    //      its fresh draft.
+    //
+    // Rewrite precedence:
+    //   (a) `wf_<slug>` + `run_workflow` present → run the named saved
+    //       workflow (unchanged behavior; safe because run_workflow
+    //       resolves the slug against the live catalog).
+    //   (b) otherwise, if `dry_run_workflow` is present → run the current
+    //       DRAFT. This is the gate-safe target: the gate never removes
+    //       `dry_run_workflow` (see authoring-palette `applyExecutionToolGate`),
+    //       and it preserves the anti-hijack intent — it never runs a
+    //       saved lookalike, only the in-progress draft.
+    //   (c) neither present → fall through to `unknown_tool` + null.
+    // (Production: 3 wf_* hallucinations in one 4h window, plus the
+    // draft-run dead-end that spun the repair cap to death.)
+    const isWfAlias = toolCall.toolName.startsWith("wf_");
+    const isBareRunWorkflow = toolCall.toolName === "run_workflow";
+    if (isWfAlias || isBareRunWorkflow) {
+      const toolset = tools as Record<string, Tool>;
+      if (isWfAlias && toolset.run_workflow) {
+        const slug = toolCall.toolName.slice(3).replace(/_/g, "-");
+        const rawInput =
+          typeof toolCall.input === "string" && toolCall.input.trim().length > 0
+            ? toolCall.input
+            : JSON.stringify(toolCall.input ?? {});
+        logger.info({
+          module: "llm",
+          action: "repair_tool_call.wf_alias_rewrite",
+          msg: "model called a wf_* tool missing from the palette — rewriting to run_workflow",
+          tool: toolCall.toolName,
+          workflow: slug,
+        });
+        onRepair?.();
+        return {
+          ...toolCall,
+          toolName: "run_workflow",
+          input: JSON.stringify({ workflow: slug, input: rawInput }),
+        };
+      }
+      if (toolset.dry_run_workflow) {
+        // Carry the model's original args verbatim as the draft-run
+        // `input`. `dry_run_workflow` accepts `{ input?, environment? }`,
+        // so the parsed original arguments become the draft's input.
+        const parsedInput = parseOriginalInput(toolCall.input);
+        logger.info({
+          module: "llm",
+          action: "repair_tool_call.dry_run_alias_rewrite",
+          msg: "model called an execution tool missing from the palette — rewriting to dry_run_workflow (draft run)",
+          tool: toolCall.toolName,
+          rewritten_to: "dry_run_workflow",
+        });
+        onRepair?.();
+        return {
+          ...toolCall,
+          toolName: "dry_run_workflow",
+          input: JSON.stringify({ input: parsedInput }),
+        };
+      }
     }
     logger.warn({
       module: "llm",
@@ -176,6 +215,24 @@ export async function repairToolCall<TOOLS extends ToolSet>(
         : {}),
     });
     return null;
+  }
+}
+
+/**
+ * Recover the model's original tool arguments as a parsed value. The AI SDK
+ * hands `toolCall.input` as a JSON string on the happy path, but a
+ * malformed/absent payload may arrive as a non-string or unparseable text.
+ * Returns the parsed object when possible, the raw string when it is
+ * non-empty but not JSON, and `{}` when there is nothing to carry.
+ */
+function parseOriginalInput(input: unknown): unknown {
+  if (typeof input !== "string") return input ?? {};
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return {};
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return trimmed;
   }
 }
 

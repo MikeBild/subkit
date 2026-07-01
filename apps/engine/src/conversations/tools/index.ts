@@ -20,10 +20,8 @@ import {
 } from "./ask-user/index.ts";
 import { authenticateOAuthTool } from "./authenticate-oauth.ts";
 import { authorWorkflowTool } from "./author-workflow.ts";
-import { buildWorkflowTool } from "./build-workflow.ts";
 import { callConnectorTool } from "./call-connector.ts";
 import { cannotHelpTool } from "./cannot-help.ts";
-import { connectStepsTool } from "./connect-steps.ts";
 import { diagnoseLatestExecutionTool } from "./diagnose-latest-execution.ts";
 import { discoverConnectorEndpointsTool } from "./discover-connector-endpoints.ts";
 import { discoverSystemsFromFilesTool } from "./discover-systems-from-files.ts";
@@ -56,7 +54,6 @@ import { probeConnectorTool } from "./probe-connector.ts";
 import { probeConnectorDraftTool } from "./probe-connector-draft.ts";
 import { proposeSchemaMigrationTool } from "./propose-schema-migration.ts";
 import { proposeSkillTool } from "./propose-skill.ts";
-import { proposeStepTool } from "./propose-step.ts";
 import { requestConnectorReauthTool } from "./request-connector-reauth.ts";
 import { saveConnectorDraftTool } from "./save-connector-draft.ts";
 import { saveWorkflowDraftTool } from "./save-workflow-draft.ts";
@@ -69,7 +66,6 @@ import { suggestConnectorTemplatesTool } from "./suggest-connector-templates.ts"
 import { suggestJsonataPathsTool } from "./suggest-jsonata-paths.ts";
 import { testConnectorTool } from "./test-connector.ts";
 import { updateConnectorDraftTool } from "./update-connector-draft.ts";
-import { updateParamTool } from "./update-param.ts";
 import { validateConnectorDraftTool } from "./validate-connector-draft.ts";
 import { validateDraftTool } from "./validate-draft.ts";
 
@@ -118,6 +114,14 @@ export interface ToolContext {
    */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   /**
+   * Surface this turn is running on — mirrors `RunLoopParams.surface`.
+   * `"mcp"` is set ONLY by the backgrounded `conversation.run-turn`
+   * worker (no live session, no `elicitationBridge`), so tools can treat
+   * it as the "unattended, cannot surface a follow-up prompt" signal.
+   * `undefined` on legacy/test harnesses that never set it.
+   */
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web";
+  /**
    * Operator's most recent user message, raw text. Threaded so tools
    * can ground deterministic relevance scoring (e.g.
    * `discover_connector_endpoints` ranks suggested endpoints against
@@ -127,8 +131,8 @@ export interface ToolContext {
    */
   recentUserMessage?: string | null;
   /**
-   * Optional diff emitter — tools that mutate the draft (`build_workflow`,
-   * `edit_workflow_patch`, `update_param`, `save_connector_draft`) call
+   * Optional diff emitter — tools that mutate the draft (`author_workflow`,
+   * `edit_workflow_patch`, `save_connector_draft`) call
    * this with the canonical before/after JSON of the affected resource.
    * The conversation loop turns it into a `diff` TurnEvent the CLI
    * renders inline as a unified-diff cell — operators see exactly what
@@ -288,11 +292,10 @@ export interface ConversationTool {
    * these tools from the LLM's palette on every pre-persistence
    * authoring stage (`workflow_draft_started`, `workflow_validated`,
    * `workflow_previewed`). Removing them from the palette prevents the
-   * LLM from picking `run_workflow` over `build_workflow` /
-   * `propose_step` / `save_workflow_draft` on the first authoring step
-   * — the loop-detected production failure from the 04:37–04:39 log
-   * window where the model called `run_workflow` three times against a
-   * workflow that had not been saved.
+   * LLM from picking `run_workflow` over `author_workflow` /
+   * `edit_workflow_patch` / `save_workflow_draft` on the first authoring
+   * step — the loop-detected production failure where the model called
+   * `run_workflow` repeatedly against a workflow that had not been saved.
    *
    * The forced-tool invariant still wins: a turn-level
    * `toolChoice: { type: "tool", toolName: "run_workflow" }` re-adds the
@@ -303,6 +306,23 @@ export interface ConversationTool {
    * explicit override.
    */
   readonly requires_persisted_workflow?: boolean;
+  /**
+   * True when this tool reads (or mutates) the conversation's working
+   * draft — i.e. it only makes sense inside a live authoring conversation
+   * whose `ctx.getDraft()` returns real state. The MCP stub context
+   * (`mcp/adapter.ts#buildMcpStubCtx`) supplies an EMPTY draft with no-op
+   * `getDraft`/`setDraft`, so dispatching one of these tools on the direct
+   * MCP `tenant_*` path would silently operate on nothing and return a
+   * misleading success. The dispatcher reads this flag and short-circuits
+   * such a call to `not_available_on_surface` (pointing the caller at
+   * `conversation_start`) instead of the silent empty-draft no-op.
+   *
+   * This is orthogonal to `category: "draft_write"` (which governs write
+   * POLICY): a `tenant_read`/`tenant_write` tool can still be draft-DEPENDENT
+   * for its DATA. Marking it here is the declarative capability the guard
+   * keys on — no per-tool name list in the dispatcher.
+   */
+  readonly requires_draft?: boolean;
 }
 
 const registry: Map<string, ConversationTool> = new Map();
@@ -341,8 +361,6 @@ register(probeConnectorDraftTool);
 register(testConnectorTool);
 register(callConnectorTool);
 register(authorWorkflowTool);
-register(buildWorkflowTool);
-register(proposeStepTool);
 register(proposeSkillTool);
 register(saveConnectorDraftTool);
 register(authenticateOAuthTool);
@@ -362,11 +380,9 @@ register(inspectRoleTool);
 register(editRoleTool);
 register(matchConnectorTemplateByUrlTool);
 register(importConnectorFromSpecTool);
-register(updateParamTool);
 register(editWorkflowPatchTool);
 register(proposeSchemaMigrationTool);
 register(updateConnectorDraftTool);
-register(connectStepsTool);
 register(diagnoseLatestExecutionTool);
 register(discoverConnectorEndpointsTool);
 register(discoverSystemsFromFilesTool);

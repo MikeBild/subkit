@@ -29,6 +29,7 @@ export const restoreDraftSnapshotTool: ConversationTool = {
     "Roll the conversation draft back to a previously captured snapshot. Use after a bad edit — the snapshot history records every successful draft mutation. Omit `snapshot_id` to roll back to the most recent snapshot.",
   inputSchema,
   category: "draft_write" as const,
+  requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
 

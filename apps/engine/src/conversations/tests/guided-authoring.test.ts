@@ -92,7 +92,7 @@ describe("guided authoring conversation loop", () => {
     ).toBe(true);
     expect(
       resumedSave.result.events.some(
-        (event) => event.type === "tool_call_start" && event.tool === "build_workflow",
+        (event) => event.type === "tool_call_start" && event.tool === "edit_workflow_patch",
       ),
     ).toBe(true);
     expect(

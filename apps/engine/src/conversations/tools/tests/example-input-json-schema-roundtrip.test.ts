@@ -110,10 +110,6 @@ describe("tool example_input ↔ inputSchema round-trip (post-incident guard)", 
     // whole point of pinning the set is to force a new offender to be
     // discussed (either tighten its example or accept the regression
     // explicitly).
-    expect(incompatible.map((t) => t.name).sort()).toEqual([
-      "build_workflow",
-      "call_connector",
-      "probe_connector",
-    ]);
+    expect(incompatible.map((t) => t.name).sort()).toEqual(["call_connector", "probe_connector"]);
   });
 });

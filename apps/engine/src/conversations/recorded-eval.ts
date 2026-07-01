@@ -885,10 +885,10 @@ export async function runRecordedEval(
   // A verified repair proposal makes the targeted edit the obvious
   // first move regardless of which failure class produced it.
   if (repairedCount > 0) {
-    next_actions.push("update_param", "edit_workflow_patch");
+    next_actions.push("edit_workflow_patch");
   }
   if (hasCompileErrors || hasEvalErrors) {
-    next_actions.push("update_param", "edit_workflow_patch");
+    next_actions.push("edit_workflow_patch");
   }
   if (hasEmptyResults) {
     // `suggest_jsonata_paths` is a JSONata-path tool — JS empty results
@@ -902,7 +902,7 @@ export async function runRecordedEval(
   const hasPreviewGap =
     !loopGate.ok || transformGate.blocks.some((b) => !isHandRolledCodecBlock(b));
   if (hasCodecBlock) {
-    next_actions.push("update_param", "edit_workflow_patch");
+    next_actions.push("edit_workflow_patch");
   }
   // Truncated-evidence empties resolve with a faithful full-data run, not a
   // transform rewrite. A preview-gap missing_evidence entry also wants a run.
@@ -941,13 +941,13 @@ export async function runRecordedEval(
     }
     if (codecBlocks.length > 0) {
       problems.push(
-        `${codecBlocks.length} transform step(s) hand-roll a codec alphabet/lookup table — rewrite with sk.base64Encode/base64UrlEncode/base64EncodeUtf8/base64Decode (or sk.hexEncode/hexDecode) via update_param`,
+        `${codecBlocks.length} transform step(s) hand-roll a codec alphabet/lookup table — rewrite with sk.base64Encode/base64UrlEncode/base64EncodeUtf8/base64Decode (or sk.hexEncode/hexDecode) via edit_workflow_patch`,
       );
     }
   }
   if (repairedCount > 0) {
     problems.push(
-      `${repairedCount} verified repair proposal(s) attached (findings[].repair.expression) — the draft was NOT changed; apply via update_param / edit_workflow_patch`,
+      `${repairedCount} verified repair proposal(s) attached (findings[].repair.expression) — the draft was NOT changed; apply via edit_workflow_patch`,
     );
   }
   if (repair_skipped) {

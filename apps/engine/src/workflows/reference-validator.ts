@@ -16,9 +16,9 @@
 // `<step_id>.data` as equivalent to `$scope.<step_id>.data`, so the
 // LLM uses that form ~half the time.
 //
-// Pure data — no I/O. Used by build_workflow / propose_step /
-// update_param / edit_workflow_patch / dry_run_workflow pre-flights
-// and `output_transform` / `output_transform_function` validation.
+// Pure data — no I/O. Used by author_workflow / edit_workflow_patch /
+// dry_run_workflow pre-flights and `output_transform` /
+// `output_transform_function` validation.
 
 import { findUnsupportedPlaceholders } from "../llm/substitution/unsupported.ts";
 import { findBareItemRefs, rewriteBareItemRefs } from "./itemvar-rewrite.ts";
@@ -87,8 +87,8 @@ export interface ReferenceValidationError {
 /**
  * One unsupported placeholder found in a draft string (Mustache, bad
  * kind, or `${$loop...}` / `${$item...}` aliases). Carries a concrete
- * rewrite the LLM can paste into the next propose_step / build_workflow
- * call.
+ * rewrite the LLM can paste into the next author_workflow /
+ * edit_workflow_patch call.
  *
  * Surfaced by `validateUnsupportedPlaceholders()` and threaded through
  * the same error envelope as `validateStepReferences()`. The reason this
@@ -554,8 +554,8 @@ export function validateBareIterationIdentifiers(
  * runtime won't substitute (Mustache, `${user.X}`, `${$loop...}`, etc.).
  * Returns `[]` when the draft is clean.
  *
- * Called by `build_workflow` (hard-reject) and `propose_step` /
- * `update_param` (warn + suggest).
+ * Called by `author_workflow` (hard-reject) and `edit_workflow_patch`
+ * (warn + suggest).
  */
 export function validateUnsupportedPlaceholders(def: WorkflowDef): UnsupportedPlaceholderError[] {
   const errors: UnsupportedPlaceholderError[] = [];

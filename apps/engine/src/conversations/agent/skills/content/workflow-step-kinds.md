@@ -1,4 +1,4 @@
-WORKFLOW STEP KINDS (for propose_step / update_param):
+WORKFLOW STEP KINDS (for author_workflow / edit_workflow_patch):
 - A workflow has `steps[]`. Each step has a unique `id` and a `kind`. The discriminator is ALWAYS `kind` — never `type`, `@type`, `step_type`, or invented namespaces (`trigger.*`, `flow.*`, `util.*`).
 - Valid kinds (7 total) and their required fields:
   - `request`: id, kind, (url OR connector_id) — HTTP / GraphQL / connector calls
@@ -9,4 +9,4 @@ WORKFLOW STEP KINDS (for propose_step / update_param):
   - `parallel`: id, kind, branches — parallel arms (each arm an array of step ids)
   - `loop`: id, kind, over, body — iterate, body referenced by id
 - Approvals / human gates: there is NO `approval` kind. Use `ask_user_confirm` (during authoring) or model the human gate as a `request` to your approval system + a `branch` on its outcome.
-- If propose_step returns ok=false, read the `valid_kinds`, `required_fields_for_kind`, and `example_for_kind` fields and call propose_step again with the corrected shape.
+- If a step is malformed, `author_workflow` / `edit_workflow_patch` return ok=false with the schema errors — read them and re-issue the corrected step shape (via `edit_workflow_patch` for a targeted fix).

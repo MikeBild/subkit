@@ -26,8 +26,10 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { persistedWorkflowResource } from "../../conversations/authoring-state/summary.ts";
 import { loadDraft } from "../../conversations/draft.ts";
 import { classifyDraftVsPersisted } from "../../conversations/persistence/draft-diff.ts";
+import { findResumableAuthoringConversation } from "../../conversations/resumable-authoring.ts";
 import * as svc from "../../conversations/service.ts";
 import { buildWorkflowUsage } from "../../conversations/tools/usage-guidance.ts";
 import { suggestConversationsByTopic } from "../../conversations/topic-routing.ts";
@@ -35,7 +37,7 @@ import type { Db } from "../../db/client.ts";
 import { enqueueConversationRunTurn } from "../../queue/handlers/conversation-run-turn.ts";
 import { getBoss } from "../../queue/index.ts";
 import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
-import { getWorkflow } from "../../workflows/service.ts";
+import { getWorkflow, getWorkflowBySlug } from "../../workflows/service.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { zodToJsonSchema7 } from "../json-schema.ts";
 import { insertMcpTask, setMcpTaskFailure, setMcpTaskJobId } from "../tasks/store.ts";
@@ -120,7 +122,7 @@ export function listConversationTools(): Tool[] {
       name: "conversation_get",
       title: "Get conversation",
       description:
-        "Poll the state of a backgrounded conversation turn. Returns status (working | completed | failed | input_required), the turn events when finished, the pending elicitation form when input is required, and the committed workflow id when committed.",
+        "Poll the state of a backgrounded conversation turn. Returns status (working | completed | failed | input_required), the turn events when finished, the pending elicitation form when input is required, and the committed workflow id when committed. While status is working it also carries a heartbeat — phase, elapsed_ms, and last_action (the newest authoring step) — so you can tell an in-progress turn from a hung one; keep polling until status is no longer working.",
       inputSchema: jsonSchema(GetArgs),
       annotations: buildToolAnnotations("tenant_read", "conversation_get"),
       execution: { taskSupport: "forbidden" },
@@ -156,6 +158,14 @@ export interface HandleConversationToolParams {
    * When undefined, the conversation falls back to the tenant default.
    */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  /**
+   * Playground/sandbox flag pulled from the tool-call `_meta.sk_playground`.
+   * Additive and out-of-band — the `conversation_start` INPUT schema
+   * (`StartArgs`) is deliberately untouched (no OpenAPI drift), mirroring
+   * how `permission_mode` rides on `_meta.sk_permission_mode`. Only honoured
+   * by `conversation_start`; ignored for append / respond.
+   */
+  playground?: boolean;
   /**
    * True when the `tools/call` request carried `params.task` — the SDK
    * gates this on the client's advertised `tasks` capability, so its
@@ -287,11 +297,36 @@ async function backgroundTurn(p: {
 export async function handleConversationTool(
   p: HandleConversationToolParams,
 ): Promise<HandleConversationToolResult> {
-  const { db, principal, name, args, permission_mode, taskAugmented } = p;
+  const { db, principal, name, args, permission_mode, playground, taskAugmented } = p;
   try {
     if (name === "conversation_start") {
       const parsed = StartArgs.safeParse(args);
       if (!parsed.success) return errorText("message is required");
+      // Idempotency: one re-issued intent ("create workflow <slug>") used
+      // to spawn several conversations and fragment the authoring state.
+      // If this principal already has a recent, non-terminal conversation
+      // authoring the SAME named slug, resume it instead of creating a
+      // duplicate. Tightly scoped (same owner, same slug token, short
+      // window, non-terminal) so it never attaches to the wrong one.
+      // A playground start is always a fresh scratch surface — never
+      // resume (and possibly adopt) a normal authoring conversation.
+      const resumable = playground
+        ? null
+        : await findResumableAuthoringConversation(
+            principal.tenant_id,
+            principal.id,
+            parsed.data.message,
+            db,
+          );
+      if (resumable) {
+        return successText({
+          conversation_id: resumable.conversation_id,
+          resumed: true,
+          status: "working",
+          poll_with: "conversation_get",
+          poll_arg: { conversation_id: resumable.conversation_id },
+        });
+      }
       const created = await svc.createConversation(
         {
           tenant_id: principal.tenant_id,
@@ -300,6 +335,7 @@ export async function handleConversationTool(
           ...(parsed.data.workflow_id ? { workflow_id: parsed.data.workflow_id } : {}),
           initial_message: parsed.data.message,
           ...(permission_mode ? { permission_mode } : {}),
+          ...(playground ? { playground } : {}),
         },
         db,
       );
@@ -407,7 +443,28 @@ export async function handleConversationTool(
         db,
       );
       if (!detail) return errorText("conversation not found");
-      if (!detail.conversation.target_workflow_id) {
+
+      const draft = await loadDraft(principal.tenant_id, detail.conversation.id, db);
+
+      // Resolve the committed workflow. The conversation row's
+      // target_workflow_id is the primary source, but an inline
+      // auto-commit (a green dry_run_workflow persists the draft
+      // immediately) can leave it null — a later turn-finalization write
+      // races the commit's conversation-row update. The draft's bound
+      // resource still points at the persisted workflow, so fall back to
+      // it and report the commit idempotently instead of a false
+      // "no committed workflow" (the poll and the commit must agree).
+      let workflowId = detail.conversation.target_workflow_id;
+      if (!workflowId) {
+        const bound = draft.state ? persistedWorkflowResource(draft.state) : null;
+        const resolved = bound?.id
+          ? await getWorkflow(principal.tenant_id, bound.id, db)
+          : bound?.slug
+            ? await getWorkflowBySlug(principal.tenant_id, bound.slug, db)
+            : null;
+        if (resolved) workflowId = resolved.id;
+      }
+      if (!workflowId) {
         return errorText("conversation has no committed workflow");
       }
       // Honest reporting (RC2): conversation_commit is a read-only status tool —
@@ -416,12 +473,7 @@ export async function handleConversationTool(
       // is a "reported ≠ written" lie (the model narrates success the user never
       // got). Detect that and return a directive error instead. `clean` (draft
       // matches live) and `no_target` (nothing to compare) keep the accurate echo.
-      const draftState = await classifyDraftVsPersisted(
-        db,
-        principal.tenant_id,
-        await loadDraft(principal.tenant_id, detail.conversation.id, db),
-        detail.conversation.target_workflow_id,
-      );
+      const draftState = await classifyDraftVsPersisted(db, principal.tenant_id, draft, workflowId);
       if (draftState === "structural") {
         return errorText(
           "NOT COMMITTED: this conversation's working draft has uncommitted workflow edits — its steps differ from the live version. conversation_commit only reports status; it does not persist. To persist step edits, call save_workflow_draft (after a successful dry_run_workflow). For a metadata-only change (name/description/lifecycle), call update_workflow. Do not tell the user it is committed until a save tool returns ok.",
@@ -429,14 +481,10 @@ export async function handleConversationTool(
       }
       // Attach the usage block so external MCP clients (claude.ai) can
       // tell the user what was committed and every real way to run it.
-      const committedWorkflow = await getWorkflow(
-        principal.tenant_id,
-        detail.conversation.target_workflow_id,
-        db,
-      );
+      const committedWorkflow = await getWorkflow(principal.tenant_id, workflowId, db);
       return successText({
         conversation_id: detail.conversation.id,
-        workflow_id: detail.conversation.target_workflow_id,
+        workflow_id: workflowId,
         status: detail.conversation.status,
         ...(committedWorkflow
           ? {
@@ -477,10 +525,15 @@ async function conversationGet(
   // No task yet (or a conversation created outside the MCP async path)
   // — report the conversation's own status so the client is never stuck.
   if (!latest) {
-    return successText({
-      status: detail.conversation.status === "awaiting_input" ? "input_required" : "working",
+    if (detail.conversation.status === "awaiting_input") {
+      return successText({ status: "input_required", conversation_id });
+    }
+    return workingHeartbeat(
+      db,
+      principal.tenant_id,
       conversation_id,
-    });
+      Date.parse(detail.conversation.updated_at),
+    );
   }
 
   if (latest.failure_reason) {
@@ -504,7 +557,24 @@ async function conversationGet(
   // reads `awaiting_input` until the worker resolves it. Treat that as
   // `working`, not `input_required`, so the client keeps polling
   // instead of re-submitting the same answer.
-  const respondInFlight = latest.kind === "respond_elicitation" && !latest.result;
+  //
+  // "Actively resolving" must key on a DURABLE marker, not merely
+  // `!result`. If a respond-turn CRASHED before its job was enqueued
+  // (the `mcp_tasks` row is inserted BEFORE `setMcpTaskJobId` — see
+  // backgroundTurn), the row has no `job_id`, no `result`, no
+  // `failure_reason` and no `cancelled_at`. Keying only on `!result`
+  // would then read `working` forever and permanently suppress the
+  // still-pending elicitation, so the user could never re-answer it.
+  // Requiring `job_id` means: no enqueued job ⇒ not in flight ⇒ surface
+  // the pending elicitation so the client can resolve it. The
+  // failure/cancel checks are redundant with the early returns above but
+  // stated here so the predicate is correct on its own terms.
+  const respondInFlight =
+    latest.kind === "respond_elicitation" &&
+    latest.job_id != null &&
+    !latest.result &&
+    !latest.failure_reason &&
+    !latest.cancelled_at;
   const pending =
     detail.conversation.status === "awaiting_input" && !respondInFlight
       ? await (async () => {
@@ -542,7 +612,8 @@ async function conversationGet(
   }
 
   // Still running — `input_required` when the turn paused mid-flight,
-  // otherwise `working`.
+  // otherwise a `working` heartbeat so the client can tell an actively
+  // building turn from a hung one and keeps polling.
   if (pending) {
     return successText({
       status: "input_required",
@@ -551,7 +622,34 @@ async function conversationGet(
       input: pending.input,
     });
   }
-  return successText({ status: "working", conversation_id });
+  return workingHeartbeat(db, principal.tenant_id, conversation_id, latest.created_at.getTime());
+}
+
+/**
+ * Shape the `working` heartbeat for a still-running turn. `elapsed_ms`
+ * is measured from `since_ms` (the active turn's start), and
+ * phase/last_action/step come from the newest `conversation_tool_calls`
+ * row — read-side only, no schema migration. Before any tool has run
+ * (`progress` null) it reports `phase: "starting"` with a null
+ * last_action, which is the honest "just began" state.
+ */
+async function workingHeartbeat(
+  db: Db,
+  tenant_id: string,
+  conversation_id: string,
+  since_ms: number,
+): Promise<HandleConversationToolResult> {
+  const { latestProgressForConversation } = await import("../tasks/store.ts");
+  const progress = await latestProgressForConversation(tenant_id, conversation_id, db);
+  const anchor = Number.isFinite(since_ms) ? since_ms : Date.now();
+  return successText({
+    status: "working",
+    conversation_id,
+    phase: progress?.phase ?? "starting",
+    elapsed_ms: Math.max(0, Date.now() - anchor),
+    last_action: progress?.last_action ?? null,
+    ...(progress?.step ? { step: progress.step } : {}),
+  });
 }
 
 function successText(obj: unknown): HandleConversationToolResult {

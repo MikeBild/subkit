@@ -60,7 +60,7 @@ describe("isExecutionToolName", () => {
   });
 
   test("authoring tools are not execution tools", () => {
-    expect(isExecutionToolName("build_workflow", catalog)).toBe(false);
+    expect(isExecutionToolName("edit_workflow_patch", catalog)).toBe(false);
     expect(isExecutionToolName("author_workflow", catalog)).toBe(false);
     expect(isExecutionToolName("dry_run_workflow", catalog)).toBe(false);
   });
@@ -108,7 +108,7 @@ describe("collectSyntheticWorkflowSlugs", () => {
     const slugs = collectSyntheticWorkflowSlugs([
       "run_workflow",
       "wf_notion-essay-to-markdown",
-      "build_workflow",
+      "edit_workflow_patch",
       "wf_my-jira-tickets",
       "list_workflows",
     ]);
@@ -123,7 +123,7 @@ describe("applyExecutionToolGate", () => {
     return {
       run_workflow: {},
       "wf_notion-essay-to-markdown": {},
-      build_workflow: {},
+      edit_workflow_patch: {},
       list_workflows: {},
     };
   }
@@ -139,7 +139,7 @@ describe("applyExecutionToolGate", () => {
     expect(tools.run_workflow).toBeUndefined();
     expect(tools["wf_notion-essay-to-markdown"]).toBeUndefined();
     // Non-execution tools are untouched.
-    expect(tools.build_workflow).toBeDefined();
+    expect(tools.edit_workflow_patch).toBeDefined();
     expect(tools.list_workflows).toBeDefined();
   });
 

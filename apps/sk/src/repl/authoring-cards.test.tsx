@@ -302,10 +302,10 @@ describe("renderAuthoringCard — meta-authoring tools suppressed in chat (Fix #
     });
   }
 
-  test("propose_step still renders in chat mode while running (positive control — must not be over-suppressed)", () => {
+  test("author_workflow still renders in chat mode while running (positive control — must not be over-suppressed)", () => {
     const call: ToolCallState = {
-      id: "call-propose_step",
-      name: "propose_step",
+      id: "call-author_workflow",
+      name: "author_workflow",
       args: {},
       status: "running",
     };
@@ -405,7 +405,7 @@ describe("renderAuthoringCard — author_workflow milestone card", () => {
           scope_refs: [],
           gates: { loop: { ok: true, blocks: [] }, transform: { ok: false, blocks: [] } },
           missing_evidence: [],
-          next_actions: ["update_param", "edit_workflow_patch"],
+          next_actions: ["edit_workflow_patch"],
         },
       }),
     );

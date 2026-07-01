@@ -3,6 +3,8 @@
 // tool names + raw args + assistant text into commit-intent shapes,
 // risk metadata, and prose-confirmation matches.
 
+import { normalizeWorkflowInput } from "../workflow-input-normalize.ts";
+
 export function confirmationMetadataForTool(
   toolName: string,
   input: unknown,
@@ -32,11 +34,16 @@ export function confirmationMetadataForTool(
 }
 
 /**
- * Map tenant_write tools to the `commit_intent.kind` value the LLM
- * uses when it surfaces an `ask_user_confirm` for that intent. When a
- * recently-resolved elicitation matches this kind, the policy-gate
- * skips its own confirmation so the operator only sees one prompt
- * per intent (instead of "yes / approve / yes / approve").
+ * Map tenant_write tools to the `commit_intent.kind` value the harness
+ * auto-persist dispatcher routes on. `buildPolicyGateCommitIntent`
+ * attaches this carrier to the policy-gate elicitation so the write is
+ * applied atomically the moment the operator confirms (no LLM re-issue).
+ * Also used to label the forensic `policy.gate_*` logs.
+ *
+ * NOTE: this is NOT a confirm-dedup key. The confirm decision is the
+ * deterministic `decideConfirm` rule (see `confirm-decision.ts`); the
+ * only durable-approval shortcut left is the save path's
+ * `findPriorSaveWorkflowApproval`.
  *
  * Kept in sync with `apps/engine/src/conversations/tools/ask-user/commit-intent.ts`.
  */
@@ -69,112 +76,6 @@ export function mapToolToCommitIntentKind(tool: string): string | null {
     default:
       return null;
   }
-}
-
-/**
- * Pull plain text out of a persisted conversation_messages.content
- * payload. Messages are jsonb; content is usually either a string or
- * an array of `{ type, text }` parts (Anthropic shape) or a single
- * `{ text }` object. Extracts every string we can find and joins.
- * Returns `""` when nothing usable is present.
- */
-export function extractText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!content || typeof content !== "object") return "";
-  if (Array.isArray(content)) {
-    return content
-      .map((p) => extractText(p))
-      .filter((s) => s.length > 0)
-      .join(" ");
-  }
-  const obj = content as Record<string, unknown>;
-  if (typeof obj.text === "string") return obj.text;
-  if (typeof obj.content === "string") return obj.content;
-  if (Array.isArray(obj.parts)) return extractText(obj.parts);
-  if (Array.isArray(obj.content)) return extractText(obj.content);
-  return "";
-}
-
-/**
- * Detect whether the user's free-text reply is an unambiguous
- * affirmation. Conservative — only the short canonical forms count
- * so a chatty "yes please go ahead but skip the broken one" does
- * NOT bypass the gate (the user's intent there is more nuanced).
- * Mirrors the regex in apps/sk/src/elicitation-intent.ts so the CLI
- * + engine agree on what "yes" means.
- */
-const PROSE_AFFIRMATION_RE =
-  /^(?:yes(?: please)?|y|yep|yeah|yup|sure|of course|absolutely|ok(?:ay)?|fine|approve(?:d)?|confirm(?:ed)?|go(?: ahead)?|do it|proceed|please proceed|please do|go for it|let's do it|ship it)\.?$/i;
-
-export function isAffirmation(text: string): boolean {
-  return PROSE_AFFIRMATION_RE.test(text.trim().replace(/[.!?\s]+$/, ""));
-}
-
-/**
- * Detect whether the assistant's prior message was a prose pre-
- * confirmation about the SAME destructive intent the policy gate is
- * about to fire on. Two signals must both match:
- *   1. A pre-confirmation phrase ("shall I proceed", "do you want me
- *      to delete", "confirm if I should", "should I go ahead", etc.).
- *   2. A reference to the operation's verb / object (delete /
- *      revoke / drop + a noun matching the tool's resource type).
- * Conservative on purpose — false positives let through unconfirmed
- * destructive writes, so any miss falls through to the policy gate.
- */
-const PROSE_PRECONFIRM_RE =
-  /\b(shall i (?:proceed|continue|delete|remove|drop|revoke)|should i (?:proceed|continue|go ahead|delete|remove)|do you want me to (?:proceed|continue|delete|remove|drop|revoke)|confirm (?:if|that|whether)|(?:proceed|go ahead) (?:to|with) (?:delete|remove|drop|revoke))\b/i;
-
-/**
- * Map a destructive tool name to the noun its prose pre-confirmation is
- * expected to mention. Returns `null` for every tool that prose-dedupe
- * does not apply to — `referencesProseConfirmation` is a dead branch
- * for those, so callers gate the (otherwise useless) DB query on this.
- */
-function proseConfirmationNounForTool(toolName: string): RegExp | null {
-  if (toolName === "delete_workflow") return /\bworkflow/i;
-  if (toolName === "delete_connector") return /\bconnector/i;
-  if (toolName === "delete_knowledge_source") return /\bknowledge/i;
-  if (toolName === "delete_subscription") return /\bsubscription/i;
-  if (toolName === "delete_schedule") return /\bschedule/i;
-  if (toolName === "revoke_api_key") return /\b(?:api[_ ]?key|key)/i;
-  if (toolName === "revoke_portal_token") return /\b(?:portal[_ ]?token|token)/i;
-  return null;
-}
-
-/**
- * True when prose-pre-confirmation dedupe can possibly apply to this
- * tool. Only destructive (`delete_*` / `revoke_*`) tools qualify —
- * `referencesProseConfirmation` short-circuits to `false` for everything
- * else, so the `recentlyConfirmedByProse` DB query in `invoke.ts` is a
- * no-op for non-destructive tools and must be skipped (FIX 7 /
- * INCONSISTENCY-2).
- */
-export function proseConfirmationApplies(toolName: string): boolean {
-  return proseConfirmationNounForTool(toolName) !== null;
-}
-
-export function referencesProseConfirmation(asstText: string, toolName: string): boolean {
-  // Map the tool to a noun the prose is likely to mention. Without
-  // this match the dedupe could trigger on an unrelated prior
-  // question — too risky for a destructive write.
-  const verbObject = proseConfirmationNounForTool(toolName);
-  if (!verbObject) return false;
-  // Both signals must co-occur in the SAME sentence. Pre-fix the
-  // checker globbed the whole assistant message and false-matched on
-  // "Your DigitalOcean connector is configured. Shall I proceed to
-  // fetch your projects?" → `connector` and `Shall I proceed`
-  // appeared in different sentences but the OR-in-message check
-  // skipped the gate as if they were one intent. Splitting on
-  // sentence-ending punctuation (`.!?`) tightens the heuristic so the
-  // dedupe only fires when the prose is actually asking about THIS
-  // resource type.
-  const sentences = asstText.split(/(?<=[.!?])\s+/);
-  for (const sentence of sentences) {
-    if (PROSE_PRECONFIRM_RE.test(sentence) && verbObject.test(sentence)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**
@@ -283,9 +184,30 @@ export function buildPolicyGateCommitIntent(
       description: "Create a new API key.",
     };
   }
-  // run_workflow / update_* — payload shapes still owned by the
-  // LLM-driven ask_user_confirm path; the policy-gate fallback for
-  // these uses the re-issue contract.
+  if (intentKind === "run_workflow") {
+    const workflow = typeof rawArgs.workflow === "string" ? rawArgs.workflow : null;
+    const workflowId =
+      typeof rawArgs.workflow_id === "string" ? rawArgs.workflow_id : (workflow ?? null);
+    if (!workflowId) return null;
+    const environment = typeof rawArgs.environment === "string" ? rawArgs.environment : "dev";
+    return {
+      kind: "run_workflow",
+      payload: {
+        workflow_id: workflowId,
+        ...(workflow ? { workflow_slug: workflow, workflow } : {}),
+        environment,
+        ...(rawArgs.input !== undefined
+          ? { input_partial: normalizeWorkflowInput(rawArgs.input) }
+          : {}),
+        ...(rawArgs.execute_writes === true ? { execute_writes: true } : {}),
+        ...(rawArgs.include_step_trace === true ? { include_step_trace: true } : {}),
+      },
+      description: `Run workflow ${workflow ?? workflowId} in ${environment}.`,
+    };
+  }
+  // update_* — payload shapes still owned by the LLM-driven
+  // ask_user_confirm path; the policy-gate fallback for these uses the
+  // re-issue contract.
   return null;
 }
 

@@ -62,7 +62,7 @@ describe("runRecordedEval — hand-rolled-codec block next-action wire shape", (
     // next_actions: the codec fix is an in-place source rewrite, so the
     // top-level steer is update_param / edit_workflow_patch — and it does
     // NOT push dry_run_workflow for a codec-only failure.
-    expect(report.next_actions).toContain("update_param");
+    expect(report.next_actions).toContain("edit_workflow_patch");
     expect(report.next_actions).toContain("edit_workflow_patch");
     expect(report.next_actions).not.toContain("dry_run_workflow");
   });

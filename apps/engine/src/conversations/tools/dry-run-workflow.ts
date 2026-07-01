@@ -46,6 +46,7 @@ import {
 } from "./dry-run-cache.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { recordLastPreview } from "./last-preview-store.ts";
+import { buildRawStepResults } from "./step-results.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
 
 const inputSchema = z
@@ -59,6 +60,12 @@ const inputSchema = z
       .describe(
         `Execute write-classified steps for real instead of holding them. Default false: previews resolve writes (URL/headers/body materialized for inspection and the judge) but never dispatch them. Set true ONLY when the user explicitly confirmed a live preview.`,
       ),
+    include_step_results: z
+      .boolean()
+      .optional()
+      .describe(
+        "Attach a `step_results` array carrying the RAW per-step input (the resolved request the step issued, or the held request for a write) side-by-side with its output. Default false keeps the envelope compact (the truncated `step_trace`). Turn on to self-diagnose whether a bad final output is a step-config bug (the request went out wrong) or an output_transform bug (the step was fine, the projection dropped the data).",
+      ),
   })
   .openapi("DryRunWorkflowToolInput");
 
@@ -68,6 +75,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     "Run the entire draft workflow via runExecution (source=draft). Produces an executions row with source_kind=draft, no workflow_id / workflow_version_id persisted. Read steps execute for real; WRITE steps (sends, publishes, mutations) are HELD by default — fully resolved (URL/headers/body materialized as the step artifact) but never dispatched, so previews cannot publish. Pass execute_writes: true only after the user explicitly confirmed a live preview. External destinations (recipients, channels, webhook URLs) must come from the user, never fabricated placeholders.",
   inputSchema,
   category: "draft_write" as const,
+  requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = getWorkflowDraft(ctx.getDraft());
@@ -129,7 +137,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             error_code: "workflow_cycle_detected",
             message: `workflow has a cyclic step dependency: ${renderCycleReport(cycleReport)}`,
             recommended_mode: "workflow",
-            next_best_actions: ["inspect_workflow_draft", "update_param", "edit_workflow_patch"],
+            next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch"],
             extra: {
               cycles: cycleReport.cycles,
             },
@@ -172,7 +180,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             error_code: "workflow_unsupported_placeholder",
             message: `workflow contains placeholder forms the runtime will not substitute: ${summary}`,
             recommended_mode: "workflow",
-            next_best_actions: ["inspect_workflow_draft", "update_param", "edit_workflow_patch"],
+            next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch"],
             extra: {
               unsupported_placeholders: placeholderErrors,
             },
@@ -203,7 +211,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             error_code: "workflow_unresolved_step_reference",
             message: `workflow has unresolved step references: ${summary}`,
             recommended_mode: "workflow",
-            next_best_actions: ["inspect_workflow_draft", "update_param", "edit_workflow_patch"],
+            next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch"],
             extra: {
               unresolved_references: refErrors,
             },
@@ -287,7 +295,7 @@ export const dryRunWorkflowTool: ConversationTool = {
               "load_skill",
               "search_knowledge",
               "inspect_workflow_draft",
-              "propose_step",
+              "edit_workflow_patch",
             ],
             extra: { tripped_codes: trippedCodes },
           }),
@@ -575,6 +583,16 @@ export const dryRunWorkflowTool: ConversationTool = {
         }
       : {};
 
+    // D6 — optional raw per-step inputs/outputs. Compact by default (the
+    // truncated `step_trace` below); this attaches the resolved per-step
+    // input next to its output ONLY when the caller opted in, so the model
+    // can localise a bad final output to a step vs the output_transform.
+    // Spread into every terminal envelope (auto-commit, green-pending-save,
+    // and the not-clean path) so the surface is uniform.
+    const stepResultsField = args.include_step_results
+      ? { step_results: buildRawStepResults(run.steps) }
+      : {};
+
     const stoppedForDraft = stoppedId ?? lastStep?.step_id ?? "(end)";
     const runWarnings = (run.warnings ?? []).map((w) => ({
       step_key: (w as { step_key?: string | null }).step_key ?? null,
@@ -845,18 +863,45 @@ export const dryRunWorkflowTool: ConversationTool = {
     // hint stays on the envelope so the chat renderer's lifecycle line
     // and the never-silent guard in loop.ts both have something to
     // anchor on.
-    // a green dry-run auto-commits ONLY when the preview judge actually
-    // rendered a verdict against a stashed goal. With no goal the judge is
-    // skipped (`judge.no_goal`); a bare verification dry-run during iteration
-    // must NOT mint a new workflow version every call (the corsica session
-    // churned v6→v12 this way, six `auto_persist_on_green_dry_run` commits in
-    // 36 min). A green-but-unjudged preview is still `ok` — it just returns the
-    // `save_workflow_draft` next-action so the model/user persists once,
-    // deliberately, when they mean to.
+    // On an ATTENDED surface a green dry-run auto-commits ONLY when the
+    // preview judge actually rendered a verdict against a stashed goal. With no
+    // goal the judge is skipped (`judge.no_goal`); a bare verification dry-run
+    // during iteration must NOT mint a new workflow version every call (the
+    // corsica session churned v6→v12 this way, six
+    // `auto_persist_on_green_dry_run` commits in 36 min). A green-but-unjudged
+    // preview is still `ok` — it just returns the `save_workflow_draft`
+    // next-action so the model/user persists once, deliberately. On an
+    // UNATTENDED turn (see `unattended` below) that deferral is invisible to
+    // the caller, so the no-goal green preview auto-commits instead of
+    // dead-ending at a `save_workflow_draft` → ask_user_confirm the client
+    // never surfaces.
     const judgeSkippedNoGoal =
       judgeOutcome?.verdict === "skipped" && judgeOutcome?.reason === "no_goal";
-    const cleanPreview = dryRunGreen && !judgeBlocked && !judgeSkippedNoGoal;
-    const greenPendingSave = dryRunGreen && !judgeBlocked && judgeSkippedNoGoal;
+    // Unattended turn — the caller cannot surface an ask_user_confirm /
+    // awaiting_input follow-up, so a `save_workflow_draft` deferral would
+    // dead-end (the corsica-style greenPendingSave loop becomes invisible on
+    // a backgrounded MCP client). Two sources, both already on the turn:
+    //   - `permission_mode === "auto"` — the caller explicitly signalled
+    //     "don't ask" (ask_user_confirm already auto-resolves in this mode).
+    //   - a BACKGROUNDED MCP turn — `surface === "mcp"` is set only by the
+    //     `conversation.run-turn` worker, which runs with NO elicitation
+    //     bridge (no live session to prompt on). The `!elicitationBridge`
+    //     guard keeps a hypothetical interactive MCP turn (which CAN prompt)
+    //     out of this branch.
+    const unattended =
+      ctx.permission_mode === "auto" || (ctx.surface === "mcp" && !ctx.elicitationBridge);
+    // A green dry-run + non-blocking judge is safe to auto-commit: hold_writes
+    // made the run side-effect-free. On an ATTENDED surface a green-but-
+    // unjudged (no-goal) preview still defers to an explicit save so a bare
+    // verification dry-run does not mint a version every call (the corsica
+    // v6→v12 churn). UNATTENDED, that deferral is invisible, so the no-goal
+    // green preview joins the auto-commit path — an unchanged re-preview still
+    // reports `already_persisted` (no churn), and the audit row carries the
+    // honest `judge_verdict: "skipped" / no_goal`. The judge stays a QUALITY
+    // gate: a `partial`/`failed` verdict or a breaker hold keeps `judgeBlocked`
+    // true, so this NEVER auto-commits a goal-mismatched preview.
+    const cleanPreview = dryRunGreen && !judgeBlocked && (!judgeSkippedNoGoal || unattended);
+    const greenPendingSave = dryRunGreen && !judgeBlocked && judgeSkippedNoGoal && !unattended;
     // The judge hit its block cap: the edit loop is exhausted but the preview
     // still does not satisfy the goal. Do NOT keep nudging edit→dry_run (that
     // is the loop the breaker exists to stop); instead offer an explicit
@@ -993,6 +1038,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           // transforms or to debug a follow-up run.
           step_trace: stepTrace,
           ...finalOutputField,
+          ...stepResultsField,
         },
         ...(typeof commitResult.committed_workflow_id === "string"
           ? { committed_workflow_id: commitResult.committed_workflow_id }
@@ -1034,6 +1080,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           },
           step_trace: stepTrace,
           ...finalOutputField,
+          ...stepResultsField,
         },
       };
     }
@@ -1159,11 +1206,12 @@ export const dryRunWorkflowTool: ConversationTool = {
           // Propose-only repair outcomes (Fix 10). `repaired: true`
           // entries carry a VERIFIED expression (compiles; non-empty
           // against this run's recorded scope where applicable) —
-          // apply via update_param / edit_workflow_patch, then
+          // apply via edit_workflow_patch, then
           // re-preview. The draft was not changed.
           ...(repairProposals.length > 0 ? { repair_proposals: repairProposals } : {}),
           step_trace: stepTrace,
           ...finalOutputField,
+          ...stepResultsField,
           ...(lastStep
             ? (() => {
                 // Same per-step LLM cap as the step_trace assembler

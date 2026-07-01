@@ -164,7 +164,7 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: Array<{ name: string }> };
     const names = new Set(body.items.map((i) => i.name));
-    expect(names.has("propose_step")).toBe(true);
+    expect(names.has("author_workflow")).toBe(true);
     expect(names.has("save_workflow_draft")).toBe(true);
     expect(names.has("request_human_approval")).toBe(true);
   });

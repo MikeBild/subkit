@@ -38,6 +38,7 @@ import {
   mapAskUserToPrimitiveSchema,
   mapElicitResultToAskUserOutput,
 } from "./elicit-bridge.ts";
+import { detectSecretElicitation, type SecretElicitationHit } from "./secret-detection.ts";
 import { validateElicitationAnswer } from "./validate-answer.ts";
 
 type AskUserToolName = NonNullable<ToolResult["pause"]>["tool_name"];
@@ -56,6 +57,53 @@ export function scrubAskUserPayload<T extends { summary: string; input: unknown 
   return { ...p, summary: scrubString(p.summary), input: scrubStringsDeep(p.input) };
 }
 
+/**
+ * D7 — the reference integration-authoring architecture NEVER asks for a
+ * secret in chat: sensitive credential entry always routes to a secure UI
+ * (portal / OAuth). Over MCP, a paused `ask_user_*` elicitation is
+ * surfaced to the client as an in-chat "awaiting input" prompt — there is
+ * no in-band portal UI — so eliciting a secret-shaped field here would
+ * collect the raw API key / token / password as free chat text. Refuse it
+ * and point the model at the secure flow instead.
+ *
+ * The directive is a structured `ok: false` result (never a `pause`), so
+ * the loop folds `next_best_actions` into `prior_failures` and the model
+ * re-routes without ever surfacing the secret prompt to the user.
+ */
+function secretElicitationBlockedOverMcp(
+  ctx: ToolContext,
+  p: { tool_name: AskUserToolName; summary: string },
+  hit: SecretElicitationHit,
+): ToolResult {
+  logger.warn({
+    module: "conversation",
+    action: "ask_user.secret_elicitation_blocked",
+    msg: "refused to elicit a secret as chat text over MCP — routing to the secure credential flow",
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    tool_name: p.tool_name,
+    reason: hit.reason,
+    field: hit.field,
+  });
+  const message =
+    "A secret (API key / token / password) must never be requested as chat text over MCP — " +
+    "route credential entry to the secure flow instead. " +
+    "To repair a saved connector whose credential is dead, call request_connector_reauth: it returns " +
+    "a one-time OAuth sign-in URL for OAuth2 connectors, or a secure credential-setup URL " +
+    "(method: portal_setup) for basic/bearer/header/query connectors — present that URL verbatim for " +
+    "the user to open. For an OAuth2 connector being authored, use authenticate_oauth. " +
+    "For a brand-new connector, save the connector first (save_connector_draft), then call " +
+    "request_connector_reauth to mint a secure setup URL. " +
+    "Do NOT ask the user to paste the secret in chat.";
+  return {
+    ok: false,
+    error_code: "secret_elicitation_blocked",
+    message,
+    next_best_actions: ["request_connector_reauth", "authenticate_oauth", "save_connector_draft"],
+    data: { error_code: "secret_elicitation_blocked", reason: hit.reason, field: hit.field },
+  };
+}
+
 export async function pauseForUserInput(
   ctx: ToolContext,
   p: { tool_name: AskUserToolName; summary: string; input: unknown },
@@ -64,6 +112,16 @@ export async function pauseForUserInput(
   // question/summary it asks with — scrub the whole payload before any
   // path (bridge, DB pause, elicitation row) can persist or render it.
   p = scrubAskUserPayload(p);
+  // ── D7: no secret is ever elicited as chat text over MCP ───────────
+  // Scoped to `surface === "mcp"`: sk-cli (sk_headless/sk_interactive)
+  // and the web portal are secure input surfaces — a local operator may
+  // paste a secret into the CLI — so those paths are untouched. Over MCP
+  // there is no secure in-band UI, so a secret-shaped elicitation is
+  // refused and routed to the secure flow (portal-setup URL / OAuth).
+  if (ctx.surface === "mcp") {
+    const secret = detectSecretElicitation(p.tool_name, p.input);
+    if (secret) return secretElicitationBlockedOverMcp(ctx, p, secret);
+  }
   // ── MCP-native form elicitation ────────────────────────────────────
   // Take the in-process bridge when: the client advertised the
   // elicitation capability AND the tool input maps to flat primitives.

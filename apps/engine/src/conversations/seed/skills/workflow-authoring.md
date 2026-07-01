@@ -3,7 +3,7 @@ slug: workflow-authoring
 scope: global
 title: Authoring Workflows In A Conversation
 description: The canonical recipe for turning a user intent into a committed sk workflow draft.
-activates_when: [{"kind":"tool","tool":"author_workflow"},{"kind":"tool","tool":"build_workflow"},{"kind":"tool","tool":"approve_discovery_artifact"},{"kind":"tool","tool":"preview_attachment"}]
+activates_when: [{"kind":"tool","tool":"author_workflow"},{"kind":"tool","tool":"edit_workflow_patch"},{"kind":"tool","tool":"approve_discovery_artifact"},{"kind":"tool","tool":"preview_attachment"}]
 side_effects: read
 idempotency: none
 maturity: stable
@@ -20,8 +20,8 @@ micro-tools exist only to repair specific findings afterwards.
 
 ## The canonical flow
 
-**Proof-before-proposal contract.** Before calling `author_workflow`,
-`build_workflow`, or `propose_step`, you MUST have a successful
+**Proof-before-proposal contract.** Before calling `author_workflow` or
+`edit_workflow_patch`, you MUST have a successful
 `probe_connector` (or `call_connector`) result for EVERY connector the
 workflow will use. A probe verifies that the credential resolves and the
 base URL responds; a `call_connector` call on a primary endpoint records
@@ -54,20 +54,18 @@ retries in the worst recorded session.
    payloads included) against the stashed goal. Green + judge pass
    auto-commits.
 4. **Repair on findings** — apply specific recorded-eval/judge findings via
-   `edit_workflow_patch` (structural) or `update_param` (single field),
-   then preview again. `dry_run_transform` iterates a transform against the
-   recorded scope without re-hitting the network.
+   `edit_workflow_patch` (an RFC 6902 JSON Patch: append/replace a step,
+   set a single field or header, add an edge, reorder), then preview again.
+   `dry_run_transform` iterates a transform against the recorded scope
+   without re-hitting the network.
 5. **Green + judged = committed** — a clean preview with a passing judge
    verdict IS the save (`auto_committed: true`). Do NOT call
    `save_workflow_draft` afterward.
 
-`propose_step` and `update_param` are REPAIR-STAGE tools. While the draft
-is in its initial stage (no recorded preview AND no recorded-eval/judge
-findings) they refuse with `authoring_stage_violation` — the refusal names
-the exact next actions (`author_workflow`, `build_workflow`,
-`dry_run_workflow`, `edit_workflow_patch`), none of which is ever gated.
-The moment a preview or findings exist, both unlock unconditionally —
-"change the limit to 5" on a previewed or committed workflow always works.
+`edit_workflow_patch` is THE editor: use `author_workflow` for the initial
+whole-draft build, then `edit_workflow_patch` for every targeted change.
+"Change the limit to 5" on a previewed or committed workflow is a
+one-patch edit.
 
 There is no separate publish step. A green, judged dry-run is the save:
 the workflow is immediately live as the new version. If the user asks to
@@ -288,8 +286,8 @@ into ONE nested query — prefer it over N+1 REST descents when available
 If the user's goal phrases a cadence — examples below — the workflow
 **MUST** carry a `trigger: { kind: "schedule", cron, tz }` field. The
 schedule binding is part of the workflow definition, not a separate
-call. `author_workflow` generates the trigger from the goal phrasing and
-`build_workflow` accepts it directly; on commit `applyTriggerBindings`
+call. `author_workflow` generates the trigger from the goal phrasing (and
+`edit_workflow_patch` can set or change it later); on commit `applyTriggerBindings`
 upserts the `workflows_schedules` row and emits the
 `schedule.trigger.bound` audit event. **Do not call `create_schedule`
 separately for a brand-new workflow** — that path is for binding a cron
@@ -363,7 +361,7 @@ chat; the same tools repair in place:
    `error.message`, failing `step_id`, captured response shape. Do not
    paraphrase the error away.
 2. **`diagnose_latest_execution`** — pulls causal trace; do not guess from the bare error.
-3. **Edit the offending step** — `update_param` for a single field, `edit_workflow_patch` or `propose_step` to replace a step body, `connect_steps` to retarget. For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform. For a wholesale redesign, re-author via `author_workflow` with the original goal.
+3. **Edit the offending step** — `edit_workflow_patch` covers every targeted change: set a single field or header (`replace /steps/N/...`), replace a step body, add or retarget an edge (`add /edges/-`). For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform. For a wholesale redesign, re-author via `author_workflow` with the original goal.
 4. **`validate_draft`** — re-runs structural checks (rarely needed; see below).
 5. **`dry_run_workflow`** — green, judged dry-run auto-commits the patched workflow inline (`auto_committed: true`, audit reason `auto_persist_on_green_dry_run`). No separate confirmation step. Skip dry-run only for trivial parameter tweaks where the auto-persist on update suffices; any structural change must run dry-run first.
 
@@ -424,20 +422,20 @@ edits it refuses with `uncommitted_step_edits` — commit those via
 `save_workflow_draft` first. Step / schema / trigger changes always go through
 the draft + `save_workflow_draft`, never `update_workflow`.
 
-## `author_workflow` vs `build_workflow` vs the micro-tools
+## `author_workflow` vs `edit_workflow_patch`
 
 | Situation | Tool |
 |---|---|
 | New workflow, or replace one wholesale from a goal | `author_workflow` (one call, engine generates + evaluates) |
-| You already hold the exact full definition (recipe clone, discovery artifact, operator-pasted JSON) | `build_workflow` (validates + evaluates what YOU wrote) |
-| Apply one specific finding (path fix, repaired expression, limit change) | `update_param` / `edit_workflow_patch` |
-| Replace/append one step during repair | `propose_step` |
+| Apply one specific finding (path fix, repaired expression, limit change) | `edit_workflow_patch` (`replace /steps/N/...`) |
+| Append or replace one step during repair | `edit_workflow_patch` (`add /steps/-`, `replace /steps/N`) |
+| Retarget or add an edge between steps | `edit_workflow_patch` (`add /edges/-`, `move`) |
 
-Rule of thumb: **default to `author_workflow`**. The engine's grounding
-(recorded endpoint samples, docs, the JS contract) is strictly better
-than hand-assembling steps, and the result arrives already evaluated.
-`propose_step` / `update_param` refuse during the initial stage
-(`authoring_stage_violation`) — they are repair tools, not design tools.
+Rule of thumb: **default to `author_workflow`** for the build. The
+engine's grounding (recorded endpoint samples, docs, the JS contract) is
+strictly better than hand-assembling steps, and the result arrives already
+evaluated. Then use `edit_workflow_patch` for every targeted edit — it is
+THE editor, an RFC 6902 JSON Patch over the whole draft.
 
 ## Reshape locations
 
@@ -515,21 +513,20 @@ edits to OTHER steps and goes stale only when X's own definition
 changed since the last dry-run (gate reason
 `preview_stale_for_referenced_step`). Enforcement differs by tool:
 
-- ALL authoring tools — `author_workflow`, `build_workflow`,
-  `propose_step`, `edit_workflow_patch`, AND `update_param` — ACCEPT
-  the mutation and return a `recorded_eval` findings block in the same
-  result: per-expression compile/eval status (caret-pointed JSONata
+- BOTH authoring tools — `author_workflow` and `edit_workflow_patch` —
+  ACCEPT the mutation and return a `recorded_eval` findings block in the
+  same result: per-expression compile/eval status (caret-pointed JSONata
   errors; sandboxed JS evaluation), scope-reference evidence states
   (recorded / stale / missing), the loop/transform gate verdicts,
   `missing_evidence`, and ordered `next_actions`. Read it — acceptance
   is not proof the expressions resolve. Probed connectors count as
   shape evidence.
-- `update_param` no longer REFUSES a loop `over` / `data_selector`
+- `edit_workflow_patch` never REFUSES a loop `over` / `data_selector`
   edit with missing/stale evidence: it accepts the edit and surfaces
   the `loop_authoring_requires_inspect` verdict as a NON-BLOCKING
-  `recorded_eval` finding (symmetric with the other tools, so the model
-  repairs on the next call instead of thrashing on an identical retry).
-  The fix is unchanged — dry-run once to record the shape, then re-apply.
+  `recorded_eval` finding, so the model repairs on the next call instead
+  of thrashing on an identical retry. The fix is unchanged — dry-run once
+  to record the shape, then re-apply.
 
 Recovery is one round-trip, never a rebuild: call `dry_run_workflow`
 once so the engine records `scope_at_step` for the changed step, then
@@ -545,8 +542,8 @@ how 4–9× retry spirals start.
 
 **Same rule for `transform` steps.** A transform whose expression
 cites a sibling X (`$scope.<X>` in JSONata, `input.scope.<X>` in JS)
-with missing or stale evidence is surfaced the same way: ALL authoring
-tools — INCLUDING `update_param` — accept the edit and report it in
+with missing or stale evidence is surfaced the same way: both authoring
+tools accept the edit and report it in
 `recorded_eval` as a NON-BLOCKING `transform_authoring_requires_inspect`
 finding (no tool hard-refuses it any more). Same fix: `dry_run_workflow`
 once, then author the transform against the recorded `output_preview`
@@ -600,7 +597,7 @@ before reaching for `list_workflows` / `list_connectors`. They are
 faster for tenants with more than ~50 workflows or connectors and
 return ranked matches in one call.
 
-**`author_workflow` and `build_workflow` return `persistence: "draft_only"`.**
+**`author_workflow` and `edit_workflow_patch` return `persistence: "draft_only"`.**
 Neither auto-saves — the fields make this explicit so the LLM never
 assumes a workflow is committed before the green, judged preview.
 
@@ -729,7 +726,7 @@ top-level `steps` array.
 
 A `loop` step's `body: ["A", "B"]` references sibling steps A and B.
 `author_workflow` emits the whole array at once so ordering is solved by
-construction; when repairing with `propose_step`, add the body steps
+construction; when repairing with `edit_workflow_patch`, add the body steps
 **first**, then the loop. The incremental draft validator accepts forward
 references on `loop.body` / `branch.then_steps` / `parallel.branches[]`
 (returned as `pending_forward_refs`), but `dry_run_workflow` and
@@ -964,7 +961,7 @@ gone or the operator explicitly forces with `force_commit: true`. Do
 not tell the user "this is a false positive" — the engine surfaces these
 warnings precisely because they are not.
 
-## Authoring recipe (mandatory order before `author_workflow` / `build_workflow` / `propose_step`)
+## Authoring recipe (mandatory order before `author_workflow` / `edit_workflow_patch`)
 
 Skipping any of these steps produces a draft authored against a guessed
 shape that fails at runtime. Follow the order:
@@ -987,9 +984,10 @@ shape that fails at runtime. Follow the order:
    from documentation.
 5. **`search_docs` and `search_knowledge`.** Look up endpoints, auth,
    pagination, response structure. Do not guess paths from the URL.
-6. **Only then** call `author_workflow` (or `build_workflow` when you
-   already hold the exact definition). The pipeline grounds generation
-   in the recorded shapes; without them it generates against guesses.
+6. **Only then** call `author_workflow` to build the draft (and
+   `edit_workflow_patch` for any targeted edit afterwards). The pipeline
+   grounds generation in the recorded shapes; without them it generates
+   against guesses.
 
 When in doubt, load more skills rather than fewer.
 
@@ -1028,7 +1026,7 @@ a "simpler version" because of warnings alone.
 When a step's output looks wrong, do NOT guess at paths. Call
 `inspect_workflow` to read the captured shape of every step from the
 most recent run, then author the next patch against the returned shape.
-Use this BEFORE the third `update_param` on the same field —
+Use this BEFORE the third `edit_workflow_patch` on the same field —
 `inspect_workflow` returns the path that actually exists, not the one
 you assumed. Shape: `{ sections: [...], steps: [{ stepId, include }] }`.
 
@@ -1119,9 +1117,9 @@ into a malformed payload in production. Likewise never reach for `new Date()`,
 
 ## Common pitfalls
 
-- **Micro-iterating a new workflow with `propose_step`.** Initial authoring
-  is ONE `author_workflow` call; the micro-tools refuse with
-  `authoring_stage_violation` until a preview or findings exist.
+- **Hand-assembling a new workflow step-by-step.** Initial authoring
+  is ONE `author_workflow` call (the grounded pipeline builder); use
+  `edit_workflow_patch` only for targeted edits afterwards.
 - **Skipping `probe_connector` or `call_connector` before `author_workflow`.**
   The pipeline generates against guesses. A missed probe is the highest-
   leverage source of authoring failures — verified across 364 dry-run

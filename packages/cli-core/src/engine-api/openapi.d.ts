@@ -13183,6 +13183,7 @@ export interface components {
             /** @enum {string} */
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
             step_budget?: number;
+            playground?: boolean;
         };
         ConversationDetail: {
             conversation: components["schemas"]["Conversation"];

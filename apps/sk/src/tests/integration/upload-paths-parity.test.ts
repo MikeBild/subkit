@@ -226,12 +226,7 @@ describe("upload-paths parity", () => {
     await expect(uploadPath(client, dirty, { quiet: true })).rejects.toThrow(/codepoints/);
   });
 
-  test("chat-prompt preprocessor uploads an absolute local path and rewrites the token", async () => {
-    // The reported regression: typing "create a knowledge source
-    // using /Users/.../OCPP-2.0.1.md" should auto-upload the file
-    // (same chokepoint as `/attach`) and produce a `@file:fid_\u2026`
-    // mention the engine resolves to a `$file` leaf \u2014 no slash
-    // command, no copy-paste bounce.
+  test("chat-prompt preprocessor uploads text local paths for knowledge-source intent", async () => {
     const fid = "fid_00000000-0000-0000-0000-000000000108";
     const { client, paths } = makeInlineClient(fid, "ocpp.md");
     const fp = join(tmpDir, "ocpp.md");
@@ -244,12 +239,27 @@ describe("upload-paths parity", () => {
       "conv-1",
     );
 
+    expect(result.inlined).toHaveLength(0);
+    expect(result.uploaded).toHaveLength(1);
+    expect(result.rewritten).toContain(`@file:${fid}`);
+    expect(result.rewritten).not.toContain("OCPP 2.0.1 reference");
+    expect(paths.some((p) => p.includes("/v1/files/inline"))).toBe(true);
+    expect(paths.some((p) => p.includes("/links"))).toBe(true);
+  });
+
+  test("chat-prompt preprocessor still uploads binary local paths", async () => {
+    const fid = "fid_00000000-0000-0000-0000-000000000108";
+    const { client, paths } = makeInlineClient(fid, "slides.pdf");
+    const fp = join(tmpDir, "slides.pdf");
+    writeFileSync(fp, Buffer.from([0x25, 0x50, 0x44, 0x46]));
+
+    const result = await autoUploadLocalPaths(`use ${fp}`, client, "/", "conv-1");
+
+    expect(result.inlined).toHaveLength(0);
     expect(result.uploaded).toHaveLength(1);
     expect(result.uploaded[0]?.fid).toBe(fid);
     expect(result.rewritten).toContain(`@file:${fid}`);
     expect(result.rewritten).not.toContain(fp);
-    // Same chokepoint as the explicit `/attach` slash: hits
-    // /v1/files/inline and best-effort /links the conversation.
     expect(paths.some((p) => p.includes("/v1/files/inline"))).toBe(true);
     expect(paths.some((p) => p.includes("/links"))).toBe(true);
   });
@@ -276,7 +286,9 @@ describe("upload-paths parity", () => {
     );
 
     expect(result.skipped).toHaveLength(0);
+    expect(result.inlined).toHaveLength(0);
     expect(result.uploaded).toHaveLength(1);
-    expect(result.uploaded[0]?.fid).toBe(fid);
+    expect(result.rewritten).toContain(`@file:${fid}`);
+    expect(result.rewritten).not.toContain("spec");
   });
 });

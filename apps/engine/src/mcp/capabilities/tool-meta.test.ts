@@ -111,7 +111,7 @@ describe("listConversationTools annotations", () => {
     // callable tool names. Naming the engine-internal authoring steps made it
     // try to invoke a non-existent `author_workflow` tool and abort.
     const desc = byName.get("conversation_start")?.description ?? "";
-    for (const phantom of ["author_workflow", "build_workflow", "dry_run_workflow"]) {
+    for (const phantom of ["author_workflow", "edit_workflow_patch", "dry_run_workflow"]) {
       expect(desc).not.toContain(phantom);
     }
   });

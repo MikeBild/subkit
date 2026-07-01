@@ -346,43 +346,47 @@ export function getMockProvider(): MockProvider {
 
 /**
  * Canned "list users" plan — the loop walks through this sequence when
- * the user asks to list users from an API. Covers propose_step →
- * validate_draft → ask_user_confirm → save_workflow_draft with an intentional
- * first-pass validation-error (missing url) so the self-correct loop
- * is exercised. The preview step runs a pure transform over sample
- * input so the commit gate stays deterministic in hermetic CI.
+ * the user asks to list users from an API. Covers author (via
+ * edit_workflow_patch, the whole-draft editor) → validate_draft →
+ * ask_user_confirm → save_workflow_draft. The preview step runs a pure
+ * transform over sample input so the commit gate stays deterministic in
+ * hermetic CI.
  */
 export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
   return [
     { tool: "list_skills", args: {} },
     { tool: "fetch_connector_docs", args: { query: "users" } },
-    // First attempt: missing url AND missing connector_id → triggers
-    // validation-error feedback loop.
-    { tool: "propose_step", args: { step: { kind: "request", id: "get-users", method: "GET" } } },
-    // After the validator complains, the model "fixes" the step by
-    // supplying a real URL.
+    // Assemble the whole draft in one edit_workflow_patch call: name +
+    // slug + the request/transform steps.
     {
-      tool: "propose_step",
+      tool: "edit_workflow_patch",
       args: {
-        step: {
-          kind: "request",
-          id: "get-users",
-          method: "GET",
-          ...(connector_id
-            ? { connector_id, path: "/users" }
-            : { url: "https://jsonplaceholder.typicode.com/users" }),
-        },
-      },
-    },
-    {
-      tool: "propose_step",
-      args: {
-        step: {
-          kind: "transform",
-          id: "shape-users",
-          language: "javascript",
-          expression: "return input.input.users;",
-        },
+        patches: [
+          { op: "replace", path: "/name", value: "list-users" },
+          { op: "add", path: "/slug", value: "list-users" },
+          {
+            op: "add",
+            path: "/steps/-",
+            value: {
+              kind: "request",
+              id: "get-users",
+              method: "GET",
+              ...(connector_id
+                ? { connector_id, path: "/users" }
+                : { url: "https://jsonplaceholder.typicode.com/users" }),
+            },
+          },
+          {
+            op: "add",
+            path: "/steps/-",
+            value: {
+              kind: "transform",
+              id: "shape-users",
+              language: "javascript",
+              expression: "return input.input.users;",
+            },
+          },
+        ],
       },
     },
     { tool: "inspect_workflow_draft", args: {} },
@@ -417,46 +421,52 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
 }
 
 /**
- * Canned "list my private GitHub repos" authoring plan. Mirrors the
- * inner-loop sequence observed in the live claude.ai → SubKit 6.0.3
- * verification: propose a single `request` step against the GitHub
- * connector, validate, dry-run on a fixture payload, ask for save
- * confirmation, then commit. The dry-run input is sealed in-plan so
- * hermetic CI never reaches out to api.github.com.
+ * Canned "list my private GitHub repos" authoring plan. Assembles a
+ * `request` step against the GitHub connector plus a tail transform in
+ * one edit_workflow_patch call, validates, dry-runs on a fixture
+ * payload, asks for save confirmation, then commits. The dry-run input
+ * is sealed in-plan so hermetic CI never reaches out to api.github.com.
  */
 export function cannedListPrivateGithubReposPlan(connector_id?: string): ConverseMockStep[] {
   return [
     { tool: "list_skills", args: {} },
     { tool: "fetch_connector_docs", args: { query: "github private repos" } },
-    {
-      tool: "propose_step",
-      args: {
-        step: {
-          kind: "request",
-          id: "list-private-repos",
-          method: "GET",
-          ...(connector_id
-            ? { connector_id, path: "/user/repos" }
-            : { url: "https://api.github.com/user/repos" }),
-          query: { visibility: "private", affiliation: "owner", per_page: 100 },
-          paginate: { strategy: "page", page_param: "page", start: 1 },
-        },
-      },
-    },
     // Tail transform so the auto-commit preview targets a pure transform
     // rather than the live HTTP request — mirrors cannedListUsersPlan.
     // The shape is what an operator typically asks for: a slim repo
     // summary rather than the raw GitHub envelope.
     {
-      tool: "propose_step",
+      tool: "edit_workflow_patch",
       args: {
-        step: {
-          kind: "transform",
-          id: "shape-repos",
-          language: "javascript",
-          expression:
-            "return (input.input.items || []).map((r) => ({ id: r.id, name: r.full_name, private: r.private }));",
-        },
+        patches: [
+          { op: "replace", path: "/name", value: "list-private-github-repos" },
+          { op: "add", path: "/slug", value: "list-private-github-repos" },
+          {
+            op: "add",
+            path: "/steps/-",
+            value: {
+              kind: "request",
+              id: "list-private-repos",
+              method: "GET",
+              ...(connector_id
+                ? { connector_id, path: "/user/repos" }
+                : { url: "https://api.github.com/user/repos" }),
+              query: { visibility: "private", affiliation: "owner", per_page: 100 },
+              paginate: { strategy: "page", page_param: "page", start: 1 },
+            },
+          },
+          {
+            op: "add",
+            path: "/steps/-",
+            value: {
+              kind: "transform",
+              id: "shape-repos",
+              language: "javascript",
+              expression:
+                "return (input.input.items || []).map((r) => ({ id: r.id, name: r.full_name, private: r.private }));",
+            },
+          },
+        ],
       },
     },
     { tool: "inspect_workflow_draft", args: {} },
@@ -492,7 +502,7 @@ export function resetMockProvider(): void {
 /**
  * Canned "open-meteo weather" authoring plan. Drives the conversation
  * loop through: get_engine_status → list_connectors → start_connector_from_description
- * → propose_step (Berlin forecast) → validate_draft → ask_user_confirm
+ * → edit_workflow_patch (Berlin forecast) → validate_draft → ask_user_confirm
  * → save_workflow_draft. Intentionally grounded in the open-meteo forecast
  * endpoint which needs no API key:
  *   https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&daily=temperature_2m_max,temperature_2m_min&forecast_days=2
@@ -513,32 +523,39 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
       },
     },
     {
-      tool: "propose_step",
+      tool: "edit_workflow_patch",
       args: {
-        step: {
-          kind: "request",
-          id: "forecast-berlin",
-          method: "GET",
-          url: "https://api.open-meteo.com/v1/forecast",
-          query: {
-            latitude: 52.52,
-            longitude: 13.41,
-            daily: "temperature_2m_max,temperature_2m_min",
-            forecast_days: 2,
+        patches: [
+          { op: "replace", path: "/name", value: "berlin-tomorrow-weather" },
+          { op: "add", path: "/slug", value: "berlin-tomorrow-weather" },
+          {
+            op: "add",
+            path: "/steps/-",
+            value: {
+              kind: "request",
+              id: "forecast-berlin",
+              method: "GET",
+              url: "https://api.open-meteo.com/v1/forecast",
+              query: {
+                latitude: 52.52,
+                longitude: 13.41,
+                daily: "temperature_2m_max,temperature_2m_min",
+                forecast_days: 2,
+              },
+            },
           },
-        },
-      },
-    },
-    {
-      tool: "propose_step",
-      args: {
-        step: {
-          kind: "transform",
-          id: "tomorrow-only",
-          language: "javascript",
-          expression:
-            'const d = input.scope["forecast-berlin"].data.daily; return { date: d.time[1], tmax: d.temperature_2m_max[1], tmin: d.temperature_2m_min[1] };',
-        },
+          {
+            op: "add",
+            path: "/steps/-",
+            value: {
+              kind: "transform",
+              id: "tomorrow-only",
+              language: "javascript",
+              expression:
+                'const d = input.scope["forecast-berlin"].data.daily; return { date: d.time[1], tmax: d.temperature_2m_max[1], tmin: d.temperature_2m_min[1] };',
+            },
+          },
+        ],
       },
     },
     { tool: "validate_draft", args: {} },
@@ -581,20 +598,27 @@ export function cannedConnectorWorkflowPlan(baseUrl: string): ConverseMockStep[]
     { tool: "save_connector_draft", args: {} },
     { tool: "save_connector_draft", args: { __policy_confirmed: true } },
     {
-      tool: "build_workflow",
+      tool: "edit_workflow_patch",
       args: {
-        name: "engine-health-check",
-        slug: "engine-health-check",
-        description: "Checks the local subkit engine health endpoint.",
-        steps: [
+        patches: [
+          { op: "replace", path: "/name", value: "engine-health-check" },
+          { op: "add", path: "/slug", value: "engine-health-check" },
           {
-            id: "health",
-            kind: "request",
-            method: "GET",
-            url: `${baseUrl}/v1/health`,
+            op: "add",
+            path: "/description",
+            value: "Checks the local subkit engine health endpoint.",
+          },
+          {
+            op: "add",
+            path: "/steps/-",
+            value: {
+              id: "health",
+              kind: "request",
+              method: "GET",
+              url: `${baseUrl}/v1/health`,
+            },
           },
         ],
-        environment: "dev",
       },
     },
     { tool: "inspect_workflow_draft", args: {} },

@@ -32,6 +32,12 @@ export interface ToolDescriptor {
   /** Slug of a skill that must be loaded before this tool is visible.
    *  Mirrors the conversation registry's `requires_skill`. */
   readonly requires_skill?: string;
+  /** True when the tool depends on the conversation's working draft
+   *  (`ctx.getDraft()`). The dispatcher rejects such a tool on the MCP
+   *  stub-context path with `not_available_on_surface` rather than let it
+   *  run against the empty stub draft. Mirrors
+   *  `ConversationTool.requires_draft`. */
+  readonly requires_draft?: boolean;
   /** Per-tool RBAC declaration. The dispatcher evaluates this via
    *  `can()` before invoking the executor and writes a POLICY_DENIED
    *  audit row on rejection. Used to keep RBAC out of individual tool

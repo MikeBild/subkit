@@ -5,9 +5,11 @@
 //   - verifies empty-result repairs against the RECORDED scope (a
 //     candidate that compiles but still extracts nothing is rejected),
 //   - gives up cleanly after 2 attempts (`repaired: false`, last_error),
-//   - is PROPOSE-only: a build_workflow whose recorded-eval carried a
-//     repair leaves the draft byte-identical to what the model sent,
 //   - rides the dry_run_transform failure path.
+//
+// The PROPOSE-only "repair rides the tool envelope, draft unchanged"
+// contract is exercised at the pipeline layer (author_workflow runs
+// runRecordedEval with repair armed); see recorded-eval.test.ts.
 //
 // LLM provider is the in-process mock (LLM_PROVIDER=mock bootstrap +
 // `generateOverrides.repair`) — no network, deterministic.
@@ -23,13 +25,9 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
-import type { RecordedEvalReport } from "../recorded-eval.ts";
-import { stepFingerprint } from "../step-fingerprint.ts";
-import { buildWorkflowTool } from "../tools/build-workflow.ts";
 import { dryRunTransformTool } from "../tools/dry-run-transform.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { MAX_REPAIR_ATTEMPTS, repairTransformExpression } from "../transform-repair.ts";
-import type { DraftDocument } from "../types.ts";
 
 const nextUuid = createDeterministicUuidFactory(0xf18_10);
 
@@ -138,95 +136,6 @@ describe("repairTransformExpression — bounded repair mechanics", () => {
     if (outcome.repaired) throw new Error("unreachable");
     expect(outcome.attempts).toBe(MAX_REPAIR_ATTEMPTS);
     expect(outcome.last_error.length).toBeGreaterThan(0);
-  });
-});
-
-describe("build_workflow — repair proposals are PROPOSE-only", () => {
-  function makeCtx(initial: DraftDocument | null): ToolContext & {
-    current: () => DraftDocument | null;
-  } {
-    let draft: DraftDocument | null = initial;
-    return {
-      db: ctx.db,
-      tenant_id,
-      conversation_id: nextUuid(),
-      actor_id: null,
-      connector_id: null,
-      workflow_id: null,
-      engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),
-      getDraft: () => draft ?? createEmptyDraftDocument(),
-      setDraft: async (d) => {
-        draft = d;
-      },
-      current: () => draft,
-    };
-  }
-
-  test("recorded-eval repair lands in the envelope; the accepted draft keeps the broken expression verbatim", async () => {
-    getMockProvider().generateOverrides.repair = () => ({
-      expression: "return input.scope.fetch.data.items;",
-    });
-    const fetch = {
-      id: "fetch",
-      kind: "request",
-      method: "GET",
-      url: "https://example.com/items",
-    };
-    const badExpression = "return input.scope.fetch.data.wrong_field;";
-    // Seed the conversation draft with fingerprint-valid recorded
-    // evidence for `fetch`, so the rebuilt draft retains it
-    // and the recorded-eval pass can actually evaluate the transform.
-    const seeded = {
-      workflow: { name: "Seed", slug: "repair-propose", steps: [fetch] },
-      latest_preview: {
-        ok: true,
-        step_id: "fetch",
-        summary: "ok",
-        step_traces: [
-          {
-            step_id: "fetch",
-            kind: "request",
-            status: "succeeded",
-            fingerprint: stepFingerprint(fetch),
-            output_preview: { items: [{ name: "Ada" }] },
-            scope_at_step: {
-              available_paths: ["items"],
-              shape_summary: "object{items}",
-              primary_data_path: "items",
-            },
-          },
-        ],
-      },
-      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
-    } as any as DraftDocument;
-    const toolCtx = makeCtx(seeded);
-    const result = await buildWorkflowTool.execute(toolCtx, {
-      name: "Repair propose",
-      slug: "repair-propose",
-      steps: [
-        fetch,
-        { id: "shape", kind: "transform", language: "javascript", expression: badExpression },
-      ],
-      environment: "dev",
-    });
-
-    expect(result.ok).toBe(true);
-    const data = result.data as { recorded_eval: RecordedEvalReport };
-    const finding = data.recorded_eval.expressions.find((f) => f.site === "steps.shape.expression");
-    expect(finding?.status).toBe("empty_result");
-    expect(finding?.repair?.repaired).toBe(true);
-    if (!finding?.repair?.repaired) throw new Error("unreachable");
-    expect(finding.repair.before).toBe(badExpression);
-    expect(finding.repair.after).toBe("return input.scope.fetch.data.items;");
-    expect(data.recorded_eval.next_actions).toContain("update_param");
-    expect(data.recorded_eval.summary).toContain("repair proposal");
-
-    // ZERO draft mutation by the repair: the accepted draft carries the
-    // model's expression verbatim — applying the repair is the model's
-    // explicit next edit, never a side effect.
-    const draftSteps = toolCtx.current()?.workflow.steps as Array<Record<string, unknown>>;
-    const shape = draftSteps.find((s) => s.id === "shape");
-    expect(shape?.expression).toBe(badExpression);
   });
 });
 

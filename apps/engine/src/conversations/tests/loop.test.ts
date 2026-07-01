@@ -1,12 +1,10 @@
 // End-to-end loop test:
 //
 //   1. User asks to "list users from the api"
-//   2. Loop runs list_skills → fetch_connector_docs → propose_step
-//      (first attempt fails validation because url + connector_id
-//      are both missing)
-//   3. Loop self-corrects with a second propose_step carrying a real
-//      url → passes
-//   4. validate_draft confirms clean
+//   2. Loop runs list_skills → fetch_connector_docs → edit_workflow_patch
+//      (assembles the whole draft in one editor call)
+//   3. inspect_workflow_draft + validate_draft confirm clean
+//   4. dry_run_step previews a transform
 //   5. ask_user_confirm pauses the loop
 //   6. User answers { confirmed: true } → loop resumes → save_workflow_draft
 //      → new workflow
@@ -57,31 +55,24 @@ describe("conversations/loop", () => {
     const toolResultEvents = outcome.result.events.filter(
       (e) => e.type === "tool_result",
     ) as Array<{ tool: string; output: unknown }>;
-    const validationErrors = outcome.result.events.filter((e) => e.type === "validation_error");
 
-    // Expected tool call sequence:
-    //   list_skills, fetch_connector_docs, propose_step (fail),
-    //   propose_step (fix request), propose_step (add previewable transform),
-    //   inspect_workflow_draft, validate_draft, dry_run_step, ask_user_confirm
+    // Expected tool call sequence: the whole draft is assembled in one
+    //   edit_workflow_patch call, then inspected/validated/previewed.
     expect(toolCallEvents.map((e) => e.tool)).toEqual([
       "list_skills",
       "fetch_connector_docs",
-      "propose_step",
-      "propose_step",
-      "propose_step",
+      "edit_workflow_patch",
       "inspect_workflow_draft",
       "validate_draft",
       "dry_run_step",
       "ask_user_confirm",
     ]);
 
-    // First propose_step must have fed a validation error back.
-    expect(validationErrors.length).toBeGreaterThanOrEqual(1);
-    const firstProposeResult = toolResultEvents.find((e) => e.tool === "propose_step");
-    expect(firstProposeResult).toBeDefined();
-    expect((firstProposeResult as { output: { errors?: unknown[] } }).output.errors).toBeTruthy();
+    // The edit_workflow_patch call succeeded and produced a draft.
+    const editResult = toolResultEvents.find((e) => e.tool === "edit_workflow_patch");
+    expect(editResult).toBeDefined();
 
-    // A snapshot should exist from the successful second propose.
+    // A snapshot should exist from the successful edit_workflow_patch.
     const snapshots = await ctx.testDb.db
       .select()
       .from(conversationDrafts)

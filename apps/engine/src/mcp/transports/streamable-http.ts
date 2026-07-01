@@ -153,6 +153,26 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
           });
           return;
         }
+        // A second standalone GET SSE stream on a session that already has one
+        // self-rejects with this 409. The GET pre-empt below (see the handler)
+        // replaces the stale stream before the SDK ever reaches this guard, so
+        // in the steady state this branch does not fire — but a race can still
+        // slip a duplicate GET through. It is recoverable client churn (the
+        // client just re-opens its notification channel), not a transport
+        // fault, so log at `debug` like the stale-session case rather than
+        // spamming `warn` (this error was the bulk of the observed noise).
+        const duplicateStandaloneStream =
+          err.message === "Conflict: Only one SSE stream is allowed per session";
+        if (duplicateStandaloneStream) {
+          logger.debug({
+            module: "mcp",
+            action: "mcp.session.stream_conflict",
+            msg: "duplicate standalone SSE stream — client re-opened its notification channel",
+            error: err.message,
+            principal_id: principal.id,
+          });
+          return;
+        }
         logger.warn({
           module: "mcp",
           action: "mcp.transport.error",
@@ -162,6 +182,24 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
       };
       await server.connect(transport);
       session = { transport, server };
+    }
+
+    // Standalone GET SSE stream: the SDK permits exactly ONE per session
+    // (the `_GET_stream` mapping) and 409s a second one. A client that
+    // re-opens its server→client notification channel after a network blip —
+    // before the server observed the old socket close (half-open TCP,
+    // load-balancer churn, a `conversation_get` poll landing mid-reconnect) —
+    // otherwise gets a Conflict it cannot recover from, and its notification
+    // channel stays dead for the rest of the session (this was the bulk of
+    // the observed SSE-conflict noise). Pre-empt any stale standalone stream
+    // so the new GET REPLACES it (last-writer-wins reconnection — the SDK's
+    // own `closeStandaloneSSEStream` contract). This is a no-op when no
+    // standalone stream is open. POST responses ride per-request streams keyed
+    // by a fresh id and never collide, so this is scoped to GET only; the
+    // backgrounded conversation tools return a buffered POST response in ms
+    // and never hold a stream open past the turn.
+    if (c.req.method === "GET") {
+      session.transport.closeStandaloneSSEStream();
     }
 
     const res = await session.transport.handleRequest(c.req.raw);

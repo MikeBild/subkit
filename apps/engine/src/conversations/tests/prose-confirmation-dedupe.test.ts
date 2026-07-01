@@ -1,17 +1,23 @@
-// Regression for the "ask twice" anti-pattern observed in session
-// abeefb33: LLM emits prose "Shall I proceed to delete all 6
-// workflows?", user replies "yes", LLM then calls delete_workflow,
-// the policy gate fires AGAIN with a structured ConfirmPrompt for the
-// same intent — two confirmations for one user decision. Engine-side
-// dedupe in sdk-wrap.ts now detects [user-affirm immediately after
-// assistant-prose-pre-confirmation referencing the same destructive
-// verb + resource] and skips the policy gate.
+// Deterministic confirm-gate behavior for destructive writes.
 //
-// The fix is intentionally conservative: the heuristic only fires
-// when BOTH (a) the prior assistant message contains a recognised
-// pre-confirmation phrase + a noun matching the tool's resource
-// type, AND (b) the prior user message is one of the canonical short
-// affirmations. Any miss falls through to the policy gate.
+// History: sessions once tried to skip the policy gate when a prior
+// assistant prose line ("Shall I proceed to delete all 6 workflows?")
+// was followed by a user "yes". That fuzzy natural-language heuristic
+// was DELETED — guessing at operator intent over a security-critical
+// write is exactly the drift the unified `decideConfirm` rule exists to
+// prevent. The deterministic rule now is:
+//
+//   - a write in `confirm_before_execution` mode PAUSES unless a
+//     structured confirm marker (`__policy_confirmed: true` in args, or
+//     `_meta.sk_confirm` on the MCP transport) OR a durable, fresh,
+//     matching prior approval is present.
+//   - prose "yes" alone NEVER skips the gate — no message-scanning,
+//     no affirmation regex.
+//
+// These tests pin that rule for `delete_workflow` / `delete_connector`:
+// the destructive write pauses without a marker (regardless of what the
+// prior prose said), and proceeds only when the structured marker is
+// present.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -68,9 +74,6 @@ async function seedTwoMessages(
   asstText: string,
   userText: string,
 ): Promise<void> {
-  // Two messages. The order in conversation_messages is by created_at
-  // (asc), but the dedupe walks DESC so newest = user, then assistant.
-  // We insert assistant first, then user, with strict timestamps.
   const t = TEST_NOW_MS;
   await ctx.testDb.db.insert(conversationMessages).values({
     tenant_id: ctx.tenant_id,
@@ -108,8 +111,8 @@ function makeToolCtx(conversation_id: string): ToolContext {
   };
 }
 
-describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", () => {
-  test("delete_workflow skips the gate when prior turn was 'Shall I proceed to delete all workflows?' + user 'yes'", async () => {
+describe("policy gate · deterministic destructive-write confirm rule", () => {
+  test("delete_workflow PAUSES even after prior prose 'shall I delete?' + user 'yes' (prose alone no longer skips)", async () => {
     const conversation_id = await freshConversation();
     await seedTwoMessages(
       conversation_id,
@@ -128,28 +131,48 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
     );
     const tool = wrapped.delete_workflow;
     expect(tool).toBeDefined();
-    // Without the dedupe this would pause with kind=external_write +
-    // emit a second confirmation card. With the dedupe the gate is
-    // skipped — the tool runs (and fails on workflow_not_found in this
-    // unit test, but importantly the failure is NOT
-    // "policy_confirm_required").
+    // NO structured marker → the deterministic gate MUST pause. The
+    // prior prose+yes is irrelevant; the heuristic that once read it is
+    // gone.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (tool!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000abc" },
       { toolCallId: "t-del-1", messages: [] },
     );
+    expect(result.pause).toBeDefined();
+    expect(result.pause?.tool_name).toBe("ask_user_confirm");
+    expect(events.find((e) => e.type === "elicit_request")).toBeDefined();
+  });
+
+  test("delete_workflow with __policy_confirmed marker proceeds (no pause)", async () => {
+    const conversation_id = await freshConversation();
+    const signals = freshSignals();
+    const events: TurnEvent[] = [];
+    const wrapped = await wrapTools(
+      makeToolCtx(conversation_id),
+      signals,
+      events,
+      ctx.testDb.db as unknown as Db,
+      ["workflow-authoring"],
+      {},
+    );
+    const tool = wrapped.delete_workflow;
+    expect(tool).toBeDefined();
+    // Structured operator-confirmation marker present → the gate skips
+    // the pre-confirm and the tool runs (it fails on workflow_not_found
+    // in this unit test, but crucially it is NOT paused with a second
+    // confirmation card).
+    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
+    const result = await (tool!.execute as any)(
+      { id: "00000000-0000-0000-0000-000000000abc", __policy_confirmed: true },
+      { toolCallId: "t-del-marker", messages: [] },
+    );
     expect(result.pause).toBeUndefined();
-    // No elicit_request was emitted by the gate.
     expect(events.find((e) => e.type === "elicit_request")).toBeUndefined();
   });
 
-  test("delete_connector with prose 'do you want me to remove the connector?' + user 'go ahead' also dedupes", async () => {
+  test("delete_connector with __policy_confirmed marker proceeds (no pause)", async () => {
     const conversation_id = await freshConversation();
-    await seedTwoMessages(
-      conversation_id,
-      "I see one matching connector. Do you want me to remove the connector permanently?",
-      "go ahead",
-    );
     const signals = freshSignals();
     const events: TurnEvent[] = [];
     const wrapped = await wrapTools(
@@ -164,14 +187,14 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
     expect(tool).toBeDefined();
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (tool!.execute as any)(
-      { id: "00000000-0000-0000-0000-000000000def" },
-      { toolCallId: "t-del-c-1", messages: [] },
+      { id: "00000000-0000-0000-0000-000000000def", __policy_confirmed: true },
+      { toolCallId: "t-del-c-marker", messages: [] },
     );
     expect(result.pause).toBeUndefined();
     expect(events.find((e) => e.type === "elicit_request")).toBeUndefined();
   });
 
-  test("does NOT dedupe when prior prose is unrelated (asks about something else)", async () => {
+  test("delete_connector PAUSES without a marker (prior unrelated prose+yes does not proceed)", async () => {
     const conversation_id = await freshConversation();
     await seedTwoMessages(
       conversation_id,
@@ -188,9 +211,6 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
       [],
       {},
     );
-    // Now the LLM tries to delete a connector even though the user's
-    // "yes" was for a fetch operation. The dedupe MUST NOT fire — the
-    // gate must still pause for explicit destructive confirmation.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (wrapped.delete_connector!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000fff" },
@@ -200,32 +220,7 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
     expect(result.pause?.tool_name).toBe("ask_user_confirm");
   });
 
-  test("does NOT dedupe when user's reply is not a clear affirmation", async () => {
-    const conversation_id = await freshConversation();
-    await seedTwoMessages(
-      conversation_id,
-      "Shall I proceed to delete the workflow?",
-      "what's the impact of deleting it?",
-    );
-    const signals = freshSignals();
-    const events: TurnEvent[] = [];
-    const wrapped = await wrapTools(
-      makeToolCtx(conversation_id),
-      signals,
-      events,
-      ctx.testDb.db as unknown as Db,
-      [],
-      {},
-    );
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const result = await (wrapped.delete_workflow!.execute as any)(
-      { id: "00000000-0000-0000-0000-000000000aaa" },
-      { toolCallId: "t-no-aff", messages: [] },
-    );
-    expect(result.pause).toBeDefined();
-  });
-
-  test("does NOT dedupe when the conversation has no prior messages", async () => {
+  test("delete_workflow PAUSES when the conversation has no prior messages", async () => {
     const conversation_id = await freshConversation();
     const signals = freshSignals();
     const events: TurnEvent[] = [];
@@ -248,7 +243,7 @@ describe("policy gate · prose-confirmation dedupe (skip on prior prose+yes)", (
 
 // Cleanup: nothing persisted globally, every test seeds its own
 // conversation row. Just verify the messages table didn't blow up.
-test("prose-confirmation tests left clean message rows", async () => {
+test("deterministic confirm-gate tests left clean message rows", async () => {
   const rows = await ctx.testDb.db
     .select()
     .from(conversationMessages)

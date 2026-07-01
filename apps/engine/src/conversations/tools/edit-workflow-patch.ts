@@ -1,8 +1,11 @@
-// edit_workflow_patch — RFC 6902 JSON Patch over the entire workflow
-// draft in one call.
-// `update_param` already supports a single-field write; this tool is
-// for coordinated multi-edits (rename a step + retarget every
-// reference + change one URL) where N round-trips would be wasteful.
+// edit_workflow_patch — THE workflow editor. An RFC 6902 JSON Patch
+// over the entire workflow draft in one call. It expresses every
+// targeted change: append/replace a step (`add /steps/-`,
+// `replace /steps/N`), set a single field or header
+// (`replace /steps/N/headers/Accept`), retarget references, add an edge
+// (`add /edges/-`), or reorder steps (`move`). Coordinated multi-edits
+// (rename a step + retarget every reference + change one URL) land
+// atomically instead of over N round-trips.
 //
 // The applied patch must produce a draft that still validates against
 // the WorkflowDef Zod schema. The patch fails atomically — if any
@@ -27,7 +30,7 @@ import { emitRecordedEvalSignals, runRecordedEval } from "../recorded-eval.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
 import { canonicalJson } from "../text-line-diff.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
-import type { ConversationTool, ToolResult } from "./index.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { getLastPreview } from "./last-preview-store.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
 
@@ -49,17 +52,42 @@ const inputSchema = z
 export const editWorkflowPatchTool: ConversationTool = {
   name: "edit_workflow_patch",
   description:
-    "Apply an RFC 6902 JSON Patch array to the workflow draft. Use for coordinated multi-edits (rename + retarget refs + change config) — for single-field writes, prefer `update_param`. The patched draft must still validate; partial application is never persisted.",
+    "THE workflow editor. Apply an RFC 6902 JSON Patch array to the workflow draft: append/replace a step (`add /steps/-`, `replace /steps/N`), set a single field or header (`replace /steps/N/headers/Accept`), retarget references, add an edge (`add /edges/-`), or reorder steps (`move`). Coordinated multi-edits land atomically. The patched draft must still validate; partial application is never persisted.",
   inputSchema,
   category: "draft_write" as const,
+  requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
+    return applyWorkflowPatchToDraft(ctx, args.patches as ToolDiff[]);
+  },
+};
+
+/**
+ * THE draft-patch application core, extracted so both the LLM-driven
+ * `edit_workflow_patch` tool AND the harness partial-accept dispatcher
+ * (`apply_workflow_patch` commit_intent) share ONE gate chain + one
+ * durability contract. Applies the RFC-6902 `patches` to the workflow
+ * draft, runs every pre-flight gate (validation, cycle, placeholder,
+ * reference, legacy item_var migration), commits the patched draft, and
+ * returns the recorded-eval findings. The patch fails atomically — an
+ * invalid patch leaves the draft untouched.
+ *
+ * Partial-accept feeds a SUBSET of the originally-proposed ops here, so the
+ * subset is re-validated as a standalone patch: a rename accepted without
+ * its retarget correctly returns `workflow_unresolved_step_reference`
+ * instead of silently landing a broken draft.
+ */
+export async function applyWorkflowPatchToDraft(
+  ctx: ToolContext,
+  patches: ToolDiff[],
+): Promise<ToolResult> {
+  {
     const currentDraft = ctx.getDraft();
     const workflowDraft = getWorkflowDraft(currentDraft);
 
     let patched: ReturnType<typeof getWorkflowDraft>;
     try {
-      patched = applyDiffsToConfig(workflowDraft, args.patches as ToolDiff[]);
+      patched = applyDiffsToConfig(workflowDraft, patches);
     } catch (err) {
       // fast-json-patch throws on invalid path / wrong op semantics.
       // Surface the message so the LLM can correct without re-reading
@@ -70,9 +98,9 @@ export const editWorkflowPatchTool: ConversationTool = {
           error_code: "patch_invalid",
           message: err instanceof Error ? err.message : String(err),
           recommended_mode: "workflow",
-          next_best_actions: ["inspect_workflow_draft", "update_param"],
+          next_best_actions: ["inspect_workflow_draft"],
           extra: {
-            patches: args.patches,
+            patches,
           },
         }),
       };
@@ -131,10 +159,10 @@ export const editWorkflowPatchTool: ConversationTool = {
           error_code: "patch_invalid",
           message: "patch would leave the workflow draft invalid",
           recommended_mode: "workflow",
-          next_best_actions: ["inspect_workflow_draft", "update_param"],
+          next_best_actions: ["inspect_workflow_draft"],
           extra: {
             errors: validation.errors,
-            patch_count: args.patches.length,
+            patch_count: patches.length,
           },
         }),
       };
@@ -142,7 +170,7 @@ export const editWorkflowPatchTool: ConversationTool = {
 
     // Cycle pre-flight on the patched draft. Reject patches that would
     // introduce a cyclic step dependency — same typed error code +
-    // shape as build_workflow / dry_run_workflow so the LLM has a
+    // shape as author_workflow / dry_run_workflow so the LLM has a
     // single contract to obey.
     {
       // biome-ignore lint/suspicious/noExplicitAny: WorkflowDraftDocument structurally compatible with WorkflowDef
@@ -159,10 +187,10 @@ export const editWorkflowPatchTool: ConversationTool = {
             error_code: "workflow_cycle_detected",
             message: `patch would introduce a cyclic step dependency: ${renderCycleReport(cycleReport)}`,
             recommended_mode: "workflow",
-            next_best_actions: ["inspect_workflow_draft", "update_param"],
+            next_best_actions: ["inspect_workflow_draft"],
             extra: {
               cycles: cycleReport.cycles,
-              patch_count: args.patches.length,
+              patch_count: patches.length,
             },
           }),
         };
@@ -190,10 +218,10 @@ export const editWorkflowPatchTool: ConversationTool = {
             error_code: "workflow_unsupported_placeholder",
             message: `patch would leave placeholder forms the runtime will not substitute: ${summary}`,
             recommended_mode: "workflow",
-            next_best_actions: ["inspect_workflow_draft", "update_param"],
+            next_best_actions: ["inspect_workflow_draft"],
             extra: {
               unsupported_placeholders: placeholderErrors,
-              patch_count: args.patches.length,
+              patch_count: patches.length,
             },
           }),
         };
@@ -224,10 +252,10 @@ export const editWorkflowPatchTool: ConversationTool = {
             error_code: "workflow_unresolved_step_reference",
             message: `patch would leave unresolved step references: ${summary}`,
             recommended_mode: "workflow",
-            next_best_actions: ["inspect_workflow_draft", "update_param"],
+            next_best_actions: ["inspect_workflow_draft"],
             extra: {
               unresolved_references: refErrors,
-              patch_count: args.patches.length,
+              patch_count: patches.length,
             },
           }),
         };
@@ -244,8 +272,8 @@ export const editWorkflowPatchTool: ConversationTool = {
     // fingerprint won't match the patched step and the evidence drops —
     // exactly the retention contract.
     const renamedStepIds = new Map<string, string>();
-    for (let i = 0; i < args.patches.length; i++) {
-      const op = args.patches[i]!;
+    for (let i = 0; i < patches.length; i++) {
+      const op = patches[i]!;
       if (op.op !== "replace") continue;
       const match = /^\/steps\/(\d+)\/id$/.exec(op.path);
       if (!match) continue;
@@ -289,7 +317,7 @@ export const editWorkflowPatchTool: ConversationTool = {
     await ctx.setDraft(nextDraft);
     if (ctx.emitDiff) {
       ctx.emitDiff({
-        title: `workflow patch · ${args.patches.length} ${args.patches.length === 1 ? "op" : "ops"}`,
+        title: `workflow patch · ${patches.length} ${patches.length === 1 ? "op" : "ops"}`,
         language: "json",
         before: beforeJson,
         after: canonicalJson(patched),
@@ -327,7 +355,7 @@ export const editWorkflowPatchTool: ConversationTool = {
       data: buildDraftMutationPayload(nextDraft, {
         resource_kind: "workflow",
         extra: {
-          patch_count: args.patches.length,
+          patch_count: patches.length,
           steps: patched.steps.length,
           last_step_id: patched.steps[patched.steps.length - 1]?.id ?? null,
           recorded_eval: recordedEval,
@@ -340,5 +368,5 @@ export const editWorkflowPatchTool: ConversationTool = {
         },
       }),
     };
-  },
-};
+  }
+}

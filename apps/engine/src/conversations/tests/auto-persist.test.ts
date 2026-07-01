@@ -17,6 +17,8 @@ import {
   conversationToolCalls,
   credentials,
   tenants,
+  workflows,
+  workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
@@ -124,7 +126,303 @@ async function createCarrierElicitation(p: {
   return { id: row.id, tool_name: row.tool_name, input: row.input };
 }
 
+async function seedRenderWorkflow(
+  slug = "render-upload-slides-autopersist",
+): Promise<{ workflow_id: string; slug: string }> {
+  const [workflow] = await ctx.db
+    .insert(workflows)
+    .values({
+      tenant_id,
+      slug,
+      name: "render-upload-slides",
+      lifecycle: "active",
+    })
+    .returning();
+  if (!workflow) throw new Error("workflow insert failed");
+  const [version] = await ctx.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id,
+      workflow_id: workflow.id,
+      version: 1,
+      dag: {
+        name: "render-upload-slides",
+        slug,
+        input_schema: {
+          type: "object",
+          required: ["markdown", "filename"],
+          properties: {
+            markdown: { type: "string" },
+            filename: { type: "string" },
+            theme: { type: "string" },
+          },
+        },
+        steps: [
+          {
+            id: "shape",
+            kind: "transform",
+            language: "javascript",
+            expression:
+              "return { filename: input.input.filename, theme: input.input.theme, markdown: input.input.markdown, confirmed: input.input.confirmed ?? null };",
+          },
+        ],
+      },
+    })
+    .returning();
+  if (!version) throw new Error("workflow version insert failed");
+  await ctx.db
+    .update(workflows)
+    .set({ current_version_id: version.id })
+    .where(eq(workflows.id, workflow.id));
+  return { workflow_id: workflow.id, slug };
+}
+
 describe("auto-persist on confirmation — save_connector_draft", () => {
+  test("ask_user_confirm with run_workflow commit_intent executes with preserved input", async () => {
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+    const workflow = await seedRenderWorkflow();
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      input: {
+        question: "Run render-upload-slides?",
+        kind: "external_write",
+        commit_intent: {
+          kind: "run_workflow",
+          payload: {
+            workflow: workflow.slug,
+            environment: "dev",
+            input_partial: {
+              markdown: "# Slides\n\nBody",
+              filename: "slides-grundlagen-neutral.html",
+              theme: "light",
+            },
+          },
+          description: "Run render-upload-slides.",
+        },
+      },
+      output: { confirmed: true },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      principal: {
+        provider: "test",
+        kind: "user",
+        id: "user-test",
+        tenant_id,
+        roles: ["admin"],
+      },
+      elicitation_output: { confirmed: true },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    expect(dispatch.synthetic_result?.ok).toBe(true);
+    expect(dispatch.synthetic_result?.tool).toBe("run_workflow");
+    const data = dispatch.synthetic_result?.data as {
+      workflow_id: string;
+      workflow_slug: string;
+      input: Record<string, unknown>;
+      output: Record<string, unknown>;
+    };
+    expect(data.workflow_id).toBe(workflow.workflow_id);
+    expect(data.workflow_slug).toBe(workflow.slug);
+    expect(data.input).toEqual({
+      markdown: "# Slides\n\nBody",
+      filename: "slides-grundlagen-neutral.html",
+      theme: "light",
+    });
+    expect(data.input).not.toHaveProperty("confirmed");
+    expect(data.output).toMatchObject({
+      filename: "slides-grundlagen-neutral.html",
+      theme: "light",
+      markdown: "# Slides\n\nBody",
+      confirmed: null,
+    });
+  });
+
+  test("ask_user_confirm with run_workflow commit_intent parses JSON-string input", async () => {
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+    const workflow = await seedRenderWorkflow("render-upload-slides-json-input");
+    const input = {
+      markdown: "# Slides\n\nBody",
+      filename: "slides-grundlagen-neutral.html",
+      theme: "light",
+    };
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      input: {
+        question: "Run render-upload-slides?",
+        kind: "external_write",
+        commit_intent: {
+          kind: "run_workflow",
+          payload: {
+            workflow: workflow.slug,
+            environment: "dev",
+            input_partial: JSON.stringify(input),
+          },
+          description: "Run render-upload-slides.",
+        },
+      },
+      output: { confirmed: true },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      principal: {
+        provider: "test",
+        kind: "user",
+        id: "user-test",
+        tenant_id,
+        roles: ["admin"],
+      },
+      elicitation_output: { confirmed: true },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    expect(dispatch.synthetic_result?.ok).toBe(true);
+    const data = dispatch.synthetic_result?.data as {
+      input: Record<string, unknown>;
+      output: Record<string, unknown>;
+    };
+    expect(data.input).toEqual(input);
+    expect(data.output).toMatchObject({ ...input, confirmed: null });
+  });
+
+  test("run_workflow auto-dispatch with a REQUIRED field missing returns a directive error (not input_schema_violation)", async () => {
+    // The form collected only `filename`; the workflow requires
+    // {markdown, filename}. Pre-fix the merged input reached the driver
+    // and threw the opaque `input_schema_violation` ("required field
+    // 'markdown' is missing") from inside runExecution — surfaced to the
+    // LLM as a generic dispatch.threw. Now the guard fails BEFORE
+    // dispatch with a directive error naming the missing field(s) + how
+    // to supply them.
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+    const workflow = await seedRenderWorkflow("render-upload-slides-missing-field");
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_form",
+      input: {
+        question: "Provide the inputs to run render-upload-slides",
+        fields: [
+          { name: "markdown", label: "markdown", type: "text", required: true },
+          { name: "filename", label: "filename", type: "text", required: true },
+        ],
+        commit_intent: {
+          kind: "run_workflow",
+          payload: { workflow: workflow.slug, environment: "dev", input_partial: {} },
+          description: "Run render-upload-slides.",
+        },
+      },
+      // Operator submitted only `filename` — `markdown` left blank.
+      output: { values: { filename: "slides.html" } },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      principal: {
+        provider: "test",
+        kind: "user",
+        id: "user-test",
+        tenant_id,
+        roles: ["admin"],
+      },
+      elicitation_output: { values: { filename: "slides.html" } },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    expect(dispatch.synthetic_result?.ok).toBe(false);
+    expect(dispatch.synthetic_result?.error_code).toBe("missing_workflow_input");
+    // The directive message must name the missing field and steer the
+    // model back to a full ask_user_form (never a free-text ask).
+    expect(dispatch.synthetic_result?.message).toContain("markdown");
+    expect(dispatch.synthetic_result?.message).toContain("ask_user_form");
+    expect(dispatch.synthetic_result?.message).not.toContain("input_schema_violation");
+    const data = dispatch.synthetic_result?.data as {
+      missing_fields: string[];
+      required_fields: string[];
+    };
+    expect(data.missing_fields).toEqual(["markdown"]);
+    expect(data.required_fields.sort()).toEqual(["filename", "markdown"]);
+  });
+
+  test("run_workflow auto-dispatch with ALL required fields present dispatches the run", async () => {
+    const [conv] = await ctx.db
+      .insert(conversations)
+      .values({ tenant_id, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+    const workflow = await seedRenderWorkflow("render-upload-slides-all-fields");
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_form",
+      input: {
+        question: "Provide the inputs to run render-upload-slides",
+        fields: [
+          { name: "markdown", label: "markdown", type: "text", required: true },
+          { name: "filename", label: "filename", type: "text", required: true },
+        ],
+        commit_intent: {
+          kind: "run_workflow",
+          payload: { workflow: workflow.slug, environment: "dev", input_partial: {} },
+          description: "Run render-upload-slides.",
+        },
+      },
+      output: { values: { markdown: "# Slides", filename: "slides.html" } },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      principal: {
+        provider: "test",
+        kind: "user",
+        id: "user-test",
+        tenant_id,
+        roles: ["admin"],
+      },
+      elicitation_output: { values: { markdown: "# Slides", filename: "slides.html" } },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    expect(dispatch.synthetic_result?.ok).toBe(true);
+    expect(dispatch.synthetic_result?.tool).toBe("run_workflow");
+    const data = dispatch.synthetic_result?.data as {
+      input: Record<string, unknown>;
+      output: Record<string, unknown>;
+    };
+    expect(data.input).toMatchObject({ markdown: "# Slides", filename: "slides.html" });
+    expect(data.output).toMatchObject({ markdown: "# Slides", filename: "slides.html" });
+  });
+
   test("ask_user_form submit with commit_intent persists connector + credential atomically", async () => {
     const { conversation_id } = await seedConversationWithDraft("ap-bearer");
     const elicitation = await createCarrierElicitation({

@@ -1,7 +1,7 @@
 // End-to-end feature tests for the shell-ergonomics upgrade:
 // persistent history + cursor-aware buffer + readline-style
 // shortcuts + paste refs + busy-turn queue + @mention picker +
-// inline reverse-i-search + /paste + /attach.
+// inline reverse-i-search + /paste + file-path paste.
 //
 // Every test mounts <InkApp> via ink-testing-library with a tmp
 // history path so runs don't touch ~/.sk.
@@ -378,13 +378,11 @@ describe("features: paste heuristic", () => {
   test("a long pasted chunk is replaced by a [Pasted text #N] ref", async () => {
     const instance = renderApp();
     await tick();
-    // Multi-line paste forces the attachment path. Single-line pastes
-    // up to ~200 chars now inline directly (session 64db7189 fix).
-    instance.stdin.write(`${"x".repeat(40)}\nsecond line of paste`);
+    instance.stdin.write(`${"x".repeat(1001)}\nsecond line of paste`);
     await tick(30);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toMatch(/\[Pasted text #\d+(?: \+\d+ lines)?\]/);
-    expect(frame).toContain("attachments · 1 pending");
+    expect(frame).toContain("paste refs · 1 pending");
     expect(frame).toContain("xxxxxxxx");
     instance.unmount();
   });
@@ -397,7 +395,20 @@ describe("features: paste heuristic", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("siemens-stock-price");
     expect(frame).not.toMatch(/\[Pasted text #\d+\]/);
-    expect(frame).not.toContain("attachments · 1 pending");
+    expect(frame).not.toContain("paste refs · 1 pending");
+    instance.unmount();
+  });
+
+  test("short bracketed multiline paste remains visible inline", async () => {
+    const instance = renderApp();
+    await tick();
+    instance.stdin.write("\x1b[200~first line\nsecond line\x1b[201~");
+    await tick(40);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain("first line");
+    expect(frame).toContain("second line");
+    expect(frame).not.toMatch(/\[Pasted text #\d+\]/);
+    expect(frame).not.toContain("paste refs · 1 pending");
     instance.unmount();
   });
 
@@ -413,15 +424,94 @@ describe("features: paste heuristic", () => {
       },
     });
     await tick();
-    const body = "multi\nline\npaste content";
+    const body = `${"x".repeat(1001)}\nline\npaste content`;
     instance.stdin.write(body);
     await tick(30);
     // Submit — the engine sees the full expanded body.
     instance.stdin.write("\r");
     await tick(60);
-    expect(received).toContain("multi");
+    expect(received).toContain("x".repeat(1001));
     expect(received).toContain("line");
     expect(received).toContain("paste content");
+    instance.unmount();
+  });
+
+  test("paste refs are preserved when submit fails", async () => {
+    const instance = renderApp({
+      onPrompt: async () => {
+        throw new Error("network down");
+      },
+    });
+    await tick();
+    instance.stdin.write("x".repeat(1001));
+    await tick(30);
+    await pressEnter(instance);
+    await tick(80);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain("paste refs · 1 pending");
+    expect(frame).toMatch(/\[Pasted text #\d+/);
+    expect(frame).toContain("network down");
+    instance.unmount();
+  });
+
+  test("oversized expanded paste is rejected without losing the paste ref", async () => {
+    let called = false;
+    const instance = renderApp({
+      onPrompt: async () => {
+        called = true;
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-too-large",
+        };
+      },
+    });
+    await tick();
+    instance.stdin.write("x".repeat(1_048_577));
+    await tick(30);
+    await pressEnter(instance);
+    await tick(80);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(called).toBe(false);
+    expect(frame).toContain("Message exceeds the maximum length");
+    expect(frame).toContain("paste refs · 1 pending");
+    instance.unmount();
+  });
+
+  test("bracketed paste of a text file path stays visible and reads on submit", async () => {
+    const dir = tmpDir();
+    const mdPath = join(dir, "slides.md");
+    writeFileSync(mdPath, "# Slides");
+    const fid = "fid_00000000-0000-0000-0000-000000000003";
+    const engineClient = makeFakeEngine([
+      { fid, filename: "slides.md", content_type: "text/markdown", size_bytes: 8 },
+    ]);
+    const prompts: string[] = [];
+    const instance = renderApp({
+      cwd: dir,
+      engineClient,
+      onPrompt: async (text) => {
+        prompts.push(text);
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-0000-0000-0000-000000000000",
+        };
+      },
+    });
+    await tick();
+    instance.stdin.write(`\x1b[200~${mdPath}\x1b[201~`);
+    await tick(40);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain(mdPath);
+    expect(frame).not.toContain(fid);
+    expect(frame).not.toContain('"$file"');
+    expect(frame).not.toMatch(/\[Pasted text #\d+\]/);
+    await pressEnter(instance);
+    await tick(80);
+    expect(prompts[0]).toContain(mdPath);
+    expect(prompts[0]).toContain("## Local file contents: slides.md");
+    expect(prompts[0]).toContain("# Slides");
+    expect(prompts[0]).not.toContain(fid);
+    expect(prompts[0]).not.toContain('"$file"');
     instance.unmount();
   });
 });
@@ -559,13 +649,12 @@ describe("features: inline reverse-i-search", () => {
   });
 });
 
-// ---------- 8. /paste + /attach built-ins ----------
+// ---------- 8. File-path paste ----------
 
-// /attach routes through engine upload + `$file` insert rather than the
-// local PasteStore. The tests below provide a mocked EngineClient so
-// the slash handler exercises the upload path; assertions cover the
-// new behaviour (uploaded info line, fid inserted at the cursor) and
-// the unchanged guard rails (missing path, no args).
+// Pasted or dropped local file paths route through engine upload +
+// `$file` insert rather than a file slash command. The tests below
+// provide a mocked EngineClient so the composer exercises the upload
+// path directly.
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
@@ -617,8 +706,8 @@ function makeFakeEngine(uploads: FakeUpload[]): EngineClient {
   });
 }
 
-describe("features: /attach built-in slash", () => {
-  test("/attach <image> uploads and inserts a $file leaf at the cursor", async () => {
+describe("features: file-path paste", () => {
+  test("pasting an existing image path keeps the path visible and uploads on submit", async () => {
     const dir = tmpDir();
     const imgPath = join(dir, "pic.png");
     writeFileSync(imgPath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -626,80 +715,89 @@ describe("features: /attach built-in slash", () => {
     const engineClient = makeFakeEngine([
       { fid, filename: "pic.png", content_type: "image/png", size_bytes: 8 },
     ]);
-    const instance = renderApp({ cwd: dir, engineClient });
+    const prompts: string[] = [];
+    const instance = renderApp({
+      cwd: dir,
+      engineClient,
+      onPrompt: async (text) => {
+        prompts.push(text);
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-0000-0000-0000-000000000000",
+        };
+      },
+    });
     await tick();
-    await type(instance, `/attach ${imgPath}`);
+    instance.stdin.write(imgPath);
+    await tick(40);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain(imgPath);
+    expect(frame).not.toContain(fid);
+    expect(frame).not.toContain('"$file"');
     await pressEnter(instance);
     await tick(80);
-    const frame = stripAnsi(instance.lastFrame() ?? "");
-    // Info notice carries the fid + filename + byte count.
-    expect(frame).toContain(`uploaded ${fid}`);
-    expect(frame).toContain("pic.png");
-    // The composer carries the $file JSON leaf (rendered may wrap at
-    // box width; assert on the fid substring rather than the full
-    // JSON to keep the test robust to wrapping).
-    expect(frame).toContain(fid);
+    expect(prompts[0]).toContain(fid);
+    expect(prompts[0]).toContain('"$file"');
     instance.unmount();
   });
 
-  test("/attach <pdf> uploads and inserts a $file leaf", async () => {
+  test("pasting a quoted text path with spaces keeps it visible and reads on submit", async () => {
     const dir = tmpDir();
-    const pdfPath = join(dir, "invoice.pdf");
-    writeFileSync(pdfPath, Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]));
+    const pdfPath = join(dir, "invoice draft.md");
+    writeFileSync(pdfPath, "# Invoice");
     const fid = "fid_00000000-0000-0000-0000-000000000002";
     const engineClient = makeFakeEngine([
-      { fid, filename: "invoice.pdf", content_type: "application/pdf", size_bytes: 5 },
+      { fid, filename: "invoice draft.md", content_type: "text/markdown", size_bytes: 9 },
     ]);
-    const instance = renderApp({ cwd: dir, engineClient });
+    const prompts: string[] = [];
+    const instance = renderApp({
+      cwd: dir,
+      engineClient,
+      onPrompt: async (text) => {
+        prompts.push(text);
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-0000-0000-0000-000000000000",
+        };
+      },
+    });
     await tick();
-    await type(instance, `/attach ${pdfPath}`);
+    instance.stdin.write(`"${pdfPath}"`);
+    await tick(40);
+    const frame = stripAnsi(instance.lastFrame() ?? "");
+    expect(frame).toContain(`"${pdfPath}"`);
+    expect(frame).not.toContain(fid);
     await pressEnter(instance);
     await tick(80);
-    const frame = stripAnsi(instance.lastFrame() ?? "");
-    expect(frame).toContain(`uploaded ${fid}`);
-    expect(frame).toContain("invoice.pdf");
-    expect(frame).toContain(fid);
+    expect(prompts[0]).toContain("## Local file contents: invoice draft.md");
+    expect(prompts[0]).toContain("# Invoice");
+    expect(prompts[0]).not.toContain(fid);
+    expect(prompts[0]).not.toContain('"$file"');
     instance.unmount();
   });
 
-  test("/attach <missing> reports a helpful message", async () => {
+  test("a missing path-shaped paste remains normal text through submit", async () => {
     const engineClient = makeFakeEngine([]);
-    const instance = renderApp({ engineClient });
+    const prompts: string[] = [];
+    const instance = renderApp({
+      engineClient,
+      onPrompt: async (text) => {
+        prompts.push(text);
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-0000-0000-0000-000000000000",
+        };
+      },
+    });
     await tick();
-    await type(instance, "/attach ./does-not-exist.pdf");
-    await pressEnter(instance);
+    instance.stdin.write("/tmp/does-not-exist-report.pdf");
     await tick(40);
     const frame = stripAnsi(instance.lastFrame() ?? "");
-    expect(frame).toContain("/attach: not found");
-    instance.unmount();
-  });
-
-  test("/attach without a path prints usage hint", async () => {
-    const instance = renderApp();
-    await tick();
-    await type(instance, "/attach");
+    expect(frame).toContain("/tmp/does-not-exist-report.pdf");
+    expect(frame).not.toContain("uploaded");
     await pressEnter(instance);
-    await tick(40);
-    const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("needs a path");
-    expect(frame).toContain("error");
-    instance.unmount();
-  });
-
-  // The legacy `/attach remove <id>` sub-form mutated the local
-  // PasteStore. Now /attach uploads to the engine and the
-  // PasteStore stays empty for engine-uploaded files; `remove` on an
-  // empty store reports a "no pending item" error. The assertion
-  // below pins that current contract — engine-backed file removal
-  // happens via `sk files delete <fid>`, not the in-REPL shelf.
-  test("/attach remove <id> with no pending paste-store item errors clearly", async () => {
-    const instance = renderApp();
-    await tick();
-    await type(instance, "/attach remove 1");
-    await pressEnter(instance);
-    await tick(40);
-    const frame = stripAnsi(instance.lastFrame() ?? "");
-    expect(frame).toContain("/attach: no pending item #1");
+    await tick(80);
+    expect(prompts[0]).toBe("/tmp/does-not-exist-report.pdf");
     instance.unmount();
   });
 });

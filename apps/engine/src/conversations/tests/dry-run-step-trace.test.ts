@@ -146,4 +146,60 @@ describe("dry_run_workflow · step_trace envelope", () => {
     expect(data.step_trace!.every((o) => o.kind === "transform")).toBe(true);
     expect(data.step_trace!.every((o) => o.status === "succeeded")).toBe(true);
   });
+
+  test("include_step_results attaches raw per-step input/output; default stays compact (D6)", async () => {
+    const seed = (): DraftDocument =>
+      ({
+        workflow: {
+          name: "d6-step-results",
+          slug: "d6-step-results",
+          steps: [
+            {
+              id: "shape",
+              kind: "transform",
+              language: "javascript",
+              expression: "return { doubled: input.input.value * 2 };",
+            },
+          ],
+        },
+        // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+      }) as any;
+
+    // Default: no `step_results` field — the compact envelope carries only
+    // the truncated `step_trace`.
+    let draftA: DraftDocument = seed();
+    const ctxA: ToolContext = {
+      ...makeCtx(() => draftA),
+      setDraft: async (next) => {
+        draftA = next;
+      },
+    };
+    const compact = await dryRunWorkflowTool.execute(ctxA, { input: { value: 21 } });
+    expect((compact.data as Record<string, unknown>).step_results).toBeUndefined();
+
+    // Opt-in: `step_results` carries the raw per-step input/output the model
+    // uses to localise a bad output to a step vs the output_transform.
+    let draftB: DraftDocument = seed();
+    const ctxB: ToolContext = {
+      ...makeCtx(() => draftB),
+      setDraft: async (next) => {
+        draftB = next;
+      },
+    };
+    const raw = await dryRunWorkflowTool.execute(ctxB, {
+      input: { value: 21 },
+      include_step_results: true,
+    });
+    const results = (raw.data as { step_results?: Array<Record<string, unknown>> }).step_results;
+    expect(Array.isArray(results)).toBe(true);
+    expect(results!.length).toBe(1);
+    const entry = results![0]!;
+    expect(entry.step_id).toBe("shape");
+    expect(entry.kind).toBe("transform");
+    expect(entry.status).toBe("succeeded");
+    // A transform issues no request → input is null, output carries the value.
+    expect("input" in entry).toBe(true);
+    expect(entry.input).toBeNull();
+    expect(entry.output).toBeDefined();
+  });
 });

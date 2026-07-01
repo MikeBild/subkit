@@ -23,6 +23,19 @@ describe("describeApprovalTarget", () => {
     ).toBe("run_workflow env=prod");
   });
 
+  test("uses workflow slug and environment without including large workflow inputs", () => {
+    expect(
+      describeApprovalTarget({
+        tool: "run_workflow",
+        args: {
+          workflow: "render-upload-slides",
+          environment: "dev",
+          markdown: `# Slides\n\n${"body\n".repeat(500)}`,
+        },
+      }),
+    ).toBe("run_workflow render-upload-slides env=dev");
+  });
+
   test("summarizes HTTP-style targets", () => {
     expect(
       describeApprovalTarget({

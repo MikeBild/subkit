@@ -34,7 +34,12 @@ const CATALOG: ActivationRecord[] = [
     slug: "http-connectors",
     activates_when: [
       { kind: "tool", tool: "probe_connector" },
-      { kind: "tool_arg", tool: "propose_step", path: "step.kind", equals: "request" },
+      {
+        kind: "tool_arg",
+        tool: "edit_workflow_patch",
+        path: "patches[*].value.kind",
+        equals: "request",
+      },
       { kind: "connector_driver", driver: "http" },
     ],
     maturity: "stable",
@@ -65,7 +70,12 @@ const CATALOG: ActivationRecord[] = [
   {
     slug: "data-handling",
     activates_when: [
-      { kind: "tool_arg", tool: "propose_step", path: "step.kind", equals: "transform" },
+      {
+        kind: "tool_arg",
+        tool: "edit_workflow_patch",
+        path: "patches[*].value.kind",
+        equals: "transform",
+      },
     ],
     maturity: "stable",
     side_effects: "read",
@@ -74,7 +84,7 @@ const CATALOG: ActivationRecord[] = [
   {
     slug: "workflow-authoring",
     activates_when: [
-      { kind: "tool", tool: "build_workflow" },
+      { kind: "tool", tool: "edit_workflow_patch" },
       { kind: "tool", tool: "approve_discovery_artifact" },
       { kind: "tool", tool: "preview_attachment" },
     ],
@@ -181,57 +191,75 @@ describe("autoloadForToolCall — RULES parity matrix", () => {
     );
   });
 
-  test("propose_step kind=request → http-connectors", () => {
+  test("edit_workflow_patch adds a request step → http-connectors", () => {
     expect(
       autoloadForToolCall(
-        { tool: "propose_step", input: { step: { kind: "request" } } },
+        {
+          tool: "edit_workflow_patch",
+          input: { patches: [{ op: "add", path: "/steps/-", value: { kind: "request" } }] },
+        },
         CATALOG,
         [],
       ),
     ).toContain("http-connectors");
   });
 
-  test("propose_step config.driver=postgres → postgres-connectors (via inferred driver)", () => {
+  test("edit_workflow_patch config.driver=postgres → postgres-connectors (via inferred driver)", () => {
     expect(
       autoloadForToolCall(
-        { tool: "propose_step", input: { step: { config: { driver: "postgres" } } } },
+        {
+          tool: "edit_workflow_patch",
+          input: {
+            patches: [{ op: "add", path: "/steps/-", value: { config: { driver: "postgres" } } }],
+          },
+        },
         CATALOG,
         [],
       ),
     ).toContain("postgres-connectors");
   });
 
-  test("propose_step config.driver=graphql → graphql-connectors", () => {
+  test("edit_workflow_patch config.driver=graphql → graphql-connectors", () => {
     expect(
       autoloadForToolCall(
-        { tool: "propose_step", input: { step: { config: { driver: "graphql" } } } },
+        {
+          tool: "edit_workflow_patch",
+          input: {
+            patches: [{ op: "add", path: "/steps/-", value: { config: { driver: "graphql" } } }],
+          },
+        },
         CATALOG,
         [],
       ),
     ).toContain("graphql-connectors");
   });
 
-  test("propose_step kind=transform → data-handling", () => {
+  test("edit_workflow_patch adds a transform step → data-handling", () => {
     expect(
       autoloadForToolCall(
-        { tool: "propose_step", input: { step: { kind: "transform" } } },
+        {
+          tool: "edit_workflow_patch",
+          input: { patches: [{ op: "add", path: "/steps/-", value: { kind: "transform" } }] },
+        },
         CATALOG,
         [],
       ),
     ).toContain("data-handling");
   });
 
-  test("build_workflow → workflow-authoring", () => {
+  test("edit_workflow_patch → workflow-authoring", () => {
     expect(
-      autoloadForToolCall({ tool: "build_workflow", input: { steps: [] } }, CATALOG, []),
+      autoloadForToolCall({ tool: "edit_workflow_patch", input: { patches: [] } }, CATALOG, []),
     ).toContain("workflow-authoring");
   });
 
-  test("build_workflow with postgres step → adds postgres-connectors", () => {
+  test("edit_workflow_patch with postgres step → adds postgres-connectors", () => {
     const out = autoloadForToolCall(
       {
-        tool: "build_workflow",
-        input: { steps: [{ config: { driver: "postgres" } }] },
+        tool: "edit_workflow_patch",
+        input: {
+          patches: [{ op: "add", path: "/steps/-", value: { config: { driver: "postgres" } } }],
+        },
       },
       CATALOG,
       [],
@@ -240,12 +268,14 @@ describe("autoloadForToolCall — RULES parity matrix", () => {
     expect(out).toContain("workflow-authoring");
   });
 
-  test("build_workflow with s3 step → adds s3-connectors", () => {
+  test("edit_workflow_patch with s3 step → adds s3-connectors", () => {
     expect(
       autoloadForToolCall(
         {
-          tool: "build_workflow",
-          input: { steps: [{ config: { driver: "s3" } }] },
+          tool: "edit_workflow_patch",
+          input: {
+            patches: [{ op: "add", path: "/steps/-", value: { config: { driver: "s3" } } }],
+          },
         },
         CATALOG,
         [],
@@ -253,12 +283,16 @@ describe("autoloadForToolCall — RULES parity matrix", () => {
     ).toContain("s3-connectors");
   });
 
-  test("build_workflow with graphql step → adds graphql-connectors", () => {
+  test("edit_workflow_patch with graphql step → adds graphql-connectors", () => {
     expect(
       autoloadForToolCall(
         {
-          tool: "build_workflow",
-          input: { steps: [{ graphql: { query: "{__typename}" } }] },
+          tool: "edit_workflow_patch",
+          input: {
+            patches: [
+              { op: "add", path: "/steps/-", value: { graphql: { query: "{__typename}" } } },
+            ],
+          },
         },
         CATALOG,
         [],
@@ -296,18 +330,23 @@ describe("autoloadForToolCall — invariants", () => {
   });
 
   test("tool_arg with missing path resolves to no-match (does not crash)", () => {
-    expect(autoloadForToolCall({ tool: "propose_step", input: {} }, CATALOG, [])).not.toContain(
-      "data-handling",
-    );
+    expect(
+      autoloadForToolCall({ tool: "edit_workflow_patch", input: {} }, CATALOG, []),
+    ).not.toContain("data-handling");
   });
 
   test("ranking is deterministic by tag count then slug", () => {
     // postgres-connectors (2 tags) ranks before s3-connectors (1 tag)
-    // when both match a build_workflow turn that mentions both drivers.
+    // when both match an edit_workflow_patch turn that mentions both drivers.
     const out = autoloadForToolCall(
       {
-        tool: "build_workflow",
-        input: { steps: [{ config: { driver: "postgres" } }, { config: { driver: "s3" } }] },
+        tool: "edit_workflow_patch",
+        input: {
+          patches: [
+            { op: "add", path: "/steps/-", value: { config: { driver: "postgres" } } },
+            { op: "add", path: "/steps/-", value: { config: { driver: "s3" } } },
+          ],
+        },
       },
       CATALOG,
       [],
@@ -374,35 +413,43 @@ describe("autoloadForToolCall — step_kind activation rule (A5)", () => {
     },
   ];
 
-  test("propose_step kind=wait → activates wait-step-skill", () => {
+  test("edit_workflow_patch adds a wait step → activates wait-step-skill", () => {
     expect(
       autoloadForToolCall(
-        { tool: "propose_step", input: { step: { kind: "wait", duration_ms: 5000 } } },
+        {
+          tool: "edit_workflow_patch",
+          input: {
+            patches: [{ op: "add", path: "/steps/-", value: { kind: "wait", duration_ms: 5000 } }],
+          },
+        },
         STEP_KIND_CATALOG,
         [],
       ),
     ).toContain("wait-step-skill");
   });
 
-  test("propose_step kind=request → does NOT activate wait-step-skill", () => {
+  test("edit_workflow_patch adds a request step → does NOT activate wait-step-skill", () => {
     expect(
       autoloadForToolCall(
-        { tool: "propose_step", input: { step: { kind: "request" } } },
+        {
+          tool: "edit_workflow_patch",
+          input: { patches: [{ op: "add", path: "/steps/-", value: { kind: "request" } }] },
+        },
         STEP_KIND_CATALOG,
         [],
       ),
     ).not.toContain("wait-step-skill");
   });
 
-  test("build_workflow with steps[].kind=wait → activates wait-step-skill", () => {
+  test("edit_workflow_patch adding a wait step among others → activates wait-step-skill", () => {
     expect(
       autoloadForToolCall(
         {
-          tool: "build_workflow",
+          tool: "edit_workflow_patch",
           input: {
-            steps: [
-              { kind: "request", id: "a" },
-              { kind: "wait", id: "b", duration_ms: 1000 },
+            patches: [
+              { op: "add", path: "/steps/-", value: { kind: "request", id: "a" } },
+              { op: "add", path: "/steps/-", value: { kind: "wait", id: "b", duration_ms: 1000 } },
             ],
           },
         },
@@ -412,18 +459,22 @@ describe("autoloadForToolCall — step_kind activation rule (A5)", () => {
     ).toContain("wait-step-skill");
   });
 
-  test("build_workflow with branch.then_steps[].kind=loop → activates branch-and-loop-skill", () => {
+  test("edit_workflow_patch with branch.then_steps[].kind=loop → activates branch-and-loop-skill", () => {
     expect(
       autoloadForToolCall(
         {
-          tool: "build_workflow",
+          tool: "edit_workflow_patch",
           input: {
-            steps: [
+            patches: [
               {
-                kind: "branch",
-                id: "b1",
-                then_steps: [{ kind: "loop", id: "l1" }],
-                else_steps: [],
+                op: "add",
+                path: "/steps/-",
+                value: {
+                  kind: "branch",
+                  id: "b1",
+                  then_steps: [{ kind: "loop", id: "l1" }],
+                  else_steps: [],
+                },
               },
             ],
           },

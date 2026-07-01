@@ -73,7 +73,7 @@ function main(): void {
     "",
     "# Slash commands",
     "",
-    "Slash commands run from the `sk` REPL. Type `/` to open the fuzzy",
+    "Slash commands run from the `sk` REPL. Type `/` to open the prefix",
     "picker, or `/help` for the persona-filtered cheat sheet. A command",
     "with a `requires` permission is hidden from any persona that cannot",
     "invoke it — the engine still enforces the permission on every call,",

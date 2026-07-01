@@ -655,7 +655,7 @@ export function formatPriorWorkflows(refs: PriorWorkflowRef[]): string | null {
   if (refs.length === 0) return null;
   return [
     "### Prior workflows [reference, not template]",
-    "Compressed shapes of this tenant's most similar active workflows. Use to understand existing patterns, naming, and trigger choices — DO NOT clone these as templates. To create a new workflow, call `build_workflow` (or `start_workflow_from_recipe` when a connector recipe applies).",
+    "Compressed shapes of this tenant's most similar active workflows. Use to understand existing patterns, naming, and trigger choices — DO NOT clone these as templates. To create a new workflow, call `author_workflow` (or `start_workflow_from_recipe` when a connector recipe applies).",
     ...refs.map(renderPriorWorkflowRef),
   ].join("\n\n");
 }

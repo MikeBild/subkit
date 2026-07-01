@@ -310,7 +310,7 @@ const TOOL_META_BUILDERS: Array<{
 }> = [
   {
     // Author / build / draft tools (e.g. author_workflow, save_workflow_draft)
-    match: (n) => /author|draft|build_workflow|save_workflow/.test(n),
+    match: (n) => /author|draft|edit_workflow|save_workflow/.test(n),
     build: buildAuthorMeta,
   },
   {

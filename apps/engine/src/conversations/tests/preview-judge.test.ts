@@ -77,7 +77,13 @@ interface JudgeEnvelope {
   next_best_actions?: string[];
 }
 
-function makeCtx(initial: DraftDocument): ToolContext & { current: () => DraftDocument } {
+function makeCtx(
+  initial: DraftDocument,
+  opts?: {
+    surface?: ToolContext["surface"];
+    permission_mode?: ToolContext["permission_mode"];
+  },
+): ToolContext & { current: () => DraftDocument } {
   let draft = initial;
   return {
     db: ctx.testDb.db,
@@ -86,6 +92,8 @@ function makeCtx(initial: DraftDocument): ToolContext & { current: () => DraftDo
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
+    ...(opts?.surface ? { surface: opts.surface } : {}),
+    ...(opts?.permission_mode ? { permission_mode: opts.permission_mode } : {}),
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,
@@ -223,6 +231,93 @@ describe("preview judge · dry_run_workflow wiring", () => {
     ]);
     expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
+  });
+
+  test("UNATTENDED (backgrounded MCP surface): green + no-goal preview AUTO-COMMITS instead of deferring to save", async () => {
+    // A backgrounded MCP turn cannot surface a `save_workflow_draft` →
+    // ask_user_confirm follow-up (no live session), so the attended
+    // greenPendingSave deferral would dead-end. The no-goal green preview must
+    // auto-commit. The judge would FAIL if it ran — proving the skip is a
+    // genuine no_goal skip, not a lucky pass.
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const toolCtx = makeCtx(wrongContentDraft("judge-unattended-mcp", null), {
+      surface: "mcp",
+    });
+
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+
+    expect(result.ok).toBe(true);
+    const data = result.data as JudgeEnvelope & {
+      workflow_id?: string;
+      save_required?: boolean;
+    };
+    // Committed: target_workflow_id present, auto_committed true, NO save gate.
+    expect(data.auto_committed).toBe(true);
+    expect(typeof data.workflow_id).toBe("string");
+    expect(result.committed_workflow_id).toBe(data.workflow_id);
+    expect(data.save_required).toBeUndefined();
+    // Audit metadata stays honest: the judge was skipped (no goal), not passed.
+    expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
+    // The judge LLM never ran — no_goal short-circuits before the call.
+    expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
+  });
+
+  test('UNATTENDED (permission_mode "auto"): green + no-goal preview AUTO-COMMITS', async () => {
+    // "auto" is the explicit "don't ask" signal on any surface — a no-goal
+    // green preview auto-commits rather than returning save_required.
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const toolCtx = makeCtx(wrongContentDraft("judge-unattended-auto", null), {
+      permission_mode: "auto",
+    });
+
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+
+    expect(result.ok).toBe(true);
+    const data = result.data as JudgeEnvelope & { save_required?: boolean };
+    expect(data.auto_committed).toBe(true);
+    expect(data.save_required).toBeUndefined();
+    expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
+  });
+
+  test("UNATTENDED does NOT weaken the quality gate: a failed verdict STILL blocks the auto-commit", async () => {
+    // MUST-KEEP: unattended relaxes only the no-goal SAVE deferral. A goal is
+    // present and the judge FAILS → the preview must NOT auto-commit even on a
+    // backgrounded MCP turn (the load-bearing "never mint a goal-mismatched
+    // workflow" guard).
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const toolCtx = makeCtx(wrongContentDraft("judge-unattended-blocks", GOAL), {
+      surface: "mcp",
+      permission_mode: "auto",
+    });
+
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+
+    expect(result.ok).toBe(false);
+    const data = result.data as JudgeEnvelope;
+    expect(data.auto_committed).toBeUndefined();
+    expect(data.classification).toBe("needs_repair");
+    expect(data.judge?.verdict).toBe("failed");
+    expect(data.next_best_actions).toContain("edit_workflow_patch");
+    expect(toolCtx.current().latest_preview?.requires_repair).toBe(true);
+    expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(1);
+  });
+
+  test("ATTENDED (sk_interactive): green + no-goal preview is UNCHANGED — defers to explicit save", async () => {
+    // The default attended sk-cli path must not regress: no goal → judge
+    // skipped → save_required, no auto-commit.
+    getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
+    const toolCtx = makeCtx(wrongContentDraft("judge-attended-nogoal", null), {
+      surface: "sk_interactive",
+    });
+
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+
+    expect(result.ok).toBe(true);
+    const data = result.data as JudgeEnvelope & { save_required?: boolean };
+    expect(data.auto_committed).toBe(false);
+    expect(data.save_required).toBe(true);
+    expect(data.next_best_actions).toEqual(["save_workflow_draft"]);
+    expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
   });
 
   test("judge infrastructure error: skipped with judge_unavailable, commit proceeds", async () => {

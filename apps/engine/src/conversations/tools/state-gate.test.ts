@@ -192,7 +192,7 @@ describe("requireWorkflowDraft", () => {
     const result = requireWorkflowDraft(EMPTY_DRAFT, "save_workflow_draft");
     expect(result).not.toBeNull();
     if (result && !result.ok) {
-      expect(result.next_best_actions).toContain("propose_step");
+      expect(result.next_best_actions).toContain("author_workflow");
     }
   });
 });

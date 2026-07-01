@@ -62,6 +62,25 @@ export const mcpTasks = pgTable(
     failure_reason: text("failure_reason"),
     // Set by `tasks/cancel` (TaskStore.updateTaskStatus('cancelled')).
     cancelled_at: timestamp("cancelled_at", { withTimezone: true }),
+    // ── Worker-stamped progress heartbeat (Option-B) ──────────────────
+    // The `conversation.run-turn` worker stamps these as each authoring
+    // tool executes, so `conversation_get` reports accurate, monotonic
+    // progress DERIVED FROM THE WORKER rather than re-guessed from the
+    // newest `conversation_tool_calls` row at read time. Nullable: a row
+    // that has not yet run its first tool (or a legacy in-flight row
+    // created before this column existed) carries null and the read side
+    // falls back to the tool-call derivation.
+    //   - `phase`         — coarse authoring phase (building / editing /
+    //                       validating / committing / running / …).
+    //   - `last_action`   — the tool name that drove the latest stamp.
+    //   - `progress_step` — the workflow step the last action targeted,
+    //                       when its input carried one.
+    //   - `heartbeat_at`  — when the last stamp landed; a moving value is
+    //                       the honest "still working" signal.
+    phase: text("phase"),
+    last_action: text("last_action"),
+    progress_step: text("progress_step"),
+    heartbeat_at: timestamp("heartbeat_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [

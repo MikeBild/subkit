@@ -109,7 +109,7 @@ describe("gateTenantToolCall", () => {
     expect(gate.kind).toBe("proceed");
   });
 
-  it("skips gating for non-destructive tenant_write tools (propose_step is draft, but run_workflow in dev is no_confirm)", async () => {
+  it("skips gating for non-destructive tenant_write tools (edit_workflow_patch is draft, but run_workflow in dev is no_confirm)", async () => {
     const gate = await gateTenantToolCall({
       tool: "run_workflow",
       category: "tenant_write",

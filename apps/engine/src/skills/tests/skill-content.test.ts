@@ -110,11 +110,11 @@ describe("workflow-authoring — recipe coverage", () => {
     const skills = loadAll();
     const body = skills.get("workflow-authoring")!.body;
     expect(body).toContain("save_workflow_draft");
-    // Either probe_connector or build_workflow (both new in this phase) should appear:
+    // The authoring triad and/or a probe should appear:
     const hasProbe = body.includes("probe_connector");
-    const hasBuild = body.includes("build_workflow");
-    const hasPropose = body.includes("propose_step");
-    expect(hasProbe || hasBuild || hasPropose).toBe(true);
+    const hasAuthor = body.includes("author_workflow");
+    const hasEdit = body.includes("edit_workflow_patch");
+    expect(hasProbe || hasAuthor || hasEdit).toBe(true);
   });
 
   test("explains data_selector vs transform step", async () => {

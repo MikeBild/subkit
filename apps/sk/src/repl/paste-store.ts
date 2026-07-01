@@ -15,16 +15,17 @@
 // back inline and emit file / image refs as separate `@`-mentions so
 // the existing mention resolver can pick them up.
 //
-// `/upload`, `/files`, and the rewritten `/attach` handler bypass
-// this local store entirely — they upload to the engine's unified
-// Files resource and splice a `{"$file":"fid_..."}` JSON leaf at
-// the cursor. `expandRefs` additionally recognises `@file:fid_...`
-// mentions in the composed text and rewrites them to the same JSON
-// leaf at submit (see `parseAllFileMentions`).
+// File-path paste bypasses this local store and stays visible as
+// normal composer text. The submit preprocessor uploads existing local
+// paths and rewrites them through `@file:fid_...`; `expandRefs` turns
+// those mentions into canonical `{"$file":"fid_..."}` leaves.
 //
 // The paste-ref system keeps the API small and subkit-native.
 
 import { formatFileRef as formatFileLeaf, parseAllFileMentions } from "../utils/file-ref.ts";
+
+export const LARGE_PASTE_CHAR_THRESHOLD = 1000;
+export const MAX_USER_INPUT_TEXT_CHARS = 1 << 20;
 
 export type StoredPaste =
   | { id: number; kind: "text"; text: string }
@@ -227,14 +228,9 @@ function rewriteFileMentions(input: string): string {
 
 /**
  * Decide whether a raw keystroke chunk from stdin should be treated
- * as a paste rather than individual keypresses. Heuristic: chunks of
- * 4+ characters that include at least one newline, OR 16+ characters
- * regardless (long single-line pastes). Matches user intuition — a
- * real human typing a single line can burst up to ~12 chars in an
- * Ink frame window.
+ * as a large paste placeholder. Smaller bracketed or chunked pastes
+ * stay visible in the composer, matching Codex.
  */
 export function looksLikePaste(chunk: string): boolean {
-  if (chunk.length >= 16) return true;
-  if (chunk.length >= 4 && /\r|\n/.test(chunk)) return true;
-  return false;
+  return chunk.length > LARGE_PASTE_CHAR_THRESHOLD;
 }

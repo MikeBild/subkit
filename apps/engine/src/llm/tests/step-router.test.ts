@@ -36,9 +36,9 @@ const TOOLS: Record<string, ConversationTool> = Object.fromEntries([
   fakeTool("ask_user_text", "draft_write"),
   fakeTool("inspect_workflow", "tenant_read"),
   fakeTool("list_workflows", "tenant_read"),
-  fakeTool("propose_step", "draft_write"),
+  fakeTool("edit_workflow_patch", "draft_write"),
   fakeTool("save_workflow_draft", "tenant_write"),
-  fakeTool("build_workflow", "draft_write"),
+  fakeTool("author_workflow", "draft_write"),
   // delete_workflow / update_workflow target an existing workflow by explicit
   // id/slug — they are NOT requires_persisted_workflow (see cleanup.ts /
   // update-workflow.ts) and must stay reachable on a fresh conversation.
@@ -210,7 +210,7 @@ describe("prepareStep — activeTools narrowing", () => {
 
   it("includes draft_write tools on propose stages", () => {
     const decision = prepareStep(baseParams({ signals: { stage: "workflow_inspected" } }));
-    expect(decision?.activeTools).toContain("propose_step");
+    expect(decision?.activeTools).toContain("edit_workflow_patch");
     expect(decision?.activeTools).toContain("inspect_workflow");
     expect(decision?.activeTools).not.toContain("save_workflow_draft");
   });
@@ -237,7 +237,7 @@ describe("prepareStep — forced tool survives activeTools narrowing (FIX 4 / BU
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).toContain("run_workflow");
     // The narrowing itself still happens — only the forced tool is re-added.
-    expect(decision?.activeTools).toContain("propose_step");
+    expect(decision?.activeTools).toContain("edit_workflow_patch");
     expect(decision?.activeTools).not.toContain("delete_workflow");
   });
 
@@ -374,8 +374,8 @@ describe("prepareStep — pre-persistence stages drop tools requiring a persiste
       expect(decision?.activeTools).not.toContain("save_workflow_draft");
       // The authoring tools the LLM should be picking instead must
       // still be in the palette.
-      expect(decision?.activeTools).toContain("build_workflow");
-      expect(decision?.activeTools).toContain("propose_step");
+      expect(decision?.activeTools).toContain("author_workflow");
+      expect(decision?.activeTools).toContain("edit_workflow_patch");
       expect(decision?.activeTools).toContain("inspect_workflow");
       expect(decision?.activeTools).toContain("ask_user_text");
     });
@@ -437,8 +437,8 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     expect(decision?.activeTools).toContain("delete_workflow");
     expect(decision?.activeTools).toContain("update_workflow");
     // Authoring tools (and the always-available set) remain.
-    expect(decision?.activeTools).toContain("build_workflow");
-    expect(decision?.activeTools).toContain("propose_step");
+    expect(decision?.activeTools).toContain("author_workflow");
+    expect(decision?.activeTools).toContain("edit_workflow_patch");
     expect(decision?.activeTools).toContain("ask_user_text");
   });
 

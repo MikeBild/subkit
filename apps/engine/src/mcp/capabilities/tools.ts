@@ -25,13 +25,12 @@ import {
   ListToolsRequestSchema,
   type ServerNotification,
   type ServerRequest,
-  type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
-import { executionSteps, executions, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { executions, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { maybeOffload } from "../../execution/offload.ts";
@@ -40,7 +39,6 @@ import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
-import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { callToolViaDispatcher } from "../adapter.ts";
@@ -60,10 +58,18 @@ import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversation
 import { buildResultEnvelope } from "./held-preview.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
 import { paginate } from "./pagination.ts";
-import { findBackgroundExecutionId } from "./run-workflow-async-ack.ts";
-import { buildWorkflowToolAnnotations, buildWorkflowToolMeta } from "./tool-meta.ts";
+import {
+  findBackgroundExecutionId,
+  resolveConversationBoundWorkflowId,
+} from "./run-workflow-async-ack.ts";
+import {
+  buildRunWorkflowNeedsInput,
+  listWorkflowTools,
+  type ProgressNotifier,
+  resolveWorkflowBySlug,
+  startProgressBridge,
+} from "./tools-helpers.ts";
 
-const PROGRESS_POLL_MS = 250;
 // Upper bound on how long a `wf_<slug>` run blocks the tools/call response, so
 // a slow run can't blow past a client's request timeout (strict clients abort
 // tool calls around ~60s). Past this window we stop blocking and hand back a
@@ -81,134 +87,6 @@ const TOOLS_CALL_DEADLINE_MS = 30_000;
 // single client-facing ping, not a storm. Trailing-window from the first
 // event of a burst.
 const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
-
-interface ListToolsParams {
-  db: Db;
-  principal: ResolvedPrincipal;
-  limit?: number;
-}
-
-async function listWorkflowTools({ db, principal, limit }: ListToolsParams): Promise<Tool[]> {
-  const catalog = await listWorkflowToolsForTenant({
-    db,
-    principal,
-    ...(limit !== undefined ? { limit } : {}),
-  });
-  return catalog.map((entry) => ({
-    name: `${TOOL_PREFIX}${entry.slug}`,
-    title: entry.name,
-    // Frame the tool as an executable action, not a passive description.
-    // Without this, a workflow description like "Lists all Test Plan issues…"
-    // reads as documentation and the model re-derives the query with
-    // call_connector instead of running the saved workflow. The "prefer this
-    // over re-deriving" nudge closes that gap.
-    description: describeWorkflowTool(entry),
-    inputSchema: entry.inputSchema as Tool["inputSchema"],
-    ...(entry.outputSchema ? { outputSchema: entry.outputSchema as Tool["outputSchema"] } : {}),
-    annotations: buildWorkflowToolAnnotations(),
-    execution: { taskSupport: "forbidden" as const },
-    _meta: buildWorkflowToolMeta(),
-  }));
-}
-
-/**
- * Executable-verb framing for a `wf_<slug>` tool. Runs the saved workflow's
- * stored steps (with its connectors) and returns the result — the canonical
- * way to execute a known task. When the workflow has its own description we
- * append it; otherwise the name carries the intent.
- */
-function describeWorkflowTool(entry: { name: string; description: string }): string {
-  const summary =
-    entry.description && entry.description.trim() !== entry.name.trim()
-      ? ` — ${entry.description.trim()}`
-      : "";
-  return `Run the saved workflow "${entry.name}"${summary}. Executes its stored steps and connectors and returns the result. Prefer this over re-deriving the same query with call_connector.`;
-}
-
-async function resolveWorkflowBySlug(
-  db: Db,
-  tenant_id: string,
-  slug: string,
-): Promise<{ id: string } | null> {
-  const rows = await db
-    .select({ id: workflows.id })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, tenant_id),
-        eq(workflows.slug, slug),
-        isNull(workflows.deleted_at),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-interface ProgressNotifier {
-  send: (progress: number, total: number, message: string) => Promise<void>;
-}
-
-function startProgressBridge(
-  db: Db,
-  tenant_id: string,
-  execution_id: string,
-  totalStepsHint: number,
-  notifier: ProgressNotifier,
-): { stop: () => void } {
-  let stopped = false;
-  let seen = 0;
-  const tick = async (): Promise<void> => {
-    if (stopped) return;
-    try {
-      const rows = await db
-        .select({
-          id: executionSteps.id,
-          step_key: executionSteps.step_key,
-          status: executionSteps.status,
-        })
-        .from(executionSteps)
-        .where(
-          and(
-            eq(executionSteps.tenant_id, tenant_id),
-            eq(executionSteps.execution_id, execution_id),
-          ),
-        )
-        .orderBy(asc(executionSteps.started_at));
-      if (rows.length > seen) {
-        for (let i = seen; i < rows.length; i++) {
-          const row = rows[i];
-          if (!row) continue;
-          const progress = (i + 1) / Math.max(totalStepsHint, rows.length);
-          await notifier.send(Math.min(progress, 0.999), 1, row.step_key).catch(() => {});
-        }
-        seen = rows.length;
-      }
-    } catch (err) {
-      // Bridge is best-effort, but log so a recurring failure is
-      // visible. A bursty progress-notifier outage looks otherwise
-      // identical to "no work to report" from the operator's view.
-      logger.debug({
-        module: "mcp",
-        action: "tool_progress.poll_failed",
-        msg: "MCP tool progress poll failed; bridge will retry on next tick",
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-    if (!stopped) {
-      setTimeout(() => {
-        void tick();
-      }, PROGRESS_POLL_MS).unref?.();
-    }
-  };
-  setTimeout(() => {
-    void tick();
-  }, PROGRESS_POLL_MS).unref?.();
-  return {
-    stop: () => {
-      stopped = true;
-    },
-  };
-}
 
 export interface RegisterToolsParams {
   server: Server;
@@ -474,6 +352,29 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         readOnly: readOnlyForCall,
       });
       if (probeEntry) {
+        // Anti-client-spiral backstop: run_workflow over the sessionless MCP
+        // surface cannot pause for missing input (no live conversation to
+        // elicit against — the pause throws an opaque tool_execute_failed).
+        // Return ONE terminal `needs_input` naming the fields BEFORE dispatch.
+        if (name === "run_workflow") {
+          const needsInput = await buildRunWorkflowNeedsInput({
+            db,
+            principal,
+            args: args as Record<string, unknown>,
+          });
+          if (needsInput) {
+            logger.info({
+              module: "mcp",
+              action: "mcp.tool.needs_input",
+              msg: "run_workflow over MCP missing required input — returned terminal needs_input",
+              tool: name,
+              duration_ms: Date.now() - started,
+              principal_id: principal.id,
+              tenant_id: principal.tenant_id,
+            });
+            return needsInput;
+          }
+        }
         const callMeta = request.params._meta as Record<string, unknown> | undefined;
         const invocation: ToolInvocation = {
           surface: "mcp",
@@ -523,10 +424,24 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           // promise is intentionally left running; we only stop blocking on
           // it.
           if (name === "run_workflow") {
+            // Mirror run_workflow's own target precedence: explicit `workflow`
+            // arg first, else the workflow most recently bound to the caller's
+            // conversation. Without the bound-target fallback a conversation-
+            // bound run with no `workflow` arg resolved to null here and
+            // orphaned the live run into `engine_busy`.
+            let workflowRef = typeof args.workflow === "string" ? args.workflow : undefined;
+            if (!workflowRef) {
+              workflowRef =
+                (await resolveConversationBoundWorkflowId({
+                  db,
+                  tenant_id: principal.tenant_id,
+                  owner_id: principal.id,
+                })) ?? undefined;
+            }
             const execId = await findBackgroundExecutionId({
               db,
               tenant_id: principal.tenant_id,
-              workflowRef: typeof args.workflow === "string" ? args.workflow : undefined,
+              workflowRef,
               since: started,
             });
             if (execId) {
@@ -611,6 +526,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           permissionModeMeta === "yolo"
             ? permissionModeMeta
             : undefined;
+        // Accept `_meta.sk_playground` to start a conversation as a
+        // scratch/sandbox surface. Additive + out-of-band, so the
+        // conversation_start INPUT schema stays untouched (no OpenAPI drift),
+        // exactly like `sk_permission_mode` above.
+        const playground =
+          (request.params._meta as { sk_playground?: unknown } | undefined)?.sk_playground === true;
         // MCP async Tasks (SEP-1686). A conversation turn runs in the
         // background `conversation.run-turn` worker — the handler never
         // runs the model loop inline. `request.params.task` is set by
@@ -629,6 +550,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           name,
           args: args as Record<string, unknown>,
           ...(permissionMode ? { permission_mode: permissionMode } : {}),
+          ...(playground ? { playground } : {}),
           ...(taskAugmented ? { taskAugmented } : {}),
         });
         logger.info({
@@ -652,17 +574,65 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }
 
       if (!name.startsWith(TOOL_PREFIX)) {
+        // Terminal, actionable cannot_help (anti-client-spiral). A bare
+        // "unknown tool: X" string is an ambiguous dead-end — a strict client
+        // that reached here (a hallucinated name, or a gated tool absent from
+        // its palette, e.g. `run_workflow` withheld in a read-only mode) has
+        // no next step and can loop/spiral. Name the single recovery path.
+        logger.warn({
+          module: "mcp",
+          action: "mcp.tool.unknown",
+          msg: "tools/call for a tool not in this surface's catalog — returned terminal cannot_help",
+          tool: name,
+          principal_id: principal.id,
+          tenant_id: principal.tenant_id,
+        });
         return {
           isError: true,
-          content: [{ type: "text" as const, text: `unknown tool: ${name}` }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                status: "cannot_help",
+                error_code: "unknown_tool",
+                tool: name,
+                message: `No tool named "${name}" is available on this surface. To run a saved workflow, call find_workflow to locate it, then run_workflow(workflow: "<slug>"). To build or edit a workflow or connector, call conversation_start. Do NOT retry "${name}" — it does not exist here.`,
+                next_best_actions: ["find_workflow", "run_workflow", "conversation_start"],
+              }),
+            },
+          ],
         };
       }
       const slug = name.slice(TOOL_PREFIX.length);
       const wf = await resolveWorkflowBySlug(db, principal.tenant_id, slug);
       if (!wf) {
+        // Terminal, actionable envelope — not a bare "workflow not found"
+        // string. The slug may have been renamed/deleted (the tool list
+        // changed mid-session); tell the client to re-discover the current
+        // slug rather than guess another one and loop.
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.workflow_not_found",
+          msg: "wf_<slug> tools/call did not resolve to a workflow — returned terminal cannot_help",
+          tool: name,
+          slug,
+          principal_id: principal.id,
+          tenant_id: principal.tenant_id,
+        });
         return {
           isError: true,
-          content: [{ type: "text" as const, text: `workflow not found: ${slug}` }],
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                status: "cannot_help",
+                error_code: "workflow_not_found",
+                workflow: slug,
+                message: `No saved workflow matches "${slug}" — it may have been renamed or deleted since the tool list was fetched. Call find_workflow or list_workflows to get the current slug, then retry. Do NOT guess another slug.`,
+                next_best_actions: ["find_workflow", "list_workflows"],
+              }),
+            },
+          ],
         };
       }
 
@@ -814,6 +784,38 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           extra.signal.removeEventListener("abort", onSignalAbort);
           runPromise.then(() => state.bridge?.stop()).catch(() => state.bridge?.stop());
           const execId = state.executionId;
+          if (!execId) {
+            // We never captured the execution id (the id-poll had not landed
+            // before the inline window closed). Do NOT hand back a
+            // "poll get_execution with <null>" handle the client can loop on —
+            // that is the confusing non-terminal state. The run IS alive in
+            // the background; tell the client to look it up via
+            // list_executions rather than re-run (which would double-fire).
+            logger.warn({
+              module: "mcp",
+              action: "mcp.tool.result",
+              msg: "mcp wf run exceeded inline window before its execution id was captured",
+              tool: name,
+              duration_ms: Date.now() - started,
+              execution_id: null,
+            });
+            return {
+              isError: false,
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    status: "running",
+                    execution_id: null,
+                    message: `Workflow ${slug} is still running after ${Math.round(
+                      WF_INLINE_TIMEOUT_MS / 1000,
+                    )}s, but its execution id was not captured in time. It is ALREADY in progress — do NOT re-run it. Call list_executions to find the running execution, then poll get_execution for the result.`,
+                    poll_with: "list_executions",
+                  }),
+                },
+              ],
+            };
+          }
           logger.info({
             module: "mcp",
             action: "mcp.tool.result",
@@ -837,9 +839,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
                 }),
               },
             ],
-            ...(execId
-              ? { _meta: { subkit: { execution: { id: execId, status: "running" } } } }
-              : {}),
+            _meta: { subkit: { execution: { id: execId, status: "running" } } },
           };
         }
         const result = outcome.result;

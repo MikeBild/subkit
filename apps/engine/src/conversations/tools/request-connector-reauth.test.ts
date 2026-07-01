@@ -13,6 +13,7 @@
 //   - needs_reauth flag reflected in data.needs_reauth.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { setConfigKey } from "../../config/loader.ts";
 import { connectors } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
@@ -58,7 +59,10 @@ async function seedConnector(opts: {
   return { connector_id: c.id };
 }
 
-function makeToolContext(actorId: string | null = ctx.user_id): ToolContext {
+function makeToolContext(
+  actorId: string | null = ctx.user_id,
+  surface?: ToolContext["surface"],
+): ToolContext {
   return {
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
@@ -74,6 +78,7 @@ function makeToolContext(actorId: string | null = ctx.user_id): ToolContext {
     }),
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
+    ...(surface ? { surface } : {}),
   };
 }
 
@@ -165,6 +170,58 @@ describe("request_connector_reauth — cognito USER_PASSWORD_AUTH", () => {
     // The bug was minting a browser link — assert there is none.
     expect("reauth_url" in data).toBe(false);
     expect(String(data.next_prompt).toLowerCase()).toContain("password");
+  });
+});
+
+describe("request_connector_reauth — MCP surface routes to a secure setup URL (D7)", () => {
+  // Over MCP the in-chat ask_user_form credential re-issue is unreachable
+  // (a secret must never be collected as chat text). The non-OAuth path must
+  // instead return the secure `/v1/connectors/:id/credentials` setup URL and
+  // NOT bind a re-issue draft nor instruct ask_user_form.
+  test("non-OAuth connector over MCP → method:portal_setup with a bare setup_url", async () => {
+    await setConfigKey("server.public_base_url", "https://engine.test");
+    const { connector_id } = await seedConnector({ slug: "rr-mcp-bearer", auth_type: "bearer" });
+
+    let bound = false;
+    const mcpCtx: ToolContext = {
+      ...makeToolContext(ctx.user_id, "mcp"),
+      setDraft: async () => {
+        bound = true;
+      },
+    };
+    const result = await requestConnectorReauthTool.execute(mcpCtx, { connector_id });
+
+    expect(result.ok).toBe(true);
+    const data = (result as { data: Record<string, unknown> }).data;
+    expect(data.method).toBe("portal_setup");
+    expect(data.mode).toBe("credential_re_issue");
+    expect(String(data.setup_url)).toBe(
+      `https://engine.test/v1/connectors/${connector_id}/credentials`,
+    );
+    // No in-chat form and no draft binding over MCP.
+    expect("next_prompt" in data).toBe(false);
+    expect(bound).toBe(false);
+    expect(String(data.instructions).toLowerCase()).toContain(
+      "never ask the user to paste the secret in chat",
+    );
+  });
+
+  test("sk-cli surface is unchanged — still binds a re-issue draft + instructs ask_user_form", async () => {
+    const { connector_id } = await seedConnector({ slug: "rr-cli-bearer", auth_type: "bearer" });
+    let bound = false;
+    const cliCtx: ToolContext = {
+      ...makeToolContext(ctx.user_id, "sk_interactive"),
+      setDraft: async () => {
+        bound = true;
+      },
+    };
+    const result = await requestConnectorReauthTool.execute(cliCtx, { connector_id });
+    expect(result.ok).toBe(true);
+    const data = (result as { data: Record<string, unknown> }).data;
+    expect(data.method).toBe("portal_setup");
+    expect("setup_url" in data).toBe(false);
+    expect(String(data.next_prompt).toLowerCase()).toContain("ask_user_form");
+    expect(bound).toBe(true);
   });
 });
 

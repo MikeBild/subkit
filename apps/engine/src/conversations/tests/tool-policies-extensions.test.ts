@@ -69,7 +69,7 @@ describe("prerequisitesForTool", () => {
   // per-tool once the auto-load-skill flow ships; until then every
   // tool reports an empty list and the sdk-wrap gate is a no-op.
   test("tools without explicit prerequisites return an empty array", () => {
-    expect(prerequisitesForTool("propose_step")).toEqual([]);
+    expect(prerequisitesForTool("edit_workflow_patch")).toEqual([]);
     expect(prerequisitesForTool("inspect_workflow_draft")).toEqual([]);
     expect(prerequisitesForTool("dry_run_step")).toEqual([]);
   });

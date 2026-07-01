@@ -21,6 +21,7 @@ import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { resolveToolMode } from "../../conversations/tool-policies.ts";
 import type { ToolCategory } from "../../conversations/tools/index.ts";
+import { decideConfirm } from "../../conversations/tools/sdk-wrap/confirm-decision.ts";
 import type { Db } from "../../db/client.ts";
 
 export interface ConfirmRequiredEnvelope {
@@ -102,9 +103,6 @@ function buildTarget(
  * `_meta.sk_confirm: true` emits APPROVAL_APPROVED and proceeds.
  */
 export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<GateResult> {
-  // Reads never gate. tenant_write + draft_write follow the resolver.
-  if (p.category === "tenant_read") return { kind: "proceed" };
-
   const resolvedMode = resolveToolMode({
     tool: p.tool,
     category: p.category,
@@ -112,40 +110,57 @@ export async function gateTenantToolCall(p: GateTenantToolCallParams): Promise<G
     overrides: {},
   });
 
-  if (resolvedMode !== "confirm_before_execution") return { kind: "proceed" };
-
   const confirmed = isConfirmed(p.args, p.meta);
+  // The ONE confirm-gate decision — the same pure rule the conversation
+  // loop gate (`tools/sdk-wrap/invoke.ts`) evaluates, so the MCP-direct
+  // surface and the loop pause or proceed IDENTICALLY for the same
+  // tool/args. `priorApproval` is always false here: the MCP-direct path
+  // has no durable elicitation approval to consult (the save-workflow
+  // approval lives only inside a conversation). The operator confirms
+  // in-band via `_meta.sk_confirm` / `__policy_confirmed`, which is the
+  // `policyMarker`.
+  const decision = decideConfirm({
+    resolvedMode,
+    policyMarker: confirmed,
+    priorApproval: false,
+    category: p.category,
+  });
   const tool_call_id = crypto.randomUUID();
   const via: PolicyGateVia = p.via ?? "mcp";
 
-  if (confirmed) {
-    await auditAwait(
-      {
-        tenant_id: p.principal.tenant_id,
-        actor_type: p.principal.kind === "user" ? "user" : "system",
-        actor_id: p.principal.id,
-        action: AuditAction.APPROVAL_APPROVED,
-        resource_type: "mcp_tool_call",
-        resource_id: tool_call_id,
-        result: "success",
-        metadata: {
-          // `tenant_` is an MCP-historical prefix kept for backward-compat
-          // on the MCP surface only. Chat / fast_path callers persist the
-          // bare tool name so audit aggregates by `metadata.tool` match
-          // the conversation_tool_calls table.
-          tool: via === "mcp" ? `tenant_${p.tool}` : p.tool,
-          // Stable column for cross-surface audit queries. `tool` forks
-          // by surface (MCP keeps the legacy prefix); `canonical_tool`
-          // is always the bare tool name so operators have one column
-          // they can `GROUP BY` regardless of `via`.
-          canonical_tool: p.tool,
-          policy_mode: resolvedMode,
-          via,
-          ...(p.subject_workflow_slug ? { subject_workflow_slug: p.subject_workflow_slug } : {}),
+  if (!decision.pause) {
+    // Only a write that a present `policyMarker` cleared warrants an
+    // APPROVAL_APPROVED audit row. Reads and non-confirm modes proceed
+    // silently — they were never a gated approval.
+    if (decision.reason === "policy_marker_present") {
+      await auditAwait(
+        {
+          tenant_id: p.principal.tenant_id,
+          actor_type: p.principal.kind === "user" ? "user" : "system",
+          actor_id: p.principal.id,
+          action: AuditAction.APPROVAL_APPROVED,
+          resource_type: "mcp_tool_call",
+          resource_id: tool_call_id,
+          result: "success",
+          metadata: {
+            // `tenant_` is an MCP-historical prefix kept for backward-compat
+            // on the MCP surface only. Chat / fast_path callers persist the
+            // bare tool name so audit aggregates by `metadata.tool` match
+            // the conversation_tool_calls table.
+            tool: via === "mcp" ? `tenant_${p.tool}` : p.tool,
+            // Stable column for cross-surface audit queries. `tool` forks
+            // by surface (MCP keeps the legacy prefix); `canonical_tool`
+            // is always the bare tool name so operators have one column
+            // they can `GROUP BY` regardless of `via`.
+            canonical_tool: p.tool,
+            policy_mode: resolvedMode,
+            via,
+            ...(p.subject_workflow_slug ? { subject_workflow_slug: p.subject_workflow_slug } : {}),
+          },
         },
-      },
-      p.db,
-    );
+        p.db,
+      );
+    }
     return { kind: "proceed" };
   }
 

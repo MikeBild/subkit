@@ -352,34 +352,37 @@ function walk(
   return walk(next, segs, i + 1, equals);
 }
 
+/** Extract driver hints from a single step-shaped object. */
+function driversFromStep(raw: unknown): string[] {
+  const step = pickObject(raw);
+  const cfg = pickObject(step.config);
+  const drivers: string[] = [];
+  if (typeof cfg.driver === "string") drivers.push(cfg.driver);
+  if (typeof step.driver === "string") drivers.push(step.driver as string);
+  if (step.graphql !== undefined) drivers.push("graphql");
+  return drivers;
+}
+
 /**
- * Inspect a tool-call input for inline driver hints. Mirrors the
- * legacy RULES table behavior on `propose_step` and `build_workflow`
- * without forcing every caller to threadthe driver list through
- * ScopeFacts. Only inspects shapes the matcher knows about — unknown
+ * Inspect a tool-call input for inline driver hints. Reads the step
+ * objects an `edit_workflow_patch` call carries as JSON Patch values so
+ * a driver-gated skill auto-loads when the LLM patches in a step using
+ * that driver. Only inspects shapes the matcher knows about — unknown
  * shapes return an empty list (they fall back to ScopeFacts).
  */
 function inferDriversFromToolInput(tool: string, input: unknown): string[] {
   if (!input || typeof input !== "object") return [];
-  if (tool === "propose_step") {
-    const step = pickObject((input as Record<string, unknown>).step ?? input);
-    const cfg = pickObject(step.config);
+  if (tool === "edit_workflow_patch") {
+    const patches = (input as Record<string, unknown>).patches;
+    if (!Array.isArray(patches)) return [];
     const drivers: string[] = [];
-    if (typeof cfg.driver === "string") drivers.push(cfg.driver);
-    if (typeof step.driver === "string") drivers.push(step.driver as string);
-    if (step.graphql !== undefined) drivers.push("graphql");
-    return drivers;
-  }
-  if (tool === "build_workflow") {
-    const stepsRaw = (input as Record<string, unknown>).steps;
-    if (!Array.isArray(stepsRaw)) return [];
-    const drivers: string[] = [];
-    for (const raw of stepsRaw) {
-      const step = pickObject(raw);
-      const cfg = pickObject(step.config);
-      if (typeof cfg.driver === "string") drivers.push(cfg.driver);
-      if (typeof step.driver === "string") drivers.push(step.driver as string);
-      if (step.graphql !== undefined) drivers.push("graphql");
+    for (const patch of patches) {
+      const value = pickObject(patch).value;
+      if (Array.isArray(value)) {
+        for (const raw of value) drivers.push(...driversFromStep(raw));
+      } else {
+        drivers.push(...driversFromStep(value));
+      }
     }
     return drivers;
   }
@@ -391,12 +394,11 @@ function pickObject(v: unknown): Record<string, unknown> {
 }
 
 /**
- * Inspect a tool-call input for step-kind hints. Mirrors the
- * driver-inference path but extracts `step.kind` from `propose_step`
- * and the recursive shape of `build_workflow.steps[*]` (including
- * branches / loops / parallel sub-steps). Skills with a `step_kind`
- * activation rule auto-load when the LLM is currently authoring a
- * workflow that uses the named primitive.
+ * Inspect a tool-call input for step-kind hints. Extracts `step.kind`
+ * from the step objects an `edit_workflow_patch` call carries as JSON
+ * Patch values (recursing through branch / loop / parallel sub-steps).
+ * Skills with a `step_kind` activation rule auto-load when the LLM
+ * patches in a step that uses the named primitive.
  */
 function inferStepKindsFromToolInput(tool: string, input: unknown): string[] {
   if (!input || typeof input !== "object") return [];
@@ -412,16 +414,15 @@ function inferStepKindsFromToolInput(tool: string, input: unknown): string[] {
       }
     if (Array.isArray(step.body_steps)) for (const s of step.body_steps) visit(s);
   };
-  if (tool === "propose_step") {
-    visit((input as Record<string, unknown>).step ?? input);
-    return out;
-  }
-  if (tool === "build_workflow" || tool === "edit_workflow_patch") {
-    const stepsRaw = (input as Record<string, unknown>).steps;
-    if (Array.isArray(stepsRaw)) for (const raw of stepsRaw) visit(raw);
-    // edit_workflow_patch may carry adds/removes under different keys.
-    const adds = (input as Record<string, unknown>).step_adds;
-    if (Array.isArray(adds)) for (const raw of adds) visit(raw);
+  if (tool === "edit_workflow_patch") {
+    const patches = (input as Record<string, unknown>).patches;
+    if (Array.isArray(patches)) {
+      for (const patch of patches) {
+        const value = pickObject(patch).value;
+        if (Array.isArray(value)) for (const raw of value) visit(raw);
+        else visit(value);
+      }
+    }
     return out;
   }
   return out;

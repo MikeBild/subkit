@@ -207,6 +207,41 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     );
   });
 
+  test("input_schema section surfaces the resolved contract + sample (D4)", async () => {
+    // Payload-first: a workflow authored WITH a sample (and no declared
+    // input_schema) must expose a real required-list derived from that
+    // sample, plus the literal sample, so the model can author against it.
+    const empty = createEmptyDraftDocument();
+    const draft = withWorkflowDraft(
+      empty,
+      {
+        ...empty.workflow,
+        name: "Render deck",
+        slug: "render-deck",
+        steps: [{ id: "upload", kind: "request", method: "POST", url: "/u/${input.markdown}" }],
+        input_schema_sample: { markdown: "# hi", filename: "deck.md" },
+      } as never,
+      "test_seed",
+    );
+    const toolCtx = makeCtx(draft);
+    const result = await inspectWorkflowTool.execute(toolCtx, { sections: ["input_schema"] });
+    expect(result.ok).toBe(true);
+    const data = result.data as Record<string, unknown>;
+    // No declared schema — that's the point of the sample idiom.
+    expect(data.input_schema).toBeNull();
+    // The resolved contract carries the sample-derived required-list.
+    const contract = data.input_contract as {
+      source: string;
+      required: string[];
+      properties: string[];
+    };
+    expect(contract.source).toBe("sample");
+    expect(contract.required.sort()).toEqual(["filename", "markdown"]);
+    expect(contract.properties.sort()).toEqual(["filename", "markdown"]);
+    // And the literal sample rides alongside.
+    expect(data.input_schema_sample).toEqual({ markdown: "# hi", filename: "deck.md" });
+  });
+
   test("output_transform section reports explicit_transform when one is declared", async () => {
     const empty = createEmptyDraftDocument();
     const draft = withWorkflowDraft(

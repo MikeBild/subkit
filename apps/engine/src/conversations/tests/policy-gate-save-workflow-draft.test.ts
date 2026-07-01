@@ -566,16 +566,19 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     expect(data.error_code).toBe("no_prior_approval");
   });
 
-  test("non-save dedup matches on input.target.tool — not a shared kind bucket", async () => {
-    // The non-`save_workflow_draft` dedup keys on the ORIGINATING tool
-    // (`input.target.tool`, stamped on every policy-gate elicitation),
-    // not the cosmetic top-level `kind`. A recent resolved confirm
-    // whose `target.tool` equals the current tool must dedup the
-    // pre-confirm; a confirm for a DIFFERENT tool must NOT — even
-    // though both bucket to the same `external_write` kind, which is
-    // the cross-intent false positive the fix closes.
+  test("non-save writes get NO generic elicitation dedup — only __policy_confirmed proceeds", async () => {
+    // The fuzzy generic 20-row elicitation scan is DELETED. A
+    // non-`save_workflow_draft` write no longer proceeds just because a
+    // prior resolved `ask_user_confirm` for the same (or a different)
+    // tool happens to exist in history — guessing operator intent from
+    // stale rows is exactly the class of heuristic the deterministic
+    // `decideConfirm` gate removes. The ONLY things that clear a write:
+    // a `policyMarker` (`__policy_confirmed`) or, for the save path
+    // alone, a fresh `findPriorSaveWorkflowApproval`. Every other write
+    // pauses.
 
-    // (a) MATCH: a resolved confirm for run_workflow → pre-confirm skipped.
+    // (a) A prior resolved run_workflow confirm does NOT dedup the
+    // pre-confirm anymore — run_workflow in prod still PAUSES.
     {
       const conversation_id = await freshConversation();
       await ctx.testDb.db.insert(conversationElicitations).values({
@@ -620,39 +623,27 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         {},
       );
 
-      // run_workflow in prod mode → confirm_before_execution. The
-      // recent run_workflow confirm dedups the pre-confirm, so the
-      // inner tool runs (and fails workflow_not_found on the fake id —
-      // proof the gate did NOT pause).
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       const result = await (wrapped.run_workflow!.execute as any)(
         { workflow_id: "00000000-0000-0000-0000-000000000000", environment: "prod" },
-        { toolCallId: "dedup-match-call", messages: [] },
+        { toolCallId: "no-generic-dedup-call", messages: [] },
       );
-      expect(result.pause).toBeUndefined();
-      // No policy-gate elicitation was synthesised this turn.
+      // Deterministic: no marker, not the save path → PAUSE.
+      expect(result.ok).toBe(false);
+      expect(result.pause).toBeDefined();
+      expect(result.pause?.tool_name).toBe("ask_user_confirm");
+      expect(result.data).toMatchObject({
+        pending: true,
+        policy_mode: "confirm_before_execution",
+      });
       const elicit = events.find((e) => e.type === "elicit_request");
-      expect(elicit).toBeUndefined();
+      expect(elicit).toBeDefined();
     }
 
-    // (b) NO MATCH: the only recent confirm targets a DIFFERENT tool
-    // (web_search) → no cross-intent dedup → run_workflow still pauses.
+    // (b) The same call WITH `__policy_confirmed: true` proceeds — the
+    // marker is the single deterministic way past the gate.
     {
       const conversation_id = await freshConversation();
-      await ctx.testDb.db.insert(conversationElicitations).values({
-        tenant_id: ctx.tenant_id,
-        conversation_id,
-        tool_name: "ask_user_confirm",
-        summary: "run the web search",
-        input: {
-          kind: "external_write",
-          question: "Run this web search?",
-          target: { tool: "web_search", args: {} },
-        },
-        output: { confirmed: true },
-        status: "resolved",
-      });
-
       const events: TurnEvent[] = [];
       const signals = freshSignals();
       const engineClient = new EngineClient({
@@ -683,20 +674,18 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
 
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       const result = await (wrapped.run_workflow!.execute as any)(
-        { workflow_id: "00000000-0000-0000-0000-000000000000", environment: "prod" },
-        { toolCallId: "dedup-nomatch-call", messages: [] },
+        {
+          workflow_id: "00000000-0000-0000-0000-000000000000",
+          environment: "prod",
+          __policy_confirmed: true,
+        },
+        { toolCallId: "marker-proceeds-call", messages: [] },
       );
-      // The web_search confirm does NOT dedup a run_workflow gate —
-      // the pre-confirm fires and the tool is paused before execution.
-      expect(result.ok).toBe(false);
-      expect(result.pause).toBeDefined();
-      expect(result.pause?.tool_name).toBe("ask_user_confirm");
-      expect(result.data).toMatchObject({
-        pending: true,
-        policy_mode: "confirm_before_execution",
-      });
+      // Marker present → decideConfirm proceeds; the inner tool ran
+      // (fake id → not a pause envelope).
+      expect(result.pause).toBeUndefined();
       const elicit = events.find((e) => e.type === "elicit_request");
-      expect(elicit).toBeDefined();
+      expect(elicit).toBeUndefined();
     }
   });
 
@@ -725,8 +714,8 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       status: "resolved",
     });
 
-    // The shared predicate (used by the policy gate's
-    // recentlyConfirmedByLLM detection) sees an approval...
+    // The shared predicate (used by the loop confirm gate's
+    // `priorApproval` input to decideConfirm) sees an approval...
     const approval = await findPriorSaveWorkflowApproval(
       ctx.testDb.db,
       ctx.tenant_id,

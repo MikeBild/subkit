@@ -38,6 +38,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "this connector has no recorded self-description link of that kind yet — run discover_connector_endpoints (with the connector_id) first to detect and record the connector's llms.txt / OpenAPI / GraphQL link, then retry; or search its ingested docs with fetch_connector_docs",
   self_description_fetch_failed:
     "the connector's self-description URL could not be fetched (unreachable, timeout, or non-2xx) — verify the connector's base_url is live and the docs path still exists, then re-run discover_connector_endpoints to refresh the recorded link",
+  // Secret hygiene: the model tried to collect a secret-shaped value (api key,
+  // token, password) as free chat text over MCP. Route to the secure flow.
+  secret_elicitation_blocked:
+    "a secret-shaped value must never be collected as plain chat text over MCP — do NOT re-ask for it with ask_user_text/ask_user_form. Route the operator to the secure credential flow instead: authenticate_oauth (browser sign-in) for OAuth connectors, or request_connector_reauth (method: portal_setup) which issues a one-time secure portal link for the operator to enter the secret out-of-band",
   // Surface-restriction signals from the unified tool dispatcher.
   not_available_on_surface:
     "this tool exists in the catalog but cannot be invoked from the current surface — for draft_write tools (save_workflow_draft, dry_run_workflow), the operator must drive the call from a chat conversation, not a headless MCP session",
@@ -51,9 +55,6 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // USER_PASSWORD_AUTH or client_credentials_json). Those rotate in chat.
   wrong_reauth_flow:
     "this connector does NOT use a browser authorization-code flow — it is Cognito USER_PASSWORD_AUTH or a client-credentials (M2M) grant, which have no sign-in page. Do not call authenticate_oauth. Call request_connector_reauth instead: it re-collects the credential (email + password, or the M2M secret) in chat and rotates it in place",
-  // Initial-stage gate (Fix A): micro-tools are repair-stage only.
-  authoring_stage_violation:
-    "propose_step / update_param are repair-stage tools — the draft has no recorded preview and no recorded-eval/judge findings yet. Author the complete workflow in ONE call via author_workflow (or build_workflow), then dry_run_workflow; either unlocks the micro-tools",
   legacy_itemvar_migration_required:
     "this workflow predates the $item contract and the automatic rewrite could not be proven equivalent — read the named step/field, rewrite its bare loop-variable references to $item yourself, include that change in the patch, and retry edit_workflow_patch",
   // Authoring guardrails — evidence is fingerprint-keyed: edits to
@@ -68,9 +69,9 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   preview_stale_for_referenced_step:
     "the referenced step's OWN definition changed since its preview was recorded, so the evidence is stale — call dry_run_workflow once to refresh it, then retry the same edit; edits to other steps do NOT invalidate evidence, so this fires only when the step you reference actually changed",
   step_update_invalid:
-    'the current draft step is invalid — call inspect_workflow_draft to see the validation errors, then propose_step with the corrected fields. Common case: a loop\'s `body` must be an ARRAY of step ids (body: ["step_id"]), never a string and never inline step objects',
+    'the current draft step is invalid — call inspect_workflow_draft to see the validation errors, then edit_workflow_patch with the corrected fields. Common case: a loop\'s `body` must be an ARRAY of step ids (body: ["step_id"]), never a string and never inline step objects',
   step_invalid:
-    "the step shape is wrong — call inspect_workflow_draft for the validation breakdown, then propose_step or update_param against the failing field",
+    "the step shape is wrong — call inspect_workflow_draft for the validation breakdown, then edit_workflow_patch against the failing field",
   unknown_step:
     "the referenced step_id does not exist — call inspect_workflow_draft to list the actual step ids",
   step_not_found:
@@ -80,13 +81,13 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   expression_invalid:
     "the JSONata/JS expression is invalid — call suggest_jsonata_paths for available scope keys, then dry_run_transform to validate before saving",
   workflow_unresolved_step_reference:
-    "a step referenced an id that doesn't exist — call inspect_workflow_draft to list step ids and connect_steps to wire missing edges",
-  workflow_unsupported_placeholder: `a placeholder used an unsupported binding — the resolver accepts only cred|connector|input|scope|item|state. Inside a loop body: use \${item.<path>} in request strings (path/url/headers/query/body) and $item.<path> in JSONata expressions — bare item names (project.name), \${project.id}, \${user.email}, and Mustache {{…}} are all rejected. Call suggest_jsonata_paths for valid forms, or update_param to replace it`,
+    "a step referenced an id that doesn't exist — call inspect_workflow_draft to list step ids and edit_workflow_patch to add the missing step or retarget the reference",
+  workflow_unsupported_placeholder: `a placeholder used an unsupported binding — the resolver accepts only cred|connector|input|scope|item|state. Inside a loop body: use \${item.<path>} in request strings (path/url/headers/query/body) and $item.<path> in JSONata expressions — bare item names (project.name), \${project.id}, \${user.email}, and Mustache {{…}} are all rejected. Call suggest_jsonata_paths for valid forms, or edit_workflow_patch to replace it`,
   placeholder_unresolved: `a \${…} placeholder did not resolve from scope at runtime — inside a loop body write \${item.<path>} in request strings and $item.<path> in JSONata expressions (never a bare item name); for sibling body steps use \${scope.<body_step_id>.data.<field>}. Verify the path against the recorded preview via inspect_workflow_draft, then re-run dry_run_workflow`,
   workflow_cycle_detected:
-    "the workflow has a step-dependency cycle — call inspect_workflow_draft to see the graph, then propose_step / connect_steps to remove the cycle",
+    "the workflow has a step-dependency cycle — call inspect_workflow_draft to see the graph, then edit_workflow_patch to remove the cycle",
   workflow_schema_invalid:
-    "the workflow schema is invalid — call validate_draft for the field-level errors, then update_param / propose_step to fix",
+    "the workflow schema is invalid — call validate_draft for the field-level errors, then edit_workflow_patch to fix",
   patch_invalid:
     "the patch failed validation — call validate_draft to see the per-field errors, then re-issue edit_workflow_patch with the corrections",
   // Lookup / discovery — recover by calling the matching find_* tool.
@@ -101,7 +102,7 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   workflow_not_found:
     "the workflow id is unknown on this tenant — call find_workflow or list_workflows to discover the correct id",
   workflow_not_persisted:
-    "no runnable workflow yet. If you are AUTHORING a new workflow (the user said build/create/make a workflow), call build_workflow (one-shot) or propose_step (incremental) — do NOT call run_workflow again. If a draft already exists, call dry_run_workflow (auto-commits on a clean preview) or save_workflow_draft. Never retry run_workflow with the same args.",
+    "no runnable workflow yet. If you are AUTHORING a new workflow (the user said build/create/make a workflow), call author_workflow (the one-shot grounded builder) — do NOT call run_workflow again. If a draft already exists, call dry_run_workflow (auto-commits on a clean preview) or save_workflow_draft. Never retry run_workflow with the same args.",
   credential_form_mismatch:
     "the credential form's field names don't match the canonical slots for this auth_type — re-issue ask_user_form using the canonical names (bearer→token; basic→username,password; header→header_name,header_value; query→param,value; aws_sigv4→access_key_id,secret_access_key; oauth2→client_id,client_secret); see the `missing` list in the result envelope",
   probe_unchanged:
@@ -117,9 +118,9 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   auth_param_name_in_config:
     'config has no slot for the query parameter name — for query auth the param name lives in the credential\'s `param` field. Set auth_type:"query" on the draft, then collect the secret via ask_user_form(type:password, sensitive:true) and submit save_connector_draft({credential:{mode:"query", param:"<param-name>", value:"<token>"}}) (e.g. param:"token" for Browserless). Remove the key from config.',
   connector_bindings_missing:
-    "the workflow step is missing a connector binding — call inspect_workflow_draft to see required bindings, then update_param to attach a connector",
+    "the workflow step is missing a connector binding — call inspect_workflow_draft to see required bindings, then edit_workflow_patch to attach a connector",
   connector_bindings_required:
-    "this step needs a connector — call find_connector or start_connector_from_description, then update_param to bind it",
+    "this step needs a connector — call find_connector or start_connector_from_description, then edit_workflow_patch to bind it",
   connector_template_unknown:
     "the connector template slug is unknown — call suggest_connector_templates (or match_connector_template_by_url for a URL) to find a real template",
   unknown_template:
@@ -135,7 +136,7 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   snapshot_not_found:
     "the snapshot id is stale or wrong — call list_draft_snapshots to discover the correct id",
   no_snapshot_available:
-    "no draft snapshot exists yet — call list_draft_snapshots after the next draft mutation, or build_workflow / propose_step to seed one",
+    "no draft snapshot exists yet — call list_draft_snapshots after the next draft mutation, or author_workflow / edit_workflow_patch to seed one",
   // Preview / pre-run state.
   step_not_in_preview:
     "the step did not run in the last preview — call dry_run_workflow or run_workflow first to populate the preview",

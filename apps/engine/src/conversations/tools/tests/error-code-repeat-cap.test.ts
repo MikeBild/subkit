@@ -38,6 +38,23 @@ afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 });
 
+// Stable code A: a patch that replaces a step id with a NUMBER leaves the
+// draft schema-invalid → `patch_invalid`. `i` varies to prove args differ.
+const CODE_A = "patch_invalid";
+const badIdPatch = (i: number) => ({
+  patches: [{ op: "replace", path: "/steps/0/id", value: i }],
+});
+
+// Stable code B: a patch that repoints the request url to an unsupported
+// `${user.*}` placeholder passes schema but fails the placeholder gate →
+// `workflow_unsupported_placeholder`. `i` varies via the query string.
+const CODE_B = "workflow_unsupported_placeholder";
+const badPlaceholderPatch = (i: number | string) => ({
+  patches: [
+    { op: "replace", path: "/steps/0/url", value: `https://example.com/\${user.email}?v=${i}` },
+  ],
+});
+
 function freshSignals(): TurnSignals {
   return {
     step: 0,
@@ -63,20 +80,24 @@ function makeToolCtx(): ToolContext {
     actor_type: "system",
     db: ctx.testDb.db as unknown as Db,
   });
-  // Draft with a request + transform step. The repeated "code A" failure
-  // is driven by update_param("fetch", "headers", "{...}") — a
-  // JSON-encoded-string passed where a header object is required
-  // predictably returns error_code: "step_update_invalid" (the transform
-  // authoring gate is non-blocking now, so it can no longer serve as
-  // the stable repeated error). The `latest_preview` slot (no traces) is
-  // stage evidence so the Fix-A initial-stage gate doesn't short-circuit
-  // the repair flow under test.
+  // A fully schema-valid draft (request + transform). The repeated "code A"
+  // failure is driven by edit_workflow_patch replacing the step id with a
+  // NUMBER — schema-invalid → error_code: "patch_invalid". `getDraft`
+  // returns the SAME object and `setDraft` is a no-op, so every call starts
+  // from this valid baseline. The `latest_preview` slot (no traces) is
+  // stage evidence for the wider authoring flow.
   const draft = {
     workflow: {
       name: "test-wf",
+      slug: "test-wf",
       steps: [
         { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
-        { id: "format", kind: "transform", expression: "input.scope.fetch.data.items" },
+        {
+          id: "format",
+          kind: "transform",
+          language: "javascript",
+          expression: "return input.scope.fetch.data.items;",
+        },
       ],
     },
     latest_preview: { ok: false, step_id: null, summary: "stage evidence", step_traces: [] },
@@ -121,40 +142,35 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
       ["workflow-authoring"],
       {},
     );
-    const updateParam = wrapped.update_param;
-    expect(updateParam).toBeDefined();
+    const editPatch = wrapped.edit_workflow_patch;
+    expect(editPatch).toBeDefined();
 
     // Calls 1–MAX_ERROR_CODE_REPEAT: inner tool runs and returns
-    // step_update_invalid. Each call uses a different
-    // expression value to prove args vary.
+    // patch_invalid. Each call uses a different id value to prove args vary.
     for (let i = 1; i <= MAX_ERROR_CODE_REPEAT; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-      const result = await (updateParam!.execute as any)(
-        { step_id: "fetch", param: "headers", value: `{"v":"${i}"}` },
-        { toolCallId: `t${i}`, messages: [] },
-      );
+      const result = await (editPatch!.execute as any)(badIdPatch(i), {
+        toolCallId: `t${i}`,
+        messages: [],
+      });
       const errCode = result.data?.error_code ?? result.error_code;
       // The inner tool runs and returns the authoring gate refusal — NOT
       // the loop-breaker envelope yet.
-      expect(errCode).toBe("step_update_invalid");
+      expect(errCode).toBe(CODE_A);
     }
     // After MAX_ERROR_CODE_REPEAT failures the streak is at MAX_ERROR_CODE_REPEAT.
-    const streak = signals.toolErrorCodeRepeat.get("update_param");
+    const streak = signals.toolErrorCodeRepeat.get("edit_workflow_patch");
     expect(streak?.count).toBe(MAX_ERROR_CODE_REPEAT);
-    expect(streak?.code).toBe("step_update_invalid");
+    expect(streak?.code).toBe(CODE_A);
 
     // Call MAX_ERROR_CODE_REPEAT+1: the breaker fires BEFORE the inner tool
     // runs. We confirm by checking the returned error_code is the breaker
-    // code, not the inner gate code (step_update_invalid).
+    // code, not the inner gate code.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const resultTrip = await (updateParam!.execute as any)(
-      {
-        step_id: "fetch",
-        param: "headers",
-        value: `{"v":"${MAX_ERROR_CODE_REPEAT + 1}"}`,
-      },
-      { toolCallId: `t${MAX_ERROR_CODE_REPEAT + 1}`, messages: [] },
-    );
+    const resultTrip = await (editPatch!.execute as any)(badIdPatch(MAX_ERROR_CODE_REPEAT + 1), {
+      toolCallId: `t${MAX_ERROR_CODE_REPEAT + 1}`,
+      messages: [],
+    });
     const errCodeTrip = resultTrip.data?.error_code ?? resultTrip.error_code;
     expect(["tool_error_repeat", "turn_loop_budget_exhausted"]).toContain(errCodeTrip);
     // The breaker envelope always includes next_best_actions pointing to
@@ -166,10 +182,6 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
   // Case 2: streak survives interleaved successful read-only tool calls
   // (the core regression — `consecutiveFailures` would have reset on any
   // success; `toolErrorCodeRepeat` must NOT).
-  // We run MAX_ERROR_CODE_REPEAT failure+inspect pairs, asserting the
-  // streak grows each round and consecutiveFailures resets on each
-  // inspect. After the loop the streak is at MAX_ERROR_CODE_REPEAT and
-  // the next call trips.
   test("streak survives interleaved inspect_workflow success — write tool still trips", async () => {
     const signals = freshSignals();
     const events: TurnEvent[] = [];
@@ -182,68 +194,49 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
       ["workflow-authoring"],
       {},
     );
-    const updateParam = wrapped.update_param;
+    const editPatch = wrapped.edit_workflow_patch;
     const inspectWorkflow = wrapped.inspect_workflow;
-    expect(updateParam).toBeDefined();
+    expect(editPatch).toBeDefined();
     expect(inspectWorkflow).toBeDefined();
 
     // Accumulate MAX_ERROR_CODE_REPEAT failures, each interleaved with a
     // successful inspect_workflow call that resets consecutiveFailures but
     // must NOT reset the per-tool toolErrorCodeRepeat streak.
     for (let i = 1; i <= MAX_ERROR_CODE_REPEAT; i++) {
-      // Failure i on update_param.
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-      await (updateParam!.execute as any)(
-        { step_id: "fetch", param: "headers", value: `{"v":"${i}"}` },
-        { toolCallId: `u${i}`, messages: [] },
-      );
-      expect(signals.toolErrorCodeRepeat.get("update_param")?.count).toBe(i);
+      await (editPatch!.execute as any)(badIdPatch(i), { toolCallId: `u${i}`, messages: [] });
+      expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.count).toBe(i);
       expect(signals.consecutiveFailures).toBeGreaterThan(0);
 
       // Interleave: inspect_workflow succeeds. consecutiveFailures resets;
-      // update_param's streak must survive.
+      // edit_workflow_patch's streak must survive.
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       const inspectResult = await (inspectWorkflow!.execute as any)(
         { sections: ["instruction"] },
         { toolCallId: `insp${i}`, messages: [] },
       );
-      // inspect_workflow returned ok (may be empty draft but not an error
-      // from the loop-breaker).
       expect(inspectResult.data?.error_code ?? inspectResult.error_code).not.toBe(
         "consecutive_failures_cap",
       );
-      // consecutiveFailures must now be 0.
       expect(signals.consecutiveFailures).toBe(0);
-      // Streak for update_param must still be at i — not cleared by the
-      // inspect success (which targets a different tool entry).
-      expect(signals.toolErrorCodeRepeat.get("update_param")?.count).toBe(i);
+      expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.count).toBe(i);
     }
 
     // The streak is now at MAX_ERROR_CODE_REPEAT. The next call must trip
     // despite all the interleaved successful reads.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const result = await (updateParam!.execute as any)(
-      {
-        step_id: "fetch",
-        param: "headers",
-        value: `{"v":"${MAX_ERROR_CODE_REPEAT + 1}"}`,
-      },
-      { toolCallId: `u${MAX_ERROR_CODE_REPEAT + 1}`, messages: [] },
-    );
+    const result = await (editPatch!.execute as any)(badIdPatch(MAX_ERROR_CODE_REPEAT + 1), {
+      toolCallId: `u${MAX_ERROR_CODE_REPEAT + 1}`,
+      messages: [],
+    });
     const errCode = result.data?.error_code ?? result.error_code;
     expect(["tool_error_repeat", "turn_loop_budget_exhausted"]).toContain(errCode);
     // The breaker envelope names the repeated code so the model can
     // surface a concrete blocker message.
-    expect(result.data?.repeated_error_code ?? result.repeated_error_code).toBe(
-      "step_update_invalid",
-    );
+    expect(result.data?.repeated_error_code ?? result.repeated_error_code).toBe(CODE_A);
   });
 
   // Case 3: a DIFFERENT error_code resets the streak (no premature trip).
-  // Specifically: two failures with code A, then one failure with code B
-  // (different), then the streak for A is gone and B is at count 1.
-  // The new streak of B must not trip until it has accumulated
-  // MAX_ERROR_CODE_REPEAT failures of its own.
   test("different error_code resets the streak — counter goes back to 1", async () => {
     const signals = freshSignals();
     const events: TurnEvent[] = [];
@@ -256,52 +249,45 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
       ["workflow-authoring"],
       {},
     );
-    const updateParam = wrapped.update_param;
+    const editPatch = wrapped.edit_workflow_patch;
     const inspectWorkflow = wrapped.inspect_workflow;
-    expect(updateParam).toBeDefined();
+    expect(editPatch).toBeDefined();
     expect(inspectWorkflow).toBeDefined();
 
-    // Two failures with step_update_invalid (code A).
+    // Two failures with patch_invalid (code A).
     for (let i = 1; i <= 2; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-      await (updateParam!.execute as any)(
-        { step_id: "fetch", param: "headers", value: `{"x":"${i}"}` },
-        { toolCallId: `ta${i}`, messages: [] },
-      );
+      await (editPatch!.execute as any)(badIdPatch(i), { toolCallId: `ta${i}`, messages: [] });
     }
-    expect(signals.toolErrorCodeRepeat.get("update_param")?.count).toBe(2);
-    expect(signals.toolErrorCodeRepeat.get("update_param")?.code).toBe("step_update_invalid");
+    expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.count).toBe(2);
+    expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.code).toBe(CODE_A);
 
     // Reset the global consecutive-failures counter via a successful
-    // inspect call so it doesn't interfere with the error_code streak
-    // test below (5 consecutive failures would trip the global cap first).
+    // inspect call so it doesn't interfere with the error_code streak.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     await (inspectWorkflow!.execute as any)(
       { sections: ["instruction"] },
       { toolCallId: "ix", messages: [] },
     );
     expect(signals.consecutiveFailures).toBe(0);
-    // update_param's streak survives the inspect success.
-    expect(signals.toolErrorCodeRepeat.get("update_param")?.count).toBe(2);
+    expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.count).toBe(2);
 
-    // Now a call that produces a DIFFERENT error_code: point at a
-    // non-existent step → error_code: "unknown_step".
+    // Now a call that produces a DIFFERENT error_code: an unsupported
+    // placeholder → error_code: "workflow_unsupported_placeholder".
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const resultDiff = await (updateParam!.execute as any)(
-      { step_id: "does_not_exist", param: "expression", value: "x" },
-      { toolCallId: "tb1", messages: [] },
-    );
+    const resultDiff = await (editPatch!.execute as any)(badPlaceholderPatch(1), {
+      toolCallId: "tb1",
+      messages: [],
+    });
     const diffCode = resultDiff.data?.error_code ?? resultDiff.error_code;
-    expect(diffCode).toBe("unknown_step");
-    // Streak reset to 1 for the new code — the old transform streak is gone.
-    const streakAfter = signals.toolErrorCodeRepeat.get("update_param");
+    expect(diffCode).toBe(CODE_B);
+    // Streak reset to 1 for the new code — the old streak is gone.
+    const streakAfter = signals.toolErrorCodeRepeat.get("edit_workflow_patch");
     expect(streakAfter?.count).toBe(1);
-    expect(streakAfter?.code).toBe("unknown_step");
+    expect(streakAfter?.code).toBe(CODE_B);
 
-    // Accumulate the remaining MAX_ERROR_CODE_REPEAT-1 failures with
-    // unknown_step (streak goes 2 … MAX_ERROR_CODE_REPEAT). Each failure
-    // is interleaved with an inspect to keep consecutiveFailures from
-    // reaching the global cap before the error_code breaker fires.
+    // Accumulate the remaining failures with code B, interleaving inspects
+    // to keep consecutiveFailures below the global cap.
     for (let i = 2; i <= MAX_ERROR_CODE_REPEAT; i++) {
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
       await (inspectWorkflow!.execute as any)(
@@ -309,14 +295,16 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
         { toolCallId: `iy${i}`, messages: [] },
       );
       // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-      await (updateParam!.execute as any)(
-        { step_id: "does_not_exist", param: "expression", value: `y${i}` },
-        { toolCallId: `tc${i}`, messages: [] },
-      );
-      expect(signals.toolErrorCodeRepeat.get("update_param")?.count).toBe(i);
+      await (editPatch!.execute as any)(badPlaceholderPatch(i), {
+        toolCallId: `tc${i}`,
+        messages: [],
+      });
+      expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.count).toBe(i);
     }
-    expect(signals.toolErrorCodeRepeat.get("update_param")?.count).toBe(MAX_ERROR_CODE_REPEAT);
-    expect(signals.toolErrorCodeRepeat.get("update_param")?.code).toBe("unknown_step");
+    expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.count).toBe(
+      MAX_ERROR_CODE_REPEAT,
+    );
+    expect(signals.toolErrorCodeRepeat.get("edit_workflow_patch")?.code).toBe(CODE_B);
 
     // Reset global counter before the trip call.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
@@ -324,12 +312,12 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
       { sections: ["instruction"] },
       { toolCallId: "iw", messages: [] },
     );
-    // Next call with unknown_step must trip on the error_code_repeat breaker.
+    // Next call with code B must trip on the error_code_repeat breaker.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const resultTrip = await (updateParam!.execute as any)(
-      { step_id: "does_not_exist", param: "expression", value: "trip" },
-      { toolCallId: "td1", messages: [] },
-    );
+    const resultTrip = await (editPatch!.execute as any)(badPlaceholderPatch("trip"), {
+      toolCallId: "td1",
+      messages: [],
+    });
     const tripCode = resultTrip.data?.error_code ?? resultTrip.error_code;
     expect(["tool_error_repeat", "turn_loop_budget_exhausted"]).toContain(tripCode);
   });
@@ -339,8 +327,8 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
   test("ask_user_choice bypasses the breaker even when totalLoopWarnings is high", async () => {
     const signals = freshSignals();
     // Pre-load the streak to MAX and warnings to the threshold.
-    signals.toolErrorCodeRepeat.set("update_param", {
-      code: "step_update_invalid",
+    signals.toolErrorCodeRepeat.set("edit_workflow_patch", {
+      code: CODE_A,
       count: MAX_ERROR_CODE_REPEAT,
     });
     signals.totalLoopWarnings = 1;
@@ -393,8 +381,8 @@ describe("error-code-repeat-cap (MAX_ERROR_CODE_REPEAT)", () => {
   // Case 4b: inspect_* tools are NEVER short-circuited by this breaker.
   test("inspect_workflow bypasses the breaker even when streak is at cap", async () => {
     const signals = freshSignals();
-    signals.toolErrorCodeRepeat.set("update_param", {
-      code: "step_update_invalid",
+    signals.toolErrorCodeRepeat.set("edit_workflow_patch", {
+      code: CODE_A,
       count: MAX_ERROR_CODE_REPEAT,
     });
     const events: TurnEvent[] = [];

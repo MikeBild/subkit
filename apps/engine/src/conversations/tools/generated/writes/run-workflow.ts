@@ -27,7 +27,9 @@ import { stampStepTraceFingerprints } from "../../../step-fingerprint.ts";
 import { pauseForUserInput } from "../../ask-user/common.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
+import { buildRawStepResults } from "../../step-results.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
+import { normalizeWorkflowInput, workflowInputRecord } from "../../workflow-input-normalize.ts";
 import { type RepairLoopVerdict, tallyRepairSignals } from "./repair-loop-tally.ts";
 
 /**
@@ -80,6 +82,17 @@ const Input = z
      */
     include_step_trace: z.boolean().optional(),
     /**
+     * When true, attach a `step_results` array carrying the RAW per-step
+     * input (the resolved request each step issued, or the held request for
+     * a write) side-by-side with its output. Default false keeps the
+     * envelope compact. The model uses this to self-diagnose whether a bad
+     * output is a step-config bug (the request went out wrong) or an
+     * output_transform bug (the step was fine, the projection dropped it).
+     * Reuses the same offload/raw-ref machinery as `step_trace` — no new
+     * store.
+     */
+    include_step_results: z.boolean().optional(),
+    /**
      * side-effect safety. By DEFAULT a `run_workflow` from the
      * authoring surface HOLDS write-classified steps (sends, POST/PUT/
      * DELETE, non-SELECT SQL/GraphQL mutations): they are fully resolved
@@ -118,7 +131,7 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. WRITE-classified steps (email sends, posts, publishes) are HELD by default — resolved but NOT dispatched — so a run is side-effect-safe; the envelope reports `writes_held` + `held_step_ids`. Do a real live send ONLY after the user confirms, by passing `execute_writes: true` (which then requires a confirmation even in dev). To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `build_workflow` or `propose_step`.",
+    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. WRITE-classified steps (email sends, posts, publishes) are HELD by default — resolved but NOT dispatched — so a run is side-effect-safe; the envelope reports `writes_held` + `held_step_ids`. Do a real live send ONLY after the user confirms, by passing `execute_writes: true` (which then requires a confirmation even in dev). To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
   inputSchema: Input,
   category: "tenant_write",
   requires_persisted_workflow: true,
@@ -160,10 +173,10 @@ export const runWorkflowTool: ConversationTool = {
       const hasDraftSteps = Array.isArray(draftSteps) && draftSteps.length > 0;
       const message = hasDraftSteps
         ? "commit the workflow before running it from the conversation surface"
-        : "there is no workflow to run yet — author one first. If the user asked to BUILD or CREATE a workflow, call build_workflow (one-shot) or propose_step (incremental). run_workflow only executes a workflow that has already been authored and saved.";
+        : "there is no workflow to run yet — author one first. If the user asked to BUILD or CREATE a workflow, call author_workflow (the one-shot grounded builder). run_workflow only executes a workflow that has already been authored and saved.";
       const next_best_actions = hasDraftSteps
         ? ["dry_run_workflow", "save_workflow_draft"]
-        : ["author_workflow", "build_workflow", "propose_step"];
+        : ["author_workflow"];
       return {
         ok: false,
         data: withStatus(
@@ -204,7 +217,7 @@ export const runWorkflowTool: ConversationTool = {
     // skipped the gate and failed at runtime with
     // "$input: required field '<k>' is missing".)
     const inputContract = resolveWorkflowInputContract(wf.definition as WorkflowDef);
-    const suppliedInput = args.input;
+    const suppliedInput = normalizeWorkflowInput(args.input);
     const suppliedInputIsEmpty =
       suppliedInput === null ||
       suppliedInput === undefined ||
@@ -219,25 +232,7 @@ export const runWorkflowTool: ConversationTool = {
           : {};
       const propertyNames = inputContract.properties;
       const requiredKeys = inputContract.required;
-      // Stringified-JSON input is normalized downstream by the runtime;
-      // mirror that here so a '{"date":"…"}' string counts as supplied.
-      let suppliedMap: Record<string, unknown> = {};
-      if (
-        typeof suppliedInput === "object" &&
-        suppliedInput !== null &&
-        !Array.isArray(suppliedInput)
-      ) {
-        suppliedMap = suppliedInput as Record<string, unknown>;
-      } else if (typeof suppliedInput === "string" && suppliedInput.trim().startsWith("{")) {
-        try {
-          const parsed = JSON.parse(suppliedInput) as unknown;
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            suppliedMap = parsed as Record<string, unknown>;
-          }
-        } catch {
-          /* not JSON — treated as unsupplied */
-        }
-      }
+      const suppliedMap = workflowInputRecord(suppliedInput);
       const missingRequired = requiredKeys.filter((k) => {
         const v = suppliedMap[k];
         return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
@@ -449,7 +444,7 @@ export const runWorkflowTool: ConversationTool = {
         db: ctx.db,
         tenant_id: ctx.tenant_id,
         source: { kind: "saved", workflow_id: workflowId },
-        input: args.input ?? null,
+        input: suppliedInput ?? null,
         options: {
           request_source: "chat",
           trace_id: null,
@@ -703,7 +698,7 @@ export const runWorkflowTool: ConversationTool = {
           ...(hasWarnings && result.warnings ? { warnings: result.warnings } : {}),
           ...(requiresRepair ? { requires_repair: true } : {}),
           step_traces: persistedStepTraces,
-          input: args.input ?? null,
+          input: suppliedInput ?? null,
         },
         "run_workflow",
         "workflow_executed",
@@ -887,6 +882,11 @@ export const runWorkflowTool: ConversationTool = {
               : {}),
             ...(hasWarnings ? { warnings: result.warnings } : {}),
             ...(includeStepTrace ? { step_trace: stepTraceEntries } : {}),
+            // D6 — optional RAW per-step inputs/outputs for self-diagnosis.
+            // Compact by default; attached only when the caller opts in.
+            ...(args.include_step_results
+              ? { step_results: buildRawStepResults(result.steps) }
+              : {}),
             // Teach the keystroke route: every successful chat run carries
             // the slash-equivalent the REPL chip strip will offer the user.
             suggested_command: `/workflows run ${wf.slug}`,

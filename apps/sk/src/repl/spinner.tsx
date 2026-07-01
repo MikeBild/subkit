@@ -54,7 +54,7 @@ export interface SpinnerProps {
    * When set, the spinner replaces the rotating verb with a
    * concrete "running <tool_name>" line so the user sees real
    * progress instead of just "thinking…" for 1m+. Pre-fix session
-   * 86de186b: the engine ran build_workflow → validate_draft →
+   * 86de186b: the engine ran author_workflow → validate_draft →
    * dry_run_workflow over 1m20s while the CLI showed only
    * "thinking… 1m16s". A per-tool ticker keeps the line honest.
    */

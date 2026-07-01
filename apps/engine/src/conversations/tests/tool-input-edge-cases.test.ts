@@ -53,23 +53,18 @@ describe("input-schema edge cases · per tool", () => {
     expect(j.required).toContain("step_id");
   });
 
-  test("build_workflow — input_schema_sample is z.unknown (any value allowed)", () => {
-    const j = jsonSchema("build_workflow");
+  test("author_workflow — input_example is z.unknown (any value allowed)", () => {
+    const j = jsonSchema("author_workflow");
     const props = j.properties as Record<string, unknown>;
-    expect(props.input_schema_sample).toBeDefined();
+    expect(props.input_example).toBeDefined();
+    expect(j.required).toContain("goal");
   });
 
-  test("update_param — `value` accepts unknown without dropping the property", () => {
-    const j = jsonSchema("update_param");
-    const props = j.properties as Record<string, unknown>;
-    expect(props.value).toBeDefined();
-    expect(j.required).toEqual(expect.arrayContaining(["step_id", "param", "value"]));
-  });
-
-  test("propose_step — `step` is a record, not stripped to additionalProperties:true alone", () => {
-    const j = jsonSchema("propose_step");
+  test("edit_workflow_patch — `patches` is a required array of ops", () => {
+    const j = jsonSchema("edit_workflow_patch");
     const props = j.properties as Record<string, { type?: string }>;
-    expect(props.step?.type).toBe("object");
+    expect(props.patches?.type).toBe("array");
+    expect(j.required).toContain("patches");
   });
 
   test("ask_user_choice — options is an array of objects with id+label", () => {

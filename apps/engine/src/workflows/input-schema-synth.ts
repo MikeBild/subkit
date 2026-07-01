@@ -24,6 +24,7 @@
 
 import { extractAst } from "../execution/jsonata-engine.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
+import { sampleToSchema } from "./sample-to-schema.ts";
 import type { StepDef, WorkflowDef } from "./types.ts";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
@@ -201,31 +202,36 @@ function collectJsInputRefs(code: string, into: ObservationMap): void {
 }
 
 function collectFromStep(step: StepDef, into: ObservationMap): void {
-  if (step.kind === "request") {
-    if (step.url) collectFromString(step.url, into);
-    if (step.path) collectFromString(step.path, into);
-    if (step.headers) {
-      for (const v of Object.values(step.headers)) collectFromString(v, into);
-    }
-    if (step.query) {
-      for (const v of Object.values(step.query)) {
-        if (typeof v === "string") collectFromString(v, into);
-      }
-    }
-    if (step.body !== undefined) collectFromJson(step.body, into);
-    return;
+  // 1. Driver-agnostic scan of EVERY string leaf on the step for
+  //    `${input.*}` placeholders. This captures the request
+  //    url/path/headers/query/body the old per-field enumeration handled,
+  //    but ALSO the surfaces it silently missed: multipart part
+  //    values/filenames, the s3 `key`/`prefix`/`metadata`, graphql
+  //    `query` + `variables`, sql `query` + `params`, the xml body, and a
+  //    `call` step's sub-workflow `input`. A missed surface previously
+  //    synthesized a PARTIAL contract (an s3 upload with body
+  //    `${input.markdown}` but key `${input.filename}` yielded only
+  //    `markdown`) or NO contract at all (multipart / call / graphql),
+  //    which collapsed the run_workflow input form into a single
+  //    free-text prompt and let the run reach the driver with a required
+  //    `${input.*}` field unbound (input_schema_violation at runtime).
+  //    The embedded-vs-whole-string typing is preserved because each
+  //    string still flows through `collectFromString`.
+  collectFromJson(step as unknown as JsonValue, into);
+
+  // 2. JavaScript transform bodies reference workflow input as
+  //    `input.input.<name>` / `input.input["name"]` — no `${...}` wrapper,
+  //    so the placeholder scan above cannot see them. Extract explicitly.
+  if (
+    step.kind === "transform" &&
+    typeof step.expression === "string" &&
+    step.expression.length > 0
+  ) {
+    collectJsInputRefs(step.expression, into);
   }
-  if (step.kind === "transform") {
-    // Transforms are JavaScript. Collect workflow-input references of the
-    // form `input.input.<name>` / `input.input["name"]` so an input used
-    // only inside a transform still surfaces in the synthesized schema.
-    if (typeof step.expression === "string" && step.expression.length > 0) {
-      collectJsInputRefs(step.expression, into);
-    }
-    return;
-  }
+
+  // 3. JSONata `branch.when` predicates reference input as `$input.<name>`.
   if (step.kind === "branch" && step.when) {
-    // `when` is typed as a jsonata expression string.
     const ast = extractAst(step.when) as AstNode | null;
     if (ast) collectFromJsonataAst(ast, into);
   }
@@ -244,15 +250,52 @@ export function synthesizeInputSchema(dag: WorkflowDef): JsonSchemaObject | null
 }
 
 export interface WorkflowInputContract {
-  /** Declared `input_schema` when present, else the synthesized one. */
+  /** Effective schema: declared `input_schema`, else the sample-derived
+   *  one, else the structural synth. */
   schema: Record<string, unknown>;
+  /** Which precedence tier produced `schema`:
+   *   - `declared` — the author's hand-tuned `input_schema`.
+   *   - `sample`   — derived from `input_schema_sample` (the payload-first idiom).
+   *   - `synth`    — scraped from `${input.*}` / `input.input.*` placeholders.
+   *  Surfaced by `inspect_workflow` so the model can tell whether the run
+   *  contract is a real declared/sampled shape or a best-effort structural guess. */
+  source: "declared" | "sample" | "synth";
   /** Declared property names. */
   properties: string[];
-  /** Keys a run must supply. From `schema.required` when declared
-   *  non-empty; otherwise EVERY property — synthesized schemas never
-   *  carry `required`, and a placeholder substituting null/undefined
-   *  at runtime is worse than one extra confirmation. */
+  /** Keys a run must supply. From `schema.required` when the tier that
+   *  won carries a non-empty `required` (declared schemas and
+   *  sample-derived schemas do); otherwise EVERY property — the
+   *  structural synth never emits `required`, and a placeholder
+   *  substituting null/undefined at runtime is worse than one extra
+   *  confirmation. */
   required: string[];
+}
+
+/**
+ * Sample-derived tier of the input contract. The draft carries an
+ * `input_schema_sample` — a literal example payload the author (or a
+ * dry-run) supplied. `sampleToSchema` turns that concrete value into a
+ * tight JSON Schema whose `required` names every observed key, giving
+ * `run_workflow` a real form instead of a single free-text prompt.
+ *
+ * Only a sample that describes an OBJECT WITH NAMED KEYS yields a usable
+ * contract: a scalar / array / empty-object sample carries no property
+ * names to require, so it returns `null` and the caller falls through to
+ * the structural synth. `input_schema_sample` is a typed (optional)
+ * `WorkflowDef` field persisted in the versioned definition, so it is read
+ * directly — a SAVED workflow that carried a sample resolves this tier, not
+ * just an in-flight draft.
+ */
+function sampleDerivedSchema(dag: WorkflowDef): Record<string, unknown> | null {
+  const sample = dag.input_schema_sample;
+  if (sample === undefined || sample === null) return null;
+  const schema = sampleToSchema(sample);
+  if (schema.type !== "object") return null;
+  const props = schema.properties;
+  if (!props || typeof props !== "object" || Object.keys(props as object).length === 0) {
+    return null;
+  }
+  return schema;
 }
 
 /**
@@ -261,16 +304,36 @@ export interface WorkflowInputContract {
  * `run_workflow` missing-input gate, and the chat fast-path all read
  * this, so no surface can disagree about what a run needs.
  * Returns `null` when the workflow takes no input.
+ *
+ * Precedence, most authoritative first:
+ *   1. declared `input_schema` — the author's explicit, hand-tuned contract.
+ *   2. sample-derived — `sampleToSchema(input_schema_sample)` when the draft
+ *      carries an object example payload (required = every sample key).
+ *   3. structural synth — `${input.*}` / `input.input.*` placeholders scraped
+ *      from the DAG (no `required` of its own; every property is required).
  */
 export function resolveWorkflowInputContract(dag: WorkflowDef): WorkflowInputContract | null {
   const declared =
     dag.input_schema && typeof dag.input_schema === "object"
       ? (dag.input_schema as Record<string, unknown>)
       : null;
-  const schema =
-    declared && Object.keys(declared).length > 0
-      ? declared
-      : ((synthesizeInputSchema(dag) as Record<string, unknown> | null) ?? null);
+  const declaredWins = declared !== null && Object.keys(declared).length > 0;
+  // Compute the winning tier explicitly (not just the schema) so callers can
+  // report WHICH source the run contract came from. Order mirrors the doc
+  // above: declared > sample > synth.
+  const sampleSchema = declaredWins ? null : sampleDerivedSchema(dag);
+  let source: WorkflowInputContract["source"];
+  let schema: Record<string, unknown> | null;
+  if (declaredWins) {
+    source = "declared";
+    schema = declared;
+  } else if (sampleSchema) {
+    source = "sample";
+    schema = sampleSchema;
+  } else {
+    source = "synth";
+    schema = (synthesizeInputSchema(dag) as Record<string, unknown> | null) ?? null;
+  }
   if (!schema) return null;
   const properties =
     schema.properties && typeof schema.properties === "object"
@@ -281,5 +344,5 @@ export function resolveWorkflowInputContract(dag: WorkflowDef): WorkflowInputCon
     Array.isArray(schema.required) && schema.required.length > 0
       ? schema.required.filter((k): k is string => typeof k === "string")
       : properties;
-  return { schema, properties, required };
+  return { schema, source, properties, required };
 }

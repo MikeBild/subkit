@@ -52,18 +52,18 @@ function nextBestActionsFor(kind: string, step_key: string): string[] {
       return [
         `The request body is at \`$scope.${step_key}.data\`; status / headers live on the same envelope. Use this when authoring downstream transforms.`,
         "dry_run_transform — author + test the next projection expression against this real shape before saving.",
-        "run_workflow — rerun with new input via the input_schema, or build_workflow to adjust the upstream connector params.",
+        "run_workflow — rerun with new input via the input_schema, or edit_workflow_patch to adjust the upstream connector params.",
       ];
     case "transform":
       return [
         "The transform's projected shape is in output_preview. If it dropped fields, see suggest_jsonata_paths for the available scope keys.",
         "dry_run_transform — re-author the expression against this real shape before saving.",
-        "build_workflow / propose_step — adjust the upstream step or the downstream transform.",
+        "edit_workflow_patch — adjust the upstream step or the downstream transform.",
       ];
     default:
       return [
         "dry_run_transform — author + test the next projection expression against this real shape before saving.",
-        "build_workflow / propose_step — adjust the upstream step or the downstream transform.",
+        "edit_workflow_patch — adjust the upstream step or the downstream transform.",
       ];
   }
 }

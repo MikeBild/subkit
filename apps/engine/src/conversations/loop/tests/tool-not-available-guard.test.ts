@@ -5,7 +5,7 @@ const PALETTE = new Set([
   "create_schedule",
   "update_schedule",
   "list_schedules",
-  "build_workflow",
+  "edit_workflow_patch",
   "save_workflow_draft",
 ]);
 
@@ -31,11 +31,11 @@ describe("detectToolHallucinatedAbsence", () => {
 
   it("fires when the model says 'I don't have access to X'", () => {
     const v = detectToolHallucinatedAbsence({
-      assistantText: "I don't have access to build_workflow in this session",
+      assistantText: "I don't have access to edit_workflow_patch in this session",
       palette: PALETTE,
     });
     expect(v.hallucinated).toBe(true);
-    expect(v.toolName).toBe("build_workflow");
+    expect(v.toolName).toBe("edit_workflow_patch");
   });
 
   it("stays quiet when the denied tool is genuinely not in the palette", () => {
@@ -58,7 +58,7 @@ describe("detectToolHallucinatedAbsence", () => {
   it("stays quiet on legitimate explanatory prose", () => {
     const v = detectToolHallucinatedAbsence({
       assistantText:
-        "I called build_workflow and it returned a draft. The next step is dry_run_workflow.",
+        "I called edit_workflow_patch and it returned a draft. The next step is dry_run_workflow.",
       palette: PALETTE,
     });
     expect(v.hallucinated).toBe(false);

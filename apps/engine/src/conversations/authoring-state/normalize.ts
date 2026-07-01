@@ -134,6 +134,17 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
       ? base.steps.filter((step): step is Record<string, unknown> => isRecord(step))
       : [],
     ...(isRecord(base.input_schema) ? { input_schema: base.input_schema } : {}),
+    // Literal example payload (NOT a schema) — carried verbatim so the
+    // sample-derived input-contract tier survives the normalize round-trip
+    // (draft mutation, undo, and hydration from a saved `dag`) all the way
+    // into the persisted WorkflowDef. Any JSON value is valid; only an
+    // object-with-keys sample yields a usable contract downstream, but the
+    // filtering lives in `resolveWorkflowInputContract`, not here — this
+    // stage must not drop a non-object sample or the field silently
+    // evaporates. `null` is treated as "unset" (nothing to derive from).
+    ...(base.input_schema_sample !== undefined && base.input_schema_sample !== null
+      ? { input_schema_sample: base.input_schema_sample }
+      : {}),
     ...(isRecord(base.output_schema) ? { output_schema: base.output_schema } : {}),
     ...(outputTransform ? { output_transform: outputTransform } : {}),
     ...(Array.isArray(base.edges)

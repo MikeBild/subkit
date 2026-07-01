@@ -53,11 +53,11 @@ describe("recordAuthoringGateBlock — principal_required code", () => {
 
   it("keeps principal_required and other codes on distinct label sets", () => {
     recordAuthoringGateBlock({ code: "principal_required", tool: "run_workflow" });
-    recordAuthoringGateBlock({ code: "workflow_cycle_detected", tool: "build_workflow" });
+    recordAuthoringGateBlock({ code: "workflow_cycle_detected", tool: "author_workflow" });
     expect(counterSample({ code: "principal_required", tool: "run_workflow" })).toBe(1);
-    expect(counterSample({ code: "workflow_cycle_detected", tool: "build_workflow" })).toBe(1);
+    expect(counterSample({ code: "workflow_cycle_detected", tool: "author_workflow" })).toBe(1);
     // No cross-contamination.
-    expect(counterSample({ code: "principal_required", tool: "build_workflow" })).toBeUndefined();
+    expect(counterSample({ code: "principal_required", tool: "author_workflow" })).toBeUndefined();
     expect(
       counterSample({ code: "workflow_cycle_detected", tool: "run_workflow" }),
     ).toBeUndefined();

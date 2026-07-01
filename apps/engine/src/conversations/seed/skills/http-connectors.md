@@ -3,7 +3,7 @@ slug: http-connectors
 scope: global
 title: HTTP Connectors
 description: Driver specifics for the HTTP connector — methods, auth, pagination, retries.
-activates_when: [{"kind":"tool","tool":"probe_connector"},{"kind":"tool_arg","tool":"propose_step","path":"step.kind","equals":"request"},{"kind":"connector_driver","driver":"http"}]
+activates_when: [{"kind":"tool","tool":"probe_connector"},{"kind":"tool_arg","tool":"edit_workflow_patch","path":"patches[*].value.kind","equals":"request"},{"kind":"connector_driver","driver":"http"}]
 side_effects: read
 idempotency: naturally
 maturity: stable
@@ -31,7 +31,7 @@ value. Specifically:
 - `{{ ... }}` — Mustache. Never substituted. The URL gets percent-
   encoded as `%7B%7B...%7D%7D` and the upstream API returns 404.
 - `${user.X}` / `${project.X}` / `${data.X}` — unknown kinds. Rejected
-  by `build_workflow` / `dry_run_workflow` with code
+  by `edit_workflow_patch` / `dry_run_workflow` with code
   `workflow_unsupported_placeholder`.
 - `${$loop.X}` / `${$item.X}` — JSONata bindings, not placeholders.
   Inside an HTTP string field write `${item.X}`.

@@ -53,8 +53,8 @@ describe("postgres-connectors.md · field coverage", () => {
 
 describe("workflow-authoring.md · field coverage", () => {
   const body = read("workflow-authoring.md");
-  test("mentions probe_connector before build_workflow recipe", () => {
-    expect(body).toMatch(/probe_connector.*build_workflow/s);
+  test("mentions probe_connector before author_workflow recipe", () => {
+    expect(body).toMatch(/probe_connector.*author_workflow/s);
   });
   test("documents output_transform_function (JS) alongside output_transform", () => {
     expect(body).toContain("output_transform_function");
@@ -93,7 +93,7 @@ describe("workflow-authoring.md · field coverage", () => {
     expect(body).toContain("find_connector");
     expect(body).toContain("find_skill");
   });
-  test("documents build_workflow persistence contract", () => {
+  test("documents the draft_only persistence contract", () => {
     expect(body).toContain('persistence: "draft_only"');
   });
   test("documents persisted scope_index survival", () => {
@@ -124,11 +124,11 @@ describe("workflow-authoring.md · field coverage", () => {
     // the body transform is JavaScript-only — sibling read via input.scope
     expect(body).toContain("input.scope.fetch_languages.data");
   });
-  test("documents author_workflow as the canonical one-shot authoring entry", () => {
+  test("documents author_workflow as the builder and edit_workflow_patch as the editor", () => {
     expect(body).toContain("`author_workflow`");
     expect(body).toMatch(/default to `author_workflow`/);
-    expect(body).toContain("authoring_stage_violation");
-    expect(body).toMatch(/REPAIR-STAGE tools/);
+    expect(body).toContain("`edit_workflow_patch`");
+    expect(body).toMatch(/THE editor/);
   });
   test("documents the verbatim JS-first transform contract", () => {
     expect(body).toMatch(/Transforms — JavaScript first/);

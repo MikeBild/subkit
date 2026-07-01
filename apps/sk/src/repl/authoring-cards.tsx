@@ -866,9 +866,9 @@ const ConnectorDraftCard: React.FC<CardProps> = memo(({ call }) => {
 });
 ConnectorDraftCard.displayName = "ConnectorDraftCard";
 
-// Workflow-draft card — fires on propose_step / build_workflow /
-// connect_steps / update_param. One-line "N step(s),
-// last step: <id> (<kind>)" plus validation errors when present.
+// Workflow-draft card — fires on validate_draft / inspect_workflow_draft.
+// One-line "N step(s), last step: <id> (<kind>)" plus validation errors
+// when present.
 const WorkflowDraftCard: React.FC<CardProps> = memo(({ call }) => {
   const tone = statusTone(call);
   const d = unwrapData(call);
@@ -1300,7 +1300,6 @@ const CHAT_MILESTONE_TOOLS = new Set([
   "save_workflow_draft",
   "start_connector_from_description",
   "start_connector_from_template",
-  "build_workflow",
   "author_workflow",
   "run_workflow",
   "diagnose_latest_execution",
@@ -1324,10 +1323,6 @@ const CHAT_MILESTONE_TOOLS = new Set([
 // because every meta-tool got its own in-flight card.
 const IN_FLIGHT_VISIBLE_TOOLS = new Set([
   ...CHAT_MILESTONE_TOOLS,
-  "propose_step",
-  "build_workflow",
-  "update_param",
-  "connect_steps",
   // Excluded as of 6.2.13 — informational reads, not edits. They run
   // silently; the assistant narrates any salient outcome via text:
   //   "validate_draft", "inspect_workflow_draft", "inspect_connector_draft"
@@ -1357,8 +1352,8 @@ const InFlightToolCard: React.FC<CardProps> = memo(({ call }) => {
   const args = asRecord(call.args) ?? {};
   // Pick a single salient field from the args that helps the user
   // diagnose what's happening RIGHT NOW. Each tool surfaces something
-  // different — preview shows step id, run shows env, propose_step
-  // shows step.id+kind, etc.
+  // different — preview shows step id, run shows env, a step-shaped
+  // arg shows step.id+kind, etc.
   const stepArg = asRecord(args.step) ?? null;
   const summary =
     typeof args.url === "string"
@@ -1633,14 +1628,6 @@ export function renderAuthoringCard(
       return <ConnectorDraftCard key={`acc-${call.id}`} call={call} />;
     case "author_workflow":
       return <AuthorWorkflowCard key={`acc-${call.id}`} call={call} />;
-    case "build_workflow": {
-      const intent = extractWorkflowIntent(call);
-      if (intent) return <IntentCard key={`acc-${call.id}`} intent={intent} />;
-      return <WorkflowDraftCard key={`acc-${call.id}`} call={call} />;
-    }
-    case "propose_step":
-    case "update_param":
-    case "connect_steps":
     case "validate_draft":
     case "inspect_workflow_draft":
       return <WorkflowDraftCard key={`acc-${call.id}`} call={call} />;

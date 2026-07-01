@@ -114,14 +114,14 @@ describe("paste-store: looksLikePaste", () => {
     expect(looksLikePaste("abc")).toBe(false);
   });
 
-  test("short chunks with a newline are treated as paste", () => {
+  test("short chunks with a newline are not treated as large paste", () => {
     expect(looksLikePaste("ab\n")).toBe(false);
-    expect(looksLikePaste("abc\n")).toBe(true);
+    expect(looksLikePaste("abc\n")).toBe(false);
   });
 
-  test("long single-line chunks are a paste", () => {
-    expect(looksLikePaste("x".repeat(16))).toBe(true);
-    expect(looksLikePaste("x".repeat(15))).toBe(false);
+  test("only chunks over the Codex large-paste threshold are paste refs", () => {
+    expect(looksLikePaste("x".repeat(1001))).toBe(true);
+    expect(looksLikePaste("x".repeat(1000))).toBe(false);
   });
 });
 

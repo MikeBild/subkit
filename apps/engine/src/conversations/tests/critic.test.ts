@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { shouldRunCritic } from "../authoring-critic/gating.ts";
+import { expandPriorFailuresFromToolCalls } from "../authoring-critic/prior-failures.ts";
 import {
   AuthoringCriticVerdictSchema,
   CriticRejectedDetailsSchema,
@@ -195,6 +196,54 @@ describe("shouldRunCritic — gating truth table (runtime config)", () => {
 
     // Reset the overlay so adjacent tests don't inherit it.
     await setConfigKey(["llm", "critic", "enabled"], false, { tenantId: tenantA });
+  });
+});
+
+describe("critic advisory ↔ prior_failures — post-pipeline contract", () => {
+  // The pipeline wires the critic back in: a rejection rides the
+  // SUCCESSFUL author_workflow result as a `critic_rejection` advisory
+  // (NOT an ok:false error_code — the draft was stashed + repaired). The
+  // conversation loop's expandPriorFailuresFromToolCalls turns that into
+  // prior_failures + flips the escalation signal.
+  test("a critic_rejection advisory on a successful author_workflow output feeds prior_failures + flips the signal", () => {
+    const row = {
+      tool: "author_workflow",
+      output: {
+        persistence: "draft_only",
+        next_step: "dry_run_workflow",
+        critic_rejection: {
+          repairs: ["Reorder steps so the transform sees data", "Add an idempotency_key"],
+          rationale: "two semantic issues",
+          gating_reason: "step_count",
+        },
+      },
+    };
+    const r = expandPriorFailuresFromToolCalls([row]);
+    expect(r.hadCriticReject).toBe(true);
+    expect(r.entries).toHaveLength(2);
+    expect(r.entries.every((e) => e.step_id === "critic")).toBe(true);
+    expect(r.entries[0]!.error).toContain("Reorder steps");
+  });
+
+  test("the retired ok:false error_code:critic_rejected shape no longer feeds the critic signal", () => {
+    // Migration guard: `build_workflow` (the only producer of the old
+    // ok:false {error_code:"critic_rejected"} envelope) is deleted, and
+    // the consumer branch was migrated to the advisory field. An old-shape
+    // row must NOT double-fire the signal — it now falls through to the
+    // generic ok:false handler (one row keyed by the tool name).
+    const row = {
+      tool: "author_workflow",
+      output: {
+        ok: false,
+        error_code: "critic_rejected",
+        message: "old shape",
+        details: { repairs: ["x"], rationale: "y", gating_reason: "step_count" },
+      },
+    };
+    const r = expandPriorFailuresFromToolCalls([row]);
+    expect(r.hadCriticReject).toBe(false);
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0]!.step_id).toBe("author_workflow");
   });
 });
 

@@ -32,10 +32,8 @@ export const SKILL_GATED_TOOLS: Readonly<Record<string, string>> = {
   approve_patch_candidate: "self-healing",
   // Workflow authoring + edit — the model must load workflow-authoring
   // (which now requires data-handling + the protocol skill upstream)
-  // before it can build/edit a workflow draft.
-  build_workflow: "workflow-authoring",
-  propose_step: "workflow-authoring",
-  update_param: "workflow-authoring",
+  // before it can build (author_workflow) or edit (edit_workflow_patch)
+  // a workflow draft.
   edit_workflow_patch: "workflow-authoring",
   inspect_workflow: "workflow-authoring",
   // Connector authoring — same pattern; load connector-creation-guidance

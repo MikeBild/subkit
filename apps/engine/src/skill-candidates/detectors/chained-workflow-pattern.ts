@@ -199,7 +199,7 @@ export async function detectChainedWorkflowPatterns(
       `Destination capabilities: ${toCaps}.`,
       "",
       aligned
-        ? "Capability alignment is clean (source can read, destination can write) — this is a textbook starting point for `propose_step` chains."
+        ? "Capability alignment is clean (source can read, destination can write) — this is a textbook starting point for `author_workflow` chains."
         : "Capability alignment is partial — the operator may need to refine the role classification before authoring a workflow.",
       "",
       `Evidence: ${agg.latest_evidence}`,

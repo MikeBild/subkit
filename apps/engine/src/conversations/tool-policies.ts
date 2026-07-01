@@ -402,7 +402,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   // declarations are added per-tool only after the auto-load skill
   // flow ships, so that legacy fixtures don't have to manually preload
   // skills before driving the loop.
-  propose_step: { defaultMode: "no_confirm" },
   propose_skill: { defaultMode: "no_confirm" },
   suggest_connector_templates: { defaultMode: "no_confirm" },
   start_connector_from_template: { defaultMode: "no_confirm" },
@@ -425,8 +424,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   validate_connector_draft: { defaultMode: "no_confirm" },
   inspect_workflow_draft: { defaultMode: "no_confirm" },
   inspect_authoring_context: { defaultMode: "no_confirm" },
-  update_param: { defaultMode: "no_confirm" },
-  connect_steps: { defaultMode: "no_confirm" },
   dry_run_step: { defaultMode: "no_confirm" },
   dry_run_transform: { defaultMode: "no_confirm" },
   dry_run_workflow: {
@@ -450,7 +447,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     },
   },
   author_workflow: { defaultMode: "no_confirm" },
-  build_workflow: { defaultMode: "no_confirm" },
+  edit_workflow_patch: { defaultMode: "no_confirm" },
   save_connector_draft: {
     // Confirm by default. When the input also carries an inline
     // `credential` (the masked `ask_user_form` answer), keep

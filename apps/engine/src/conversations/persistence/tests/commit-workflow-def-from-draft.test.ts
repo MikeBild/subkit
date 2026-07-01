@@ -6,6 +6,7 @@
 // gap shows up here, not in production logs.
 
 import { describe, expect, it } from "bun:test";
+import type { WorkflowDraftDocument } from "../../types.ts";
 import { workflowDefFromDraft } from "../commit-workflow.ts";
 
 describe("workflowDefFromDraft", () => {
@@ -94,6 +95,61 @@ describe("workflowDefFromDraft", () => {
       edges: [{ from: "a", to: "b" }],
     });
     expect((def as { edges: unknown }).edges).toEqual([{ from: "a", to: "b" }]);
+  });
+
+  it("single-source: projects any WorkflowDef schema field the draft carries", () => {
+    // The projection iterates the WorkflowDef schema field roster, not a
+    // hand-maintained spread. A schema field that the legacy spread never
+    // listed (e.g. `timeout_ms`, `validation_expression`) is carried through
+    // automatically the moment the draft holds it — so a persistable field
+    // can never silently drop on commit. Cast because these fields are not
+    // (yet) on the WorkflowDraftDocument surface; the projection reads them
+    // structurally.
+    const draft = {
+      name: "Schema-sourced",
+      slug: "schema-sourced",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+      timeout_ms: 90_000,
+      validation_expression: "orders.length > 0",
+    } as unknown as WorkflowDraftDocument;
+    const def = workflowDefFromDraft(draft) as unknown as Record<string, unknown>;
+    expect(def.timeout_ms).toBe(90_000);
+    expect(def.validation_expression).toBe("orders.length > 0");
+  });
+
+  it("projects input_schema_sample so the payload-derived tier reaches SAVED workflows (W4)", () => {
+    // `input_schema_sample` is a persisted WorkflowDef field (an internal
+    // literal example payload, NOT the public MCP tool input schema). The
+    // single-source projection must carry it from the draft into the
+    // committed def, or `resolveWorkflowInputContract` only ever sees it on
+    // in-flight drafts and a saved workflow silently under-requires keys the
+    // structural synth can't observe (the render-upload-slides
+    // {markdown, filename} case).
+    const def = workflowDefFromDraft({
+      name: "Render upload slides",
+      slug: "render-upload-slides",
+      steps: [
+        { id: "upload", kind: "request", method: "POST", url: "https://x.test/${input.markdown}" },
+      ],
+      input_schema_sample: { markdown: "# hi", filename: "deck.md" },
+    });
+    expect((def as { input_schema_sample: unknown }).input_schema_sample).toEqual({
+      markdown: "# hi",
+      filename: "deck.md",
+    });
+  });
+
+  it("does NOT project transient draft-only fields (e.g. goal)", () => {
+    // `goal` lives on the draft but is not a WorkflowDef schema field, so the
+    // single-source projection (keyed on the schema, not the draft) omits it.
+    const draft = {
+      name: "Has goal",
+      slug: "has-goal",
+      goal: "email me the daily report",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+    } as WorkflowDraftDocument;
+    const def = workflowDefFromDraft(draft) as unknown as Record<string, unknown>;
+    expect("goal" in def).toBe(false);
   });
 
   it("preserves derived_from_skill_id (including null)", () => {

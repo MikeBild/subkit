@@ -15,7 +15,7 @@ const GetInput = z.object({ id: z.string().uuid() }).openapi("GetExecutionToolIn
 export const listExecutionsTool: ConversationTool = {
   name: "list_executions",
   description:
-    "List recent executions for the tenant (newest first, paged — executions are an unbounded history). `total` is the exact count under the given filters; page with limit/offset while `has_more` is true.",
+    "List recent executions for the tenant (newest first, paged — executions are an unbounded history). When the user names a workflow, first resolve it with get_workflow/find_workflow and pass workflow_id; never treat the tenant-wide latest execution as evidence for a named workflow. `total` is the exact count under the given filters; page with limit/offset while `has_more` is true.",
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx, rawArgs) {

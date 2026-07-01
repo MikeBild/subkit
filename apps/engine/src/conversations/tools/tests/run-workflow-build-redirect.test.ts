@@ -49,7 +49,7 @@ function makeCtx(draft: any): ToolContext {
 }
 
 describe("run_workflow — authoring-intent redirect", () => {
-  test("no draft + no target → redirects to build_workflow, not save_workflow_draft", async () => {
+  test("no draft + no target → redirects to author_workflow, not save_workflow_draft", async () => {
     const result = await runWorkflowTool.execute(
       makeCtx({ workflow: { name: "", steps: [] } }),
       {},
@@ -61,11 +61,10 @@ describe("run_workflow — authoring-intent redirect", () => {
       message: string;
     };
     expect(data.error_code).toBe("workflow_not_persisted");
-    expect(data.next_best_actions).toContain("build_workflow");
-    expect(data.next_best_actions).toContain("propose_step");
+    expect(data.next_best_actions).toContain("author_workflow");
     // Must NOT steer to save_workflow_draft when there is nothing to save.
     expect(data.next_best_actions).not.toContain("save_workflow_draft");
-    expect(data.message.toLowerCase()).toContain("build_workflow");
+    expect(data.message.toLowerCase()).toContain("author_workflow");
   });
 
   test("draft WITH steps + no persisted target → redirects to commit, not build", async () => {
@@ -88,6 +87,6 @@ describe("run_workflow — authoring-intent redirect", () => {
     expect(data.error_code).toBe("workflow_not_persisted");
     expect(data.next_best_actions).toContain("save_workflow_draft");
     expect(data.next_best_actions).toContain("dry_run_workflow");
-    expect(data.next_best_actions).not.toContain("build_workflow");
+    expect(data.next_best_actions).not.toContain("author_workflow");
   });
 });

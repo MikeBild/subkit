@@ -26,6 +26,7 @@ import { denialDetails, denialHint } from "../rbac/denial.ts";
 import { type ConnectorAccessLevel, can, connectorAccessLevel } from "../rbac/evaluator.ts";
 import {
   ARGS_CONFIRM_ID_KEY,
+  DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
   isConfirmedRequest,
   policyDecide,
   SK_CONFIRM_ID_META_KEY,
@@ -397,15 +398,34 @@ export async function dispatchTool(
           try {
             const executor = entry.executor;
             if (isConversationExecutor(executor)) {
-              const ctx =
-                invocation.surface === "chat"
-                  ? deps.conversationCtx
-                  : (deps.buildMcpStubCtx?.(entry.descriptor.name) ?? deps.conversationCtx);
-              if (!ctx) {
-                throw new Error("dispatcher missing conversation ctx for tool execution");
+              // Draft-dependency guard. Off the chat surface the dispatcher
+              // runs conversation tools against the MCP stub context, whose
+              // `getDraft()` returns an EMPTY draft and whose `setDraft()` is
+              // a no-op (see mcp/adapter.ts#buildMcpStubCtx). A tool that
+              // needs the live conversation draft (`requires_draft`) would
+              // therefore operate on nothing and hand back a misleading
+              // success. Reject it with a terminal not_available_on_surface —
+              // pointing the caller at conversation_start — instead of the
+              // silent empty-draft no-op. Chat keeps the real conversationCtx,
+              // so this never fires there.
+              const usingStubCtx =
+                invocation.surface !== "chat" && deps.buildMcpStubCtx !== undefined;
+              if (usingStubCtx && entry.descriptor.requires_draft) {
+                envelope = {
+                  status: "not_available_on_surface",
+                  reason: DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
+                };
+              } else {
+                const ctx =
+                  invocation.surface === "chat"
+                    ? deps.conversationCtx
+                    : (deps.buildMcpStubCtx?.(entry.descriptor.name) ?? deps.conversationCtx);
+                if (!ctx) {
+                  throw new Error("dispatcher missing conversation ctx for tool execution");
+                }
+                const result = await executor.execute(ctx, invocation.args);
+                envelope = normalizeConversationResult(result);
               }
-              const result = await executor.execute(ctx, invocation.args);
-              envelope = normalizeConversationResult(result);
             } else if (isStaticExecutor(executor)) {
               envelope = await executor.invoke(
                 { db: deps.db, principal: deps.principal },
@@ -414,7 +434,12 @@ export async function dispatchTool(
             } else {
               throw new Error("unknown executor kind in registry entry");
             }
-            decisionLabel = envelope.status === "ok" ? "ok" : "error";
+            decisionLabel =
+              envelope.status === "ok"
+                ? "ok"
+                : envelope.status === "not_available_on_surface"
+                  ? "not_available_on_surface"
+                  : "error";
           } catch (err) {
             envelope = {
               status: "error",

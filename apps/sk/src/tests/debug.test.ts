@@ -93,6 +93,31 @@ describe("debug logger", () => {
     expect(raw).toContain("***REDACTED:jwt***");
   });
 
+  it("compacts large file and workflow payload strings before writing", async () => {
+    process.env.SK_DEBUG_FILE = logPath;
+    const dbg = await import("../debug.ts");
+    const markdown = `# Slides\n\n${"content line\n".repeat(400)}`;
+
+    dbg.debugLog("dialog.turn_event", {
+      event: {
+        kind: "elicit_request",
+        input: {
+          commit_intent: {
+            kind: "run_workflow",
+            payload: { input_partial: { markdown } },
+          },
+        },
+      },
+    });
+
+    const raw = fs.readFileSync(logPath, "utf8");
+    expect(raw).not.toContain("content line\\ncontent line\\ncontent line");
+    const obj = JSON.parse(raw);
+    expect(obj.event.input.commit_intent.payload.input_partial.markdown).toMatch(
+      /^\[truncated \d+ chars sha256=[a-f0-9]{16}\]$/,
+    );
+  });
+
   it("rotates the log file when it exceeds 2 MB", async () => {
     process.env.SK_DEBUG_FILE = logPath;
     const dbg = await import("../debug.ts");

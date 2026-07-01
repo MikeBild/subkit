@@ -1,8 +1,7 @@
 // Per-profile slash-command frequency tracker.
 //
-// Drives the autocomplete sort in `slash.ts` — Fuse fuzzy score plus
-// `log(usage_count + 1)`, so the commands an operator runs most often
-// float to the top of the picker. Counts persist to
+// Drives the empty-query autocomplete sort in `slash.ts`; commands an
+// operator runs most often float to the top of the picker. Counts persist to
 // `~/.sk/prefs.json` and are atomically updated (temp-file + rename)
 // so concurrent sk processes never corrupt the file.
 //
@@ -95,7 +94,7 @@ export function getAllUsageCounts(): Record<string, number> {
   return { ...readPrefs().counts };
 }
 
-/** Frequency bias term: `log(usage_count + 1)`. Caller blends with Fuse score. */
+/** Frequency bias term: `log(usage_count + 1)`. */
 export function frequencyBias(commandName: string): number {
   return Math.log(getUsageCount(commandName) + 1);
 }

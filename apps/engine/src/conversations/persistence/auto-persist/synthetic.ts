@@ -103,6 +103,10 @@ export function intentToolName(kind: CommitIntent["kind"]): string {
       return "run_workflow";
     case "create_api_key":
       return "create_api_key";
+    case "apply_workflow_patch":
+      // D3: the partial-accept confirm's commit_intent maps to the tool
+      // whose apply core the dispatcher re-runs on the accepted subset.
+      return "edit_workflow_patch";
     case "update_workflow_metadata":
       return "update_workflow";
   }

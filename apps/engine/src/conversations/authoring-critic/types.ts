@@ -9,8 +9,10 @@
 // the next conversation turn picks up via `prior_failures`.
 //
 // Invariant: the verdict NEVER mutates the draft. A failed verdict
-// makes the build tool return `ok:false` with the repair list; the LLM
-// re-authors on the next turn.
+// feeds its repairs back into `runAuthoringPipeline`'s bounded
+// generation-repair loop (one more grounded regenerate) and rides the
+// SUCCESSFUL `author_workflow` result as a `critic_rejection` advisory
+// so the next conversation turn escalates via `prior_failures`.
 //
 // Plain zod (not `@hono/zod-openapi`) — these schemas are internal:
 // they describe an LLM-boundary contract and a tool-output JSON shape,
@@ -60,9 +62,10 @@ export const AuthoringCriticVerdictSchema = z.preprocess(
 export type AuthoringCriticVerdict = z.infer<typeof AuthoringCriticVerdictSchema>;
 
 /**
- * Shape of `details` on the `ok:false {error_code:"critic_rejected"}`
- * tool result. Single source of truth: build_workflow produces with
- * this shape, the conversation loop parses it for `prior_failures`.
+ * Shape of the `critic_rejection` advisory on a SUCCESSFUL
+ * `author_workflow` tool result. Single source of truth:
+ * `runAuthoringPipeline` produces this shape, the conversation loop's
+ * `expandPriorFailuresFromToolCalls` parses it for `prior_failures`.
  * Bounds mirror `AuthoringCriticVerdictSchema` so the producer/
  * consumer contracts cannot drift apart.
  */

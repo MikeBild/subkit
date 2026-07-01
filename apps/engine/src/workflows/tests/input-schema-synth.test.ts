@@ -3,7 +3,7 @@
 // the test fixture, not a missed template interpolation.
 
 import { describe, expect, it } from "bun:test";
-import { synthesizeInputSchema } from "../input-schema-synth.ts";
+import { resolveWorkflowInputContract, synthesizeInputSchema } from "../input-schema-synth.ts";
 import type { WorkflowDef } from "../types.ts";
 
 describe("synthesizeInputSchema", () => {
@@ -154,5 +154,113 @@ describe("synthesizeInputSchema", () => {
       ],
     };
     expect(synthesizeInputSchema(dag)).toBeNull();
+  });
+});
+
+describe("resolveWorkflowInputContract — precedence", () => {
+  // A DAG whose only input signal is an `input_schema_sample`: the
+  // structural synth would otherwise miss the `filename` key because the
+  // body only interpolates `markdown` (regression this tier closes).
+  const sampleOnlyDag = (): WorkflowDef =>
+    ({
+      name: "sample-only",
+      input_schema_sample: { markdown: "# hi", filename: "slides.md", count: 3 },
+      steps: [
+        {
+          kind: "request",
+          id: "upload",
+          method: "POST",
+          url: "https://example.test/upload",
+          body: { content: "${input.markdown}" },
+        },
+      ],
+    }) as unknown as WorkflowDef;
+
+  it("uses the sample-derived schema (with required) when no input_schema is declared", () => {
+    const contract = resolveWorkflowInputContract(sampleOnlyDag());
+    expect(contract).not.toBeNull();
+    // The winning tier is reported so inspect_workflow can tell the model
+    // the contract is a real sampled shape, not a structural guess.
+    expect(contract?.source).toBe("sample");
+    // Sample keys become properties AND required — including `filename`
+    // and `count`, which the structural placeholder scan never sees.
+    expect(contract?.properties.sort()).toEqual(["count", "filename", "markdown"]);
+    expect(contract?.required.sort()).toEqual(["count", "filename", "markdown"]);
+    // Scalar types come from the concrete sample values.
+    const props = contract?.schema.properties as Record<string, { type: string } | undefined>;
+    expect(props.markdown?.type).toBe("string");
+    expect(props.filename?.type).toBe("string");
+    expect(props.count?.type).toBe("number");
+  });
+
+  it("declared input_schema still wins over the sample", () => {
+    const dag = {
+      ...sampleOnlyDag(),
+      input_schema: {
+        type: "object",
+        properties: { markdown: { type: "string" } },
+        required: ["markdown"],
+      },
+    } as unknown as WorkflowDef;
+    const contract = resolveWorkflowInputContract(dag);
+    expect(contract).not.toBeNull();
+    expect(contract?.source).toBe("declared");
+    // Only the declared key — the sample's `filename`/`count` are ignored.
+    expect(contract?.properties).toEqual(["markdown"]);
+    expect(contract?.required).toEqual(["markdown"]);
+  });
+
+  it("falls through to structural synth when there is no sample and no declared schema", () => {
+    const dag: WorkflowDef = {
+      name: "synth-only",
+      steps: [
+        {
+          kind: "request",
+          id: "fetch",
+          method: "GET",
+          url: "https://example.test/${input.city}",
+        },
+      ],
+    };
+    const contract = resolveWorkflowInputContract(dag);
+    expect(contract).not.toBeNull();
+    expect(contract?.source).toBe("synth");
+    // Structural synth: placeholder-derived property, additionalProperties true,
+    // no schema-level `required` so the contract requires every property.
+    expect(contract?.properties).toEqual(["city"]);
+    expect(contract?.required).toEqual(["city"]);
+    expect(contract?.schema.additionalProperties).toBe(true);
+  });
+
+  it("ignores a scalar/empty-object sample and falls back to structural synth", () => {
+    // A non-object sample carries no named keys → not a usable contract;
+    // the structural synth must still drive the result.
+    const dag = {
+      name: "scalar-sample",
+      input_schema_sample: "just a string",
+      steps: [
+        {
+          kind: "request",
+          id: "fetch",
+          method: "GET",
+          url: "https://example.test/${input.city}",
+        },
+      ],
+    } as unknown as WorkflowDef;
+    const contract = resolveWorkflowInputContract(dag);
+    // A scalar sample cannot win the `sample` tier — the contract falls
+    // through to the structural synth.
+    expect(contract?.source).toBe("synth");
+    expect(contract?.properties).toEqual(["city"]);
+    expect(contract?.schema.additionalProperties).toBe(true);
+  });
+
+  it("returns null when there is neither a usable sample nor any input reference", () => {
+    const dag = {
+      name: "empty-sample",
+      input_schema_sample: {},
+      steps: [{ kind: "request", id: "fetch", method: "GET", url: "https://example.test/ping" }],
+    } as unknown as WorkflowDef;
+    expect(resolveWorkflowInputContract(dag)).toBeNull();
   });
 });

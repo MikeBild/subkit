@@ -8,10 +8,13 @@
 // the discovery logic is verified without waiting out the 30s deadline.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { executions } from "../../db/schema/index.ts";
+import { conversations, executions, workflows } from "../../db/schema/index.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { type McpTestSuite, startMcpTestSuite } from "../tests/setup.ts";
-import { findBackgroundExecutionId } from "./run-workflow-async-ack.ts";
+import {
+  findBackgroundExecutionId,
+  resolveConversationBoundWorkflowId,
+} from "./run-workflow-async-ack.ts";
 
 let suite: McpTestSuite;
 
@@ -116,5 +119,106 @@ describe("findBackgroundExecutionId", () => {
       since: FROZEN_NOW,
     });
     expect(found).toBeNull();
+  });
+
+  test("resolves a workflow whose published version was rotated out mid-run", async () => {
+    // A workflow the tool ran but whose current_version_id is now null (a
+    // publish rotate raced the run). The ack MUST still resolve it — a
+    // `require_published` filter here would orphan the live run into
+    // engine_busy, the exact failure the poll handle prevents.
+    const [wf] = await suite.http.db
+      .insert(workflows)
+      .values({
+        tenant_id: suite.http.tenantId,
+        slug: "async-ack-unpublished",
+        name: "Async Ack Unpublished",
+        lifecycle: "active",
+        // current_version_id intentionally left null
+      })
+      .returning();
+    if (!wf) throw new Error("seed workflow failed");
+    const since = FROZEN_NOW;
+    const exec = await seedRunningExecution(wf.id, new Date(since + 10));
+
+    const found = await findBackgroundExecutionId({
+      db: suite.http.db,
+      tenant_id: suite.http.tenantId,
+      workflowRef: wf.slug,
+      since,
+    });
+    expect(found).toBe(exec);
+  });
+});
+
+describe("resolveConversationBoundWorkflowId", () => {
+  test("returns the bound target of the caller's most-recent non-abandoned conversation", async () => {
+    const wfA = await suite.seedWorkflow({ slug: "bound-a", name: "Bound A", steps: [] });
+    const wfB = await suite.seedWorkflow({ slug: "bound-b", name: "Bound B", steps: [] });
+    // Older conversation bound to A, newer bound to B — the newer must win.
+    await suite.http.db.insert(conversations).values({
+      tenant_id: suite.http.tenantId,
+      owner_id: suite.http.userId,
+      status: "active",
+      target_workflow_id: wfA.id,
+      updated_at: new Date(FROZEN_NOW),
+    });
+    await suite.http.db.insert(conversations).values({
+      tenant_id: suite.http.tenantId,
+      owner_id: suite.http.userId,
+      status: "awaiting_input",
+      target_workflow_id: wfB.id,
+      updated_at: new Date(FROZEN_NOW + 10_000),
+    });
+
+    const bound = await resolveConversationBoundWorkflowId({
+      db: suite.http.db,
+      tenant_id: suite.http.tenantId,
+      owner_id: suite.http.userId,
+    });
+    expect(bound).toBe(wfB.id);
+  });
+
+  test("ignores abandoned conversations and rows with no bound target", async () => {
+    const owner = "00000000-0000-4000-8000-000000000182";
+    const wf = await suite.seedWorkflow({ slug: "bound-c", name: "Bound C", steps: [] });
+    // Most-recent is abandoned (must be skipped); an active one with no
+    // target (must be skipped); the older active+bound one must win.
+    await suite.http.db.insert(conversations).values({
+      tenant_id: suite.http.tenantId,
+      owner_id: owner,
+      status: "active",
+      target_workflow_id: wf.id,
+      updated_at: new Date(FROZEN_NOW),
+    });
+    await suite.http.db.insert(conversations).values({
+      tenant_id: suite.http.tenantId,
+      owner_id: owner,
+      status: "active",
+      target_workflow_id: null,
+      updated_at: new Date(FROZEN_NOW + 5_000),
+    });
+    await suite.http.db.insert(conversations).values({
+      tenant_id: suite.http.tenantId,
+      owner_id: owner,
+      status: "abandoned",
+      target_workflow_id: wf.id,
+      updated_at: new Date(FROZEN_NOW + 10_000),
+    });
+
+    const bound = await resolveConversationBoundWorkflowId({
+      db: suite.http.db,
+      tenant_id: suite.http.tenantId,
+      owner_id: owner,
+    });
+    expect(bound).toBe(wf.id);
+  });
+
+  test("returns null when the caller has no bound conversation", async () => {
+    const bound = await resolveConversationBoundWorkflowId({
+      db: suite.http.db,
+      tenant_id: suite.http.tenantId,
+      owner_id: "00000000-0000-4000-8000-000000000220",
+    });
+    expect(bound).toBeNull();
   });
 });

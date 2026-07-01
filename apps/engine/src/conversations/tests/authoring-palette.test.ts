@@ -56,7 +56,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
     expect(visible).toContain("delete_connector"); // always-visible cleanup
     expect(visible).not.toContain("save_connector_draft");
     expect(visible).not.toContain("save_workflow_draft");
-    expect(visible).not.toContain("build_workflow");
+    expect(visible).not.toContain("edit_workflow_patch");
     expect(visible).not.toContain("start_connector_from_description");
   });
 
@@ -88,7 +88,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
     // just because the draft is incomplete. Calling it surfaces the
     // structured envelope from state-gate.ts.
     expect(visible).toContain("save_connector_draft");
-    expect(visible).not.toContain("build_workflow"); // workflow-skill not loaded
+    expect(visible).not.toContain("edit_workflow_patch"); // workflow-skill not loaded
     expect(visible).not.toContain("create_api_key");
   });
 
@@ -151,7 +151,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
       (tool) => tool.name,
     );
     expect(visible).toContain("author_workflow");
-    expect(visible).toContain("build_workflow");
+    expect(visible).toContain("edit_workflow_patch");
     expect(visible).toContain("inspect_workflow_draft");
     expect(visible).toContain("authenticate_oauth");
     // Tools never disappear once a skill is loaded.
@@ -190,7 +190,7 @@ describe("authoring tool palette — skill-gated visibility", () => {
     );
     expect(visible).toContain("run_workflow");
     expect(visible).toContain("save_workflow_draft");
-    expect(visible).toContain("build_workflow");
+    expect(visible).toContain("edit_workflow_patch");
     expect(visible).toContain("diagnose_latest_execution");
     expect(visible).toContain("list_connectors");
   });

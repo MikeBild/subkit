@@ -364,10 +364,10 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
           {
             type: "tool_call_start",
             call_id: "t1",
-            tool: "propose_step",
+            tool: "author_workflow",
             input_partial: { kind: "http" },
           },
-          { type: "tool_result", call_id: "t1", tool: "propose_step", output: { ok: true } },
+          { type: "tool_result", call_id: "t1", tool: "author_workflow", output: { ok: true } },
           { type: "completed", status: "active" },
         ),
         conversationId: "c-tool-1",
@@ -379,7 +379,7 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     // The first half: the turn should land in the *non-inspect* render —
     // ⎿ marker stays absent. Wait for the tool name to appear (proves
     // the turn was processed end-to-end) before asserting on the marker.
-    await waitForFrame(instance, (f) => f.includes("propose_step"));
+    await waitForFrame(instance, (f) => f.includes("author_workflow"));
     let frame = instance.lastFrame() ?? "";
     expect(frame).not.toMatch(/⎿/);
     // Second half: toggle inspect view (Ctrl-O) and wait for the
@@ -389,7 +389,7 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     await waitForFrame(instance, (f) => /⎿/.test(f));
     frame = instance.lastFrame() ?? "";
     expect(frame).toMatch(/⎿/);
-    expect(frame).toContain("propose_step");
+    expect(frame).toContain("author_workflow");
     instance.unmount();
   });
 
@@ -460,7 +460,7 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
           {
             type: "tool_call_start",
             call_id: "call-2",
-            tool: "build_workflow",
+            tool: "author_workflow",
           },
           { type: "completed", status: "active" },
         ),
@@ -634,7 +634,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
 // ---------- Journey 5 — Slash autocomplete + /help + unknown command ----------
 
 describe("ink-app: journey 05 — slash autocomplete and /help", () => {
-  test("AC1: typing `/m` shows fuzzy suggestions in the footer", async () => {
+  test("AC1: typing `/m` shows prefix suggestions in the footer", async () => {
     const instance = renderApp();
     await tick();
     await type(instance, "/m");
@@ -672,41 +672,74 @@ describe("ink-app: journey 05 — slash autocomplete and /help", () => {
     instance.unmount();
   });
 
-  test("AC3b: absolute-path-shaped input hints /knowledge and /attach instead of unknown-slash", async () => {
-    const instance = renderApp();
+  test("AC3b: absolute-path-shaped input submits as chat text, not a missing file slash", async () => {
+    const prompts: string[] = [];
+    const instance = renderApp({
+      onPrompt: async (text) => {
+        prompts.push(text);
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-0000-0000-0000-000000000000",
+        };
+      },
+    });
     await tick();
     await type(instance, "/Users/me/file.md");
     await pressEnter(instance);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("file path");
-    expect(frame).toContain("/knowledge");
-    expect(frame).toContain("/attach");
+    expect(prompts[0]).toBe("/Users/me/file.md");
+    expect(frame).not.toContain("/attach");
     expect(frame).not.toContain("unknown slash");
     instance.unmount();
   });
 
-  test("AC3c: ~/path-shaped input also hints /knowledge and /attach", async () => {
+  test("AC3c: ~/path-shaped input falls through as chat text", async () => {
     const instance = renderApp();
     await tick();
     await type(instance, "~/notes/file.md");
     await pressEnter(instance);
     const frame = instance.lastFrame() ?? "";
-    // `~/...` doesn't start with `/`, so falls through to chat — only
-    // truly slash-prefixed inputs hit the unknown-slash branch. Verify
-    // we're matching the right user intent: when they DO prefix it
-    // with `/` (a real reported mistake), the hint fires.
     expect(frame).not.toContain("unknown slash");
     instance.unmount();
   });
 
-  test("AC3d: real reported case — pasted local path with .md extension hints /knowledge", async () => {
-    const instance = renderApp();
+  test("AC3d: real reported case — pasted local path with .md extension submits as chat text", async () => {
+    const prompts: string[] = [];
+    const instance = renderApp({
+      onPrompt: async (text) => {
+        prompts.push(text);
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-0000-0000-0000-000000000000",
+        };
+      },
+    });
     await tick();
     await type(instance, "/Users/mikebild/Projects/AI/ocpp.md/docs/OCPP-2.0.1.md");
     await pressEnter(instance);
     const frame = instance.lastFrame() ?? "";
-    expect(frame).toContain("/knowledge");
-    expect(frame).toContain("/attach");
+    expect(prompts[0]).toBe("/Users/mikebild/Projects/AI/ocpp.md/docs/OCPP-2.0.1.md");
+    expect(frame).not.toContain("/attach");
+    expect(frame).not.toContain("unknown slash");
+    instance.unmount();
+  });
+
+  test("AC3e: root-level absolute file-looking path is not treated as a slash command", async () => {
+    const prompts: string[] = [];
+    const instance = renderApp({
+      onPrompt: async (text) => {
+        prompts.push(text);
+        return {
+          events: framesOf({ type: "completed", status: "active" }),
+          conversationId: "c-0000-0000-0000-000000000000",
+        };
+      },
+    });
+    await tick();
+    await type(instance, "/report.md");
+    await pressEnter(instance);
+    const frame = instance.lastFrame() ?? "";
+    expect(prompts[0]).toBe("/report.md");
     expect(frame).not.toContain("unknown slash");
     instance.unmount();
   });

@@ -9,11 +9,10 @@
 //   2. probe_connector GET /v1/customers against a Bun.serve mock →
 //      verify the tool substituted the credential into the outbound
 //      Authorization header and returned a truncated envelope.
-//   3. build_workflow with a ${cred.*}-bearing request step whose
-//      response will contain a canary PII email →
-//      (a) passes placeholder-reference integrity,
-//      (b) passes the static verifier,
-//      (c) persists as a draft.
+//   3. edit_workflow_patch assembles a ${cred.*}-bearing request step
+//      whose response will contain a canary PII email →
+//      (a) passes schema + placeholder-form validation,
+//      (b) persists to the conversation draft.
 //   4. Default DLP filters applied to the sample response mask the
 //      canary email so the canary value cannot survive downstream.
 //   5. Audit trail contains conversation.probe_connector with only
@@ -31,7 +30,7 @@ import { auditLog, connectors, conversations, tenants } from "../../db/schema/in
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { applyDlpFilters, DEFAULT_DLP_RULES } from "../../execution/response-filters.ts";
-import { buildWorkflowTool } from "../tools/build-workflow.ts";
+import { editWorkflowPatchTool } from "../tools/edit-workflow-patch.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { probeConnectorTool, resetProbeRateLimit } from "../tools/probe-connector.ts";
 
@@ -139,43 +138,48 @@ describe("convo-quality integration chain", () => {
     expect(seenAuth).toContain(`Bearer ${CANARY_TOKEN}`);
   });
 
-  test("build_workflow composes a step that references the placeholder + passes verifier", async () => {
+  test("edit_workflow_patch composes a step that references the placeholder + passes validation", async () => {
     const toolCtx = makeToolContext();
     let persistedDraft: unknown = null;
     toolCtx.setDraft = async (next) => {
       persistedDraft = next;
     };
-    const result = await buildWorkflowTool.execute(toolCtx, {
-      name: "Daily Stripe customers",
-      slug: "daily-stripe-customers",
-      steps: [
+    const result = await editWorkflowPatchTool.execute(toolCtx, {
+      patches: [
+        { op: "replace", path: "/name", value: "Daily Stripe customers" },
+        { op: "add", path: "/slug", value: "daily-stripe-customers" },
         {
-          id: "fetch",
-          kind: "request",
-          method: "GET",
-          url: `\${connector.stripe_mock.base_url}/v1/customers`,
-          headers: { Authorization: `Bearer \${cred.stripe_mock.token}` },
-          query: { limit: "10" },
-          onError: { mode: "retry", max_retries: 3 },
+          op: "add",
+          path: "/steps/-",
+          value: {
+            id: "fetch",
+            kind: "request",
+            method: "GET",
+            url: `\${connector.stripe_mock.base_url}/v1/customers`,
+            headers: { Authorization: `Bearer \${cred.stripe_mock.token}` },
+            query: { limit: "10" },
+            onError: { mode: "retry", max_retries: 3 },
+          },
         },
         {
-          id: "shape",
-          kind: "transform",
-          expression: "return input.scope.fetch.data.map((r) => ({ id: r.id, email: r.email }));",
+          op: "add",
+          path: "/steps/-",
+          value: {
+            id: "shape",
+            kind: "transform",
+            expression: "return input.scope.fetch.data.map((r) => ({ id: r.id, email: r.email }));",
+          },
         },
       ],
-      environment: "dev",
     });
     expect(result.ok).toBe(true);
-    const data = result.data as {
-      persistence: string;
-      draft: { slug: string; step_count: number };
-      warnings: string[];
-    };
-    expect(data.persistence).toBe("draft_only");
-    expect(data.draft.slug).toBe("daily-stripe-customers");
-    expect(data.draft.step_count).toBe(2);
-    expect(persistedDraft).not.toBeNull();
+    const data = result.data as { steps: number; last_step_id: string };
+    expect(data.steps).toBe(2);
+    expect(data.last_step_id).toBe("shape");
+    const wf = (persistedDraft as { workflow: { slug: string; steps: unknown[] } } | null)
+      ?.workflow;
+    expect(wf?.slug).toBe("daily-stripe-customers");
+    expect(wf?.steps).toHaveLength(2);
   });
 
   test("DLP filters mask the canary email before the LLM sees step output", () => {

@@ -14,13 +14,13 @@ describe("buildCapAlternatives", () => {
   });
 
   it("returns empty string when the recorded error codes are unknown", () => {
-    const errors = new Map([["propose_step", "some_unknown_code|boom"]]);
+    const errors = new Map([["edit_workflow_patch", "some_unknown_code|boom"]]);
     expect(buildCapAlternatives(errors)).toBe("");
   });
 
   it("emits the concrete recovery hint for transform_authoring_requires_inspect", () => {
     const errors = new Map([
-      ["update_param", "transform_authoring_requires_inspect|must inspect first"],
+      ["edit_workflow_patch", "transform_authoring_requires_inspect|must inspect first"],
     ]);
     const out = buildCapAlternatives(errors);
     expect(out).toContain("transform_authoring_requires_inspect");
@@ -29,8 +29,8 @@ describe("buildCapAlternatives", () => {
 
   it("dedupes by error code when multiple tools share the same code", () => {
     const errors = new Map([
-      ["propose_step", "step_invalid|foo"],
-      ["update_param", "step_invalid|bar"],
+      ["edit_workflow_patch", "step_invalid|foo"],
+      ["author_workflow", "step_invalid|bar"],
     ]);
     const out = buildCapAlternatives(errors);
     // Only one bullet for the single unique error code.
@@ -50,7 +50,7 @@ describe("buildCapAlternatives", () => {
   });
 
   it("never trips on a malformed shape string (no '|' separator)", () => {
-    const errors = new Map([["propose_step", "raw_string_no_pipe"]]);
+    const errors = new Map([["edit_workflow_patch", "raw_string_no_pipe"]]);
     // Whatever happens, the function must not throw and must return a string.
     expect(typeof buildCapAlternatives(errors)).toBe("string");
   });
