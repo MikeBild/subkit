@@ -16,7 +16,7 @@
 //     every cosmetic edit and pay back rarely.
 
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -49,6 +49,11 @@ describe("subsystem-count parity", () => {
   });
 
   test(".claude/CLAUDE.md count matches the filesystem", () => {
+    // `.claude/` is a gitignored, machine-local bootstrap dir (see the repo
+    // CLAUDE.md) — absent in CI and fresh clones. Skip the parity check when
+    // the file is not present; the committed AGENTS.md checks below are the
+    // real gate. When a contributor DOES have the local shim, still verify it.
+    if (!existsSync(join(REPO, ".claude/CLAUDE.md"))) return;
     const actual = countEngineSubsystemDirs();
     const claimed = readSubsystemCount(".claude/CLAUDE.md", ".claude/CLAUDE.md");
     expect(claimed).toBe(actual);
