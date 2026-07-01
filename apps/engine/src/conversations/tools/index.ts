@@ -326,22 +326,39 @@ export interface ConversationTool {
   /**
    * Declarative RBAC gate, enforced centrally in `wrapOne` BEFORE the tool's
    * `execute` runs. Replaces the per-tool `resolveConversationPrincipal(ctx) +
-   * can(...)` boilerplate that ~18 write tools hand-rolled. When present, the
+   * can(...)` boilerplate every write tool hand-rolled. When present, the
    * wrapper resolves the conversation principal and calls `can()`; a deny
-   * returns a `permission_denied` envelope (and a POLICY_DENIED audit row) and
-   * the tool never executes. A null principal (system/unauthenticated) is
-   * allowed, matching the inline helpers' behaviour.
+   * writes a `policy.denied` audit row and returns a `permission_denied`
+   * envelope, and the tool never executes. A null principal
+   * (system/unauthenticated) is allowed, matching the inline helpers.
    *
-   * `resourceIdArg` names the tool-arg holding the resource id (e.g. `"id"`,
-   * `"connector_id"`); omit it for create-style tools that gate on the type
-   * with a `"*"` resource. Business-logic gates that are conditional on the
-   * args (e.g. self-vs-other reads) must stay inline — this is for blanket
-   * gates only.
+   * Resource id resolution precedence:
+   *   1. `resolveResourceId(ctx, rawArgs)` when present — for tools whose id is
+   *      NOT a raw arg (slug→UUID, id-or-slug, two-phase). Returning `null`
+   *      DEFERS to the tool (e.g. slug not found) so it can emit its own
+   *      not_found rather than a confusing permission_denied. Gating must use
+   *      the resolved UUID: `can()` matches resource grants by exact id, so a
+   *      slug would produce a wrong decision.
+   *   2. else `rawArgs[resourceIdArg]` — the simple direct-arg case.
+   *   3. else `"*"` — create-style tools that gate on the type only.
+   *
+   * `denyResult` lets a tool keep its own error-envelope contract (e.g.
+   * `call_connector`'s nested `{error:{code,message}}` or the top-level
+   * `error_code/message` form); omit it for the canonical
+   * `{ ok:false, data:{ error:"permission_denied", permission, reason } }`.
+   *
+   * Business-logic gates conditional on args (self-vs-other reads) must stay
+   * inline — this is for blanket gates only.
    */
   readonly permission?: {
     readonly action: string;
     readonly resourceType: string;
     readonly resourceIdArg?: string;
+    readonly resolveResourceId?: (
+      ctx: ToolContext,
+      rawArgs: Record<string, unknown>,
+    ) => Promise<string | null>;
+    readonly denyResult?: (permission: string, reason: string) => ToolResult;
   };
 }
 

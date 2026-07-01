@@ -24,6 +24,7 @@ import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import { callConnectorTool } from "./call-connector.ts";
 import type { ToolContext } from "./index.ts";
+import { checkToolPermission } from "./permission-gate.ts";
 
 interface CapturedReq {
   method: string;
@@ -356,11 +357,18 @@ describe("call_connector — error envelopes", () => {
 
   test("RBAC: bare-role user without connector:read is denied", async () => {
     const { connector_id } = await seedHttpConnector({ slug: "call_rbac" });
-    const result = await callConnectorTool.execute(makeToolContext(unprivilegedUserId), {
+    // RBAC is enforced centrally by the permission gate (wrapOne), not inside
+    // execute() — drive the same path the wrapper does: checkToolPermission
+    // then the tool's own denyResult envelope.
+    const permission = callConnectorTool.permission!;
+    const check = await checkToolPermission(makeToolContext(unprivilegedUserId), permission, {
       connector_id,
       method: "GET",
       path: "/v2/droplets",
     });
+    expect(check.allow).toBe(false);
+    if (check.allow) throw new Error("expected the bare-role user to be denied");
+    const result = permission.denyResult!(check.permission, check.reason);
     expect(result.ok).toBe(false);
     const data = result.data as { error: { code: string }; permission?: string };
     expect(data.error.code).toBe("permission_denied");

@@ -16,25 +16,51 @@
 // Invoked from `http/server.ts` at boot. Idempotent — safe to call
 // multiple times (tests).
 
-import { LegacyOpenTelemetry } from "@ai-sdk/otel";
+import { OpenTelemetry } from "@ai-sdk/otel";
 import { registerTelemetry } from "ai";
-import { LangfuseExporter } from "langfuse-vercel";
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 
 // AI SDK 7 no longer auto-emits OTel spans from `telemetry.isEnabled: true`
 // alone (OpenTelemetry moved to @ai-sdk/otel). A telemetry integration must be
 // registered globally or NO spans reach any exporter — Langfuse/OTLP go dark.
-// `LegacyOpenTelemetry` reproduces the AI SDK 6 span shape (ai.prompt.*,
-// ai.usage.*, gen_ai.usage.*, ai.model.provider, ai.toolCall.*), which is
-// exactly what langfuse-vercel@3.x reads for token/cost/generation extraction.
+//
+// We use the v7-native `OpenTelemetry` integration (GenAI semantic conventions:
+// gen_ai.usage.*, gen_ai.request.model, gen_ai.prompt/completion, ai.usage.*),
+// which Langfuse's OTLP ingestion reads directly, and export over OTLP to
+// Langfuse's native `/api/public/otel` endpoint — retiring the v6-locked
+// `langfuse-vercel` exporter. `enrichSpan` maps our per-call runtimeContext
+// ({tenant_id, conversation_id, provider, model}) into the `langfuse.*`
+// attribute namespace so tenant/conversation trace grouping is preserved:
+// a subkit conversation IS a Langfuse session.
+//
 // registerTelemetry APPENDS to a process-global list, so register exactly once
 // (the integration resolves the current global tracer per span, so a
 // reconfigure that swaps the NodeSDK pipeline still routes correctly).
+
+/** Map the AI SDK runtimeContext onto Langfuse's OTLP attribute namespace.
+ *  Exported for the tracing telemetry test. */
+export function langfuseEnrich(options: {
+  runtimeContext: Record<string, unknown> | undefined;
+}): Record<string, string> | undefined {
+  const rc = options.runtimeContext;
+  if (!rc) return undefined;
+  const attrs: Record<string, string> = {};
+  // A conversation maps to a Langfuse session; tenant/provider/model become
+  // filterable trace metadata.
+  if (rc.conversation_id) attrs["langfuse.session.id"] = String(rc.conversation_id);
+  if (rc.tenant_id) attrs["langfuse.trace.metadata.tenant_id"] = String(rc.tenant_id);
+  if (rc.provider) attrs["langfuse.trace.metadata.provider"] = String(rc.provider);
+  if (rc.model) attrs["langfuse.trace.metadata.model"] = String(rc.model);
+  return Object.keys(attrs).length > 0 ? attrs : undefined;
+}
+
 let telemetryIntegrationRegistered = false;
 function ensureTelemetryIntegration(): void {
   if (telemetryIntegrationRegistered) return;
-  registerTelemetry(new LegacyOpenTelemetry());
+  registerTelemetry(
+    new OpenTelemetry({ enrichSpan: langfuseEnrich, usage: true, providerMetadata: true }),
+  );
   telemetryIntegrationRegistered = true;
 }
 
@@ -85,12 +111,45 @@ export async function startTracing(): Promise<() => Promise<void>> {
     exporters.push(new OTLPTraceExporter({ url: otlpEndpoint }));
   }
   if (langfuseKey) {
-    const lfOpts: { secretKey: string; publicKey?: string; baseUrl?: string } = {
-      secretKey: langfuseKey,
-    };
-    if (cfg.langfuse.public_key) lfOpts.publicKey = cfg.langfuse.public_key;
-    if (cfg.langfuse.host) lfOpts.baseUrl = cfg.langfuse.host;
-    exporters.push(new LangfuseExporter(lfOpts));
+    // Export to Langfuse's native OTLP endpoint (HTTP/protobuf). Basic auth is
+    // base64(public_key:secret_key); the ingestion-version header pins the
+    // GenAI-semconv mapping. Both keys are required for OTLP Basic auth — warn
+    // and skip rather than emit unauthenticated spans that 401 silently.
+    const publicKey = cfg.langfuse.public_key || undefined;
+    if (!publicKey) {
+      logger.warn({
+        module: "observability",
+        action: "tracing.langfuse_public_key_missing",
+        msg: "observability.langfuse.secret_key set without public_key — Langfuse OTLP needs both; skipping Langfuse exporter",
+      });
+    } else {
+      const host = cfg.langfuse.host || "https://cloud.langfuse.com";
+      const auth = Buffer.from(`${publicKey}:${langfuseKey}`).toString("base64");
+      exporters.push(
+        new OTLPTraceExporter({
+          url: `${host.replace(/\/$/, "")}/api/public/otel/v1/traces`,
+          headers: {
+            Authorization: `Basic ${auth}`,
+            "x-langfuse-ingestion-version": "4",
+          },
+        }),
+      );
+    }
+  }
+
+  // A configured backend may still yield no usable exporter (e.g. Langfuse
+  // secret_key without public_key). Treat that as disabled rather than start
+  // the SDK with an undefined exporter.
+  if (exporters.length === 0) {
+    logger.info({
+      module: "observability",
+      action: "tracing.disabled",
+      msg: "no usable OTel exporter after config resolution — skipping tracer bootstrap",
+    });
+    state.active = false;
+    const noop = async () => {};
+    state.shutdown = noop;
+    return noop;
   }
 
   // NodeSDK's `traceExporter` accepts only one; chain them via a

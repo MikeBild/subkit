@@ -89,11 +89,37 @@ export type ToolPermissionResult =
   | { allow: false; reason: string; permission: string };
 
 /**
- * Enforce a tool's declarative `permission` descriptor. Resolves the resource
- * id from `rawArgs[resourceIdArg]` (falling back to `"*"` for create-style
- * gates), resolves the principal, and calls `can()`. A null principal is
- * allowed. The returned `reason`/`permission` feed the tool's
- * `permission_denied` envelope on deny.
+ * Write a `policy.denied` audit row for a conversation-tool RBAC deny. Mirrors
+ * the dispatcher's `emitPolicyDenied` (MCP surface) so the chat path has audit
+ * parity — every deny is recorded against the resolved resource.
+ */
+async function recordPolicyDenied(
+  ctx: ToolContext,
+  permission: string,
+  resource: { type: string; id: string },
+  reason: string,
+): Promise<void> {
+  await ctx.engineClient.audit_write({
+    resource_type: resource.type,
+    resource_id: resource.id,
+    action: "policy.denied",
+    result: "denied",
+    reason,
+    metadata: {
+      permission,
+      resource_type: resource.type,
+      resource_id: resource.id,
+      conversation_id: ctx.conversation_id,
+    },
+  });
+}
+
+/**
+ * Enforce a tool's declarative `permission` descriptor. Resolves the principal
+ * (null → allow), derives the resource id by the precedence documented on
+ * `ConversationTool.permission` (`resolveResourceId` → `resourceIdArg` → `"*"`),
+ * calls `can()`, and on deny writes a `policy.denied` audit row. The returned
+ * `reason`/`permission` feed the tool's `permission_denied` envelope.
  */
 export async function checkToolPermission(
   ctx: ToolContext,
@@ -102,19 +128,28 @@ export async function checkToolPermission(
 ): Promise<ToolPermissionResult> {
   const principal = await resolveConversationPrincipal(ctx);
   if (!principal) return { allow: true };
-  const resourceId = descriptor.resourceIdArg
-    ? String(rawArgs[descriptor.resourceIdArg] ?? "*")
-    : "*";
+
+  let resourceId: string;
+  if (descriptor.resolveResourceId) {
+    const resolved = await descriptor.resolveResourceId(ctx, rawArgs);
+    // null → the resource couldn't be resolved (e.g. slug not found): defer to
+    // the tool so it emits its own not_found instead of a confusing deny.
+    if (resolved === null) return { allow: true };
+    resourceId = resolved;
+  } else {
+    resourceId = descriptor.resourceIdArg ? String(rawArgs[descriptor.resourceIdArg] ?? "*") : "*";
+  }
+
+  const resource = { type: descriptor.resourceType, id: resourceId };
   const decision = await can(ctx.db, {
     tenant_id: ctx.tenant_id,
     principal,
     permission: descriptor.action,
-    resource: { type: descriptor.resourceType, id: resourceId },
+    resource,
   });
   if (decision.allow) return { allow: true };
-  return {
-    allow: false,
-    reason: decision.reason ?? `permission_denied:${descriptor.action}`,
-    permission: descriptor.action,
-  };
+
+  const reason = decision.reason ?? `permission_denied:${descriptor.action}`;
+  await recordPolicyDenied(ctx, descriptor.action, resource, reason);
+  return { allow: false, reason, permission: descriptor.action };
 }

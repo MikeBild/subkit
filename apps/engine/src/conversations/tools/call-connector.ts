@@ -45,9 +45,7 @@
 // EXECUTION_MODE: confirm_before_execution
 
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
 import { recordConnectorInvoked } from "../../audit/recorders/index.ts";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { pgQueryWithCount } from "../../connectors/drivers/postgres.ts";
@@ -59,11 +57,9 @@ import {
 } from "../../connectors/health.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
-import { roles, systemAccounts, users } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
-import { can } from "../../rbac/evaluator.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
-import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
+import type { ConversationTool, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const Method = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
@@ -193,87 +189,6 @@ function endpointKeyPath(path: string): string {
   return queryStart === -1 ? path : path.slice(0, queryStart);
 }
 
-type PermissionResult = { allow: true } | { allow: false; reason: string };
-
-export async function resolveConversationPrincipal(
-  ctx: ToolContext,
-): Promise<ResolvedPrincipal | null> {
-  const actorId = ctx.engineClient.context.actor_id;
-  const actorType = ctx.engineClient.context.actor_type;
-  if (!actorId || actorType === "system") return null;
-
-  if (actorType === "user") {
-    const rows = await ctx.db
-      .select({ role: users.role, role_id: users.role_id })
-      .from(users)
-      .where(and(eq(users.id, actorId), eq(users.tenant_id, ctx.tenant_id)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    let roleNames: string[] = [row.role];
-    if (row.role_id) {
-      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-      const named = await ctx.db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, row.role_id))
-        .limit(1);
-      if (named[0]?.name) roleNames = [named[0].name];
-    }
-    return {
-      provider: "conversation_tool",
-      kind: "user",
-      id: actorId,
-      tenant_id: ctx.tenant_id,
-      roles: roleNames,
-    };
-  }
-  if (actorType === "system_account") {
-    const rows = await ctx.db
-      .select({ role_id: systemAccounts.role_id })
-      .from(systemAccounts)
-      .where(and(eq(systemAccounts.id, actorId), eq(systemAccounts.tenant_id, ctx.tenant_id)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    let roleNames: string[] = ["member"];
-    if (row.role_id) {
-      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-      const named = await ctx.db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, row.role_id))
-        .limit(1);
-      if (named[0]?.name) roleNames = [named[0].name];
-    }
-    return {
-      provider: "conversation_tool",
-      kind: "system_account",
-      id: actorId,
-      tenant_id: ctx.tenant_id,
-      roles: roleNames,
-    };
-  }
-  return null;
-}
-
-async function requirePermission(
-  ctx: ToolContext,
-  permission: string,
-  resource: { type: string; id: string },
-): Promise<PermissionResult> {
-  const principal = await resolveConversationPrincipal(ctx);
-  if (!principal) return { allow: true };
-  const decision = await can(ctx.db, {
-    tenant_id: ctx.tenant_id,
-    principal,
-    permission,
-    resource,
-  });
-  if (decision.allow) return { allow: true };
-  return { allow: false, reason: decision.reason ?? `permission_denied:${permission}` };
-}
-
 function structuredError(
   error_code: string,
   message: string,
@@ -315,6 +230,13 @@ export const callConnectorTool: ConversationTool = {
   },
   inputSchema: CallConnectorInput,
   category: "tenant_read",
+  permission: {
+    action: "connector:read",
+    resourceType: "connector",
+    resourceIdArg: "connector_id",
+    denyResult: (permission, reason) =>
+      structuredError("permission_denied", reason, { permission }),
+  },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = CallConnectorInput.parse(rawArgs);
 
@@ -327,27 +249,8 @@ export const callConnectorTool: ConversationTool = {
       method: args.method,
     });
 
-    // RBAC. `connector:invoke` does not exist in the catalog; the closest
-    // gate is `connector:read` (matches probe_connector + the existing
-    // resolver pattern in llm/substitution/resolver.ts).
-    const auth = await requirePermission(ctx, "connector:read", {
-      type: "connector",
-      id: args.connector_id,
-    });
-    if (!auth.allow) {
-      logger.warn({
-        module: "conversation_tool",
-        action: "call_connector.failed",
-        tenant_id: ctx.tenant_id,
-        conversation_id: ctx.conversation_id,
-        connector_id: args.connector_id,
-        reason: auth.reason,
-        error_code: "permission_denied",
-      });
-      return structuredError("permission_denied", auth.reason, {
-        permission: "connector:read",
-      });
-    }
+    // RBAC (`connector:read`) is enforced centrally via the `permission`
+    // descriptor before execute runs — see permission-gate.ts.
 
     // Connector lookup (tenant-scoped).
     const connector = await getConnector(ctx.tenant_id, args.connector_id, ctx.db);

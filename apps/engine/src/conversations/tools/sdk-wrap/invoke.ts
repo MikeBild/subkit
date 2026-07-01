@@ -1227,14 +1227,14 @@ export function wrapOne(
         try {
           result = permCheck.allow
             ? await inner.execute(perCallCtx, resolvedArgs)
-            : {
+            : (inner.permission?.denyResult?.(permCheck.permission, permCheck.reason) ?? {
                 ok: false,
                 data: {
                   error: "permission_denied",
                   permission: permCheck.permission,
                   reason: permCheck.reason,
                 },
-              };
+              });
         } catch (err) {
           await langfuseSpan.finish({ status: "error", error: err });
           const msg = err instanceof Error ? err.message : String(err);

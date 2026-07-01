@@ -19,8 +19,8 @@ import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
 import { authorConnectorWriteWarnings } from "./author-build-warnings.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
-import { resolveConversationPrincipal } from "./call-connector.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { pickProbeRecoveryActions } from "./probe-recovery.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
 

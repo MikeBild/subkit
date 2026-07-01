@@ -32,20 +32,16 @@
 // conversation, so the recovery path must always be reachable.
 
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { beginConnectorOAuthDance } from "../../connectors/oauth-start.ts";
 import { mintOAuthStartGrantUrl } from "../../connectors/oauth-start-grant.ts";
 import { buildReauthUrl } from "../../connectors/reauth.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
-import { roles, systemAccounts, users } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
-import { can } from "../../rbac/evaluator.ts";
 import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
-import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
+import type { ConversationTool, ToolResult } from "./index.ts";
 
 const RequestConnectorReauthInput = z
   .object({
@@ -61,87 +57,6 @@ const RequestConnectorReauthInput = z
       .describe("Connector slug; resolved to an id when connector_id is omitted."),
   })
   .openapi("RequestConnectorReauthToolInput");
-
-// ---- RBAC (mirrors call-connector.ts) --------------------------------------
-
-type PermissionResult = { allow: true } | { allow: false; reason: string };
-
-async function resolveConversationPrincipal(ctx: ToolContext): Promise<ResolvedPrincipal | null> {
-  const actorId = ctx.engineClient.context.actor_id;
-  const actorType = ctx.engineClient.context.actor_type;
-  if (!actorId || actorType === "system") return null;
-
-  if (actorType === "user") {
-    const rows = await ctx.db
-      .select({ role: users.role, role_id: users.role_id })
-      .from(users)
-      .where(and(eq(users.id, actorId), eq(users.tenant_id, ctx.tenant_id)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    let roleNames: string[] = [row.role];
-    if (row.role_id) {
-      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-      const named = await ctx.db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, row.role_id))
-        .limit(1);
-      if (named[0]?.name) roleNames = [named[0].name];
-    }
-    return {
-      provider: "conversation_tool",
-      kind: "user",
-      id: actorId,
-      tenant_id: ctx.tenant_id,
-      roles: roleNames,
-    };
-  }
-  if (actorType === "system_account") {
-    const rows = await ctx.db
-      .select({ role_id: systemAccounts.role_id })
-      .from(systemAccounts)
-      .where(and(eq(systemAccounts.id, actorId), eq(systemAccounts.tenant_id, ctx.tenant_id)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    let roleNames: string[] = ["member"];
-    if (row.role_id) {
-      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-      const named = await ctx.db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, row.role_id))
-        .limit(1);
-      if (named[0]?.name) roleNames = [named[0].name];
-    }
-    return {
-      provider: "conversation_tool",
-      kind: "system_account",
-      id: actorId,
-      tenant_id: ctx.tenant_id,
-      roles: roleNames,
-    };
-  }
-  return null;
-}
-
-async function requirePermission(
-  ctx: ToolContext,
-  permission: string,
-  resource: { type: string; id: string },
-): Promise<PermissionResult> {
-  const principal = await resolveConversationPrincipal(ctx);
-  if (!principal) return { allow: true };
-  const decision = await can(ctx.db, {
-    tenant_id: ctx.tenant_id,
-    principal,
-    permission,
-    resource,
-  });
-  if (decision.allow) return { allow: true };
-  return { allow: false, reason: decision.reason ?? `permission_denied:${permission}` };
-}
 
 function structuredError(
   error_code: string,
@@ -179,6 +94,19 @@ export const requestConnectorReauthTool: ConversationTool = {
   // credential write happens downstream through the elicitation → auto-persist
   // path, which carries its own gate.
   category: "draft_write",
+  permission: {
+    action: "connector:write",
+    resourceType: "connector",
+    resolveResourceId: async (ctx, rawArgs) => {
+      if (rawArgs.connector_id) return String(rawArgs.connector_id);
+      if (!rawArgs.slug) return null;
+      const { rows } = await ctx.engineClient.connectors.list();
+      const match = rows.find((c) => c.slug === rawArgs.slug);
+      return match ? match.id : null;
+    },
+    denyResult: (permission, reason) =>
+      structuredError("permission_denied", reason, { permission }),
+  },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = RequestConnectorReauthInput.parse(rawArgs);
 
@@ -214,26 +142,10 @@ export const requestConnectorReauthTool: ConversationTool = {
       );
     }
 
-    // RBAC: `connector:write` on the target connector. The non-OAuth path
-    // stages a credential re-issue (a write-class affordance), so reading
-    // the connector is not enough — a principal who can only read it must
-    // not be able to start a credential rotation against it.
-    const auth = await requirePermission(ctx, "connector:write", {
-      type: "connector",
-      id: connectorId,
-    });
-    if (!auth.allow) {
-      logger.warn({
-        module: "conversation_tool",
-        action: "request_connector_reauth.failed",
-        tenant_id: ctx.tenant_id,
-        conversation_id: ctx.conversation_id,
-        connector_id: connectorId,
-        reason: auth.reason,
-        error_code: "permission_denied",
-      });
-      return structuredError("permission_denied", auth.reason, { permission: "connector:write" });
-    }
+    // RBAC (`connector:write` on the target connector — the non-OAuth path
+    // stages a credential rotation, so read is not enough) is enforced
+    // centrally via the `permission` descriptor before execute runs; the
+    // resolver mirrors the slug→id lookup above. See permission-gate.ts.
 
     const connector = await getConnector(ctx.tenant_id, connectorId, ctx.db);
     if (!connector) {

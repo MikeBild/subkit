@@ -1,11 +1,7 @@
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import type { ResolvedPrincipal } from "../../../../auth/types.ts";
-import { roles, systemAccounts, users } from "../../../../db/schema/index.ts";
 import { logger } from "../../../../logging/logger.ts";
-import { can } from "../../../../rbac/evaluator.ts";
 import { translateAutoPersistError } from "../../../persistence/auto-persist.ts";
-import type { ConversationTool, ToolContext } from "../../index.ts";
+import type { ConversationTool } from "../../index.ts";
 
 const WorkflowDeleteInput = z
   .object({
@@ -19,121 +15,22 @@ const WorkflowDeleteInput = z
 
 const IdInput = z.object({ id: z.string().uuid() }).openapi("CleanupIdToolInput");
 
-type PermissionResult = { allow: true } | { allow: false; reason: string };
-
-async function resolveConversationPrincipal(ctx: ToolContext): Promise<ResolvedPrincipal | null> {
-  const actorId = ctx.engineClient.context.actor_id;
-  const actorType = ctx.engineClient.context.actor_type;
-  if (!actorId || actorType === "system") return null;
-
-  if (actorType === "user") {
-    const rows = await ctx.db
-      .select({ role: users.role, role_id: users.role_id })
-      .from(users)
-      .where(and(eq(users.id, actorId), eq(users.tenant_id, ctx.tenant_id)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    let roleNames: string[] = [row.role];
-    if (row.role_id) {
-      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-      const named = await ctx.db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, row.role_id))
-        .limit(1);
-      if (named[0]?.name) roleNames = [named[0].name];
-    }
-    return {
-      provider: "conversation_tool",
-      kind: "user",
-      id: actorId,
-      tenant_id: ctx.tenant_id,
-      roles: roleNames,
-    };
-  }
-
-  const rows = await ctx.db
-    .select({ role_id: systemAccounts.role_id })
-    .from(systemAccounts)
-    .where(and(eq(systemAccounts.id, actorId), eq(systemAccounts.tenant_id, ctx.tenant_id)))
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  let roleNames: string[] = ["member"];
-  if (row.role_id) {
-    // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-    const named = await ctx.db
-      .select({ name: roles.name })
-      .from(roles)
-      .where(eq(roles.id, row.role_id))
-      .limit(1);
-    if (named[0]?.name) roleNames = [named[0].name];
-  }
-  return {
-    provider: "conversation_tool",
-    kind: "system_account",
-    id: actorId,
-    tenant_id: ctx.tenant_id,
-    roles: roleNames,
-  };
-}
-
-async function recordPolicyDenied(
-  ctx: ToolContext,
-  permission: string,
-  resource: { type: string; id: string },
-  reason: string,
-): Promise<string> {
-  return await ctx.engineClient.audit_write({
-    resource_type: resource.type,
-    resource_id: resource.id,
-    action: "policy.denied",
-    result: "denied",
-    reason,
-    metadata: {
-      permission,
-      resource_type: resource.type,
-      resource_id: resource.id,
-      conversation_id: ctx.conversation_id,
-    },
-  });
-}
-
-async function requirePermission(
-  ctx: ToolContext,
-  permission: string,
-  resource: { type: string; id: string },
-): Promise<PermissionResult> {
-  const principal = await resolveConversationPrincipal(ctx);
-  if (!principal) return { allow: true };
-
-  const decision = await can(ctx.db, {
-    tenant_id: ctx.tenant_id,
-    principal,
-    permission,
-    resource,
-  });
-  if (decision.allow) return { allow: true };
-
-  const reason = decision.reason ?? `permission_denied:${permission}`;
-  await recordPolicyDenied(ctx, permission, resource, reason);
-  return { allow: false, reason };
-}
-
-function permissionDenied(permission: string, reason: string) {
-  return {
-    ok: false as const,
-    data: { error: "permission_denied", permission, reason },
-  };
-}
-
 export const deleteWorkflowTool: ConversationTool = {
   name: "delete_workflow",
   description:
     "Soft-delete a workflow by id or slug. Requires confirmation first and records audit.",
   inputSchema: WorkflowDeleteInput,
   category: "tenant_write",
+  permission: {
+    action: "workflow:delete",
+    resourceType: "workflow",
+    resolveResourceId: async (ctx, rawArgs) => {
+      if (rawArgs.id) return String(rawArgs.id);
+      if (!rawArgs.slug) return null;
+      const wf = await ctx.engineClient.workflows.getBySlug(String(rawArgs.slug));
+      return wf ? wf.id : null;
+    },
+  },
   // NOT `requires_persisted_workflow`: this resolves an EXISTING workflow by
   // explicit id/slug against the live table (see resolution below), it is the
   // same class of cleanup op as delete_connector, and it has no `{}`-no-args
@@ -143,14 +40,8 @@ export const deleteWorkflowTool: ConversationTool = {
   // reach for and the model fell back to delete_connector. See step-router.ts.
   async execute(ctx, rawArgs) {
     const args = WorkflowDeleteInput.parse(rawArgs);
-    if (args.id) {
-      const auth = await requirePermission(ctx, "workflow:delete", {
-        type: "workflow",
-        id: args.id,
-      });
-      if (!auth.allow) return permissionDenied("workflow:delete", auth.reason);
-    }
-
+    // RBAC (`workflow:delete`) is enforced centrally via the `permission`
+    // descriptor before execute runs — see permission-gate.ts.
     let workflow: Awaited<ReturnType<typeof ctx.engineClient.workflows.get>> | null = null;
     if (args.id) {
       workflow = await ctx.engineClient.workflows.get(args.id);
@@ -158,14 +49,6 @@ export const deleteWorkflowTool: ConversationTool = {
       workflow = await ctx.engineClient.workflows.getBySlug(args.slug);
     }
     if (!workflow) return { ok: false, data: { error: "workflow_not_found" } };
-
-    if (!args.id) {
-      const auth = await requirePermission(ctx, "workflow:delete", {
-        type: "workflow",
-        id: workflow.id,
-      });
-      if (!auth.allow) return permissionDenied("workflow:delete", auth.reason);
-    }
 
     let ok: boolean;
     try {
@@ -230,14 +113,9 @@ export const deleteConnectorTool: ConversationTool = {
   description: "Soft-delete a connector by id. Requires confirmation first and records audit.",
   inputSchema: IdInput,
   category: "tenant_write",
+  permission: { action: "connector:delete", resourceType: "connector", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = IdInput.parse(rawArgs);
-    const auth = await requirePermission(ctx, "connector:delete", {
-      type: "connector",
-      id: args.id,
-    });
-    if (!auth.allow) return permissionDenied("connector:delete", auth.reason);
-
     const connector = await ctx.engineClient.connectors.get(args.id);
     if (!connector) return { ok: false, data: { error: "connector_not_found" } };
 
@@ -303,17 +181,9 @@ export const deleteKnowledgeSourceTool: ConversationTool = {
     "Soft-delete a knowledge source by id. Requires confirmation first and records audit.",
   inputSchema: IdInput,
   category: "tenant_write",
+  permission: { action: "knowledge:delete", resourceType: "knowledge_source", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = IdInput.parse(rawArgs);
-    // The dispatcher now owns MCP RBAC (RBAC_OVERRIDES); this in-execute
-    // check stays because the chat surface invokes execute() directly and
-    // does not route through the dispatcher's descriptor.rbac yet.
-    const auth = await requirePermission(ctx, "knowledge:delete", {
-      type: "knowledge_source",
-      id: args.id,
-    });
-    if (!auth.allow) return permissionDenied("knowledge:delete", auth.reason);
-
     const source = await ctx.engineClient.knowledgeSources.get(args.id);
     if (!source) return { ok: false, data: { error: "knowledge_source_not_found" } };
 
@@ -357,14 +227,9 @@ export const deleteSubscriptionTool: ConversationTool = {
     "Delete an outbound webhook subscription by id. Requires confirmation first and records audit.",
   inputSchema: IdInput,
   category: "tenant_write",
+  permission: { action: "subscription:delete", resourceType: "subscription", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = IdInput.parse(rawArgs);
-    const auth = await requirePermission(ctx, "subscription:delete", {
-      type: "subscription",
-      id: args.id,
-    });
-    if (!auth.allow) return permissionDenied("subscription:delete", auth.reason);
-
     const subscription = await ctx.engineClient.subscriptions.get(args.id);
     if (!subscription) return { ok: false, data: { error: "subscription_not_found" } };
 
@@ -410,14 +275,9 @@ export const revokeApiKeyTool: ConversationTool = {
   description: "Revoke an API key by id. Requires confirmation first and records audit.",
   inputSchema: IdInput,
   category: "tenant_write",
+  permission: { action: "api_key:revoke", resourceType: "api_key", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = IdInput.parse(rawArgs);
-    const auth = await requirePermission(ctx, "api_key:revoke", {
-      type: "api_key",
-      id: args.id,
-    });
-    if (!auth.allow) return permissionDenied("api_key:revoke", auth.reason);
-
     const apiKey = await ctx.engineClient.identity.getApiKey(args.id);
     if (!apiKey) return { ok: false, data: { error: "api_key_not_found" } };
 
@@ -456,14 +316,9 @@ export const revokePortalTokenTool: ConversationTool = {
   description: "Revoke a portal token by id. Requires confirmation first and records audit.",
   inputSchema: IdInput,
   category: "tenant_write",
+  permission: { action: "portal_token:revoke", resourceType: "portal_token", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = IdInput.parse(rawArgs);
-    const auth = await requirePermission(ctx, "portal_token:revoke", {
-      type: "portal_token",
-      id: args.id,
-    });
-    if (!auth.allow) return permissionDenied("portal_token:revoke", auth.reason);
-
     const revoked = await ctx.engineClient.identity.revokePortalToken(args.id);
     if (!revoked) {
       const audit_log_id = await ctx.engineClient.audit_write({

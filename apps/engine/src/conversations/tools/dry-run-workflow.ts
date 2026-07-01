@@ -34,7 +34,6 @@ import { stampStepTraceFingerprints } from "../step-fingerprint.ts";
 import type { JudgeBreakerState } from "../types.ts";
 import { authorConnectorWriteWarnings } from "./author-build-warnings.ts";
 import { buildGateError, buildLifecyclePayload } from "./authoring-contract.ts";
-import { resolveConversationPrincipal } from "./call-connector.ts";
 import {
   buildDryRunCacheKey,
   buildStepPrefixHash,
@@ -46,6 +45,7 @@ import {
 } from "./dry-run-cache.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { recordLastPreview } from "./last-preview-store.ts";
+import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { buildRawStepResults } from "./step-results.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
 

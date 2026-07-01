@@ -21,6 +21,7 @@ import {
   revokePortalTokenTool,
 } from "../generated/writes/cleanup.ts";
 import type { ToolContext } from "../index.ts";
+import { checkToolPermission } from "../permission-gate.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -96,6 +97,34 @@ async function seedWorkflow(name: string, slug: string) {
   if ("errors" in result) throw new Error(result.errors.join(", "));
   return result.workflow;
 }
+
+// The central RBAC gate (wrapOne → checkToolPermission) is the enforcement
+// point now that the tools carry declarative `permission` descriptors. Drive it
+// directly with real principals (the tool bodies no longer self-gate).
+describe("central RBAC gate — deny + policy.denied audit", () => {
+  test("member lacking api_key:revoke is denied and a policy.denied audit row is written", async () => {
+    const memberCtx = makeToolContext(memberUserId, "user");
+    const perm = revokeApiKeyTool.permission;
+    if (!perm) throw new Error("revoke_api_key lost its permission descriptor");
+    // Resource ids are UUIDs (resource_grants.resource_id is a uuid column).
+    const apiKeyId = crypto.randomUUID(); // allow-random: test fixture id
+    const result = await checkToolPermission(memberCtx, perm, { id: apiKeyId });
+    expect(result.allow).toBe(false);
+    if (!result.allow) expect(result.permission).toBe("api_key:revoke");
+    // audit written against the resolved resource id.
+    expect(await countAudit("policy.denied", apiKeyId)).toBe(1);
+  });
+
+  test("admin is allowed for the same action and no policy.denied row is written", async () => {
+    const adminCtx = makeToolContext(ctx.user_id, "user");
+    const perm = revokeApiKeyTool.permission;
+    if (!perm) throw new Error("revoke_api_key lost its permission descriptor");
+    const apiKeyId = crypto.randomUUID(); // allow-random: test fixture id
+    const result = await checkToolPermission(adminCtx, perm, { id: apiKeyId });
+    expect(result.allow).toBe(true);
+    expect(await countAudit("policy.denied", apiKeyId)).toBe(0);
+  });
+});
 
 describe("cleanup write conversation tools", () => {
   test("delete_workflow deletes by slug and writes domain + conversation audit rows", async () => {
