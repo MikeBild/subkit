@@ -19,6 +19,7 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { createConversation } from "../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
+import { checkToolPermission } from "../tools/permission-gate.ts";
 import { requestConnectorReauthTool } from "../tools/request-connector-reauth.ts";
 import type { DraftDocument } from "../types.ts";
 import { saveConnectorAtomic } from "./save-connector.ts";
@@ -248,14 +249,25 @@ describe("request_connector_reauth + credential re-issue", () => {
       },
     };
 
-    const result = await requestConnectorReauthTool.execute(memberCtx, {
-      connector_id: connectorId,
-    });
-    expect(result.ok).toBe(false);
-    const err = result as { error_code?: string; permission?: string };
-    expect(err.error_code).toBe("permission_denied");
-    expect(err.permission).toBe("connector:write");
-    // The re-issue draft must NOT have been staged for an unauthorised principal.
+    // RBAC enforcement moved from the tool body to the central gate
+    // (wrapOne → checkToolPermission). Drive that gate the way the wrapper
+    // does: the resolver derives the connector UUID, can() denies a
+    // connector:read-only principal for connector:write, and the tool's
+    // denyResult shapes the envelope. The tool's execute is never reached.
+    const perm = requestConnectorReauthTool.permission;
+    if (!perm) throw new Error("request_connector_reauth lost its permission descriptor");
+    const check = await checkToolPermission(memberCtx, perm, { connector_id: connectorId });
+    expect(check.allow).toBe(false);
+    if (!check.allow) {
+      expect(check.permission).toBe("connector:write");
+      const result = perm.denyResult?.(check.permission, check.reason);
+      const err = result as { ok?: boolean; error_code?: string; permission?: string };
+      expect(err.ok).toBe(false);
+      expect(err.error_code).toBe("permission_denied");
+      expect(err.permission).toBe("connector:write");
+    }
+    // The re-issue draft must NOT have been staged for an unauthorised principal
+    // (the gate denies before execute runs).
     expect(draft.connector?.saved_connector_id).toBeUndefined();
   });
 });

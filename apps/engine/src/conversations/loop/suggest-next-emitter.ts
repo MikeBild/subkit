@@ -416,6 +416,9 @@ const defaultSuggestNextModelInvoker: SuggestNextModelInvoker = async (
     model,
     system: call.system,
     messages,
+    // The replayed converse `messages` may include a {role:"system"} entry
+    // (memory injection / date prepend); AI SDK 7 rejects those unless opted in.
+    allowSystemInMessages: true,
     maxOutputTokens: SUGGEST_MAX_OUTPUT_TOKENS,
     temperature: SUGGEST_TEMPERATURE,
   });

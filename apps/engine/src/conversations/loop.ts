@@ -1201,6 +1201,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       model: resolvedModel,
       instructions: systemMessages,
       messages: attemptMessages,
+      // The base system prompt rides in `instructions`, but per-turn features
+      // (memory injection, date prepend) can splice a `{role:"system"}` entry
+      // into `attemptMessages`. AI SDK 7 rejects system messages inside
+      // `messages` unless this is opted in — without it the whole turn throws
+      // AI_InvalidPromptError. No-op for turns that carry no system message.
+      allowSystemInMessages: true,
       tools: turnTools,
       toolChoice: preferredTool
         ? { type: "tool" as const, toolName: preferredTool }
