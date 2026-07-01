@@ -11,7 +11,7 @@ import {
   scrubAuthHeadersMiddleware,
 } from "../devtools-wrap.ts";
 
-// Minimal v3-shaped model stub. We do not import `@ai-sdk/provider` here
+// Minimal v4-shaped model stub. We do not import `@ai-sdk/provider` here
 // because the `no_live_llm` audit invariant forbids real-LLM SDK imports
 // in any *.test.ts file. The wrap composes around .doStream + .doGenerate;
 // we don't exercise those — only that the returned reference is (or is
@@ -25,8 +25,8 @@ type StubModel = {
   doStream: () => Promise<unknown>;
 };
 
-const stubV3Model = (): StubModel => ({
-  specificationVersion: "v3",
+const stubV4Model = (): StubModel => ({
+  specificationVersion: "v4",
   provider: "stub",
   modelId: "stub-model",
   supportedUrls: {},
@@ -53,7 +53,7 @@ describe("maybeWrapForDevtools", () => {
 
   it("does not wrap when NODE_ENV is production", async () => {
     process.env.NODE_ENV = "production";
-    const model = stubV3Model();
+    const model = stubV4Model();
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
     const out = await maybeWrapForDevtools(model as any);
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
@@ -62,7 +62,7 @@ describe("maybeWrapForDevtools", () => {
 
   it("wraps in DEV and returns a different instance", async () => {
     process.env.NODE_ENV = "development";
-    const model = stubV3Model();
+    const model = stubV4Model();
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
     const out = await maybeWrapForDevtools(model as any);
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
@@ -78,7 +78,7 @@ describe("maybeWrapForDevtools", () => {
     it(`does not wrap when NODE_ENV is ${env === "" ? "unset" : `"${env}"`}`, async () => {
       if (env === "") delete process.env.NODE_ENV;
       else process.env.NODE_ENV = env;
-      const model = stubV3Model();
+      const model = stubV4Model();
       // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
       const out = await maybeWrapForDevtools(model as any);
       // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
@@ -88,7 +88,7 @@ describe("maybeWrapForDevtools", () => {
 
   it("passes through models with unsupported specificationVersion", async () => {
     process.env.NODE_ENV = "development";
-    const legacyModel = { ...stubV3Model(), specificationVersion: "v2" };
+    const legacyModel = { ...stubV4Model(), specificationVersion: "v2" };
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
     const out = await maybeWrapForDevtools(legacyModel as any);
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
@@ -139,14 +139,14 @@ describe("scrubAuthHeadersMiddleware", () => {
     const observed: Array<{ which: string; auth: string | undefined }> = [];
     // biome-ignore lint/suspicious/noExplicitAny: probe middleware is intentionally minimal — full v3 surface would dwarf the assertion.
     const probe: any = (label: string) => ({
-      specificationVersion: "v3" as const,
+      specificationVersion: "v4" as const,
       // biome-ignore lint/suspicious/noExplicitAny: see above
       transformParams: async ({ params }: any) => {
         observed.push({ which: label, auth: params.headers?.Authorization });
         return params;
       },
     });
-    const model = stubV3Model();
+    const model = stubV4Model();
     const wrapped = wrapLanguageModel({
       // biome-ignore lint/suspicious/noExplicitAny: minimal stub for LanguageModelV3
       model: model as any,

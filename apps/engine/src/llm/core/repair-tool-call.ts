@@ -182,6 +182,8 @@ export async function repairToolCall<TOOLS extends ToolSet>(
         },
       ],
       maxRetries: 0,
+      // AI SDK 7 requires opting in to system-role messages inside `messages`.
+      allowSystemInMessages: true,
     });
     onRepair?.();
     logger.info({

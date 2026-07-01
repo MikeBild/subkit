@@ -208,7 +208,7 @@ export class AiSdkModel implements SubkitLlm {
   ): Record<string, Tool> {
     const tools: Record<string, Tool> = {
       // biome-ignore lint/suspicious/noExplicitAny: ai sdk jsonSchema is Schema<any>
-      submit: tool<any, any>({
+      submit: tool<any, any, any>({
         description:
           "Submit the final result in the required format. Submit even on error. Keep non-tool messages brief.",
         inputSchema: submitSchema,
@@ -273,19 +273,28 @@ export class AiSdkModel implements SubkitLlm {
       messages: params.messages,
       maxRetries: this.opts.maxRetries ?? 0,
       abortSignal: callSignal,
+      // prependDate() injects a leading system-role message into `messages`;
+      // AI SDK 7 rejects system messages inside the `messages` array unless
+      // this is opted in (the top-level `instructions` option is the other
+      // sanctioned channel). No-op when there is no system-role message.
+      allowSystemInMessages: true,
     };
     if (params.temperature !== undefined) callOpts.temperature = params.temperature;
     if (params.tools) callOpts.tools = params.tools;
     if (params.toolChoice) callOpts.toolChoice = params.toolChoice;
     if (params.metadata) {
-      callOpts.experimental_telemetry = {
+      // AI SDK 7 dropped TelemetryOptions.metadata; the replacement is a
+      // typed runtimeContext surfaced into telemetry via includeRuntimeContext.
+      const rc = params.metadata as Record<string, string | number | boolean>;
+      callOpts.runtimeContext = rc;
+      callOpts.telemetry = {
         isEnabled: true,
         // See loop.ts: full-IO span attributes are stringified eagerly
         // even into noop spans — only record them when an exporter exists.
         recordInputs: isTracingActive(),
         recordOutputs: isTracingActive(),
         functionId: String(params.metadata.flow ?? "unknown"),
-        metadata: params.metadata as Record<string, string | number | boolean>,
+        includeRuntimeContext: Object.fromEntries(Object.keys(rc).map((k) => [k, true])),
       };
     }
     try {

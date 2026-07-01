@@ -42,6 +42,7 @@ import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persi
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { truncateForLlm } from "../truncate.ts";
+import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
 
 const TOOL_PREFIX = "mcp_";
@@ -124,7 +125,9 @@ function buildOneExternalMcpTool(
   p: BuildOneParams,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
   const { descriptor, signals } = p;
-  return tool<Record<string, unknown>, WrappedToolOutput>({
+  return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
+    // AI SDK 7: coerce tool output to JSON-safe for the model (see json-safe-output.ts).
+    toModelOutput: jsonSafeModelOutput,
     description: `${descriptor.description} — external MCP tool (namespace ${p.namespace}). Asks for confirmation before running.`,
     inputSchema: jsonSchema(descriptor.inputSchema as Parameters<typeof jsonSchema>[0]),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {

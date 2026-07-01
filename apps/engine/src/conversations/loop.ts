@@ -1199,7 +1199,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       : tools;
     const result = streamText({
       model: resolvedModel,
-      system: systemMessages,
+      instructions: systemMessages,
       messages: attemptMessages,
       tools: turnTools,
       toolChoice: preferredTool
@@ -1207,6 +1207,20 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         : forceNoTools
           ? "none"
           : "auto",
+      // Provider-agnostic reasoning control (AI SDK 7). Replaces the
+      // Anthropic-only `providerOptions.anthropic.thinking` block: the SDK
+      // maps this enum to each provider's native reasoning mechanism
+      // (Anthropic thinking budget, OpenAI/Gemini reasoning effort), so a
+      // future gate broadening to non-Anthropic providers needs no new
+      // provider-specific code here. `resolveThinking` still suppresses
+      // reasoning whenever the turn forces a tool — the Anthropic
+      // thinking-vs-tool_choice conflict is unchanged by the enum mapping
+      // (see thinking-policy.ts; session 0498925e's 3× converse.failed).
+      // Effort 'high' reflects that thinking is gated to the hard authoring
+      // stages; the enum→budget mapping is calibration-pending against
+      // nightly.yml's real-LLM job (the retired `adaptive` let the model
+      // size its own budget per turn).
+      reasoning: thinkingThisTurn ? "high" : "none",
       // Disable parallel tool calls on Anthropic for state-changing
       // turns (the rationale at session "starte mit übermorgen" still
       // holds). Read-heavy turns flip parallel ON so multiple
@@ -1217,23 +1231,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             providerOptions: {
               anthropic: {
                 disableParallelToolUse: !turnStageReadOnly,
-                ...(thinkingThisTurn
-                  ? // claude-sonnet-4-5+/opus-4-6+ rejected the legacy
-                    // `{ type: "enabled", budgetTokens }` shape
-                    // ("thinking.type.enabled is not supported for this
-                    // model") — caught by nightly.yml's real-LLM job.
-                    // `adaptive` lets the model size its own thinking
-                    // budget per turn, which is what we want anyway
-                    // (the 4000-token cap was a guess).
-                    { thinking: { type: "adaptive" as const } }
-                  : {}),
+                // Extended thinking moved to the top-level `reasoning`
+                // option above (AI SDK 7). This block now only carries the
+                // Anthropic-specific parallel-tool gate.
               },
             },
           }
         : {}),
       // experimental_repairToolCall — when the model emits a tool call
       // whose JSON args fail validation (or names a non-existent tool),
-      // the SDK calls this hook to ask for a repaired call. Sets a
+      // the SDK calls this hook to ask for a repaired call. (v7 keeps this
+      // under the experimental_ name — there is no stable alias.) Sets a
       // step-router signal so the next step escalates one tier up.
       // Capped at MAX_REPAIRS_PER_TURN (2) per the plan: a model that
       // keeps emitting malformed calls is in a degenerate state and
@@ -1463,7 +1471,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // weaker fallback, which then authored worse JSONata.
       maxRetries: 2,
       abortSignal: streamAbortSignal,
-      experimental_telemetry: {
+      // AI SDK 7 dropped TelemetryOptions.metadata; attribution now flows
+      // through a typed runtimeContext surfaced into telemetry spans via
+      // includeRuntimeContext (keys are excluded unless set to `true`).
+      runtimeContext: {
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        provider: route.provider,
+        model: modelId,
+      },
+      telemetry: {
         isEnabled: true,
         // Record full prompt/output span attributes ONLY when an exporter
         // is configured: the SDK stringifies them eagerly per step even
@@ -1472,11 +1489,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         recordInputs: isTracingActive(),
         recordOutputs: isTracingActive(),
         functionId: "converse",
-        metadata: {
-          tenant_id: p.tenant_id,
-          conversation_id: p.conversation_id,
-          provider: route.provider,
-          model: modelId,
+        includeRuntimeContext: {
+          tenant_id: true,
+          conversation_id: true,
+          provider: true,
+          model: true,
         },
       },
       onError: ({ error }) => {

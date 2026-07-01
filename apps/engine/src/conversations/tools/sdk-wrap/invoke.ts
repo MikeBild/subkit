@@ -58,6 +58,7 @@ import { resolveExecutionMode } from "../tool-policies.ts";
 import { truncateForLlm } from "../truncate.ts";
 import { decideConfirm } from "./confirm-decision.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
+import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import {
   buildPolicyGateCommitIntent,
   confirmationMetadataForTool,
@@ -159,9 +160,13 @@ export function wrapOne(
     typeof baseInputSchema.extend === "function"
       ? baseInputSchema.extend({ __policy_confirmed: policyMarkerSchema })
       : baseInputSchema;
-  return tool<Record<string, unknown>, WrappedToolOutput>({
+  return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
     description: compileDescription(inner),
     inputSchema,
+    // AI SDK 7 rejects Date/undefined in tool outputs when validating the
+    // next step's ModelMessage[]; coerce to JSON-safe for the model. The
+    // loop's stop conditions still read the raw `output`. See json-safe-output.ts.
+    toModelOutput: jsonSafeModelOutput,
     // Opt-in provider-native strict mode + inputExamples.
     ...(inner.strict ? { strict: true as const } : {}),
     // toInputExamples is intentionally a no-op since v4.6.0 — see the

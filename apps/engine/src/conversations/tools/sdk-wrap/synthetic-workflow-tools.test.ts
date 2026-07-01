@@ -197,7 +197,9 @@ describe("buildSyntheticWorkflowTools — catalog shape", () => {
       events: [],
     });
 
-    const desc = tools["wf_jira-sync"]?.description ?? "";
+    // v7 Tool.description is `string | ((options) => string)`; these
+    // synthetic tools use string descriptions — coerce for the assertion.
+    const desc = String(tools["wf_jira-sync"]?.description ?? "");
     expect(desc).toContain("jira-sync");
     expect(desc.toLowerCase()).toContain("workflow");
   });
@@ -230,6 +232,7 @@ describe("buildSyntheticWorkflowTools — execute happy path", () => {
     const result = await tool!.execute!({} as Record<string, unknown>, {
       toolCallId: "test-call-id",
       messages: [],
+      context: {},
     });
     const output = (result as { ok: boolean; data: Record<string, unknown> }).data;
     // suggested_command should be present
@@ -249,7 +252,10 @@ describe("buildSyntheticWorkflowTools — execute happy path", () => {
       events,
     });
 
-    await tools["wf_event-test"]!.execute!({}, { toolCallId: "test-call-id", messages: [] });
+    await tools["wf_event-test"]!.execute!(
+      {},
+      { toolCallId: "test-call-id", messages: [], context: {} },
+    );
     const eventTypes = events.map((e) => e.type);
     expect(eventTypes).toContain("tool_call_start");
     expect(eventTypes).toContain("tool_result");
@@ -272,7 +278,10 @@ describe("buildSyntheticWorkflowTools — execute happy path", () => {
       events,
     });
 
-    await tools["wf_log-test"]!.execute!({}, { toolCallId: "test-call-id", messages: [] });
+    await tools["wf_log-test"]!.execute!(
+      {},
+      { toolCallId: "test-call-id", messages: [], context: {} },
+    );
     // ctx.onLog should have been called with at least the "running workflow" line
     expect(logMessages.some((m) => m.includes("log-test"))).toBe(true);
   });
@@ -298,7 +307,7 @@ describe("buildSyntheticWorkflowTools — envelope fields", () => {
 
     const result = (await tools["wf_env-check-wf"]!.execute!(
       {},
-      { toolCallId: "test-call-id", messages: [] },
+      { toolCallId: "test-call-id", messages: [], context: {} },
     )) as {
       ok: boolean;
       data: Record<string, unknown>;
@@ -322,7 +331,7 @@ describe("buildSyntheticWorkflowTools — envelope fields", () => {
 
     const result = (await tools["wf_nba-test"]!.execute!(
       {},
-      { toolCallId: "test-call-id", messages: [] },
+      { toolCallId: "test-call-id", messages: [], context: {} },
     )) as {
       ok: boolean;
       data: Record<string, unknown>;
@@ -398,7 +407,7 @@ describe("buildSyntheticWorkflowTools — RBAC denial", () => {
     } else {
       const result = (await restrictedTool.execute!(
         {},
-        { toolCallId: "test-call-id", messages: [] },
+        { toolCallId: "test-call-id", messages: [], context: {} },
       )) as { ok: boolean; data: Record<string, unknown> };
       expect(result.ok).toBe(false);
       expect(result.data?.denied).toBe(true);

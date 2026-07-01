@@ -42,6 +42,7 @@ import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persi
 import type { TurnEvent } from "../../types.ts";
 import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
 import type { ToolContext } from "../index.ts";
+import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
 
 export interface BuildSyntheticWorkflowToolsParams {
@@ -78,7 +79,9 @@ function buildOneSyntheticWorkflowTool(
   p: BuildOneParams,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
   const { entry, signals } = p;
-  return tool<Record<string, unknown>, WrappedToolOutput>({
+  return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
+    // AI SDK 7: coerce tool output to JSON-safe for the model (see json-safe-output.ts).
+    toModelOutput: jsonSafeModelOutput,
     description: `${entry.description} — saved workflow, runs in dev. Dispatches /workflows run ${entry.slug}.`,
     inputSchema: jsonSchema(entry.inputSchema as Parameters<typeof jsonSchema>[0]),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {

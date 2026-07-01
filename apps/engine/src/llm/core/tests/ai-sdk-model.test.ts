@@ -253,10 +253,15 @@ describe("AiSdkModel.generateText", () => {
     });
     const call = stub.calls[0] as {
       temperature: number;
-      experimental_telemetry: { metadata: Record<string, unknown> };
+      telemetry: { functionId: string; includeRuntimeContext: Record<string, unknown> };
+      runtimeContext: Record<string, unknown>;
     };
     expect(call.temperature).toBe(0.7);
-    expect(call.experimental_telemetry.metadata.tenant_id).toBe("t1");
+    // AI SDK 7 dropped TelemetryOptions.metadata; attribution now flows via
+    // runtimeContext, surfaced into telemetry through includeRuntimeContext.
+    expect(call.runtimeContext.tenant_id).toBe("t1");
+    expect(call.telemetry.functionId).toBe("converse");
+    expect(call.telemetry.includeRuntimeContext.tenant_id).toBe(true);
   });
 });
 
