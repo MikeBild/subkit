@@ -36,7 +36,7 @@ export function canonicalizeResourceUri(raw: string): string {
     const u = new URL(raw);
     // URL spec normalises scheme+host to lowercase on parse.
     // Pin exactly one trailing slash on the path component.
-    const path = u.pathname.replace(/\/+$/, "") + "/";
+    const path = `${u.pathname.replace(/\/+$/, "")}/`;
     return `${u.protocol}//${u.host}${path}${u.search}${u.hash}`;
   } catch {
     // Not a parseable absolute URL — lowercase and trim as best-effort.

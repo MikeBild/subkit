@@ -301,7 +301,7 @@ describe("MCP tools/call — run_workflow missing required input (W4.5 anti-spir
             kind: "request",
             id: "probe",
             method: "GET",
-            url: `${mockBase}/test?city=` + "${input.city}",
+            url: `${mockBase}/test?city=\${input.city}`,
           },
         ],
       }),

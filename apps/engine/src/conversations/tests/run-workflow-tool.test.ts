@@ -481,7 +481,9 @@ describe("run_workflow tool", () => {
               multipart: [
                 {
                   name: "file",
+                  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
                   value: "${input.markdown}",
+                  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
                   filename: "${input.filename}",
                 },
               ],
@@ -576,7 +578,9 @@ describe("run_workflow tool", () => {
               id: "upload",
               kind: "request",
               method: "POST",
+              // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
               url: "https://files.example.test/upload/${input.filename}",
+              // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
               body: { content: "${input.markdown}" },
             },
           ],
@@ -663,6 +667,7 @@ describe("run_workflow tool", () => {
               kind: "request",
               method: "POST",
               url: "https://files.example.test/upload",
+              // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
               body: { content: "${input.markdown}" },
             },
           ],

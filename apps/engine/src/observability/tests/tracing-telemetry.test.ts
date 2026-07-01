@@ -5,7 +5,6 @@
 // exporter — no network, no real Langfuse.
 
 import { describe, expect, test } from "bun:test";
-import { OpenTelemetry } from "@ai-sdk/otel";
 import { trace } from "@opentelemetry/api";
 import {
   BasicTracerProvider,
@@ -14,6 +13,9 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { generateText, registerTelemetry } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+// @ai-sdk/otel via the test-helpers shim (no_live_llm invariant forbids direct
+// @ai-sdk/* imports in *.test.ts; the OpenTelemetry adapter is not a live-LLM path).
+import { OpenTelemetry } from "../../test-helpers/otel-telemetry.ts";
 import { langfuseEnrich } from "../tracing.ts";
 
 describe("langfuseEnrich — runtimeContext → langfuse.* attributes", () => {

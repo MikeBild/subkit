@@ -202,7 +202,7 @@ export function registerSessionsOidcRoute(app: OpenAPIHono<AppEnv>): void {
             .where(and(eq(users.tenant_id, tenant_id), eq(users.email, email)))
             .limit(1)
         : [];
-      if (existingByEmail[0] && existingByEmail[0].oidc_subject) {
+      if (existingByEmail[0]?.oidc_subject) {
         // The email maps to an account already bound to a different OIDC
         // subject — refuse rather than hijack it.
         throw new ForbiddenError("account already linked to a different identity");

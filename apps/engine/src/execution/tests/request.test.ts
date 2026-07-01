@@ -161,6 +161,7 @@ describe("request step", () => {
     expect(errorObj?.code).toBe("placeholder_unresolved");
   });
 
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
   test("request body preserves native JSON types — whole-value ${ref} leaves stay number/array/object on the wire", async () => {
     // Mirrors the resolvePlaceholdersTypePreserving suite
     // (llm/substitution/tests/resolver.test.ts) at the dispatch level:
@@ -187,9 +188,13 @@ describe("request step", () => {
           method: "POST",
           url: `${mock.baseUrl}/ingest`,
           body: {
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
             limit: "${input.limit}",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
             children: "${input.children}",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
             filter: "${input.filter}",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
             note: "count=${input.limit}",
           },
         },
