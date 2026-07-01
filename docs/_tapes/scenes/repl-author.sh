@@ -16,7 +16,7 @@ user_line "Create a workflow that fetches yesterday's Stripe charges and emails 
 # 2) Spinner — verb rotation, then concrete per-tool progress (repl/spinner.tsx).
 spinner "planning"                  3 0    0    1180
 spinner "running find_connector"    3 3    1180 3260 "$ACCENT"
-spinner "running build_workflow"    4 6    3260 6740 "$ACCENT"
+spinner "running author_workflow"   4 6    3260 6740 "$ACCENT"
 spinner "running dry_run_workflow"  4 10   6740 9980 "$ACCENT"
 spinner "processing 3 tool results" 3 14   9980 11420
 spinner_clear

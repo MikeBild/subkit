@@ -185,6 +185,69 @@ Envelope rendering:
   shape the conversation loop expects today. The `needs_confirm` case becomes an
   `ask_user_confirm` pause so the elicitation loop picks it up unchanged.
 
+## MCP session and confirmation tools
+
+A handful of MCP tools are not LLM palette items at all — they are the session
+orchestration an external client uses to drive an authoring conversation and to
+satisfy the write gate. They dispatch through the same RBAC and audit chokepoint,
+but they manage *the conversation*, not a tenant resource.
+
+### The conversation cluster
+
+| Tool | Role |
+|---|---|
+| `conversation_start` | Open a new authoring conversation from a described outcome; returns the `conversation_id`. |
+| `conversation_append` | Add the next user message and enqueue the next authoring turn. |
+| `conversation_get` | Read-only poll of a conversation's state — completion status, pending elicitation, and the live progress heartbeat (below). |
+| `conversation_respond_elicitation` | Resolve a pending elicitation (a form answer, an approval, an OAuth acknowledgement) and enqueue the following turn. |
+| `conversation_commit` | Commit the current draft from the conversation into a persisted, active workflow. |
+
+These five are the complete session surface. Authoring turns run in a background
+worker (a real turn outlasts the MCP client timeout), so a client `conversation_start`s
+or `conversation_append`s, then polls `conversation_get` until the turn reports
+`completed`, `failed`, or `input_required`. The [Input Surfaces](./input-surfaces.md#mcp-integration)
+page documents the Tasks-capable vs. non-Tasks polling contract in full.
+
+### Worker-stamped heartbeat
+
+A backgrounded turn has no open stream to report progress on, so the worker stamps
+its progress into the conversation row as it goes. `conversation_get` returns that
+heartbeat so a polling client can render live status instead of a bare spinner:
+
+| Field | Meaning |
+|---|---|
+| `phase` | The stage the turn is in (e.g. grounding, drafting, dry-running, critiquing). |
+| `elapsed_ms` | Wall-clock elapsed since the turn started. |
+| `last_action` | The most recent tool or pipeline step the worker took. |
+| `step` | The workflow step currently being authored or tested, when applicable. |
+
+The heartbeat is advisory telemetry for the operator's benefit; the authoritative
+terminal signal is still the completion status. A stalled or slow turn is visible
+as a growing `elapsed_ms` against an unchanged `last_action`.
+
+### `confirm_tool_call`
+
+A `tenant_write` tool call returns `needs_confirm`, and the canonical way to
+approve it is to re-issue the same call with `_meta.sk_confirm: true`. A model-only
+client that cannot set `_meta` on an outgoing call has no way to express that
+approval — the gate would dead-end. `confirm_tool_call` is the escape hatch: it is
+an ordinary MCP tool the client invokes with the pending call's identifier to
+record the operator's approval, after which the gated write proceeds. It exists so
+the confirm gate is satisfiable on *every* MCP client, not only those that can
+attach `_meta` to a retried call. The approval is audited exactly like the
+`_meta.sk_confirm` path — a `confirm_tool_call` is a governance decision, not a
+bypass.
+
+## Self-diagnosis: `includeStepResults`
+
+`dry_run_workflow` and `run_workflow` accept an optional `includeStepResults` flag.
+When set, the response carries the raw per-step inputs and outputs for the run
+alongside the normal summary. This is the self-diagnosis lever: an authoring client
+(or an operator) that gets an unexpected result can read exactly what each step
+received and emitted without a second round-trip, then feed that back into a patch
+edit. It is off by default because the raw payloads can be large; turn it on only
+when you need step-level forensics.
+
 ## Decisions and trade-offs
 
 ### Probe + test stay separate (no merge)

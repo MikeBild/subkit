@@ -12,7 +12,7 @@
 //      Actions secret. Do not commit the private key.
 //
 // Usage:
-//   bun run scripts/generate-release-key.ts
+//   bun run scripts/gen-release-key.ts
 //
 // Rotation procedure: see `docs/admins/credentials-and-keys.md`.
 

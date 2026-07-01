@@ -241,9 +241,11 @@ bundled proxy (reads `~/.sk/config.json`):
 ```
 
 Once connected, the client sees your tenant's tools — author and run workflows
-(`author_workflow`, `build_workflow`, `dry_run_workflow`), inspect connectors
-(`test_connector`, `list_recipes`), and more. Destructive calls require a confirm
-first. Verify the endpoint by hand:
+through the authoring triad (`author_workflow` to build a grounded draft,
+`dry_run_workflow` to test it, `edit_workflow_patch` to refine it, and
+`save_workflow_draft` to commit), inspect connectors (`test_connector`,
+`list_recipes`), and more. Destructive calls require a confirm first. Verify the
+endpoint by hand:
 
 ```bash
 curl -s http://localhost:3000/mcp \

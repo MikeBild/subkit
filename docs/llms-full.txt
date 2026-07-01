@@ -603,6 +603,8 @@ Engine logs, audit metadata, conversation event payloads, and the `~/.sk/debug.l
 
 The sk CLI composer detects token-shaped paste in the chat input. When matched, the input is replaced with a one-keystroke confirmation prompt; on confirmation the CLI sends a redirect message that asks the agent to re-prompt through the masked form, instead of forwarding the literal paste to the engine. The detector catches the same regex catalog as the engine scrubber.
 
+**Secret-in-chat guard (MCP).** An AI client reaching the platform over MCP has no masked form to render, so the temptation is to collect a credential as ordinary chat text — exactly the surface where a secret must never travel. sk refuses that path outright. When a turn would elicit a secret-shaped value from a model-only client, the engine does not accept it as plain conversation input; it declines and routes the operator to the secure flow instead — a scoped portal-setup link where the value is typed into a masked field, or the managed OAuth authorization flow. The credential is entered outside the chat transcript, encrypted straight into the vault, and the AI client only ever learns that the connector is now authorized. A secret is never gathered as free-form chat text over MCP, so it cannot land in a transcript, a tool argument, or a client-side history.
+
 Tool policies (`apps/engine/src/conversations/tools/tool-policies.ts`) decide execution mode dynamically per call. Inputs containing token-shaped values or sensitive key names force the policy resolver to `confirm_before_execution`, which inserts an `ask_user_confirm` gate before the tool runs. Every such pause writes a `tool_policy.confirmation_required` audit row with the tool name and the matched sensitive shape — operators can review every policy-gated decision in the audit trail.
 
 The `authenticate_oauth` flow surfaces an authorization URL that the sk CLI auto-launches in the operator's browser. That URL is tenant-controlled input: it is derived from the connector's `oauth.issuer_url` config, which a tenant admin can write. The proportionate control is a scheme clamp — `BrowserUrlSchema` accepts only `http`/`https`, closing `file:`, `javascript:`, and `data:` URLs — so the worst a tenant admin can do is cause the CLI to open an arbitrary http(s) page for an operator who has paused on that connector. This is acceptable because connector-config writes are already an audited, RBAC-gated action: the admin who could set a hostile `issuer_url` is the same admin already trusted to configure the connector's real endpoints, and every such write lands in the audit trail.
@@ -872,6 +874,10 @@ This page covers the workflow lifecycle, the execution model, the eight Step kin
 
 A workflow moves through three states. Chat authors a **draft**; approval commits it to **active**; retiring or superseding it moves it to **archived**. Promoting a prior version back to active is the rollback path — no redeploy, instant, audited.
 
+Authoring itself follows a fixed shape: sk builds a grounded draft from the described outcome, tests that draft against real connectors, refines it with targeted patch edits, and only then commits it. Each stage is a discrete, governed step — the draft is never mutated blindly, and the commit is the single gated transition from draft to active. See [AI-assisted authoring](../authors/authoring-workflows.md) for the full loop.
+
+**Playground mode.** Authoring can run in an ephemeral scratch mode that never persists. A playground conversation builds and tests drafts exactly like a normal session, but nothing it produces is written to the tenant's workflow store — the draft evaporates when the conversation ends. This is the safe space to explore a shape, probe a connector, or demonstrate the authoring loop without leaving any committed artifact behind. Playground is a durable, per-conversation flag: it is set when the conversation is opened (an AI client signals it over MCP; an HTTP caller passes it on the start request) and holds for the life of that conversation.
+
 ```mermaid
 stateDiagram-v2
     [*] --> draft: authored in chat
@@ -884,6 +890,14 @@ stateDiagram-v2
 ```
 
 *Draft → active → archived. Every transition lands in the Audit Log with the actor, the version, and the timestamp.*
+
+### The authoring critic
+
+Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is *structurally valid but semantically wrong* — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).
+
+The authoring critic closes that gap. It is an LLM gate that runs **after** static validation in the authoring pipeline and reads the draft against the stated intent, flagging semantic drift a parser can't see. When it finds a problem, the finding is fed back into the same bounded-repair loop the engine uses everywhere else, so the fix is proposed and re-validated rather than silently applied.
+
+The critic is **off by default** and enabled through the `llm.critic.*` settings (see the settings reference). It is deliberately **fail-open**: if the critic model is unavailable or errors, authoring proceeds on the static result rather than blocking — the critic sharpens quality when present but is never a hard dependency on the path to a committed workflow.
 
 ---
 
@@ -1254,6 +1268,16 @@ manages token lifecycle.
 never exposed outside the engine. Workflows and steps reference credentials by
 name, not by value. The full vault model and master-key rotation procedure are in
 [Credentials & Keys](../admins/credentials-and-keys.md).
+
+**Secrets are never collected in chat.** When onboarding runs through an AI client
+over MCP, sk refuses to accept a credential as plain conversation text. A
+secret-shaped prompt is declined and the operator is routed to the secure flow
+instead — a scoped portal-setup link where the value is typed into a masked field,
+or the managed OAuth authorization flow. The credential goes straight into the
+encrypted vault outside the chat transcript; the AI client only learns that the
+connector is now authorized. This means a token can never leak into a conversation
+history, a tool argument, or a log — regardless of which surface drove the
+onboarding.
 
 **End-User Credentials** extend this for multi-user scenarios: an individual user
 supplies their own credentials, and the platform acts as that user when executing
@@ -2318,7 +2342,7 @@ sequenceDiagram
     J-->>C: verdict (pass / findings)
     C->>U: preview draft for approval
     U->>C: approve
-    C->>E: commit (versioned workflow)
+    C->>E: save_workflow_draft (commit versioned workflow)
     E-->>U: runnable, governed workflow
 ```
 
@@ -2338,10 +2362,10 @@ stateDiagram-v2
     ConnectorPersisted --> WorkflowDraft: author_workflow (one-shot generate + evaluate)
     WorkflowDraft --> WorkflowPreviewed: dry_run_workflow (writes held)
     WorkflowPreviewed --> WorkflowJudged: instruction-grounded judge reads artifacts incl. held payloads
-    WorkflowJudged --> WorkflowPersisted: green preview + judge pass (auto-commit)
+    WorkflowJudged --> WorkflowPersisted: green preview + judge pass (auto-commit / save_workflow_draft)
     WorkflowJudged --> WorkflowRepair: judge / recorded_eval findings
     WorkflowPreviewed --> WorkflowRepair: preview failure
-    WorkflowRepair --> WorkflowPreviewed: edit_workflow_patch / update_param, then preview again
+    WorkflowRepair --> WorkflowPreviewed: edit_workflow_patch (RFC-6902), then preview again
     WorkflowPersisted --> WorkflowExecuted: run
     WorkflowExecuted --> Diagnosis: warnings / failure
     Diagnosis --> WorkflowRepair: repair draft
@@ -2350,7 +2374,9 @@ stateDiagram-v2
 
 **Verification is persistence.** Probe persists the connector inline; a green, judged dry-run commits the workflow inline. There is no separate "save" step on the happy path. Dry-runs hold writes — read steps execute live, write steps are fully resolved (URL, headers, materialized body) but never dispatched, and the held request is recorded as the artifact the judge evaluates. Any draft mutation invalidates downstream checkpoints automatically.
 
-**Stage gate.** `propose_step` and `update_param` are repair-stage tools. While the draft is in its initial stage — no recorded preview, no recorded-eval/judge findings — they refuse with `authoring_stage_violation` and name the exact next valid actions (`author_workflow`, `build_workflow`, `dry_run_workflow`, `edit_workflow_patch`), none of which is ever gated. The moment a preview or findings exist, both unlock unconditionally. Initial authoring is ONE `author_workflow` call, not a micro-iterated step-by-step build.
+**The authoring triad.** Workflow authoring is four verbs, in order: `author_workflow` (generate the complete grounded draft), `dry_run_workflow` (test it with writes held), `edit_workflow_patch` (revise it with an RFC-6902 JSON-Patch), and `save_workflow_draft` (commit the version). Generation is ONE `author_workflow` call, not a micro-iterated step-by-step build.
+
+**Stage gate.** `edit_workflow_patch` is the repair-stage verb. While the draft is in its initial stage — no recorded preview, no recorded-eval/judge findings — it refuses with `authoring_stage_violation` and names the exact next valid actions (`author_workflow`, `dry_run_workflow`, `save_workflow_draft`), none of which is ever gated. The moment a preview or findings exist, it unlocks unconditionally — that is when a patch edit has real artifacts to reason against.
 
 The state is persisted in the conversation draft summary:
 
@@ -2369,7 +2395,7 @@ The current stage, active target, and checkpoint freshness are part of the runti
 
 A conversation can stay bound to a saved workflow after rename, commit, and execution so follow-up runs and repairs stay grounded. That binding is intentional but not sticky against explicit new-workflow intent.
 
-When the user says they want to create a new workflow after inspecting or running an existing one, the engine clears the saved-workflow binding before the next authoring move. The next `author_workflow` or `build_workflow` call targets a fresh draft, not an in-place update. Updating a saved workflow remains an explicit path: keep the bound target and commit back into it.
+When the user says they want to create a new workflow after inspecting or running an existing one, the engine clears the saved-workflow binding before the next authoring move. The next `author_workflow` call targets a fresh draft, not an in-place update. Updating a saved workflow remains an explicit path: keep the bound target and commit back into it.
 
 ---
 
@@ -2417,7 +2443,7 @@ The clean authoring experience treats intermediate verification as first-class p
 | 2 | **`author_workflow`** (one call) — generates the COMPLETE definition (steps, transforms, input/output schema, trigger), evaluates it against recorded evidence with bounded auto-repair, stashes it as the draft; read the `recorded_eval` findings |
 | 3 | **`dry_run_workflow`** — hold-writes preview: reads run live; writes resolved (URL, headers, materialized body) but never dispatched, recorded as held request artifacts |
 | 4 | **Judge** — instruction-grounded judge evaluates the artifacts (held payloads included) against the stashed goal; green preview + judge pass auto-commits (`auto_committed: true`) |
-| 5 | **Repair on findings** — apply specific findings via `edit_workflow_patch` (structural) or `update_param` (single field), iterate a transform with `dry_run_transform`, then preview again |
+| 5 | **Repair on findings** — apply specific findings via `edit_workflow_patch` (an RFC-6902 JSON-Patch over the draft; accept all, decline all, or accept a partial subset of its operations), iterate a transform with `dry_run_transform`, then preview again |
 | 6 | **Run** the persisted workflow |
 
 No separate "save"/"commit" on the happy path — the verification step is the persistence step. Executing write steps for real during a preview is the rare exception, behind explicit user confirmation (`execute_writes: true`); externally visible destinations (recipient addresses, channels, webhook URLs) must always come from the user, never fabricated placeholders.
@@ -2468,6 +2494,65 @@ When a connector is in scope, the assembler doesn't inline its full doc corpus �
 ### Self-healing retry
 
 When drift is detected, the repair flow proposes a patch, classifies it, and dry-runs it against the most recent `execution_fixtures` row. If either gate rejects, the loop re-prompts the LLM with the structured rejection folded into `prior_failures`, up to `MAX_REPAIR_ATTEMPTS = 2` total. The final patch candidate carries a `metadata.rejection_chain` array recording every prior rejection, so reviewers see what was tried. Rate-limit-class drift (HTTP 429 / 503 with a template `rate_limits` hint) produces a distinct `kind: "rate_limited"` candidate — same retry loop, but the patch only adjusts backoff metadata.
+
+---
+
+## Playground Mode — Scratch Authoring That Never Persists
+
+Sometimes you want to explore — try a connector shape, sketch a workflow, see what a dry-run returns — without leaving anything behind. Playground mode is an ephemeral authoring space: the full triad works exactly as it does normally (author, dry-run, edit, even the judge), but nothing is ever written to the tenant. No draft is persisted, no connector is saved, no workflow is committed. When the conversation ends, the scratch work is gone.
+
+It is a durable per-conversation flag — set it once when you start, and every turn in that conversation stays ephemeral. There is nothing to remember to clean up afterward.
+
+| Surface | How to start a playground conversation |
+|---|---|
+| MCP client | Set `_meta.sk_playground` on the conversation-start call |
+| HTTP API | Pass a `playground` field in the conversation-start body |
+
+Use it for a throwaway exploration, a live demo, or a "what would this even look like?" question where committing anything would be noise. When you want the real thing, start an ordinary conversation and the same steps persist as usual.
+
+---
+
+## Partial-Accept Of Edits
+
+When you ask for a change to a draft, `edit_workflow_patch` expresses it as an RFC-6902 JSON-Patch — a precise, ordered list of operations against the workflow definition (add this header, replace that URL, remove this step). Before any operation is applied, the patch is presented for confirmation, and you have three responses, not two:
+
+| Response | Effect |
+|---|---|
+| **Accept all** | Every operation in the patch is applied. |
+| **Decline all** | The draft is untouched; nothing changes. |
+| **Accept a partial subset** | You choose which operations to apply; the rest are dropped. |
+
+Partial-accept matters when a single edit bundles a change you want with one you don't — take the corrected pagination cursor, leave the header rename you didn't ask for. The accepted subset is applied atomically and, as with any draft mutation, invalidates downstream checkpoints so the draft is previewed again before it can commit. Nothing is silently applied: every operation you see is either accepted by you or dropped.
+
+---
+
+## Payload-First: A Sample Payload Drives The Input Contract
+
+Authoring is easier when you can hand the AI a concrete example of the data the workflow will receive. That is `input_schema_sample` — a sample TEST payload that grounds the resolved input contract and seeds the first dry-run.
+
+The input contract resolves by a fixed precedence:
+
+| Priority | Source | When it applies |
+|---|---|---|
+| 1 | **Declared** | An explicit `input_schema` on the workflow always wins |
+| 2 | **Sample** | With no declared schema, the shape is inferred from `input_schema_sample` |
+| 3 | **Synthesized** | With neither, the engine synthesizes a minimal contract from how the steps reference their inputs |
+
+The sample is scaffolding, not content. **The test payload is never persisted into the workflow definition.** It drives dry-runs and shapes the contract during authoring, then is discarded — what gets committed is the resolved `input_schema`, never the example values you tested with. A committed workflow stays free of throwaway test data while you still author against realistic inputs.
+
+---
+
+## Testing A Draft With `includeStepResults`
+
+A dry-run tells you whether the draft is green. When you need to know *why* a step behaved the way it did, pass `includeStepResults` on `dry_run_workflow` (or on `run_workflow` for a committed workflow). The response then carries the raw per-step inputs and outputs — exactly what each step received and exactly what it produced.
+
+This is the self-diagnosis lever. Instead of guessing which step mangled a field, read the actual value that flowed into it and the value it emitted:
+
+- A transform returns something unexpected → read its input scope and its return value side by side.
+- A downstream step can't resolve a scope path → see the real shape the upstream step actually produced.
+- You are calibrating a new draft against an `input_schema_sample` → confirm each step consumes the sample the way you intended.
+
+It is opt-in because the per-step payloads are verbose — omit it for a quick green/red check, include it the moment you are actually debugging.
 
 ---
 
@@ -4196,11 +4281,17 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 > - **Tasks-capable clients** (SEP-1686) that send a task-augmented `tools/call` receive a `CreateTaskResult` and poll `tasks/get` / `tasks/result`; `tasks/cancel` aborts the running turn. The server advertises `capabilities.tasks = {list, cancel, requests:{tools:{call:{}}}}`.
 > - **Non-Tasks clients** receive a fast plain `CallToolResult` — `{conversation_id, mcp_task_id, status:"working", poll_with:"conversation_get", poll_arg:{conversation_id}}` — and poll the new read-only `conversation_get({conversation_id})` tool until it reports `completed`, `failed`, or `input_required`.
 >
+> **Progress heartbeat.** While the turn is `working`, `conversation_get` also returns a worker-stamped heartbeat so a polling client can render live progress instead of a bare spinner: `{phase, elapsed_ms, last_action, step}` — the stage the turn is in, the wall-clock elapsed, the most recent action the worker took, and the workflow step currently being authored or tested. The heartbeat is advisory; the authoritative terminal signal remains the completion status.
+
+The complete MCP conversation cluster is `conversation_start`, `conversation_append`, `conversation_get`, `conversation_respond_elicitation`, and `conversation_commit` — the session orchestration an AI client uses to open, drive, resolve elicitations on, and commit an authoring conversation. See [Tool palette → MCP session and confirmation tools](./tool-palette.md#mcp-session-and-confirmation-tools) for each tool's role.
+>
 > **Elicitation in a backgrounded turn.** A backgrounded turn has no live MCP session, so it cannot use the in-process `ElicitationBridge` (`elicitForm` / `elicitOob` need the open `tools/call` SSE stream). It always uses the DB-pause path: an `ask_user_*` / `authenticate_oauth` inserts a pending `conversation_elicitations` row, sets the conversation to `awaiting_input`, and the turn ends. The task then derives `input_required`; the client reads the pending form via `conversation_get` (or `tasks/get`) and resolves it with `conversation_respond_elicitation`, which enqueues the next turn. The `ElicitationBridge` is retained for any synchronous (non-conversation) tool that still runs inside its `tools/call`.
 
 **Governance.** All MCP calls are subject to the same RBAC checks and Audit Log entries as direct API calls. There is no privileged back channel; identity and permissions are enforced identically regardless of which surface initiated the request.
 
 **Destructive-action flow.** `tenant.*` writes (e.g. `tenant.delete_workflow`, `tenant.revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation authoring actions. The first call returns a structured pending envelope — `{pending: true, confirm_required: true, target: {...}, resume: "..." , tool_call_id: "..."}` — and an `approval.requested` audit row. The client relays the target to the operator, obtains consent, and re-issues the same call with `_meta.sk_confirm: true` (or `__policy_confirmed: true` inside the arguments). The second call emits `approval.approved` and executes the callable entry. This is two MCP round-trips and one human confirmation — no authoring conversation required for routine CRUD.
+
+**Model-only clients: `confirm_tool_call`.** Some MCP clients cannot attach `_meta` to an outgoing call, so they have no way to re-issue with `_meta.sk_confirm`. For them the platform exposes `confirm_tool_call` — an ordinary MCP tool that records the operator's approval for a pending gated call by its identifier, after which the write proceeds. It makes the confirm gate satisfiable on every client, not just those that can set `_meta`. The approval is audited identically to the `_meta.sk_confirm` path; it is a governance decision, not a bypass.
 
 **Callable hints.** Every listed callable entry carries `_meta.subkit = {category, confirm_required, destructive}` so clients can render destructive warnings and skip self-authored pre-confirms. Clients that honour `confirm_required` from the listing avoid the two-elicitation trap.
 
@@ -4209,6 +4300,8 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 **Workflow inputs.** Each `wf.<slug>` callable entry advertises an `inputSchema`. When the workflow declares `input_schema` on its DAG, that is passed through verbatim. When it doesn't, sk synthesises one by scanning the DAG for `${input.X}` placeholders in request steps and `input.input.X` references in JavaScript transforms, yielding `{type:"object", properties:{X:{type:"string"}}, additionalProperties: true}`.
 
 **Non-fatal warnings.** When a workflow run hits a soft signal — for example a `loop.over` JSONata expression that resolved to a non-array because it referenced a step id not in scope — the MCP response wraps the output as `{output, warnings: [{code:"loop_over_unresolved", identifier, step_key, message}]}`. The run still reports `status: "succeeded"` but the client can surface the diagnostic so operators know why a payload looks partial.
+
+**Step-level self-diagnosis.** `dry_run_workflow` and `run_workflow` accept an optional `includeStepResults` flag. When set, the response carries the raw per-step inputs and outputs alongside the normal summary, so a client that hit an unexpected result can inspect exactly what each step received and emitted — and feed that into a patch edit — without a second round-trip. It is off by default because the raw payloads can be large.
 
 **Read-only deployments.** For MCP deployments that expose only read callables (no write surface at all), set `SK_MCP_READ_ONLY=1`. Writes are visible by default and rely on the policy gate for safety.
 
@@ -4656,9 +4749,11 @@ bundled proxy (reads `~/.sk/config.json`):
 ```
 
 Once connected, the client sees your tenant's tools — author and run workflows
-(`author_workflow`, `build_workflow`, `dry_run_workflow`), inspect connectors
-(`test_connector`, `list_recipes`), and more. Destructive calls require a confirm
-first. Verify the endpoint by hand:
+through the authoring triad (`author_workflow` to build a grounded draft,
+`dry_run_workflow` to test it, `edit_workflow_patch` to refine it, and
+`save_workflow_draft` to commit), inspect connectors (`test_connector`,
+`list_recipes`), and more. Destructive calls require a confirm first. Verify the
+endpoint by hand:
 
 ```bash
 curl -s http://localhost:3000/mcp \
@@ -5118,6 +5213,69 @@ Envelope rendering:
 - `envelopeToToolResult(envelope)` — back-converts to the legacy `ToolResult`
   shape the conversation loop expects today. The `needs_confirm` case becomes an
   `ask_user_confirm` pause so the elicitation loop picks it up unchanged.
+
+## MCP session and confirmation tools
+
+A handful of MCP tools are not LLM palette items at all — they are the session
+orchestration an external client uses to drive an authoring conversation and to
+satisfy the write gate. They dispatch through the same RBAC and audit chokepoint,
+but they manage *the conversation*, not a tenant resource.
+
+### The conversation cluster
+
+| Tool | Role |
+|---|---|
+| `conversation_start` | Open a new authoring conversation from a described outcome; returns the `conversation_id`. |
+| `conversation_append` | Add the next user message and enqueue the next authoring turn. |
+| `conversation_get` | Read-only poll of a conversation's state — completion status, pending elicitation, and the live progress heartbeat (below). |
+| `conversation_respond_elicitation` | Resolve a pending elicitation (a form answer, an approval, an OAuth acknowledgement) and enqueue the following turn. |
+| `conversation_commit` | Commit the current draft from the conversation into a persisted, active workflow. |
+
+These five are the complete session surface. Authoring turns run in a background
+worker (a real turn outlasts the MCP client timeout), so a client `conversation_start`s
+or `conversation_append`s, then polls `conversation_get` until the turn reports
+`completed`, `failed`, or `input_required`. The [Input Surfaces](./input-surfaces.md#mcp-integration)
+page documents the Tasks-capable vs. non-Tasks polling contract in full.
+
+### Worker-stamped heartbeat
+
+A backgrounded turn has no open stream to report progress on, so the worker stamps
+its progress into the conversation row as it goes. `conversation_get` returns that
+heartbeat so a polling client can render live status instead of a bare spinner:
+
+| Field | Meaning |
+|---|---|
+| `phase` | The stage the turn is in (e.g. grounding, drafting, dry-running, critiquing). |
+| `elapsed_ms` | Wall-clock elapsed since the turn started. |
+| `last_action` | The most recent tool or pipeline step the worker took. |
+| `step` | The workflow step currently being authored or tested, when applicable. |
+
+The heartbeat is advisory telemetry for the operator's benefit; the authoritative
+terminal signal is still the completion status. A stalled or slow turn is visible
+as a growing `elapsed_ms` against an unchanged `last_action`.
+
+### `confirm_tool_call`
+
+A `tenant_write` tool call returns `needs_confirm`, and the canonical way to
+approve it is to re-issue the same call with `_meta.sk_confirm: true`. A model-only
+client that cannot set `_meta` on an outgoing call has no way to express that
+approval — the gate would dead-end. `confirm_tool_call` is the escape hatch: it is
+an ordinary MCP tool the client invokes with the pending call's identifier to
+record the operator's approval, after which the gated write proceeds. It exists so
+the confirm gate is satisfiable on *every* MCP client, not only those that can
+attach `_meta` to a retried call. The approval is audited exactly like the
+`_meta.sk_confirm` path — a `confirm_tool_call` is a governance decision, not a
+bypass.
+
+## Self-diagnosis: `includeStepResults`
+
+`dry_run_workflow` and `run_workflow` accept an optional `includeStepResults` flag.
+When set, the response carries the raw per-step inputs and outputs for the run
+alongside the normal summary. This is the self-diagnosis lever: an authoring client
+(or an operator) that gets an unexpected result can read exactly what each step
+received and emitted without a second round-trip, then feed that back into a patch
+edit. It is off by default because the raw payloads can be large; turn it on only
+when you need step-level forensics.
 
 ## Decisions and trade-offs
 
@@ -5899,7 +6057,7 @@ next release onward the old private key is retired.
 ```bash
 # 1. Generate a fresh keypair. Writes the new public key into the repo;
 #    prints the matching private key once to stdout.
-bun run scripts/generate-release-key.ts
+bun run scripts/gen-release-key.ts
 
 # 2. Paste the printed private key into the GitHub secret.
 gh secret set RELEASE_SIGNING_KEY --repo MikeBild/subkit

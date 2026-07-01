@@ -12,6 +12,10 @@ This page covers the workflow lifecycle, the execution model, the eight Step kin
 
 A workflow moves through three states. Chat authors a **draft**; approval commits it to **active**; retiring or superseding it moves it to **archived**. Promoting a prior version back to active is the rollback path — no redeploy, instant, audited.
 
+Authoring itself follows a fixed shape: sk builds a grounded draft from the described outcome, tests that draft against real connectors, refines it with targeted patch edits, and only then commits it. Each stage is a discrete, governed step — the draft is never mutated blindly, and the commit is the single gated transition from draft to active. See [AI-assisted authoring](../authors/authoring-workflows.md) for the full loop.
+
+**Playground mode.** Authoring can run in an ephemeral scratch mode that never persists. A playground conversation builds and tests drafts exactly like a normal session, but nothing it produces is written to the tenant's workflow store — the draft evaporates when the conversation ends. This is the safe space to explore a shape, probe a connector, or demonstrate the authoring loop without leaving any committed artifact behind. Playground is a durable, per-conversation flag: it is set when the conversation is opened (an AI client signals it over MCP; an HTTP caller passes it on the start request) and holds for the life of that conversation.
+
 ```mermaid
 stateDiagram-v2
     [*] --> draft: authored in chat
@@ -24,6 +28,14 @@ stateDiagram-v2
 ```
 
 *Draft → active → archived. Every transition lands in the Audit Log with the actor, the version, and the timestamp.*
+
+### The authoring critic
+
+Static validation catches what a schema can prove: unknown step kinds, malformed placeholders, a scope reference that can't resolve. It cannot catch a draft that is *structurally valid but semantically wrong* — a workflow that parses cleanly yet quietly drifts from what the author actually asked for (the wrong endpoint, an inverted condition, a dropped field).
+
+The authoring critic closes that gap. It is an LLM gate that runs **after** static validation in the authoring pipeline and reads the draft against the stated intent, flagging semantic drift a parser can't see. When it finds a problem, the finding is fed back into the same bounded-repair loop the engine uses everywhere else, so the fix is proposed and re-validated rather than silently applied.
+
+The critic is **off by default** and enabled through the `llm.critic.*` settings (see the settings reference). It is deliberately **fail-open**: if the critic model is unavailable or errors, authoring proceeds on the static result rather than blocking — the critic sharpens quality when present but is never a hard dependency on the path to a committed workflow.
 
 ---
 

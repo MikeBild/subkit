@@ -2,8 +2,9 @@
 
 > **Living document.** Every new CLI surface (slash command or `sk`
 > subcommand) MUST land with a corresponding entry in this file AND a
-> covering test. The `pre-push` guard at `scripts/check-e2e-coverage.sh`
-> fails when a slash/subcommand is introduced without an entry below.
+> covering test. This matrix is the contract: a surface without a row
+> below is treated as untested, and code review rejects the change until
+> the entry and its test land together.
 
 ## Tracks
 
@@ -270,7 +271,9 @@ nightly.yml`) runs the full track. Both inject the mock LLM via
 6. **Real LLM by default**, mock only when the test explicitly needs a
    pinned tool sequence.
 
-The `scripts/check-e2e-coverage.sh` script greps for new
-slash-command / subcommand registrations and fails if no test under
-`tests/e2e/` references them. Run via the `pre-push` hook (see
-`.husky/pre-push` or whatever hook the repo uses).
+Enforcement is by discipline, not a grep guard: when a slash command is
+added to `apps/sk/src/slash.ts` or a subcommand group to
+`apps/sk/src/index.ts`, the same change updates this matrix with a row
+naming the covering test. The e2e tiers above are the proof that the
+named test exists and passes; a matrix row without a green test is a
+review-blocking gap.

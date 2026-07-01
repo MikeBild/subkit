@@ -98,7 +98,7 @@ SPIN_FRAMES=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
 
 # spinner <label> <seconds> <base_elapsed_s> <tok_start> <tok_end> [color]
 # Animates the braille glyph + label + elapsed + token count, matching
-# repl/spinner.tsx ("running build_workflow…  12s · 8420t").
+# repl/spinner.tsx ("running author_workflow…  12s · 8420t").
 spinner() {
   local label="$1" secs="$2" base="$3" t0="$4" t1="$5" col="${6:-$WARN}"
   local ticks=$(( secs * 8 )) i

@@ -10,7 +10,7 @@
 // key.
 //
 // **Generating / rotating the key.**
-//   bun run scripts/generate-release-key.ts
+//   bun run scripts/gen-release-key.ts
 // will overwrite the constant below with a freshly generated PEM and
 // print the matching private key once for the operator to paste into
 // the GitHub secret. See `docs/admins/credentials-and-keys.md` for the rotation

@@ -58,6 +58,16 @@ never exposed outside the engine. Workflows and steps reference credentials by
 name, not by value. The full vault model and master-key rotation procedure are in
 [Credentials & Keys](../admins/credentials-and-keys.md).
 
+**Secrets are never collected in chat.** When onboarding runs through an AI client
+over MCP, sk refuses to accept a credential as plain conversation text. A
+secret-shaped prompt is declined and the operator is routed to the secure flow
+instead — a scoped portal-setup link where the value is typed into a masked field,
+or the managed OAuth authorization flow. The credential goes straight into the
+encrypted vault outside the chat transcript; the AI client only learns that the
+connector is now authorized. This means a token can never leak into a conversation
+history, a tool argument, or a log — regardless of which surface drove the
+onboarding.
+
 **End-User Credentials** extend this for multi-user scenarios: an individual user
 supplies their own credentials, and the platform acts as that user when executing
 on their behalf — proper delegation, not credential sharing.

@@ -51,7 +51,7 @@ sequenceDiagram
     J-->>C: verdict (pass / findings)
     C->>U: preview draft for approval
     U->>C: approve
-    C->>E: commit (versioned workflow)
+    C->>E: save_workflow_draft (commit versioned workflow)
     E-->>U: runnable, governed workflow
 ```
 
@@ -71,10 +71,10 @@ stateDiagram-v2
     ConnectorPersisted --> WorkflowDraft: author_workflow (one-shot generate + evaluate)
     WorkflowDraft --> WorkflowPreviewed: dry_run_workflow (writes held)
     WorkflowPreviewed --> WorkflowJudged: instruction-grounded judge reads artifacts incl. held payloads
-    WorkflowJudged --> WorkflowPersisted: green preview + judge pass (auto-commit)
+    WorkflowJudged --> WorkflowPersisted: green preview + judge pass (auto-commit / save_workflow_draft)
     WorkflowJudged --> WorkflowRepair: judge / recorded_eval findings
     WorkflowPreviewed --> WorkflowRepair: preview failure
-    WorkflowRepair --> WorkflowPreviewed: edit_workflow_patch / update_param, then preview again
+    WorkflowRepair --> WorkflowPreviewed: edit_workflow_patch (RFC-6902), then preview again
     WorkflowPersisted --> WorkflowExecuted: run
     WorkflowExecuted --> Diagnosis: warnings / failure
     Diagnosis --> WorkflowRepair: repair draft
@@ -83,7 +83,9 @@ stateDiagram-v2
 
 **Verification is persistence.** Probe persists the connector inline; a green, judged dry-run commits the workflow inline. There is no separate "save" step on the happy path. Dry-runs hold writes — read steps execute live, write steps are fully resolved (URL, headers, materialized body) but never dispatched, and the held request is recorded as the artifact the judge evaluates. Any draft mutation invalidates downstream checkpoints automatically.
 
-**Stage gate.** `propose_step` and `update_param` are repair-stage tools. While the draft is in its initial stage — no recorded preview, no recorded-eval/judge findings — they refuse with `authoring_stage_violation` and name the exact next valid actions (`author_workflow`, `build_workflow`, `dry_run_workflow`, `edit_workflow_patch`), none of which is ever gated. The moment a preview or findings exist, both unlock unconditionally. Initial authoring is ONE `author_workflow` call, not a micro-iterated step-by-step build.
+**The authoring triad.** Workflow authoring is four verbs, in order: `author_workflow` (generate the complete grounded draft), `dry_run_workflow` (test it with writes held), `edit_workflow_patch` (revise it with an RFC-6902 JSON-Patch), and `save_workflow_draft` (commit the version). Generation is ONE `author_workflow` call, not a micro-iterated step-by-step build.
+
+**Stage gate.** `edit_workflow_patch` is the repair-stage verb. While the draft is in its initial stage — no recorded preview, no recorded-eval/judge findings — it refuses with `authoring_stage_violation` and names the exact next valid actions (`author_workflow`, `dry_run_workflow`, `save_workflow_draft`), none of which is ever gated. The moment a preview or findings exist, it unlocks unconditionally — that is when a patch edit has real artifacts to reason against.
 
 The state is persisted in the conversation draft summary:
 
@@ -102,7 +104,7 @@ The current stage, active target, and checkpoint freshness are part of the runti
 
 A conversation can stay bound to a saved workflow after rename, commit, and execution so follow-up runs and repairs stay grounded. That binding is intentional but not sticky against explicit new-workflow intent.
 
-When the user says they want to create a new workflow after inspecting or running an existing one, the engine clears the saved-workflow binding before the next authoring move. The next `author_workflow` or `build_workflow` call targets a fresh draft, not an in-place update. Updating a saved workflow remains an explicit path: keep the bound target and commit back into it.
+When the user says they want to create a new workflow after inspecting or running an existing one, the engine clears the saved-workflow binding before the next authoring move. The next `author_workflow` call targets a fresh draft, not an in-place update. Updating a saved workflow remains an explicit path: keep the bound target and commit back into it.
 
 ---
 
@@ -150,7 +152,7 @@ The clean authoring experience treats intermediate verification as first-class p
 | 2 | **`author_workflow`** (one call) — generates the COMPLETE definition (steps, transforms, input/output schema, trigger), evaluates it against recorded evidence with bounded auto-repair, stashes it as the draft; read the `recorded_eval` findings |
 | 3 | **`dry_run_workflow`** — hold-writes preview: reads run live; writes resolved (URL, headers, materialized body) but never dispatched, recorded as held request artifacts |
 | 4 | **Judge** — instruction-grounded judge evaluates the artifacts (held payloads included) against the stashed goal; green preview + judge pass auto-commits (`auto_committed: true`) |
-| 5 | **Repair on findings** — apply specific findings via `edit_workflow_patch` (structural) or `update_param` (single field), iterate a transform with `dry_run_transform`, then preview again |
+| 5 | **Repair on findings** — apply specific findings via `edit_workflow_patch` (an RFC-6902 JSON-Patch over the draft; accept all, decline all, or accept a partial subset of its operations), iterate a transform with `dry_run_transform`, then preview again |
 | 6 | **Run** the persisted workflow |
 
 No separate "save"/"commit" on the happy path — the verification step is the persistence step. Executing write steps for real during a preview is the rare exception, behind explicit user confirmation (`execute_writes: true`); externally visible destinations (recipient addresses, channels, webhook URLs) must always come from the user, never fabricated placeholders.
@@ -201,6 +203,65 @@ When a connector is in scope, the assembler doesn't inline its full doc corpus �
 ### Self-healing retry
 
 When drift is detected, the repair flow proposes a patch, classifies it, and dry-runs it against the most recent `execution_fixtures` row. If either gate rejects, the loop re-prompts the LLM with the structured rejection folded into `prior_failures`, up to `MAX_REPAIR_ATTEMPTS = 2` total. The final patch candidate carries a `metadata.rejection_chain` array recording every prior rejection, so reviewers see what was tried. Rate-limit-class drift (HTTP 429 / 503 with a template `rate_limits` hint) produces a distinct `kind: "rate_limited"` candidate — same retry loop, but the patch only adjusts backoff metadata.
+
+---
+
+## Playground Mode — Scratch Authoring That Never Persists
+
+Sometimes you want to explore — try a connector shape, sketch a workflow, see what a dry-run returns — without leaving anything behind. Playground mode is an ephemeral authoring space: the full triad works exactly as it does normally (author, dry-run, edit, even the judge), but nothing is ever written to the tenant. No draft is persisted, no connector is saved, no workflow is committed. When the conversation ends, the scratch work is gone.
+
+It is a durable per-conversation flag — set it once when you start, and every turn in that conversation stays ephemeral. There is nothing to remember to clean up afterward.
+
+| Surface | How to start a playground conversation |
+|---|---|
+| MCP client | Set `_meta.sk_playground` on the conversation-start call |
+| HTTP API | Pass a `playground` field in the conversation-start body |
+
+Use it for a throwaway exploration, a live demo, or a "what would this even look like?" question where committing anything would be noise. When you want the real thing, start an ordinary conversation and the same steps persist as usual.
+
+---
+
+## Partial-Accept Of Edits
+
+When you ask for a change to a draft, `edit_workflow_patch` expresses it as an RFC-6902 JSON-Patch — a precise, ordered list of operations against the workflow definition (add this header, replace that URL, remove this step). Before any operation is applied, the patch is presented for confirmation, and you have three responses, not two:
+
+| Response | Effect |
+|---|---|
+| **Accept all** | Every operation in the patch is applied. |
+| **Decline all** | The draft is untouched; nothing changes. |
+| **Accept a partial subset** | You choose which operations to apply; the rest are dropped. |
+
+Partial-accept matters when a single edit bundles a change you want with one you don't — take the corrected pagination cursor, leave the header rename you didn't ask for. The accepted subset is applied atomically and, as with any draft mutation, invalidates downstream checkpoints so the draft is previewed again before it can commit. Nothing is silently applied: every operation you see is either accepted by you or dropped.
+
+---
+
+## Payload-First: A Sample Payload Drives The Input Contract
+
+Authoring is easier when you can hand the AI a concrete example of the data the workflow will receive. That is `input_schema_sample` — a sample TEST payload that grounds the resolved input contract and seeds the first dry-run.
+
+The input contract resolves by a fixed precedence:
+
+| Priority | Source | When it applies |
+|---|---|---|
+| 1 | **Declared** | An explicit `input_schema` on the workflow always wins |
+| 2 | **Sample** | With no declared schema, the shape is inferred from `input_schema_sample` |
+| 3 | **Synthesized** | With neither, the engine synthesizes a minimal contract from how the steps reference their inputs |
+
+The sample is scaffolding, not content. **The test payload is never persisted into the workflow definition.** It drives dry-runs and shapes the contract during authoring, then is discarded — what gets committed is the resolved `input_schema`, never the example values you tested with. A committed workflow stays free of throwaway test data while you still author against realistic inputs.
+
+---
+
+## Testing A Draft With `includeStepResults`
+
+A dry-run tells you whether the draft is green. When you need to know *why* a step behaved the way it did, pass `includeStepResults` on `dry_run_workflow` (or on `run_workflow` for a committed workflow). The response then carries the raw per-step inputs and outputs — exactly what each step received and exactly what it produced.
+
+This is the self-diagnosis lever. Instead of guessing which step mangled a field, read the actual value that flowed into it and the value it emitted:
+
+- A transform returns something unexpected → read its input scope and its return value side by side.
+- A downstream step can't resolve a scope path → see the real shape the upstream step actually produced.
+- You are calibrating a new draft against an `input_schema_sample` → confirm each step consumes the sample the way you intended.
+
+It is opt-in because the per-step payloads are verbose — omit it for a quick green/red check, include it the moment you are actually debugging.
 
 ---
 

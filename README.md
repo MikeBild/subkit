@@ -48,13 +48,23 @@ the control flow of an approved workflow is fixed; runtime does not re-decide it
 Full conceptual, operational, and quickstart documentation lives in [`docs/`](docs/) — start
 with the [docs index](docs/README.md) and the [glossary](docs/concepts/glossary.md).
 
+Authoring is a guided pipeline: describe the outcome in plain language and sk builds a
+grounded draft, tests it against a sample payload, applies precise patch edits, and commits
+only on explicit approval — nothing reaches production without a human accepting the change.
+The [authoring guide](docs/authors/authoring-workflows.md) walks the full loop, including
+throwaway playground drafts that never persist and partial-accept of individual edits. For the
+governed MCP surface those tools expose — session progress, confirmation gates, and
+secrets-never-in-chat routing — see the [tool palette](docs/developers/tool-palette.md).
+
 ---
 
 ## For Coding Agents
 
 sk is designed for agentic coding environments. Start with [`AGENTS.md`](AGENTS.md) —
 the canonical repo-wide contract, subsystem map, and quality gate. See [`SKILLS.md`](SKILLS.md)
-for the skill index.
+for the skill index, the [tool palette](docs/developers/tool-palette.md) for the callable
+workflow and conversation tools, and the [authoring guide](docs/authors/authoring-workflows.md)
+for the build → test → patch → commit loop your agent drives.
 
 ---
 

@@ -354,7 +354,7 @@ next release onward the old private key is retired.
 ```bash
 # 1. Generate a fresh keypair. Writes the new public key into the repo;
 #    prints the matching private key once to stdout.
-bun run scripts/generate-release-key.ts
+bun run scripts/gen-release-key.ts
 
 # 2. Paste the printed private key into the GitHub secret.
 gh secret set RELEASE_SIGNING_KEY --repo MikeBild/subkit

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Build + push the all-in-one subkit image to Docker Hub for amd64 + arm64.
 #
+# Manual mirror of the `docker-publish` job in .github/workflows/release.yml
+# (multi-arch, :version + :latest). Keep the two in sync — this script is the
+# local/manual path; the workflow job is the automated release path.
+#
 # Prerequisites (run once, interactively — this script can't do it for you):
 #   docker login -u <your-dockerhub-user>
 #
