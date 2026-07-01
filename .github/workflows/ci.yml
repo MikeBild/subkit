@@ -169,6 +169,7 @@ jobs:
           name: engine-log
           path: engine-smoke.log
           if-no-files-found: ignore
+          retention-days: 5
 
       - name: Validate docker compose
         run: docker compose config > /dev/null
@@ -226,6 +227,7 @@ jobs:
           name: engine-docker-log
           path: engine-docker.log
           if-no-files-found: ignore
+          retention-days: 5
 
       - name: Tear down
         if: always()
@@ -272,6 +274,7 @@ jobs:
           name: gitleaks-results.sarif
           path: results.sarif
           if-no-files-found: ignore
+          retention-days: 5
 
   dependency-review:
     name: dependency review

@@ -265,6 +265,7 @@ jobs:
           name: engine-docker-nightly-log
           path: engine-docker.log
           if-no-files-found: ignore
+          retention-days: 5
       - name: Tear down
         if: always()
         run: bun run compose:test:down

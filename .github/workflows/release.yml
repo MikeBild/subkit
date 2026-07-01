@@ -329,6 +329,9 @@ jobs:
         with:
           name: ${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}
           path: dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
+          # Intermediate hand-off to publish-release; the binaries also become
+          # Release assets, so keep the artifacts around for the shortest time.
+          retention-days: 1
 
   # ── Publish GitHub Release with all binaries + checksums ──
 
