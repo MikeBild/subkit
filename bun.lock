@@ -114,6 +114,7 @@
         "@anatine/zod-mock": "^3.14.0",
         "@biomejs/biome": "^2.4.11",
         "@electric-sql/pglite": "^0.4.4",
+        "@opentelemetry/sdk-trace-base": "2.6.1",
         "@types/aws4": "^1.11.6",
         "@types/js-yaml": "^4.0.9",
         "@types/jsdom": "^28.0.3",
