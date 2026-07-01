@@ -54,6 +54,7 @@ import {
 import type { TurnEvent } from "../../types.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
+import { checkToolPermission, type ToolPermissionResult } from "../permission-gate.ts";
 import { resolveExecutionMode } from "../tool-policies.ts";
 import { truncateForLlm } from "../truncate.ts";
 import { decideConfirm } from "./confirm-decision.ts";
@@ -1214,8 +1215,26 @@ export function wrapOne(
         });
 
         let result: ToolResult;
+        // Central RBAC gate: enforce the tool's declarative `permission`
+        // descriptor before execution (replaces the per-tool inline can()
+        // checks). Runs at the same point the inline checks did — inside
+        // execute, after the confirm gate — so ordering is unchanged; a deny
+        // flows through the normal ok:false handling below (declined
+        // transition, row update, tool_result event).
+        const permCheck: ToolPermissionResult = inner.permission
+          ? await checkToolPermission(perCallCtx, inner.permission, rawArgs)
+          : { allow: true };
         try {
-          result = await inner.execute(perCallCtx, resolvedArgs);
+          result = permCheck.allow
+            ? await inner.execute(perCallCtx, resolvedArgs)
+            : {
+                ok: false,
+                data: {
+                  error: "permission_denied",
+                  permission: permCheck.permission,
+                  reason: permCheck.reason,
+                },
+              };
         } catch (err) {
           await langfuseSpan.finish({ status: "error", error: err });
           const msg = err instanceof Error ? err.message : String(err);

@@ -11,103 +11,13 @@
 // snapshots.
 
 import { z } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
-import type { ResolvedPrincipal } from "../../../../auth/types.ts";
-import { roles, systemAccounts, users } from "../../../../db/schema/index.ts";
-import { can } from "../../../../rbac/evaluator.ts";
 import { UpdateSkillSchema } from "../../../../skills/types.ts";
-import type { ConversationTool, ToolContext } from "../../index.ts";
+import type { ConversationTool } from "../../index.ts";
 
 const UpdateSkillInput = z
   .object({ id: z.string().uuid() })
   .merge(UpdateSkillSchema)
   .openapi("UpdateSkillToolInput");
-
-type PermissionResult = { allow: true } | { allow: false; reason: string };
-
-async function resolveConversationPrincipal(ctx: ToolContext): Promise<ResolvedPrincipal | null> {
-  const actorId = ctx.engineClient.context.actor_id;
-  const actorType = ctx.engineClient.context.actor_type;
-  if (!actorId || actorType === "system") return null;
-
-  if (actorType === "user") {
-    const rows = await ctx.db
-      .select({ role: users.role, role_id: users.role_id })
-      .from(users)
-      .where(and(eq(users.id, actorId), eq(users.tenant_id, ctx.tenant_id)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    let roleNames: string[] = [row.role];
-    if (row.role_id) {
-      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-      const named = await ctx.db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, row.role_id))
-        .limit(1);
-      if (named[0]?.name) roleNames = [named[0].name];
-    }
-    return {
-      provider: "conversation_tool",
-      kind: "user",
-      id: actorId,
-      tenant_id: ctx.tenant_id,
-      roles: roleNames,
-    };
-  }
-  if (actorType === "system_account") {
-    const rows = await ctx.db
-      .select({ role_id: systemAccounts.role_id })
-      .from(systemAccounts)
-      .where(and(eq(systemAccounts.id, actorId), eq(systemAccounts.tenant_id, ctx.tenant_id)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    let roleNames: string[] = ["member"];
-    if (row.role_id) {
-      // tenant-filter:exempt — RBAC catalog walk by role_id; handles both global rows (tenant_id IS NULL) and tenant rows
-      const named = await ctx.db
-        .select({ name: roles.name })
-        .from(roles)
-        .where(eq(roles.id, row.role_id))
-        .limit(1);
-      if (named[0]?.name) roleNames = [named[0].name];
-    }
-    return {
-      provider: "conversation_tool",
-      kind: "system_account",
-      id: actorId,
-      tenant_id: ctx.tenant_id,
-      roles: roleNames,
-    };
-  }
-  return null;
-}
-
-async function requirePermission(
-  ctx: ToolContext,
-  permission: string,
-  resource: { type: string; id: string },
-): Promise<PermissionResult> {
-  const principal = await resolveConversationPrincipal(ctx);
-  if (!principal) return { allow: true };
-  const decision = await can(ctx.db, {
-    tenant_id: ctx.tenant_id,
-    principal,
-    permission,
-    resource,
-  });
-  if (decision.allow) return { allow: true };
-  return { allow: false, reason: decision.reason ?? `permission_denied:${permission}` };
-}
-
-function permissionDenied(permission: string, reason: string) {
-  return {
-    ok: false as const,
-    data: { error: "permission_denied", permission, reason },
-  };
-}
 
 export const updateSkillTool: ConversationTool = {
   name: "update_skill",
@@ -121,12 +31,10 @@ export const updateSkillTool: ConversationTool = {
   ],
   inputSchema: UpdateSkillInput,
   category: "tenant_write",
+  permission: { action: "skill:write", resourceType: "skill", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = UpdateSkillInput.parse(rawArgs);
     const { id, ...patch } = args;
-
-    const auth = await requirePermission(ctx, "skill:write", { type: "skill", id });
-    if (!auth.allow) return permissionDenied("skill:write", auth.reason);
 
     try {
       const before = await ctx.engineClient.skills.get(id);

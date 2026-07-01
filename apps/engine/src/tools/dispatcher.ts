@@ -13,6 +13,7 @@
 //   7. normalize   — wrap the executor's output in a ToolEnvelope
 //   8. log         — single tool.dispatch.invoke event per call
 
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -26,6 +27,7 @@ import { denialDetails, denialHint } from "../rbac/denial.ts";
 import { type ConnectorAccessLevel, can, connectorAccessLevel } from "../rbac/evaluator.ts";
 import {
   ARGS_CONFIRM_ID_KEY,
+  ARGS_CONFIRM_KEY,
   DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
   isConfirmedRequest,
   policyDecide,
@@ -79,11 +81,36 @@ function normalizeConversationResult(r: ToolResult): ToolEnvelope {
   };
 }
 
+// Deterministic JSON: object keys sorted recursively so an arg fingerprint
+// is stable across key ordering and whitespace. Arrays keep their order.
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
+}
+
+// Fingerprint of a tool call's args, invariant to the confirm control markers
+// the model adds on the re-issue. Computed identically at request time (the
+// original call) and verify time (the confirmed re-issue), so a model that
+// gets approval for {id:A} and re-issues {id:B} produces a different hash and
+// is rejected. Marker stripping MUST cover every field the re-issue injects
+// (see policy.ts) or a legitimate re-issue false-trips.
+export function hashToolArgs(args: Record<string, unknown>): string {
+  const stripped: Record<string, unknown> = { ...args };
+  delete stripped[ARGS_CONFIRM_KEY];
+  delete stripped[ARGS_CONFIRM_ID_KEY];
+  return createHash("sha256").update(stableStringify(stripped)).digest("hex");
+}
+
 async function emitApprovalRequested(
   deps: DispatchDeps,
   toolName: string,
   surface: ToolSurface,
   tool_call_id: string,
+  argsHash: string,
 ): Promise<void> {
   await auditAwait(
     {
@@ -102,6 +129,10 @@ async function emitApprovalRequested(
         tool: toolName,
         request_source: surface,
         policy_mode: "confirm_before_execution",
+        // Binds the approval to the exact args it was granted for. Verified
+        // on the MCP re-issue (verifyMcpConfirmation) to close the
+        // approve-{id:A}-then-execute-{id:B} arg-tamper gap.
+        args_hash: argsHash,
       },
     },
     deps.db,
@@ -162,6 +193,7 @@ async function verifyMcpConfirmation(
   deps: DispatchDeps,
   toolName: string,
   approvalId: string | null,
+  currentArgsHash: string,
 ): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
   if (approvalId === null) {
     return {
@@ -191,6 +223,18 @@ async function verifyMcpConfirmation(
       ok: false,
       code: "confirmation_tool_mismatch",
       message: `Confirmation ${approvalId} was issued for ${requestedTool}, not ${toolName}.`,
+    };
+  }
+  // Args fingerprint: reject a confirmed re-issue whose args differ from the
+  // ones the approval was granted for. `args_hash` is absent on pre-upgrade
+  // approval rows — tolerate that (don't reject) so in-flight confirmations
+  // minted before this shipped still work; new approvals always carry it.
+  const requestedArgsHash = (requested.metadata as { args_hash?: unknown } | null)?.args_hash;
+  if (typeof requestedArgsHash === "string" && requestedArgsHash !== currentArgsHash) {
+    return {
+      ok: false,
+      code: "confirmation_args_mismatch",
+      message: `Confirmation ${approvalId} was granted for different arguments. Re-issue the call with the arguments you want to confirm, then approve the returned tool_call_id.`,
     };
   }
   if (rows.some((r) => r.action === AuditAction.APPROVAL_APPROVED)) {
@@ -344,6 +388,7 @@ export async function dispatchTool(
           entry.descriptor.name,
           invocation.surface,
           policy.envelope.tool_call_id,
+          hashToolArgs(invocation.args),
         );
         envelope = { status: "needs_confirm", confirm: policy.envelope };
         decisionLabel = "needs_confirm";
@@ -364,7 +409,12 @@ export async function dispatchTool(
           // re-dispatch passes (the engine just issued the request this turn)
           // and chat stays on the UI-driven legacy path below.
           if (invocation.surface === "mcp") {
-            const check = await verifyMcpConfirmation(deps, entry.descriptor.name, approvalId);
+            const check = await verifyMcpConfirmation(
+              deps,
+              entry.descriptor.name,
+              approvalId,
+              hashToolArgs(invocation.args),
+            );
             if (!check.ok) {
               envelope = { status: "error", error_code: check.code, message: check.message };
               decisionLabel = check.code;

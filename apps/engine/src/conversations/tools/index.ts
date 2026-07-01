@@ -323,6 +323,26 @@ export interface ConversationTool {
    * keys on — no per-tool name list in the dispatcher.
    */
   readonly requires_draft?: boolean;
+  /**
+   * Declarative RBAC gate, enforced centrally in `wrapOne` BEFORE the tool's
+   * `execute` runs. Replaces the per-tool `resolveConversationPrincipal(ctx) +
+   * can(...)` boilerplate that ~18 write tools hand-rolled. When present, the
+   * wrapper resolves the conversation principal and calls `can()`; a deny
+   * returns a `permission_denied` envelope (and a POLICY_DENIED audit row) and
+   * the tool never executes. A null principal (system/unauthenticated) is
+   * allowed, matching the inline helpers' behaviour.
+   *
+   * `resourceIdArg` names the tool-arg holding the resource id (e.g. `"id"`,
+   * `"connector_id"`); omit it for create-style tools that gate on the type
+   * with a `"*"` resource. Business-logic gates that are conditional on the
+   * args (e.g. self-vs-other reads) must stay inline — this is for blanket
+   * gates only.
+   */
+  readonly permission?: {
+    readonly action: string;
+    readonly resourceType: string;
+    readonly resourceIdArg?: string;
+  };
 }
 
 const registry: Map<string, ConversationTool> = new Map();

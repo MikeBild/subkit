@@ -11,7 +11,7 @@
 import { describe, expect, test } from "bun:test";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { dispatchTool } from "../dispatcher.ts";
+import { dispatchTool, hashToolArgs } from "../dispatcher.ts";
 import { conversationToolProvider, staticToolProvider } from "../index.ts";
 import {
   DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
@@ -643,6 +643,63 @@ describe("tools/dispatcher — MCP confirmation validation + APPROVAL_APPROVED l
     expect(approved.length).toBe(1);
     // resource_id IS the carried tool_call_id → joins APPROVAL_REQUESTED.
     expect(approved[0]?.resource_id).toBe(carriedId);
+  });
+
+  test("MCP confirm with args DIFFERENT from the approved ones → confirmation_args_mismatch, not executed", async () => {
+    // The approval was granted for {id:"A"}; the model re-issues {id:"B"} with
+    // the same confirm id. The args fingerprint must reject the swap.
+    const captured: Array<{ action?: string | undefined; resource_id?: string | undefined }> = [];
+    const db = makeDb(
+      [
+        {
+          action: AuditAction.APPROVAL_REQUESTED,
+          metadata: { tool: "_test_confirm_args", args_hash: hashToolArgs({ id: "A" }) },
+        },
+      ],
+      captured,
+    );
+    const registry = buildRegistry([tenantWriteProvider("_test_confirm_args")]);
+    const carriedId = "22222222-3333-4444-5555-666666666666";
+    const envelope = await dispatchTool(
+      { registry, db, principal: PRINCIPAL, conversationCtx: {} as never },
+      {
+        surface: "mcp",
+        name: "_test_confirm_args",
+        args: { id: "B" },
+        meta: { sk_confirm: true, sk_confirm_id: carriedId },
+      },
+    );
+    expect(envelope.status).toBe("error");
+    if (envelope.status === "error") expect(envelope.error_code).toBe("confirmation_args_mismatch");
+    expect(captured.filter((r) => r.action === "approval.approved").length).toBe(0);
+  });
+
+  test("MCP confirm with args MATCHING the approved ones → ok (confirm markers ignored in the fingerprint)", async () => {
+    const captured: Array<{ action?: string | undefined; resource_id?: string | undefined }> = [];
+    const db = makeDb(
+      [
+        {
+          action: AuditAction.APPROVAL_REQUESTED,
+          metadata: { tool: "_test_confirm_args_ok", args_hash: hashToolArgs({ id: "A" }) },
+        },
+      ],
+      captured,
+    );
+    const registry = buildRegistry([tenantWriteProvider("_test_confirm_args_ok")]);
+    const carriedId = "33333333-4444-5555-6666-777777777777";
+    const envelope = await dispatchTool(
+      { registry, db, principal: PRINCIPAL, conversationCtx: {} as never },
+      {
+        surface: "mcp",
+        name: "_test_confirm_args_ok",
+        // Same domain args as approval; the added confirm markers must NOT
+        // change the fingerprint.
+        args: { id: "A", __policy_confirmed: true, __policy_confirm_id: carriedId },
+        meta: { sk_confirm: true, sk_confirm_id: carriedId },
+      },
+    );
+    expect(envelope.status).toBe("ok");
+    expect(captured.filter((r) => r.action === "approval.approved").length).toBe(1);
   });
 
   test("CHAT sk_confirm with id is NOT subject to MCP validation (UI-driven)", async () => {

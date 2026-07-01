@@ -1,7 +1,6 @@
 // OpenTelemetry tracer bootstrap.
 //
-// Hooks AI SDK v6 `experimental_telemetry` calls (already attached at
-// every call site in `llm/provider.ts`) into an OTel SDK. Two backends
+// Hooks AI SDK 7 `telemetry` calls into an OTel SDK. Two backends
 // are supported:
 //
 //   - OTLP/HTTP exporter (`OTEL_EXPORTER_OTLP_ENDPOINT`) — works with
@@ -17,9 +16,27 @@
 // Invoked from `http/server.ts` at boot. Idempotent — safe to call
 // multiple times (tests).
 
+import { LegacyOpenTelemetry } from "@ai-sdk/otel";
+import { registerTelemetry } from "ai";
 import { LangfuseExporter } from "langfuse-vercel";
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
+
+// AI SDK 7 no longer auto-emits OTel spans from `telemetry.isEnabled: true`
+// alone (OpenTelemetry moved to @ai-sdk/otel). A telemetry integration must be
+// registered globally or NO spans reach any exporter — Langfuse/OTLP go dark.
+// `LegacyOpenTelemetry` reproduces the AI SDK 6 span shape (ai.prompt.*,
+// ai.usage.*, gen_ai.usage.*, ai.model.provider, ai.toolCall.*), which is
+// exactly what langfuse-vercel@3.x reads for token/cost/generation extraction.
+// registerTelemetry APPENDS to a process-global list, so register exactly once
+// (the integration resolves the current global tracer per span, so a
+// reconfigure that swaps the NodeSDK pipeline still routes correctly).
+let telemetryIntegrationRegistered = false;
+function ensureTelemetryIntegration(): void {
+  if (telemetryIntegrationRegistered) return;
+  registerTelemetry(new LegacyOpenTelemetry());
+  telemetryIntegrationRegistered = true;
+}
 
 interface TracingState {
   started: boolean;
@@ -87,6 +104,9 @@ export async function startTracing(): Promise<() => Promise<void>> {
 
   try {
     sdk.start();
+    // Wire the AI SDK 7 telemetry integration onto the now-started global
+    // tracer. Without this, `telemetry.isEnabled: true` emits nothing.
+    ensureTelemetryIntegration();
     state.active = true;
     logger.info({
       module: "observability",
@@ -132,7 +152,7 @@ export function isTracingStarted(): boolean {
 
 /**
  * True only when spans actually reach an exporter. The AI SDK's
- * `experimental_telemetry` EAGERLY stringifies the full prompt (every
+ * `telemetry` EAGERLY stringifies the full prompt (every
  * message, system block, tool definition) and output into span
  * attributes on every call — per STEP for streaming — even when the
  * tracer is a noop. Callers gate `recordInputs`/`recordOutputs` on this
