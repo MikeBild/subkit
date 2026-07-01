@@ -209,6 +209,11 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
       if (baseUrl) {
         const expected = canonicalizeResourceUri(`${baseUrl}/mcp`);
         if (row.resource === null) {
+          // TODO(mcp-spec): backfill the `resource` column on pre-RFC-8707
+          // tokens, then remove this legacy branch so audience validation is
+          // enforced strictly (MCP 2025-11-25 auth: servers MUST reject tokens
+          // not issued for them). Until every live token carries a resource,
+          // hard-enforcing here would lock out valid legacy sessions.
           logger.debug({
             module: "auth",
             action: "mcp_oauth.audience_legacy_null",

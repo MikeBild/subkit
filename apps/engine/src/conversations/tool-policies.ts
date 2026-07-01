@@ -409,6 +409,19 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   inspect_connector_draft: { defaultMode: "no_confirm" },
   update_connector_draft: {
     defaultMode: "no_confirm",
+    // TODO(mcp-spec): MCP 2025-11-25 forbids collecting secrets (API keys,
+    // tokens, passwords) via form-mode elicitation OR as in-band values —
+    // URL-mode elicitation is mandatory so the secret never transits the MCP
+    // client / LLM context. Today static connector credentials arrive here as
+    // tool arguments (config.api_key/token/… below, and save_connector_draft's
+    // `credential`) and via ask_user_form(form). This is also the root cause of
+    // the debug.log secret-exposure class. Fix = deposit the secret through a
+    // portal URL-mode elicitation (generalize the OAuth portal in
+    // mcp/tools/authenticate.ts to all auth types), store it encrypted, and
+    // pass only a by-id reference through the tool call. Substantial change to
+    // the tuned authoring flow — needs live-client (claude.ai) E2E, not a blind
+    // sweep. See mcp/elicitation/bridge.ts.
+    //
     // Inline credentials (api_key, token, password, …) on a draft
     // mutation force a confirm step regardless of permission_mode —
     // the user must see what secret is being staged before it lands

@@ -138,6 +138,10 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
     });
   }
 
+  // TODO(mcp-spec): add `icons` (SEP-973) to serverInfo — and to the core
+  // tools/prompts — once the engine serves a real sk brand asset (SVG/PNG).
+  // The SDK 1.29 Implementation shape supports it; not adding a fabricated
+  // data-URI. Improves client catalog UX in claude.ai / ChatGPT.
   const server = new Server(
     {
       name: "subkit-engine",

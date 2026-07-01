@@ -26,6 +26,11 @@ function readEnvOverride(): McpMode | null {
   return null;
 }
 
+// Note (mcp-spec): MCP scopes here gate tool VISIBILITY only — a lower-scope
+// principal simply sees a smaller catalog, it is never denied a call it could
+// otherwise make. So the 2025-11-25 `insufficient_scope` step-up challenge
+// (SEP-835) has no trigger point in this model and is intentionally NOT
+// implemented; adding a 403 WWW-Authenticate challenge would be dead code.
 export function resolveMcpMode(principal: ResolvedPrincipal): McpMode {
   const env = readEnvOverride();
   if (env) return env;

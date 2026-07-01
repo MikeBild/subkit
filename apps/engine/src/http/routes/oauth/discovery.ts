@@ -52,6 +52,15 @@ export function registerOAuthDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     } catch {
       return c.json({ error: "service_unavailable" }, 503);
     }
+    // TODO(mcp-spec): MCP 2025-11-25 recommends (SHOULD) OAuth Client ID
+    // Metadata Documents — HTTPS-URL client_ids resolved to a JSON metadata
+    // doc — as the preferred registration mechanism (DCR is downgraded to a
+    // backwards-compat MAY). To support it: advertise
+    // `client_id_metadata_document_supported: true` here and have the
+    // authorization endpoint fetch + validate URL-form client_ids
+    // (client_id must equal the doc URL; validate redirect_uris; SSRF-guard
+    // the fetch — block private/link-local ranges, no auto-redirect). Makes
+    // subkit future-proof before claude.ai/Cursor move to CIMD.
     return c.json({
       issuer: base,
       authorization_endpoint: `${base}/v1/oauth/authorize`,

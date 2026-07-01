@@ -4,6 +4,16 @@
 // Every query here is tenant-scoped — `mcp_tasks` rows are addressed by
 // (tenant_id, id) so a foreign tenant cannot read or mutate another
 // tenant's task even when it guesses a valid taskId.
+//
+// TODO(mcp-spec): the forthcoming stateless-core MCP revision graduates Tasks
+// from an experimental core feature to an extension and REDESIGNS the API —
+// driven by tasks/get|update|cancel with self-contained requests, replacing
+// the current result-blocking `tasks/result` shape this store backs. Migrate
+// when @modelcontextprotocol/sdk ships the new surface. Same revision drops
+// the initialize/Mcp-Session-Id handshake for a stateless core (server→client
+// work via InputRequiredResult + client retry with requestState) — that would
+// let subkit retire the SSE-held-stream elicitation/confirm-gate machinery at
+// the root. Until the SDK lands it, do not add new session-state dependencies.
 
 import { and, desc, eq, sql } from "drizzle-orm";
 import { assertInsertRow } from "../../db/assert-insert.ts";

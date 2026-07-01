@@ -114,6 +114,14 @@ export class ElicitationBridge implements ElicitationBridgeContract {
    * 2025-11-25 URL-mode elicitation.
    */
   async elicitOob(rawParams: ElicitOobParams): Promise<ElicitationResult> {
+    // TODO(mcp-spec): optionally emit `notifications/elicitation/complete`
+    // (with this elicitationId) once the out-of-band interaction finishes, so
+    // an OAuth-capable client can auto-retry / refresh its UI instead of only
+    // learning the outcome by polling. It is a best-effort MAY (clients MUST
+    // NOT rely on it). Requires a process-global elicitationId→session-server
+    // registry because the resolving portal POST runs in a separate HTTP
+    // context with no handle to this session's MCP Server — disproportionate
+    // until a client is known to consume it.
     if (!this.capabilities.oob) throw new ElicitationUnsupportedError("oob");
     const params = ElicitOobParamsSchema.parse(rawParams);
     const result: ElicitResult = await this.server.elicitInput(
