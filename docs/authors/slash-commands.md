@@ -18,16 +18,18 @@ so this column is the UX gate, not the security boundary.
 | `/compact` | — | `conversation:write` | Compact the message history |
 | `/connector` | — | `conversation:read` | Inspect the current connector draft |
 | `/draft` | — | `conversation:read` | Inspect the current connector/workflow authoring state |
+| `/edit` | — | `conversation:write` | Direct-edit the workflow draft (or one step) as JSON — `/edit [step]` writes the edit file, `/edit apply` submits it as a validated patch |
 | `/fork` | — | `conversation:write` | Fork the current session into a new conversation |
 | `/model` | — | `conversation:write` | Switch the conversation's model |
 | `/onboard` | `/install` | `connector:write` | Launch an interactive onboarding wizard — pick a template, enter credentials, probe, save |
 | `/policy` | — | `conversation:write` | List tool execution-mode badges, or pin a per-tool override. `/policy` lists; `/policy <tool> <auto\|ask\|review>` sets; `/policy <tool> reset` clears. |
-| `/preview` | — | `conversation:write` | Bare `/preview` runs now; `/preview show` inspects the last result; `/preview run` is the explicit action form |
-| `/probe` | — | `conversation:write` | Bare `/probe` runs now; `/probe show` inspects the last result; `/probe run` is the explicit action form |
+| `/preview` | — | `conversation:write` | Dry-run the draft directly and show the result — `/preview [step]`; `/preview show` re-opens the last result |
+| `/probe` | — | `conversation:write` | Probe the connector draft directly and show the result — `/probe [path]`; `/probe show` re-opens the last result |
 | `/reject` | — | `conversation:approve` | Reject a pending approval (with optional reason) |
 | `/rename` | — | `conversation:write` | Rename the current session — `/rename <new-title>` |
 | `/restore` | — | `workflow:write` | Restore a workflow version — `/restore <version>` |
 | `/resume` | — | `conversation:list` | Reattach to a previous conversation |
+| `/snapshots` | — | `conversation:read` | Browse draft snapshots — `/snapshots` lists; `/snapshots restore [id]` rolls back (newest when omitted) |
 | `/templates` | — | `conversation:read` | Browse connector templates suggested for the current draft |
 | `/versions` | — | `workflow:read` | List the committed workflow versions for the current target |
 | `/workflow` | — | `conversation:read` | Inspect the current workflow draft |

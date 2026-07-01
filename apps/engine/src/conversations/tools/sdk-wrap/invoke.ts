@@ -55,6 +55,7 @@ import type { TurnEvent } from "../../types.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import { checkToolPermission, type ToolPermissionResult } from "../permission-gate.ts";
+import { normalizeToolResultPayload } from "../result-payload.ts";
 import { resolveExecutionMode } from "../tool-policies.ts";
 import { truncateForLlm } from "../truncate.ts";
 import { decideConfirm } from "./confirm-decision.ts";
@@ -1286,38 +1287,9 @@ export function wrapOne(
         // (for audit / replay), but feed only a TRUNCATED view back to
         // the model so a 200-row list doesn't blow subsequent context
         // budgets. `raw_ref` carries a handle the model can fetch via
-        // `get_raw_result` when it actually needs the rest.
-        //
-        // For structured `ok: false` results that carry `error_code` +
-        // `message` instead of `data`, build a normalised output object
-        // so the model always sees a consistent envelope.
-        const resultPayload: unknown = result.ok
-          ? result.data
-          : result.data !== undefined
-            ? // ok:false WITH a data payload: surface the tool's top-level
-              // error_code/message ALONGSIDE the data. The error-shape breaker
-              // and the model both read this payload — a tool that set the
-              // failure reason only at top-level (e.g. dry_run_workflow's
-              // needs-repair / judge-failed returns) was previously invisible
-              // to the breaker, which reads `reason ?? error_code` off here.
-              // Data's own fields win on conflict (a tool that already nested
-              // error_code in `data` keeps it).
-              typeof result.data === "object" && result.data !== null
-              ? {
-                  ...(result.error_code !== undefined ? { error_code: result.error_code } : {}),
-                  ...(result.message !== undefined ? { message: result.message } : {}),
-                  ...(result.data as Record<string, unknown>),
-                }
-              : result.data
-            : {
-                ok: false,
-                ...(result.error_code !== undefined ? { error_code: result.error_code } : {}),
-                ...(result.message !== undefined ? { message: result.message } : {}),
-                ...(result.details !== undefined ? { details: result.details } : {}),
-                ...(result.next_best_actions !== undefined
-                  ? { next_best_actions: result.next_best_actions }
-                  : {}),
-              };
+        // `get_raw_result` when it actually needs the rest. Projection
+        // shared with the direct invocation path — see result-payload.ts.
+        const resultPayload: unknown = normalizeToolResultPayload(result);
         // Close the Langfuse span with the post-tool payload. `success`
         // mirrors the structured `ok` flag: a tool that returns
         // `{ ok: false }` is a recoverable result, not an error,

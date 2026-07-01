@@ -104,6 +104,7 @@ import {
   setToolCallParentMessage,
   updateMessageContent,
 } from "./persist.ts";
+import { closingProseQuestion } from "./prose-question.ts";
 import { resolveScopeFactsForConversation } from "./scope-facts.ts";
 import {
   autoloadForUserTurn,
@@ -2314,7 +2315,64 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     completedStatus = "awaiting_input";
   } else {
     completedStatus = "active";
-    if (signals.step >= budget && !signals.pendingElicitation) {
+    // Prose-question dead end on UNATTENDED turns. A backgrounded MCP
+    // turn (or an auto-mode caller) that ends with the assistant asking
+    // a question in PROSE — no ask_user_* tool call — reads as a
+    // terminal `active`/completed to the client: nobody surfaces the
+    // question, the conversation stalls, and the client re-polls a turn
+    // that is actually waiting for a human. Park it on an ask_user_text
+    // elicitation carrying the model's own question verbatim, so the
+    // task derives `input_required` and the client asks the user.
+    // Attended surfaces are deliberately excluded: there the operator
+    // sees the question in the transcript and the next plain prompt IS
+    // the answer — forcing a dialog would add friction, not safety.
+    const unattendedTurn =
+      p.permission_mode === "auto" || (p.surface === "mcp" && !p.elicitationBridge);
+    // The elicitation question is the model's own closing ask — see
+    // prose-question.ts for the (deliberately conservative) detection.
+    // The full text already streamed as the message.
+    const closingAsk = unattendedTurn ? closingProseQuestion(signals.lastAssistantText) : null;
+    if (closingAsk) {
+      try {
+        const elicitation = await createElicitation(
+          {
+            tenant_id: p.tenant_id,
+            conversation_id: p.conversation_id,
+            tool_call_id: null,
+            tool_name: "ask_user_text",
+            summary: "the assistant asked a question",
+            input: {
+              question: closingAsk,
+              metadata: { source: "loop.prose_question_parked" },
+            },
+            actor_id: p.actor_id,
+          },
+          p.db,
+        );
+        status = "awaiting_input";
+        completedStatus = "awaiting_input";
+        pendingElicitationId = elicitation.id;
+        logger.info({
+          module: "conversation",
+          action: "loop.prose_question_parked",
+          msg: "unattended turn ended on a prose question — parked on an ask_user_text elicitation",
+          conversation_id: p.conversation_id,
+          tenant_id: p.tenant_id,
+          elicitation_id: elicitation.id,
+        });
+      } catch (err) {
+        // Could not open the elicitation — keep the prior `active`
+        // behaviour rather than crash turn finalisation.
+        logger.warn({
+          module: "conversation",
+          action: "loop.prose_question_park_failed",
+          msg: "could not park prose-question turn on an elicitation",
+          conversation_id: p.conversation_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    if (status === "active" && signals.step >= budget && !signals.pendingElicitation) {
       log.warn({
         module: "conversation",
         action: "loop.budget_exhausted",

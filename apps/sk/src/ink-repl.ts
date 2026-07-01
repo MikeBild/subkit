@@ -137,7 +137,19 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     debug_mode: "ink",
   });
 
+  const canReadSetup = (persona: ResolvedPersona): boolean =>
+    persona.allowed.has("audit:read") || persona.allowed.has("identity:read");
+
+  // Boot round-trips overlap instead of serializing: status starts
+  // before the persona resolution, setup validation starts the moment
+  // the persona (its permission gate) is known, and both are awaited
+  // only AFTER the heavy react/ink dynamic imports — the network waits
+  // and the module loads pay for each other.
+  const statusPromise = client.statusSummary().catch(() => null);
   let currentPersona = await resolvePersona(client, opts.profile);
+  const setupPromise: Promise<SetupValidationResponse | null> = canReadSetup(currentPersona)
+    ? client.setupValidation().catch(() => null)
+    : Promise.resolve(null);
 
   const React = (await import("react")) as typeof import("react");
   const ink = await import("ink");
@@ -160,14 +172,11 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // slug, monthly budget). Fetched once on mount, then refreshed after
   // every completed turn via `refreshStatus()` so the status-line
   // ticker always shows fresh numbers.
-  let statusSnapshot: StatusSummary | null = await client.statusSummary().catch(() => null);
+  let statusSnapshot: StatusSummary | null = await statusPromise;
   const statusListeners = new Set<(snap: StatusSummary | null) => void>();
-  const canReadSetup = (persona: ResolvedPersona): boolean =>
-    persona.allowed.has("audit:read") || persona.allowed.has("identity:read");
-  let setupSnapshot: SetupValidationResponse | null = canReadSetup(currentPersona)
-    ? await client.setupValidation().catch(() => null)
-    : null;
+  let setupSnapshot: SetupValidationResponse | null = await setupPromise;
   const setupListeners = new Set<(snap: SetupValidationResponse | null) => void>();
+  const digestListeners = new Set<(snap: OperatorHealthDigest | null) => void>();
   const refreshStatus = async (): Promise<void> => {
     try {
       statusSnapshot = await currentClient.statusSummary();
@@ -764,16 +773,19 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         },
       };
     }
-    statusSnapshot = await newClient.statusSummary().catch(() => null);
-    setupSnapshot = canReadSetup(currentPersona)
-      ? await newClient.setupValidation().catch(() => null)
-      : null;
-    // Re-seed the digest for the NEW tenant before notifying listeners.
-    // Clearing first guarantees tenant-A's failures/context can never render
-    // (chrome) or fold into tenant-B's first turn (memory) if the refetch
-    // fails. Best-effort, like the boot-time call.
+    // Re-seed the digest for the NEW tenant. Clearing first guarantees
+    // tenant-A's failures/context can never render (chrome) or fold into
+    // tenant-B's first turn (memory) if the refetch fails. Best-effort,
+    // like the boot-time call — and fetched CONCURRENTLY with status +
+    // setup so the switch pays one round-trip, not three.
     pendingDigestContext = null;
-    operatorDigestSnapshot = await fetchOperatorDigest(newClient);
+    [statusSnapshot, setupSnapshot, operatorDigestSnapshot] = await Promise.all([
+      newClient.statusSummary().catch(() => null),
+      canReadSetup(currentPersona)
+        ? newClient.setupValidation().catch(() => null)
+        : Promise.resolve(null),
+      fetchOperatorDigest(newClient),
+    ]);
     if (operatorDigestSnapshot) {
       pendingDigestContext = digestAsContext(operatorDigestSnapshot);
     }
@@ -783,6 +795,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
     for (const listener of statusListeners) listener(statusSnapshot);
     for (const listener of setupListeners) listener(setupSnapshot);
+    for (const listener of digestListeners) listener(operatorDigestSnapshot);
 
     return healthOk
       ? `switched to "${name}" (${newProfile.engine_url})`
@@ -881,12 +894,17 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
   }
 
-  // Fetch the operator digest before RootApp (no TDZ on the render closure);
-  // it threads in as digestSnapshot chrome and seeds the first turn's memory.
-  operatorDigestSnapshot = await fetchOperatorDigest(client);
-  if (operatorDigestSnapshot) {
-    pendingDigestContext = digestAsContext(operatorDigestSnapshot);
-  }
+  // The operator digest is chrome + first-turn seeding, not
+  // boot-critical: fetch it in the background so first paint never
+  // waits on it. When it lands, the digest listeners re-render the
+  // chrome and `pendingDigestContext` seeds the NEXT turn's memory —
+  // an operator faster than the digest simply gets an unseeded first
+  // turn, which matches the digest's best-effort contract.
+  void fetchOperatorDigest(client).then((digest) => {
+    operatorDigestSnapshot = digest;
+    if (digest) pendingDigestContext = digestAsContext(digest);
+    for (const listener of digestListeners) listener(digest);
+  });
 
   // Small root wrapper that subscribes to status + persona updates and
   // feeds the latest snapshots into <InkApp> as props. The `key` is
@@ -917,15 +935,18 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       };
       const sul = (next: SetupValidationResponse | null): void => setSetup(next);
       const cl = (next: ConnectionSnapshot): void => setConn(next);
+      const dl = (next: OperatorHealthDigest | null): void => setDigest(next);
       statusListeners.add(sl);
       setupListeners.add(sul);
       personaListeners.add(pl);
       connectionListeners.add(cl);
+      digestListeners.add(dl);
       return () => {
         statusListeners.delete(sl);
         setupListeners.delete(sul);
         personaListeners.delete(pl);
         connectionListeners.delete(cl);
+        digestListeners.delete(dl);
       };
     }, []);
     return React.createElement(InkApp, {

@@ -952,26 +952,6 @@ SuggestionList.displayName = "SuggestionList";
 
 type TranscriptMode = "chat" | "inspect";
 
-function conversationPromptForSlash(raw: string): string | null {
-  const [head, ...rest] = raw.trim().split(/\s+/);
-  const name = (head ?? "").replace(/^\//, "");
-  const sub = (rest[0] ?? "").toLowerCase();
-  if (name === "probe" && sub !== "show" && sub !== "last") {
-    return [
-      "Run probe_connector_draft against the current connector draft now.",
-      "Use the default GET / path unless the draft implies otherwise.",
-      "Stream tool progress normally and summarise the result in one sentence.",
-    ].join(" ");
-  }
-  if (name === "preview" && sub !== "show" && sub !== "last") {
-    const stepArg = sub === "run" ? rest[1] : rest[0];
-    return stepArg
-      ? `Run dry_run_step against step \`${stepArg}\`. Stream tool progress normally and report the classification and one-line summary.`
-      : "Run dry_run_workflow against the current draft. Stream tool progress normally and report the classification of every step that executed.";
-  }
-  return null;
-}
-
 interface TranscriptNotice extends NoticeItem {
   expires_at?: number | undefined;
 }
@@ -2533,11 +2513,6 @@ export const InkApp: React.FC<InkAppProps> = ({
             subtitle: persona.label,
             lines: body,
           });
-          return;
-        }
-        const conversationPrompt = conversationPromptForSlash(trimmed);
-        if (conversationPrompt) {
-          await handleSubmit(conversationPrompt);
           return;
         }
         if (cmd.name === "approve" || cmd.name === "reject") {

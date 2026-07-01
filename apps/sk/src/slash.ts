@@ -182,15 +182,27 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "probe",
-    help: "Bare `/probe` runs now; `/probe show` inspects the last result; `/probe run` is the explicit action form",
+    help: "Probe the connector draft directly and show the result — `/probe [path]`; `/probe show` re-opens the last result",
     category: "session",
     requires: "conversation:write",
   },
   {
     name: "preview",
-    help: "Bare `/preview` runs now; `/preview show` inspects the last result; `/preview run` is the explicit action form",
+    help: "Dry-run the draft directly and show the result — `/preview [step]`; `/preview show` re-opens the last result",
     category: "session",
     requires: "conversation:write",
+  },
+  {
+    name: "edit",
+    help: "Direct-edit the workflow draft (or one step) as JSON — `/edit [step]` writes the edit file, `/edit apply` submits it as a validated patch",
+    category: "session",
+    requires: "conversation:write",
+  },
+  {
+    name: "snapshots",
+    help: "Browse draft snapshots — `/snapshots` lists; `/snapshots restore [id]` rolls back (newest when omitted)",
+    category: "session",
+    requires: "conversation:read",
   },
   {
     name: "versions",

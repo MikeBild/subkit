@@ -486,6 +486,13 @@ export async function runAuthoringPipeline(
       unresolved_connectors: unresolved,
     };
   }
+  // Live stage progress rides the tool_log channel (ctx.onLog → SSE /
+  // MCP notifications) so the operator watches the pipeline advance
+  // instead of staring at a spinner for the whole deadline window.
+  ctx.onLog?.(
+    "info",
+    `ground · collecting recorded samples, docs and discovered endpoints for ${connectors.length} connector(s)`,
+  );
   // GROUND fetches are independent reads — the probe-shape examples and
   // every per-connector docs excerpt run concurrently rather than one
   // connector at a time (a 5-connector goal paid 5× the slowest docs
@@ -528,6 +535,14 @@ export async function runAuthoringPipeline(
   const discoveredSection = formatDiscoveredEndpoints(connectors, discoveredById);
   // Grounding index for `evaluateEndpointGrounding`, keyed by BOTH connector_id
   // and slug so a request step bound either way resolves.
+  const discoveredEndpointCount = [...discoveredById.values()].reduce(
+    (acc, index) => acc + index.endpoints.length,
+    0,
+  );
+  ctx.onLog?.(
+    "info",
+    `ground · ${discoveredEndpointCount} discovered endpoint(s), docs for ${docsByConnector.size}/${connectors.length} connector(s)`,
+  );
   const groundingIndex = new Map<string, DiscoveredConnectorEndpoints>();
   for (const c of connectors) {
     const index = discoveredById.get(c.id);
@@ -663,6 +678,12 @@ export async function runAuthoringPipeline(
       priorFindings,
     });
     attempts = pass;
+    ctx.onLog?.(
+      "info",
+      pass === 1
+        ? "generate · one schema-constrained generation pass"
+        : `generate · regenerating with ${priorFindings?.length ?? 0} finding(s) from the previous pass (${pass}/${MAX_GENERATION_PASSES})`,
+    );
     let candidate: GeneratedWorkflow | null = null;
     let passErrors: ValidationError[] = [];
     try {
@@ -748,6 +769,12 @@ export async function runAuthoringPipeline(
       definition = candidate;
       validationErrors = [...validation.errors, ...groundingErrors];
       passErrors = validationErrors;
+      ctx.onLog?.(
+        validationErrors.length > 0 ? "warn" : "info",
+        validationErrors.length > 0
+          ? `generate · draft "${candidate.name}" (${candidate.steps.length} steps) — ${validationErrors.length} validation/grounding finding(s)`
+          : `generate · draft "${candidate.name}" (${candidate.steps.length} steps) — static gates clean`,
+      );
       if (validation.ok && grounding.ok) {
         // Static gates cleared. The second-stage semantic critic (default
         // off) runs at most once; a rejection feeds its repairs back
@@ -758,6 +785,10 @@ export async function runAuthoringPipeline(
           criticRan = true;
           const critic = await runCriticGate(candidate);
           if (critic) {
+            ctx.onLog?.(
+              "warn",
+              `critic · rejected the draft with ${critic.rejection.repairs.length} repair(s) — one more grounded regenerate pass`,
+            );
             criticRejection = critic.rejection;
             priorFindings = critic.priorFindings;
             continue;
@@ -790,6 +821,10 @@ export async function runAuthoringPipeline(
   // + evaluation against recorded evidence only, zero egress. Findings
   // (and verified repair proposals) ride the result; the draft below is
   // stashed regardless so the model repairs from findings.
+  ctx.onLog?.(
+    "info",
+    `evaluate · compiling and evaluating ${definition.steps.length} step(s) against recorded evidence (bounded repair armed)`,
+  );
   const probedConnectorSlugs = await collectProbedConnectorSlugs(ctx, definition.steps);
   const currentDraft = ctx.getDraft();
   const lastPreview = getLastPreview({
@@ -847,6 +882,12 @@ export async function runAuthoringPipeline(
   await ctx.setDraft(nextDraft);
 
   const findingCount = recordedEval.expressions.filter((f) => f.status !== "ok").length;
+  ctx.onLog?.(
+    findingCount > 0 ? "warn" : "info",
+    findingCount > 0
+      ? `emit · draft stashed with ${findingCount} recorded-eval finding(s) — next: apply repairs, then dry_run_workflow`
+      : "emit · draft stashed clean — next: dry_run_workflow",
+  );
   const note = deadlineExceeded
     ? `generation/repair time budget exceeded — returning the current draft with ${findingCount} finding(s) for you to refine (edit_workflow_patch from recorded_eval.expressions)`
     : undefined;

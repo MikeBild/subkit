@@ -74,6 +74,11 @@ export type DebugRecordKind =
   // breakage observable when SK_DEBUG=1 without leaking it to the
   // operator.
   | "suggest_next.feedback_failed"
+  // oauth.sse_subscribe_failed — emitted when the connector-OAuth
+  // callback SSE subscription is refused (proxy stripping SSE, older
+  // engine). The install flow degrades to credential polling; this
+  // record keeps the degraded transport diagnosable.
+  | "oauth.sse_subscribe_failed"
   | "sse.open"
   | "sse.frame"
   | "sse.close"

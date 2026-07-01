@@ -1090,27 +1090,12 @@ export async function handleSlash(
     }
     case "probe": {
       if (!ctx.session.conversationId) return "no active conversation";
-      const detail = await ctx.client.getConversation(ctx.session.conversationId);
-      const draft = draftRecord(detail.draft);
-      const connector = draft ? asRecord(draft.connector) : null;
-      if (!connector) {
-        return panify(ctx, "probe", [
-          "no connector draft — start one with `start_connector_from_description` or `start_connector_from_template`.",
-        ]);
-      }
-      // If the user passed a sub-command (e.g. `/probe show`) display
-      // the latest recorded probe instead of triggering a new one.
-      const sub = (rawArgs[0] ?? "").toLowerCase();
-      if (sub === "show" || sub === "last") {
-        const probe = asRecord(connector.latest_probe);
-        if (!probe) {
-          return panify(ctx, "probe", ["no probe run yet on this draft."]);
-        }
+      const renderProbe = (probe: Record<string, unknown>, title: string): string | null => {
         const ok = probe.ok === true;
         if (ctx.openPane) {
           ctx.openPane({
             kind: "probe-results",
-            title: "latest probe",
+            title,
             probe: {
               ok,
               method: recordString(probe.method, "GET"),
@@ -1124,21 +1109,48 @@ export async function handleSlash(
           });
           return null;
         }
-        return panify(ctx, "latest probe", [
+        return panify(ctx, title, [
           `status: ${ok ? "ok" : "failed"}`,
           `method: ${recordString(probe.method, "GET")}`,
           `path: ${recordString(probe.path, "/")}`,
           `environment: ${recordString(probe.environment, "dev")}`,
+          ...(scalarString(probe.summary) ? ["", scalarString(probe.summary)] : []),
         ]);
+      };
+      // `/probe show` displays the latest recorded probe.
+      const sub = (rawArgs[0] ?? "").toLowerCase();
+      if (sub === "show" || sub === "last") {
+        const detail = await ctx.client.getConversation(ctx.session.conversationId);
+        const draft = draftRecord(detail.draft);
+        const connector = draft ? asRecord(draft.connector) : null;
+        if (!connector) {
+          return panify(ctx, "probe", [
+            "no connector draft — start one with `start_connector_from_description` or `start_connector_from_template`.",
+          ]);
+        }
+        const probe = asRecord(connector.latest_probe);
+        if (!probe) {
+          return panify(ctx, "probe", ["no probe run yet on this draft."]);
+        }
+        return renderProbe(probe, "latest probe");
       }
-      // Default (or explicit `/probe run`): trigger a new probe by
-      // appending a directive message.
-      // The model interprets it and invokes probe_connector_draft.
-      await ctx.client.appendConversationMessage(ctx.session.conversationId, {
-        message:
-          "Run probe_connector_draft against the current connector draft now. Use the default GET / path unless the draft implies otherwise. After probing, summarise the result in one sentence.",
-      });
-      return "probe requested — run /probe show after the turn finishes to see the result";
+      // Default (or explicit `/probe run [path]`): probe the connector
+      // draft directly — one synchronous engine call, no model turn.
+      // The engine persists the tool call so the next model turn sees
+      // the result.
+      const pathArg = sub === "run" ? rawArgs[1] : rawArgs[0];
+      const outcome = await ctx.client.probeConversationConnector(
+        ctx.session.conversationId,
+        pathArg ? { path: pathArg } : {},
+      );
+      const data = asRecord(outcome.data) ?? {};
+      const probe = asRecord(data.latest_probe);
+      if (probe) return renderProbe(probe, "probe");
+      return panify(ctx, "probe", [
+        `status: ${outcome.ok ? "ok" : "failed"}`,
+        ...(scalarString(data.message) ? [scalarString(data.message)] : []),
+        ...(scalarString(data.error) ? [scalarString(data.error)] : []),
+      ]);
     }
     case "preview": {
       if (!ctx.session.conversationId) return "no active conversation";
@@ -1168,12 +1180,207 @@ export async function handleSlash(
         }
         return panify(ctx, "latest preview", lines);
       }
+      // Default (or explicit `/preview run [step]`): dry-run the draft
+      // directly — one synchronous engine call, no model turn. Writes
+      // stay held; the engine persists the tool call so the next model
+      // turn sees the preview.
       const stepArg = sub === "run" ? rawArgs[1] : rawArgs[0];
-      const hint = stepArg
-        ? `Run dry_run_step against step \`${stepArg}\`. Report the classification and one-line summary.`
-        : "Run dry_run_workflow against the current draft. Report the classification of every step that executed.";
-      await ctx.client.appendConversationMessage(ctx.session.conversationId, { message: hint });
-      return "preview requested — run /preview show after the turn finishes to see the result";
+      const outcome = await ctx.client.previewConversationDraft(
+        ctx.session.conversationId,
+        stepArg ? { step_id: stepArg } : {},
+      );
+      const data = asRecord(outcome.data) ?? {};
+      const dryRunSummary = asRecord(data.dry_run_summary);
+      const lines: string[] = [`status: ${outcome.ok ? "ok" : "failed"}`];
+      if (data.auto_committed === true) {
+        lines.push(
+          `committed: workflow persisted${typeof data.version === "number" ? ` (v${data.version})` : ""}`,
+        );
+      } else if (data.save_required === true) {
+        lines.push("committed: no — green preview awaiting explicit save");
+      }
+      const stepsRan = dryRunSummary?.steps_ran ?? data.steps_ran;
+      const durationMs = dryRunSummary?.duration_ms ?? data.duration_ms;
+      if (typeof stepsRan === "number") {
+        lines.push(
+          `steps: ${stepsRan}${typeof durationMs === "number" ? ` · ${durationMs}ms` : ""}`,
+        );
+      }
+      const summaryText =
+        scalarString(data.summary) || scalarString(data.message) || scalarString(data.next_prompt);
+      if (summaryText) lines.push("", summaryText);
+      const warningSummary = scalarString(data.warning_summary);
+      if (warningSummary) lines.push(`warnings: ${warningSummary}`);
+      const stepTrace = Array.isArray(data.step_trace) ? data.step_trace : [];
+      if (stepTrace.length > 0) {
+        lines.push("");
+        for (const entry of stepTrace) {
+          const step = asRecord(entry);
+          if (!step) continue;
+          lines.push(
+            `  ${recordString(step.step_id, "?")} (${recordString(step.kind, "?")}) ${recordString(step.status, "?")}${typeof step.duration_ms === "number" ? ` · ${step.duration_ms}ms` : ""}`,
+          );
+        }
+      }
+      if (ctx.openPane) {
+        ctx.openPane({
+          kind: "preview-results",
+          title: "preview",
+          preview: {
+            ok: outcome.ok,
+            step: scalarString(stepArg, "—"),
+            summary: summaryText,
+            lines,
+          },
+        });
+        return null;
+      }
+      return panify(ctx, "preview", lines);
+    }
+    case "edit": {
+      // Expert direct-edit: dump the draft (or one step) as JSON, let
+      // the operator edit the file, then `/edit apply` submits the
+      // change as a validated RFC-6902 patch — no model turn, same
+      // engine-side gates as the model-driven editor.
+      if (!ctx.session.conversationId) return "no active conversation";
+      const editDir = join(homedir(), ".sk", "edit");
+      const bodyPath = join(editDir, `${ctx.session.conversationId}.json`);
+      const metaPath = join(editDir, `${ctx.session.conversationId}.meta.json`);
+      const sub = (rawArgs[0] ?? "").toLowerCase();
+      if (sub === "apply") {
+        let body: unknown;
+        let meta: { target: "workflow" | { step: string }; before: unknown };
+        try {
+          body = JSON.parse(fs.readFileSync(bodyPath, "utf8"));
+          meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+        } catch (err) {
+          return err instanceof Error && "code" in err && err.code === "ENOENT"
+            ? "no pending edit — start one with `/edit [step]`"
+            : `edit apply failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+        const escapePointer = (key: string): string => key.replace(/~/g, "~0").replace(/\//g, "~1");
+        const patches: Array<{
+          op: "add" | "remove" | "replace";
+          path: string;
+          value?: unknown;
+        }> = [];
+        const editTarget = meta.target;
+        if (editTarget === "workflow") {
+          const before = asRecord(meta.before) ?? {};
+          const after = asRecord(body);
+          if (!after) return "edit apply failed: the edited file must contain a JSON object";
+          for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+            const b = before[key];
+            const a = after[key];
+            if (JSON.stringify(b) === JSON.stringify(a)) continue;
+            if (a === undefined) patches.push({ op: "remove", path: `/${escapePointer(key)}` });
+            else if (b === undefined)
+              patches.push({ op: "add", path: `/${escapePointer(key)}`, value: a });
+            else patches.push({ op: "replace", path: `/${escapePointer(key)}`, value: a });
+          }
+        } else {
+          // Single-step edit: resolve the step's CURRENT index by id and
+          // replace it wholesale.
+          const detail = await ctx.client.getConversation(ctx.session.conversationId);
+          const draft = draftRecord(detail.draft);
+          const workflow = draft ? asRecord(draft.workflow) : null;
+          const steps = workflow && Array.isArray(workflow.steps) ? workflow.steps : [];
+          const idx = steps.findIndex((s) => asRecord(s)?.id === editTarget.step);
+          if (idx < 0) {
+            return `edit apply failed: step \`${editTarget.step}\` no longer exists in the draft`;
+          }
+          if (JSON.stringify(steps[idx]) !== JSON.stringify(body)) {
+            patches.push({ op: "replace", path: `/steps/${idx}`, value: body });
+          }
+        }
+        if (patches.length === 0) {
+          fs.rmSync(bodyPath, { force: true });
+          fs.rmSync(metaPath, { force: true });
+          return "no changes — draft left untouched";
+        }
+        const outcome = await ctx.client.patchConversationDraft(
+          ctx.session.conversationId,
+          patches,
+        );
+        const data = asRecord(outcome.data) ?? {};
+        if (outcome.ok) {
+          fs.rmSync(bodyPath, { force: true });
+          fs.rmSync(metaPath, { force: true });
+        }
+        const lines = [
+          `status: ${outcome.ok ? "applied" : "refused"}`,
+          `patches: ${patches.length}`,
+          ...(scalarString(data.message) ? ["", scalarString(data.message)] : []),
+          ...(scalarString(data.summary) ? ["", scalarString(data.summary)] : []),
+          ...(Array.isArray(data.errors)
+            ? data.errors.map((e) => {
+                const err = asRecord(e);
+                return `  ${recordString(err?.path, "?")}: ${recordString(err?.message, "invalid")}`;
+              })
+            : []),
+          ...(outcome.ok ? ["", "next: `/preview` to dry-run the change"] : []),
+        ];
+        return panify(ctx, "edit", lines);
+      }
+      // Start an edit: dump the draft (or the named step) to a file.
+      const detail = await ctx.client.getConversation(ctx.session.conversationId);
+      const draft = draftRecord(detail.draft);
+      const workflow = draft ? asRecord(draft.workflow) : null;
+      if (!workflow) {
+        return "no workflow draft to edit — author one first (e.g. describe the workflow you want)";
+      }
+      const stepId = rawArgs[0];
+      let editBody: unknown = workflow;
+      let target: "workflow" | { step: string } = "workflow";
+      if (stepId) {
+        const steps = Array.isArray(workflow.steps) ? workflow.steps : [];
+        const step = steps.find((s) => asRecord(s)?.id === stepId);
+        if (!step) return `no step \`${stepId}\` in the draft — see /workflow for step ids`;
+        editBody = step;
+        target = { step: stepId };
+      }
+      fs.mkdirSync(editDir, { recursive: true });
+      fs.writeFileSync(bodyPath, `${JSON.stringify(editBody, null, 2)}\n`, "utf8");
+      fs.writeFileSync(
+        metaPath,
+        `${JSON.stringify({ target, before: editBody }, null, 2)}\n`,
+        "utf8",
+      );
+      const editorHint = process.env.EDITOR ? `\`${process.env.EDITOR} ${bodyPath}\`` : bodyPath;
+      return `wrote ${bodyPath} — edit it (${editorHint}), then run \`/edit apply\``;
+    }
+    case "snapshots": {
+      if (!ctx.session.conversationId) return "no active conversation";
+      const sub = (rawArgs[0] ?? "").toLowerCase();
+      if (sub === "restore") {
+        const outcome = await ctx.client.restoreConversationDraftSnapshot(
+          ctx.session.conversationId,
+          rawArgs[1],
+        );
+        const data = asRecord(outcome.data) ?? {};
+        return panify(ctx, "snapshots", [
+          `status: ${outcome.ok ? "restored" : "failed"}`,
+          ...(scalarString(data.message) ? [scalarString(data.message)] : []),
+          ...(scalarString(data.summary) ? [scalarString(data.summary)] : []),
+          ...(outcome.ok ? ["next: `/workflow` to inspect, `/preview` to dry-run"] : []),
+        ]);
+      }
+      const outcome = await ctx.client.listConversationDraftSnapshots(ctx.session.conversationId);
+      const data = asRecord(outcome.data) ?? {};
+      const snapshots = Array.isArray(data.snapshots) ? data.snapshots : [];
+      if (snapshots.length === 0) {
+        return panify(ctx, "snapshots", ["no draft snapshots yet — they record every draft edit"]);
+      }
+      const lines = [
+        ...snapshots.map((s) => {
+          const snap = asRecord(s) ?? {};
+          const when = scalarString(snap.snapshot_at).slice(0, 19).replace("T", " ");
+          return `  ${recordString(snap.id, "?").slice(0, 8)}  turn ${typeof snap.turn_index === "number" ? snap.turn_index : "?"}  ${when}  ${scalarString(snap.label)}`.trimEnd();
+        }),
+        "",
+        "Roll back with `/snapshots restore [id]` (newest when omitted).",
+      ];
+      return panify(ctx, "snapshots", lines);
     }
     case "versions": {
       if (!ctx.session.conversationId) return "no active conversation";

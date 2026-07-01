@@ -1401,6 +1401,78 @@ export class EngineClient {
     return this.request("PATCH", `/v1/conversations/${id}`, body);
   }
   /**
+   * Direct draft dry-run — one synchronous request, no model turn.
+   * Runs `dry_run_workflow` (or `dry_run_step` when `step_id` is set)
+   * against the conversation draft; the engine persists the tool call
+   * so the next model turn sees the result. Writes stay held unless
+   * `execute_writes` is true.
+   */
+  previewConversationDraft(
+    id: string,
+    body: {
+      step_id?: string;
+      input?: unknown;
+      environment?: "dev" | "prod";
+      execute_writes?: boolean;
+      include_step_results?: boolean;
+    } = {},
+  ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
+    return this.request("POST", `/v1/conversations/${id}/preview`, body);
+  }
+  /** Direct connector-draft probe — one synchronous request, no model turn. */
+  probeConversationConnector(
+    id: string,
+    body: {
+      method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+      path?: string;
+      headers?: Record<string, string>;
+      query?: Record<string, string | number | boolean>;
+      body?: unknown;
+      environment?: "dev" | "prod";
+      timeout_ms?: number;
+    } = {},
+  ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
+    return this.request("POST", `/v1/conversations/${id}/probe`, body);
+  }
+  /**
+   * Direct RFC-6902 draft edit — same gates as the model-driven
+   * editor; an invalid patch leaves the draft untouched.
+   */
+  patchConversationDraft(
+    id: string,
+    patches: Array<{
+      op: "add" | "remove" | "replace" | "move" | "copy" | "test";
+      path: string;
+      from?: string;
+      value?: unknown;
+    }>,
+  ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
+    return this.request("POST", `/v1/conversations/${id}/draft/patch`, { patches });
+  }
+  /** List the conversation's draft snapshots, newest first. */
+  listConversationDraftSnapshots(
+    id: string,
+    limit?: number,
+  ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
+    return this.request(
+      "GET",
+      `/v1/conversations/${id}/draft/snapshots`,
+      undefined,
+      limit !== undefined ? { limit } : undefined,
+    );
+  }
+  /** Roll the draft back to a captured snapshot (most recent when omitted). */
+  restoreConversationDraftSnapshot(
+    id: string,
+    snapshotId?: string,
+  ): Promise<components["schemas"]["ConversationDirectToolResult"]> {
+    return this.request(
+      "POST",
+      `/v1/conversations/${id}/draft/snapshots/restore`,
+      snapshotId ? { snapshot_id: snapshotId } : {},
+    );
+  }
+  /**
    * Fork a conversation at a specific message id. Creates a new
    * conversation copying messages up to and including the anchor.
    *

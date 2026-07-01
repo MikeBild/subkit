@@ -162,41 +162,71 @@ describe("authoring slash panes", () => {
     ).toContain("Commit the workflow");
   });
 
-  test("/probe run appends an explicit probe request message", async () => {
-    const appended: string[] = [];
+  test("/probe run probes the connector draft directly and renders the result", async () => {
+    const probed: unknown[] = [];
     const client = {
-      getConversation: async () => ({
-        conversation: {} as never,
-        messages: [],
-        draft: {
-          workflow: { name: "wf", steps: [] },
-          connector: { name: "Probe API", driver: "http", environment: "dev", auth_type: "none" },
-        },
-        tool_calls: [],
-      }),
-      appendConversationMessage: async (_id: string, body: { message: string }) => {
-        appended.push(body.message);
-        return {} as never;
+      probeConversationConnector: async (_id: string, body: unknown) => {
+        probed.push(body);
+        return {
+          ok: true,
+          tool: "probe_connector_draft",
+          tool_call_id: "tc-1",
+          data: {
+            latest_probe: {
+              ok: true,
+              method: "GET",
+              path: "/",
+              environment: "dev",
+              status_code: 200,
+              duration_ms: 42,
+              summary: "Probe succeeded with HTTP 200.",
+            },
+          },
+          logs: [],
+          diffs: [],
+        };
       },
     } as unknown as EngineClient;
-    const { ctx } = mkCtx(client);
+    const { ctx, panes } = mkCtx(client);
     const result = await handleSlash("probe", ["run"], ctx);
-    expect(result).toContain("probe requested");
-    expect(appended[0]).toContain("Run probe_connector_draft");
+    expect(result).toBeNull();
+    expect(probed).toHaveLength(1);
+    const pane = panes[0];
+    expect(pane?.kind).toBe("probe-results");
+    const probePane = pane as Extract<PaneSpec, { kind: "probe-results" }>;
+    expect(probePane.probe.ok).toBe(true);
+    expect(probePane.probe.http).toBe("200");
   });
 
-  test("/preview run step-id appends an explicit step preview request", async () => {
-    const appended: string[] = [];
+  test("/preview run step-id dry-runs the step directly and renders the result", async () => {
+    const previewed: unknown[] = [];
     const client = {
-      appendConversationMessage: async (_id: string, body: { message: string }) => {
-        appended.push(body.message);
-        return {} as never;
+      previewConversationDraft: async (_id: string, body: unknown) => {
+        previewed.push(body);
+        return {
+          ok: true,
+          tool: "dry_run_step",
+          tool_call_id: "tc-2",
+          data: {
+            steps_ran: 1,
+            duration_ms: 120,
+            summary: "Step `fetch` ran clean.",
+            step_trace: [{ step_id: "fetch", kind: "request", status: "succeeded" }],
+          },
+          logs: [],
+          diffs: [],
+        };
       },
     } as unknown as EngineClient;
-    const { ctx } = mkCtx(client);
+    const { ctx, panes } = mkCtx(client);
     const result = await handleSlash("preview", ["run", "fetch"], ctx);
-    expect(result).toContain("preview requested");
-    expect(appended[0]).toContain("Run dry_run_step against step `fetch`");
+    expect(result).toBeNull();
+    expect(previewed[0]).toEqual({ step_id: "fetch" });
+    const pane = panes[0];
+    expect(pane?.kind).toBe("preview-results");
+    const previewPane = pane as Extract<PaneSpec, { kind: "preview-results" }>;
+    expect(previewPane.preview.ok).toBe(true);
+    expect(previewPane.preview.lines.join("\n")).toContain("fetch (request) succeeded");
   });
 
   test("/setup opens the dedicated setup diagnostics pane", async () => {

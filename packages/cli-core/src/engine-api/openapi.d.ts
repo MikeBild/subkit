@@ -6784,6 +6784,349 @@ export interface paths {
         };
         trace?: never;
     };
+    "/v1/conversations/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dry-run the conversation's workflow draft (or a single step) directly — no model turn. Writes are held unless execute_writes is true. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConversationPreviewRequest"];
+                };
+            };
+            responses: {
+                /** @description Tool result envelope (ok may be false — read `data`) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConversationDirectToolResult"];
+                    };
+                };
+                /** @description Invalid tool arguments */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A pending dialog blocks direct invocation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Probe the conversation's connector draft directly — no model turn. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConversationProbeRequest"];
+                };
+            };
+            responses: {
+                /** @description Tool result envelope (ok may be false — read `data`) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConversationDirectToolResult"];
+                    };
+                };
+                /** @description Invalid tool arguments */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A pending dialog blocks direct invocation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/draft/patch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply an RFC 6902 JSON Patch to the workflow draft directly — same validation gates as the model-driven editor; an invalid patch leaves the draft untouched. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConversationDraftPatchRequest"];
+                };
+            };
+            responses: {
+                /** @description Tool result envelope (ok may be false — read `data`) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConversationDirectToolResult"];
+                    };
+                };
+                /** @description Invalid tool arguments */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A pending dialog blocks direct invocation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/draft/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List draft snapshots for this conversation, newest first. */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Tool result envelope (ok may be false — read `data`) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConversationDirectToolResult"];
+                    };
+                };
+                /** @description Invalid tool arguments */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A pending dialog blocks direct invocation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/conversations/{id}/draft/snapshots/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Roll the conversation draft back to a captured snapshot (most recent when snapshot_id is omitted). */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConversationSnapshotRestoreRequest"];
+                };
+            };
+            responses: {
+                /** @description Tool result envelope (ok may be false — read `data`) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConversationDirectToolResult"];
+                    };
+                };
+                /** @description Invalid tool arguments */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A pending dialog blocks direct invocation */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/conversations/{id}/messages": {
         parameters: {
             query?: never;
@@ -13221,6 +13564,65 @@ export interface components {
         PatchConversationBody: {
             model?: string | null;
             title?: string | null;
+        };
+        ConversationDirectToolResult: {
+            ok: boolean;
+            tool: string;
+            tool_call_id: string;
+            data?: unknown;
+            committed_workflow_id?: string;
+            logs: components["schemas"]["ConversationDirectToolLog"][];
+            diffs: components["schemas"]["ConversationDirectToolDiff"][];
+        };
+        ConversationDirectToolLog: {
+            /** @enum {string} */
+            level: "debug" | "info" | "warn" | "error";
+            message: string;
+            ts: string;
+        };
+        ConversationDirectToolDiff: {
+            title: string;
+            /** @enum {string} */
+            language: "json" | "yaml" | "text";
+            hunks: unknown[];
+        };
+        ConversationPreviewRequest: {
+            step_id?: string;
+            input?: unknown;
+            /** @enum {string} */
+            environment?: "dev" | "prod";
+            execute_writes?: boolean;
+            include_step_results?: boolean;
+            budget_ms_per_step?: number;
+        };
+        ConversationProbeRequest: {
+            /** @enum {string} */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+            path?: string;
+            headers?: {
+                [key: string]: string;
+            };
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: unknown;
+            /** @enum {string} */
+            environment?: "dev" | "prod";
+            timeout_ms?: number;
+        };
+        ConversationDraftPatchRequest: {
+            patches: components["schemas"]["ConversationDraftPatchOp"][];
+        };
+        ConversationDraftPatchOp: {
+            /** @enum {string} */
+            op: "add" | "remove" | "replace" | "move" | "copy" | "test";
+            path: string;
+            from?: string;
+            value?: unknown;
+        };
+        ConversationSnapshotRestoreRequest: {
+            /** Format: uuid */
+            snapshot_id?: string;
         };
         AppendConversationMessageBody: {
             message: string;

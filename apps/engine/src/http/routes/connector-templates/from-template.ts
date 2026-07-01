@@ -4,6 +4,7 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   resolveConnectorTemplate,
@@ -11,6 +12,7 @@ import {
 } from "../../../connectors/index.ts";
 import templateSkillsJson from "../../../connectors/template-skills.json" with { type: "json" };
 import * as docsSvc from "../../../docs-ingestion/index.ts";
+import { logger } from "../../../logging/logger.ts";
 import * as skillSvc from "../../../skills/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -95,6 +97,44 @@ export function registerFromTemplateRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
+    }
+
+    // Endpoint discovery pre-seed. The authoring pipeline grounds
+    // `author_workflow` in the discovered endpoint index; the
+    // conversation path (`start_connector_from_template`) already runs
+    // this, but a connector installed over HTTP (sk `/install`) had no
+    // index until the first authoring turn explicitly discovered it —
+    // fail-open grounding is exactly how invented paths slip through.
+    // Backgrounded because discovery can take tens of seconds and is
+    // best-effort: the 24h cache in `runDiscoveryCached` makes a later
+    // authoring turn pick up the result either way.
+    if (template.ingestion_url) {
+      void runDiscoveryCached(
+        { db, tenant_id: principal.tenant_id, actor_id: principal.id },
+        { template_id: template.slug, force_refresh: false },
+      )
+        .then((out) => {
+          logger.info({
+            module: "connector_templates",
+            action: "from_template.discovery_seeded",
+            msg: "endpoint catalog discovered and cached for the new connector",
+            tenant_id: principal.tenant_id,
+            template_slug: template.slug,
+            connector_id: created.id,
+            endpoint_count: out.result.endpoints.length,
+          });
+        })
+        .catch((err: unknown) => {
+          logger.warn({
+            module: "connector_templates",
+            action: "from_template.discovery_failed",
+            msg: "background endpoint discovery failed; authoring grounding falls back to on-demand discovery",
+            tenant_id: principal.tenant_id,
+            template_slug: template.slug,
+            connector_id: created.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
     }
 
     // Seed the default skill for this connector from template-skills.json.

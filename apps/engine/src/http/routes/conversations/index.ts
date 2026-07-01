@@ -19,11 +19,17 @@
 //   GET    /v1/conversations/:id/tool-policies             — read per-tool overrides
 //   PUT    /v1/conversations/:id/tool-policies             — set per-tool overrides
 //   GET    /v1/conversations/:id/stream                    — SSE replay of the latest run
+//   POST   /v1/conversations/:id/preview                   — direct draft dry-run (no model turn)
+//   POST   /v1/conversations/:id/probe                     — direct connector-draft probe
+//   POST   /v1/conversations/:id/draft/patch               — direct RFC-6902 draft edit
+//   GET    /v1/conversations/:id/draft/snapshots           — list draft snapshots
+//   POST   /v1/conversations/:id/draft/snapshots/restore   — restore a draft snapshot
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { requireAnyPermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerCollectionRoutes } from "./collection.ts";
+import { registerDirectToolRoutes } from "./direct-tools.ts";
 import { registerElicitationRoutes } from "./elicitations.ts";
 import { registerLifecycleRoutes } from "./lifecycle.ts";
 import { registerMessagesRoutes } from "./messages.ts";
@@ -93,6 +99,24 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/conversations/:id/suggest-next/feedback", async (c, next) => {
     return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
   });
+  // Direct tool invocation mutates draft state (preview persists
+  // latest_preview; patch/restore rewrite the draft), so every POST
+  // carries the write gate. The snapshot listing is a read.
+  app.use("/v1/conversations/:id/preview", async (c, next) => {
+    return requireAnyPermission(["conversation:write", "workflow:write"])(c, next);
+  });
+  app.use("/v1/conversations/:id/probe", async (c, next) => {
+    return requireAnyPermission(["conversation:write", "workflow:write"])(c, next);
+  });
+  app.use("/v1/conversations/:id/draft/patch", async (c, next) => {
+    return requireAnyPermission(["conversation:write", "workflow:write"])(c, next);
+  });
+  app.use("/v1/conversations/:id/draft/snapshots", async (c, next) => {
+    return requireAnyPermission(["conversation:read", "workflow:read"])(c, next);
+  });
+  app.use("/v1/conversations/:id/draft/snapshots/restore", async (c, next) => {
+    return requireAnyPermission(["conversation:write", "workflow:write"])(c, next);
+  });
   // Tool policies are governance state (per-tool confirm/auto/yolo
   // matrix); the PUT mutates it and writes a `tool_policy.changed`
   // audit row, so the surface is RBAC-gated identically to the
@@ -107,6 +131,7 @@ export function registerConversationRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   registerCollectionRoutes(app);
+  registerDirectToolRoutes(app);
   registerMessagesRoutes(app);
   registerElicitationRoutes(app);
   registerLifecycleRoutes(app);
