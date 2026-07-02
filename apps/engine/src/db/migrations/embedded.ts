@@ -30,6 +30,7 @@ import sql0009AuthoringCapabilityCandidate from "./0009_authoring_capability_can
 import sql0010LocalInviteProvisioning from "./0010_local_invite_provisioning.sql" with { type: "text" };
 import sql0011AmbiguousFalcon from "./0011_ambiguous_falcon.sql" with { type: "text" };
 import sql0012McpTaskHeartbeat from "./0012_mcp_task_heartbeat.sql" with { type: "text" };
+import sql0013DropProviderFileIds from "./0013_drop_provider_file_ids.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -67,6 +68,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0010_local_invite_provisioning": sql0010LocalInviteProvisioning,
   "0011_ambiguous_falcon": sql0011AmbiguousFalcon,
   "0012_mcp_task_heartbeat": sql0012McpTaskHeartbeat,
+  "0013_drop_provider_file_ids": sql0013DropProviderFileIds,
 };
 
 const journal = journalMeta as unknown as Journal;

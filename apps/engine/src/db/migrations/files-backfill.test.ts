@@ -122,6 +122,10 @@ describe("E12 — 0019_files_unify backfill replay", () => {
     //   ¶6: DROP TABLE conversation_attachments
     //   ¶7: row-count assertions
 
+    // NOTE: replay copy adapted to the CURRENT schema — the historical
+    // block also carried the provider file-id column, which a later
+    // migration dropped (customer files are never stored provider-side).
+    // The dedup/link semantics this test locks are column-independent.
     const BACKFILL_SQL = `
 DO $$
 DECLARE
@@ -138,7 +142,7 @@ BEGIN
 
   INSERT INTO files (
     tenant_id, status, filename, content_type, size_bytes, storage_uri,
-    sha256, anthropic_file_id, created_by, created_at, updated_at
+    sha256, created_by, created_at, updated_at
   )
   SELECT
     ca.tenant_id,
@@ -148,7 +152,6 @@ BEGIN
     ca.size_bytes,
     ca.storage_uri,
     ca.sha256,
-    ca.files_api_id,
     NULL,
     ca.created_at,
     ca.created_at

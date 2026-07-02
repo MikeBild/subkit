@@ -20,11 +20,7 @@ import {
 import { extractFileSentinels, replaceFileSentinels } from "../files/sentinel.ts";
 import { countModelMessagesTokens } from "../llm/accounting/index.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
-import {
-  buildFileContentBlocks,
-  type FileContentBlock,
-  sdkProviderId,
-} from "../llm/core/file-context.ts";
+import { buildFileContentBlocks, type FileContentBlock } from "../llm/core/file-context.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
 import { logger } from "../logging/logger.ts";
 import { scrubString } from "../logging/scrub-secrets.ts";
@@ -74,7 +70,7 @@ const ELIDED_SQL_MARKER = "__sk_elided_in_sql";
  * Build multimodal UserContent for a conversation turn that may
  * reference file attachments. Routes every `[file:fid_...]` sentinel
  * through the canonical `buildFileContentBlocks` strategy router
- * (file_api / file_part / text_extract — see `llm/core/file-context.ts`).
+ * (file_part / text_extract — see `llm/core/file-context.ts`).
  *
  * Returns a plain string when the turn has no file refs (fast path,
  * preserves existing behaviour for all-text turns).
@@ -150,7 +146,6 @@ export async function buildUserContentParts(
   const assembled = await buildFileContentBlocks({
     db,
     tenant_id,
-    provider,
     capabilities: caps,
     fids: allowedFids,
   });
@@ -187,29 +182,12 @@ export async function buildUserContentParts(
   return parts.length === 1 && parts[0]?.type === "text" ? (parts[0] as TextPart).text : parts;
 }
 
-/** Translate one assembler block into AI SDK content parts. `file_api`
- *  becomes a FilePart carrying a `FileDataReference` — the provider
- *  adapter resolves `reference[<sdk provider key>]` to its native
- *  file-id block (Anthropic `document`/`image` file source, OpenAI
- *  `input_file`, Google `fileData`) without re-uploading. `file_part`
- *  becomes a FilePart for PDFs / generic binaries or an ImagePart for
- *  image media types. `text_extract` becomes a TextPart.
- *
- *  Exported for the reference-shape regression test — the provider
- *  adapters only derive their native file-id blocks from the exact
- *  `FileDataReference` shape, so drift here silently sends empty
- *  documents. */
+/** Translate one assembler block into AI SDK content parts.
+ *  `file_part` becomes a FilePart for PDFs / generic binaries or an
+ *  ImagePart for image media types — raw bytes inline in the request,
+ *  nothing persisted at the provider. `text_extract` becomes a
+ *  TextPart. Exported for the shape regression tests. */
 export function toAiSdkParts(block: FileContentBlock): Array<TextPart | ImagePart | FilePart> {
-  if (block.strategy === "file_api") {
-    return [
-      {
-        type: "file",
-        data: { type: "reference", reference: { [sdkProviderId(block.provider)]: block.file_id } },
-        mediaType: block.content_type,
-        filename: block.filename,
-      },
-    ];
-  }
   if (block.strategy === "file_part") {
     if (block.mediaType.startsWith("image/")) {
       return [{ type: "image", image: block.data, mediaType: block.mediaType }];

@@ -54,12 +54,6 @@
 // The cleanup cron has no principal — it is a process-wide tick —
 // so `"system"` is the correct choice here.
 //
-//   3) LLM provider expiry. Provider-side Files API ids (Anthropic /
-//      OpenAI / Gemini) come with a finite TTL. When `llm_file_expires_at`
-//      has passed we null out the provider ids + the expiry timestamp so
-//      the LLM context layer re-uploads the bytes on the next turn. No
-//      audit row — this is low-value housekeeping churn.
-//
 // Best-effort `objectStore.delete`: a failure to remove the backing
 // object logs and continues; the sweep does not abort. Leaving an
 // orphan blob in the bucket is preferable to wedging the cron.
@@ -468,29 +462,6 @@ async function sweepUnlinkedTtl(db: Db): Promise<{ soft: number; hard: number }>
 }
 
 /**
- * Sweep 3 — LLM provider expiry.
- *
- * Null out the per-provider Files API ids when their TTL has passed so
- * the LLM context layer re-uploads on the next turn. No audit row —
- * provider TTLs roll every few days and the churn would dominate the
- * audit ledger without operator value.
- */
-async function sweepLlmProviderExpiry(db: Db): Promise<number> {
-  // tenant-filter:exempt — global sweep
-  const updated = await db
-    .update(files)
-    .set({
-      anthropic_file_id: null,
-      openai_file_id: null,
-      gemini_file_id: null,
-      llm_file_expires_at: null,
-    })
-    .where(lt(files.llm_file_expires_at, sql`now()`))
-    .returning({ id: files.id });
-  return updated.length;
-}
-
-/**
  * Sweep 4 — refresh `subkit_files_total{tenant_id,status}` and
  * `subkit_files_bytes_total{tenant_id}` gauges.
  *
@@ -541,7 +512,6 @@ export async function runFilesCleanup(started: Date, db: Db): Promise<void> {
   let stuck_scanning_flipped = 0;
   let unlinked_soft = 0;
   let unlinked_hard = 0;
-  let llm_expired = 0;
 
   try {
     const r = await sweepPendingOrphans(db);
@@ -566,18 +536,6 @@ export async function runFilesCleanup(started: Date, db: Db): Promise<void> {
       module: "scheduler",
       action: "files_cleanup.unlinked_failed",
       msg: "unlinked-TTL sweep failed",
-      tick_id: tickId,
-      ...errorFields(err),
-    });
-  }
-
-  try {
-    llm_expired = await sweepLlmProviderExpiry(db);
-  } catch (err) {
-    logger.error({
-      module: "scheduler",
-      action: "files_cleanup.llm_expiry_failed",
-      msg: "LLM provider expiry sweep failed",
       tick_id: tickId,
       ...errorFields(err),
     });
@@ -608,7 +566,6 @@ export async function runFilesCleanup(started: Date, db: Db): Promise<void> {
     stuck_scanning_flipped,
     unlinked_soft,
     unlinked_hard,
-    llm_expired,
     duration_ms,
   });
 }

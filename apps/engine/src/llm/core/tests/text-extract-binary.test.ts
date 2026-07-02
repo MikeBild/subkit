@@ -4,7 +4,6 @@
 // `text_extract` strategy run through the binary parser registry and
 // produce a populated, non-placeholder text block. Same harness as the
 // per-turn cap test — uses the in-process file resolver and a fake
-// uploader that should never be called.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
@@ -20,7 +19,6 @@ import {
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { getStaticCapabilities } from "../capabilities.ts";
 import { buildFileContentBlocks } from "../file-context.ts";
-import type { UploadFileParams } from "../files-api.ts";
 
 const uuid = createDeterministicUuidFactory(0xb1c0a1);
 
@@ -56,14 +54,9 @@ function forceTextExtractCaps() {
   return {
     ...getStaticCapabilities("mock"),
     supportsFile: false,
-    filesApiSupport: false,
     maxFileSizeMB: 0,
   };
 }
-
-const noopUploader = (async (_: UploadFileParams) => {
-  throw new Error("uploader should not be called on text_extract branch");
-}) as never;
 
 describe("text_extract binary branch", () => {
   test("pdf attachment → text_extract with parsed text", async () => {
@@ -80,10 +73,8 @@ describe("text_extract binary branch", () => {
     const result = await buildFileContentBlocks({
       db: ctx.db,
       tenant_id,
-      provider: "mock",
       capabilities: forceTextExtractCaps(),
       fids: [att.file_id],
-      uploader: noopUploader,
     });
     expect(result.blocks).toHaveLength(1);
     const block = result.blocks[0]!;
@@ -107,10 +98,8 @@ describe("text_extract binary branch", () => {
     const result = await buildFileContentBlocks({
       db: ctx.db,
       tenant_id,
-      provider: "mock",
       capabilities: forceTextExtractCaps(),
       fids: [att.file_id],
-      uploader: noopUploader,
     });
     const block = result.blocks[0]!;
     if (block.strategy !== "text_extract") throw new Error("expected text_extract");
@@ -138,10 +127,8 @@ describe("text_extract binary branch", () => {
     const result = await buildFileContentBlocks({
       db: ctx.db,
       tenant_id,
-      provider: "mock",
       capabilities: forceTextExtractCaps(),
       fids: [att.file_id],
-      uploader: noopUploader,
     });
     const block = result.blocks[0]!;
     if (block.strategy !== "text_extract") throw new Error("expected text_extract");
@@ -163,10 +150,8 @@ describe("text_extract binary branch", () => {
     const result = await buildFileContentBlocks({
       db: ctx.db,
       tenant_id,
-      provider: "mock",
       capabilities: forceTextExtractCaps(),
       fids: [att.file_id],
-      uploader: noopUploader,
     });
     const block = result.blocks[0]!;
     if (block.strategy !== "text_extract") throw new Error("expected text_extract");

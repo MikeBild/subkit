@@ -14,7 +14,6 @@ import {
 } from "../../../test-helpers/determinism/ids.ts";
 import { getStaticCapabilities } from "../capabilities.ts";
 import { buildFileContentBlocks, FILE_PART_PER_TURN_CAP_BYTES } from "../file-context.ts";
-import type { UploadFileParams } from "../files-api.ts";
 
 // Deterministic id sources: seeded so the test replays identically.
 // createTestDb provisions a fresh DB per run, so per-call uniqueness
@@ -72,19 +71,14 @@ describe("250 KiB per-turn inline cap", () => {
     const caps = {
       ...getStaticCapabilities("mock"),
       supportsFile: true,
-      filesApiSupport: false,
       maxFileSizeMB: 100,
     };
 
     const result = await buildFileContentBlocks({
       db: ctx.db,
       tenant_id,
-      provider: "mock",
       capabilities: caps,
       fids: [att.file_id],
-      uploader: (async (_: UploadFileParams) => {
-        throw new Error("should not upload");
-      }) as never,
     });
 
     expect(result.blocks).toHaveLength(1);
@@ -127,19 +121,14 @@ describe("250 KiB per-turn inline cap", () => {
     const caps = {
       ...getStaticCapabilities("mock"),
       supportsFile: true,
-      filesApiSupport: false,
       maxFileSizeMB: 100,
     };
 
     const result = await buildFileContentBlocks({
       db: ctx.db,
       tenant_id,
-      provider: "mock",
       capabilities: caps,
       fids: [att1.file_id, att2.file_id],
-      uploader: (async (_: UploadFileParams) => {
-        throw new Error("should not upload");
-      }) as never,
     });
 
     expect(result.blocks).toHaveLength(2);
@@ -189,19 +178,14 @@ describe("250 KiB per-turn inline cap", () => {
     const caps = {
       ...getStaticCapabilities("mock"),
       supportsFile: true,
-      filesApiSupport: false,
       maxFileSizeMB: 100,
     };
 
     const result = await buildFileContentBlocks({
       db: ctx.db,
       tenant_id,
-      provider: "mock",
       capabilities: caps,
       fids: [att1.file_id, att2.file_id, att3.file_id],
-      uploader: (async (_: UploadFileParams) => {
-        throw new Error("should not upload");
-      }) as never,
     });
 
     expect(result.blocks).toHaveLength(3);

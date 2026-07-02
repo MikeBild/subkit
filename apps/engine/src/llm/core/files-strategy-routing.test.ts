@@ -1,7 +1,9 @@
 // `chooseFileStrategy` decision-matrix tests.
 //
-// Mirrors the style of `capabilities.test.ts` so the size ladder and the
-// media gate are tested symmetrically. No I/O, no LLM calls.
+// Two outcomes only — `file_part` (inline request bytes) and
+// `text_extract` (parsed text). There is deliberately no provider
+// Files-API upload lane: customer files stay in subkit's object store.
+// No I/O, no LLM calls.
 
 import { describe, expect, test } from "bun:test";
 import {
@@ -15,16 +17,10 @@ const MB = 1024 * 1024;
 const PDF = "application/pdf";
 const PNG = "image/png";
 
-// Convenience constructors for the common cap variants.
-const withFilesApi: ModelCapabilities = { ...getStaticCapabilities("anthropic") };
-const noFilesApi: ModelCapabilities = {
-  ...getStaticCapabilities("anthropic"),
-  filesApiSupport: false,
-};
+const anthropicCaps: ModelCapabilities = { ...getStaticCapabilities("anthropic") };
 const noFileSupport: ModelCapabilities = {
   ...getStaticCapabilities("anthropic"),
   supportsFile: false,
-  filesApiSupport: false,
 };
 
 describe("isProviderNativeMedia", () => {
@@ -50,88 +46,53 @@ describe("isProviderNativeMedia", () => {
 });
 
 describe("chooseFileStrategy — size ladder for native media", () => {
-  test("small PDF + filesApiSupport=true → file_part (≤ 5 MB threshold)", () => {
-    // 5 MB exactly is NOT over the threshold (strictly > 5 MB triggers file_api)
-    expect(chooseFileStrategy(withFilesApi, 5 * MB, PDF)).toBe("file_part");
+  test("native media within maxFileSizeMB → file_part", () => {
+    expect(chooseFileStrategy(anthropicCaps, 100 * 1024, PDF)).toBe("file_part");
+    expect(chooseFileStrategy(anthropicCaps, 5 * MB, PDF)).toBe("file_part");
+    expect(chooseFileStrategy(anthropicCaps, 20 * MB, PNG)).toBe("file_part");
+    // anthropic.maxFileSizeMB = 32 — the boundary is inclusive
+    expect(chooseFileStrategy(anthropicCaps, 32 * MB, PDF)).toBe("file_part");
   });
 
-  test("PDF just below 5 MB threshold + filesApiSupport=true → file_part", () => {
-    expect(chooseFileStrategy(withFilesApi, 5 * MB - 1, PDF)).toBe("file_part");
+  test("native media over maxFileSizeMB → text_extract", () => {
+    expect(chooseFileStrategy(anthropicCaps, 33 * MB, PDF)).toBe("text_extract");
   });
 
-  test("large PDF (> 5 MB) + filesApiSupport=true → file_api", () => {
-    expect(chooseFileStrategy(withFilesApi, 6 * MB, PDF)).toBe("file_api");
-  });
-
-  test("PDF exactly at 5 MB + 1 byte + filesApiSupport=true → file_api", () => {
-    expect(chooseFileStrategy(withFilesApi, 5 * MB + 1, PDF)).toBe("file_api");
-  });
-
-  test("small image + filesApiSupport=false + supportsFile=true → file_part", () => {
-    expect(chooseFileStrategy(noFilesApi, 1 * MB, PNG)).toBe("file_part");
-  });
-
-  test("PDF exceeding maxFileSizeMB + filesApiSupport=false → text_extract", () => {
-    // anthropic.maxFileSizeMB = 32; send 33 MB with no filesApiSupport
-    expect(chooseFileStrategy(noFilesApi, 33 * MB, PDF)).toBe("text_extract");
-  });
-
-  test("no file support at all → text_extract", () => {
+  test("no file support → text_extract even for native media", () => {
     expect(chooseFileStrategy(noFileSupport, 1 * MB, PDF)).toBe("text_extract");
   });
 
-  test("zero-byte image + filesApiSupport=false + supportsFile=true → file_part", () => {
-    expect(chooseFileStrategy(noFilesApi, 0, PNG)).toBe("file_part");
+  test("zero-byte native file → file_part", () => {
+    expect(chooseFileStrategy(anthropicCaps, 0, PNG)).toBe("file_part");
   });
 
-  test("mock provider (filesApiSupport=false, maxFileSizeMB=32) routes file_part for small native media", () => {
-    const mockCaps = getStaticCapabilities("mock");
-    expect(chooseFileStrategy(mockCaps, 1 * MB, PDF)).toBe("file_part");
-  });
-
-  test("mock provider routes text_extract for oversized files", () => {
-    const mockCaps = getStaticCapabilities("mock");
-    expect(chooseFileStrategy(mockCaps, 33 * MB, PDF)).toBe("text_extract");
-  });
-
-  test("azure provider (filesApiSupport=false) always stays in file_part / text_extract lane", () => {
-    const azureCaps = getStaticCapabilities("azure");
-    expect(chooseFileStrategy(azureCaps, 1 * MB, PDF)).toBe("file_part");
-    // azure.maxFileSizeMB = 32; 33 MB → text_extract
-    expect(chooseFileStrategy(azureCaps, 33 * MB, PDF)).toBe("text_extract");
-  });
-
-  test("large PDF + filesApiSupport=true is always file_api regardless of supportsFile", () => {
-    const caps: ModelCapabilities = { ...withFilesApi, supportsFile: false };
-    expect(chooseFileStrategy(caps, 10 * MB, PDF)).toBe("file_api");
-  });
-
-  test("native media over maxFileSizeMB but with Files API → file_api (upload + reference)", () => {
-    // anthropic.maxFileSizeMB = 32; a 33 MB PDF can't inline but CAN upload
-    expect(chooseFileStrategy(withFilesApi, 33 * MB, PDF)).toBe("file_api");
-  });
-
-  test("gemini (filesApiSupport=true, maxFileSizeMB=50) routes large files to file_api", () => {
+  test("gemini (maxFileSizeMB=50) inlines larger native files", () => {
     const geminiCaps = getStaticCapabilities("gemini");
-    expect(chooseFileStrategy(geminiCaps, 6 * MB, PDF)).toBe("file_api");
-    expect(chooseFileStrategy(geminiCaps, 4 * MB, PDF)).toBe("file_part");
+    expect(chooseFileStrategy(geminiCaps, 40 * MB, PDF)).toBe("file_part");
+    expect(chooseFileStrategy(geminiCaps, 51 * MB, PDF)).toBe("text_extract");
+  });
+
+  test("bedrock (maxFileSizeMB=20) caps the inline lane lower", () => {
+    const bedrockCaps = getStaticCapabilities("bedrock");
+    expect(chooseFileStrategy(bedrockCaps, 19 * MB, PDF)).toBe("file_part");
+    expect(chooseFileStrategy(bedrockCaps, 21 * MB, PDF)).toBe("text_extract");
   });
 });
 
 describe("chooseFileStrategy — media gate", () => {
-  test("non-native media always parses to text, regardless of size or Files API", () => {
+  test("non-native media always parses to text, regardless of size", () => {
     const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     // The provider SDKs throw UnsupportedFunctionalityError for a raw
     // file part with these media types — they must never ride the
-    // raw-bytes lanes.
-    expect(chooseFileStrategy(withFilesApi, 100 * 1024, DOCX)).toBe("text_extract");
-    expect(chooseFileStrategy(withFilesApi, 6 * MB, DOCX)).toBe("text_extract");
-    expect(chooseFileStrategy(withFilesApi, 100 * 1024, "text/csv")).toBe("text_extract");
-    expect(chooseFileStrategy(withFilesApi, 100 * 1024, "application/json")).toBe("text_extract");
+    // raw-bytes lane.
+    expect(chooseFileStrategy(anthropicCaps, 100 * 1024, DOCX)).toBe("text_extract");
+    expect(chooseFileStrategy(anthropicCaps, 6 * MB, DOCX)).toBe("text_extract");
+    expect(chooseFileStrategy(anthropicCaps, 100 * 1024, "text/csv")).toBe("text_extract");
+    expect(chooseFileStrategy(anthropicCaps, 100 * 1024, "application/json")).toBe("text_extract");
   });
 
   test("unknown content type parses to text", () => {
-    expect(chooseFileStrategy(withFilesApi, 100 * 1024, null)).toBe("text_extract");
-    expect(chooseFileStrategy(withFilesApi, 100 * 1024, undefined)).toBe("text_extract");
+    expect(chooseFileStrategy(anthropicCaps, 100 * 1024, null)).toBe("text_extract");
+    expect(chooseFileStrategy(anthropicCaps, 100 * 1024, undefined)).toBe("text_extract");
   });
 });

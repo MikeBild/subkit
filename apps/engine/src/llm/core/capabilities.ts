@@ -7,7 +7,6 @@ export interface ModelCapabilities {
   supportsVideo: boolean;
   maxFileSizeMB: number;
   maxPdfPages: number;
-  filesApiSupport: boolean; // can upload via Files API (>5MB)
 }
 
 // Static fallback defaults per provider (used when gateway resolution unavailable)
@@ -19,7 +18,6 @@ const STATIC_CAPABILITIES: Record<ProviderKind, ModelCapabilities> = {
     supportsVideo: false,
     maxFileSizeMB: 32,
     maxPdfPages: 600,
-    filesApiSupport: true,
   },
   openai: {
     supportsImage: true,
@@ -28,7 +26,6 @@ const STATIC_CAPABILITIES: Record<ProviderKind, ModelCapabilities> = {
     supportsVideo: true,
     maxFileSizeMB: 32,
     maxPdfPages: 100,
-    filesApiSupport: true,
   },
   gemini: {
     supportsImage: true,
@@ -37,7 +34,6 @@ const STATIC_CAPABILITIES: Record<ProviderKind, ModelCapabilities> = {
     supportsVideo: true,
     maxFileSizeMB: 50,
     maxPdfPages: 1000,
-    filesApiSupport: true,
   },
   azure: {
     supportsImage: true,
@@ -46,7 +42,6 @@ const STATIC_CAPABILITIES: Record<ProviderKind, ModelCapabilities> = {
     supportsVideo: true,
     maxFileSizeMB: 32,
     maxPdfPages: 100,
-    filesApiSupport: false,
   },
   bedrock: {
     supportsImage: true,
@@ -55,7 +50,6 @@ const STATIC_CAPABILITIES: Record<ProviderKind, ModelCapabilities> = {
     supportsVideo: true,
     maxFileSizeMB: 20,
     maxPdfPages: 200,
-    filesApiSupport: false,
   },
   vertex: {
     supportsImage: true,
@@ -64,7 +58,6 @@ const STATIC_CAPABILITIES: Record<ProviderKind, ModelCapabilities> = {
     supportsVideo: true,
     maxFileSizeMB: 50,
     maxPdfPages: 1000,
-    filesApiSupport: false,
   },
   gateway: {
     supportsImage: true,
@@ -73,7 +66,6 @@ const STATIC_CAPABILITIES: Record<ProviderKind, ModelCapabilities> = {
     supportsVideo: false,
     maxFileSizeMB: 32,
     maxPdfPages: 100,
-    filesApiSupport: false,
   },
   mock: {
     supportsImage: true,
@@ -82,21 +74,20 @@ const STATIC_CAPABILITIES: Record<ProviderKind, ModelCapabilities> = {
     supportsVideo: false,
     maxFileSizeMB: 32,
     maxPdfPages: 100,
-    filesApiSupport: false,
   },
 };
 
-// The openai slot serves the real OpenAI Files API (and audio/video parts) only
-// when no custom base_url is set. Any custom base_url points at an arbitrary
-// OpenAI-compatible host that is assumed not to implement POST /v1/files (nor
-// audio/video inputs), so those are disabled and the assembler falls back to
-// inline file_part / text_extract. Read per call (not memoised) on purpose:
-// the base_url leaf is hot-reloadable via settings, and a cached value would
-// go stale after a reload. The lookup is a cheap config-leaf/env read, and
-// getStaticCapabilities runs once per content-assembly pass (bounded by the
-// turn's attachment count) — not inside a per-token loop — so the cost is
-// negligible. If it ever moves onto a hot path, memoise on the config
-// generation rather than caching unconditionally.
+// The openai slot serves real OpenAI audio/video parts only when no
+// custom base_url is set. Any custom base_url points at an arbitrary
+// OpenAI-compatible host that is assumed not to accept audio/video
+// inputs, so those are disabled. Read per call (not memoised) on
+// purpose: the base_url leaf is hot-reloadable via settings, and a
+// cached value would go stale after a reload. The lookup is a cheap
+// config-leaf/env read, and getStaticCapabilities runs once per
+// content-assembly pass (bounded by the turn's attachment count) — not
+// inside a per-token loop — so the cost is negligible. If it ever moves
+// onto a hot path, memoise on the config generation rather than caching
+// unconditionally.
 function openaiHasCustomBaseUrl(): boolean {
   const v = readOpenAiBaseUrl();
   return Boolean(v && v.length > 0);
@@ -105,7 +96,7 @@ function openaiHasCustomBaseUrl(): boolean {
 export function getStaticCapabilities(provider: ProviderKind): ModelCapabilities {
   const base = STATIC_CAPABILITIES[provider] ?? STATIC_CAPABILITIES.gateway;
   if (provider === "openai" && openaiHasCustomBaseUrl()) {
-    return { ...base, filesApiSupport: false, supportsAudio: false, supportsVideo: false };
+    return { ...base, supportsAudio: false, supportsVideo: false };
   }
   return base;
 }
@@ -130,35 +121,37 @@ export function isProviderNativeMedia(contentType: string | null | undefined): b
 }
 
 // Generic per-file strategy used by the conversation LLM-context
-// assembler. The single decision ladder — no parallel copies. Three
+// assembler. The single decision ladder — no parallel copies. Two
 // outcomes:
 //
-//   - `file_api`     — upload the bytes via the provider Files API and
-//                      reference by id (no per-turn token cost).
-//   - `file_part`    — inline the bytes (base64) as a content block.
+//   - `file_part`    — inline the bytes (base64) as a content block in
+//                      the request. Nothing is persisted at the
+//                      provider — customer files stay in subkit's own
+//                      object store; the provider only sees transient
+//                      request payload.
 //   - `text_extract` — parse the bytes into text and emit a text block;
-//                      the fallback when neither file path is viable
-//                      (media the provider can't read natively, no
-//                      Files API for an oversized file, or — decided by
-//                      the stateful caller — per-turn inline budget
-//                      exhausted).
-export type FileStrategy = "file_api" | "file_part" | "text_extract";
+//                      the fallback when the inline path isn't viable
+//                      (media the provider can't read natively,
+//                      oversized files, or — decided by the stateful
+//                      caller — per-turn inline budget exhausted).
+//
+// There is deliberately NO provider Files-API upload path: subkit does
+// not hand customer files to provider-side storage (retention there is
+// outside subkit's control and incompatible with zero-data-retention
+// arrangements).
+export type FileStrategy = "file_part" | "text_extract";
 
 export function chooseFileStrategy(
   caps: ModelCapabilities,
   fileSizeBytes: number,
   contentType: string | null | undefined,
 ): FileStrategy {
-  // Raw-bytes paths are only viable for media the provider natively
+  // The raw-bytes path is only viable for media the provider natively
   // reads (images, PDFs). Anything else routed as file_part would make
   // the provider SDK throw at request-build time, so it goes straight
   // to the parser.
   if (!isProviderNativeMedia(contentType)) return "text_extract";
   const mb = fileSizeBytes / (1024 * 1024);
-  if (caps.filesApiSupport && mb > 5) return "file_api";
   if (caps.supportsFile && mb <= caps.maxFileSizeMB) return "file_part";
-  // Native media too large to inline: upload + reference when the
-  // provider has a Files API; otherwise degrade to the parser.
-  if (caps.filesApiSupport) return "file_api";
   return "text_extract";
 }

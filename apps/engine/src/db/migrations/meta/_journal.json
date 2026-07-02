@@ -92,6 +92,13 @@
       "when": 1782793156864,
       "tag": "0012_mcp_task_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782793156865,
+      "tag": "0013_drop_provider_file_ids",
+      "breakpoints": true
     }
   ]
 }

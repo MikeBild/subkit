@@ -9,9 +9,9 @@
 // lands here. Dedup is sha256-scoped to the tenant; the lifecycle goes
 // `pending -> uploading -> scanning -> ready | failed | expired`.
 //
-// Provider Files API ids (Anthropic / OpenAI / Gemini) and their expiries
-// live on the row so the LLM context layer can avoid re-uploading the same
-// bytes per turn. The canonical shape is `{ "$file": "fid_<uuid>" }`;
+// Customer file bytes live exclusively in subkit's own object store —
+// there is deliberately no provider-side (Files API) storage of customer
+// files. The canonical shape is `{ "$file": "fid_<uuid>" }`;
 // `subkit-file://<fid>` is the public locator.
 //
 // `file_links` is a thin polymorphic join. `resource_type` enumerates the
@@ -70,10 +70,6 @@ export const files = pgTable(
     sha256: text("sha256"),
     upload_url_expires_at: timestamp("upload_url_expires_at", { withTimezone: true }),
     scan_result: text("scan_result"),
-    anthropic_file_id: text("anthropic_file_id"),
-    openai_file_id: text("openai_file_id"),
-    gemini_file_id: text("gemini_file_id"),
-    llm_file_expires_at: timestamp("llm_file_expires_at", { withTimezone: true }),
     created_by: uuid("created_by"),
     ...timestamps,
     deleted_at: timestamp("deleted_at", { withTimezone: true }),

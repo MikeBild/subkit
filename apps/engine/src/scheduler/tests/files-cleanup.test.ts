@@ -22,7 +22,7 @@ import { bootstrapMinimalPgbossSchema } from "./pgboss-bootstrap.ts";
 const uuid = createDeterministicUuidFactory(0xface02);
 
 // The cleanup runner compares `upload_url_expires_at` and
-// `llm_file_expires_at` against Postgres `now()` (real wall-clock), so
+// timestamps against Postgres `now()` (real wall-clock), so
 // fixture timestamps MUST be relative to real time. `getTestNow()`
 // falls through to `Date.now()` when no test clock is installed and
 // keeps the determinism lint quiet.
@@ -191,63 +191,5 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
 
     // Clean up
     await srv.db.delete(executions).where(eq(executions.id, exec_id));
-  });
-});
-
-describe("runFilesCleanup — sweep 3: LLM provider expiry", () => {
-  test("expired provider ids are nulled out, row stays ready", async () => {
-    const convId = uuid();
-    const att = await attachInlineForTest({
-      db: srv.db,
-      tenant_id: srv.tenantId,
-      conversation_id: convId,
-      filename: "llm-exp.txt",
-      content: "llm-expiry-test",
-      slug: `llm-exp-${uuid().slice(0, 8)}`,
-    });
-
-    const pastExpiry = new Date(getTestNow() - 60 * 1000);
-    await srv.db
-      .update(files)
-      .set({
-        anthropic_file_id: "file_anthropic_abc123",
-        openai_file_id: "file-openai-xyz",
-        llm_file_expires_at: pastExpiry,
-      })
-      .where(eq(files.id, att.file_uuid));
-
-    await runFilesCleanup(new Date(getTestNow()), srv.db);
-
-    const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
-    expect(row).toBeDefined();
-    expect(row!.anthropic_file_id).toBeNull();
-    expect(row!.openai_file_id).toBeNull();
-    expect(row!.llm_file_expires_at).toBeNull();
-    expect(row!.status).toBe("ready");
-    expect(row!.deleted_at).toBeNull();
-  });
-
-  test("non-expired provider ids are not touched", async () => {
-    const convId = uuid();
-    const att = await attachInlineForTest({
-      db: srv.db,
-      tenant_id: srv.tenantId,
-      conversation_id: convId,
-      filename: "llm-valid.txt",
-      content: "llm-valid-test",
-      slug: `llm-valid-${uuid().slice(0, 8)}`,
-    });
-
-    const futureExpiry = new Date(getTestNow() + 24 * 60 * 60 * 1000);
-    await srv.db
-      .update(files)
-      .set({ anthropic_file_id: "file_valid_abc", llm_file_expires_at: futureExpiry })
-      .where(eq(files.id, att.file_uuid));
-
-    await runFilesCleanup(new Date(getTestNow()), srv.db);
-
-    const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
-    expect(row!.anthropic_file_id).toBe("file_valid_abc");
-    expect(row!.llm_file_expires_at).not.toBeNull();
   });
 });
