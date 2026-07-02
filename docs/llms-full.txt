@@ -3827,16 +3827,18 @@ so this column is the UX gate, not the security boundary.
 | `/compact` | — | `conversation:write` | Compact the message history |
 | `/connector` | — | `conversation:read` | Inspect the current connector draft |
 | `/draft` | — | `conversation:read` | Inspect the current connector/workflow authoring state |
+| `/edit` | — | `conversation:write` | Direct-edit the workflow draft (or one step) as JSON — `/edit [step]` writes the edit file, `/edit apply` submits it as a validated patch |
 | `/fork` | — | `conversation:write` | Fork the current session into a new conversation |
 | `/model` | — | `conversation:write` | Switch the conversation's model |
 | `/onboard` | `/install` | `connector:write` | Launch an interactive onboarding wizard — pick a template, enter credentials, probe, save |
 | `/policy` | — | `conversation:write` | List tool execution-mode badges, or pin a per-tool override. `/policy` lists; `/policy <tool> <auto\|ask\|review>` sets; `/policy <tool> reset` clears. |
-| `/preview` | — | `conversation:write` | Bare `/preview` runs now; `/preview show` inspects the last result; `/preview run` is the explicit action form |
-| `/probe` | — | `conversation:write` | Bare `/probe` runs now; `/probe show` inspects the last result; `/probe run` is the explicit action form |
+| `/preview` | — | `conversation:write` | Dry-run the draft directly and show the result — `/preview [step]`; `/preview show` re-opens the last result |
+| `/probe` | — | `conversation:write` | Probe the connector draft directly and show the result — `/probe [path]`; `/probe show` re-opens the last result |
 | `/reject` | — | `conversation:approve` | Reject a pending approval (with optional reason) |
 | `/rename` | — | `conversation:write` | Rename the current session — `/rename <new-title>` |
 | `/restore` | — | `workflow:write` | Restore a workflow version — `/restore <version>` |
 | `/resume` | — | `conversation:list` | Reattach to a previous conversation |
+| `/snapshots` | — | `conversation:read` | Browse draft snapshots — `/snapshots` lists; `/snapshots restore [id]` rolls back (newest when omitted) |
 | `/templates` | — | `conversation:read` | Browse connector templates suggested for the current draft |
 | `/versions` | — | `workflow:read` | List the committed workflow versions for the current target |
 | `/workflow` | — | `conversation:read` | Inspect the current workflow draft |
@@ -4219,6 +4221,8 @@ The sk CLI is the primary human-facing authoring tool and the canonical operator
 | Headless (stdin) | Scripted / automated usage with no TTY |
 
 **In-conversation actions.** Users drive the AI authoring loop with slash commands — `/approve` to commit a Draft, `/reject` to discard a proposal, `/draft` to inspect the current draft snapshot, `/context` to inspect the current authoring state, and others — without leaving the terminal. Connector onboarding runs through `/install`, an alias of `/onboard`.
+
+**Direct draft actions (no model turn).** A narrow set of deterministic, draft-scoped conversation tools is also invocable directly over HTTP — `POST /v1/conversations/{id}/preview` (dry-run the draft or one step, writes held), `POST /v1/conversations/{id}/probe` (probe the connector draft), `POST /v1/conversations/{id}/draft/patch` (apply an RFC 6902 patch through the same validation gates as the model-driven editor), and the draft-snapshot list/restore pair. These run the exact tool implementations the model dispatches and persist the same `conversation_tool_calls` rows, so the next model turn sees what the operator ran; the CLI's `/preview`, `/probe`, `/edit`, and `/snapshots` are thin wrappers over them. Tenant writes (saving drafts, running live workflows) are deliberately NOT direct-invocable — they stay behind the conversation loop's confirm gates.
 
 **Slash-command reference.** The canonical, always-current list of every conversational and admin slash command — names, aliases, and one-line descriptions — is the generated reference at [`slash-commands.md`](../authors/slash-commands.md). It is regenerated from the registry in `apps/sk/src/slash.ts`, so it never drifts from what the CLI actually accepts.
 
