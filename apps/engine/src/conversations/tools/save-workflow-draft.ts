@@ -65,6 +65,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
     "Idempotent: if the conversation's target workflow already has a version with the same content hash, returns `already_persisted: true` without writing.",
     "Update-in-place semantics: if the conversation has a target_workflow_id, appends a new workflow_version to that row. The slug of the existing workflow stays authoritative; changing draft.slug does not rename the workflow.",
     "No silent slug-adoption: a draft.slug colliding with a different live workflow produces slug_conflict_with_live_workflow. To overwrite, ask the user explicitly, then call save_workflow_draft again with target_workflow_id=<conflict.workflow_id>.",
+    'No silent webhook teardown: updating a workflow whose trigger drops from `webhook` to anything else refuses with `webhook_trigger_removal_unconfirmed` (it would DELETE the live public ingress hook). If the webhook should stay, restore `trigger: { kind: "webhook", … }` via edit_workflow_patch and re-run dry_run_workflow. If removal is intended, confirm with the user, then re-call with force_commit: true.',
     "Writes one `manual_re_issue`-tagged audit row in addition to the workflow_created/updated row emitted by the workflow service.",
   ],
   inputSchema,

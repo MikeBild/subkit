@@ -75,6 +75,44 @@ describe("extractChatPastedCredential — pure parse/capture decision", () => {
     expect(out).toEqual({ mode: "bearer", token: FAKE_GITHUB_TOKEN });
   });
 
+  it("strips the `Bearer ` scheme when the key is pasted as an auth header (live 401 repro)", () => {
+    // A valid vendor-less admin key (the `wf_live_…` shape) pasted as
+    // `Authorization: Bearer <key>`. The token carries no vendor prefix, so
+    // the ONLY span that covers it is the `bearer` SECRET_PATTERN match, which
+    // INCLUDES the `Bearer ` word. The span overlay previously cached
+    // `token = "Bearer <key>"`; the HTTP driver then emitted
+    // `Authorization: Bearer Bearer <key>` → 401 on a valid key.
+    const text = `Authorization: Bearer ${FAKE_VENDORLESS_TOKEN}`;
+    const spans = findSecretSpans(text);
+    // Pre-condition: the span really does carry the scheme word.
+    expect(spans[0]?.match).toBe(`Bearer ${FAKE_VENDORLESS_TOKEN}`);
+    const out = extractChatPastedCredential("bearer", {}, text, spans);
+    expect(out).toEqual({ mode: "bearer", token: FAKE_VENDORLESS_TOKEN });
+  });
+
+  it("strips a bare `Bearer <key>` paste for a bearer draft", () => {
+    const text = `Bearer ${FAKE_VENDORLESS_TOKEN}`;
+    const out = extractChatPastedCredential("bearer", {}, text, findSecretSpans(text));
+    expect(out).toEqual({ mode: "bearer", token: FAKE_VENDORLESS_TOKEN });
+  });
+
+  it("keeps the `Bearer …` scheme in the header value for a header draft", () => {
+    // header mode writes the value verbatim — the scheme belongs to the value
+    // of a raw `Authorization` header, so it must NOT be stripped.
+    const text = `Authorization: Bearer ${FAKE_VENDORLESS_TOKEN}`;
+    const out = extractChatPastedCredential(
+      "header",
+      { header_name: "Authorization" },
+      text,
+      findSecretSpans(text),
+    );
+    expect(out).toEqual({
+      mode: "header",
+      header_name: "Authorization",
+      header_value: `Bearer ${FAKE_VENDORLESS_TOKEN}`,
+    });
+  });
+
   it("maps a lone BARE VENDOR-LESS token (no prefix, no keyword) onto the bearer slot", () => {
     // The generic shape matcher catches this with no vendor prefix — proves
     // the span gate fires for the lone-paste class, not just `ghp_`/`ATATT…`.

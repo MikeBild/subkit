@@ -130,10 +130,17 @@ The trigger is recorded in every Execution and every Audit Log entry alongside t
 | `kind` | Fields | Behaviour |
 |---|---|---|
 | `request` | (none) | Default. Run is initiated on demand by a caller — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`. |
-| `webhook` | `source` (string slug per integration), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`. |
+| `webhook` | `source` (string slug per integration — a provider label stored in `native_verifier_config.source`, **not** the ingress URL path), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`. |
 | `schedule` | `cron` (5-field `m h dom mon dow` or `every:N` shorthand), `tz` (IANA, default `UTC`); optional `business_days_only`, `skip_dates[]` (ISO `YYYY-MM-DD`) | Reverse-bound to a `workflows_schedules` row. The scheduler reconciler validates the cron expression at bind time and uses `tz` so firings land at the operator's local wall-clock time. `business_days_only` skips weekends; `skip_dates` declares holidays / freezes explicitly (no holiday calendar is inferred). Catch-up semantics: a missed firing fires on the next reconciler pass rather than being silently skipped. Executor lives in `apps/engine/src/scheduler/reconciler.ts`. |
 
 All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
+
+**Webhook trigger, exactly.** Two facts trip up authors; both are grounded in `apps/engine/src/webhooks/inbound/service.ts`:
+
+- **`verify` is not the stored verifier.** `stripe-signature` → stored `verifier = "stripe"`; `github-hmac` → `"github"`; `none` → `"standard"` with `native_verifier_config.skip = true`. The stored `verifier` column is always one of `standard` / `github` / `stripe` — never `none`. A row whose `verifier` is set to `none` (or anything unrecognized) is denied at ingress with `unknown_verifier` / 401.
+- **The public ingress is `POST /v1/hooks/{slug}`, and `{slug}` is the derived `wf-<workflow-slug>`, not the trigger's `source`.** The default (`standard`) verifier requires the Standard Webhooks headers `webhook-id`, `webhook-timestamp`, `webhook-signature`; the event type is read from the `webhook-type` header and must match one of `events[]` (non-empty) or the delivery is denied with `event_not_subscribed` / 401.
+
+**Reverse-bind is a mirror, not an add.** Saving a workflow *with* a `webhook` trigger upserts the inbound hook; saving it *without* one (an edit that drops the `trigger` block, or switches it to `request` / `schedule`) **deletes** the hook and its stored signing secret. Re-adding the trigger recreates the row with a fresh placeholder secret that must be re-provisioned. See [Scheduling & Hooks](../operators/scheduling-and-hooks.md#verify--stored-verifier-mapping-read-this-before-touching-the-crud-api) for the full mapping table, ingress request contract, and end-to-end wiring recipe.
 
 ---
 

@@ -160,7 +160,24 @@ export function extractCredentialFromFormOutput(
   };
   switch (seedMode) {
     case "bearer": {
-      const token = seedString("token") ?? pick(["token", "api_key", "apikey", "secret", "key"]);
+      const raw = seedString("token") ?? pick(["token", "api_key", "apikey", "secret", "key"]);
+      if (!raw) return null;
+      // The HTTP bearer driver emits `Authorization: Bearer ${token}` itself
+      // (connectors/drivers/http.ts), so the stored token must NOT already
+      // carry the RFC 6750 scheme word. Two real sources otherwise smuggle
+      // it in and get double-prefixed to `Bearer Bearer <key>` → a 401 on a
+      // valid key (caught live: a `wf_live_…` admin key pasted as
+      // `Authorization: Bearer wf_live_…`):
+      //   - the masked form / commit_intent, when the operator types the
+      //     scheme along with the key, and
+      //   - the chat-capture span overlay, whose `bearer` SECRET_PATTERN
+      //     match (`extractChatPastedCredential`) INCLUDES the `Bearer `
+      //     prefix verbatim.
+      // Strip a single leading scheme word (+ surrounding whitespace) so the
+      // captured value is the bare credential. `header`/`query` modes are
+      // deliberately untouched — their value is written to the wire verbatim,
+      // so a pasted `Authorization: Bearer …` header value must keep it.
+      const token = raw.replace(/^\s*Bearer\s+/i, "").trim();
       if (!token) return null;
       return { mode: "bearer", token };
     }

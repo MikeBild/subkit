@@ -17,6 +17,40 @@ describe("extractCredentialFromFormOutput — bearer / basic / header / query", 
     expect(out).toEqual({ mode: "bearer", token: "tk_live_abc" });
   });
 
+  it("strips a leading `Bearer ` scheme word from a bearer token", () => {
+    // The HTTP driver emits `Authorization: Bearer ${token}` itself, so a
+    // token that already carries the scheme would be double-prefixed to
+    // `Bearer Bearer …` → 401 on a valid key. Accept the operator typing
+    // (or pasting) the scheme and normalise it away — case-insensitively,
+    // with any surrounding whitespace.
+    expect(
+      extractCredentialFromFormOutput("bearer", {}, { values: { token: "Bearer wf_live_abc123" } }),
+    ).toEqual({ mode: "bearer", token: "wf_live_abc123" });
+    expect(
+      extractCredentialFromFormOutput(
+        "bearer",
+        {},
+        { values: { token: "  bearer   wf_live_abc123 " } },
+      ),
+    ).toEqual({ mode: "bearer", token: "wf_live_abc123" });
+  });
+
+  it("keeps a pasted `Authorization: Bearer …` verbatim for header mode", () => {
+    // header/query values are written to the wire verbatim — the scheme is
+    // part of the header value there and must NOT be stripped.
+    expect(
+      extractCredentialFromFormOutput(
+        "header",
+        { header_name: "Authorization" },
+        { values: { header_value: "Bearer wf_live_abc123" } },
+      ),
+    ).toEqual({
+      mode: "header",
+      header_name: "Authorization",
+      header_value: "Bearer wf_live_abc123",
+    });
+  });
+
   it("maps a basic form (username + password) into a basic credential", () => {
     const out = extractCredentialFromFormOutput(
       "basic",

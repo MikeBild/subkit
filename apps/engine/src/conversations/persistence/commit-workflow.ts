@@ -12,10 +12,16 @@
 
 import { and, eq, isNull } from "drizzle-orm";
 import { recordWorkflowCreated, recordWorkflowUpdated } from "../../audit/recorders/index.ts";
-import { conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
+import {
+  conversations,
+  webhooksInbound,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
 import { createWorkflow, updateWorkflow } from "../../workflows/service.ts";
+import { triggerOf } from "../../workflows/trigger-bindings.ts";
 import { WORKFLOW_DEF_FIELD_KEYS, type WorkflowDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { isUnchangedFromCurrentVersion } from "../../workflows/version-dedup.ts";
@@ -98,6 +104,67 @@ export function workflowDefFromDraft(draft: WorkflowDraftDocument): WorkflowDefF
     }
   }
   return out as WorkflowDefFromDraft;
+}
+
+/**
+ * Detect a save that would tear down an existing workflow's reverse-bound
+ * public webhook. Updating a workflow whose trigger goes from `webhook` to
+ * anything else makes `applyTriggerBindings` call `unbindFromWorkflow`, which
+ * DELETES the `webhooks_inbound` row (the live ingress hook). Returns the
+ * removal detail when: (1) we are updating an existing workflow, (2) its
+ * current committed trigger is `webhook`, (3) the draft's trigger is NOT
+ * `webhook`, and (4) at least one live inbound row still exists for the
+ * workflow. Returns `null` otherwise (including when the trigger is unchanged
+ * — `updateWorkflow` only reconciles bindings on a real trigger change).
+ */
+async function detectWebhookBindingRemoval(
+  ctx: ToolContext,
+  workflowId: string,
+  def: WorkflowDefFromDraft,
+): Promise<{ old_kind: "webhook"; new_kind: string; inbound_slugs: string[] } | null> {
+  const wfRows = await ctx.db
+    .select({ current_version_id: workflows.current_version_id })
+    .from(workflows)
+    .where(
+      and(
+        eq(workflows.tenant_id, ctx.tenant_id),
+        eq(workflows.id, workflowId),
+        isNull(workflows.deleted_at),
+      ),
+    )
+    .limit(1);
+  const currentVersionId = wfRows[0]?.current_version_id;
+  if (!currentVersionId) return null;
+  const verRows = await ctx.db
+    .select({ dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(
+      and(eq(workflowVersions.tenant_id, ctx.tenant_id), eq(workflowVersions.id, currentVersionId)),
+    )
+    .limit(1);
+  const currentDag = verRows[0]?.dag as WorkflowDef | undefined;
+  if (!currentDag) return null;
+  const oldTrigger = triggerOf(currentDag);
+  const newTrigger = triggerOf(def as unknown as WorkflowDef);
+  if (oldTrigger.kind !== "webhook" || newTrigger.kind === "webhook") return null;
+  // Only block when there is an actual live binding to lose — the operator may
+  // have already removed the hook out-of-band, in which case the unbind is a
+  // no-op and there is nothing to protect.
+  const inboundRows = await ctx.db
+    .select({ slug: webhooksInbound.slug })
+    .from(webhooksInbound)
+    .where(
+      and(
+        eq(webhooksInbound.tenant_id, ctx.tenant_id),
+        eq(webhooksInbound.workflow_id, workflowId),
+      ),
+    );
+  if (inboundRows.length === 0) return null;
+  return {
+    old_kind: "webhook",
+    new_kind: newTrigger.kind,
+    inbound_slugs: inboundRows.map((r) => r.slug),
+  };
 }
 
 export type ScopeIndex = Record<
@@ -877,6 +944,52 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
           }),
         };
       }
+    }
+  }
+
+  // Webhook-binding removal guard (defense-in-depth for the trigger-drop
+  // regression). By here `targetWorkflowId` is the row this commit updates.
+  // A save whose trigger drops from `webhook` to anything else tears down the
+  // workflow's live public ingress hook via `applyTriggerBindings` — a silent,
+  // destructive side-effect. The authoring pipeline already PRESERVES an
+  // omitted trigger on edits; this guard is the save-time backstop for every
+  // other path (edit_workflow_patch that removed the trigger, a hand-built
+  // draft, a resumed draft). Block unless the operator explicitly forces the
+  // commit, which is the same escape hatch the other destructive gates use.
+  if (targetWorkflowId && p.forceCommit !== true) {
+    const removal = await detectWebhookBindingRemoval(ctx, targetWorkflowId, def);
+    if (removal) {
+      logger.warn({
+        module: "conversation_persistence",
+        action: "commit_gate.webhook_binding_removal",
+        msg: "commit would remove the workflow's reverse-bound public webhook (trigger dropped from webhook) — blocking until explicitly confirmed",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        workflow_id: targetWorkflowId,
+        new_trigger_kind: removal.new_kind,
+        inbound_slugs: removal.inbound_slugs,
+      });
+      return {
+        ok: false,
+        error_code: "webhook_trigger_removal_unconfirmed",
+        message:
+          "This save would DELETE the workflow's live webhook ingress hook: its trigger changes from `webhook` to " +
+          `\`${removal.new_kind}\`, which tears down the public inbound URL (slug${removal.inbound_slugs.length === 1 ? "" : "s"}: ${removal.inbound_slugs.join(", ")}). If you did NOT intend to remove the webhook, restore \`trigger: { kind: "webhook", … }\` on the draft (edit_workflow_patch) and re-run dry_run_workflow. If removing the webhook IS intended, confirm with the user, then call save_workflow_draft again with force_commit: true.`,
+        next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch", "ask_user_confirm"],
+        data: buildGateError(fullDraft, {
+          error_code: "webhook_trigger_removal_unconfirmed",
+          message:
+            "save would remove the workflow's reverse-bound public webhook (trigger dropped from webhook) — restore the webhook trigger or force_commit after explicit operator confirmation",
+          recommended_mode: "workflow",
+          next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch", "ask_user_confirm"],
+          extra: {
+            old_trigger_kind: removal.old_kind,
+            new_trigger_kind: removal.new_kind,
+            inbound_slugs: removal.inbound_slugs,
+            force_commit_available: true,
+          },
+        }),
+      };
     }
   }
 

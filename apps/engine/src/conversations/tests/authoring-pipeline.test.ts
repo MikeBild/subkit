@@ -29,6 +29,7 @@ import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
+import type { WorkflowTrigger } from "../../workflows/types.ts";
 import {
   GeneratedWorkflowSchema,
   MAX_GENERATION_PASSES,
@@ -487,6 +488,89 @@ describe("author_workflow — tool envelope", () => {
     const data = result.data as { error_code: string };
     expect(data.error_code).toBe("authoring_generation_failed");
   });
+});
+
+describe("runAuthoringPipeline — trigger preservation on edit (webhook-binding safety)", () => {
+  const WEBHOOK_TRIGGER: WorkflowTrigger = {
+    kind: "webhook",
+    source: "stripe",
+    events: [],
+    verify: "stripe-signature",
+  };
+
+  /** Seed an EDIT: a draft hydrated from a saved workflow that carries a live
+   *  webhook trigger. `slug` decides whether the regenerated draft is treated
+   *  as an edit of THIS workflow (same slug) or a fresh artifact. */
+  function seedWebhookEditDraft(toolCtx: ReturnType<typeof makeCtx>, slug: string) {
+    const seeded = createEmptyDraftDocument("workflow_authoring");
+    seeded.workflow = {
+      name: "Top repos digest",
+      slug,
+      steps: [],
+      trigger: { ...WEBHOOK_TRIGGER },
+    };
+    return toolCtx.setDraft(seeded);
+  }
+
+  tw(
+    "preserves an existing webhook trigger when the regenerated draft (same slug) omits it",
+    async () => {
+      // VALID_DEF has slug top-repos-digest and NO trigger — the exact
+      // regression: a goal that doesn't restate the webhook.
+      getMockProvider().generateOverrides.generate = () => VALID_DEF;
+      const toolCtx = makeCtx();
+      await seedWebhookEditDraft(toolCtx, "top-repos-digest");
+
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "tweak the digest step" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      // The regenerated definition carries the preserved webhook trigger.
+      expect(result.definition.trigger).toEqual({ ...WEBHOOK_TRIGGER });
+      // ...and the STASHED draft does too, so a later commit keeps the binding
+      // instead of unbinding the public ingress hook.
+      expect(toolCtx._draft.value?.workflow.trigger).toEqual({ ...WEBHOOK_TRIGGER });
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
+  tw("respects an explicitly regenerated trigger (schedule) over the saved webhook", async () => {
+    const SCHEDULED = {
+      ...VALID_DEF,
+      trigger: { kind: "schedule", cron: "0 9 * * *", tz: "Europe/Berlin" },
+    };
+    getMockProvider().generateOverrides.generate = () => SCHEDULED;
+    const toolCtx = makeCtx();
+    await seedWebhookEditDraft(toolCtx, "top-repos-digest");
+
+    const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "make it run daily at 9am" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    // The model authored a NEW trigger — preservation must not override it.
+    expect(result.definition.trigger?.kind).toBe("schedule");
+    expect(toolCtx._draft.value?.workflow.trigger?.kind).toBe("schedule");
+    expect(fetchCalls).toBe(0);
+  });
+
+  tw(
+    "does NOT preserve on a full replace (regenerated slug differs from the saved workflow)",
+    async () => {
+      // VALID_DEF regenerates slug top-repos-digest; the seeded draft is a
+      // DIFFERENT workflow — a genuine new/replaced artifact, not an edit.
+      getMockProvider().generateOverrides.generate = () => VALID_DEF;
+      const toolCtx = makeCtx();
+      await seedWebhookEditDraft(toolCtx, "some-other-workflow");
+
+      const result = await runAuthoringPipeline({
+        ctx: toolCtx,
+        goal: "a totally different workflow",
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.definition.trigger).toBeUndefined();
+      expect(toolCtx._draft.value?.workflow.trigger).toBeUndefined();
+      expect(fetchCalls).toBe(0);
+    },
+  );
 });
 
 describe("runAuthoringPipeline — semantic critic wire-in", () => {

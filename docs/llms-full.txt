@@ -992,10 +992,17 @@ The trigger is recorded in every Execution and every Audit Log entry alongside t
 | `kind` | Fields | Behaviour |
 |---|---|---|
 | `request` | (none) | Default. Run is initiated on demand by a caller — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`. |
-| `webhook` | `source` (string slug per integration), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`. |
+| `webhook` | `source` (string slug per integration — a provider label stored in `native_verifier_config.source`, **not** the ingress URL path), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`. |
 | `schedule` | `cron` (5-field `m h dom mon dow` or `every:N` shorthand), `tz` (IANA, default `UTC`); optional `business_days_only`, `skip_dates[]` (ISO `YYYY-MM-DD`) | Reverse-bound to a `workflows_schedules` row. The scheduler reconciler validates the cron expression at bind time and uses `tz` so firings land at the operator's local wall-clock time. `business_days_only` skips weekends; `skip_dates` declares holidays / freezes explicitly (no holiday calendar is inferred). Catch-up semantics: a missed firing fires on the next reconciler pass rather than being silently skipped. Executor lives in `apps/engine/src/scheduler/reconciler.ts`. |
 
 All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
+
+**Webhook trigger, exactly.** Two facts trip up authors; both are grounded in `apps/engine/src/webhooks/inbound/service.ts`:
+
+- **`verify` is not the stored verifier.** `stripe-signature` → stored `verifier = "stripe"`; `github-hmac` → `"github"`; `none` → `"standard"` with `native_verifier_config.skip = true`. The stored `verifier` column is always one of `standard` / `github` / `stripe` — never `none`. A row whose `verifier` is set to `none` (or anything unrecognized) is denied at ingress with `unknown_verifier` / 401.
+- **The public ingress is `POST /v1/hooks/{slug}`, and `{slug}` is the derived `wf-<workflow-slug>`, not the trigger's `source`.** The default (`standard`) verifier requires the Standard Webhooks headers `webhook-id`, `webhook-timestamp`, `webhook-signature`; the event type is read from the `webhook-type` header and must match one of `events[]` (non-empty) or the delivery is denied with `event_not_subscribed` / 401.
+
+**Reverse-bind is a mirror, not an add.** Saving a workflow *with* a `webhook` trigger upserts the inbound hook; saving it *without* one (an edit that drops the `trigger` block, or switches it to `request` / `schedule`) **deletes** the hook and its stored signing secret. Re-adding the trigger recreates the row with a fresh placeholder secret that must be re-provisioned. See [Scheduling & Hooks](../operators/scheduling-and-hooks.md#verify--stored-verifier-mapping-read-this-before-touching-the-crud-api) for the full mapping table, ingress request contract, and end-to-end wiring recipe.
 
 ---
 
@@ -2093,6 +2100,27 @@ keyed on `(tenant_id, workflow_id)` at save time and removes the binding on dele
 or version rotate. The trigger is recorded in every Execution and Audit Log entry
 alongside the actor identity envelope.
 
+> **The binding is a mirror of the trigger block — dropping the trigger DELETES the
+> hook (and its signing secret).** Reverse-bind is not additive. Every workflow save
+> reconciles the `webhooks_inbound` row to whatever `trigger` the saved definition
+> carries (`applyTriggerBindings` in `apps/engine/src/workflows/trigger-bindings.ts`):
+>
+> | Save the workflow with… | Effect on the inbound hook |
+> |---|---|
+> | `trigger: { kind: "webhook", … }` (unchanged) | No-op — the existing row is preserved, secret intact. |
+> | `trigger: { kind: "webhook", … }` (verify / source / events changed) | Row rewritten in place; the signing secret is **preserved**. |
+> | `trigger` removed, or changed to `{ kind: "request" }` / `{ kind: "schedule" }` | **Row is DELETED.** The encrypted signing secret is destroyed with it. |
+> | Workflow deleted or version-rotated | Row is DELETED. |
+>
+> The practical trap: an operator edits an existing webhook-triggered workflow — say
+> to tweak a step — and re-submits a definition that no longer includes the `trigger`
+> block (a common mistake when hand-editing or when a tool round-trips the def without
+> it). That save silently tears down the public ingress URL and its secret. The upstream
+> provider keeps POSTing to a slug that now returns `404 not_found`. Re-adding the
+> webhook trigger recreates the row **with a fresh random placeholder secret** — you
+> must re-provision the shared secret (see the wiring recipe below). Always carry the
+> full `trigger` block through every edit of a webhook- or schedule-triggered workflow.
+
 ### Webhook verification & replay dedup
 
 Inbound deliveries are checked **before** any workflow logic runs. Verification
@@ -2104,19 +2132,23 @@ sequenceDiagram
     participant P as Provider
     participant E as sk engine
     participant W as Workflow
-    P->>E: POST /v1/hooks/{source}<br/>(payload + signature + replay-id)
-    E->>E: Verify signature<br/>(stripe-signature / github-hmac)
-    alt signature invalid
-        E-->>P: 401 reject (no run)
+    P->>E: POST /v1/hooks/{slug}<br/>(payload + signature + replay-id headers)
+    E->>E: Verify signature<br/>(standard / github / stripe)
+    alt signature invalid / headers missing
+        E-->>P: 401 { error: denied, reason }
     else signature valid
-        E->>E: Look up replay-id
-        alt replay-id already seen
-            E-->>P: 200 accepted (deduped, no run)
-        else first delivery
-            E->>E: Match events[] filter
-            E->>W: runExecution() — RBAC + audit
-            W-->>E: result
-            E-->>P: 200 accepted
+        E->>E: Match events[] against webhook-type
+        alt webhook-type not in events[]
+            E-->>P: 401 { reason: event_not_subscribed }
+        else event accepted
+            E->>E: Look up replay-id (webhook-id)
+            alt replay-id already seen
+                E-->>P: 200 { deduped: true } (no run)
+            else first delivery
+                E->>W: runExecution() — RBAC + audit
+                W-->>E: result
+                E-->>P: 200 { accepted: true }
+            end
         end
     end
 ```
@@ -2124,8 +2156,161 @@ sequenceDiagram
 | Stage | Guarantee |
 |---|---|
 | Signature verify | Forged or tampered payloads are rejected before processing (`verify: none` opts out — only for trusted-network sources). |
+| Event filter | `events[]` narrows which provider event names trigger a run; empty matches any. Checked **after** signature, **before** dedup. |
 | Replay dedup | Provider retries of an already-accepted delivery are suppressed; the workflow runs at most once per replay-id. |
-| Event filter | `events[]` narrows which provider event names trigger a run; empty matches any. |
+
+The driver is `handleInbound()` in `apps/engine/src/webhooks/inbound/service.ts`; the
+individual verifiers live under `apps/engine/src/webhooks/inbound/verifiers/`.
+
+### `verify` → stored verifier mapping (read this before touching the CRUD API)
+
+The `verify` value you write on the **trigger** is NOT the value stored in the
+`webhooks_inbound.verifier` column. The reverse-bind step
+(`VERIFY_TO_VERIFIER` in `service.ts`) translates it:
+
+| Trigger `verify` | Stored `verifier` | Stored `native_verifier_config` | Verifier that runs at ingress |
+|---|---|---|---|
+| `stripe-signature` | `stripe` | `{ source, events }` | Stripe (`Stripe-Signature` header) |
+| `github-hmac` | `github` | `{ source, events }` | GitHub (`X-Hub-Signature-256` header) |
+| `none` | `standard` | `{ source, events, skip: true }` | Standard verifier in **skip** mode — signature check bypassed |
+
+The stored `verifier` column is therefore always one of **`standard`, `github`,
+`stripe`** — never `none`. `verify: "none"` does not disable the verifier; it selects
+the `standard` verifier and sets `native_verifier_config.skip = true`, which makes the
+driver synthesize a normalized event (from the `webhook-*` headers, or a body hash)
+and skip the signature check. This is the only place `skip` is honored.
+
+> **Do NOT set `verifier: "none"` (or any value outside `standard` / `github` /
+> `stripe`) on a `webhooks_inbound` row.** At ingress the driver looks up
+> `VERIFIERS[row.verifier]`; an unrecognized value has no verifier, so the request is
+> denied with `reason: "unknown_verifier"` and **HTTP 401** before any workflow runs.
+> The authenticated CRUD endpoint (`POST /v1/webhooks/inbound`) only accepts
+> `verifier ∈ { standard, github, stripe, custom }` (`custom` is an alias that stores
+> `standard`) — a literal `"none"` is rejected by request validation. To reproduce the
+> trigger's `verify: "none"` behaviour via CRUD, create the row with
+> `verifier: "standard"` and `native_verifier_config: { "skip": true }`.
+
+### Public ingress: `POST /v1/hooks/{slug}`
+
+The public, unauthenticated ingress is `POST /v1/hooks/{slug}` — the **signature is
+the auth**, so it carries no bearer token. Two things about `{slug}` catch people out:
+
+- **The slug is the stored `webhooks_inbound.slug`, not the trigger's `source`
+  field.** For a reverse-bound trigger the engine derives the slug as
+  `wf-<workflow-slug>` (`slugFromWorkflow` in `service.ts`, truncated to 64 chars). The
+  trigger's `source` is only a provider label stored inside
+  `native_verifier_config.source`; it is **not** part of the URL. So a workflow with
+  slug `payment-sync` is reachable at `POST /v1/hooks/wf-payment-sync`. Confirm the
+  exact slug via `GET /v1/webhooks/inbound` (or `list_inbound_hooks`).
+- CRUD-created bindings use whatever `slug` the operator passed to
+  `POST /v1/webhooks/inbound`.
+
+**The default (`verify` = `stripe-signature`/`github-hmac`, or a CRUD `standard` row)
+requires the [Standard Webhooks](https://www.standardwebhooks.com) headers** for the
+`standard` verifier: `webhook-id`, `webhook-timestamp`, `webhook-signature`. Missing
+any of them is denied with `reason: "missing_standard_webhooks_headers"` / 401.
+
+Event-type resolution and the `events[]` filter:
+
+- The engine resolves the event **type** from the **`webhook-type`** header (the
+  `standard` verifier; GitHub uses `X-GitHub-Event`, Stripe reads the body `type`). If
+  the header is absent, the type defaults to the literal string `"unknown"`.
+- If the trigger's `events[]` is non-empty and the resolved type is not in it, the
+  request is denied with `reason: "event_not_subscribed"` / 401 — **even when the
+  signature is valid**. An empty `events[]` accepts any type. So the `webhook-type`
+  the upstream sends must exactly match one of the workflow's `events[]` entries.
+- Replay dedup keys on `webhook-id`: a repeated `webhook-id` returns
+  `200 { deduped: true }` with no run.
+
+A correct signed request to a `standard`-verifier binding for a workflow subscribed to
+`events: ["invoice.paid"]`:
+
+```http
+POST /v1/hooks/wf-payment-sync HTTP/1.1
+Host: your-engine.example.com
+Content-Type: application/json
+webhook-id: msg_2eXaMPle01
+webhook-timestamp: 1893456000
+webhook-type: invoice.paid
+webhook-signature: v1,g0Xm9c1nQ0e3s0mEb64SiGnAtUrE=
+
+{"invoice":"in_123","amount":4200}
+```
+
+- `webhook-signature` is `v1,<base64(HMAC-SHA256(secret, "<webhook-id>.<webhook-timestamp>.<raw-body>"))>`.
+  The signed base string is the three fields joined by `.` — the exact raw body bytes,
+  unmodified.
+- `webhook-timestamp` is Unix **seconds** and must be within ±5 minutes of engine time,
+  else `reason: "timestamp_outside_window"`.
+- `webhook-type` must be one of the workflow's `events[]` (here `invoice.paid`), else
+  `event_not_subscribed`.
+
+For `verify: "none"` (skip) bindings no `webhook-signature` is required, but you should
+still send `webhook-id` (for dedup) and `webhook-type` (the `events[]` filter still
+applies in skip mode). With no `webhook-id`, the engine derives a replay id from a hash
+of the body. On the skip path the stored signing secret is never decrypted, so a skip
+binding whose secret is still the reverse-bind placeholder (never rotated) accepts
+traffic normally — a malformed placeholder can no longer surface as an HTTP 500.
+
+Denial reasons you may see as `401 { error: "denied", reason: … }`:
+
+| `reason` | Meaning |
+|---|---|
+| `not_found` (404) | No `webhooks_inbound` row for that slug — often the binding was deleted by dropping the trigger. |
+| `missing_standard_webhooks_headers` | One of `webhook-id` / `webhook-timestamp` / `webhook-signature` absent. |
+| `bad_signature` | HMAC did not match — wrong or unsynced shared secret. |
+| `timestamp_outside_window` | `webhook-timestamp` more than 5 min from engine clock. |
+| `unknown_verifier` | Stored `verifier` is not `standard`/`github`/`stripe` (e.g. someone set `none`). The 401 body includes a `hint` naming the accepted values and the `verify: "none" → standard + skip` mapping. |
+| `event_not_subscribed` | `webhook-type` not in the workflow's non-empty `events[]`. |
+| `inactive` | The binding row is disabled (`active = false`). |
+
+### End-to-end wiring recipe (upstream provider → sk ingress)
+
+Wiring an upstream system (e.g. a Contentkit instance emitting Standard-Webhooks-signed
+events) to a SubKit workflow:
+
+1. **Create the inbound binding with the right verifier.** Pick by how the upstream
+   signs, and note this determines which authoring path you use:
+   - **Stripe / GitHub:** author the workflow with a `webhook` trigger and
+     `verify: "stripe-signature"` or `"github-hmac"`. Saving reverse-binds the
+     `webhooks_inbound` row (`verifier` = `stripe` / `github`).
+   - **A generic Standard-Webhooks signer (e.g. Contentkit):** the trigger `verify`
+     enum has **no `standard` value**, so you cannot get a signature-checking
+     `standard` binding from the trigger alone (a `webhook` trigger only yields
+     `stripe`, `github`, or `standard`+`skip`). Instead create the binding directly on
+     the authenticated CRUD surface:
+     `POST /v1/webhooks/inbound { slug, workflow_id, verifier: "standard", secret }`.
+     That row fires the same `workflow_id` at ingress; it just isn't reverse-bound to a
+     trigger block, so it is not torn down by workflow edits.
+   - **Trusted-network only:** `verify: "none"` (stored `standard`+`skip`) bypasses the
+     signature check — do not use it for a public-internet upstream.
+2. **Find the ingress URL.** `GET /v1/webhooks/inbound` (or `list_inbound_hooks`) to
+   read the row's `slug`. The public URL is
+   `https://<your-engine>/v1/hooks/<slug>` (for a reverse-bound trigger, `slug` =
+   `wf-<workflow-slug>`; for a CRUD binding, the `slug` you passed).
+3. **Generate one shared secret** — a high-entropy random string. This single secret
+   must exist on **both** sides.
+4. **Set the secret on the SubKit side.** For a **CRUD** binding you pass `secret` at
+   create time (step 1). For a **reverse-bound trigger** binding the trigger block
+   deliberately never carries a secret, so the first bind writes only a random
+   **placeholder** secret — you must provision the real one out-of-band
+   (`rotateInboundSecret`) or every delivery fails `bad_signature`. Re-adding a dropped
+   webhook trigger also re-generates a placeholder, so re-provision after any such
+   round-trip.
+5. **Register the endpoint on the upstream.** In Contentkit's outbound-webhook config,
+   add an endpoint pointing at the SubKit ingress URL and paste the **same** secret as
+   its signing key. Contentkit will then sign each delivery
+   `v1,<base64(HMAC-SHA256(secret, "<webhook-id>.<webhook-timestamp>.<body>"))>` and set
+   the `webhook-type` header to the event name — which must match one of the workflow's
+   `events[]`.
+6. **Verify.** Trigger an upstream event and confirm a `200 { accepted: true }` plus a
+   new execution (`webhook.trigger.fired` in the Audit Log). A `bad_signature` means the
+   two secrets diverged; `event_not_subscribed` means the upstream's `webhook-type` is
+   not in `events[]`.
+
+Because verification is HMAC over a shared secret (symmetric), the secret on the
+upstream signer and the secret on the SubKit row must be byte-identical. Rotate on both
+sides together; a mismatch fails closed (`bad_signature` / 401), never open.
 
 ## Scheduling durability
 

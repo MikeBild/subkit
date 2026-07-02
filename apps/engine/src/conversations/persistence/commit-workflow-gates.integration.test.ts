@@ -21,6 +21,7 @@ import {
   auditLog,
   conversationElicitations,
   conversations,
+  webhooksInbound,
   workflows,
 } from "../../db/schema/index.ts";
 import {
@@ -269,6 +270,104 @@ describe("C.2 — preview-failure-class gate", () => {
     expect(res.data?.preview_failure_class).toBe("config_invalid");
     // force_commit_available is false for config_invalid failures.
     expect(res.data?.force_commit_available).toBe(false);
+  });
+});
+
+// ── C.4 webhook-binding removal guard ────────────────────────────────────────
+
+describe("C.4 — webhook-binding removal guard", () => {
+  const WEBHOOK_TRIGGER = {
+    kind: "webhook" as const,
+    source: "stripe",
+    events: [] as string[],
+    verify: "stripe-signature" as const,
+  };
+
+  function webhookReadyDraft(slug: string, name = slug): DraftDocument {
+    const base = readyDraft(slug, name);
+    return { ...base, workflow: { ...base.workflow, trigger: { ...WEBHOOK_TRIGGER } } };
+  }
+
+  test("save that drops a webhook trigger is BLOCKED and the inbound hook survives", async () => {
+    const conversationId = await freshConversation();
+
+    // First commit: webhook-triggered workflow → reverse-binds a public
+    // inbound hook.
+    const first = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, webhookReadyDraft("wh-guard-block", "WH Guard Block")),
+      skipPriorApprovalCheck: true,
+    });
+    expect(first.ok).toBe(true);
+    const workflowId = (first.data as { workflow_id: string }).workflow_id;
+
+    const boundBefore = await ctx.testDb.db
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, ctx.tenant_id),
+          eq(webhooksInbound.workflow_id, workflowId),
+        ),
+      );
+    expect(boundBefore).toHaveLength(1);
+
+    // Second commit (same conversation → same target row): the regenerated
+    // draft dropped the trigger (→ implicit request). The guard must block.
+    const blocked = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, readyDraft("wh-guard-block", "WH Guard Block")),
+      skipPriorApprovalCheck: true,
+    });
+    expect(blocked.ok).toBe(false);
+    const res = blocked as {
+      error_code?: string;
+      data?: { error_code?: string; new_trigger_kind?: string; force_commit_available?: boolean };
+    };
+    expect(res.error_code).toBe("webhook_trigger_removal_unconfirmed");
+    expect(res.data?.new_trigger_kind).toBe("request");
+    expect(res.data?.force_commit_available).toBe(true);
+
+    // The live inbound hook is untouched — the block prevented the teardown.
+    const boundAfter = await ctx.testDb.db
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, ctx.tenant_id),
+          eq(webhooksInbound.workflow_id, workflowId),
+        ),
+      );
+    expect(boundAfter).toHaveLength(1);
+  });
+
+  test("force_commit:true lets the operator intentionally remove the webhook binding", async () => {
+    const conversationId = await freshConversation();
+
+    const first = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, webhookReadyDraft("wh-guard-force", "WH Guard Force")),
+      skipPriorApprovalCheck: true,
+    });
+    expect(first.ok).toBe(true);
+    const workflowId = (first.data as { workflow_id: string }).workflow_id;
+
+    const forced = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, readyDraft("wh-guard-force", "WH Guard Force")),
+      skipPriorApprovalCheck: true,
+      forceCommit: true,
+    });
+    expect(forced.ok).toBe(true);
+
+    // With the trigger now `request`, the reverse-bind teardown ran — the
+    // inbound hook is gone (the operator confirmed this via force_commit).
+    const boundAfter = await ctx.testDb.db
+      .select({ id: webhooksInbound.id })
+      .from(webhooksInbound)
+      .where(
+        and(
+          eq(webhooksInbound.tenant_id, ctx.tenant_id),
+          eq(webhooksInbound.workflow_id, workflowId),
+        ),
+      );
+    expect(boundAfter).toHaveLength(0);
   });
 });
 

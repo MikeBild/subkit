@@ -857,6 +857,35 @@ export async function runAuthoringPipeline(
   // model gets findings with no signal that time ran out mid-repair.
   if (deadlineSignal.aborted) deadlineExceeded = true;
 
+  // --- Preserve an existing trigger on EDIT (webhook-binding safety) ---
+  // `author_workflow` regenerates the WHOLE definition from the goal. When
+  // the conversation is EDITING an already-saved workflow, the draft was
+  // hydrated from the current version, so `currentDraft.workflow.trigger`
+  // carries the live trigger. A goal that doesn't restate the trigger makes
+  // the model emit a definition with NO trigger — which commits as the
+  // implicit `{ kind: "request" }` and, via `applyTriggerBindings`, DELETES
+  // the reverse-bound `webhooks_inbound` row (the public ingress hook),
+  // silently breaking a live webhook. So: when the regenerated definition
+  // OMITS a trigger but the workflow being edited HAS one, carry the existing
+  // trigger forward. An explicitly regenerated trigger (e.g. a schedule the
+  // goal phrases) is respected — this only fills the gap left by omission,
+  // and the same-slug guard is what keeps this scoped to a genuine edit.
+  const existingTrigger = currentDraft.workflow?.trigger;
+  const editingSameSlug =
+    existingTrigger !== undefined && currentDraft.workflow?.slug === definition.slug;
+  if (definition.trigger === undefined && editingSameSlug) {
+    logger.info({
+      module: "conversations",
+      action: "authoring_pipeline.trigger_preserved_on_edit",
+      msg: "regenerated draft omitted a trigger while editing an existing workflow — preserving the saved trigger to protect its reverse-bound binding",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      slug: definition.slug,
+      trigger_kind: existingTrigger?.kind ?? null,
+    });
+    definition.trigger = existingTrigger;
+  }
+
   // ----------------------------------------------------------------- EMIT
   // Stash as the conversation draft. Goal + connector ids ride the
   // draft as metadata (draft-only keys, same stash shape as

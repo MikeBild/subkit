@@ -42,6 +42,13 @@ const VERIFIERS: Record<InboundVerifierName, VerifierFn> = {
   stripe: verifyStripe,
 };
 
+/** Accepted values for the stored `verifier` column. Used to build an
+ *  actionable denial when a row carries an unrecognised verifier.
+ *  Note: `none`/`skip`/`insecure` are NOT stored verifiers — the
+ *  trigger-level `verify: "none"` reverse-binds to `standard` with
+ *  `native_verifier_config.skip = true` (see VERIFY_TO_VERIFIER). */
+const ACCEPTED_VERIFIERS = Object.keys(VERIFIERS) as InboundVerifierName[];
+
 /** Provenance marker — `crud` for rows created via the authenticated
  *  HTTP CRUD surface, `trigger` for rows reverse-bound by a workflow
  *  with a `webhook` trigger. The fire-time audit surface uses this
@@ -495,7 +502,7 @@ export type HandleOutcome =
     }
   | { status: "deduped"; inbound_id: string }
   | { status: "not_found" }
-  | { status: "denied"; reason: string; inbound_id?: string };
+  | { status: "denied"; reason: string; inbound_id?: string; hint?: string };
 
 export interface HandleInboundOptions {
   db: Db;
@@ -561,19 +568,22 @@ export async function handleInbound(
     return { status: "denied", reason: "inactive", inbound_id: row.id };
   }
 
-  // 2) Decrypt secret.
-  const secret = decryptSecret(
-    {
-      ciphertext: row.secret_ciphertext,
-      iv: row.secret_iv,
-      auth_tag: row.secret_auth_tag,
-    },
-    aadFor(row.tenant_id, row.id),
-  );
-
-  // 3) Verify signature.
+  // 2) Resolve verifier. Done BEFORE touching the stored secret so an
+  //    unrecognised verifier fails fast with an actionable denial
+  //    rather than a decrypt.
   const verifier = VERIFIERS[row.verifier as InboundVerifierName];
   if (!verifier) {
+    // A stored `verifier` outside {standard, github, stripe} is almost
+    // always a hand-written / legacy row that put the trigger-level
+    // token (`none`/`skip`) into the column. Spell out the fix instead
+    // of returning a bare "unknown_verifier": `verify: "none"` is not a
+    // stored verifier — it reverse-binds to `standard` + skip.
+    const hint =
+      `stored verifier "${String(row.verifier)}" is not recognised — accepted values are ` +
+      `${ACCEPTED_VERIFIERS.join(", ")}. A trigger-level verify:"none" is NOT a stored ` +
+      `verifier: it reverse-binds to verifier="standard" with ` +
+      `native_verifier_config.skip=true. Re-save the workflow trigger (or recreate the ` +
+      `binding) so the row stores a valid verifier.`;
     audit(
       {
         tenant_id: row.tenant_id,
@@ -582,25 +592,46 @@ export async function handleInbound(
         resource_id: row.id,
         result: "denied",
         reason: "unknown_verifier",
-        metadata: { ...baseAuditMetadata, verifier: row.verifier },
+        metadata: {
+          ...baseAuditMetadata,
+          verifier: row.verifier,
+          accepted_verifiers: ACCEPTED_VERIFIERS,
+          hint,
+        },
       },
       db,
     );
-    return { status: "denied", reason: "unknown_verifier", inbound_id: row.id };
+    return { status: "denied", reason: "unknown_verifier", inbound_id: row.id, hint };
   }
   const config = (row.native_verifier_config as Record<string, unknown> | null) ?? null;
-  // verify="none" triggers reverse-bind into the standard verifier
-  // with `{ skip: true }`. The skip path bypasses signature check
-  // entirely — the operator declared the ingress trusted (intra-VPC,
-  // mTLS-fronted) — but we still need a stable normalized.id for the
-  // replay-dedup table.
+
+  // 3) Verify signature.
+  //
+  // Decryption is LAZY. When `native_verifier_config.skip === true`
+  // (the `verify: "none"` mapping) the operator declared the ingress
+  // trusted (intra-VPC, mTLS-fronted) and the signature check is
+  // bypassed entirely — so we must NOT decrypt the stored secret at
+  // all. Trigger reverse-bind writes a random placeholder secret on
+  // first bind and an operator may never rotate a real one onto a skip
+  // binding; eagerly decrypting a malformed/placeholder ciphertext
+  // would surface a `CryptoError` (e.g. "iv length N, expected 12") as
+  // an HTTP 500 on an otherwise-acceptable request. We only decrypt
+  // inside the branch where a real verifier runs. On the skip path we
+  // still synthesise a stable normalized.id for the replay-dedup table.
   const verdict: VerifierResult =
     config?.skip === true
       ? skipVerify(input)
       : verifier({
           headers: input.headers,
           rawBody: input.rawBody,
-          secret,
+          secret: decryptSecret(
+            {
+              ciphertext: row.secret_ciphertext,
+              iv: row.secret_iv,
+              auth_tag: row.secret_auth_tag,
+            },
+            aadFor(row.tenant_id, row.id),
+          ),
           now: input.now ?? Date.now(),
           config,
         });

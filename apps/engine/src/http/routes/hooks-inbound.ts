@@ -197,7 +197,14 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json({ error: "not_found" }, 404);
     }
     if (outcome.status === "denied") {
-      return c.json({ error: "denied", reason: outcome.reason }, 401);
+      return c.json(
+        {
+          error: "denied",
+          reason: outcome.reason,
+          ...(outcome.hint ? { hint: outcome.hint } : {}),
+        },
+        401,
+      );
     }
     if (outcome.status === "deduped") {
       return c.json({ deduped: true, inbound_id: outcome.inbound_id }, 200);

@@ -33,9 +33,9 @@ Request:
 Processing pipeline (in order):
 1. Slug lookup → `not_found` (HTTP 404) if no binding.
 2. Active check → `denied` reason `inactive` (HTTP 401) if the binding is inactive.
-3. Decrypt the binding's stored signing secret (AES-GCM, row-scoped AAD).
-4. Verify the signature with the binding's verifier (`standard` | `github` | `stripe`), or skip if `native_verifier_config.skip === true` (the `verify: "none"` path). Failure → `denied` (HTTP 401) with the verifier's reason.
-5. Event filter: if the binding declares `events: [...]` (non-empty), the normalized event `type` must be in the list, else `denied` reason `event_not_subscribed`.
+3. Resolve the binding's verifier. An unrecognised stored `verifier` (anything outside `standard` | `github` | `stripe`) → `denied` reason `unknown_verifier` (HTTP 401) with an actionable `hint` (accepted values + the note that `verify: "none"` is not a stored verifier — it maps to `standard` + skip).
+4. Verify the signature with the binding's verifier, or skip if `native_verifier_config.skip === true` (the `verify: "none"` path). Failure → `denied` (HTTP 401) with the verifier's reason. The stored signing secret is decrypted **lazily** — only when a real signature check runs (AES-GCM, row-scoped AAD). On the skip path the secret is never touched, so a placeholder/garbage ciphertext (e.g. an un-rotated trigger placeholder) can never turn a skip delivery into an HTTP 500.
+5. Event filter: if the binding declares `events: [...]` (non-empty), the normalized event `type` must be in the list, else `denied` reason `event_not_subscribed`. This filter applies on the skip path too — a trusted (skip) ingress with a non-empty allow-list still requires the delivery to carry a matching `webhook-type` header (a delivery without one normalizes to type `unknown` and is filtered out). Use `events: []` on a skip binding to accept any event.
 6. Replay dedup on `(tenant_id, webhook_id, standard_webhook_id)` → `deduped` (HTTP 200, `{ deduped: true, inbound_id }`) on replay.
 7. Resolve the workflow's current version → `denied` reason `workflow_unresolved` if the workflow has no current version.
 8. Create an `executions` row and enqueue an `execution.run` job with `request_source = "webhook"`.
@@ -43,7 +43,7 @@ Processing pipeline (in order):
 Response shapes:
 - Accepted: HTTP 200 `{ accepted: true, inbound_id, execution_id, webhook_id }` (`webhook_id` is the normalized event id).
 - Deduped replay: HTTP 200 `{ deduped: true, inbound_id }`.
-- Denied: HTTP 401 `{ error: "denied", reason }` — reasons: `inactive`, `unknown_verifier`, `<verifier reason>`, `event_not_subscribed`, `workflow_unresolved`.
+- Denied: HTTP 401 `{ error: "denied", reason }` — reasons: `inactive`, `unknown_verifier`, `<verifier reason>`, `event_not_subscribed`, `workflow_unresolved`. The `unknown_verifier` denial additionally carries a `hint` string explaining the fix.
 - Not found: HTTP 404 `{ error: "not_found" }`.
 
 Execution input payload (passed to the workflow as `input`):
@@ -59,7 +59,9 @@ The binding's `verifier` picks the signature scheme. The verifier reads the exac
 - `standard` (Standard Webhooks): reads headers `webhook-id`, `webhook-timestamp`, `webhook-signature`; event `type` from `webhook-type` (default `unknown`). HMAC over `id.timestamp.body`.
 - `github` (GitHub HMAC): reads `x-hub-signature-256` (HMAC-SHA256 of the raw body), `x-github-delivery` (event id), `x-github-event` (event type).
 - `stripe`: reads `stripe-signature` (the `t=`/`v1=` scheme); timestamp-bound to defeat replay.
-- `none` (trigger `verify: "none"`): maps to the `standard` verifier with `native_verifier_config = { skip: true }`, which bypasses the signature check entirely. Use only for trusted ingress (intra-VPC, mTLS-fronted). A stable normalized id is still synthesized — from `webhook-id` if present, else a SHA-256 hash of the body — so replay dedup still works. `webhook-timestamp` and `webhook-type` headers are honored if present.
+- `none` (trigger `verify: "none"`): maps to the `standard` verifier with `native_verifier_config = { skip: true }`, which bypasses the signature check entirely. Use only for trusted ingress (intra-VPC, mTLS-fronted). A stable normalized id is still synthesized — from `webhook-id` if present, else a SHA-256 hash of the body — so replay dedup still works. `webhook-timestamp` and `webhook-type` headers are honored if present. Because the signature is skipped, the stored secret is never decrypted on this path — a skip binding whose secret is still the reverse-bind placeholder (never rotated) accepts traffic normally.
+
+`none`/`skip`/`insecure` are NOT valid values for the stored `verifier` column — the column only stores `standard` | `github` | `stripe`. The trigger-level `verify: "none"` is expressed as `verifier = "standard"` + `native_verifier_config.skip = true`, written by the reverse-bind path. A row that stored the literal `none` (e.g. a hand-written/legacy row) is denied `unknown_verifier`; re-save the workflow trigger (or recreate the binding) to fix it.
 
 The CRUD `verifier: "custom"` value is accepted on input but stored as `standard`.
 
