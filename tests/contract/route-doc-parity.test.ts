@@ -79,6 +79,7 @@ const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/conversations/lifecycle.ts",
   "apps/engine/src/http/routes/conversations/tool-policies.ts",
   "apps/engine/src/http/routes/conversations/stream.ts",
+  "apps/engine/src/http/routes/conversations/direct-tools.ts",
   "apps/engine/src/http/routes/connectors/collection.ts",
   "apps/engine/src/http/routes/connectors/test.ts",
   "apps/engine/src/http/routes/connectors/call.ts",

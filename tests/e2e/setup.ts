@@ -345,6 +345,12 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") throw new Error("failed to get server port");
   const baseUrl = `http://127.0.0.1:${addr.port}`;
+  // Both mutations are PROCESS-GLOBAL and `bun test` runs every file in
+  // one process: a suite that runs after an e2e boot would otherwise
+  // inherit this suite's public origin (e.g. `buildReauthUrl`'s
+  // no-public-origin branch became unreachable and its test failed
+  // full-suite-only). Capture the prior values and restore in cleanup.
+  const priorPublicBaseUrlEnv = process.env.SUBKIT_PUBLIC_BASE_URL;
   process.env.SUBKIT_PUBLIC_BASE_URL = baseUrl;
   // v3.5: routes/services read public_base_url via getConfig().
   await setConfigKey("server.public_base_url", baseUrl, { force: true });
@@ -359,6 +365,15 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
     boss,
     testDb,
     cleanup: async () => {
+      // 0. Undo the process-global public-origin mutations so suites
+      // that run after this one see the pre-boot state.
+      if (priorPublicBaseUrlEnv === undefined) delete process.env.SUBKIT_PUBLIC_BASE_URL;
+      else process.env.SUBKIT_PUBLIC_BASE_URL = priorPublicBaseUrlEnv;
+      await bestEffortTeardown(
+        "public_base_url config restore",
+        () => setConfigKey("server.public_base_url", "", { force: true }),
+        3_000,
+      );
       // 1. Close HTTP server.
       await closeHttpServer(server);
       // 2. Stop pg-boss and close all its Postgres connections.

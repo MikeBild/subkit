@@ -49,9 +49,14 @@ describe("detectMime — case-insensitive extension matching", () => {
 });
 
 describe("detectMime — multi-dot filenames", () => {
-  test("archive.tar.gz uses last extension (.gz) → fallback", () => {
-    // .gz is not in MIME_MAP → octet-stream
-    expect(detectMime("archive.tar.gz")).toBe("application/octet-stream");
+  test("archive.tar.gz uses last extension (.gz) → application/gzip", () => {
+    // Last extension wins — the engine's gzip parser recursively
+    // extracts the inner payload, so the tar wrapper is its concern.
+    expect(detectMime("archive.tar.gz")).toBe("application/gzip");
+  });
+
+  test("bundle.zip → application/zip", () => {
+    expect(detectMime("bundle.zip")).toBe("application/zip");
   });
 
   test("report.v2.pdf → application/pdf", () => {
