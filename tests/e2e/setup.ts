@@ -394,6 +394,9 @@ export interface CliResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  /** True when the harness killed the CLI at the test timeout — the
+   *  non-zero exit is a hang, not a CLI-reported failure. */
+  timed_out: boolean;
 }
 
 /**
@@ -443,7 +446,11 @@ export async function cli(
   });
 
   const timeout = opts.timeout ?? 30_000;
-  const timer = setTimeout(() => proc.kill(), timeout);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    proc.kill();
+  }, timeout);
   const [stdout, stderr] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -451,7 +458,7 @@ export async function cli(
   const exitCode = await proc.exited;
   clearTimeout(timer);
 
-  return { stdout, stderr, exitCode };
+  return { stdout, stderr, exitCode, timed_out: timedOut };
 }
 
 /** Write content to a temp file and return the path. Uses the persona's homeDir. */
@@ -473,14 +480,18 @@ export function parseJson<T = unknown>(result: CliResult): T {
   return JSON.parse(text.slice(start)) as T;
 }
 
-/** Assert the CLI exited with code 0 (or throws a descriptive error). */
+/** Assert the CLI exited with code 0 (or throws a descriptive error).
+ *  Prints the TAIL of stdout/stderr — on a hang-then-kill the evidence
+ *  (last SSE frame, last debug line) is at the end, not the start —
+ *  and flags a timeout kill explicitly so a flaky run self-diagnoses. */
 export function expectSuccess(result: CliResult, context?: string): void {
   if (result.exitCode !== 0) {
     const label = context ? ` (${context})` : "";
+    const timeoutNote = result.timed_out ? " [KILLED BY TEST TIMEOUT — CLI hang]" : "";
     throw new Error(
-      `CLI exited with code ${result.exitCode}${label}\n` +
-        `stdout: ${result.stdout.slice(0, 500)}\n` +
-        `stderr: ${result.stderr.slice(0, 500)}`,
+      `CLI exited with code ${result.exitCode}${label}${timeoutNote}\n` +
+        `stdout(tail): ${result.stdout.slice(-1500)}\n` +
+        `stderr(tail): ${result.stderr.slice(-1500)}`,
     );
   }
 }

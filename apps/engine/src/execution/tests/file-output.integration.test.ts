@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
-import { fileLinks, files } from "../../db/schema/files.ts";
+import { fileLinks } from "../../db/schema/files.ts";
 import { buildObjectKey } from "../../files/object-key.ts";
 import { requireFileForTenant } from "../../files/resolver.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";

@@ -14,7 +14,7 @@
 //   6. /metrics exposes every new counter registered in observability
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { boot, cli, type E2EEnv, shutdown } from "./setup.ts";
+import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
 beforeAll(async () => {
@@ -34,7 +34,7 @@ describe("deep-surface E2E", () => {
       ["login", "--engine-url", env.baseUrl, "--api-key", env.personas.admin.apiKey],
       { env, persona: "admin" },
     );
-    expect(r.exitCode).toBe(0);
+    expectSuccess(r, "login");
   });
 
   test("sk -p --output stream-json emits typed events in order", async () => {
@@ -46,7 +46,7 @@ describe("deep-surface E2E", () => {
       persona: "admin",
       timeout: 60_000,
     });
-    expect(r.exitCode).toBe(0);
+    expectSuccess(r, "stream-json turn");
     const lines = r.stdout.split("\n").filter((l) => l.trim().length > 0);
     expect(lines.length).toBeGreaterThan(0);
     const events = lines.map((l) => JSON.parse(l) as { type: string });
@@ -61,7 +61,10 @@ describe("deep-surface E2E", () => {
       ["--p", "open-meteo weather forecast for Berlin tomorrow", "--output", "json"],
       { env, persona: "admin", timeout: 120_000 },
     );
-    expect(r.exitCode).toBe(0);
+    // expectSuccess (not a bare exit-code assert) so an intermittent
+    // hang/kill surfaces the CLI's stderr tail + timeout flag instead
+    // of an opaque "expected 0, received 2".
+    expectSuccess(r, "weather canned plan");
     const body = JSON.parse(r.stdout) as { session_id?: string };
     expect(body.session_id).toBeDefined();
     const conversationId = body.session_id!;
