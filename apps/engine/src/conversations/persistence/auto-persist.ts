@@ -119,6 +119,14 @@ export interface AutoPersistInput {
     tool_name: string;
     input: unknown;
   };
+  /**
+   * Surface the RESUME runs on. On `"chat"` (external chat channels —
+   * read-only contract) every mutating commit_intent is refused with an
+   * honest synthetic result; only `run_workflow` dispatches. Without
+   * this gate the harness-side auto-persist would execute writes the
+   * chat palette structurally removed from the model.
+   */
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   db: Db;
 }
 
@@ -253,6 +261,56 @@ export async function maybeAutoPersistFromElicitation(
   const declineCheck = checkDecline(p.elicitation.tool_name, p.elicitation_output);
   if (declineCheck) {
     const synthetic = buildDeclineSynthetic(intent, declineCheck);
+    const callId = await injectSyntheticToolCall({
+      db: p.db,
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      synthetic,
+      intent,
+    });
+    return { dispatched: true, synthetic_result: synthetic, synthetic_tool_call_id: callId };
+  }
+
+  // Read-only chat channel: the palette structurally removes every
+  // authoring/mutating tool, and this harness-side dispatcher must not
+  // become the bypass — a commit_intent that reaches a chat resume
+  // (e.g. staged before the conversation ever reached chat, or a
+  // mis-tagged confirm) would otherwise write at full harness
+  // authority. `run_workflow` stays dispatchable: running a saved
+  // workflow is the channel's one action, and its case below carries
+  // its own RBAC gate (`gateWorkflowRunRbac`).
+  if (p.surface === "chat" && intent.kind !== "run_workflow") {
+    logger.warn({
+      module: "conversation_persistence",
+      action: "auto_persist.denied_chat_readonly",
+      msg: "commit_intent refused on the read-only chat surface — no harness write dispatched",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      elicitation_id: p.elicitation.id,
+      intent_kind: intent.kind,
+    });
+    await auditAwait(
+      {
+        tenant_id: p.tenant_id,
+        actor_type: p.actor_id ? "user" : "system",
+        actor_id: p.actor_id,
+        action: AuditAction.POLICY_DENIED,
+        resource_type: "conversation_elicitation",
+        resource_id: p.elicitation.id,
+        result: "denied",
+        reason: "chat_readonly_commit_intent",
+        metadata: { conversation_id: p.conversation_id, intent_kind: intent.kind },
+      },
+      p.db,
+    );
+    const synthetic: SyntheticToolResult = {
+      tool: p.elicitation.tool_name,
+      ok: false,
+      error_code: "chat_readonly_channel",
+      message: `This chat channel is read-only: the approved ${intent.kind} was NOT performed — nothing was persisted or deleted. Do NOT report success. Tell the user to make this change via the sk CLI or the web portal.`,
+      next_best_actions: ["cannot_help"],
+      source: "harness_auto_persist",
+    };
     const callId = await injectSyntheticToolCall({
       db: p.db,
       tenant_id: p.tenant_id,

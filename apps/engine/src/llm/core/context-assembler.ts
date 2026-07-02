@@ -91,7 +91,7 @@ import {
 } from "./context-assembler/loaders.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
-export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web";
+export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
 
 export {
   applyRuntimeTemplate,

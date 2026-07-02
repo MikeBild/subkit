@@ -76,6 +76,15 @@ export interface RespondElicitationParams {
    * `ToolContext`.
    */
   elicitationBridge?: ElicitationBridge;
+  /**
+   * Surface the RESUMED turn runs on. Chat callers MUST pass `"chat"`:
+   * the resumed `runLoop` re-assembles the tool palette, and without
+   * the surface it would silently fall back to the full authoring
+   * palette — a user answering a chat approval card would resume into
+   * tools the channel forbids. Web/MCP callers leave this unset
+   * (unchanged behavior).
+   */
+  surface?: Parameters<typeof runLoop>[0]["surface"];
 }
 
 /**
@@ -337,6 +346,7 @@ export async function respondElicitation(
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
     ...(p.principal !== undefined ? { principal: p.principal } : {}),
+    ...(p.surface ? { surface: p.surface } : {}),
     output,
     elicitation: {
       id: resolved.id,
@@ -398,6 +408,7 @@ export async function respondElicitation(
     workflow_id: conv.conversation.target_workflow_id,
     user_message: null,
     turn_abort_ctrl: p.turn_abort_ctrl,
+    ...(p.surface ? { surface: p.surface } : {}),
     ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
     ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),

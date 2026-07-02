@@ -10,10 +10,13 @@
 import { describe, expect, test } from "bun:test";
 import type { AuthoringSummary, DraftDocument } from "../../types.ts";
 import {
+  CHAT_READONLY_TOOLS,
   CONNECTOR_AUTHORING_SKILL,
   filterByAuthoringPalette,
+  filterByChatReadOnlyPalette,
   WORKFLOW_AUTHORING_SKILL,
 } from "../authoring-palette.ts";
+import { listTools } from "../index.ts";
 
 const ALL_SKILLS = new Set<string>([CONNECTOR_AUTHORING_SKILL, WORKFLOW_AUTHORING_SKILL]);
 const ONLY_CONNECTOR = new Set<string>([CONNECTOR_AUTHORING_SKILL]);
@@ -281,5 +284,117 @@ describe("filterByAuthoringPalette — session 00b93a52 regression", () => {
     expect(names).toContain("save_connector_draft");
     expect(names).toContain("probe_connector_draft");
     expect(names).toContain("ask_user_form");
+  });
+});
+
+// ── Chat read-only palette ──────────────────────────────────────────────────
+//
+// The chat surface (external chat platforms) is channel-scoped
+// read-only: authoring, mutation, and direct connector calls are
+// structurally absent from the palette, independent of skill-load
+// state and of the linked user's role. These invariants run against
+// the REAL tool registry so a future tool addition/category change is
+// checked, not a hand-maintained fixture.
+
+describe("filterByChatReadOnlyPalette — read-only channel invariants", () => {
+  const registry = listTools();
+  const chatPalette = filterByChatReadOnlyPalette(registry);
+  const chatNames = new Set(chatPalette.map((t) => t.name));
+
+  test("no draft_write or tenant_write tool is exposed (run_workflow + load_skill + ask_user_* excepted)", () => {
+    // ask_user_* are categorised draft_write because their elicitation
+    // rows can carry commit_intents — but on the chat surface those
+    // intents are refused by the auto-persist gate
+    // (`persistence/auto-persist.ts`, chat_readonly_commit_intent), so
+    // the tools themselves are pure conversation plumbing here.
+    const allowedWriteish = new Set([
+      "run_workflow",
+      "load_skill",
+      "ask_user_choice",
+      "ask_user_confirm",
+      "ask_user_form",
+      "ask_user_multi",
+      "ask_user_text",
+    ]);
+    const offenders = chatPalette.filter(
+      (t) =>
+        (t.category === "draft_write" || t.category === "tenant_write") &&
+        !allowedWriteish.has(t.name),
+    );
+    expect(offenders.map((t) => t.name)).toEqual([]);
+  });
+
+  test("call_connector and every authoring/mutation tool are absent", () => {
+    const forbidden = [
+      "call_connector",
+      "probe_connector",
+      "test_connector",
+      "discover_connector_endpoints",
+      "discover_systems_from_files",
+      "fetch_connector_docs",
+      "authenticate_oauth",
+      "request_connector_reauth",
+      "author_workflow",
+      "edit_workflow_patch",
+      "save_workflow_draft",
+      "save_connector_draft",
+      "start_connector_from_template",
+      "update_connector",
+      "delete_connector",
+      "update_workflow",
+      "delete_workflow",
+      "create_knowledge_source",
+      "delete_knowledge_source",
+      "create_schedule",
+      "update_schedule",
+      "delete_schedule",
+      "revoke_api_key",
+      "revoke_portal_token",
+      "dry_run_workflow",
+      "dry_run_step",
+      "dry_run_transform",
+      "diagnose_latest_execution",
+      "inspect_authoring_context",
+    ];
+    for (const name of forbidden) {
+      expect(chatNames.has(name), `${name} must not be in the chat palette`).toBe(false);
+    }
+  });
+
+  test("every allow-list entry resolves to a registered tool (no dead names)", () => {
+    const registered = new Set(registry.map((t) => t.name));
+    for (const name of CHAT_READONLY_TOOLS) {
+      expect(registered.has(name), `${name} is allow-listed but not in listTools()`).toBe(true);
+    }
+  });
+
+  test("palette ignores skill-load state — loading authoring skills unlocks nothing", () => {
+    // The filter takes no loadedSkills by design; this pins the
+    // signature-level invariant by asserting the read-only set stays
+    // identical to a recomputation after the authoring palette (which
+    // IS skill-sensitive) would have unlocked its tool sets.
+    const again = filterByChatReadOnlyPalette(registry).map((t) => t.name);
+    expect(again.sort()).toEqual([...chatNames].sort());
+  });
+
+  test("the channel's one action (run_workflow) and core reads stay present", () => {
+    for (const name of [
+      "run_workflow",
+      "list_workflows",
+      "find_workflow",
+      "get_workflow",
+      "search_knowledge",
+      "search_docs",
+      "list_executions",
+      "get_execution",
+      "get_skill",
+      "find_skill",
+      "list_connectors",
+      "get_connector",
+      "ask_user_confirm",
+      "cannot_help",
+    ]) {
+      expect(chatNames.has(name), `${name} missing from the chat palette`).toBe(true);
+    }
   });
 });

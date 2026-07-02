@@ -119,8 +119,10 @@ export interface ToolContext {
    * worker (no live session, no `elicitationBridge`), so tools can treat
    * it as the "unattended, cannot surface a follow-up prompt" signal.
    * `undefined` on legacy/test harnesses that never set it.
+   * `"chat"` (external chat platforms) additionally selects the
+   * channel-scoped read-only palette in `sdk-wrap.ts`.
    */
-  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web";
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   /**
    * Operator's most recent user message, raw text. Threaded so tools
    * can ground deterministic relevance scoring (e.g.

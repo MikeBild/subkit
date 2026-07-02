@@ -108,6 +108,9 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "platform.teams.app_id": "Teams app ID",
   "platform.teams.app_password": "Teams app password",
   "platform.googlechat.project_id": "Google Chat project ID",
+  "platform.googlechat.client_email": "Google Chat service-account email",
+  "platform.googlechat.private_key": "Google Chat service-account private key",
+  "platform.googlechat.audience": "Google Chat inbound JWT audience (project number)",
 
   // ── Storage ────────────────────────────────────────────────────
   "storage.s3.endpoint": "S3 endpoint",

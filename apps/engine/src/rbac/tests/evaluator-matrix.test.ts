@@ -41,6 +41,11 @@ const ENDUSER_PERMISSIONS = new Set<string>([
   "conversation:cancel",
   "conversation:list",
   "knowledge:read",
+  // Deliberate product decision: skills are read-only reference
+  // material for enduser-facing surfaces (the read-only chat channel
+  // asks "which skills exist"); connector:read / schedule:read stay
+  // operator-facing. Mirrors ENDUSER_PERMISSIONS in seed.ts.
+  "skill:read",
   "file:read",
 ]);
 const METRICS_SCRAPER_PERMISSIONS = new Set<string>(["metrics:read"]);

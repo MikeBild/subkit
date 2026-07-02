@@ -6,12 +6,14 @@
 //   - receive(): normalize a VerifiedEvent into a ChatEvent.
 //   - send / update / sendApproval: outbound API calls.
 //
-// Rate-limiting is enforced for NOTIFICATIONS via `notifications/rate-limit.ts`
-// (token bucket per channel). Direct `conversations/dispatcher.ts` traffic
-// (user-driven chat turns) currently bypasses the bucket — deferred P13
-// work will wrap `send`/`update`/`sendApproval` with the same limiter
-// plus a per-delivery coalescer for progressive edits. `CHAT_RATES` in
-// `./types.ts` declares the per-platform ceilings the limiter should honor.
+// Rate-limiting: every outbound path shares the per-(tenant, workspace,
+// channel) token bucket from `notifications/rate-limit.ts`, honoring the
+// per-platform ceilings in `CHAT_RATES` (`./types.ts`). Conversation
+// replies go through the dispatcher's `sendTracked` (exhaustion drops
+// the send with a `rate_limited` metric); load-bearing interactive
+// messages (`renderElicitation` / `sendApproval`) consume from the same
+// bucket via `consumeInteractiveSlot` but are never dropped — an unsent
+// card would strand the conversation in awaiting_input.
 
 import type {
   ApprovalCard,

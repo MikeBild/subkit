@@ -40,8 +40,8 @@ export interface RunConversationTurnParams {
   permission_mode?: ConversationPermissionMode | null;
   /** Live-event emitter — keeps the HTTP/SSE surface streaming. */
   onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
-  /** Surface for per-variant prompts. */
-  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web";
+  /** Surface for per-variant prompts; `chat` also restricts the palette. */
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   /** Real runtime context (engine_url, tenant_slug, actor email/role). */
   runtime_context?: {
     engine_url?: string;

@@ -1,11 +1,14 @@
 // End-to-end dispatcher test:
 //
-//   Slack mention event → createConversation + runTurn
-//   → canned "list users" plan raises an approval
-//   → dispatcher sends an approval card (fake adapter records it)
-//   → dispatcher receives an "approve" interaction
-//   → decideApproval drives the plan to save_workflow_draft
-//   → conversation ends up status = 'committed'
+//   Slack mention event → createConversation + runTurn on the CHAT
+//   surface (channel-scoped read-only palette)
+//   → canned "list users" authoring plan tries its authoring tools —
+//     none are in the chat palette, so nothing drafts or commits
+//   → the plan's ask_user_confirm still raises an approval card
+//   → the approve interaction resumes the turn — ALSO on the chat
+//     surface, so the resumed save_workflow_draft stays unavailable
+//   → conversation never commits: authoring from a chat channel is
+//     structurally impossible, even though the linked user has rights
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -17,13 +20,15 @@ import {
   chatIdentities,
   chatWorkspaces,
   conversations,
+  conversationToolCalls,
   executions,
+  users,
   workflows as workflowsTable,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import type { ChatAdapter } from "../adapter.ts";
-import { type DispatchRunEnqueue, handleChatEvent } from "../dispatcher.ts";
+import { handleChatEvent } from "../dispatcher.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../types.ts";
 
 const nextHex = createDeterministicHexFactory(0xc4a7d15);
@@ -63,7 +68,7 @@ afterAll(async () => {
 });
 
 describe("chat dispatcher", () => {
-  test("mention → approval → approve → committed", async () => {
+  test("mention → approval → approve → read-only channel never commits", async () => {
     // Seed a chat_workspaces row pointing at our test tenant.
     const ws = await ctx.testDb.db
       .insert(chatWorkspaces)
@@ -129,16 +134,33 @@ describe("chat dispatcher", () => {
     const r2 = await handleChatEvent({ db: ctx.testDb.db, adapter }, interaction);
     expect(r2.status).toBe("approved");
 
+    // Chat is a read-only channel: the resumed turn ran WITHOUT the
+    // authoring palette, so the canned plan's save_workflow_draft never
+    // fired — no commit, no workflow, even for a fully-linked user.
     const conv2 = await ctx.testDb.db
       .select()
       .from(conversations)
       .where(eq(conversations.id, card.conversation_id))
       .limit(1);
-    expect(conv2[0]?.status).toBe("committed");
-    expect(conv2[0]?.target_workflow_id).toBeTruthy();
+    expect(conv2[0]?.status).not.toBe("committed");
+    expect(conv2[0]?.target_workflow_id).toBeNull();
+
+    // Defense-in-depth check on the tool-call log: no authoring tool
+    // ever executed in this conversation — the palette never carried
+    // them, so the loop's wrapper never persisted a row for one.
+    const toolCalls = await ctx.testDb.db
+      .select()
+      .from(conversationToolCalls)
+      .where(eq(conversationToolCalls.conversation_id, card.conversation_id));
+    const authoringCalls = toolCalls.filter((c) =>
+      ["save_workflow_draft", "edit_workflow_patch", "author_workflow", "validate_draft"].includes(
+        c.tool,
+      ),
+    );
+    expect(authoringCalls).toEqual([]);
   });
 
-  test("/subkit run <slug> creates execution + invokes enqueueRun", async () => {
+  test("/subkit run <slug> routes through the conversation run contract", async () => {
     // Seed a chat_workspaces row for a separate Slack workspace.
     await ctx.testDb.db.insert(chatWorkspaces).values({
       tenant_id: ctx.tenant_id,
@@ -194,8 +216,29 @@ describe("chat dispatcher", () => {
     });
 
     const adapter = new FakeSlackAdapter();
-    const captured: DispatchRunEnqueue[] = [];
 
+    // Bare usage guard stays a dispatcher concern: no workflow named →
+    // ephemeral usage text, no conversation created.
+    const helpOut = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      {
+        platform: "slack",
+        workspace_id: "T_RUN",
+        channel_id: "C42",
+        thread_id: "1700000001.000199",
+        user_id: "U_RUNNER",
+        kind: "slash_command",
+        text: "/subkit run",
+        raw: {},
+      },
+    );
+    expect(helpOut.status).toBe("help");
+    expect(adapter.sends[adapter.sends.length - 1]?.text).toContain("Usage");
+
+    // With a slug the verb is rewritten to a "run <slug>" prompt and
+    // handed to the SAME conversation turn every other run takes —
+    // the previous inline path skipped the confirm gate + input
+    // contract (an execute_writes workflow ran unconfirmed from chat).
     const ev: ChatEvent = {
       platform: "slack",
       workspace_id: "T_RUN",
@@ -203,38 +246,25 @@ describe("chat dispatcher", () => {
       thread_id: "1700000001.000200",
       user_id: "U_RUNNER",
       kind: "slash_command",
-      text: "/subkit run ping-users target=alice limit=5",
+      text: "/subkit run ping-users",
       raw: {},
     };
-    const out = await handleChatEvent(
-      {
-        db: ctx.testDb.db,
-        adapter,
-        enqueueRun: async (job) => {
-          captured.push(job);
-        },
-      },
-      ev,
-    );
+    const out = await handleChatEvent({ db: ctx.testDb.db, adapter }, ev);
     expect(out.status).toBe("ok");
-    expect(out.execution_id).toBeTruthy();
-    expect(out.workflow_id).toBe(wf.id);
-    expect(captured.length).toBe(1);
-    expect(captured[0]?.input).toEqual({ target: "alice", limit: "5" });
-    expect(captured[0]?.workflow_id).toBe(wf.id);
+    expect(out.conversation_id).toBeTruthy();
 
-    // Persistence: an executions row exists for the captured id.
+    // The run went through the conversation contract (fast-path:
+    // RBAC gate → confirm policy → execute) — an executions row for
+    // the seeded workflow exists.
     const rows = await ctx.testDb.db
       .select()
       .from(executions)
-      .where(eq(executions.id, out.execution_id ?? ""));
+      .where(eq(executions.workflow_id, wf.id));
     expect(rows.length).toBe(1);
-    expect(rows[0]?.request_source).toBe("chat");
 
-    // The dispatcher should have posted an ephemeral confirmation.
+    // The dispatcher posted the turn's reply into the thread.
     const last = adapter.sends[adapter.sends.length - 1];
-    expect(last?.kind).toBe("ephemeral");
-    expect(last?.text).toContain("execution started");
+    expect(last?.text?.length ?? 0).toBeGreaterThan(0);
   });
 
   // -------------------------------------------------------------------
@@ -360,5 +390,144 @@ describe("chat dispatcher", () => {
     expect(out.status).toBe("ok");
     expect(adapter.sends[adapter.sends.length - 1]?.kind).toBe("ephemeral");
     expect(adapter.sends[adapter.sends.length - 1]?.text).toMatch(/reset/i);
+  });
+});
+
+// ── Session mapping: channel = persistent conversation ──────────────────────
+//
+// Top-level messages (no thread_id) bind to the `${channel}:root`
+// session, so a space keeps ONE running conversation (topic memory);
+// real thread replies get their own conversation; `/new` resets the
+// binding; a second linked user joins the SAME channel conversation
+// while each turn runs under the sender's own principal.
+
+describe("chat session mapping", () => {
+  const WS = "T_MAP";
+  let secondUserId: string;
+
+  beforeAll(async () => {
+    await ctx.testDb.db.insert(chatWorkspaces).values({
+      tenant_id: ctx.tenant_id,
+      platform: "slack",
+      workspace_id: WS,
+      bot_ciphertext: detBytes(1),
+      bot_iv: detBytes(1),
+      bot_auth_tag: detBytes(1),
+    });
+    await ctx.testDb.db.insert(chatIdentities).values({
+      tenant_id: ctx.tenant_id,
+      user_id: ctx.user_id,
+      platform: "slack",
+      workspace_id: WS,
+      platform_user_id: "U_MAP1",
+    });
+    // A second real user in the same tenant, linked to a second
+    // platform identity.
+    const [u2] = await ctx.testDb.db
+      .insert(users)
+      .values({
+        tenant_id: ctx.tenant_id,
+        email: "second-mapper@example.com",
+        role: "member",
+      })
+      .returning();
+    if (!u2) throw new Error("seed second user failed");
+    secondUserId = u2.id;
+    await ctx.testDb.db.insert(chatIdentities).values({
+      tenant_id: ctx.tenant_id,
+      user_id: secondUserId,
+      platform: "slack",
+      workspace_id: WS,
+      platform_user_id: "U_MAP2",
+    });
+  });
+
+  function mention(text: string, user = "U_MAP1", thread_id?: string): ChatEvent {
+    return {
+      platform: "slack",
+      workspace_id: WS,
+      channel_id: "C_MAP",
+      ...(thread_id ? { thread_id } : {}),
+      user_id: user,
+      kind: "mention",
+      text: `<@UBOT> ${text}`,
+      raw: {},
+    };
+  }
+
+  test("two top-level messages share the channel conversation; a thread reply gets its own", async () => {
+    const adapter = new FakeSlackAdapter();
+    const r1 = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
+    expect(r1.status).toBe("ok");
+    expect(r1.conversation_id).toBeTruthy();
+
+    const r2 = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list executions"));
+    expect(r2.conversation_id).toBe(r1.conversation_id);
+
+    const r3 = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("list workflows", "U_MAP1", "1700000002.000300"),
+    );
+    expect(r3.conversation_id).toBeTruthy();
+    expect(r3.conversation_id).not.toBe(r1.conversation_id);
+  });
+
+  test("a second linked user continues the SAME channel conversation under their own principal", async () => {
+    const adapter = new FakeSlackAdapter();
+    const before = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("list executions"),
+    );
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("list workflows", "U_MAP2"),
+    );
+    expect(r.status).toBe("ok");
+    expect(r.conversation_id).toBe(before.conversation_id);
+  });
+
+  test("/new resets the channel binding — the next message starts fresh", async () => {
+    const adapter = new FakeSlackAdapter();
+    const before = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
+    const reset = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      {
+        platform: "slack",
+        workspace_id: WS,
+        channel_id: "C_MAP",
+        user_id: "U_MAP1",
+        kind: "slash_command",
+        text: "/new",
+        raw: {},
+      },
+    );
+    expect(reset.status).toBe("ok");
+    const after = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
+    expect(after.conversation_id).toBeTruthy();
+    expect(after.conversation_id).not.toBe(before.conversation_id);
+  });
+
+  test("system removed_from_space drops the channel's session bindings", async () => {
+    const adapter = new FakeSlackAdapter();
+    const live = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
+    expect(live.conversation_id).toBeTruthy();
+
+    const sys = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      {
+        platform: "slack",
+        workspace_id: WS,
+        channel_id: "C_MAP",
+        user_id: "",
+        kind: "system",
+        system_event: "removed_from_space",
+        raw: {},
+      },
+    );
+    expect(sys.status).toBe("ignored");
+
+    // The binding is gone: the next message opens a fresh conversation.
+    const after = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
+    expect(after.conversation_id).not.toBe(live.conversation_id);
   });
 });

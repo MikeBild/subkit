@@ -14222,7 +14222,7 @@ export interface components {
         InstallChatWorkspace: {
             platform: components["schemas"]["ChatPlatform"];
             workspace_id: string;
-            bot_token: string;
+            bot_token?: string;
             installer_platform_user_id: string;
             default_channel?: string | null;
         };

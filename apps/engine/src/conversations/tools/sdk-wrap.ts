@@ -29,7 +29,7 @@ import { logger } from "../../logging/logger.ts";
 import { redactLastError } from "../../mcp/client/registry.ts";
 import type { PermissionMode, ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
-import { filterByAuthoringPalette } from "./authoring-palette.ts";
+import { filterByAuthoringPalette, filterByChatReadOnlyPalette } from "./authoring-palette.ts";
 import { filterBySkillGate } from "./gated.ts";
 import { listTools, type ToolContext } from "./index.ts";
 import { buildExternalMcpTools } from "./sdk-wrap/external-mcp-tools.ts";
@@ -68,14 +68,33 @@ export async function wrapTools(
   principal: ResolvedPrincipal | null = null,
 ): Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>> {
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
+  const isChatSurface = ctx.surface === "chat";
+  // Tripwire against the fail-open direction of the optional `surface`
+  // threading: a chat-linked principal running WITHOUT the chat surface
+  // would silently get the full authoring palette. Loud log, no throw —
+  // the palette below still assembles so the turn survives, but the
+  // divergence is visible in structured logs.
+  if (!isChatSurface && principal?.provider === "chat") {
+    logger.warn({
+      module: "conversation_tool",
+      action: "palette.chat_surface_missing",
+      msg: "chat-provider principal is running a turn without surface=chat — palette restriction not applied; check the caller's surface threading",
+      tenant_id: ctx.tenant_id,
+    });
+  }
   // Apply skill-gate: tools whose `requires_skill` isn't in loadedSkills
   // are hidden from the model until the matching `load_skill` call.
   const loadedSkillSet = new Set(loadedSkills);
-  const visibleTools = filterByAuthoringPalette(
-    filterBySkillGate(listTools(), loadedSkills),
-    ctx.getDraft(),
-    loadedSkillSet,
-  );
+  // Chat surface: channel-scoped read-only palette. A pure name
+  // allow-list independent of skill-load state — see
+  // `authoring-palette.ts#CHAT_READONLY_TOOLS` for the contract.
+  const visibleTools = isChatSurface
+    ? filterByChatReadOnlyPalette(listTools())
+    : filterByAuthoringPalette(
+        filterBySkillGate(listTools(), loadedSkills),
+        ctx.getDraft(),
+        loadedSkillSet,
+      );
   for (const t of visibleTools) {
     out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode, loadedSkills);
   }
@@ -91,7 +110,10 @@ export async function wrapTools(
       out[name] = tool;
     }
   }
-  if (principal) {
+  // External MCP tools are write-capable (arbitrary remote servers) —
+  // the read-only chat channel never exposes them, same posture as
+  // `call_connector`.
+  if (principal && !isChatSurface) {
     // Best-effort: external MCP tools are an enrichment, not load-bearing.
     // A DB error in `listConnectableMcpServersForTenant` or a pool failure
     // must NEVER abort the whole turn or drop the in-repo + `wf_` tools

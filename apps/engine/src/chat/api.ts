@@ -154,11 +154,15 @@ const ChatEventSchema = z
     workspace_id: z.string().min(1),
     channel_id: z.string().min(1),
     thread_id: z.string().optional(),
-    user_id: z.string().min(1),
-    kind: z.enum(["mention", "slash_command", "interaction"]),
+    // `system` events (membership changes) may arrive without a user;
+    // conversational kinds still hard-require one — the dispatcher's
+    // identity lookup rejects an empty sender as identity_not_linked.
+    user_id: z.string(),
+    kind: z.enum(["mention", "slash_command", "interaction", "system"]),
     text: z.string().optional(),
     command: ChatCommandSchema.optional(),
     interaction: ChatInteractionActionSchema.optional(),
+    system_event: z.string().optional(),
     event_key: z.string().optional(),
     raw: z.unknown(),
   })

@@ -12,6 +12,7 @@ import type { AuthoringPromptHint } from "../../llm/types.ts";
 import type { AuthoringSurfaceMode } from "../types.ts";
 import {
   AUTHORING_PERSONA,
+  CHAT_PERSONA,
   CLI_HEADLESS_PERSONA,
   DIAGNOSIS_PERSONA,
   EXECUTION_PERSONA,
@@ -43,6 +44,10 @@ function personaFor(
   // / execution mode.
   if (scope === "rbac") return RBAC_EDITING_PERSONA;
   if (surface === "sk_headless") return CLI_HEADLESS_PERSONA;
+  // Chat surface wins over mode like sk_headless does: the channel is
+  // structurally read-only, so no authoring-mode persona may ever
+  // promise draft/edit/commit behaviour there.
+  if (surface === "chat") return CHAT_PERSONA;
   switch (mode) {
     case "execution":
       return EXECUTION_PERSONA;
@@ -182,13 +187,17 @@ export async function generateMainAgentSystemPrompt(
     SKILL_LOADING_INSTRUCTIONS,
     `VERBOSITY:\n- ${verbosityFor(input.surface)}`,
   ];
-  const focusBlock = authoringFocusPrompt(input.authoring_hint);
+  // The chat surface never authors — an authoring-focus block would
+  // instruct the model to progress a draft it has no tools for.
+  const focusBlock = input.surface === "chat" ? "" : authoringFocusPrompt(input.authoring_hint);
   if (focusBlock) sections.push(focusBlock);
   // Mode-aware behaviour skill loading: always-load core + the
   // mode-specific bodies for the current authoring mode (workflow /
   // connector / execution / diagnosis). conversational-authoring is
   // the only body large enough to be worth gating; everything else
-  // is universal.
-  sections.push(loadAgentSkills(resolveAgentSkillsForMode(mode)));
+  // is universal. The chat surface always resolves as mode-less: its
+  // palette carries no authoring tools, so authoring behaviour bodies
+  // would only instruct the model toward tools it cannot call.
+  sections.push(loadAgentSkills(resolveAgentSkillsForMode(input.surface === "chat" ? null : mode)));
   return { content: sections.join("\n\n") };
 }

@@ -104,3 +104,37 @@ describe("persona-variant selection", () => {
     expect(t1.content).toBe(t2.content);
   });
 });
+
+describe("chat surface persona", () => {
+  test("chat surface wins over any authoring mode and never promises authoring", async () => {
+    for (const mode of ["workflow", "connector", "execution", "diagnosis"] as const) {
+      const r = await generateMainAgentSystemPrompt({
+        surface: "chat",
+        authoring_hint: makeHint(mode),
+      });
+      expect(r.content).toContain(ANCHOR);
+      expect(r.content).toContain("external chat channel");
+      expect(r.content).toContain("CANNOT create or edit");
+      // No authoring persona and no authoring focus block: the chat
+      // palette carries no tools that could progress a draft.
+      expect(r.content).not.toContain("In authoring mode you are drafting");
+      expect(r.content).not.toContain("AUTHORING FOCUS:");
+    }
+  });
+
+  test("chat surface skips the mode-gated authoring behaviour bodies", async () => {
+    const chat = await generateMainAgentSystemPrompt({
+      surface: "chat",
+      authoring_hint: makeHint("workflow"),
+    });
+    const web = await generateMainAgentSystemPrompt({
+      surface: "web",
+      authoring_hint: makeHint("workflow"),
+    });
+    // conversational-authoring is the ~1.8k-token authoring narrative
+    // gated on workflow/connector mode — the chat prompt must not carry
+    // it while the web prompt in the same mode does.
+    expect(web.content.length).toBeGreaterThan(chat.content.length);
+    expect(chat.content).not.toContain("inspect -> validate -> preview -> commit");
+  });
+});

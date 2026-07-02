@@ -96,10 +96,19 @@ export interface ChatEvent {
   channel_id: string;
   thread_id?: string;
   user_id: string;
-  kind: "mention" | "slash_command" | "interaction";
+  /** `system` = non-conversational platform event (membership change,
+   *  app-home ping, unknown event type). The dispatcher never runs a
+   *  turn for it; `system_event: "removed_from_space"` additionally
+   *  drops the channel's `chat_sessions` bindings so outbound replies
+   *  stop targeting a space the app is no longer a member of. */
+  kind: "mention" | "slash_command" | "interaction" | "system";
   text?: string;
   command?: ChatCommand;
   interaction?: ChatInteractionAction;
+  /** Set when `kind === "system"` — the platform-native event type,
+   *  normalized (`removed_from_space`, `added_to_space`, or the raw
+   *  platform event name for unknown types). */
+  system_event?: string;
   /** Platform-native event id used for replay dedup (`chat/dedup.ts`).
    *  Populated by the adapter's `receive()`. Slack: `event_id`
    *  (Events API), `view.id` (`view_submission`), `trigger_id`

@@ -261,6 +261,8 @@ describe("/v1/diagnostics/setup", () => {
         "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
       "platform.teams.app_password":
         "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
+      "platform.googlechat.private_key":
+        "Per-platform credentials live in the chat-platform diagnostic, not the bootstrap setup view.",
       "storage.offload.access_key":
         "Offload-storage is an opt-in feature gate; surfaced from /v1/diagnostics/storage when that subsystem is enabled.",
       "storage.offload.secret_key":

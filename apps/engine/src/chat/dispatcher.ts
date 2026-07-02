@@ -20,7 +20,9 @@
 //        - interaction (Block-Kit click / view_submission) →
 //          respondElicitation with the typed output the adapter
 //          extracted
-//        - "/subkit run <slug>" → createExecution + enqueueRun
+//        - "/subkit run <slug>" → rewritten to a "run <slug>" prompt
+//          and routed through the SAME conversation turn as any other
+//          run, so RBAC + confirm gate + input contracts hold uniformly
 //        - anything else → ephemeral help text via adapter.send
 //   5. On `awaiting_input`, render the elicitation natively when the
 //      adapter declares `capabilities.interactive.includes(kind)`,
@@ -31,7 +33,7 @@
 // The dispatcher is intentionally free of adapter-specific types —
 // it takes a ChatAdapter at runtime so tests can plug in a fake.
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
@@ -42,36 +44,28 @@ import {
   runConversationTurn,
 } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
-import {
-  chatIdentities,
-  chatSessions,
-  chatWorkspaces,
-  conversations,
-  workflows as workflowsTable,
-} from "../db/schema/index.ts";
-import { createExecution } from "../execution/state.ts";
+import { chatIdentities, chatSessions, chatWorkspaces, conversations } from "../db/schema/index.ts";
 import { errorFields, log, logger } from "../logging/logger.ts";
 import { tryAcquire } from "../notifications/rate-limit.ts";
 import { recordChatDelivery } from "../observability/instrumentation.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
-import { can } from "../rbac/evaluator.ts";
-import { getWorkflow, getWorkflowBySlug } from "../workflows/service.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { mapToolNameToKind } from "./api.ts";
 import { resolveChatPrincipal } from "./principal.ts";
 
-// Backward-compat re-export: `DispatchOutcome` and `DispatchRunEnqueue`
-// moved to `./dispatcher-types.ts` (extracted to break a circular dep
-// with `elicit-routing.ts`), but the chat/index.ts barrel, the queue
-// handler, and existing tests all import these names from
+// Backward-compat re-export: `DispatchOutcome` moved to
+// `./dispatcher-types.ts` (extracted to break a circular dep with
+// `elicit-routing.ts`), but the chat/index.ts barrel, the queue
+// handler, and existing tests all import the name from
 // `./dispatcher.ts`. Re-exporting keeps those call sites working
 // without churn. The duplicate local import below is the value-side
-// of the re-export — TypeScript requires both shapes when the names
-// are used in this file's own type annotations.
-export type { DispatchOutcome, DispatchRunEnqueue } from "./dispatcher-types.ts";
+// of the re-export — TypeScript requires both shapes when the name
+// is used in this file's own type annotations.
+export type { DispatchOutcome } from "./dispatcher-types.ts";
 
-import type { DispatchOutcome, DispatchRunEnqueue } from "./dispatcher-types.ts";
+import type { DispatchOutcome } from "./dispatcher-types.ts";
 import { routeChatInteraction } from "./elicit-routing.ts";
+import { withConversationTurnLock } from "./turn-lock.ts";
 import {
   type ApprovalCard,
   CHAT_RATES,
@@ -83,11 +77,6 @@ import {
 export interface DispatcherDeps {
   db: Db;
   adapter: ChatAdapter;
-  /** Called for `/subkit run <wf>` events. Tests inject a fake; the
-   * production wiring forwards into pg-boss. If omitted the dispatcher
-   * still creates the execution row but skips enqueue (and notes that
-   * in the ack message). */
-  enqueueRun?: (job: DispatchRunEnqueue) => Promise<void>;
 }
 
 interface SendOptions {
@@ -111,6 +100,40 @@ interface SendOptions {
  * `dropped_rate_limited` in metrics and return a synthetic
  * `platform_message_id` so the caller's state machine still advances.
  */
+/**
+ * Consume one token from the per-(tenant, workspace, channel) outbound
+ * bucket for a LOAD-BEARING interactive message (elicitation render /
+ * approval card). Unlike `sendTracked`, exhaustion does NOT drop the
+ * message: an unsent card leaves the conversation stuck in
+ * awaiting_input with nothing for the user to answer, which is worse
+ * than briefly exceeding the platform cap by the handful of cards a
+ * turn can produce. The consumption keeps the shared bucket honest —
+ * ordinary replies and notifications behind the same bucket back off
+ * sooner when cards are flowing.
+ */
+function consumeInteractiveSlot(
+  platform: string,
+  key: { tenant_id: string; workspace_id: string; channel_id: string },
+): void {
+  const platformRate = CHAT_RATES[platform as ChatPlatform]?.per_minute;
+  if (!platformRate || platformRate <= 0) return;
+  const gate = tryAcquire(key, platformRate, 1);
+  if (!gate.ok) {
+    recordChatDelivery({ platform, status: "rate_limited" });
+    logger.warn({
+      module: "chat",
+      action: "outbound.interactive_over_budget",
+      msg: "interactive card sent past the token bucket — load-bearing message, not dropped",
+      platform,
+      tenant_id: key.tenant_id,
+      workspace_id: key.workspace_id,
+      channel: key.channel_id,
+      per_minute: platformRate,
+      retry_after_ms: gate.retryAfterMs,
+    });
+  }
+}
+
 async function sendTracked(
   adapter: ChatAdapter,
   platform: string,
@@ -302,6 +325,45 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
   if (!workspace) return { status: "workspace_not_found" };
   const tenant_id = workspace.tenant_id;
 
+  // Non-conversational platform events never run a turn and never need
+  // a linked identity. `removed_from_space` drops the space's session
+  // bindings — the app can no longer post there, so keeping a live
+  // thread→conversation binding would only produce dead-letter outbound
+  // sends when the notification path targets the stale channel.
+  if (ev.kind === "system") {
+    if (ev.system_event === "removed_from_space") {
+      const dropped = await db
+        .delete(chatSessions)
+        .where(
+          and(
+            eq(chatSessions.tenant_id, tenant_id),
+            eq(chatSessions.workspace_id, workspace.id),
+            like(chatSessions.thread_id, `${ev.channel_id}%`),
+          ),
+        )
+        .returning({ id: chatSessions.id });
+      logger.info({
+        module: "chat",
+        action: "system_event.removed_from_space",
+        msg: "app removed from space — dropped its session bindings",
+        tenant_id,
+        platform: ev.platform,
+        channel_id: ev.channel_id,
+        dropped_sessions: dropped.length,
+      });
+    } else {
+      logger.debug({
+        module: "chat",
+        action: "system_event.ignored",
+        msg: "non-conversational platform event acked and ignored",
+        tenant_id,
+        platform: ev.platform,
+        system_event: ev.system_event ?? "unknown",
+      });
+    }
+    return { status: "ignored" };
+  }
+
   // Resolve identity → subkit user. The previous auto-link-to-admin
   // shortcut is gone: it silently elevated any chat user who could
   // message the bot to tenant admin (every conversation tool, including
@@ -464,11 +526,17 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
     // as the chat prompt.
     prompt = rawText.replace(/^<@[A-Za-z0-9]+>\s*/, "").trim();
   } else if (parsed && parsed.verb === "run") {
-    // /subkit run <workflow> k=v ... — resolve workflow by slug or
-    // UUID, materialize an execution row, then hand off to whatever
-    // the caller wired into `enqueueRun` (in production: pg-boss).
-    const slugOrId = parsed.workflow;
-    if (!slugOrId) {
+    // /subkit run <workflow> k=v ... — routed through the SAME
+    // conversation turn every other run takes. The previous inline
+    // implementation duplicated a weaker copy of the run contract:
+    // it checked `workflow:run` RBAC but skipped the confirm gate
+    // (`gateTenantToolCall`) and the input-contract deferral the
+    // fast-path / `run_workflow` tool enforce — an execute_writes
+    // workflow ran unconfirmed from chat. Handing the verb to the
+    // conversation flow gives one run contract everywhere: RBAC +
+    // confirm (rendered as the chat approval card via the
+    // awaiting_input handling below) + auto-generated input forms.
+    if (!parsed.workflow) {
       await sendTracked(adapter, ev.platform, {
         tenant_id,
         workspace_id: ev.workspace_id,
@@ -479,148 +547,10 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
       });
       return { status: "help" };
     }
-
-    // Try UUID first, then slug. getWorkflow expects a UUID and will
-    // throw on malformed input, so guard with a regex.
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slugOrId);
-    let wf = null;
-    if (isUuid) {
-      wf = await getWorkflow(tenant_id, slugOrId, db);
-    }
-    if (!wf) {
-      wf = await getWorkflowBySlug(tenant_id, slugOrId, db);
-    }
-    if (!wf) {
-      await sendTracked(adapter, ev.platform, {
-        tenant_id,
-        workspace_id: ev.workspace_id,
-        channel_id: ev.channel_id,
-        ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
-        kind: "ephemeral",
-        text: `Workflow \`${slugOrId}\` not found in this tenant.`,
-      });
-      return { status: "help" };
-    }
-    if (!wf.current_version_id) {
-      await sendTracked(adapter, ev.platform, {
-        tenant_id,
-        workspace_id: ev.workspace_id,
-        channel_id: ev.channel_id,
-        ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
-        kind: "ephemeral",
-        text: `Workflow \`${slugOrId}\` has no active version.`,
-      });
-      return { status: "help" };
-    }
-
-    // Pull the workflow_version_id directly from the table — the view
-    // exposes only the version number.
-    const versionRows = await db
-      .select({ current_version_id: workflowsTable.current_version_id })
-      .from(workflowsTable)
-      .where(and(eq(workflowsTable.tenant_id, tenant_id), eq(workflowsTable.id, wf.id)))
-      .limit(1);
-    const workflow_version_id = versionRows[0]?.current_version_id;
-    if (!workflow_version_id) {
-      await sendTracked(adapter, ev.platform, {
-        tenant_id,
-        workspace_id: ev.workspace_id,
-        channel_id: ev.channel_id,
-        ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
-        kind: "ephemeral",
-        text: `Workflow \`${slugOrId}\` has no active version.`,
-      });
-      return { status: "help" };
-    }
-
-    // Pass-2 C6: chat slash `/run` gates on `workflow:run`. The
-    // dispatcher assembles a synthetic user principal out of the
-    // resolved chat identity so the evaluator can walk the
-    // role/group/grant ladder and the admin short-circuit fires when
-    // the linked user's enum role warrants it.
-    const principal = await resolveChatPrincipal(db, tenant_id, user_id);
-    const runDecision = await can(db, {
-      tenant_id,
-      principal,
-      permission: "workflow:run",
-      resource: { type: "workflow", id: wf.id },
-    });
-    if (!runDecision.allow) {
-      await auditAwait(
-        {
-          tenant_id,
-          actor_type: "user",
-          actor_id: user_id,
-          action: AuditAction.POLICY_DENIED,
-          resource_type: "workflow",
-          resource_id: wf.id,
-          result: "denied",
-          reason: runDecision.reason ?? "permission_denied:workflow:run",
-          metadata: { via: "chat", slug: wf.slug },
-        },
-        db,
-      );
-      await sendTracked(adapter, ev.platform, {
-        tenant_id,
-        workspace_id: ev.workspace_id,
-        channel_id: ev.channel_id,
-        ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
-        kind: "ephemeral",
-        text: `Permission denied: ${runDecision.reason ?? "workflow:run"}`,
-      });
-      return { status: "help" };
-    }
-
-    const execution_id = await createExecution(db, {
-      tenant_id,
-      workflow_id: wf.id,
-      workflow_version_id,
-      source_kind: "saved",
-      source_ref: null,
-      request_source: "chat",
-      parent_execution_id: null,
-      input: parsed.args,
-    });
-
-    if (deps.enqueueRun) {
-      await deps.enqueueRun({
-        tenant_id,
-        workflow_id: wf.id,
-        execution_id,
-        input: parsed.args,
-        request_source: "chat",
-        trace_id: null,
-      });
-    }
-
-    await auditAwait(
-      {
-        tenant_id,
-        actor_type: "user",
-        actor_id: user_id,
-        action: AuditAction.EXECUTION_STARTED,
-        resource_type: "execution",
-        resource_id: execution_id,
-        result: "success",
-        metadata: {
-          workflow_id: wf.id,
-          slug: wf.slug,
-          via: "chat",
-          input_keys: Object.keys(parsed.args),
-        },
-      },
-      db,
-    );
-
-    await sendTracked(adapter, ev.platform, {
-      tenant_id,
-      workspace_id: ev.workspace_id,
-      channel_id: ev.channel_id,
-      ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
-      kind: "ephemeral",
-      text: `execution started: ${execution_id}`,
-    });
-    return { status: "ok", execution_id, workflow_id: wf.id };
+    const argText = Object.entries(parsed.args)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(" ");
+    prompt = `run ${parsed.workflow}${argText ? ` with ${argText}` : ""}`;
   }
 
   if (!prompt) {
@@ -663,58 +593,75 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
     // conversation_id from the lookup above, register synchronously,
     // unregister in `finally`. The append + turn split: `appendUserMessage`
     // persists the message row, `runConversationTurn` drives the loop.
-    const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
-    try {
-      const appended = await appendUserMessage(
-        { tenant_id, conversation_id, actor_id: user_id, message: prompt },
-        db,
-      );
-      const turn = await runConversationTurn(
-        {
-          tenant_id,
-          conversation_id,
-          actor_id: user_id,
-          principal: chatPrincipal,
-          user_message: appended.message,
-          user_memory: appended.user_memory,
-          turn_abort_ctrl: turnAbortCtrl,
-        },
-        db,
-      );
-      outcome = turn.result;
-    } finally {
-      unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
-    }
+    //
+    // The turn lock serializes concurrent turns on the shared space
+    // conversation: two members mentioning the bot at once would
+    // otherwise interleave two runLoop turns over the same timeline.
+    outcome = await withConversationTurnLock(tenant_id, conversation_id, async () => {
+      const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+      try {
+        const appended = await appendUserMessage(
+          { tenant_id, conversation_id, actor_id: user_id, message: prompt },
+          db,
+        );
+        const turn = await runConversationTurn(
+          {
+            tenant_id,
+            conversation_id,
+            actor_id: user_id,
+            principal: chatPrincipal,
+            user_message: appended.message,
+            user_memory: appended.user_memory,
+            turn_abort_ctrl: turnAbortCtrl,
+            // Channel-scoped read-only contract: the chat surface selects
+            // the CHAT_READONLY_TOOLS palette + chat persona in the loop.
+            surface: "chat",
+          },
+          db,
+        );
+        return turn.result;
+      } finally {
+        unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+      }
+    });
   } else {
     const created = await createConversation(
       { tenant_id, actor_id: user_id, initial_message: prompt },
       db,
     );
     conversation_id = created.conversation.id;
+    // A same-space create race is bounded by the DB: the
+    // chat_sessions_workspace_thread_key unique index makes the loser
+    // throw, pg-boss retries it, and the retry finds the winner's
+    // session. The turn lock below then covers the turn itself.
     await db.insert(chatSessions).values({
       tenant_id,
       workspace_id: workspace.id,
       thread_id: threadKey,
       conversation_id,
     });
-    const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
-    try {
-      const turn = await runConversationTurn(
-        {
-          tenant_id,
-          conversation_id,
-          actor_id: user_id,
-          principal: chatPrincipal,
-          user_message: created.initial_message ?? "",
-          user_memory: created.user_memory,
-          turn_abort_ctrl: turnAbortCtrl,
-        },
-        db,
-      );
-      outcome = turn.result;
-    } finally {
-      unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
-    }
+    outcome = await withConversationTurnLock(tenant_id, conversation_id, async () => {
+      const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+      try {
+        const turn = await runConversationTurn(
+          {
+            tenant_id,
+            conversation_id,
+            actor_id: user_id,
+            principal: chatPrincipal,
+            user_message: created.initial_message ?? "",
+            user_memory: created.user_memory,
+            turn_abort_ctrl: turnAbortCtrl,
+            // Same channel-scoped read-only contract as the resume path.
+            surface: "chat",
+          },
+          db,
+        );
+        return turn.result;
+      } finally {
+        unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+      }
+    });
   }
 
   let approval_sent = false;
@@ -755,6 +702,11 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
       const renderElicitation = adapter.renderElicitation;
       if (!renderElicitation)
         throw new Error("dispatcher: renderElicitation gone after capability check");
+      consumeInteractiveSlot(ev.platform, {
+        tenant_id,
+        workspace_id: ev.workspace_id,
+        channel_id: ev.channel_id,
+      });
       try {
         await renderElicitation.call(adapter, elicitation, {
           tenant_id,
@@ -777,6 +729,11 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
         approval_id: outcome.pending_elicitation_id,
         summary,
       };
+      consumeInteractiveSlot(ev.platform, {
+        tenant_id,
+        workspace_id: ev.workspace_id,
+        channel_id: ev.channel_id,
+      });
       try {
         await adapter.sendApproval(card);
         recordChatDelivery({ platform: ev.platform, status: "delivered" });

@@ -233,6 +233,94 @@ export function filterByAuthoringPalette<
   return tools.filter((tool) => allowed.has(tool.name) || tool.category === "tenant_read");
 }
 
+// ── Chat read-only palette ──────────────────────────────────────────────────
+//
+// External chat channels (Google Chat, Slack, Teams) are a channel-scoped
+// READ-ONLY surface: query tenant state, run saved workflows, plain LLM
+// chat — never author, never mutate, never call connectors directly. The
+// restriction is structural (palette-level), NOT role-level: an
+// admin-linked chat identity gets the same set. RBAC stays the second,
+// per-user layer underneath.
+
+/**
+ * The channel-scoped read-only palette for `surface: "chat"`.
+ *
+ * A pure NAME allow-list — deliberately independent of `loadedSkills`
+ * AND of `tool.category`, so that (a) `load_skill`-ing an authoring
+ * skill can never unlock authoring tools, and (b) a future
+ * `tenant_read`-categorised tool is NOT auto-exposed (fail-closed; the
+ * category catch-all in `filterByAuthoringPalette` does not apply here).
+ *
+ * Deliberately EXCLUDED, with reasons:
+ *  - `call_connector` — categorised `tenant_read` but issues live
+ *    connector calls including writes; the channel contract forbids
+ *    direct connector use entirely.
+ *  - `probe_connector`, `test_connector`, `discover_connector_endpoints`,
+ *    `discover_systems_from_files`, `fetch_connector_docs`,
+ *    `fetch_connector_self_description`, `suggest_connector_templates`,
+ *    `match_connector_template_by_url`, `analyze_scrape_target` —
+ *    connector-authoring aids and live probes.
+ *  - `authenticate_oauth`, `request_connector_reauth` — credential flows.
+ *  - `inspect_authoring_context`, `diagnose_latest_execution`,
+ *    `list_draft_snapshots` — authoring-session surfaces.
+ *  - every `draft_write` / `tenant_write` tool (author/edit/save/update/
+ *    delete/create/revoke/approve) — the channel never mutates.
+ *  - external MCP tools — write-capable; gated in `sdk-wrap.ts`.
+ *
+ * `run_workflow` and the synthetic `wf_<slug>` peers stay: running a
+ * saved workflow is the channel's one action, and it remains behind
+ * `resolveExecutionToolGate`, per-user RBAC (`gateTenantToolCall`), and
+ * the confirm policy (rendered as a chat approval card).
+ */
+export const CHAT_READONLY_TOOLS: ReadonlySet<string> = new Set([
+  // conversational meta
+  "ask_user_choice",
+  "ask_user_confirm",
+  "ask_user_form",
+  "ask_user_multi",
+  "ask_user_text",
+  "cannot_help",
+  "list_skills",
+  "load_skill",
+  "list_attachments",
+  "preview_attachment",
+  "get_raw_result",
+  // knowledge + docs (read)
+  "search_knowledge",
+  "search_docs",
+  "list_knowledge_sources",
+  "get_knowledge_source",
+  // workflows (read)
+  "list_workflows",
+  "get_workflow",
+  "find_workflow",
+  // executions (read)
+  "list_executions",
+  "get_execution",
+  "inspect_execution",
+  "inspect_execution_step",
+  // connectors — METADATA only
+  "list_connectors",
+  "get_connector",
+  "find_connector",
+  // skills (read)
+  "get_skill",
+  "find_skill",
+  // schedules (read)
+  "list_schedules",
+  // execution dispatch — gated by execution-tool gate + RBAC + confirm
+  "run_workflow",
+]);
+
+/**
+ * Resolve the visible palette for a chat-surface turn. Unlike
+ * `filterByAuthoringPalette` this takes no draft and no loadedSkills —
+ * the chat palette is constant for the lifetime of the channel.
+ */
+export function filterByChatReadOnlyPalette<T extends { name: string }>(tools: readonly T[]): T[] {
+  return tools.filter((tool) => CHAT_READONLY_TOOLS.has(tool.name));
+}
+
 // ── Execution-tool gate ─────────────────────────────────────────────────────
 //
 // `run_workflow` and every synthetic `wf_<slug>` peer EXECUTE an existing

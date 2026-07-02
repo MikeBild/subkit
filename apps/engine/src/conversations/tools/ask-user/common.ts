@@ -300,6 +300,7 @@ export async function pauseForUserInput(
             conversation_id: ctx.conversation_id,
             actor_id: ctx.actor_id,
             ...(ctx.principal !== undefined ? { principal: ctx.principal } : {}),
+            ...(ctx.surface ? { surface: ctx.surface } : {}),
             output,
             elicitation: { id: row.id, tool_name: p.tool_name, input: p.input },
             db: ctx.db,

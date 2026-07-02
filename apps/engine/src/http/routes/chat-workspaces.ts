@@ -21,6 +21,7 @@ import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import {
+  buildGoogleChatAdapterFromConfig,
   type ChatAdapterRegistry,
   ChatPlatformZodEnum,
   chatWorkspaceAad,
@@ -54,20 +55,32 @@ const ChatWorkspaceListResponse = z
 const InstallChatWorkspaceSchema = z
   .object({
     platform: ChatPlatformZodEnum,
-    /** Platform-native workspace id. Slack: `team_id` (T…). */
+    /** Platform-native workspace id. Slack: `team_id` (T…); Google
+     *  Chat: the space resource name (`spaces/…`) — one install row per
+     *  space, since Google events carry no domain/customer id. */
     workspace_id: z.string().min(1),
-    /** Bot User OAuth Token for Slack (`xoxb-…`). For Teams / Google
-     *  Chat the same field holds the platform's bot credential; those
-     *  platforms are not yet hydrated and the install accepts the
-     *  string for forward-compat. */
-    bot_token: z.string().min(1),
-    /** The installing operator's platform user id (Slack `U…`). Linked
-     *  to the authenticated subkit user via `chat_identities` so the
-     *  operator's first chat message resolves to a real principal
-     *  instead of being rejected as "not linked". */
+    /** Bot User OAuth Token for Slack (`xoxb-…`) — required there
+     *  because the token is per-workspace. Google Chat authenticates
+     *  outbound with the APP-LEVEL service account from engine config
+     *  (`platform.googlechat.*`), so the field is omitted. Teams keeps
+     *  accepting a credential string for forward-compat. */
+    bot_token: z.string().min(1).optional(),
+    /** The installing operator's platform user id (Slack `U…`, Google
+     *  `users/…`). Linked to the authenticated subkit user via
+     *  `chat_identities` so the operator's first chat message resolves
+     *  to a real principal instead of being rejected as "not linked". */
     installer_platform_user_id: z.string().min(1),
     /** Optional default channel (e.g. for notifications dispatch). */
     default_channel: z.string().nullable().optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.platform !== "google_chat" && !body.bot_token) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["bot_token"],
+        message: `bot_token is required for platform "${body.platform}" (per-workspace credential); only google_chat installs omit it`,
+      });
+    }
   })
   .openapi("InstallChatWorkspace");
 
@@ -267,8 +280,16 @@ export function registerChatWorkspaceRoutes(
         );
       }
 
-      // Re-encrypt with the row-bound AAD, then update.
-      const bound = encryptSecret(body.bot_token, chatWorkspaceAad(row.tenant_id, row.id));
+      // Re-encrypt with the row-bound AAD, then update. A google_chat
+      // install has no per-workspace token (app-level service account
+      // from config) — store a bound sentinel so the NOT-NULL cipher
+      // columns stay decryptable under the row AAD; nothing ever reads
+      // it back for that platform (hydrate builds the adapter from
+      // config).
+      const bound = encryptSecret(
+        body.bot_token ?? "__no_workspace_token__",
+        chatWorkspaceAad(row.tenant_id, row.id),
+      );
       await tx
         .update(chatWorkspaces)
         .set({
@@ -419,10 +440,14 @@ export function registerChatWorkspaceRoutes(
     if (!row) throw new ConflictError("chat_workspace install transaction produced no row");
 
     // Register the adapter live so the next inbound event finds it
-    // without waiting for a reboot. Only Slack is hydrated today; the
-    // Teams / Google branches stay silent here on purpose (their
-    // activation is separate later work).
-    if (body.platform === "slack") {
+    // without waiting for a reboot. Slack + Google Chat are hydrated
+    // today; the Teams branch stays silent on purpose (its activation
+    // is separate later work). A google_chat install with incomplete
+    // engine-config credentials registers nothing — the boot-time
+    // hydrate emits the CHAT_WORKSPACE_HYDRATE_SKIPPED audit for that
+    // state, and the lazy rehydrate picks the row up once config is
+    // fixed.
+    if (body.platform === "slack" && body.bot_token) {
       const signingSecret = getConfig().platform.slack.signing_secret;
       const adapter = new SlackAdapter({
         signingSecret,
@@ -437,6 +462,20 @@ export function registerChatWorkspaceRoutes(
         adapter,
       );
       deps.registry.registerFallback("slack", adapter);
+    } else if (body.platform === "google_chat") {
+      const google = getConfig().platform.googlechat;
+      if (google.client_email && google.private_key && google.audience) {
+        const adapter = buildGoogleChatAdapterFromConfig(google);
+        deps.registry.register(
+          {
+            tenant_id: row.tenant_id,
+            platform: "google_chat",
+            workspace_id: row.workspace_id,
+          },
+          adapter,
+        );
+        deps.registry.registerFallback("google_chat", adapter);
+      }
     }
 
     // Re-fetch so the response carries the persisted timestamps.

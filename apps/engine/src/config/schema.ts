@@ -378,6 +378,25 @@ const PlatformSection = z
           .string()
           .default("")
           .meta(global({ requiresRestart: true })),
+        // App-level Chat-app service account (one per engine, like
+        // Slack's signing secret): outbound REST auth via JWT assertion.
+        client_email: z
+          .string()
+          .default("")
+          .meta(global({ requiresRestart: true })),
+        private_key: z
+          .string()
+          .default("")
+          .meta(global({ requiresRestart: true, secret: true })),
+        // Inbound JWT audience. The Chat-app console setting
+        // "Authentication Audience" MUST be "Project Number" — this is
+        // that number (a numeric string). In the alternative
+        // "HTTP endpoint URL" mode Google signs a different token shape
+        // the adapter deliberately does not speak.
+        audience: z
+          .string()
+          .default("")
+          .meta(global({ requiresRestart: true })),
       })
       .prefault({})
       .describe("Google Chat"),

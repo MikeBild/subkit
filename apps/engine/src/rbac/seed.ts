@@ -104,6 +104,14 @@ const ENDUSER_PERMISSIONS = new Set<string>([
   "conversation:cancel",
   "conversation:list",
   "knowledge:read",
+  // Skills are read-only reference material (loading one never grants
+  // tools beyond the enduser's own RBAC), and enduser-facing surfaces —
+  // chiefly the read-only chat channel — answer "which skills exist /
+  // what does <skill> say" directly. Deliberately still absent:
+  // connector:read and schedule:read (metadata about integrations and
+  // automation stays operator-facing; grant via a custom role when a
+  // tenant wants chat users to see it).
+  "skill:read",
   "file:read",
 ]);
 const METRICS_SCRAPER_PERMISSIONS = new Set<string>(["metrics:read"]);

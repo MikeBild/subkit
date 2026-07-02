@@ -149,9 +149,13 @@ export interface RunLoopParams {
   /**
    * Surface the conversation is running on. Selects the per-surface
    * system-prompt variant (terse for sk_headless, conversational for
-   * sk_interactive, machine-readable for mcp, etc).
+   * sk_interactive, machine-readable for mcp, etc). The `chat` surface
+   * (external chat platforms — Google Chat, Slack, Teams) additionally
+   * restricts the tool palette to the channel-scoped read-only set:
+   * authoring and direct connector calls are structurally unavailable
+   * regardless of the linked user's role.
    */
-  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web";
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   /**
    * Live emitter — invoked synchronously every time the loop pushes a
    * TurnEvent. Used by the HTTP SSE route and MCP progress bridge to
@@ -913,7 +917,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     "connector-creation-guidance",
     "workflow-authoring",
   ];
-  const loadedSkills = [...new Set([...loadedSlugMembership, ...AUTO_LOADED_AUTHORING_SKILLS])];
+  // The chat surface never authors: its palette is the fixed read-only
+  // allow-list (`CHAT_READONLY_TOOLS`, resolved in `wrapTools`), which
+  // ignores skill-load state entirely. Skipping the authoring auto-load
+  // here is belt-and-braces (keeps `filterBySkillGate` + prompt-side
+  // skill handling honest) and saves the authoring skill bodies from
+  // ever entering the chat prompt budget.
+  const loadedSkills =
+    p.surface === "chat"
+      ? [...loadedSlugMembership]
+      : [...new Set([...loadedSlugMembership, ...AUTO_LOADED_AUTHORING_SKILLS])];
   logger.debug({
     module: "conversation_palette",
     action: "palette.resolved",

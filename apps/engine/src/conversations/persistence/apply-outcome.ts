@@ -40,6 +40,9 @@ export interface ApplyElicitationOutcomeInput {
   };
   /** The operator's answer — shape depends on the tool. */
   output: unknown;
+  /** Surface the resume runs on — `"chat"` blocks mutating
+   *  commit_intents (read-only channel); see auto-persist.ts. */
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   db: Db;
 }
 
@@ -67,6 +70,7 @@ export async function applyElicitationOutcome(
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
     ...(p.principal !== undefined ? { principal: p.principal } : {}),
+    ...(p.surface ? { surface: p.surface } : {}),
     elicitation_output: p.output,
     elicitation: {
       id: p.elicitation.id,

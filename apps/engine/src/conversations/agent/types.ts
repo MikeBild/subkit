@@ -5,7 +5,7 @@
 import type { AuthoringPromptHint } from "../../llm/types.ts";
 import type { AgentSkillName } from "./skills/index.ts";
 
-export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web";
+export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
 
 /** Inputs the system-prompt generator needs from the conversation loop. */
 export interface AgentSystemPromptInput {

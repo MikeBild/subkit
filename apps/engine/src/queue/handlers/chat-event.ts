@@ -14,8 +14,9 @@
 //      any conversation work runs.
 //   3. Resolve the workspace-specific adapter from `chatRegistry` for
 //      outbound posting.
-//   4. Hand off to `handleChatEvent` with a real `enqueueRun` that
-//      forwards `/subkit run …` jobs onto `EXECUTION_RUN_QUEUE`.
+//   4. Hand off to `handleChatEvent`. `/subkit run …` is routed through
+//      the conversation turn inside the dispatcher (same RBAC + confirm
+//      + input contract as every other run path).
 //
 // pg-boss retries the job on throw per the `chat.event` queue config
 // (retryLimit: 3, retryBackoff: true). Terminal failures land in
@@ -27,18 +28,13 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import { ChatEventJobSchema } from "../../chat/api.ts";
 import { markChatEventSeen } from "../../chat/dedup.ts";
-import { type DispatchRunEnqueue, handleChatEvent } from "../../chat/dispatcher.ts";
+import { handleChatEvent } from "../../chat/dispatcher.ts";
 import { ensureChatRegistryHydrated } from "../../chat/hydrate.ts";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
-import {
-  CHAT_EVENT_QUEUE,
-  type ChatEventJob,
-  EXECUTION_RUN_QUEUE,
-  type ExecutionRunJob,
-} from "../queues.ts";
+import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queues.ts";
 
 export interface RegisterChatEventOptions {
   boss: PgBoss;
@@ -47,7 +43,7 @@ export interface RegisterChatEventOptions {
 }
 
 async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions): Promise<void> {
-  const { boss, db, chatRegistry } = opts;
+  const { db, chatRegistry } = opts;
   // Zod-validate the rehydrated job payload at the worker boundary.
   // pg-boss persists jobs in Postgres and rehydrates after restart; a
   // schema drift in `ChatEvent` mid-deploy would otherwise silently
@@ -197,20 +193,8 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
     );
   }
 
-  const enqueueRun = async (run: DispatchRunEnqueue): Promise<void> => {
-    const payload: ExecutionRunJob = {
-      tenant_id: run.tenant_id,
-      workflow_id: run.workflow_id,
-      execution_id: run.execution_id,
-      input: run.input,
-      request_source: run.request_source,
-      trace_id: run.trace_id ?? null,
-    };
-    await boss.send(EXECUTION_RUN_QUEUE, payload);
-  };
-
   try {
-    const outcome = await handleChatEvent({ db, adapter, enqueueRun }, event);
+    const outcome = await handleChatEvent({ db, adapter }, event);
     log.queue.job.completed({
       msg: "chat.event job completed",
       queue: CHAT_EVENT_QUEUE,

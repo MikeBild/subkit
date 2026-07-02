@@ -30,6 +30,7 @@ import {
 } from "./api.ts";
 import type { DispatchOutcome } from "./dispatcher-types.ts";
 import { resolveChatPrincipal } from "./principal.ts";
+import { withConversationTurnLock } from "./turn-lock.ts";
 import type { ChatEvent, ElicitationKind } from "./types.ts";
 
 /** UUID v4-friendly shape check. Used before any string from an
@@ -296,21 +297,41 @@ export async function routeChatInteraction(
   // user's RBAC instead of failing `principal_required`.
   const principal = await resolveChatPrincipal(db, tenant_id, user_id);
   try {
-    await respondElicitation(
-      {
-        tenant_id,
-        conversation_id,
-        elicitation_id,
-        actor_id: user_id,
-        principal,
-        output,
-        turn_abort_ctrl: turnAbortCtrl,
-        require_same_actor: true,
-      },
-      db,
+    // Same per-conversation serialization the dispatcher's turn paths
+    // use: the resume drives runLoop on the shared space conversation
+    // and must not interleave with an in-flight mention turn.
+    await withConversationTurnLock(tenant_id, conversation_id, () =>
+      respondElicitation(
+        {
+          tenant_id,
+          conversation_id,
+          elicitation_id,
+          actor_id: user_id,
+          principal,
+          output,
+          turn_abort_ctrl: turnAbortCtrl,
+          require_same_actor: true,
+          // The RESUMED turn re-assembles the palette — without the chat
+          // surface it would fall back to the full authoring set (the
+          // fail-open this parameter exists to close).
+          surface: "chat",
+        },
+        db,
+      ),
     );
   } catch (err) {
     if (err instanceof ElicitationActorMismatchError) {
+      // A space conversation is shared: every linked member sees the
+      // approval card, but only the initiator may resolve it. Tell the
+      // clicking user why nothing happened (best-effort) instead of
+      // silently ignoring the click.
+      if (notify) {
+        try {
+          await notify("Only the person who started this request can confirm it.");
+        } catch {
+          /* best-effort: the audit row below still records the denial */
+        }
+      }
       // Surface a denied audit row so the cross-actor attempt is
       // visible in SIEM; return ignored so the dispatcher's outer
       // outcome is unchanged.

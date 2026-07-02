@@ -12187,7 +12187,6 @@
         "required": [
           "platform",
           "workspace_id",
-          "bot_token",
           "installer_platform_user_id"
         ]
       },
