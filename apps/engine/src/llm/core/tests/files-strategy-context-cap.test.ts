@@ -63,9 +63,9 @@ describe("250 KiB per-turn inline cap", () => {
       db: ctx.db,
       tenant_id,
       conversation_id,
-      filename: "under-cap.bin",
+      filename: "under-cap.png",
       content,
-      content_type: "application/octet-stream",
+      content_type: "image/png",
       slug: `under-cap-${uuid().slice(0, 8)}`,
     });
 
@@ -109,18 +109,18 @@ describe("250 KiB per-turn inline cap", () => {
       db: ctx.db,
       tenant_id,
       conversation_id,
-      filename: "cap-file1.bin",
+      filename: "cap-file1.png",
       content: content1,
-      content_type: "application/octet-stream",
+      content_type: "image/png",
       slug: `cap-f1-${uuid().slice(0, 8)}`,
     });
     const att2 = await attachInlineForTest({
       db: ctx.db,
       tenant_id,
       conversation_id,
-      filename: "cap-file2.bin",
+      filename: "cap-file2.png",
       content: content2,
-      content_type: "application/octet-stream",
+      content_type: "image/png",
       slug: `cap-f2-${uuid().slice(0, 8)}`,
     });
 
@@ -162,27 +162,27 @@ describe("250 KiB per-turn inline cap", () => {
       db: ctx.db,
       tenant_id,
       conversation_id,
-      filename: "triple-1.bin",
+      filename: "triple-1.png",
       content: firstContent,
-      content_type: "application/octet-stream",
+      content_type: "image/png",
       slug: `triple-1-${uuid().slice(0, 8)}`,
     });
     const att2 = await attachInlineForTest({
       db: ctx.db,
       tenant_id,
       conversation_id,
-      filename: "triple-2.bin",
+      filename: "triple-2.png",
       content: bigContent2,
-      content_type: "application/octet-stream",
+      content_type: "image/png",
       slug: `triple-2-${uuid().slice(0, 8)}`,
     });
     const att3 = await attachInlineForTest({
       db: ctx.db,
       tenant_id,
       conversation_id,
-      filename: "triple-3.bin",
+      filename: "triple-3.png",
       content: bigContent3,
-      content_type: "application/octet-stream",
+      content_type: "image/png",
       slug: `triple-3-${uuid().slice(0, 8)}`,
     });
 

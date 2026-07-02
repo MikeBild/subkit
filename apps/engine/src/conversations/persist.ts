@@ -20,7 +20,11 @@ import {
 import { extractFileSentinels, replaceFileSentinels } from "../files/sentinel.ts";
 import { countModelMessagesTokens } from "../llm/accounting/index.ts";
 import { getStaticCapabilities } from "../llm/core/capabilities.ts";
-import { buildFileContentBlocks, type FileContentBlock } from "../llm/core/file-context.ts";
+import {
+  buildFileContentBlocks,
+  type FileContentBlock,
+  sdkProviderId,
+} from "../llm/core/file-context.ts";
 import type { ProviderKind } from "../llm/core/model-init.ts";
 import { logger } from "../logging/logger.ts";
 import { scrubString } from "../logging/scrub-secrets.ts";
@@ -184,26 +188,25 @@ export async function buildUserContentParts(
 }
 
 /** Translate one assembler block into AI SDK content parts. `file_api`
- *  carries the provider-native id through `providerOptions` so the
- *  upstream provider adapter can splice the native reference shape into
- *  the request without re-uploading. `file_part` becomes a FilePart for
- *  PDFs / generic binaries or an ImagePart for image media types
- *  (depending on capabilities). `text_extract` becomes a TextPart. */
-function toAiSdkParts(block: FileContentBlock): Array<TextPart | ImagePart | FilePart> {
+ *  becomes a FilePart carrying a `FileDataReference` — the provider
+ *  adapter resolves `reference[<sdk provider key>]` to its native
+ *  file-id block (Anthropic `document`/`image` file source, OpenAI
+ *  `input_file`, Google `fileData`) without re-uploading. `file_part`
+ *  becomes a FilePart for PDFs / generic binaries or an ImagePart for
+ *  image media types. `text_extract` becomes a TextPart.
+ *
+ *  Exported for the reference-shape regression test — the provider
+ *  adapters only derive their native file-id blocks from the exact
+ *  `FileDataReference` shape, so drift here silently sends empty
+ *  documents. */
+export function toAiSdkParts(block: FileContentBlock): Array<TextPart | ImagePart | FilePart> {
   if (block.strategy === "file_api") {
-    // Round-trip the provider-native shape through JSON so it satisfies
-    // the AI SDK's `JSONValue` constraint on `providerOptions` (typed
-    // unions don't widen automatically).
-    const native = JSON.parse(JSON.stringify(block.native));
     return [
       {
         type: "file",
-        data: new Uint8Array(0),
+        data: { type: "reference", reference: { [sdkProviderId(block.provider)]: block.file_id } },
         mediaType: block.content_type,
         filename: block.filename,
-        providerOptions: {
-          [block.provider]: { file_id: block.file_id, native },
-        },
       },
     ];
   }

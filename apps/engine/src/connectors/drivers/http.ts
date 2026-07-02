@@ -25,6 +25,7 @@ import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import type { ConnectorView } from "../types.ts";
 import { signSigV4Request } from "./aws-sigv4.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
+import { shouldPromoteToFile } from "./file-promotion.ts";
 import { buildProbeDiagnostics } from "./probe-diagnostics.ts";
 
 // Re-export so callers that already import from this driver can catch
@@ -76,20 +77,22 @@ export function resolveMaxResponseBytes(tenant_id?: string): number {
 }
 
 /**
- * Read a fetch Response body into a string with a HARD byte cap, so a
+ * Read a fetch Response body into a Buffer with a HARD byte cap, so a
  * single oversized upstream response can't OOM the engine. Rejects early
  * on a Content-Length over the cap; for chunked / unknown-length bodies it
  * streams and aborts once the cumulative size exceeds the cap. Throws
  * `HttpRequestInvalidError` (classified non-retryable / `request_invalid`
  * by the request step) so the retry ladder doesn't re-pull the body.
- * Falls back to `res.text()` when the body isn't a readable stream (e.g. a
- * mocked Response in tests), still honouring the Content-Length pre-check.
+ * Falls back to `res.arrayBuffer()` when the body isn't a readable stream
+ * (e.g. a mocked Response in tests), still honouring the Content-Length
+ * pre-check. Byte-preserving: binary bodies survive intact — the UTF-8
+ * decode is the caller's (lossy) choice via `readBodyCapped`.
  */
-export async function readBodyCapped(
+export async function readBodyBytesCapped(
   res: Response,
   maxBytes: number,
   path: string,
-): Promise<string> {
+): Promise<Buffer> {
   const cl = res.headers.get("content-length");
   if (cl) {
     const declared = Number(cl);
@@ -102,14 +105,14 @@ export async function readBodyCapped(
   }
   const body = res.body;
   if (!body || typeof body.getReader !== "function") {
-    const text = await res.text();
-    if (Buffer.byteLength(text, "utf8") > maxBytes) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength > maxBytes) {
       throw new HttpRequestInvalidError(
         `response too large: exceeds max_response_bytes ${maxBytes}`,
         path,
       );
     }
-    return text;
+    return buf;
   }
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
@@ -129,7 +132,17 @@ export async function readBodyCapped(
       chunks.push(value);
     }
   }
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks);
+}
+
+/** UTF-8-decoding wrapper over `readBodyBytesCapped` for callers that
+ *  only ever consume text bodies (graphql driver, spec fetchers). */
+export async function readBodyCapped(
+  res: Response,
+  maxBytes: number,
+  path: string,
+): Promise<string> {
+  return (await readBodyBytesCapped(res, maxBytes, path)).toString("utf8");
 }
 
 // RFC 7230 §3.2.6 token characters.
@@ -599,6 +612,12 @@ export interface HttpExecutionResult {
   body: unknown;
   bytes_in: number;
   url: string;
+  /** Raw response bytes, set ONLY when the caller passed
+   *  `capture_binary` and the 2xx body matched `shouldPromoteToFile`.
+   *  When present, `body` is undefined — the bytes were never UTF-8
+   *  decoded (the decode mangles binary payloads irreversibly). The
+   *  workflow dispatch path persists these as an engine-managed file. */
+  body_raw?: Buffer;
 }
 
 /**
@@ -881,6 +900,12 @@ export async function executePlannedHttpRequest(params: {
     service: string;
     credential: import("../../credentials/types.ts").AwsSigV4CredentialValue;
   };
+  /** Call-site contract of the workflow request step: when a 2xx body
+   *  matches `shouldPromoteToFile`, return the raw bytes via `body_raw`
+   *  instead of decoding them to text. Probes, `call_connector`, and
+   *  the graphql driver never set this — their responses stay on the
+   *  decode + parse path byte-for-byte as before. */
+  capture_binary?: boolean;
 }): Promise<HttpExecutionResult> {
   // Last-line defence: validate the headers contract the caller is
   // supposed to honour. The workflow draft schema and the connector
@@ -938,16 +963,38 @@ export async function executePlannedHttpRequest(params: {
     fn: () => getDriverFetch()(params.url, init),
   });
   const maxResponseBytes = resolveMaxResponseBytes(params.tenant_id);
-  const text = await readBodyCapped(res, maxResponseBytes, params.url.toString());
+  const buf = await readBodyBytesCapped(res, maxResponseBytes, params.url.toString());
   const headerObj: Record<string, string> = {};
   res.headers.forEach((v, k) => {
     headerObj[k] = v;
   });
+  const contentType = res.headers.get("content-type") ?? "";
+  if (
+    params.capture_binary &&
+    res.status >= 200 &&
+    res.status < 300 &&
+    shouldPromoteToFile({
+      status: res.status,
+      content_type: contentType,
+      content_disposition: res.headers.get("content-disposition"),
+      bytes: buf,
+    })
+  ) {
+    return {
+      status: res.status,
+      headers: headerObj,
+      body: undefined,
+      body_raw: buf,
+      bytes_in: buf.byteLength,
+      url: params.url.toString(),
+    };
+  }
+  const text = buf.toString("utf8");
   return {
     status: res.status,
     headers: headerObj,
-    body: parseResponseBody(text, res.headers.get("content-type") ?? ""),
-    bytes_in: Buffer.byteLength(text, "utf8"),
+    body: parseResponseBody(text, contentType),
+    bytes_in: buf.byteLength,
     url: params.url.toString(),
   };
 }

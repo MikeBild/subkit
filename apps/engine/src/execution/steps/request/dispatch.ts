@@ -14,6 +14,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { evaluateHook } from "../../../auth/hooks.ts";
+import { filenameFromResponse } from "../../../connectors/drivers/file-promotion.ts";
 import type { query as graphqlQuery } from "../../../connectors/drivers/graphql.ts";
 import {
   buildMultipartBody,
@@ -83,6 +84,7 @@ import type {
 } from "../../types.ts";
 import { buildStepErrorDetail } from "../error-detail.ts";
 import { RequestError } from "./errors.ts";
+import { promoteResponseToFile } from "./file-output.ts";
 import { runGraphqlWithRetry } from "./graphql-retry.ts";
 import {
   backoffMs,
@@ -201,6 +203,11 @@ interface FetchAttemptResult {
   headers: Record<string, string>;
   body: unknown;
   bytes_in: number;
+  /** Raw bytes of a 2xx body the driver flagged for file promotion
+   *  (`capture_binary` call-site contract). When set, `body` is
+   *  undefined — the success path persists the bytes as an
+   *  engine-managed workflow-run output file. */
+  body_raw?: Buffer;
 }
 
 async function fetchOnce(
@@ -211,6 +218,7 @@ async function fetchOnce(
   signal: AbortSignal,
   tenant_id: string,
   multipartBody?: FormData,
+  captureBinary?: boolean,
 ): Promise<FetchAttemptResult> {
   // Pagination cursors and `${item.…}` resolution sometimes produce a
   // URL the placeholder validator missed. Without a typed guard,
@@ -235,12 +243,14 @@ async function fetchOnce(
     body,
     signal,
     ...(multipartBody !== undefined ? { multipartBody } : {}),
+    ...(captureBinary ? { capture_binary: true } : {}),
   });
   return {
     status: execution.status,
     headers: execution.headers,
     body: execution.body,
     bytes_in: execution.bytes_in,
+    ...(execution.body_raw !== undefined ? { body_raw: execution.body_raw } : {}),
   };
 }
 
@@ -287,6 +297,10 @@ interface DoOnePageParams {
    *  request step copies the value into `request_meta.idempotency_key` for
    *  audit. Stays null when no key was emitted (GET / HEAD / OPTIONS). */
   last_idempotency_key?: { value: string | null };
+  /** Workflow request-step contract: binary 2xx bodies come back as
+   *  `body_raw` for file promotion. Never set on the paginated path —
+   *  pages accumulate parsed JSON arrays; a binary page is nonsensical. */
+  capture_binary?: boolean;
 }
 
 /**
@@ -400,6 +414,7 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         p.signal,
         p.tenant_id,
         p.multipartBody,
+        p.capture_binary,
       );
       if (res.status >= 200 && res.status < 400) {
         // A 2xx/3xx can still be an *unauthenticated* response when the
@@ -1702,6 +1717,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           retry_policy,
           last_idempotency_key: lastIdempotencyKey,
           tenant_id: p.ctx.tenant_id,
+          capture_binary: true,
           ...(idempotencyBase ? { idempotency_key_base: idempotencyBase } : {}),
         });
       const res = httpEgressInput
@@ -1751,15 +1767,19 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           );
         }
       }
-      // Apply response filters
+      // Apply response filters. Promoted binary bodies skip them —
+      // there is nothing JSON-shaped to filter; the envelope is built
+      // after the expected_statuses gate below.
       let body = res.body;
-      try {
-        body = applyResponseFilters(p.step.response_filters, res.body);
-      } catch (err) {
-        if (err instanceof ResponseFilterFailError) {
-          throw new RequestError(err.message, "filter_fail");
+      if (res.body_raw === undefined) {
+        try {
+          body = applyResponseFilters(p.step.response_filters, res.body);
+        } catch (err) {
+          if (err instanceof ResponseFilterFailError) {
+            throw new RequestError(err.message, "filter_fail");
+          }
+          throw err;
         }
-        throw err;
       }
       // Check expected_statuses (step → registry fallback)
       if (effectiveExpectedStatuses && effectiveExpectedStatuses.length > 0) {
@@ -1776,8 +1796,34 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           };
         }
       }
-      // Validate response schema (non-fatal; step → registry fallback)
-      if (effectiveResponseSchema) {
+      // Binary response → engine-managed file. Runs AFTER the
+      // expected_statuses gate so a rejected status never persists
+      // bytes. The envelope becomes the step output; downstream steps
+      // reference `${steps.<id>.file}` and sk-cli prints the download
+      // hint from the `$file` leaf.
+      let producedFileId: string | null = null;
+      if (res.body_raw !== undefined) {
+        const envelope = await promoteResponseToFile({
+          db: p.ctx.db,
+          tenant_id: p.ctx.tenant_id,
+          actor_id: p.ctx.principal?.id ?? null,
+          execution_id: p.ctx.execution_id,
+          step_id: p.step.id,
+          filename: filenameFromResponse({
+            content_disposition: res.headers["content-disposition"] ?? null,
+            url: baseUrl.toString(),
+            content_type: res.headers["content-type"] ?? null,
+            step_id: p.step.id,
+          }),
+          content_type: res.headers["content-type"]?.split(";")[0]?.trim() ?? null,
+          bytes: res.body_raw,
+        });
+        body = envelope;
+        producedFileId = envelope.file.$file;
+      }
+      // Validate response schema (non-fatal; step → registry fallback;
+      // promoted bodies carry the envelope, not the vendor shape)
+      if (effectiveResponseSchema && res.body_raw === undefined) {
         const respErrs = checkRequired(body, effectiveResponseSchema);
         if (respErrs.length > 0) {
           logger.warn({
@@ -1845,8 +1891,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       // most common driver; without this `getLatestShape` is always null
       // for HTTP connectors and the self-healing drift signals
       // (http_status_new_shape / schema_diff) can never fire.
-      // Best-effort — observability, not load-bearing.
-      if (activeConnector && res.status >= 200 && res.status < 300) {
+      // Best-effort — observability, not load-bearing. Promoted binary
+      // bodies are skipped: the envelope is engine shape, not vendor
+      // shape, and would poison drift detection.
+      if (activeConnector && res.status >= 200 && res.status < 300 && res.body_raw === undefined) {
         try {
           await recordSuccessShape(
             {
@@ -1861,6 +1909,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           // tolerated
         }
       }
+      const producedExtras = producedFileId ? { extras: { produced_file_id: producedFileId } } : {};
       last_meta = connectorResolution
         ? {
             driver: "http",
@@ -1871,6 +1920,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
             connector: connectorResolution,
             digest,
+            ...producedExtras,
           }
         : {
             driver: "connectorless",
@@ -1880,6 +1930,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             bytes_in: res.bytes_in,
             ...(lastIdempotencyKey.value ? { idempotency_key: lastIdempotencyKey.value } : {}),
             digest,
+            ...producedExtras,
           };
       return {
         status: "succeeded",

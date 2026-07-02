@@ -6,7 +6,7 @@
 // the drift surface so a future change to the key shape (e.g. extra
 // partition column) lands once.
 
-import { getConfig } from "../config/loader.ts";
+import { getConfig, isConfigLoaded } from "../config/loader.ts";
 
 /** Object-store key shape: `<tenant>/<yyyy>/<mm>/<dd>/<uuid>`.
  *
@@ -35,11 +35,16 @@ export function buildObjectKey(
  *  reverse of `storageKey(uri)` so a future test can round-trip a
  *  key through `composeStorageUri` → `storageKey` and recover the
  *  input. The backend (`s3` vs. `local`) is read from the per-
- *  process config snapshot. */
+ *  process config snapshot; when the loader isn't bootstrapped the
+ *  local-disk default applies — the same resilience convention
+ *  `getObjectStore()` documents, so both seams agree on the backend
+ *  in config-less test contexts. */
 export function composeStorageUri(key: string): string {
-  const cfg = getConfig().storage;
-  if (cfg.files.backend === "s3") {
-    return `s3://${cfg.files.bucket}/${key}`;
+  if (isConfigLoaded()) {
+    const cfg = getConfig().storage;
+    if (cfg.files.backend === "s3") {
+      return `s3://${cfg.files.bucket}/${key}`;
+    }
   }
   return `local://${key}`;
 }

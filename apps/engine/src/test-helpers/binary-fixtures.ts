@@ -75,6 +75,57 @@ export async function buildDocxFixture(heading: string, paragraph: string): Prom
   ]);
 }
 
+/** Build a PDF containing one ruled table (grid lines + cell text
+ *  positioned per column) so `pdf-parse`'s table detector has real
+ *  rulings to key on. `rows` is row-major; three columns supported. */
+export function buildPdfTableFixture(rows: string[][]): Buffer {
+  const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  const xs = [72, 220, 380];
+  const x0 = 60;
+  const x1 = 460;
+  const rowH = 20;
+  const top = 712;
+  let stream = "0.5 w\n";
+  for (let r = 0; r <= rows.length; r += 1) {
+    const y = top - r * rowH;
+    stream += `${x0} ${y} m ${x1} ${y} l S\n`;
+  }
+  for (const x of [x0, 210, 370, x1]) {
+    stream += `${x} ${top} m ${x} ${top - rows.length * rowH} l S\n`;
+  }
+  stream += "BT /F1 12 Tf\n";
+  rows.forEach((row, r) => {
+    const y = top - r * rowH - 14;
+    row.forEach((cellText, c) => {
+      stream += `1 0 0 1 ${xs[c]} ${y} Tm (${esc(cellText)}) Tj\n`;
+    });
+  });
+  stream += "ET";
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
+    `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`,
+    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+  ];
+  const header = "%PDF-1.4\n%âãÏÓ\n";
+  const offsets: number[] = [];
+  let body = "";
+  let runningOffset = Buffer.byteLength(header, "binary");
+  for (const obj of objects) {
+    offsets.push(runningOffset);
+    body += obj;
+    runningOffset += Buffer.byteLength(obj, "binary");
+  }
+  const xrefOffset = Buffer.byteLength(header + body, "binary");
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const off of offsets) {
+    xref += `${off.toString().padStart(10, "0")} 00000 n \n`;
+  }
+  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(header + body + xref + trailer, "binary");
+}
+
 /** Build an XLSX buffer from a simple `{sheetName: rows}` map using the
  *  SheetJS writer. Keeps the fixture aligned with what the parser reads. */
 export function buildXlsxFixture(sheets: Record<string, Array<Record<string, unknown>>>): Buffer {
@@ -141,7 +192,14 @@ ${slideOverrides}
 
 interface ZipEntry {
   name: string;
-  data: string;
+  data: string | Buffer;
+}
+
+/** Build a plain (non-Office) ZIP from arbitrary text or binary
+ *  entries. Exported for the archive-strategy tests — nesting a PDF or
+ *  another ZIP inside requires Buffer entries. */
+export function buildZipFixture(entries: ZipEntry[]): Buffer {
+  return buildZip(entries);
 }
 
 function buildZip(entries: ZipEntry[]): Buffer {
@@ -150,7 +208,7 @@ function buildZip(entries: ZipEntry[]): Buffer {
   let offset = 0;
   for (const entry of entries) {
     const nameBuf = Buffer.from(entry.name, "utf8");
-    const raw = Buffer.from(entry.data, "utf8");
+    const raw = typeof entry.data === "string" ? Buffer.from(entry.data, "utf8") : entry.data;
     const compressed = deflateRawSync(raw);
     const crc = crc32(raw);
     const localHeader = Buffer.alloc(30);

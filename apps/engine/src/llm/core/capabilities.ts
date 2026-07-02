@@ -118,40 +118,47 @@ export async function resolveModelCapabilities(
   return getStaticCapabilities(provider);
 }
 
-// Pick the best content strategy for a PDF given provider capabilities.
-export type PdfStrategy = "text" | "file_api" | "file_part" | "images";
-
-export function pickPdfStrategy(
-  caps: ModelCapabilities,
-  fileSizeBytes: number,
-  hasTextLayer: boolean,
-): PdfStrategy {
-  if (hasTextLayer) return "text";
-  const mb = fileSizeBytes / (1024 * 1024);
-  if (caps.filesApiSupport && mb > 5) return "file_api";
-  if (caps.supportsFile && mb <= caps.maxFileSizeMB) return "file_part";
-  if (caps.supportsImage) return "images";
-  throw new Error(
-    `AI_UnsupportedFunctionalityError: provider supports neither file nor image parts`,
-  );
+/** Media the model providers natively understand as raw bytes: images
+ *  (image content blocks) and PDFs (document blocks). Everything else
+ *  (docx, xlsx, csv, json, …) must be parsed to text before it reaches
+ *  the model — the provider SDKs throw `UnsupportedFunctionalityError`
+ *  for a raw-bytes file part with any other media type. */
+export function isProviderNativeMedia(contentType: string | null | undefined): boolean {
+  if (!contentType) return false;
+  const ct = contentType.toLowerCase();
+  return ct.startsWith("image/") || ct === "application/pdf";
 }
 
 // Generic per-file strategy used by the conversation LLM-context
-// assembler. Shares the same matrix as `pickPdfStrategy` — there
-// is no parallel decision ladder. Three outcomes:
+// assembler. The single decision ladder — no parallel copies. Three
+// outcomes:
 //
 //   - `file_api`     — upload the bytes via the provider Files API and
 //                      reference by id (no per-turn token cost).
 //   - `file_part`    — inline the bytes (base64) as a content block.
 //   - `text_extract` — parse the bytes into text and emit a text block;
 //                      the fallback when neither file path is viable
-//                      (oversized, provider doesn't accept the media
-//                      type, or per-turn inline budget exhausted).
+//                      (media the provider can't read natively, no
+//                      Files API for an oversized file, or — decided by
+//                      the stateful caller — per-turn inline budget
+//                      exhausted).
 export type FileStrategy = "file_api" | "file_part" | "text_extract";
 
-export function chooseFileStrategy(caps: ModelCapabilities, fileSizeBytes: number): FileStrategy {
+export function chooseFileStrategy(
+  caps: ModelCapabilities,
+  fileSizeBytes: number,
+  contentType: string | null | undefined,
+): FileStrategy {
+  // Raw-bytes paths are only viable for media the provider natively
+  // reads (images, PDFs). Anything else routed as file_part would make
+  // the provider SDK throw at request-build time, so it goes straight
+  // to the parser.
+  if (!isProviderNativeMedia(contentType)) return "text_extract";
   const mb = fileSizeBytes / (1024 * 1024);
   if (caps.filesApiSupport && mb > 5) return "file_api";
   if (caps.supportsFile && mb <= caps.maxFileSizeMB) return "file_part";
+  // Native media too large to inline: upload + reference when the
+  // provider has a Files API; otherwise degrade to the parser.
+  if (caps.filesApiSupport) return "file_api";
   return "text_extract";
 }

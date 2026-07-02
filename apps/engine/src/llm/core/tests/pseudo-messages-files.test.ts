@@ -141,22 +141,24 @@ describe("buildFileContentBlocks — per-turn inline cap", () => {
     const makeContent = (size: number, tag: string) =>
       Buffer.concat([Buffer.from(nextHex(16), "hex"), Buffer.alloc(Math.max(0, size - 16), tag)]);
 
+    // Native media (PNG) so the media gate keeps both on the file_part
+    // lane — the cap, not the media type, must drive the downgrade.
     const att1 = await attachInlineForTest({
       db: srv.db,
       tenant_id: srv.tenantId,
       conversation_id,
-      filename: "cap1.bin",
+      filename: "cap1.png",
       content: makeContent(chunkSize, "X"),
-      content_type: "application/octet-stream",
+      content_type: "image/png",
       slug: `cap1-${uuid().slice(0, 8)}`,
     });
     const att2 = await attachInlineForTest({
       db: srv.db,
       tenant_id: srv.tenantId,
       conversation_id,
-      filename: "cap2.bin",
+      filename: "cap2.png",
       content: makeContent(chunkSize, "Y"),
-      content_type: "application/octet-stream",
+      content_type: "image/png",
       slug: `cap2-${uuid().slice(0, 8)}`,
     });
 
@@ -179,9 +181,53 @@ describe("buildFileContentBlocks — per-turn inline cap", () => {
     expect(result.blocks).toHaveLength(2);
     // First should be file_part (within cap)
     expect(result.blocks[0]!.strategy).toBe("file_part");
-    // Second should be text_extract (cap exceeded)
+    // Second should be text_extract (cap exceeded; mock has no Files API
+    // to re-route native media through)
     expect(result.blocks[1]!.strategy).toBe("text_extract");
     expect(result.inline_cap_downgrades).toBe(1);
+  });
+
+  test("native media over the cap on a Files-API provider re-routes to file_api, not text", async () => {
+    const chunkSize = Math.floor(FILE_PART_PER_TURN_CAP_BYTES * 0.6);
+    const makeContent = (size: number, tag: string) =>
+      Buffer.concat([Buffer.from(nextHex(16), "hex"), Buffer.alloc(Math.max(0, size - 16), tag)]);
+
+    const att1 = await attachInlineForTest({
+      db: srv.db,
+      tenant_id: srv.tenantId,
+      conversation_id,
+      filename: "napi1.png",
+      content: makeContent(chunkSize, "P"),
+      content_type: "image/png",
+      slug: `napi1-${uuid().slice(0, 8)}`,
+    });
+    const att2 = await attachInlineForTest({
+      db: srv.db,
+      tenant_id: srv.tenantId,
+      conversation_id,
+      filename: "napi2.png",
+      content: makeContent(chunkSize, "Q"),
+      content_type: "image/png",
+      slug: `napi2-${uuid().slice(0, 8)}`,
+    });
+
+    const uploadCounts = new Map<string, number>();
+    const result = await buildFileContentBlocks({
+      db: srv.db,
+      tenant_id: srv.tenantId,
+      provider: "anthropic",
+      capabilities: { ...getStaticCapabilities("anthropic") },
+      fids: [att1.file_id, att2.file_id],
+      uploader: makeMockUploader(uploadCounts),
+    });
+
+    expect(result.blocks).toHaveLength(2);
+    expect(result.blocks[0]!.strategy).toBe("file_part");
+    // Cap exceeded, but the image keeps its native representation via
+    // the Files API instead of degrading to parsed text.
+    expect(result.blocks[1]!.strategy).toBe("file_api");
+    expect(result.inline_cap_downgrades).toBe(0);
+    expect(Array.from(uploadCounts.values()).reduce((s, n) => s + n, 0)).toBe(1);
   });
 });
 
@@ -217,10 +263,7 @@ describe("buildFileContentBlocks — file_api strategy", () => {
     if (block.strategy === "file_api") {
       expect(block.provider).toBe("anthropic");
       expect(block.file_id).toMatch(/^file_mock_/);
-      const native = block.native as { type: string; source: { type: string; file_id: string } };
-      expect(native.type).toBe("document");
-      expect(native.source.type).toBe("file");
-      expect(native.source.file_id).toMatch(/^file_mock_/);
+      expect(block.content_type).toBe("application/pdf");
     }
 
     const totalCalls = Array.from(uploadCounts.values()).reduce((s, n) => s + n, 0);

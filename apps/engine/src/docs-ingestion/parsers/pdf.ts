@@ -29,10 +29,42 @@ import {
 const PDF_MAGIC = Buffer.from([0x25, 0x50, 0x44, 0x46]); // %PDF
 export const PDF_PAGE_SEPARATOR = "\n\n---\n\n";
 
+/** Tables extracted per page, as row matrices (`rows[cols]` of cell
+ *  text). Mirrors `pdf-parse`'s `TableResult.pages[n].tables` shape. */
+export interface PdfPageTables {
+  page: number;
+  tables: string[][][];
+}
+
 export interface PdfParseOutput {
   format: "pdf";
+  /** Per-page text joined by `PDF_PAGE_SEPARATOR`. Pages with extracted
+   *  tables carry them appended as GitHub-markdown tables, so every
+   *  text consumer (knowledge chunking, LLM text_extract, extract
+   *  route) sees table structure without branching. */
   text: string;
   pages: number;
+  /** Structured table data for consumers that want more than the
+   *  rendered markdown. Empty when the document has no detectable
+   *  tables or table extraction failed (extraction is additive — its
+   *  failure never fails the text parse). */
+  tables: PdfPageTables[];
+}
+
+/** Render one extracted table as a GitHub-markdown table. The first
+ *  row is treated as the header (pdf-parse emits tables row-major with
+ *  the visual header first). Pipes in cells are escaped; newlines
+ *  collapse to spaces so one cell can't break the row grid. */
+function tableToMarkdown(rows: string[][]): string {
+  if (rows.length === 0) return "";
+  const cell = (v: string): string => v.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+  const header = rows[0] ?? [];
+  const lines = [
+    `| ${header.map(cell).join(" | ")} |`,
+    `| ${header.map(() => "---").join(" | ")} |`,
+    ...rows.slice(1).map((r) => `| ${r.map(cell).join(" | ")} |`),
+  ];
+  return lines.join("\n");
 }
 
 export const pdfStrategy: FileParsingStrategy<PdfParseOutput> = {
@@ -57,8 +89,31 @@ export const pdfStrategy: FileParsingStrategy<PdfParseOutput> = {
       }
       try {
         const result = await parser.getText();
-        const text = result.pages.map((p) => p.text).join(PDF_PAGE_SEPARATOR);
-        return { format: "pdf", text, pages: result.pages.length };
+        // Table extraction is additive enrichment: text is the
+        // contract, tables improve it. A failure here (exotic layout,
+        // parser bug) degrades to text-only — never throws.
+        let tablePages: PdfPageTables[] = [];
+        try {
+          const tableResult = await parser.getTable();
+          tablePages = tableResult.pages
+            .filter((p) => p.tables.length > 0)
+            .map((p) => ({ page: p.num, tables: p.tables }));
+        } catch {
+          tablePages = [];
+        }
+        const tablesByPage = new Map(tablePages.map((p) => [p.page, p.tables]));
+        const text = result.pages
+          .map((p) => {
+            const pageTables = tablesByPage.get(p.num) ?? [];
+            if (pageTables.length === 0) return p.text;
+            const rendered = pageTables
+              .map(tableToMarkdown)
+              .filter((t) => t.length > 0)
+              .join("\n\n");
+            return rendered.length > 0 ? `${p.text}\n\n${rendered}` : p.text;
+          })
+          .join(PDF_PAGE_SEPARATOR);
+        return { format: "pdf", text, pages: result.pages.length, tables: tablePages };
       } catch (err) {
         throw new BinaryParseError("pdf", "pdf: failed to extract text", { cause: err });
       } finally {

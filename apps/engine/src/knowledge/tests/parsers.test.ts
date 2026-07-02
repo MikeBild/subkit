@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { gzipSync } from "node:zlib";
 import {
   buildDocxFixture,
   buildPdfFixture,
   buildXlsxFixture,
+  buildZipFixture,
 } from "../../test-helpers/binary-fixtures.ts";
 import {
   detectFormat,
@@ -53,6 +55,21 @@ describe("knowledge/parsers", () => {
       expect(isBinaryFormat("pdf")).toBe(true);
       expect(isBinaryFormat("markdown")).toBe(false);
     });
+    test("detects archives by extension and MIME", () => {
+      expect(detectFormat("bundle.zip")).toBe("zip");
+      expect(detectFormat("export.gz")).toBe("gzip");
+      expect(detectFormat("noext", "application/zip")).toBe("zip");
+      expect(detectFormat("noext", "application/gzip")).toBe("gzip");
+      expect(isBinaryFormat("zip")).toBe(true);
+      expect(isBinaryFormat("gzip")).toBe(true);
+      // Office MIMEs must never be shadowed by the archive branches.
+      expect(
+        detectFormat(
+          "noext",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+      ).toBe("docx");
+    });
     test("detects binary office formats by MIME", () => {
       expect(detectFormat("noext", "application/pdf")).toBe("pdf");
       expect(
@@ -95,6 +112,27 @@ describe("knowledge/parsers", () => {
     test("text-format returns empty when called on binary helper", async () => {
       const empty = await parseBinaryFileToChunks(Buffer.from("hello"), "x.json", "json");
       expect(empty).toEqual([]);
+    });
+    test("zip produces one chunk per extracted member", async () => {
+      const pdf = buildPdfFixture("Archived page body.");
+      const zip = buildZipFixture([
+        { name: "docs/a.pdf", data: pdf },
+        { name: "notes/readme.txt", data: "plain notes body" },
+      ]);
+      const chunks = await parseBinaryFileToChunks(zip, "bundle.zip", "zip");
+      expect(chunks.length).toBe(2);
+      const titles = chunks.map((c) => c.title);
+      expect(titles).toContain("docs/a.pdf");
+      expect(titles).toContain("notes/readme.txt");
+      const joined = chunks.map((c) => c.content).join("\n");
+      expect(joined).toContain("Archived page body.");
+      expect(joined).toContain("plain notes body");
+    });
+    test("gzip of text produces a chunk with the decompressed body", async () => {
+      const gz = gzipSync(Buffer.from("compressed knowledge body"));
+      const chunks = await parseBinaryFileToChunks(gz, "export.gz", "gzip");
+      expect(chunks.length).toBe(1);
+      expect(chunks[0]?.content).toContain("compressed knowledge body");
     });
   });
 

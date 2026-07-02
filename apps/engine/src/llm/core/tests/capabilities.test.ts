@@ -3,7 +3,6 @@ import { _resetConfigForTests } from "../../../config/loader.ts";
 import {
   chooseFileStrategy,
   getStaticCapabilities,
-  pickPdfStrategy,
   resolveModelCapabilities,
 } from "../capabilities.ts";
 
@@ -104,9 +103,9 @@ describe("getStaticCapabilities — OpenAI-compatible custom base_url gate", () 
     process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
     const caps = getStaticCapabilities("openai"); // maxFileSizeMB stays 32
     // 6MB would have been file_api on real OpenAI; now inlined as file_part.
-    expect(chooseFileStrategy(caps, 6 * 1024 * 1024)).toBe("file_part");
+    expect(chooseFileStrategy(caps, 6 * 1024 * 1024, "application/pdf")).toBe("file_part");
     // Oversized (> maxFileSizeMB) falls back to text extraction.
-    expect(chooseFileStrategy(caps, 40 * 1024 * 1024)).toBe("text_extract");
+    expect(chooseFileStrategy(caps, 40 * 1024 * 1024, "application/pdf")).toBe("text_extract");
   });
 });
 
@@ -140,53 +139,28 @@ describe("resolveModelCapabilities", () => {
   });
 });
 
-describe("pickPdfStrategy", () => {
+describe("chooseFileStrategy — PDF routing", () => {
   const fullCaps = getStaticCapabilities("anthropic"); // filesApiSupport=true, supportsFile=true, supportsImage=true
-
-  it("returns 'text' when hasTextLayer=true, regardless of file size or provider", () => {
-    expect(pickPdfStrategy(fullCaps, 100 * 1024 * 1024, true)).toBe("text");
-    expect(pickPdfStrategy(getStaticCapabilities("mock"), 1, true)).toBe("text");
-    expect(
-      pickPdfStrategy(
-        {
-          supportsImage: false,
-          supportsFile: false,
-          supportsAudio: false,
-          supportsVideo: false,
-          maxFileSizeMB: 0,
-          maxPdfPages: 0,
-          filesApiSupport: false,
-        },
-        0,
-        true,
-      ),
-    ).toBe("text");
-  });
+  const PDF = "application/pdf";
 
   it("returns 'file_api' when filesApiSupport=true and file > 5MB", () => {
     const fileSizeBytes = 6 * 1024 * 1024; // 6 MB
-    expect(pickPdfStrategy(fullCaps, fileSizeBytes, false)).toBe("file_api");
+    expect(chooseFileStrategy(fullCaps, fileSizeBytes, PDF)).toBe("file_api");
   });
 
   it("returns 'file_part' when supportsFile=true and file <= maxFileSizeMB (no filesApi needed)", () => {
     const caps = { ...fullCaps, filesApiSupport: false }; // force no Files API path
     const fileSizeBytes = 4 * 1024 * 1024; // 4 MB — under 5 MB threshold and under maxFileSizeMB
-    expect(pickPdfStrategy(caps, fileSizeBytes, false)).toBe("file_part");
+    expect(chooseFileStrategy(caps, fileSizeBytes, PDF)).toBe("file_part");
   });
 
   it("returns 'file_part' when filesApiSupport=true but file < 5MB", () => {
     // filesApiSupport=true but mb <= 5, so file_api is NOT chosen; falls to file_part
     const fileSizeBytes = 3 * 1024 * 1024; // 3 MB
-    expect(pickPdfStrategy(fullCaps, fileSizeBytes, false)).toBe("file_part");
+    expect(chooseFileStrategy(fullCaps, fileSizeBytes, PDF)).toBe("file_part");
   });
 
-  it("returns 'images' when supportsFile=false but supportsImage=true", () => {
-    const caps = { ...fullCaps, supportsFile: false, filesApiSupport: false };
-    const fileSizeBytes = 1 * 1024 * 1024;
-    expect(pickPdfStrategy(caps, fileSizeBytes, false)).toBe("images");
-  });
-
-  it("throws when provider supports neither file nor image", () => {
+  it("returns 'text_extract' when provider supports neither file nor Files API", () => {
     const caps = {
       supportsImage: false,
       supportsFile: false,
@@ -196,12 +170,12 @@ describe("pickPdfStrategy", () => {
       maxPdfPages: 0,
       filesApiSupport: false,
     };
-    expect(() => pickPdfStrategy(caps, 1024, false)).toThrow("AI_UnsupportedFunctionalityError");
+    expect(chooseFileStrategy(caps, 1024, PDF)).toBe("text_extract");
   });
 
   it("returns 'file_api' for a large file (> 5MB) with filesApiSupport=true even when supportsFile=false", () => {
     const caps = { ...fullCaps, supportsFile: false };
     const fileSizeBytes = 10 * 1024 * 1024;
-    expect(pickPdfStrategy(caps, fileSizeBytes, false)).toBe("file_api");
+    expect(chooseFileStrategy(caps, fileSizeBytes, PDF)).toBe("file_api");
   });
 });

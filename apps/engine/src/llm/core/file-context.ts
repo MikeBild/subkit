@@ -49,11 +49,16 @@ import {
   type BinaryFormat,
   BinaryParseError,
   parseBinaryFile,
+  renderBinaryParseResult,
 } from "../../docs-ingestion/parsers/index.ts";
 import { type ResolvedFile, resolveSingleFid } from "../../files/resolver.ts";
 import { detectFormat, isBinaryFormat, parseFileToChunks } from "../../knowledge/parsers.ts";
 import { logger } from "../../logging/logger.ts";
-import { chooseFileStrategy, type ModelCapabilities } from "./capabilities.ts";
+import {
+  chooseFileStrategy,
+  isProviderNativeMedia,
+  type ModelCapabilities,
+} from "./capabilities.ts";
 import { type FilesApiError, type UploadedFile, uploadFileViaApi } from "./files-api.ts";
 import type { ProviderKind } from "./model-init.ts";
 
@@ -95,22 +100,26 @@ function isFilesApiProvider(p: ProviderKind): p is FilesApiProvider {
   return p === "anthropic" || p === "openai" || p === "gemini";
 }
 
-/** Discriminated union for one assembled content block. The shape per
- *  variant intentionally mirrors the provider-native wire format the
- *  upstream raw API expects — the SDK consumer translates as needed. */
+/** Map subkit's provider kind to the AI SDK provider key used in a
+ *  `FileDataReference` (`{ type: "reference", reference: { [key]: id } }`).
+ *  The Google provider resolves references against the key `"google"`,
+ *  not subkit's internal `"gemini"`. */
+export function sdkProviderId(p: FilesApiProvider): "anthropic" | "openai" | "google" {
+  return p === "gemini" ? "google" : p;
+}
+
+/** Discriminated union for one assembled content block. `file_api`
+ *  carries the provider-side file id; the SDK consumer emits it as an
+ *  AI SDK `FileDataReference` and the provider adapter derives the
+ *  native wire block (document / input_file / fileData) from it. */
 export type FileContentBlock =
   | {
       strategy: "file_api";
+      /** Provider-side file id returned by the Files API upload. */
       file_id: string;
       filename: string;
       content_type: string;
       provider: FilesApiProvider;
-      /** Provider-native content block exactly as the upstream API expects.
-       *  - anthropic: `{ type: "document", source: { type: "file", file_id } }`
-       *  - openai:    `{ type: "input_file", file_id }`
-       *  - gemini:    `{ fileData: { fileUri, mimeType } }`
-       */
-      native: AnthropicFileBlock | OpenAIFileBlock | GeminiFileBlock;
     }
   | {
       strategy: "file_part";
@@ -131,20 +140,6 @@ export type FileContentBlock =
        *  is a `[file: filename]` placeholder. */
       placeholder: boolean;
     };
-
-interface AnthropicFileBlock {
-  type: "document";
-  source: { type: "file"; file_id: string };
-}
-
-interface OpenAIFileBlock {
-  type: "input_file";
-  file_id: string;
-}
-
-interface GeminiFileBlock {
-  fileData: { fileUri: string; mimeType: string };
-}
 
 export interface BuildFileContentBlocksParams {
   db: Db;
@@ -220,18 +215,25 @@ export async function buildFileContentBlocks(
       continue;
     }
 
-    let strategy = chooseFileStrategy(p.capabilities, resolved.size_bytes);
+    let strategy = chooseFileStrategy(p.capabilities, resolved.size_bytes, resolved.content_type);
 
-    // Per-turn inline budget guard — once we'd exceed the cap, force
-    // the next file (which would have chosen `file_part`) to
-    // `text_extract`. `file_api` is exempt: it doesn't consume the
-    // inline budget. Counting after-the-fact for downgrade telemetry.
+    // Per-turn inline budget guard — once we'd exceed the cap, the
+    // next file that would have chosen `file_part` is re-routed.
+    // `file_api` is exempt: it doesn't consume the inline budget, so
+    // provider-native media (images, PDFs) rides the Files API and
+    // keeps its native representation instead of degrading to parsed
+    // text. Only media the provider can't reference natively downgrades
+    // to `text_extract` (counted for telemetry).
     if (
       strategy === "file_part" &&
       inline_bytes + resolved.size_bytes > FILE_PART_PER_TURN_CAP_BYTES
     ) {
-      strategy = "text_extract";
-      inline_cap_downgrades += 1;
+      if (isProviderNativeMedia(resolved.content_type) && isFilesApiProvider(p.provider)) {
+        strategy = "file_api";
+      } else {
+        strategy = "text_extract";
+        inline_cap_downgrades += 1;
+      }
     }
 
     if (strategy === "file_api") {
@@ -460,38 +462,12 @@ function makeFileApiBlock(args: {
   filename: string;
   content_type: string;
 }): FileContentBlock {
-  if (args.provider === "anthropic") {
-    return {
-      strategy: "file_api",
-      file_id: args.file_id,
-      filename: args.filename,
-      content_type: args.content_type,
-      provider: "anthropic",
-      native: {
-        type: "document",
-        source: { type: "file", file_id: args.file_id },
-      },
-    };
-  }
-  if (args.provider === "openai") {
-    return {
-      strategy: "file_api",
-      file_id: args.file_id,
-      filename: args.filename,
-      content_type: args.content_type,
-      provider: "openai",
-      native: { type: "input_file", file_id: args.file_id },
-    };
-  }
   return {
     strategy: "file_api",
     file_id: args.file_id,
     filename: args.filename,
     content_type: args.content_type,
-    provider: "gemini",
-    native: {
-      fileData: { fileUri: args.file_id, mimeType: args.content_type },
-    },
+    provider: args.provider,
   };
 }
 
@@ -738,7 +714,7 @@ async function assembleBinaryTextExtractBlock(
     // `isBinaryFormat(detectedFormat)` predicate at the call site
     // (`assembleTextExtractBlock`), so no cast is needed.
     const parsed = await parseBinaryFile(buffer, format);
-    parsedText = renderBinaryAsText(parsed);
+    parsedText = renderBinaryParseResult(parsed);
   } catch (err) {
     const rawCause = err instanceof BinaryParseError ? err.message : String(err);
     const cause = sanitizeForAudit(rawCause);
@@ -786,29 +762,6 @@ async function assembleBinaryTextExtractBlock(
     },
     bytes_read: parsedByteLen,
   };
-}
-
-/** Flatten the parser's structured output into a single text body the
- *  LLM context window can consume. The xlsx branch JSON-stringifies all
- *  sheets in full — bounded by `XLSX_ROW_CAP_PER_SHEET = 200` inside
- *  the parser, NOT by anything here. The pptx branch is bounded by
- *  `PPTX_SLIDE_CAP = 2000`. The per-turn `TEXT_EXTRACT_PER_TURN_CAP_BYTES`
- *  further upstream is the only guard against an oversized join — keep
- *  the parser-level caps in sync if you raise the per-turn budget. */
-function renderBinaryAsText(parsed: Awaited<ReturnType<typeof parseBinaryFile>>): string {
-  switch (parsed.format) {
-    case "pdf":
-      return parsed.text;
-    case "docx":
-      return parsed.markdown;
-    case "xlsx":
-    case "xls":
-      return Object.entries(parsed.sheets)
-        .map(([name, rows]) => `## ${name}\n\n${JSON.stringify(rows, null, 2)}`)
-        .join("\n\n");
-    case "pptx":
-      return parsed.slides.map((slide) => `## Slide ${slide.index}\n\n${slide.text}`).join("\n\n");
-  }
 }
 
 /** Drain an `AsyncIterable<Uint8Array>` into a single buffer. The

@@ -1,4 +1,5 @@
-// Public facade for the binary file parsers (PDF, DOCX, XLSX/XLS, PPTX).
+// Public facade for the binary file parsers (PDF, DOCX, XLSX/XLS, PPTX)
+// and the recursive archive strategies (ZIP, GZIP).
 //
 // All other subsystems (`docs-ingestion/sources/file-upload.ts`,
 // `knowledge/parsers.ts`, `llm/core/file-context.ts`,
@@ -21,12 +22,18 @@
 import { logger } from "../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
+import { type ArchiveParseOutput, makeArchiveStrategies } from "./archive.ts";
 import { type DocxParseOutput, docxStrategy } from "./docx.ts";
 import { type PdfParseOutput, pdfStrategy } from "./pdf.ts";
 import { type PptxParseOutput, pptxStrategy } from "./pptx.ts";
 import { type BinaryFormat, BinaryParseError, FileStrategyRegistry } from "./strategy.ts";
 import { type XlsxParseOutput, xlsStrategy, xlsxStrategy } from "./xlsx.ts";
 
+export type {
+  ArchiveEntry,
+  ArchiveParseOutput,
+  ArchiveSkip,
+} from "./archive.ts";
 export type { DocxParseOutput } from "./docx.ts";
 export type { PdfParseOutput } from "./pdf.ts";
 export { PDF_PAGE_SEPARATOR } from "./pdf.ts";
@@ -39,7 +46,8 @@ export type BinaryParseResult =
   | PdfParseOutput
   | DocxParseOutput
   | XlsxParseOutput
-  | PptxParseOutput;
+  | PptxParseOutput
+  | ArchiveParseOutput;
 
 /** Maps a `BinaryFormat` literal to the concrete parser output. Lets
  *  `parseBinaryFile("pdf")` return `PdfParseOutput` directly so callers
@@ -52,15 +60,48 @@ export type BinaryParseResultFor<F extends BinaryFormat> = F extends "pdf"
       ? XlsxParseOutput
       : F extends "pptx"
         ? PptxParseOutput
-        : never;
+        : F extends "zip" | "gzip"
+          ? ArchiveParseOutput
+          : never;
 
 /** Runtime membership set + type predicate for the binary formats.
  *  Single source of truth — other subsystems import these instead of
- *  re-declaring the five-member list. */
-export const BINARY_FORMATS = new Set<BinaryFormat>(["pdf", "docx", "xlsx", "xls", "pptx"]);
+ *  re-declaring the member list. */
+export const BINARY_FORMATS = new Set<BinaryFormat>([
+  "pdf",
+  "docx",
+  "xlsx",
+  "xls",
+  "pptx",
+  "zip",
+  "gzip",
+]);
 
 export function isBinaryFormat(format: string): format is BinaryFormat {
   return BINARY_FORMATS.has(format as BinaryFormat);
+}
+
+/** Flatten any parser output into a single text body. Shared by the
+ *  LLM `text_extract` path and the archive strategies (each archive
+ *  entry's parsed output is rendered through this exact function, so a
+ *  PDF inside a ZIP reads identically to a directly-uploaded PDF). */
+export function renderBinaryParseResult(parsed: BinaryParseResult): string {
+  switch (parsed.format) {
+    case "pdf":
+      return parsed.text;
+    case "docx":
+      return parsed.markdown;
+    case "xlsx":
+    case "xls":
+      return Object.entries(parsed.sheets)
+        .map(([name, rows]) => `## ${name}\n\n${JSON.stringify(rows, null, 2)}`)
+        .join("\n\n");
+    case "pptx":
+      return parsed.slides.map((slide) => `## Slide ${slide.index}\n\n${slide.text}`).join("\n\n");
+    case "zip":
+    case "gzip":
+      return parsed.text;
+  }
 }
 
 const registry = new FileStrategyRegistry();
@@ -69,6 +110,16 @@ registry.register(docxStrategy);
 registry.register(xlsxStrategy);
 registry.register(xlsStrategy);
 registry.register(pptxStrategy);
+// Archive strategies recurse through the registry itself — the factory
+// receives the facade functions below (hoisted declarations), keeping
+// the recursion cycle-free at module-load time.
+const { zipStrategy, gzipStrategy } = makeArchiveStrategies({
+  detect: (buffer) => detectBinaryFormat(buffer),
+  parse: (buffer, format) => parseBinaryFile(buffer, format),
+  render: (parsed) => renderBinaryParseResult(parsed as BinaryParseResult),
+});
+registry.register(zipStrategy);
+registry.register(gzipStrategy);
 
 /** Sniff the buffer header for a known binary format. Returns null when
  *  no strategy matches — caller falls back to text/structured handling. */

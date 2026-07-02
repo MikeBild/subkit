@@ -1,9 +1,9 @@
 // Archive extraction for codebase discovery.
 //
-// Accepts a zip archive buffer, walks every entry, filters out paths
-// that aren't worth analysing (node_modules, .git, lockfiles, binaries,
-// huge files), and returns a list of {filename, buffer} pairs ready for
-// `createDiscoveryRun`.
+// Accepts a zip archive buffer, walks every entry via the shared
+// `walkZipEntries` core, filters out paths that aren't worth analysing
+// (node_modules, .git, lockfiles, binaries, huge files), and returns a
+// list of {filename, buffer} pairs ready for `createDiscoveryRun`.
 //
 // Constraints:
 //   - Total extracted bytes capped at 50 MB (sum across entries).
@@ -13,7 +13,7 @@
 //     for LLM analysis; the extra headroom lets us extract and then let
 //     the service rank).
 
-import yauzl from "yauzl";
+import { walkZipEntries } from "../utils/zip-walk.ts";
 
 export interface ExtractedFile {
   filename: string;
@@ -98,99 +98,33 @@ const SKIP_EXTENSIONS = new Set([
   ".db",
 ]);
 
-function normalise(p: string): string {
-  return p.replace(/\\/g, "/").replace(/^\/+/, "");
-}
-
 function extensionOf(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot >= 0 ? name.slice(dot).toLowerCase() : "";
 }
 
 function shouldSkip(path: string): string | null {
-  const norm = normalise(path);
-  if (norm.endsWith("/")) return "directory";
   for (const prefix of SKIP_PREFIXES) {
-    if (norm.startsWith(prefix) || norm.includes(`/${prefix}`)) return "generated_dir";
+    if (path.startsWith(prefix) || path.includes(`/${prefix}`)) return "generated_dir";
   }
-  const base = norm.split("/").pop() ?? norm;
+  const base = path.split("/").pop() ?? path;
   if (SKIP_EXACT.has(base)) return "lockfile_or_metadata";
   if (SKIP_EXTENSIONS.has(extensionOf(base))) return "binary_extension";
   return null;
 }
 
 export async function extractCodebaseArchive(buffer: Buffer): Promise<ArchiveExtractionResult> {
-  return await new Promise<ArchiveExtractionResult>((resolve, reject) => {
-    yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
-      if (err || !zipfile) {
-        reject(err ?? new Error("zip open returned no handle"));
-        return;
-      }
-      const files: ExtractedFile[] = [];
-      const skipped_reasons: Record<string, number> = {};
-      let skipped_count = 0;
-      let total_bytes = 0;
-      let entry_count = 0;
-      let truncated = false;
-
-      const finish = (): void => {
-        resolve({ files, skipped_count, skipped_reasons, total_bytes, truncated });
-      };
-      const noteSkip = (reason: string): void => {
-        skipped_count += 1;
-        skipped_reasons[reason] = (skipped_reasons[reason] ?? 0) + 1;
-      };
-
-      zipfile.on("error", (e) => {
-        reject(e);
-      });
-      zipfile.on("end", () => finish());
-      zipfile.on("entry", (entry: yauzl.Entry) => {
-        entry_count += 1;
-        if (entry_count > MAX_ENTRY_COUNT) {
-          truncated = true;
-          zipfile.close();
-          finish();
-          return;
-        }
-        const skip = shouldSkip(entry.fileName);
-        if (skip) {
-          noteSkip(skip);
-          zipfile.readEntry();
-          return;
-        }
-        if (entry.uncompressedSize > MAX_PER_ENTRY_BYTES) {
-          noteSkip("too_large");
-          zipfile.readEntry();
-          return;
-        }
-        if (total_bytes + entry.uncompressedSize > MAX_TOTAL_BYTES) {
-          truncated = true;
-          zipfile.close();
-          finish();
-          return;
-        }
-        zipfile.openReadStream(entry, (streamErr, stream) => {
-          if (streamErr || !stream) {
-            noteSkip("read_error");
-            zipfile.readEntry();
-            return;
-          }
-          const chunks: Buffer[] = [];
-          stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-          stream.on("end", () => {
-            const content = Buffer.concat(chunks);
-            total_bytes += content.byteLength;
-            files.push({ filename: normalise(entry.fileName), buffer: content });
-            zipfile.readEntry();
-          });
-          stream.on("error", () => {
-            noteSkip("read_error");
-            zipfile.readEntry();
-          });
-        });
-      });
-      zipfile.readEntry();
-    });
+  const walked = await walkZipEntries(buffer, {
+    maxEntries: MAX_ENTRY_COUNT,
+    maxPerEntryBytes: MAX_PER_ENTRY_BYTES,
+    maxTotalBytes: MAX_TOTAL_BYTES,
+    shouldSkip,
   });
+  return {
+    files: walked.entries.map((e) => ({ filename: e.path, buffer: e.buffer })),
+    skipped_count: walked.skipped_count,
+    skipped_reasons: walked.skipped_reasons,
+    total_bytes: walked.total_bytes,
+    truncated: walked.truncated,
+  };
 }

@@ -3,7 +3,9 @@
 // One `files` table per tenant + polymorphic `file_links` join replaces
 // the previously fragmented chat-attachment + knowledge-source upload
 // storage. Every file the engine knows about — chat attachments, knowledge
-// sources, workflow inputs/outputs, discovery archives, skill artifacts —
+// sources, workflow inputs (`$file` refs consumed by steps) and outputs
+// (binary HTTP responses promoted by the request step, linked as
+// `workflow_run`/`role: "output"`), discovery archives, skill artifacts —
 // lands here. Dedup is sha256-scoped to the tenant; the lifecycle goes
 // `pending -> uploading -> scanning -> ready | failed | expired`.
 //

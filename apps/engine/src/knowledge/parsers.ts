@@ -4,11 +4,13 @@
 // Markdown) and returns RawChunk[] — the same type the fingerprinting
 // pipeline expects.
 //
-// Binary formats (PDF, DOCX, XLSX/XLS, PPTX) are routed through the
-// binary parser registry in `../docs-ingestion/parsers/` via the
-// `parseBinaryFileToChunks` helper below. The text `parseFileToChunks`
-// returns no chunks for a binary format — callers must dispatch on
-// `detectFormat` and call the right helper.
+// Binary formats (PDF, DOCX, XLSX/XLS, PPTX) and archives (ZIP, GZIP —
+// recursively extracted, every entry re-fed through the same registry)
+// are routed through the binary parser registry in
+// `../docs-ingestion/parsers/` via the `parseBinaryFileToChunks` helper
+// below. The text `parseFileToChunks` returns no chunks for a binary
+// format — callers must dispatch on `detectFormat` and call the right
+// helper.
 
 import {
   type BinaryFormat,
@@ -31,6 +33,8 @@ export type ParsedFormat =
   | "xlsx"
   | "xls"
   | "pptx"
+  | "zip"
+  | "gzip"
   | "unknown";
 
 export class UnsupportedFileFormatError extends Error {
@@ -86,6 +90,11 @@ export function detectFormat(filename: string, mime?: string): ParsedFormat {
       return "xls";
     case "pptx":
       return "pptx";
+    case "zip":
+      return "zip";
+    case "gz":
+    case "gzip":
+      return "gzip";
   }
 
   // Fall back to MIME type. Binary office MIMEs (which carry
@@ -104,6 +113,11 @@ export function detectFormat(filename: string, mime?: string): ParsedFormat {
     if (mime.includes("presentationml") || mime.includes("officedocument.presentation")) {
       return "pptx";
     }
+    // Archives — after the office MIMEs (which never contain "zip" in
+    // their `vnd.openxmlformats…` names, but keep the specific-first
+    // ordering explicit).
+    if (mime.includes("gzip")) return "gzip";
+    if (mime.includes("zip")) return "zip";
     if (mime.includes("json")) return "json";
     if (mime.includes("yaml") || mime.includes("yml")) return "yaml";
     if (mime.includes("csv") || mime.includes("tab-separated")) return "csv";
@@ -150,6 +164,8 @@ export function parseFileToChunks(
     case "xlsx":
     case "xls":
     case "pptx":
+    case "zip":
+    case "gzip":
       // Binary formats are dispatched via `parseBinaryFileToChunks` —
       // callers must branch on `isBinaryFormat(format)`.
       return [];
@@ -207,6 +223,17 @@ export async function parseBinaryFileToChunks(
         path: `${filename}#slide=${slide.index}`,
         content: slide.text || "(empty slide)",
       }));
+    }
+    case "zip":
+    case "gzip": {
+      // The archive renderer emits one `## <entry path>` section per
+      // extracted member — exactly the heading shape the markdown
+      // chunker splits on, so each member becomes its own chunk.
+      const chunks = parseMarkdownChunks(parsed.text, filename);
+      if (chunks.length === 0 || parsed.text.trim().length === 0) {
+        return [];
+      }
+      return chunks;
     }
   }
 }

@@ -60,6 +60,8 @@ const BINARY_EXTENSIONS: Record<string, BinaryFormat> = {
   ".xlsx": "xlsx",
   ".xls": "xls",
   ".pptx": "pptx",
+  ".zip": "zip",
+  ".gz": "gzip",
 };
 
 function detectBinaryFromMime(mime: string): BinaryFormat | null {
@@ -74,6 +76,10 @@ function detectBinaryFromMime(mime: string): BinaryFormat | null {
   if (mime.includes("presentationml") || mime.includes("officedocument.presentation")) {
     return "pptx";
   }
+  // Archives — checked after the office MIMEs so the specific-first
+  // ordering stays explicit.
+  if (mime.includes("gzip")) return "gzip";
+  if (mime.includes("zip")) return "zip";
   return null;
 }
 
@@ -291,7 +297,9 @@ export async function ingestFileUpload(input: FileUploadInput): Promise<FileUplo
     format === "docx" ||
     format === "xlsx" ||
     format === "xls" ||
-    format === "pptx"
+    format === "pptx" ||
+    format === "zip" ||
+    format === "gzip"
   ) {
     const buffer = toBuffer(input.buffer);
     const parsed = await parseBinaryFile(buffer, format);
@@ -418,6 +426,24 @@ function chunkBinaryParseResult(
           title: `pptx slide ${slide.index}: ${uri}`,
           path: `pptx.slide.${slide.index}`,
           content: slide.text || "(empty slide)",
+        });
+      }
+      return;
+    }
+    case "zip":
+    case "gzip": {
+      // The archive renderer emits one `## <entry path>` section per
+      // extracted member; the markdown chunker slices on those headings
+      // so each member lands as its own chunk.
+      const mdChunks = parseMarkdownChunks(parsed.text, uri);
+      for (const c of mdChunks) {
+        if (c.content.trim().length > 0) chunks.push(c);
+      }
+      if (chunks.length === 0) {
+        chunks.push({
+          title: `${parsed.format}: ${uri}`,
+          path: parsed.format,
+          content: `# ${uri}\n\n(no extractable entries)`,
         });
       }
       return;

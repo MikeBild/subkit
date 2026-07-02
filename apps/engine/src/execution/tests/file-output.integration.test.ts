@@ -10,6 +10,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { and, eq } from "drizzle-orm";
+import { fileLinks, files } from "../../db/schema/files.ts";
+import { buildObjectKey } from "../../files/object-key.ts";
 import { requireFileForTenant } from "../../files/resolver.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
@@ -185,6 +188,216 @@ describe("workflow file-output: $file ref in step result", () => {
       expect(output.result.$file).toBe(ghostFid);
     } finally {
       await srv.close();
+    }
+  });
+});
+
+/** Serve fixed bytes with configurable headers (binary download vendor). */
+function createBytesServer(
+  bytes: Buffer,
+  headers: Record<string, string>,
+): { baseUrl: string; close: () => Promise<void> } {
+  const server = createServer((_req: IncomingMessage, res: ServerResponse) => {
+    res.statusCode = 200;
+    for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
+    res.end(bytes);
+  });
+  server.listen(0, "127.0.0.1");
+  const port = (server.address() as AddressInfo).port;
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>((r) => server.close(() => r())),
+  };
+}
+
+interface PromotedEnvelope {
+  file: { $file: string };
+  filename: string;
+  content_type: string | null;
+  size_bytes: number;
+}
+
+async function runDownloadWorkflow(name: string, url: string) {
+  const { workflow_id } = await createWorkflowRow(ctx, {
+    name,
+    steps: [{ kind: "request", id: "fetch", method: "GET", url }],
+  });
+  return runExecution({
+    db: ctx.testDb.db,
+    tenant_id: ctx.tenantId,
+    source: { kind: "saved", workflow_id },
+    input: null,
+  });
+}
+
+describe("workflow file-output: binary HTTP response promoted to engine-managed file", () => {
+  // Deliberately invalid UTF-8 (0x00, 0x80, 0xff) — the pre-promotion
+  // driver decoded these to U+FFFD irreversibly.
+  const pdfBytes = Buffer.concat([
+    Buffer.from("%PDF-1.7\n"),
+    Buffer.from([0x00, 0x80, 0xff, 0xfe, 0x01]),
+    uniqueBytes("promoted-pdf-payload"),
+  ]);
+
+  test("PDF + attachment disposition → files row, workflow_run link, envelope output, exact bytes", async () => {
+    const srv = createBytesServer(pdfBytes, {
+      "content-type": "application/pdf",
+      "content-disposition": 'attachment; filename="report.pdf"',
+    });
+    try {
+      const result = await runDownloadWorkflow("binary-promote-wf", `${srv.baseUrl}/export`);
+      expect(result.status).toBe("succeeded");
+
+      const output = result.output as PromotedEnvelope;
+      expect(output.file.$file).toMatch(/^fid_[0-9a-f-]{36}$/);
+      expect(output.filename).toBe("report.pdf");
+      expect(output.content_type).toBe("application/pdf");
+      expect(output.size_bytes).toBe(pdfBytes.byteLength);
+
+      // files row via the tenant chokepoint
+      const fileRow = await requireFileForTenant(ctx.testDb.db, ctx.tenantId, output.file.$file);
+      expect(fileRow.status).toBe("ready");
+      expect(fileRow.filename).toBe("report.pdf");
+      expect(fileRow.content_type).toBe("application/pdf");
+      expect(Number(fileRow.size_bytes)).toBe(pdfBytes.byteLength);
+
+      // workflow_run link with role=output pointing at THIS execution
+      const links = await ctx.testDb.db
+        .select()
+        .from(fileLinks)
+        .where(
+          and(
+            eq(fileLinks.tenant_id, ctx.tenantId),
+            eq(fileLinks.file_id, fileRow.id),
+            eq(fileLinks.resource_type, "workflow_run"),
+          ),
+        );
+      expect(links).toHaveLength(1);
+      expect(links[0]!.resource_id).toBe(result.execution_id);
+      expect(links[0]!.role).toBe("output");
+
+      // Bytes round-trip EXACTLY (the corruption regression lock)
+      const stored = await getObjectStore().get(buildObjectKey(ctx.tenantId, fileRow.id));
+      expect(Buffer.compare(Buffer.from(stored), pdfBytes)).toBe(0);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test("same bytes across two runs dedup to one files row with a link per run", async () => {
+    const dedupBytes = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00]),
+      uniqueBytes("dedup-zip-payload"),
+    ]);
+    const srv = createBytesServer(dedupBytes, { "content-type": "application/zip" });
+    try {
+      const r1 = await runDownloadWorkflow("dedup-promote-wf-1", `${srv.baseUrl}/a.zip`);
+      const r2 = await runDownloadWorkflow("dedup-promote-wf-2", `${srv.baseUrl}/a.zip`);
+      expect(r1.status).toBe("succeeded");
+      expect(r2.status).toBe("succeeded");
+
+      const fid1 = (r1.output as PromotedEnvelope).file.$file;
+      const fid2 = (r2.output as PromotedEnvelope).file.$file;
+      expect(fid1).toBe(fid2); // one row, sha256 dedup
+
+      const fileRow = await requireFileForTenant(ctx.testDb.db, ctx.tenantId, fid1);
+      const links = await ctx.testDb.db
+        .select()
+        .from(fileLinks)
+        .where(
+          and(
+            eq(fileLinks.tenant_id, ctx.tenantId),
+            eq(fileLinks.file_id, fileRow.id),
+            eq(fileLinks.resource_type, "workflow_run"),
+          ),
+        );
+      expect(links).toHaveLength(2);
+      expect(new Set(links.map((l) => l.resource_id))).toEqual(
+        new Set([r1.execution_id, r2.execution_id]),
+      );
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test("JSON response stays parsed step data — no promotion (regression guard)", async () => {
+    const srv = createBytesServer(Buffer.from(JSON.stringify({ items: [1, 2, 3] })), {
+      "content-type": "application/json",
+    });
+    try {
+      const result = await runDownloadWorkflow("json-no-promote-wf", `${srv.baseUrl}/items`);
+      expect(result.status).toBe("succeeded");
+      expect(result.output).toEqual({ items: [1, 2, 3] });
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test("octet-stream-labeled JSON still parses via the shape sniffer (mislabel guard)", async () => {
+    const srv = createBytesServer(Buffer.from(JSON.stringify({ ok: true })), {
+      "content-type": "application/octet-stream",
+    });
+    try {
+      const result = await runDownloadWorkflow("octet-json-wf", `${srv.baseUrl}/data`);
+      expect(result.status).toBe("succeeded");
+      expect(result.output).toEqual({ ok: true });
+    } finally {
+      await srv.close();
+    }
+  });
+
+  test("chained runs: run 1's promoted output file feeds run 2's multipart input", async () => {
+    const chainBytes = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]), // PNG magic + NUL
+      uniqueBytes("chained-png-payload"),
+    ]);
+    const download = createBytesServer(chainBytes, { "content-type": "image/png" });
+
+    // Capture server for run 2's multipart POST.
+    let capturedBody: Buffer | null = null;
+    const capture = createServer((req: IncomingMessage, res: ServerResponse) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        capturedBody = Buffer.concat(chunks);
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ received: true }));
+      });
+    });
+    capture.listen(0, "127.0.0.1");
+    const capturePort = (capture.address() as AddressInfo).port;
+
+    try {
+      const r1 = await runDownloadWorkflow("chain-produce-wf", `${download.baseUrl}/pic.png`);
+      expect(r1.status).toBe("succeeded");
+      const fid = (r1.output as PromotedEnvelope).file.$file;
+
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "chain-consume-wf",
+        steps: [
+          {
+            kind: "request",
+            id: "upload",
+            method: "POST",
+            url: `http://127.0.0.1:${capturePort}/upload`,
+            multipart: [{ name: "blob", file: { $file: fid } }],
+          },
+        ],
+      });
+      const r2 = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+      });
+      expect(r2.status).toBe("succeeded");
+      expect(capturedBody).not.toBeNull();
+      // The promoted bytes round-tripped into the multipart body intact.
+      expect(capturedBody!.toString("binary")).toContain(chainBytes.toString("binary"));
+    } finally {
+      await download.close();
+      await new Promise<void>((r) => capture.close(() => r()));
     }
   });
 });
