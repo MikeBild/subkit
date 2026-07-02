@@ -20,8 +20,8 @@ import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
   DirectInvokeError,
   invokeConversationToolDirect,
-} from "../../../conversations/direct-invoke.ts";
-import { PendingElicitationBlockedError } from "../../../conversations/service/shared.ts";
+  PendingElicitationBlockedError,
+} from "../../../conversations/index.ts";
 import { ConflictError, HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";

@@ -14,6 +14,12 @@ export {
   unregisterConversationAbort,
 } from "./abort.ts";
 export * from "./attachments.ts";
+export {
+  DirectInvokeError,
+  type DirectInvokeOutcome,
+  type DirectInvokeParams,
+  invokeConversationToolDirect,
+} from "./direct-invoke.ts";
 export * from "./parts.ts";
 export * from "./service.ts";
 export * from "./streaming.ts";

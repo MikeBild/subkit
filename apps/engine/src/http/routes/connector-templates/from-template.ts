@@ -4,15 +4,15 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
-import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   resolveConnectorTemplate,
+  runDiscoveryCached,
   UnsupportedIngestionSourceError,
 } from "../../../connectors/index.ts";
 import templateSkillsJson from "../../../connectors/template-skills.json" with { type: "json" };
 import * as docsSvc from "../../../docs-ingestion/index.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import * as skillSvc from "../../../skills/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
