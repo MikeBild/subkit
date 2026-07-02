@@ -31,6 +31,14 @@ import { computeRiskSignals, type RiskSignal, takeRiskEdges, topRisk } from "./r
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_SCANNED_EXECUTIONS = 500;
 const MAX_PENDING_PATCHES = 50;
+// A proposed patch older than this has sat unreviewed long enough to be an
+// operational problem in its own right — a self-healing fix was found but
+// never applied, so the underlying workflow keeps failing. An `unsafe` patch
+// can only ever leave `proposed` via an explicit human approve/reject, so
+// nothing moves it without this surfacing it. We rank stuck patches to the top
+// (and never drop them past the cap) so a 4-day-old fix can't hide behind
+// fresh noise.
+const STUCK_PATCH_DAYS = 3;
 
 /** Where a failed run came from. Authoring trial-runs and manual test
  *  runs are NOT production incidents — the tag keeps them honest. */
@@ -56,6 +64,10 @@ export interface DigestPatch {
   workflow_id: string | null;
   workflow_name: string | null;
   classification: "safe" | "unsafe";
+  /** Whole days the candidate has been in `proposed`. */
+  age_days: number;
+  /** age_days ≥ STUCK_PATCH_DAYS — surfaced first and flagged for the operator. */
+  stuck: boolean;
   summary: string;
 }
 
@@ -216,12 +228,14 @@ export async function buildOperatorHealthDigest(
     (a, b) => b.count - a.count || b.last_seen.localeCompare(a.last_seen),
   );
 
-  // Pending patch candidates (post-flood-fix: ~1 per endpoint).
+  // Pending patch candidates (post-flood-fix: ~1 per endpoint). Order OLDEST
+  // first: a candidate's urgency grows with how long it has sat unreviewed, so
+  // when the cap bites it must drop the freshest rows, never the stuck ones.
   const pendingRows = await db
     .select()
     .from(patchCandidates)
     .where(and(eq(patchCandidates.tenant_id, tenant_id), eq(patchCandidates.status, "proposed")))
-    .orderBy(desc(patchCandidates.created_at))
+    .orderBy(patchCandidates.created_at)
     .limit(MAX_PENDING_PATCHES);
 
   const patchWfIds = [...new Set(pendingRows.map((r) => r.workflow_id))];
@@ -236,19 +250,32 @@ export async function buildOperatorHealthDigest(
       )
     : new Map<string, string>();
 
-  const patchItems: DigestPatch[] = pendingRows.map((r) => {
-    const proposal = asRecord(asRecord(r.diff).proposal);
-    return {
-      id: r.id,
-      workflow_id: r.workflow_id,
-      workflow_name: patchNameById.get(r.workflow_id) ?? null,
-      classification: r.classification,
-      summary:
-        typeof proposal.description === "string"
-          ? proposal.description
-          : "Self-healing fix awaiting review",
-    };
-  });
+  const patchItems: DigestPatch[] = pendingRows
+    .map((r) => {
+      const proposal = asRecord(asRecord(r.diff).proposal);
+      const ageDays = Math.floor(
+        (generatedAt.getTime() - r.created_at.getTime()) / (24 * 60 * 60 * 1000),
+      );
+      return {
+        id: r.id,
+        workflow_id: r.workflow_id,
+        workflow_name: patchNameById.get(r.workflow_id) ?? null,
+        classification: r.classification,
+        age_days: ageDays,
+        stuck: ageDays >= STUCK_PATCH_DAYS,
+        summary:
+          typeof proposal.description === "string"
+            ? proposal.description
+            : "Self-healing fix awaiting review",
+      };
+    })
+    // Most-stuck first (oldest age wins; unsafe breaks an age tie since only a
+    // human can clear it). This is the operator's review queue order.
+    .sort(
+      (a, b) =>
+        b.age_days - a.age_days ||
+        Number(b.classification === "unsafe") - Number(a.classification === "unsafe"),
+    );
 
   // Leading-indicator risks from the live process metrics. Pure read; the
   // builder stays deterministic for a fixed registry + config snapshot.
@@ -320,7 +347,7 @@ export async function buildOperatorHealthDigest(
   }
 
   const allClear = failureGroups.length === 0 && patchItems.length === 0 && risk.length === 0;
-  const headline = buildHeadline(failureGroups, patchItems.length, risk);
+  const headline = buildHeadline(failureGroups, patchItems, risk);
   const rendered = renderDigest(headline, windowHours, failureGroups, patchItems, risk);
 
   return {
@@ -337,11 +364,11 @@ export async function buildOperatorHealthDigest(
 
 function buildHeadline(
   groups: DigestFailureGroup[],
-  patchCount: number,
+  patches: DigestPatch[],
   risk: RiskSignal[],
 ): string {
   const top = topRisk(risk);
-  if (groups.length === 0 && patchCount === 0 && risk.length === 0) {
+  if (groups.length === 0 && patches.length === 0 && risk.length === 0) {
     return "All workflows healthy — nothing needs your attention.";
   }
   const parts: string[] = [];
@@ -358,8 +385,15 @@ function buildHeadline(
   if (nonScheduled > 0) {
     parts.push(`${nonScheduled} test/authoring failure${nonScheduled === 1 ? "" : "s"}`);
   }
-  if (patchCount > 0) {
-    parts.push(`${patchCount} fix${patchCount === 1 ? "" : "es"} awaiting review`);
+  if (patches.length > 0) {
+    // Call out the stuck backlog explicitly — a fix that's been waiting days is
+    // a different signal from a fix proposed an hour ago, and it's the one the
+    // operator has been unknowingly ignoring.
+    const oldest = patches[0]?.age_days ?? 0;
+    const stuckSuffix = oldest >= STUCK_PATCH_DAYS ? ` (oldest stuck ${oldest}d)` : "";
+    parts.push(
+      `${patches.length} fix${patches.length === 1 ? "" : "es"} awaiting review${stuckSuffix}`,
+    );
   }
   // Non-critical risks ride along as a count so they're never lost.
   const warnRisks = risk.filter((r) => r.severity !== "critical").length;
@@ -411,7 +445,10 @@ function renderDigest(
     );
     for (const p of patches) {
       const label = p.workflow_name ?? p.workflow_id ?? "(workflow)";
-      lines.push(`   • ${label} [${p.classification}]: ${p.summary}`);
+      // Age rides in the tag when the patch is stuck so the operator sees which
+      // fixes have been waiting the longest without opening each one.
+      const ageTag = p.stuck ? ` · stuck ${p.age_days}d` : "";
+      lines.push(`   • ${label} [${p.classification}${ageTag}]: ${p.summary}`);
     }
   }
   lines.push("");

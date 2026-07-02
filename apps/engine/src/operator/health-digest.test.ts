@@ -13,6 +13,7 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { buildOperatorHealthDigest } from "./health-digest.ts";
 
 let testDb: TestDb;
@@ -172,5 +173,67 @@ describe("buildOperatorHealthDigest", () => {
     expect(digest.failure_groups.length).toBe(0);
     expect(digest.patch_candidates.pending).toBe(0);
     expect(digest.headline).toContain("healthy");
+  });
+
+  test("ranks a stuck proposed patch first, flags its age, and calls it out in the headline", async () => {
+    const [t] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "t-digest-stuck", display_name: "Stuck" })
+      .returning();
+    const [wf] = await testDb.db
+      .insert(workflows)
+      .values({ tenant_id: t!.id, slug: "sync", name: "Sync", lifecycle: "active" })
+      .returning();
+    const [conn] = await testDb.db
+      .insert(connectors)
+      .values({
+        tenant_id: t!.id,
+        slug: "api",
+        display_name: "API",
+        driver: "http",
+        environment: "dev",
+        auth_type: "none",
+        base_url: "https://api.test",
+        config: {},
+      })
+      .returning();
+
+    const now = getTestNow();
+    // A fresh safe patch and an old unsafe patch. The old one must surface
+    // first even though it was inserted first (older created_at) and is the
+    // one the operator has been unknowingly ignoring.
+    await testDb.db.insert(patchCandidates).values([
+      {
+        tenant_id: t!.id,
+        workflow_id: wf!.id,
+        connector_id: conn!.id,
+        endpoint_key: "POST /",
+        classification: "unsafe",
+        status: "proposed",
+        created_at: new Date(now - 5 * 24 * 60 * 60 * 1000),
+        diff: { proposal: { description: "Rename removed field" } },
+      },
+      {
+        tenant_id: t!.id,
+        workflow_id: wf!.id,
+        connector_id: conn!.id,
+        endpoint_key: "GET /x",
+        classification: "safe",
+        status: "proposed",
+        created_at: new Date(now - 1 * 60 * 60 * 1000),
+        diff: { proposal: { description: "Fresh fix" } },
+      },
+    ]);
+
+    const digest = await buildOperatorHealthDigest(testDb.db, t!.id, { audit: false });
+    expect(digest.patch_candidates.pending).toBe(2);
+    const first = digest.patch_candidates.items[0];
+    expect(first?.summary).toBe("Rename removed field");
+    expect(first?.classification).toBe("unsafe");
+    expect(first?.stuck).toBe(true);
+    expect(first?.age_days).toBeGreaterThanOrEqual(5);
+    expect(digest.patch_candidates.items[1]?.stuck).toBe(false);
+    expect(digest.headline).toContain("stuck");
+    expect(digest.rendered).toContain("stuck 5d");
   });
 });

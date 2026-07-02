@@ -158,5 +158,10 @@ export const workflowsSchedules = pgTable(
     last_enqueued_at: timestamp("last_enqueued_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [index("workflows_schedules_tenant_workflow_idx").on(t.tenant_id, t.workflow_id)],
+  // One schedule row per workflow. The reconciler fires each row
+  // independently, so duplicate rows for the same workflow multiply into
+  // extra runs. Both write paths (`bindFromWorkflow` and `createSchedule`)
+  // update-or-insert on (tenant_id, workflow_id); the unique index makes the
+  // invariant impossible to violate even under a concurrent-insert race.
+  (t) => [uniqueIndex("workflows_schedules_tenant_workflow_uidx").on(t.tenant_id, t.workflow_id)],
 );

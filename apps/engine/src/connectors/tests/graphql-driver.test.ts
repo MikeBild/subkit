@@ -6,7 +6,7 @@
 // mutation. The driver is then exercised through the connector layer so
 // the credential + auth path is also covered.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { upsertCredential } from "../../credentials/service.ts";
@@ -15,6 +15,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { runRequestStep } from "../../execution/steps/request.ts";
 import type { StepRunContext } from "../../execution/types.ts";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
+import { logger } from "../../logging/logger.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 import {
@@ -212,6 +213,30 @@ describe("graphql driver", () => {
     // The request step turns a non-null result here into a FAILED step
     // (see dispatch.ts) so a broken query cannot dry-run "green".
     expect(graphqlErrorMessages(res.body)).toEqual(["Cannot query field 'brokenField'"]);
+  });
+
+  test("graphql.request.error log carries the actual error messages", async () => {
+    const fresh = await getConnector(tenantId, connectorId, testDb.db);
+    const warnings: Array<Record<string, unknown>> = [];
+    const spy = spyOn(logger, "warn").mockImplementation((o: unknown) => {
+      warnings.push(o as Record<string, unknown>);
+    });
+    try {
+      await gqlQuery({
+        db: testDb.db,
+        tenant_id: tenantId,
+        connector: fresh!,
+        query: "query Broken { brokenField }",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    const entry = warnings.find((w) => w.action === "graphql.request.error");
+    expect(entry).toBeDefined();
+    // The boolean flag alone forced a DB round-trip to diagnose schema drift;
+    // the messages must ride in the log so `FieldUndefined` is visible directly.
+    expect(entry?.has_graphql_errors).toBe(true);
+    expect(entry?.error_messages).toEqual(["Cannot query field 'brokenField'"]);
   });
 
   test("graphqlErrorMessages returns null for a clean response", async () => {

@@ -300,6 +300,20 @@ describe("resolver — input + scope", () => {
     });
     expect(r.unresolved[0]!.code).toBe("key_not_found");
   });
+
+  test("item key_not_found suggests the closest actual key (did-you-mean)", async () => {
+    const { tenant_id } = await seed({ slug: "none7b", mode: "none" });
+    // The exact production drift: workflow reads `${item.messageId}` but the
+    // Gmail list payload carries `message_id`. The hint must name it.
+    const r = await resolveStringPlaceholders(`\${item.messageId}`, {
+      tenant_id,
+      environment: "dev",
+      db: ctx.db,
+      scope: { $item: { message_id: "m1", thread_id: "t1" } },
+    });
+    expect(r.unresolved[0]!.code).toBe("key_not_found");
+    expect(r.unresolved[0]!.message).toContain("did you mean 'message_id'");
+  });
 });
 
 describe("resolver — escape handling", () => {

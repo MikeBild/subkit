@@ -264,6 +264,10 @@ export async function executeGraphQLRequest(p: {
       operation_name: operationName,
       status: res.status,
       has_graphql_errors: errorMessages !== null,
+      // Surface the actual GraphQL error text so schema drift (e.g. a removed
+      // root field → "FieldUndefined") is diagnosable from the log alone,
+      // without a database round-trip. Capped so a wall of errors can't flood.
+      error_messages: errorMessages?.slice(0, 5),
     });
   }
   return {

@@ -31,6 +31,7 @@ import type { Db } from "../../db/client.ts";
 import { connectors, credentials } from "../../db/schema/connectors.ts";
 import { logger } from "../../logging/logger.ts";
 import { can } from "../../rbac/evaluator.ts";
+import { suggestClosest } from "../../workflows/levenshtein.ts";
 import { type Placeholder, parsePlaceholders } from "./parser.ts";
 
 export type Environment = "dev" | "prod";
@@ -323,6 +324,18 @@ async function resolveOneRaw(tok: Placeholder, ctx: ResolverContext): Promise<On
   }
 }
 
+/** When a path segment misses, suggest the closest actual key on the
+ *  parent object. `${item.messageId}` against an item that carries
+ *  `message_id` is the single most common `${item.*}` authoring bug —
+ *  field-name / casing drift between the iterated payload and the
+ *  placeholder. Surfacing "did you mean 'message_id'?" turns a runtime
+ *  `key_not_found` into an actionable fix, and (because dry_run executes
+ *  this same resolver) catches the typo at authoring time too. */
+function missingKeyHint(parent: Record<string, unknown>, segment: string): string {
+  const [closest] = suggestClosest(segment, Object.keys(parent), 1);
+  return closest ? ` — did you mean '${closest}'?` : "";
+}
+
 /** Walk a JSON path and return the raw typed value at the leaf. */
 function resolveJsonPathRaw(root: unknown, path: string[], diagnosticRoot: string): OneRawResult {
   if (root === undefined || root === null) {
@@ -341,12 +354,13 @@ function resolveJsonPathRaw(root: unknown, path: string[], diagnosticRoot: strin
         message: `${diagnosticRoot}.${path.join(".")} — cannot descend into non-object`,
       };
     }
-    cur = (cur as Record<string, unknown>)[segment];
+    const parent = cur as Record<string, unknown>;
+    cur = parent[segment];
     if (cur === undefined) {
       return {
         ok: false,
         code: "key_not_found",
-        message: `${diagnosticRoot}.${path.join(".")} — segment '${segment}' missing`,
+        message: `${diagnosticRoot}.${path.join(".")} — segment '${segment}' missing${missingKeyHint(parent, segment)}`,
       };
     }
   }
@@ -505,12 +519,13 @@ function resolveJsonPath(root: unknown, path: string[], diagnosticRoot: string):
         message: `${diagnosticRoot}.${path.join(".")} — cannot descend into non-object`,
       };
     }
-    cur = (cur as Record<string, unknown>)[segment];
+    const parent = cur as Record<string, unknown>;
+    cur = parent[segment];
     if (cur === undefined) {
       return {
         ok: false,
         code: "key_not_found",
-        message: `${diagnosticRoot}.${path.join(".")} — segment '${segment}' missing`,
+        message: `${diagnosticRoot}.${path.join(".")} — segment '${segment}' missing${missingKeyHint(parent, segment)}`,
       };
     }
   }

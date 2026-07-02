@@ -64,6 +64,39 @@ export async function createSchedule(db: Db, input: CreateScheduleInput): Promis
   if (wf.length === 0) {
     throw Object.assign(new Error("workflow_not_found"), { code: "workflow_not_found" });
   }
+  // Update-or-insert on (tenant_id, workflow_id) — a workflow carries at most
+  // one schedule, exactly as the inline-trigger path (`bindFromWorkflow`)
+  // already enforces. The reconciler fires each row independently, so an
+  // unguarded insert here let repeated create_schedule calls (e.g. an author
+  // re-scheduling "daily around 3am" and landing on a slightly different
+  // minute each time) accumulate rows that each fire — one logical schedule
+  // became N real runs. Use cron's multi-time syntax (`0 8,20 * * *`) for
+  // several fire times on one workflow.
+  const existing = await db
+    .select({ id: workflowsSchedules.id })
+    .from(workflowsSchedules)
+    .where(
+      and(
+        eq(workflowsSchedules.tenant_id, input.tenant_id),
+        eq(workflowsSchedules.workflow_id, input.workflow_id),
+      ),
+    )
+    .limit(1);
+  const prior = existing[0] as { id: string } | undefined;
+  if (prior) {
+    const updated = await db
+      .update(workflowsSchedules)
+      .set({
+        cron: input.cron,
+        timezone: input.timezone ?? "UTC",
+        paused: input.paused ?? false,
+        input: (input.input ?? null) as never,
+        updated_at: new Date(),
+      })
+      .where(eq(workflowsSchedules.id, prior.id))
+      .returning();
+    return updated[0] as ScheduleRow;
+  }
   const rows = await db
     .insert(workflowsSchedules)
     .values({
