@@ -81,6 +81,19 @@ function writeLine(stream: { write: (s: string) => void } | undefined, line: str
   (stream ?? process.stdout).write(`${line}\n`);
 }
 
+/** Derive an `@attachment:`-addressable slug from a filename. Must
+ *  match the engine's slug charset (`[a-z0-9][a-z0-9_-]{0,62}`) — any
+ *  other character collapses to `-`. Returns null when nothing
+ *  slug-able remains (the link is then created slug-less, as before). */
+function attachmentSlug(filename: string): string | null {
+  const slug = filename
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^[-_]+/, "")
+    .slice(0, 63);
+  return /^[a-z0-9]/.test(slug) ? slug : null;
+}
+
 function sanitizeError(err: unknown): { status: number; message: string; exit: 1 | 2 } {
   if (isEngineError(err)) {
     // 400/422 → exit 1 (validation). 401/403/404 → exit 2 (auth/not-found).
@@ -376,11 +389,27 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     try {
       for (const p of attachPaths) {
         const row = await uploadPath(client, p, { quiet: true });
-        await client.linkFile(row.id, {
-          resource_type: "conversation",
-          resource_id: conversationId,
-          role: "attachment",
-        });
+        // Filename-derived slug so the prompt can address the file as
+        // `@attachment:<slug>` — a slug-less link is invisible to the
+        // engine's mention rewriter and the model can only see the
+        // attachment listed, never its content. On a slug conflict
+        // (same filename attached twice) fall back to a slug-less
+        // link rather than failing the turn.
+        const slug = attachmentSlug(row.filename);
+        try {
+          await client.linkFile(row.id, {
+            resource_type: "conversation",
+            resource_id: conversationId,
+            role: "attachment",
+            ...(slug ? { slug } : {}),
+          });
+        } catch {
+          await client.linkFile(row.id, {
+            resource_type: "conversation",
+            resource_id: conversationId,
+            role: "attachment",
+          });
+        }
         debugLog(
           "conversation.turn_events",
           {
@@ -392,9 +421,17 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           traceContext(),
         );
         if (opts.output === "stream-json") {
-          writeLine(stdout, JSON.stringify({ file_attached: row.id, filename: row.filename }));
+          writeLine(
+            stdout,
+            JSON.stringify({
+              file_attached: row.id,
+              filename: row.filename,
+              ...(slug ? { slug } : {}),
+            }),
+          );
         } else if (!opts.quiet) {
-          stderr.write(`sk: attached ${row.id} (${row.filename})\n`);
+          const mention = slug ? ` — reference it as @attachment:${slug}` : "";
+          stderr.write(`sk: attached ${row.id} (${row.filename})${mention}\n`);
         }
       }
       // Now that every file is linked, send the user prompt as the

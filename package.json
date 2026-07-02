@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "7.26.0",
+  "version": "7.26.1",
   "private": true,
   "type": "module",
   "description": "A self-hostable, multi-tenant engine for governed, versioned, AI-assisted workflow execution against connected systems.",
@@ -151,6 +151,7 @@
     "p-limit": "^7.3.0",
     "p-retry": "^8.0.0",
     "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "5.4.296",
     "pg": "^8.20.0",
     "pg-boss": "^12.15.0",
     "picocolors": "^1.1.1",

@@ -67,6 +67,87 @@ function tableToMarkdown(rows: string[][]): string {
   return lines.join("\n");
 }
 
+/** pdfjs-dist (transitive under `pdf-parse`) references `DOMMatrix` at
+ *  module-evaluation time (`SCALE_MATRIX = new DOMMatrix()`). In dev the
+ *  `@napi-rs/canvas` native provides it; inside a `bun build --compile`
+ *  binary that native is absent, pdfjs's own polyfill attempt fails
+ *  silently, and the module eval throws `DOMMatrix is not defined` —
+ *  which killed EVERY pdf parse on the deployed engine. Text + table
+ *  extraction never perform real matrix math or rasterisation, so a
+ *  minimal identity-matrix shim satisfies module load; the rendering
+ *  paths that would need a real implementation (`getImage`,
+ *  `getScreenshot`) are never called here. Installed only when the
+ *  global is absent, so environments with the real canvas polyfill are
+ *  untouched. */
+function ensurePdfjsGlobals(): void {
+  const g = globalThis as Record<string, unknown>;
+  if (typeof g.DOMMatrix !== "undefined") return;
+  class DOMMatrixShim {
+    a = 1;
+    b = 0;
+    c = 0;
+    d = 1;
+    e = 0;
+    f = 0;
+    is2D = true;
+    isIdentity = true;
+    constructor(init?: number[]) {
+      if (Array.isArray(init) && init.length >= 6) {
+        [this.a, this.b, this.c, this.d, this.e, this.f] = init as [
+          number,
+          number,
+          number,
+          number,
+          number,
+          number,
+        ];
+        this.isIdentity =
+          this.a === 1 &&
+          this.b === 0 &&
+          this.c === 0 &&
+          this.d === 1 &&
+          this.e === 0 &&
+          this.f === 0;
+      }
+    }
+    scale(): DOMMatrixShim {
+      return this;
+    }
+    translate(): DOMMatrixShim {
+      return this;
+    }
+    multiply(): DOMMatrixShim {
+      return this;
+    }
+    inverse(): DOMMatrixShim {
+      return this;
+    }
+    transformPoint(p: unknown): unknown {
+      return p;
+    }
+  }
+  g.DOMMatrix = DOMMatrixShim;
+}
+
+/** pdf.js resolves its worker by dynamically importing
+ *  `GlobalWorkerOptions.workerSrc` — a RELATIVE './pdf.worker.mjs' path
+ *  that cannot resolve inside a `bun build --compile` binary ("Cannot
+ *  find module './pdf.worker.mjs' from '/$bunfs/root/engine'"). Its
+ *  fake-worker setup checks `globalThis.pdfjsWorker` FIRST, so
+ *  pre-loading the worker module through a static specifier (which the
+ *  bundler embeds) short-circuits the broken path lookup entirely.
+ *  Best-effort: in dev the on-disk resolution works without this. */
+async function ensurePdfjsWorker(): Promise<void> {
+  const g = globalThis as Record<string, unknown>;
+  if (g.pdfjsWorker) return;
+  try {
+    g.pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  } catch {
+    // Dev/test environments resolve the worker from node_modules via
+    // pdf.js's own lookup; only the compiled binary needs the pre-load.
+  }
+}
+
 export const pdfStrategy: FileParsingStrategy<PdfParseOutput> = {
   format: "pdf",
   priority: DetectionPriority.BINARY_SIGNATURE,
@@ -78,6 +159,8 @@ export const pdfStrategy: FileParsingStrategy<PdfParseOutput> = {
 
   async parse(buffer: Buffer): Promise<PdfParseOutput> {
     return withParserTimeout("pdf", PARSER_TIMEOUT_MS.pdf, async () => {
+      ensurePdfjsGlobals();
+      await ensurePdfjsWorker();
       const pdfModule = await import("pdf-parse").catch((err: unknown) => {
         throw new BinaryParseError("pdf", "pdf: PDF toolchain failed to load", { cause: err });
       });

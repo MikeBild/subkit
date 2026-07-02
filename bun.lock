@@ -79,6 +79,7 @@
         "p-limit": "^7.3.0",
         "p-retry": "^8.0.0",
         "pdf-parse": "^2.4.5",
+        "pdfjs-dist": "5.4.296",
         "pg": "^8.20.0",
         "pg-boss": "^12.15.0",
         "picocolors": "^1.1.1",
