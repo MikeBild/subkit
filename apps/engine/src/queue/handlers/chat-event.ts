@@ -29,11 +29,17 @@ import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
 import { ChatEventJobSchema } from "../../chat/api.ts";
 import { markChatEventSeen } from "../../chat/dedup.ts";
 import { handleChatEvent } from "../../chat/dispatcher.ts";
-import { ensureChatRegistryHydrated } from "../../chat/hydrate.ts";
+import { ensureDmAutoRegistration } from "../../chat/dm-autoregister.ts";
+import {
+  buildGoogleChatAdapterFromConfig,
+  ensureChatRegistryHydrated,
+} from "../../chat/hydrate.ts";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
+import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
+import { tryAcquire } from "../../notifications/rate-limit.ts";
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queues.ts";
 
 export interface RegisterChatEventOptions {
@@ -79,7 +85,7 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
   // Resolve workspace row → tenant + UUID. tenant-filter:exempt —
   // platform/workspace_id lookup pre-tenant; the dispatcher repeats
   // this lookup, which is harmless and keeps the dispatcher portable.
-  const [workspace] = await db
+  let [workspace] = await db
     .select()
     .from(chatWorkspaces)
     .where(
@@ -90,41 +96,132 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
     )
     .limit(1);
   if (!workspace) {
-    log.queue.job.completed({
-      msg: "chat.event dropped — unknown workspace",
-      queue: CHAT_EVENT_QUEUE,
-      job_id: job.id,
-      platform: event.platform,
-      workspace_id_native: event.workspace_id,
-      duration_ms: Date.now() - started,
-    });
-    // Tenant-visible audit row for the drop. Without this a flood of
-    // Slack retries against a removed workspace would be invisible to
-    // every tenant (the structured log only reaches SIEM). We don't
-    // know the owning tenant — the workspace row has been removed or
-    // was never installed — so record under the platform-system
-    // tenant; the platform `workspace_id_native` in metadata is
-    // enough for forensic correlation.
-    await auditAwait(
-      {
-        tenant_id: SYSTEM_TENANT_ID,
-        actor_type: "system",
-        actor_id: null,
-        action: AuditAction.CHAT_MESSAGE_DENIED,
-        resource_type: "chat_message",
-        resource_id: null,
-        result: "denied",
-        reason: "workspace_not_installed",
-        metadata: {
-          platform: event.platform,
-          workspace_id_native: event.workspace_id,
-          event_key: event.event_key ?? null,
-          kind: event.kind,
+    // A 1:1 DM space from a user already linked in exactly one tenant
+    // auto-registers (fail-closed; Google-only via the global-user-id
+    // capability map). On success fall through to the normal path so
+    // the very first DM runs a governed read-only turn.
+    const auto = await ensureDmAutoRegistration(db, event);
+    if ("workspace" in auto) {
+      workspace = auto.workspace;
+      // Register the fresh workspace key DIRECTLY. The cooldown-guarded
+      // `ensureChatRegistryHydrated` is NOT sufficient here: a rehydrate
+      // in the previous 30s (or one in flight that SELECTed before the
+      // provisioning tx committed) silently no-ops, the adapter lookup
+      // below misses, the job throws — and dedup already marked the
+      // event, so the pg-boss retry is swallowed and the user's FIRST
+      // DM would be silently lost. Direct registration has no cooldown
+      // and no read-before-commit race. Only google_chat is
+      // auto-registrable today, and its adapter is app-level (one per
+      // engine, from config) — creds are guaranteed complete-enough to
+      // try because a fallback adapter for the platform implies a
+      // successful hydrate; still guard for the empty-config edge.
+      if (event.platform === "google_chat") {
+        const google = getConfig().platform.googlechat;
+        if (google.client_email && google.private_key && google.audience) {
+          const adapter = buildGoogleChatAdapterFromConfig(google);
+          chatRegistry.register(
+            {
+              tenant_id: workspace.tenant_id,
+              platform: "google_chat",
+              workspace_id: workspace.workspace_id,
+            },
+            adapter,
+          );
+          chatRegistry.registerFallback("google_chat", adapter);
+        }
+      }
+    } else {
+      log.queue.job.completed({
+        msg: "chat.event dropped — unknown workspace",
+        queue: CHAT_EVENT_QUEUE,
+        job_id: job.id,
+        platform: event.platform,
+        workspace_id_native: event.workspace_id,
+        duration_ms: Date.now() - started,
+      });
+      // Tenant-visible audit row for the drop. Without this a flood of
+      // Slack retries against a removed workspace would be invisible to
+      // every tenant (the structured log only reaches SIEM). We don't
+      // know the owning tenant — the workspace row has been removed or
+      // was never installed — so record under the platform-system
+      // tenant; the platform `workspace_id_native` in metadata is
+      // enough for forensic correlation. DM-specific denials keep
+      // their precise reason (dm_sender_not_linked / _ambiguous).
+      await auditAwait(
+        {
+          tenant_id: SYSTEM_TENANT_ID,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.CHAT_MESSAGE_DENIED,
+          resource_type: "chat_message",
+          resource_id: null,
+          result: "denied",
+          reason:
+            auto.denied === "not_dm_autoregistrable" ? "workspace_not_installed" : auto.denied,
+          metadata: {
+            platform: event.platform,
+            workspace_id_native: event.workspace_id,
+            event_key: event.event_key ?? null,
+            kind: event.kind,
+          },
         },
-      },
-      db,
-    );
-    return;
+        db,
+      );
+      // Best-effort, rate-limited, generic "not connected" reply so a
+      // human who just messaged or added the app isn't left in silence.
+      // FAIL-CLOSED: no tenant is known, so the copy is generic and
+      // reveals nothing about which (or whether any) tenant exists.
+      // Only user-initiated events earn a reply — stale button clicks
+      // and membership-removal events stay silent. Dedup runs AFTER
+      // this block (it needs a tenant), so the 1/min/space bucket is
+      // what bounds a retry burst here.
+      const wantsReply =
+        event.channel_id.length > 0 &&
+        (event.kind === "mention" ||
+          event.kind === "slash_command" ||
+          (event.kind === "system" && event.system_event === "added_to_space"));
+      if (wantsReply) {
+        const fallback = chatRegistry.getFallback(event.platform);
+        if (fallback) {
+          const gate = tryAcquire(
+            {
+              tenant_id: "unregistered",
+              workspace_id: event.workspace_id,
+              channel_id: event.channel_id,
+            },
+            1,
+            1,
+          );
+          if (gate.ok) {
+            try {
+              await fallback.send({
+                tenant_id: SYSTEM_TENANT_ID,
+                workspace_id: event.workspace_id,
+                channel_id: event.channel_id,
+                ...(event.thread_id ? { thread_id: event.thread_id } : {}),
+                kind: "message",
+                text: "This space isn't connected to sk yet. Ask an admin to install the sk app here to start using it.",
+              });
+            } catch (err) {
+              // Slack bot tokens are workspace-scoped, so the fallback
+              // (another workspace's token) can't post into an
+              // uninstalled Slack workspace — expected; the deny audit
+              // above already recorded the drop. Google's app-level
+              // service account CAN post wherever the app is a member,
+              // so the reply lands there.
+              logger.debug({
+                module: "chat",
+                action: "chat_event.fallback_reply_failed",
+                msg: "unregistered-space fallback reply failed — expected for workspace-scoped tokens",
+                platform: event.platform,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+        }
+      }
+      return;
+    }
   }
 
   // Dedup BEFORE dispatch. A Slack retry that arrives while the first

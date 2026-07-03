@@ -12,6 +12,14 @@
 // We enqueue two jobs with the SAME event_key (mirroring a Slack
 // retry) and assert that exactly ONE dispatch reaches the registered
 // adapter.
+//
+// The second describe block covers the handler's unknown-workspace
+// branch: DM auto-registration denials keep their precise audit
+// reason, and user-initiated events (mention / slash / added_to_space)
+// earn ONE rate-limited generic fallback reply via
+// `chatRegistry.getFallback` — stale interactions and membership
+// removals stay silent, and a failing fallback send never fails the
+// job.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -243,5 +251,208 @@ describe("queue: chat.event worker", () => {
     expect(denyRow).toBeTruthy();
     // We don't know the owning tenant — record under SYSTEM_TENANT_ID.
     expect(denyRow?.tenant_id).toBe(SYSTEM_TENANT_ID);
+  }, 90_000);
+});
+
+// ---------------------------------------------------------------------------
+// Unknown-workspace branch: precise deny reasons + the rate-limited
+// generic fallback reply. Google Chat's fallback is the ONE app-level
+// adapter (service-account outbound), so a reply CAN land in an
+// uninstalled space — unlike Slack, whose workspace-scoped tokens make
+// the same send fail (also covered: the failure is swallowed).
+// ---------------------------------------------------------------------------
+
+class RecordingGoogleFallback {
+  readonly platform: ChatPlatform = "google_chat";
+  sends: ChatDelivery[] = [];
+  failNext = false;
+  async send(d: ChatDelivery) {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error("google api: 403 app not installed");
+    }
+    this.sends.push(d);
+    return { platform_message_id: `gfb-${this.sends.length}` };
+  }
+}
+
+const FALLBACK_TEXT =
+  "This space isn't connected to sk yet. Ask an admin to install the sk app here to start using it.";
+
+let googleFallback: RecordingGoogleFallback;
+
+/** Poll until `count` deny audits exist for the given native workspace id. */
+async function waitForDenyAudits(
+  workspaceIdNative: string,
+  count: number,
+): Promise<Array<typeof auditLog.$inferSelect>> {
+  // allow-wall-clock: real-time polling for queue completion
+  const deadline = Date.now() + 60_000;
+  let matches: Array<typeof auditLog.$inferSelect> = [];
+  while (Date.now() < deadline) {
+    const rows = await testDb.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "chat.message.denied"));
+    matches = rows.filter(
+      (r) =>
+        (r.metadata as Record<string, unknown> | null)?.workspace_id_native === workspaceIdNative,
+    );
+    if (matches.length >= count) return matches;
+    await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: poll cadence
+  }
+  return matches;
+}
+
+function googleEvent(overrides: Partial<ChatEvent>): ChatEvent {
+  return {
+    platform: "google_chat",
+    workspace_id: "spaces/UNSET",
+    channel_id: "spaces/UNSET",
+    user_id: "users/g-stranger",
+    kind: "mention",
+    text: "hello?",
+    raw: {},
+    ...overrides,
+  };
+}
+
+describe("queue: chat.event unregistered-space fallback reply", () => {
+  beforeAll(() => {
+    googleFallback = new RecordingGoogleFallback();
+    registry.registerFallback("google_chat", googleFallback);
+  });
+
+  test("mention in unknown space → deny audit + ONE generic reply; second mention rate-limited", async () => {
+    const SPACE = "spaces/FB_MENTION";
+    const ev1 = googleEvent({
+      workspace_id: SPACE,
+      channel_id: SPACE,
+      thread_id: `${SPACE}/threads/T1`,
+      event_key: "g-fb-m-1",
+    });
+    await boss.send(CHAT_EVENT_QUEUE, { event: ev1 });
+    const firstDeny = await waitForDenyAudits(SPACE, 1);
+    expect(firstDeny).toHaveLength(1);
+    expect(firstDeny[0]?.tenant_id).toBe(SYSTEM_TENANT_ID);
+    // Non-DM google event: the auto-registration gate denies as
+    // not_dm_autoregistrable, which the handler records as the legacy
+    // workspace_not_installed reason.
+    expect(firstDeny[0]?.reason).toBe("workspace_not_installed");
+
+    // The reply lands after the audit — poll the adapter directly.
+    // allow-wall-clock: real-time polling for the outbound send
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline && googleFallback.sends.length === 0) {
+      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: poll cadence
+    }
+    const local = googleFallback.sends.filter((d) => d.channel_id === SPACE);
+    expect(local).toHaveLength(1);
+    expect(local[0]?.kind).toBe("message");
+    expect(local[0]?.text).toBe(FALLBACK_TEXT);
+    // No tenant is known — the delivery carries only the system tenant
+    // and reveals nothing about any real tenant.
+    expect(local[0]?.tenant_id).toBe(SYSTEM_TENANT_ID);
+    expect(local[0]?.thread_id).toBe(`${SPACE}/threads/T1`);
+
+    // Second mention into the SAME space within the minute: deny audit
+    // still recorded, but the 1/min/space bucket gates the reply.
+    const ev2 = googleEvent({ workspace_id: SPACE, channel_id: SPACE, event_key: "g-fb-m-2" });
+    await boss.send(CHAT_EVENT_QUEUE, { event: ev2 });
+    const bothDenies = await waitForDenyAudits(SPACE, 2);
+    expect(bothDenies).toHaveLength(2);
+    await new Promise((r) => setTimeout(r, 500)); // allow-wall-clock: settle for a (wrong) second send
+    expect(googleFallback.sends.filter((d) => d.channel_id === SPACE)).toHaveLength(1);
+  }, 90_000);
+
+  test("added_to_space in unknown space → one generic reply", async () => {
+    const SPACE = "spaces/FB_ADDED";
+    const ev = googleEvent({
+      workspace_id: SPACE,
+      channel_id: SPACE,
+      kind: "system",
+      system_event: "added_to_space",
+      event_key: "g-fb-a-1",
+    });
+    delete ev.text;
+    await boss.send(CHAT_EVENT_QUEUE, { event: ev });
+    await waitForDenyAudits(SPACE, 1);
+    // allow-wall-clock: real-time polling for the outbound send
+    const deadline = Date.now() + 30_000;
+    while (
+      Date.now() < deadline &&
+      googleFallback.sends.filter((d) => d.channel_id === SPACE).length === 0
+    ) {
+      await new Promise((r) => setTimeout(r, 50)); // allow-wall-clock: poll cadence
+    }
+    const local = googleFallback.sends.filter((d) => d.channel_id === SPACE);
+    expect(local).toHaveLength(1);
+    expect(local[0]?.text).toBe(FALLBACK_TEXT);
+  }, 90_000);
+
+  test("stale interaction + removed_from_space stay silent (deny audit only)", async () => {
+    const SPACE_I = "spaces/FB_SILENT_I";
+    const SPACE_R = "spaces/FB_SILENT_R";
+    await boss.send(CHAT_EVENT_QUEUE, {
+      event: googleEvent({
+        workspace_id: SPACE_I,
+        channel_id: SPACE_I,
+        kind: "interaction",
+        event_key: "g-fb-i-1",
+      }),
+    });
+    await boss.send(CHAT_EVENT_QUEUE, {
+      event: googleEvent({
+        workspace_id: SPACE_R,
+        channel_id: SPACE_R,
+        kind: "system",
+        system_event: "removed_from_space",
+        event_key: "g-fb-r-1",
+      }),
+    });
+    expect(await waitForDenyAudits(SPACE_I, 1)).toHaveLength(1);
+    expect(await waitForDenyAudits(SPACE_R, 1)).toHaveLength(1);
+    await new Promise((r) => setTimeout(r, 500)); // allow-wall-clock: settle for a (wrong) send
+    expect(googleFallback.sends.filter((d) => d.channel_id === SPACE_I)).toHaveLength(0);
+    expect(googleFallback.sends.filter((d) => d.channel_id === SPACE_R)).toHaveLength(0);
+  }, 90_000);
+
+  test("fallback send failure is swallowed — deny audit intact, job completes without retry", async () => {
+    const SPACE = "spaces/FB_THROW";
+    googleFallback.failNext = true;
+    await boss.send(CHAT_EVENT_QUEUE, {
+      event: googleEvent({ workspace_id: SPACE, channel_id: SPACE, event_key: "g-fb-t-1" }),
+    });
+    const denies = await waitForDenyAudits(SPACE, 1);
+    expect(denies).toHaveLength(1);
+    // The throw is caught inside the handler: no rethrow means pg-boss
+    // never retries, so no second deny audit appears and no send lands.
+    await new Promise((r) => setTimeout(r, 2_000)); // allow-wall-clock: settle for a (wrong) retry
+    expect(await waitForDenyAudits(SPACE, 1)).toHaveLength(1);
+    expect(googleFallback.sends.filter((d) => d.channel_id === SPACE)).toHaveLength(0);
+    expect(googleFallback.failNext).toBe(false);
+  }, 90_000);
+
+  test("unlinked google DM keeps its precise deny reason (dm_sender_not_linked)", async () => {
+    const SPACE = "spaces/FB_DM_UNLINKED";
+    await boss.send(CHAT_EVENT_QUEUE, {
+      event: googleEvent({
+        workspace_id: SPACE,
+        channel_id: SPACE,
+        is_direct_message: true,
+        user_id: "users/g-never-linked",
+        event_key: "g-fb-dm-1",
+      }),
+    });
+    const denies = await waitForDenyAudits(SPACE, 1);
+    expect(denies).toHaveLength(1);
+    expect(denies[0]?.reason).toBe("dm_sender_not_linked");
+    expect(denies[0]?.tenant_id).toBe(SYSTEM_TENANT_ID);
+    // No workspace row was provisioned for the denied DM.
+    const rows = await testDb.db
+      .select()
+      .from(chatWorkspaces)
+      .where(eq(chatWorkspaces.workspace_id, SPACE));
+    expect(rows).toHaveLength(0);
   }, 90_000);
 });

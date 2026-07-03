@@ -36,11 +36,14 @@
 import { and, eq, like } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import type { ResolvedPrincipal } from "../auth/types.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
 import type { RunLoopResult } from "../conversations/loop.ts";
 import {
   appendUserMessage,
   createConversation,
+  PendingElicitationBlockedError,
+  respondElicitation,
   runConversationTurn,
 } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
@@ -64,7 +67,7 @@ import { resolveChatPrincipal } from "./principal.ts";
 export type { DispatchOutcome } from "./dispatcher-types.ts";
 
 import type { DispatchOutcome } from "./dispatcher-types.ts";
-import { routeChatInteraction } from "./elicit-routing.ts";
+import { classifyChatElicitError, routeChatInteraction } from "./elicit-routing.ts";
 import { withConversationTurnLock } from "./turn-lock.ts";
 import {
   type ApprovalCard,
@@ -308,6 +311,130 @@ export async function handleChatEvent(
   });
 }
 
+/**
+ * A chat user TYPED a plain answer while an ask_user_* dialog is still
+ * pending (`appendUserMessage` throws PendingElicitationBlockedError —
+ * without this salvage the chat.event job died, dedup swallowed the
+ * pg-boss retries, and the conversation hung until `/new`). Salvage:
+ *
+ *   text kind          → resolve with { text: <typed message> }
+ *   single-field form  → resolve with { [field.name]: <typed message> }
+ *   everything else    → a free-text line can't answer it (buttons /
+ *                        checkboxes / multi-field dialog); post one
+ *                        line of guidance, leave the dialog pending.
+ *
+ * Returns the resumed turn's RunLoopResult (the caller's shared
+ * post-turn block renders it — awaiting_input and plain replies both)
+ * or null when this helper already replied and the caller must
+ * early-return. MUST run OUTSIDE the caller's turn lock: the chain is
+ * non-reentrant, and `respondElicitation` below takes a FRESH lock.
+ */
+async function salvageTypedReplyToPendingElicitation(args: {
+  deps: DispatcherDeps;
+  ev: ChatEvent;
+  tenant_id: string;
+  user_id: string;
+  conversation_id: string;
+  prompt: string;
+  pending: { id: string; tool_name: string; summary: string; input?: unknown };
+  principal: ResolvedPrincipal | null;
+}): Promise<RunLoopResult | null> {
+  const { deps, ev, tenant_id, user_id, conversation_id, prompt, pending, principal } = args;
+  const notify = (text: string) =>
+    sendTracked(deps.adapter, ev.platform, {
+      tenant_id,
+      workspace_id: ev.workspace_id,
+      channel_id: ev.channel_id,
+      ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+      kind: "message",
+      text,
+    });
+
+  const kind = mapToolNameToKind(pending.tool_name);
+  let output: unknown = null;
+  if (kind === "text") {
+    output = { text: prompt };
+  } else if (kind === "form") {
+    const fields =
+      pending.input &&
+      typeof pending.input === "object" &&
+      Array.isArray((pending.input as { fields?: unknown }).fields)
+        ? (pending.input as { fields: Array<{ name?: unknown }> }).fields
+        : [];
+    if (fields.length === 1 && typeof fields[0]?.name === "string") {
+      output = { [fields[0].name]: prompt };
+    }
+  }
+
+  if (output === null) {
+    // Best-effort like every other notify in this helper: a transient
+    // send failure must not escape (the job would die and dedup would
+    // swallow the retry); the widget is still rendered and answerable.
+    await notify(
+      "There's a prompt waiting for your answer just above — please use the " +
+        "buttons or menu to respond, or type `/new` to start over.",
+    ).catch(() => {});
+    return null;
+  }
+
+  const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+  try {
+    const resolved = await withConversationTurnLock(tenant_id, conversation_id, () =>
+      respondElicitation(
+        {
+          tenant_id,
+          conversation_id,
+          elicitation_id: pending.id,
+          actor_id: user_id,
+          principal,
+          output,
+          turn_abort_ctrl: turnAbortCtrl,
+          // Shared-space contract: only the initiator may answer.
+          require_same_actor: true,
+          // The resumed turn must keep the read-only chat palette.
+          surface: "chat",
+        },
+        deps.db,
+      ),
+    );
+    return resolved.result;
+  } catch (err) {
+    const classified = classifyChatElicitError(err);
+    if (classified.kind === "rethrow") throw err;
+    if (classified.kind === "validation") {
+      await notify(classified.user_text).catch(() => {});
+      return null;
+    }
+    if (classified.kind === "already_resolved") {
+      // Raced against a button click / retry — the winner posts the
+      // reply; drop the loser silently.
+      return null;
+    }
+    // actor_mismatch / not_found: audit the denial, tell the typist
+    // (best-effort) on mismatch, leave the dialog pending.
+    if (classified.kind === "actor_mismatch") {
+      await notify(`${classified.user_text} Type \`/new\` to start your own.`).catch(() => {});
+    }
+    await auditAwait(
+      {
+        tenant_id,
+        actor_type: "user",
+        actor_id: user_id,
+        action: AuditAction.CHAT_MESSAGE_DENIED,
+        resource_type: "conversation_elicitation",
+        resource_id: pending.id,
+        result: "denied",
+        reason: classified.audit_reason,
+        metadata: { conversation_id, kind },
+      },
+      deps.db,
+    );
+    return null;
+  } finally {
+    unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+  }
+}
+
 async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise<DispatchOutcome> {
   const { db, adapter } = deps;
 
@@ -322,6 +449,10 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
       ),
     )
     .limit(1);
+  // Unreachable in production: the chat.event worker resolves the
+  // workspace FIRST and owns both DM auto-registration and the
+  // rate-limited "not connected" fallback reply for unknown spaces
+  // (queue/handlers/chat-event.ts). Kept for direct callers/tests.
   if (!workspace) return { status: "workspace_not_found" };
   const tenant_id = workspace.tenant_id;
 
@@ -597,33 +728,57 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
     // The turn lock serializes concurrent turns on the shared space
     // conversation: two members mentioning the bot at once would
     // otherwise interleave two runLoop turns over the same timeline.
-    outcome = await withConversationTurnLock(tenant_id, conversation_id, async () => {
-      const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
-      try {
-        const appended = await appendUserMessage(
-          { tenant_id, conversation_id, actor_id: user_id, message: prompt },
-          db,
-        );
-        const turn = await runConversationTurn(
-          {
-            tenant_id,
-            conversation_id,
-            actor_id: user_id,
-            principal: chatPrincipal,
-            user_message: appended.message,
-            user_memory: appended.user_memory,
-            turn_abort_ctrl: turnAbortCtrl,
-            // Channel-scoped read-only contract: the chat surface selects
-            // the CHAT_READONLY_TOOLS palette + chat persona in the loop.
-            surface: "chat",
-          },
-          db,
-        );
-        return turn.result;
-      } finally {
-        unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
-      }
-    });
+    try {
+      outcome = await withConversationTurnLock(tenant_id, conversation_id, async () => {
+        const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+        try {
+          const appended = await appendUserMessage(
+            { tenant_id, conversation_id, actor_id: user_id, message: prompt },
+            db,
+          );
+          const turn = await runConversationTurn(
+            {
+              tenant_id,
+              conversation_id,
+              actor_id: user_id,
+              principal: chatPrincipal,
+              user_message: appended.message,
+              user_memory: appended.user_memory,
+              turn_abort_ctrl: turnAbortCtrl,
+              // Channel-scoped read-only contract: the chat surface selects
+              // the CHAT_READONLY_TOOLS palette + chat persona in the loop.
+              surface: "chat",
+            },
+            db,
+          );
+          return turn.result;
+        } finally {
+          unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+        }
+      });
+    } catch (err) {
+      // The user typed a message while an ask_user_* dialog is pending.
+      // The catch sits OUTSIDE the turn lock (non-reentrant chain — the
+      // blocked append already released it; the salvage takes a fresh
+      // one). Only the existing-conversation branch can hit this: a
+      // fresh conversation has no pending elicitation.
+      if (!(err instanceof PendingElicitationBlockedError)) throw err;
+      const resumed = await salvageTypedReplyToPendingElicitation({
+        deps,
+        ev,
+        tenant_id,
+        user_id,
+        conversation_id,
+        prompt,
+        pending: err.pending_elicitation,
+        principal: chatPrincipal,
+      });
+      if (resumed === null) return { status: "ok", conversation_id };
+      // Fall through: the resumed turn may itself pause on a follow-up
+      // elicitation or produce a normal reply — the shared post-turn
+      // block below renders both exactly once.
+      outcome = resumed;
+    }
   } else {
     const created = await createConversation(
       { tenant_id, actor_id: user_id, initial_message: prompt },

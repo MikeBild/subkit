@@ -20,7 +20,7 @@ import {
   ElicitationNotFoundError,
   ElicitationValidationError,
 } from "../conversations/service/elicit.ts";
-import { respondElicitation } from "../conversations/service.ts";
+import { ElicitationAlreadyResolvedError, respondElicitation } from "../conversations/service.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import {
@@ -101,6 +101,51 @@ function parseViewMetadata(raw: string): { c: string; e: string; k: string } | n
     return null;
   }
   return result.data;
+}
+
+/** Classified reaction to a `respondElicitation` failure on the chat
+ *  surface. Shared by `routeChatInteraction` (button/modal path) and
+ *  the dispatcher's typed-reply salvage so the two paths can never
+ *  drift in how they map the same error. Callers own their audit +
+ *  notify + return shapes; this owns only the mapping. */
+export type ChatElicitErrorClass =
+  | { kind: "actor_mismatch"; audit_reason: "actor_not_owner"; user_text: string }
+  | {
+      kind: "validation";
+      user_text: string;
+      field_errors: Array<{ name: string; message: string }>;
+    }
+  | { kind: "already_resolved" }
+  | {
+      kind: "not_found";
+      audit_reason: "conversation_not_found_for_actor" | "elicitation_not_found";
+    }
+  | { kind: "rethrow" };
+
+export function classifyChatElicitError(err: unknown): ChatElicitErrorClass {
+  if (err instanceof ElicitationActorMismatchError) {
+    return {
+      kind: "actor_mismatch",
+      audit_reason: "actor_not_owner",
+      user_text: "Only the person who started this request can confirm it.",
+    };
+  }
+  if (err instanceof ElicitationValidationError) {
+    const detail = err.field_errors.map((e) => `${e.name}: ${e.message}`).join("; ");
+    return {
+      kind: "validation",
+      field_errors: err.field_errors,
+      user_text: `That answer didn't pass validation — ${detail}. Please submit again.`,
+    };
+  }
+  if (err instanceof ElicitationAlreadyResolvedError) return { kind: "already_resolved" };
+  if (err instanceof ConversationNotFoundError) {
+    return { kind: "not_found", audit_reason: "conversation_not_found_for_actor" };
+  }
+  if (err instanceof ElicitationNotFoundError) {
+    return { kind: "not_found", audit_reason: "elicitation_not_found" };
+  }
+  return { kind: "rethrow" };
 }
 
 export interface RouteChatInteractionArgs {
@@ -320,94 +365,102 @@ export async function routeChatInteraction(
       ),
     );
   } catch (err) {
-    if (err instanceof ElicitationActorMismatchError) {
-      // A space conversation is shared: every linked member sees the
-      // approval card, but only the initiator may resolve it. Tell the
-      // clicking user why nothing happened (best-effort) instead of
-      // silently ignoring the click.
-      if (notify) {
-        try {
-          await notify("Only the person who started this request can confirm it.");
-        } catch {
-          /* best-effort: the audit row below still records the denial */
+    const classified = classifyChatElicitError(err);
+    switch (classified.kind) {
+      case "actor_mismatch": {
+        // A space conversation is shared: every linked member sees the
+        // approval card, but only the initiator may resolve it. Tell the
+        // clicking user why nothing happened (best-effort) instead of
+        // silently ignoring the click.
+        if (notify) {
+          try {
+            await notify(classified.user_text);
+          } catch {
+            /* best-effort: the audit row below still records the denial */
+          }
         }
-      }
-      // Surface a denied audit row so the cross-actor attempt is
-      // visible in SIEM; return ignored so the dispatcher's outer
-      // outcome is unchanged.
-      await auditAwait(
-        {
-          tenant_id,
-          actor_type: "user",
-          actor_id: user_id,
-          action: AuditAction.CHAT_MESSAGE_DENIED,
-          resource_type: "conversation_elicitation",
-          resource_id: elicitation_id,
-          result: "denied",
-          reason: "actor_not_owner",
-          metadata: {
-            conversation_id,
-            kind,
+        // Surface a denied audit row so the cross-actor attempt is
+        // visible in SIEM; return ignored so the dispatcher's outer
+        // outcome is unchanged.
+        await auditAwait(
+          {
+            tenant_id,
+            actor_type: "user",
+            actor_id: user_id,
+            action: AuditAction.CHAT_MESSAGE_DENIED,
+            resource_type: "conversation_elicitation",
+            resource_id: elicitation_id,
+            result: "denied",
+            reason: classified.audit_reason,
+            metadata: {
+              conversation_id,
+              kind,
+            },
           },
-        },
-        db,
-      );
-      return { status: "ignored", conversation_id };
-    }
-    // Answer failed server-side validation — the row stays pending, so
-    // a re-submit against the same elicitation works. Tell the user
-    // what to fix (best-effort) and swallow the error: pg-boss retrying
-    // this job would just re-submit the same invalid answer.
-    if (err instanceof ElicitationValidationError) {
-      if (notify) {
-        const detail = err.field_errors.map((e) => `${e.name}: ${e.message}`).join("; ");
-        try {
-          await notify(`That answer didn't pass validation — ${detail}. Please submit again.`);
-        } catch {
-          /* best-effort: the structured log below still records it */
+          db,
+        );
+        return { status: "ignored", conversation_id };
+      }
+      case "validation": {
+        // Answer failed server-side validation — the row stays pending,
+        // so a re-submit against the same elicitation works. Tell the
+        // user what to fix (best-effort) and swallow the error: pg-boss
+        // retrying this job would just re-submit the same invalid answer.
+        if (notify) {
+          try {
+            await notify(classified.user_text);
+          } catch {
+            /* best-effort: the structured log below still records it */
+          }
         }
-      }
-      logger.warn({
-        module: "chat",
-        action: "interaction.elicitation_validation_failed",
-        msg: "elicitation answer failed validation — row stays pending, user re-prompted",
-        tenant_id,
-        elicitation_id,
-        conversation_id,
-        field_errors: err.field_errors,
-      });
-      return { status: "ignored", conversation_id };
-    }
-    // Crafted click carrying a real UUID that belongs to another tenant
-    // (or a stale id that's been deleted). Bare-throwing would escape
-    // into pg-boss, which retries the job 3× before DLQ — wasted compute
-    // AND no deny audit row. Audit + silent drop is the right shape.
-    if (err instanceof ConversationNotFoundError || err instanceof ElicitationNotFoundError) {
-      const reason =
-        err instanceof ConversationNotFoundError
-          ? "conversation_not_found_for_actor"
-          : "elicitation_not_found";
-      await auditAwait(
-        {
+        logger.warn({
+          module: "chat",
+          action: "interaction.elicitation_validation_failed",
+          msg: "elicitation answer failed validation — row stays pending, user re-prompted",
           tenant_id,
-          actor_type: "user",
-          actor_id: user_id,
-          action: AuditAction.CHAT_MESSAGE_DENIED,
-          resource_type: "conversation_elicitation",
-          resource_id: elicitation_id,
-          result: "denied",
-          reason,
-          metadata: {
-            conversation_id,
-            kind,
-            action_id,
+          elicitation_id,
+          conversation_id,
+          field_errors: classified.field_errors,
+        });
+        return { status: "ignored", conversation_id };
+      }
+      case "already_resolved": {
+        // Raced double-click / double-answer: someone (or a retry)
+        // already resolved this elicitation. The winning resolution
+        // posted its own reply — silently drop the loser instead of
+        // escaping into pg-boss (retry → dedup-swallow, same failure
+        // class the typed-reply salvage closes).
+        return { status: "ignored", conversation_id };
+      }
+      case "not_found": {
+        // Crafted click carrying a real UUID that belongs to another
+        // tenant (or a stale id that's been deleted). Bare-throwing
+        // would escape into pg-boss, which retries the job 3× before
+        // DLQ — wasted compute AND no deny audit row. Audit + silent
+        // drop is the right shape.
+        await auditAwait(
+          {
+            tenant_id,
+            actor_type: "user",
+            actor_id: user_id,
+            action: AuditAction.CHAT_MESSAGE_DENIED,
+            resource_type: "conversation_elicitation",
+            resource_id: elicitation_id,
+            result: "denied",
+            reason: classified.audit_reason,
+            metadata: {
+              conversation_id,
+              kind,
+              action_id,
+            },
           },
-        },
-        db,
-      );
-      return { status: "ignored", conversation_id };
+          db,
+        );
+        return { status: "ignored", conversation_id };
+      }
+      default:
+        throw err;
     }
-    throw err;
   } finally {
     unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
   }

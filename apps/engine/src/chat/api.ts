@@ -113,6 +113,17 @@ export const ChatInteractionEnvelopeSchema = z.object({
   o: z.unknown().optional(),
 });
 
+/**
+ * Encode the `{c, o}` interaction envelope carried in a Block-Kit /
+ * Google card action `value`. Decoded by `parseEnvelope` in
+ * `elicit-routing.ts` via `ChatInteractionEnvelopeSchema` above — the
+ * encode and decode sides live together so the shape can never drift
+ * between renderers (Slack block-kit, Google cards) and the router.
+ */
+export function encodeInteractionEnvelope(conversation_id: string, output: unknown): string {
+  return JSON.stringify({ c: conversation_id, o: output });
+}
+
 export const ChatViewMetadataSchema = z.object({
   c: z.string().uuid(),
   e: z.string().uuid(),
@@ -163,6 +174,9 @@ const ChatEventSchema = z
     command: ChatCommandSchema.optional(),
     interaction: ChatInteractionActionSchema.optional(),
     system_event: z.string().optional(),
+    // Set by receive() when the originating space is a 1:1 DM with the
+    // app — drives DM auto-registration (see chat/dm-autoregister.ts).
+    is_direct_message: z.boolean().optional(),
     event_key: z.string().optional(),
     raw: z.unknown(),
   })

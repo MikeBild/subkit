@@ -123,7 +123,14 @@ async function ingest(
     try {
       const sync = await adapter.handleSyncInteraction({ event, db });
       if (sync.handled) {
-        return new Response(JSON.stringify({ ok: true }), {
+        // Google dialog submits need BOTH: a sync close-ack (dismisses
+        // the dialog inside the 30s window) AND the async queue hop for
+        // the actual LLM resolution. Slack's paths leave `enqueue`
+        // unset — behavior unchanged.
+        if (sync.enqueue && deps.enqueue) {
+          await deps.enqueue({ event });
+        }
+        return new Response(JSON.stringify(sync.response ?? { ok: true }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });

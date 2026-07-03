@@ -11,14 +11,16 @@
 //     structurally impossible, even though the linked user has rights
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   type ConversationTestCtx,
   createConversationTestCtx,
 } from "../../conversations/tests/setup.ts";
 import {
+  auditLog,
   chatIdentities,
   chatWorkspaces,
+  conversationElicitations,
   conversations,
   conversationToolCalls,
   executions,
@@ -529,5 +531,274 @@ describe("chat session mapping", () => {
     // The binding is gone: the next message opens a fresh conversation.
     const after = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
     expect(after.conversation_id).not.toBe(live.conversation_id);
+  });
+});
+
+// ── Typed-reply salvage while an ask_user_* dialog is pending ────────────────
+//
+// A user who TYPES a plain message while an elicitation is still open
+// used to kill the chat.event job (PendingElicitationBlockedError →
+// pg-boss retry → dedup swallow → conversation hung until /new). The
+// dispatcher now salvages the typed line:
+//
+//   ask_user_text          → resolves with { text: <typed> }
+//   single-field form      → resolves with { [field.name]: <typed> }
+//   confirm / multi-field  → one guidance message, dialog stays pending
+//   wrong actor            → guidance + CHAT_MESSAGE_DENIED audit, pending
+//   validation failure     → re-prompt notify, row stays pending
+
+describe("typed reply while an elicitation is pending (salvage)", () => {
+  const WS = "T_SALVAGE";
+  const GUIDANCE_MARKER = "buttons or menu";
+  let secondUserId: string;
+
+  beforeAll(async () => {
+    await ctx.testDb.db.insert(chatWorkspaces).values({
+      tenant_id: ctx.tenant_id,
+      platform: "slack",
+      workspace_id: WS,
+      bot_ciphertext: detBytes(1),
+      bot_iv: detBytes(1),
+      bot_auth_tag: detBytes(1),
+    });
+    await ctx.testDb.db.insert(chatIdentities).values({
+      tenant_id: ctx.tenant_id,
+      user_id: ctx.user_id,
+      platform: "slack",
+      workspace_id: WS,
+      platform_user_id: "U_SALV_A",
+    });
+    // A second linked user in the same tenant for the actor-mismatch case.
+    const [u2] = await ctx.testDb.db
+      .insert(users)
+      .values({
+        tenant_id: ctx.tenant_id,
+        email: "salvage-second@example.com",
+        role: "member",
+      })
+      .returning();
+    if (!u2) throw new Error("seed second salvage user failed");
+    secondUserId = u2.id;
+    await ctx.testDb.db.insert(chatIdentities).values({
+      tenant_id: ctx.tenant_id,
+      user_id: secondUserId,
+      platform: "slack",
+      workspace_id: WS,
+      platform_user_id: "U_SALV_B",
+    });
+  });
+
+  function mention(channel: string, text: string, user = "U_SALV_A"): ChatEvent {
+    return {
+      platform: "slack",
+      workspace_id: WS,
+      channel_id: channel,
+      user_id: user,
+      kind: "mention",
+      text: `<@UBOT> ${text}`,
+      raw: {},
+    };
+  }
+
+  /** Open a channel conversation via a benign mention (no canned plan
+   *  matches "hello there", so the mock just acks and the turn ends). */
+  async function seedConversation(channel: string): Promise<string> {
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention(channel, "hello there"),
+    );
+    expect(r.status).toBe("ok");
+    if (!r.conversation_id) throw new Error("seed conversation failed");
+    return r.conversation_id;
+  }
+
+  /** Insert a pending elicitation row directly — same shape the loop's
+   *  ask_user_* tools persist, minus the tool_call anchor (legacy rows
+   *  lack it too; respondElicitation tolerates its absence). */
+  async function seedPendingElicitation(
+    conversation_id: string,
+    tool_name: string,
+    input: Record<string, unknown>,
+    summary = "Input required",
+  ): Promise<string> {
+    const [row] = await ctx.testDb.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name,
+        summary,
+        input,
+        status: "pending",
+      })
+      .returning();
+    if (!row) throw new Error("seed elicitation failed");
+    return row.id;
+  }
+
+  async function readElicitation(id: string) {
+    const [row] = await ctx.testDb.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, id))
+      .limit(1);
+    if (!row) throw new Error("elicitation row disappeared");
+    return row;
+  }
+
+  test("pending ask_user_text + typed reply resolves with { text } and posts no guidance", async () => {
+    const conversationId = await seedConversation("C_SALV_TEXT");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_text", {
+      prompt: "Which city?",
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("C_SALV_TEXT", "Berlin"),
+    );
+    expect(r.status).toBe("ok");
+    expect(r.conversation_id).toBe(conversationId);
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("resolved");
+    expect(row.output).toEqual({ text: "Berlin" });
+    expect(row.decided_by).toBe(ctx.user_id);
+
+    // No guidance line — the typed answer WAS the resolution; the only
+    // outbound message is the resumed turn's normal reply.
+    expect(adapter.sends.some((d) => d.text?.includes(GUIDANCE_MARKER))).toBe(false);
+    expect(adapter.sends.length).toBeGreaterThan(0);
+  });
+
+  test("pending single-field ask_user_form + typed reply resolves with { [field.name]: text }", async () => {
+    const conversationId = await seedConversation("C_SALV_FORM1");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_form", {
+      fields: [{ name: "email", type: "text", label: "Email" }],
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("C_SALV_FORM1", "ada@example.com"),
+    );
+    expect(r.status).toBe("ok");
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("resolved");
+    expect(row.output).toEqual({ email: "ada@example.com" });
+    expect(adapter.sends.some((d) => d.text?.includes(GUIDANCE_MARKER))).toBe(false);
+  });
+
+  test("pending ask_user_confirm + typed reply posts ONE guidance message and stays pending", async () => {
+    const conversationId = await seedConversation("C_SALV_CONFIRM");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_confirm", {
+      question: "Proceed?",
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("C_SALV_CONFIRM", "sounds good, go ahead"),
+    );
+    expect(r.status).toBe("ok");
+    expect(r.conversation_id).toBe(conversationId);
+
+    const guidance = adapter.sends.filter((d) => d.text?.includes(GUIDANCE_MARKER));
+    expect(guidance.length).toBe(1);
+    expect(guidance[0]?.text).toContain("/new");
+    // The guidance is the ONLY outbound send — no resumed-turn reply.
+    expect(adapter.sends.length).toBe(1);
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("pending");
+    expect(row.output).toBeNull();
+  });
+
+  test("pending multi-field ask_user_form + typed reply posts guidance and stays pending", async () => {
+    const conversationId = await seedConversation("C_SALV_FORM2");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_form", {
+      fields: [
+        { name: "city", type: "text", label: "City" },
+        { name: "country", type: "text", label: "Country" },
+      ],
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("C_SALV_FORM2", "Berlin Germany"),
+    );
+    expect(r.status).toBe("ok");
+
+    const guidance = adapter.sends.filter((d) => d.text?.includes(GUIDANCE_MARKER));
+    expect(guidance.length).toBe(1);
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("pending");
+  });
+
+  test("actor mismatch: a second linked user's typed reply is denied, audited, dialog stays pending", async () => {
+    // Conversation owned by user A (their mention created it).
+    const conversationId = await seedConversation("C_SALV_ACTOR");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_text", {
+      prompt: "Which city?",
+    });
+
+    // User B types into the SAME channel conversation.
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("C_SALV_ACTOR", "Hamburg", "U_SALV_B"),
+    );
+    expect(r.status).toBe("ok");
+
+    // Guidance names the owner rule; the typed line resolved nothing.
+    const guidance = adapter.sends.filter((d) => d.text?.includes("Only the person who started"));
+    expect(guidance.length).toBe(1);
+    expect(guidance[0]?.text).toContain("/new");
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("pending");
+    expect(row.output).toBeNull();
+
+    // The denial is audited with the shared actor_not_owner reason.
+    const denials = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.action, "chat.message.denied"),
+          eq(auditLog.reason, "actor_not_owner"),
+          eq(auditLog.resource_id, elicitationId),
+        ),
+      );
+    expect(denials.length).toBe(1);
+    expect(denials[0]?.actor_id).toBe(secondUserId);
+    expect(denials[0]?.result).toBe("denied");
+  });
+
+  test("validation failure re-prompts in-channel and leaves the row pending (re-answerable)", async () => {
+    const conversationId = await seedConversation("C_SALV_VALID");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_text", {
+      prompt: "How many seats?",
+      validation_regex: "^\\d+$",
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("C_SALV_VALID", "a few"),
+    );
+    expect(r.status).toBe("ok");
+
+    const reprompts = adapter.sends.filter((d) => d.text?.includes("didn't pass validation"));
+    expect(reprompts.length).toBe(1);
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("pending");
+    expect(row.output).toBeNull();
   });
 });

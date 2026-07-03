@@ -2,6 +2,7 @@
 //
 // Kept small and deterministic so tests can assert on exact JSON.
 
+import { encodeInteractionEnvelope } from "../api.ts";
 import type { ApprovalCard, ChatDelivery, ChatElicitation, ElicitationField } from "../types.ts";
 
 export interface SlackBlock {
@@ -79,10 +80,6 @@ export function renderApprovalBlocks(card: ApprovalCard): SlackBlock[] {
 // just JSON-parses `interaction.value` and forwards `o` to
 // `respondElicitation`.
 
-function envelope(conversation_id: string, output: unknown): string {
-  return JSON.stringify({ c: conversation_id, o: output });
-}
-
 /**
  * Returns the inline interactive blocks for elicitations that don't need a
  * modal. Used for `confirm`, `choice`, `multi`. Returns `null` for kinds that
@@ -109,14 +106,14 @@ export function renderInlineElicitationBlocks(elicitation: ChatElicitation): Sla
             style: "primary",
             text: { type: "plain_text", text: "Approve" },
             action_id: `elicit:${elicitation.id}:confirm`,
-            value: envelope(elicitation.conversation_id, { confirmed: true }),
+            value: encodeInteractionEnvelope(elicitation.conversation_id, { confirmed: true }),
           },
           {
             type: "button",
             style: "danger",
             text: { type: "plain_text", text: "Reject" },
             action_id: `elicit:${elicitation.id}:confirm`,
-            value: envelope(elicitation.conversation_id, { confirmed: false }),
+            value: encodeInteractionEnvelope(elicitation.conversation_id, { confirmed: false }),
           },
         ],
       },
@@ -138,7 +135,7 @@ export function renderInlineElicitationBlocks(elicitation: ChatElicitation): Sla
             type: "button",
             text: { type: "plain_text", text: opt.label ?? opt.value },
             action_id: `elicit:${elicitation.id}:choice`,
-            value: envelope(elicitation.conversation_id, { value: opt.value }),
+            value: encodeInteractionEnvelope(elicitation.conversation_id, { value: opt.value }),
           })),
         },
       ];
@@ -155,7 +152,7 @@ export function renderInlineElicitationBlocks(elicitation: ChatElicitation): Sla
           placeholder: { type: "plain_text", text: "Select…" },
           options: options.map((opt) => ({
             text: { type: "plain_text", text: opt.label ?? opt.value },
-            value: envelope(elicitation.conversation_id, { value: opt.value }),
+            value: encodeInteractionEnvelope(elicitation.conversation_id, { value: opt.value }),
           })),
         },
       },
@@ -192,7 +189,7 @@ export function renderInlineElicitationBlocks(elicitation: ChatElicitation): Sla
             style: "primary",
             text: { type: "plain_text", text: "Submit" },
             action_id: `elicit:${elicitation.id}:multi:submit`,
-            value: envelope(elicitation.conversation_id, { kind: "multi" }),
+            value: encodeInteractionEnvelope(elicitation.conversation_id, { kind: "multi" }),
           },
         ],
       },
@@ -222,7 +219,7 @@ export function renderOpenFormBlocks(elicitation: ChatElicitation): SlackBlock[]
           style: "primary",
           text: { type: "plain_text", text: "Antworten" },
           action_id: `open_elicit:${elicitation.id}`,
-          value: envelope(elicitation.conversation_id, {}),
+          value: encodeInteractionEnvelope(elicitation.conversation_id, {}),
         },
       ],
     },

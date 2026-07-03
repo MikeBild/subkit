@@ -47,14 +47,20 @@ export interface ChatAdapter {
   /** Synchronous platform-specific fast path for interactions that must
    *  beat a short deadline. Slack uses this to call `views.open` within
    *  the ~3 s `trigger_id` window when the user clicks an "Antworten"
-   *  button on a text/form elicitation message; the chat HTTP route
-   *  invokes this BEFORE enqueueing so the queue's latency doesn't eat
-   *  the window. Adapters that don't need a fast path (Teams Adaptive
-   *  Cards are inline; Google dialogs open from card actions in-band)
-   *  omit this. Returns true when the interaction was handled inline
-   *  and the chat.event queue enqueue should be skipped. */
+   *  button on a text/form elicitation message; Google uses it to
+   *  RETURN a Dialog as the HTTP response to an OPEN_DIALOG click (the
+   *  only way Google Chat can open a dialog) and to close-ack a dialog
+   *  submit. The chat HTTP route invokes this BEFORE enqueueing so the
+   *  queue's latency doesn't eat the window.
+   *
+   *  Return contract:
+   *    handled: false → route enqueues + acks {ok: true} (default path)
+   *    handled: true  → route responds with `response` (or {ok: true}
+   *                     when absent) and enqueues ONLY when `enqueue`
+   *                     is true (Google dialog submits: sync close-ack
+   *                     + async resolution through the queue). */
   handleSyncInteraction?(args: {
     event: ChatEvent;
     db: import("../db/client.ts").Db;
-  }): Promise<{ handled: boolean }>;
+  }): Promise<{ handled: boolean; response?: unknown; enqueue?: boolean }>;
 }

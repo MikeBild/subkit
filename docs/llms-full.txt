@@ -1248,6 +1248,7 @@ flowchart LR
 | Answer questions (LLM chat with tenant context) | Create or edit connectors, workflows, skills, knowledge sources |
 | List/inspect workflows, executions, skills, knowledge, connector metadata, schedules | Call connectors directly (no `call_connector`, probe, test, discover) |
 | Run saved workflows — behind RBAC + a confirmation card | Change roles, keys, schedules, or any tenant resource |
+| Ask about files already uploaded to sk (list + preview attachments) | Receive or ingest files posted into the space |
 
 The restriction is **channel-scoped, not role-scoped**: an admin who
 asks the bot to "create a stripe connector" gets a one-sentence
@@ -1255,6 +1256,31 @@ redirect to the sk CLI or web portal. Enforcement is structural — the
 chat surface assembles a fixed read-only tool palette, harness-side
 write dispatch refuses mutating intents on this surface, and per-user
 RBAC still applies underneath as the second layer.
+
+### How the bot asks for input
+
+When a turn needs something from you, the bot renders the prompt
+natively in Google Chat:
+
+- **Yes/no confirmations, single choices, and multi-selects** arrive
+  as interactive cards in the space — click to answer.
+- **Free-text questions and multi-field forms** arrive as a card with
+  a button that opens a native Google Chat dialog.
+- **Typing instead of clicking works for simple prompts**: a plain
+  typed reply resolves a pending free-text question (or a one-field
+  form) directly. For button prompts and multi-field forms the bot
+  points you back to the widget instead of guessing.
+- Only the person the bot asked can answer — the same shared-space
+  contract as run confirmations.
+
+### Attachments are not ingested
+
+Google Chat delivers only message text and interaction payloads to
+the app — files dropped into a space never reach sk, so the bot
+cannot read, summarize, or run a workflow over an attachment posted
+in chat. To work with a file, upload it to sk first via the sk CLI or
+the web portal; the bot can then list and preview the tenant's
+attachments and answer questions about them.
 
 ## Conversation memory: one conversation per space
 
@@ -1271,6 +1297,38 @@ discuss things with the bot in a team space you would not post there
 yourself. Each turn still runs under the *sender's* permissions, and
 only the person who initiated a workflow-run confirmation can approve
 its card.
+
+## Direct messages (DMs)
+
+A 1:1 chat with the bot is its own space (Google marks it
+`DIRECT_MESSAGE`) with one continuous personal conversation — no
+threads. Registration is mostly automatic on Google Chat:
+
+- **A user already linked in another space of your tenant can just
+  DM the bot.** sk recognizes the sender's linked identity,
+  auto-registers the DM space under that tenant, and answers the very
+  first message — a normal governed read-only turn under the user's
+  real role. The install is audited (chat-workspace-installed,
+  `dm_autoregister`); no manual registration call is needed.
+- **An unlinked sender is politely refused.** The message is dropped
+  with a `chat.message.denied` audit row (reason
+  `dm_sender_not_linked`, recorded under the platform-system tenant
+  since no tenant is known), and the sender gets the generic
+  "not connected" reply. Link the user in a team space first (see
+  *Link members* below), then the DM works.
+- **A user linked in more than one tenant is refused** (reason
+  `dm_sender_ambiguous`) — sk never guesses which tenant a DM belongs
+  to. Pin it manually: register the DM space with `POST
+  /v1/chat/workspaces` under the intended tenant and link the
+  identity for that space, exactly like a group space.
+- **Slack and Teams DMs will not auto-register.** Their user ids are
+  workspace-scoped, so a cross-workspace identity match could bridge
+  tenants; DM spaces on those platforms need the manual per-space
+  install.
+
+DM users run under their linked account's role like everyone else —
+see [Which role should linked chat users
+have?](#which-role-should-linked-chat-users-have) for guidance.
 
 ## Set up Google Chat
 
@@ -1352,6 +1410,8 @@ care about roles.
 | Symptom | Look at |
 |---|---|
 | Bot never answers | Engine log `chat` module; `CHAT_WORKSPACE_HYDRATE_SKIPPED` audit (`google_credentials_unset` = config incomplete) |
+| Bot replies "This space isn't connected to sk yet" | The space is not registered. The reply is generic and rate-limited (once per minute per space); the drop is audited as `chat.message.denied` under the platform-system tenant with the space name in metadata. Register it: `POST /v1/chat/workspaces` (see *Install each space*). On Slack this reply usually cannot be delivered (bot tokens are workspace-scoped), so an unregistered Slack space stays silent — check the audit row instead |
+| DM gets the "not connected" reply | The sender is not linked in exactly one tenant — the `chat.message.denied` reason is `dm_sender_not_linked` (link them in a team space first) or `dm_sender_ambiguous` (register the DM space manually to pin the tenant); see *Direct messages (DMs)* |
 | 401 on every event | Authentication Audience must be "Project Number" and match `platform.googlechat.audience`; app must be classic-style, not add-on |
 | "Your chat account isn't linked" | `chat.message.denied` audit (`identity_not_linked`) carries the sender's `users/<id>` for the link call |
 | Space stopped answering after the app was removed/re-added | Removal drops the space's session bindings by design; re-adding starts a fresh conversation |
@@ -4500,7 +4560,7 @@ not expect it in a fresh clone):**
 | **sk CLI** | `sk` in a terminal | Human authoring + operator admin | API key · OIDC · portal token · headless |
 | **REST API** | `/v1/*` + OpenAPI | Programmatic + CI | API key |
 | **MCP server** | Streamable HTTP + stdio | AI clients / coding agents | OAuth 2.1 or API key |
-| **Chat** | Slack · Teams · Google Chat | In-thread authoring + approvals | Linked platform identity |
+| **Chat** | Slack · Teams · Google Chat | Read-only Q&A + gated workflow runs | Linked platform identity |
 | **Webhooks** | Signed inbound URLs | Connector-boundary events | Standard Webhooks signature |
 | **Schedules** | Cron triggers | Time-based runs | RBAC on the trigger |
 
@@ -4741,14 +4801,17 @@ Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthent
 
 ## Chat Systems (Slack, Teams, Google Chat)
 
-Enterprise teams spend much of their day in chat. The sk chat integrations bring the Conversation authoring loop into the surfaces teams already use, so workflow authoring does not require context switching.
+Enterprise teams spend much of their day in chat. The sk chat channel brings governed access into the surfaces teams already use — but it is a deliberately **channel-scoped read-only** surface: link a Google Chat space (Slack and Teams follow the same model) and approved members ask questions and run saved workflows under the same RBAC and Audit Log as every other surface. Nobody can build or change connectors, workflows, skills, or knowledge sources from chat, regardless of role — authoring stays on the sk CLI and web surfaces.
 
 | Aspect | Behavior |
 |---|---|
-| **How it works** | Each platform has a dedicated adapter that normalises incoming messages — mentions, slash commands, interaction callbacks — into sk's Conversation model. The same AI authoring loop that runs in the sk CLI runs inside a Chat Session, rendered as native platform messages. A conversation started in Slack and continued the next day picks up exactly where it left off. |
-| **Approval flow** | When a Draft or Patch Candidate needs approval, the platform surfaces an interactive card in the thread with native approve / reject buttons — no separate workflow call. The decision is recorded in the Audit Log with the chat platform as the request source. |
+| **How it works** | Each platform has a dedicated adapter that normalises incoming messages — mentions, slash commands, interaction callbacks — into sk's Conversation model. The turn runs against a fixed read-only tool palette (tenant reads plus `run_workflow`); see [Tool palette → Chat read-only palette](./tool-palette.md#chat-read-only-palette). A mutating intent gets a one-sentence redirect to the sk CLI or web portal. |
+| **Session model** | A space (channel) keeps one running conversation, so the bot remembers the topic across days; a reply inside a thread gets its own focused conversation; a DM is one continuous personal conversation; `/new` (or `/reset`) drops the binding. See [conversation memory](../operators/chat.md#conversation-memory-one-conversation-per-space) and [direct messages](../operators/chat.md#direct-messages-dms) on the operator page. |
+| **Approval flow** | Running a saved workflow surfaces a native confirmation card in the space or thread; only the requester can confirm. The run then executes under their RBAC and is recorded in the Audit Log with the chat platform as the request source. |
 | **Identity linking** | A chat user's platform identity (Slack user ID, Teams user principal, Google Chat identity) is linked to their sk Tenant account through a user-initiated flow. Once linked, messages carry their full sk identity, role, and permissions. |
 | **Notification routing** | Execution results, alerts, and approval requests route to specific channels or users via Notification Rules — by event, severity, and quiet-hour constraints. Chat is the primary notification channel in sk; email notifications are not supported. |
+
+Setup and go-live steps live on the operator page: [Chat channels](../operators/chat.md).
 
 ---
 
@@ -5441,6 +5504,46 @@ is safe because such a call can never execute on this surface.
 surface-specific logic in the dispatcher itself; per-surface concerns live in
 adapters.
 
+### Chat read-only palette
+
+The `"chat"` surface never sees the full catalog. After the normal
+`(surface, mcpMode)` visibility filter, the visible set is intersected with a
+fixed name allow-list — `CHAT_READONLY_TOOLS` in
+`conversations/tools/authoring-palette.ts`, applied by
+`filterByChatReadOnlyPalette()` and resolved per turn in `sdk-wrap.ts`.
+
+The palette is **fail-closed**: an allow-list, not a deny-list. A tool absent
+from the set is never dispatched on chat — not if it exists in the registry,
+not if the linked user's RBAC would permit it, and not if a granted skill
+would surface it in an authoring turn. New tools stay invisible to chat until
+explicitly added to the set (guarded by
+`conversations/tools/tests/sdk-wrap-chat-surface.test.ts`, which asserts
+nothing leaks past it). The set is independent of skill state and tool
+category — channel-scoped, not role-scoped.
+
+| Group | Tools |
+|---|---|
+| Conversational meta | `ask_user_confirm` · `ask_user_choice` · `ask_user_multi` · `ask_user_text` · `ask_user_form` · `cannot_help` · `list_skills` · `load_skill` · `list_attachments` · `preview_attachment` · `get_raw_result` |
+| Knowledge + docs (read) | `search_knowledge` · `search_docs` · `list_knowledge_sources` · `get_knowledge_source` |
+| Workflows (read) | `list_workflows` · `get_workflow` · `find_workflow` |
+| Executions (read) | `list_executions` · `get_execution` · `inspect_execution` · `inspect_execution_step` |
+| Connector metadata (read) | `list_connectors` · `get_connector` · `find_connector` |
+| Skills (read) | `get_skill` · `find_skill` |
+| Schedules (read) | `list_schedules` |
+| Run | `run_workflow` |
+
+Deliberately absent: `call_connector`, `probe_connector`, `test_connector`,
+the `discover_*` probes, every `draft_write` authoring tool, every
+`tenant_write` mutation, and external-MCP tools. Connector access on chat is
+metadata-only.
+
+`run_workflow` (with its synthetic `wf_<slug>` peers) is the one action in
+the set — running a *saved* workflow. It stays behind
+`resolveExecutionToolGate` (default-deny without a bound or explicitly named
+saved workflow), per-user RBAC, and the confirm policy, which chat renders as
+a native approval card only the requester can confirm. See the *Chat adapter*
+section below and the operator page [../operators/chat.md](../operators/chat.md).
+
 ### ToolEnvelope (status-discriminated)
 
 ```ts
@@ -5544,6 +5647,9 @@ Envelope rendering:
 | `not_available_on_surface` | `{isError:true,  content:[text({error_code:"not_available_on_surface", reason})], _meta:...}` |
 
 ### Chat adapter (`conversations/tools/dispatch-adapter.ts`)
+
+The palette this surface exposes is the fixed
+[chat read-only palette](#chat-read-only-palette) above.
 
 - `invokeForSdk(opts)` — single entry point for the chat loop. **Not wired into
   `sdk-wrap.ts` yet** — the chat path stays on its existing inline wrapping

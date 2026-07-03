@@ -12,7 +12,7 @@
 | **sk CLI** | `sk` in a terminal | Human authoring + operator admin | API key · OIDC · portal token · headless |
 | **REST API** | `/v1/*` + OpenAPI | Programmatic + CI | API key |
 | **MCP server** | Streamable HTTP + stdio | AI clients / coding agents | OAuth 2.1 or API key |
-| **Chat** | Slack · Teams · Google Chat | In-thread authoring + approvals | Linked platform identity |
+| **Chat** | Slack · Teams · Google Chat | Read-only Q&A + gated workflow runs | Linked platform identity |
 | **Webhooks** | Signed inbound URLs | Connector-boundary events | Standard Webhooks signature |
 | **Schedules** | Cron triggers | Time-based runs | RBAC on the trigger |
 
@@ -253,14 +253,17 @@ Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthent
 
 ## Chat Systems (Slack, Teams, Google Chat)
 
-Enterprise teams spend much of their day in chat. The sk chat integrations bring the Conversation authoring loop into the surfaces teams already use, so workflow authoring does not require context switching.
+Enterprise teams spend much of their day in chat. The sk chat channel brings governed access into the surfaces teams already use — but it is a deliberately **channel-scoped read-only** surface: link a Google Chat space (Slack and Teams follow the same model) and approved members ask questions and run saved workflows under the same RBAC and Audit Log as every other surface. Nobody can build or change connectors, workflows, skills, or knowledge sources from chat, regardless of role — authoring stays on the sk CLI and web surfaces.
 
 | Aspect | Behavior |
 |---|---|
-| **How it works** | Each platform has a dedicated adapter that normalises incoming messages — mentions, slash commands, interaction callbacks — into sk's Conversation model. The same AI authoring loop that runs in the sk CLI runs inside a Chat Session, rendered as native platform messages. A conversation started in Slack and continued the next day picks up exactly where it left off. |
-| **Approval flow** | When a Draft or Patch Candidate needs approval, the platform surfaces an interactive card in the thread with native approve / reject buttons — no separate workflow call. The decision is recorded in the Audit Log with the chat platform as the request source. |
+| **How it works** | Each platform has a dedicated adapter that normalises incoming messages — mentions, slash commands, interaction callbacks — into sk's Conversation model. The turn runs against a fixed read-only tool palette (tenant reads plus `run_workflow`); see [Tool palette → Chat read-only palette](./tool-palette.md#chat-read-only-palette). A mutating intent gets a one-sentence redirect to the sk CLI or web portal. |
+| **Session model** | A space (channel) keeps one running conversation, so the bot remembers the topic across days; a reply inside a thread gets its own focused conversation; a DM is one continuous personal conversation; `/new` (or `/reset`) drops the binding. See [conversation memory](../operators/chat.md#conversation-memory-one-conversation-per-space) and [direct messages](../operators/chat.md#direct-messages-dms) on the operator page. |
+| **Approval flow** | Running a saved workflow surfaces a native confirmation card in the space or thread; only the requester can confirm. The run then executes under their RBAC and is recorded in the Audit Log with the chat platform as the request source. |
 | **Identity linking** | A chat user's platform identity (Slack user ID, Teams user principal, Google Chat identity) is linked to their sk Tenant account through a user-initiated flow. Once linked, messages carry their full sk identity, role, and permissions. |
 | **Notification routing** | Execution results, alerts, and approval requests route to specific channels or users via Notification Rules — by event, severity, and quiet-hour constraints. Chat is the primary notification channel in sk; email notifications are not supported. |
+
+Setup and go-live steps live on the operator page: [Chat channels](../operators/chat.md).
 
 ---
 

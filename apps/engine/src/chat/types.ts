@@ -109,6 +109,11 @@ export interface ChatEvent {
    *  normalized (`removed_from_space`, `added_to_space`, or the raw
    *  platform event name for unknown types). */
   system_event?: string;
+  /** True when the originating space is a 1:1 DM between one human and
+   *  the app (Google: `space.spaceType === "DIRECT_MESSAGE"` or
+   *  `singleUserBotDm`). Drives DM auto-registration for platforms
+   *  whose user ids are tenant-global (`PLATFORM_HAS_GLOBAL_USER_IDS`). */
+  is_direct_message?: boolean;
   /** Platform-native event id used for replay dedup (`chat/dedup.ts`).
    *  Populated by the adapter's `receive()`. Slack: `event_id`
    *  (Events API), `view.id` (`view_submission`), `trigger_id`
@@ -157,6 +162,24 @@ export interface ApprovalCard {
  * traffic from `conversations/dispatcher.ts` is not yet wrapped —
  * deferred work applies the same limiter to all outbound adapter methods.
  */
+/**
+ * Whether a platform's native user ids identify one human GLOBALLY
+ * (across every workspace/space the app sees) rather than per-workspace.
+ * Load-bearing for DM auto-registration: matching a DM sender against
+ * identities linked in OTHER workspaces is only sound when the id
+ * cannot mean a different person elsewhere. Google `users/<id>` is the
+ * tenant-global People id (and the event is JWT-verified); Slack `U…`
+ * and Teams ids are workspace-scoped — a cross-workspace match there
+ * would bridge tenants, so they stay false until a sound scoping
+ * (e.g. Slack enterprise-grid team ids) exists.
+ */
+export const PLATFORM_HAS_GLOBAL_USER_IDS: Record<ChatPlatform, boolean> = {
+  slack: false,
+  teams: false,
+  google_chat: true,
+  sk_cli: false,
+};
+
 export const CHAT_RATES: Record<ChatPlatform, { per_minute: number; burst: number }> = {
   slack: { per_minute: 60, burst: 20 },
   teams: { per_minute: 30, burst: 10 },

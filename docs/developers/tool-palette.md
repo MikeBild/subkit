@@ -72,6 +72,46 @@ is safe because such a call can never execute on this surface.
 surface-specific logic in the dispatcher itself; per-surface concerns live in
 adapters.
 
+### Chat read-only palette
+
+The `"chat"` surface never sees the full catalog. After the normal
+`(surface, mcpMode)` visibility filter, the visible set is intersected with a
+fixed name allow-list — `CHAT_READONLY_TOOLS` in
+`conversations/tools/authoring-palette.ts`, applied by
+`filterByChatReadOnlyPalette()` and resolved per turn in `sdk-wrap.ts`.
+
+The palette is **fail-closed**: an allow-list, not a deny-list. A tool absent
+from the set is never dispatched on chat — not if it exists in the registry,
+not if the linked user's RBAC would permit it, and not if a granted skill
+would surface it in an authoring turn. New tools stay invisible to chat until
+explicitly added to the set (guarded by
+`conversations/tools/tests/sdk-wrap-chat-surface.test.ts`, which asserts
+nothing leaks past it). The set is independent of skill state and tool
+category — channel-scoped, not role-scoped.
+
+| Group | Tools |
+|---|---|
+| Conversational meta | `ask_user_confirm` · `ask_user_choice` · `ask_user_multi` · `ask_user_text` · `ask_user_form` · `cannot_help` · `list_skills` · `load_skill` · `list_attachments` · `preview_attachment` · `get_raw_result` |
+| Knowledge + docs (read) | `search_knowledge` · `search_docs` · `list_knowledge_sources` · `get_knowledge_source` |
+| Workflows (read) | `list_workflows` · `get_workflow` · `find_workflow` |
+| Executions (read) | `list_executions` · `get_execution` · `inspect_execution` · `inspect_execution_step` |
+| Connector metadata (read) | `list_connectors` · `get_connector` · `find_connector` |
+| Skills (read) | `get_skill` · `find_skill` |
+| Schedules (read) | `list_schedules` |
+| Run | `run_workflow` |
+
+Deliberately absent: `call_connector`, `probe_connector`, `test_connector`,
+the `discover_*` probes, every `draft_write` authoring tool, every
+`tenant_write` mutation, and external-MCP tools. Connector access on chat is
+metadata-only.
+
+`run_workflow` (with its synthetic `wf_<slug>` peers) is the one action in
+the set — running a *saved* workflow. It stays behind
+`resolveExecutionToolGate` (default-deny without a bound or explicitly named
+saved workflow), per-user RBAC, and the confirm policy, which chat renders as
+a native approval card only the requester can confirm. See the *Chat adapter*
+section below and the operator page [../operators/chat.md](../operators/chat.md).
+
 ### ToolEnvelope (status-discriminated)
 
 ```ts
@@ -175,6 +215,9 @@ Envelope rendering:
 | `not_available_on_surface` | `{isError:true,  content:[text({error_code:"not_available_on_surface", reason})], _meta:...}` |
 
 ### Chat adapter (`conversations/tools/dispatch-adapter.ts`)
+
+The palette this surface exposes is the fixed
+[chat read-only palette](#chat-read-only-palette) above.
 
 - `invokeForSdk(opts)` — single entry point for the chat loop. **Not wired into
   `sdk-wrap.ts` yet** — the chat path stays on its existing inline wrapping
