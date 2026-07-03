@@ -50,6 +50,12 @@
     },
     {
       "audience": "operators",
+      "path": "docs/operators/chat.md",
+      "title": "Chat Channels",
+      "summary": "Use sk from the chat your team already lives in."
+    },
+    {
+      "audience": "operators",
       "path": "docs/operators/connectors-and-credentials.md",
       "title": "Connectors & Credentials (operator guide)",
       "summary": "Connect a system once, reuse it everywhere — and the credential is never exposed."
