@@ -70,6 +70,11 @@ const GraphqlRequestMetaSchema = z
     method: z.string(),
     status: z.number().int(),
     connector: ConnectorResolutionSummarySchema,
+    /** Operation name parsed from the query document. The reactive
+     *  repair enqueue derives the shape/dedup endpoint key from this
+     *  (see graphqlEndpointKey) — without it all GraphQL operations
+     *  collapse into one endpoint identity. */
+    operation_name: z.string().optional(),
     extras: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi("GraphqlRequestMeta");

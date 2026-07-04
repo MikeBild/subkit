@@ -4390,7 +4390,7 @@ every API call.
 | `sk rename` | — | Assign or change a short alias for a session (used by `sk -r <alias>`) | — |
 | `sk review` | `workflow:read` | Aggregated approval digest: pending patch candidates, proposed skill candidates, and recent failed executions. | — |
 | `sk rm` | — | Drop a session from the local cache (the server-side conversation row is preserved) | — |
-| `sk schedules` | `workflow:read` | Scheduled workflow runs | `list` |
+| `sk schedules` | `workflow:read` | Scheduled workflow runs | `create`, `delete`, `list`, `pause`, `resume`, `update` |
 | `sk self-healing` | `workflow:write` | Trigger and review proactive drift scans (admin) | `list`, `scan`, `show` |
 | `sk sessions` | — | Manage locally-cached conversation sessions | `ls`, `rename`, `rm`, `search`, `show` |
 | `sk settings` | `settings:read` | List, read, write, or interactively configure engine settings (secrets always masked) | `configure`, `get`, `list`, `set` |

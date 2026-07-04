@@ -28,7 +28,11 @@ import {
   pgQueryWithCount,
   pgTransaction,
 } from "../../../connectors/drivers/postgres.ts";
-import { executeS3Request, type S3Method } from "../../../connectors/drivers/s3.ts";
+import {
+  executeS3Request,
+  S3CredentialError,
+  type S3Method,
+} from "../../../connectors/drivers/s3.ts";
 import { extractCreatedResourceId, withEgressAudit } from "../../../connectors/egress.ts";
 import { EgressBlockedError, RobotsDisallowedError } from "../../../connectors/egress-guard.ts";
 import {
@@ -1153,6 +1157,19 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             },
           };
         } catch (err) {
+          // Credential-shape failures carry their own machine-branchable
+          // code (credential_missing / credential_invalid /
+          // credential_mode_unsupported_for_s3). Collapsing them into
+          // `s3_error` would steer repair toward the request instead of
+          // the stored credential.
+          if (err instanceof S3CredentialError) {
+            return {
+              status: "failed",
+              retry_count: 0,
+              duration_ms: Date.now() - start,
+              error: buildStepErrorDetail({ code: err.error_code, err }),
+            };
+          }
           return {
             status: "failed",
             retry_count: 0,

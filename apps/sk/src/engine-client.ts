@@ -100,6 +100,17 @@ function synthesizeRecoveredOutcome(detail: ConversationDetail): ConversationRun
  * into `session.usage`), and this reader narrows them where the REPL
  * renders them.
  */
+export interface ScheduleEntry {
+  id: string;
+  workflow_id: string;
+  workflow_slug: string | null;
+  workflow_name: string | null;
+  cron: string;
+  timezone: string;
+  paused: boolean;
+  created_at: string;
+}
+
 export interface ExtendedTurnUsage {
   prompt_tokens_last_call: number | null;
   turn_tokens_total: number | null;
@@ -948,21 +959,33 @@ export class EngineClient {
    * (informational — the boot path applies these on the same boot).
    */
   listSchedules(query: { workflow_id?: string } = {}): Promise<{
-    schedules: Array<{
-      id: string;
-      workflow_id: string;
-      workflow_slug: string | null;
-      workflow_name: string | null;
-      cron: string;
-      timezone: string;
-      paused: boolean;
-      created_at: string;
-    }>;
+    schedules: ScheduleEntry[];
     /** Exact tenant-scoped count under the same filters. */
     total: number;
   }> {
     const qs = query.workflow_id ? `?workflow_id=${encodeURIComponent(query.workflow_id)}` : "";
     return this.request("GET", `/v1/schedules${qs}`);
+  }
+
+  createSchedule(body: {
+    workflow_id: string;
+    cron: string;
+    timezone?: string;
+    paused?: boolean;
+    input?: unknown;
+  }): Promise<ScheduleEntry> {
+    return this.request("POST", "/v1/schedules", body);
+  }
+
+  updateSchedule(
+    id: string,
+    patch: { cron?: string; timezone?: string; paused?: boolean; input?: unknown },
+  ): Promise<ScheduleEntry> {
+    return this.request("PUT", `/v1/schedules/${encodeURIComponent(id)}`, patch);
+  }
+
+  deleteSchedule(id: string): Promise<{ id: string; deleted: boolean }> {
+    return this.request("DELETE", `/v1/schedules/${encodeURIComponent(id)}`);
   }
 
   integrationsHealth(): Promise<{

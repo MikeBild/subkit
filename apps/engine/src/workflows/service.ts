@@ -541,6 +541,14 @@ export async function updateWorkflowMetadata(
         return { id: wf.id, noop: true as const };
       }
       await tx.update(workflows).set(patch).where(eq(workflows.id, wf.id));
+      // Archiving tears down trigger bindings exactly like delete does —
+      // an archived workflow must not keep live-looking schedule/inbound
+      // rows that only a reconciler filter stops from firing. Unarchiving
+      // does not restore them; re-saving the trigger re-binds.
+      if (patch.lifecycle === "archived") {
+        await inboundService.unbindFromWorkflow(input.tenant_id, wf.id, input.actor_id ?? null, tx);
+        await scheduleRepo.unbindFromWorkflow(tx, input.tenant_id, wf.id, input.actor_id ?? null);
+      }
       await auditAwait(
         {
           tenant_id: input.tenant_id,

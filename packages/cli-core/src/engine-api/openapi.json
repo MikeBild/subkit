@@ -3516,6 +3516,65 @@
           "created_at"
         ]
       },
+      "ScheduleCreateBody": {
+        "type": "object",
+        "properties": {
+          "workflow_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cron": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "input": {
+            "nullable": true
+          }
+        },
+        "required": [
+          "workflow_id",
+          "cron"
+        ]
+      },
+      "ScheduleUpdateBody": {
+        "type": "object",
+        "properties": {
+          "cron": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "input": {
+            "nullable": true
+          }
+        }
+      },
+      "ScheduleDeleteResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ]
+      },
       "CreateWorkflowBody": {
         "type": "object",
         "properties": {
@@ -4044,6 +4103,9 @@
           },
           "connector": {
             "$ref": "#/components/schemas/ConnectorResolutionSummary"
+          },
+          "operation_name": {
+            "type": "string"
           },
           "extras": {
             "type": "object",
@@ -17458,6 +17520,167 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ScheduleListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Schedule a workflow (upserts the workflow's single schedule)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleCreateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cron",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workflow not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/schedules/{id}": {
+      "put": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Update a schedule's cron, timezone, paused flag, or input",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleUpdateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleEntry"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cron",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Schedule not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Delete a schedule",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleDeleteResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Schedule not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

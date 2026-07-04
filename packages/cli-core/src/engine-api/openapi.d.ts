@@ -3243,8 +3243,141 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        /** Schedule a workflow (upserts the workflow's single schedule) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ScheduleCreateBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleEntry"];
+                    };
+                };
+                /** @description Invalid cron */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Workflow not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/schedules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a schedule's cron, timezone, paused flag, or input */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ScheduleUpdateBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleEntry"];
+                    };
+                };
+                /** @description Invalid cron */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Schedule not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Delete a schedule */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleDeleteResponse"];
+                    };
+                };
+                /** @description Schedule not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -11979,6 +12112,24 @@ export interface components {
             paused: boolean;
             created_at: string;
         };
+        ScheduleCreateBody: {
+            /** Format: uuid */
+            workflow_id: string;
+            cron: string;
+            timezone?: string;
+            paused?: boolean;
+            input?: unknown;
+        };
+        ScheduleUpdateBody: {
+            cron?: string;
+            timezone?: string;
+            paused?: boolean;
+            input?: unknown;
+        };
+        ScheduleDeleteResponse: {
+            id: string;
+            deleted: boolean;
+        };
         CreateWorkflowBody: {
             name: string;
             slug?: string;
@@ -12120,6 +12271,7 @@ export interface components {
             method: string;
             status: number;
             connector: components["schemas"]["ConnectorResolutionSummary"];
+            operation_name?: string;
             extras?: {
                 [key: string]: unknown;
             };

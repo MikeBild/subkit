@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { executionSteps } from "../db/schema/index.ts";
 import { RequestMetaSchema } from "../execution/request-meta-schema.ts";
+import { graphqlEndpointKey } from "../schema-versions/service.ts";
 import type { FailingStepSnapshot } from "./drift-detector.ts";
 import type { DryRunStep } from "./types.ts";
 
@@ -34,6 +35,44 @@ export function parsePersistedRequestMeta(
   if (raw === null || raw === undefined) return null;
   const parsed = RequestMetaSchema.safeParse(raw);
   return parsed.success ? (parsed.data as import("../execution/types.ts").RequestMeta) : null;
+}
+
+/**
+ * Derive the shape/dedup endpoint key from a persisted request_meta —
+ * the SAME key the driver's recordSuccessShape call writes, so the
+ * repair loop's `getLatestShape` lookup and the patch-candidate
+ * endpoint dedup land on the identical identity:
+ *
+ *   http      → `${method} ${pathname}`            (dispatch.ts http sites)
+ *   graphql   → graphqlEndpointKey(operation_name) (operation-aware)
+ *   s3        → `S3 ${method} ${prefix ?? key ?? "/"}`
+ *   postgres  → `SQL ${query_preview.slice(0, 80)}`
+ *
+ * Null when the meta variant carries no stable anchor (connectorless,
+ * error, missing operation_name).
+ */
+export function endpointKeyFromRequestMeta(
+  meta: import("../execution/types.ts").RequestMeta | null,
+): string | null {
+  if (!meta) return null;
+  switch (meta.driver) {
+    case "http": {
+      if (!meta.url) return null;
+      try {
+        return `${meta.method ?? "GET"} ${new URL(meta.url).pathname}`;
+      } catch {
+        return null;
+      }
+    }
+    case "graphql":
+      return meta.operation_name ? graphqlEndpointKey(meta.operation_name) : null;
+    case "s3":
+      return `S3 ${meta.method} ${meta.prefix ?? meta.key ?? "/"}`;
+    case "postgres":
+      return `SQL ${meta.query_preview.slice(0, 80)}`;
+    default:
+      return null;
+  }
 }
 
 export async function loadStepSnapshot(

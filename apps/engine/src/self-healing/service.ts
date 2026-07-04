@@ -162,6 +162,14 @@ export interface ProcessSignalResult {
   dry_run_passed: boolean | null;
   proposal: PatchProposal;
   /**
+   * True only when this call INSERTED a fresh patch_candidates row.
+   * Dedup refreshes and terminal skips return false — callers that
+   * count "candidates created" must branch on this, not on the mere
+   * presence of a result (the scan runner's hourly "3 created" lines
+   * were dedup refreshes of one stuck candidate, masking a real outage).
+   */
+  created: boolean;
+  /**
    * Resolved tenant/workflow autoheal policy at the time the
    * candidate was persisted. Surfaced on the return so callers
    * (e.g. the reactive wrapper, queue handler log line) can include
@@ -227,6 +235,25 @@ async function refreshOrSkipExistingCandidate(
   const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
 
   if (existing.status === "applied") {
+    // Reactive recurrence of a drift an applied patch was supposed to
+    // heal is EVIDENCE THE PATCH DIDN'T WORK — the workflow just failed
+    // again with the same fingerprint. Fall through to a fresh proposal
+    // instead of skipping, or the failed fix silently suppresses all
+    // future repair. (Proactive scans keep the skip: they re-diff
+    // unchanged recorded state, which proves nothing about the fix.)
+    if (ctx.source === "reactive") {
+      logger.warn({
+        module: "self-healing",
+        action: "patch.applied_but_recurred",
+        msg: "drift recurred reactively after an applied patch — proposing a fresh candidate",
+        tenant_id: ctx.tenant_id,
+        workflow_id: ctx.workflow_id,
+        patch_candidate_id: existing.id,
+        connector_id: ctx.connector_id ?? null,
+        endpoint_key: ctx.endpoint_key ?? null,
+      });
+      return null;
+    }
     // an already-healed endpoint re-diffs the same two schema_versions
     // rows on EVERY proactive scan (the applied patch heals the workflow but
     // does not rewrite the observed schema), so this short-circuit fires
@@ -254,6 +281,7 @@ async function refreshOrSkipExistingCandidate(
       dry_run_passed: null,
       proposal,
       policy,
+      created: false,
     };
   }
 
@@ -330,6 +358,7 @@ async function refreshOrSkipExistingCandidate(
     dry_run_passed: null,
     proposal,
     policy,
+    created: false,
   };
 }
 
@@ -408,11 +437,13 @@ export async function processDriftSignal(
 ): Promise<ProcessSignalResult> {
   const db = exec ?? getDb();
 
-  // Proactive idempotency guard. Reactive failures are genuine new
-  // events and keep the original behaviour; proactive scans re-fire on
-  // a cadence against unchanged recorded state, so they must dedupe.
-  const isProactive = ctx.source !== "reactive";
-  if (isProactive && ctx.connector_id && ctx.endpoint_key) {
+  // Endpoint idempotency guard — for EVERY source. Proactive scans
+  // re-fire on a cadence against unchanged recorded state; reactive
+  // failures re-fire on every scheduled run of a still-broken workflow
+  // (a sustained outage is one drift, not one drift per failure). The
+  // fingerprint match inside both lookups lets a genuinely NEW drift
+  // shape on the same endpoint fall through to a fresh proposal.
+  if (ctx.connector_id && ctx.endpoint_key) {
     const existing = await findActiveEndpointCandidate(db, {
       tenant_id: ctx.tenant_id,
       workflow_id: ctx.workflow_id,
@@ -452,6 +483,7 @@ export async function processDriftSignal(
         dry_run_passed: null,
         proposal: candidateProposal(terminal),
         policy,
+        created: false,
       };
     }
   }
@@ -791,6 +823,7 @@ export async function processDriftSignal(
     dry_run_passed: fixture && ctx.dry_run_step ? dryRunOk : null,
     proposal,
     policy,
+    created: true,
   };
 }
 
