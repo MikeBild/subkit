@@ -1,12 +1,11 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
-      "@engine/*": ["apps/engine/src/*"],
-      "@shared/*": ["packages/shared/src/*"],
-      "@cli-core/*": ["packages/cli-core/src/*"],
-      "@chat-ui/*": ["packages/chat-ui/src/*"]
+      "@engine/*": ["./apps/engine/src/*"],
+      "@shared/*": ["./packages/shared/src/*"],
+      "@cli-core/*": ["./packages/cli-core/src/*"],
+      "@chat-ui/*": ["./packages/chat-ui/src/*"]
     }
   },
   "include": [

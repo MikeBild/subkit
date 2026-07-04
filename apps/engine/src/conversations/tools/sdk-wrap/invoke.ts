@@ -1560,11 +1560,12 @@ export function wrapOne(
           // Tool-emitted pause may carry its own pending_output; if
           // not, derive one from the wrapping tool's policy hook so
           // the confirm UI gets a structured preview either way.
+          const pauseInputRecord =
+            inputPayload && typeof inputPayload === "object"
+              ? (inputPayload as { pending_output?: Record<string, unknown> })
+              : undefined;
           const pausePending =
-            (inputPayload && typeof inputPayload === "object"
-              ? ((inputPayload as { pending_output?: Record<string, unknown> }).pending_output ??
-                null)
-              : null) ?? buildPendingOutputForTool(inner.name, rawArgs);
+            pauseInputRecord?.pending_output ?? buildPendingOutputForTool(inner.name, rawArgs);
           events.push({
             type: "elicit_request",
             elicitation_id: result.pause.elicitation_id,
