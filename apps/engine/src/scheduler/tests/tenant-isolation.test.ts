@@ -113,8 +113,10 @@ describe("scheduler tenant isolation", () => {
       cron: "* * * * *",
       timezone: "UTC",
       paused: false,
-      // NULL last_enqueued_at → reconciler fires unconditionally.
+      // Never fired; created before the tick so the schedule is due (a
+      // fresh schedule waits for its first cron occurrence after creation).
       last_enqueued_at: null,
+      created_at: new Date(TICK.getTime() - 120_000),
     });
 
     const reconciler = new SchedulerReconciler({ boss, db: testDb.db });
@@ -166,6 +168,7 @@ describe("scheduler tenant isolation", () => {
       timezone: "UTC",
       paused: false,
       last_enqueued_at: null,
+      created_at: new Date(TICK.getTime() - 120_000),
     });
 
     const reconciler = new SchedulerReconciler({ boss, db: testDb.db });
@@ -230,6 +233,7 @@ describe("scheduler tenant isolation", () => {
       timezone: "UTC",
       paused: false,
       last_enqueued_at: null,
+      created_at: new Date(TICK.getTime() - 120_000),
     });
 
     // Advance clock so the dedup gate is open for all existing schedules.

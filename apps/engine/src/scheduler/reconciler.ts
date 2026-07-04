@@ -741,8 +741,16 @@ export class SchedulerReconciler {
       // still produces exactly ONE catch-up enqueue. The CAS-stamp on
       // `last_enqueued_at` below keeps it exactly-once across instances.
       const tz = schedule.timezone || "UTC";
+      // `last` is the actual column value — the CAS below and the failure
+      // compensation must operate on it verbatim. The DUE baseline is
+      // separate: a never-fired schedule uses its creation time, because
+      // `isCronDue(null)`'s "always due" would fire a fresh daily-07:00
+      // schedule immediately at whatever time it was created (observed
+      // live: a surprise scheduled run two minutes after authoring, then
+      // the real 07:00 fire). First fire = first occurrence AFTER creation.
       const last = schedule.last_enqueued_at ?? null;
-      if (!isCronDue(schedule.cron, last, now, tz)) continue;
+      const dueBaseline = last ?? schedule.created_at;
+      if (!isCronDue(schedule.cron, dueBaseline, now, tz)) continue;
       // Calendar gates. The trigger's `business_days_only`
       // and `skip_dates` round-trip through the schedule's `input`
       // jsonb column (see `bindFromWorkflow`). We intentionally do

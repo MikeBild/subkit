@@ -51,9 +51,17 @@ function looksLikePlaceholderUrl(raw: string): boolean {
   return false;
 }
 
+/**
+ * `templates` is REQUIRED and must be the resolved builtin+tenant merge
+ * (`listResolvedConnectorTemplates(...).map(e => e.template)`). It used
+ * to be optional with a builtin-only fallback — two callers omitted it
+ * and every tenant-created template was rejected with "template_slug
+ * must reference a known connector template". The compiler now makes
+ * forgetting impossible.
+ */
 export function validateConnectorDraft(
   connector: ConnectorDraftDocument | null,
-  templates?: ConnectorTemplate[],
+  templates: ConnectorTemplate[],
 ): ConnectorDraftValidation {
   const missing_fields: string[] = [];
   const errors: Array<{ path: string; message: string }> = [];
@@ -107,7 +115,7 @@ export function validateConnectorDraft(
   }
   if (connector.template_slug) {
     const template =
-      templates?.find((candidate) => candidate.slug === connector.template_slug) ??
+      templates.find((candidate) => candidate.slug === connector.template_slug) ??
       getBuiltinTemplate(connector.template_slug);
     if (!template) {
       pushError(errors, "template_slug", "template_slug must reference a known connector template");

@@ -6,6 +6,7 @@ import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
+import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { withConnectorProbe, withConnectorValidation } from "../authoring-state.ts";
@@ -143,7 +144,11 @@ export const probeConnectorDraftTool: ConversationTool = {
     const args = inputSchema.parse(rawArgs);
     const currentDraft = ctx.getDraft();
     const connector = currentDraft.connector;
-    const validation = validateConnectorDraft(connector ?? null);
+    const resolvedTemplates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
+    const validation = validateConnectorDraft(
+      connector ?? null,
+      resolvedTemplates.map((entry) => entry.template),
+    );
     if (!connector) {
       return {
         ok: false,

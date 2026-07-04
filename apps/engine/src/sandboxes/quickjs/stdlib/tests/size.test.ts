@@ -2,16 +2,17 @@
 //
 // `stdlib.js` is evaluated AFRESH on every `runJs` call — QuickJS does not
 // share bytecode across contexts — so its byte size is paid by every
-// before-request hook and every JS transform. Past the soft ceiling the
-// next additive surface must be split into an on-demand sub-module rather
-// than inflating the default preamble. This test fails the build if the
-// source crosses 25 KB so that growth is a conscious decision, not a
-// silent regression. Current size is ~20.7 KB (see README "Size budget").
+// before-request hook and every JS transform. This test fails the build
+// if the source crosses the ceiling so that growth is a conscious
+// decision, not a silent regression. The ceiling was raised 25→30 KB for
+// the MIME surface: `sk` is frozen at install, so an on-demand sub-module
+// cannot attach to it — see README "Size budget" for the trade-off the
+// next bump must revisit.
 
 import { describe, expect, test } from "bun:test";
 import { STDLIB_SOURCE } from "../index.ts";
 
-const SIZE_CEILING_BYTES = 25_000;
+const SIZE_CEILING_BYTES = 30_000;
 
 describe("stdlib.js size budget", () => {
   test(`source length stays under ${SIZE_CEILING_BYTES} bytes`, () => {

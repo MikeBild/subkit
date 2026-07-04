@@ -313,13 +313,16 @@
     "body": "Authenticate via OAuth 2.0 with gmail.modify or gmail.send scopes. All requests go to https://gmail.googleapis.com/gmail/v1. Rate limits are quota-unit based (e.g., messages.get=5 units, messages.send=100 units) with 1.2M units/min per project. Pagination uses pageToken/nextPageToken.",
     "examples": [
       "GET /gmail/v1/users/me/messages?maxResults=20 — list messages",
-      "POST /gmail/v1/users/me/messages/send — send an email (base64-encoded RFC 2822)"
+      "POST /gmail/v1/users/me/messages/send — send an email (base64-encoded RFC 2822)",
+      "transform: const { raw } = sk.buildMimeMessage({ from, to, subject, html }); return { raw }; — then body: { \"raw\": \"${scope.<step>.data.raw}\" }"
     ],
     "best_practices": [
+      "Build the `raw` field with sk.buildMimeMessage({ from, to, subject, html?, text? }) — it returns the base64url RFC822 message with correct header encoding, charset, and multipart handling. Never hand-assemble the MIME string.",
       "Use batch requests to reduce quota unit consumption for high-volume operations",
       "Prefer messages.list + messages.get over threads for precise message access"
     ],
     "pitfalls": [
+      "Email headers are ASCII-only (RFC 5322). A raw non-ASCII Subject (umlauts, dashes like –) gets Latin-1-mangled by the server (\"–\" becomes \"Ã¢Â€Â“\" in the inbox). sk.buildMimeMessage encodes headers as RFC 2047 encoded-words automatically; for custom header assembly use sk.mimeEncodeHeaderValue(value).",
       "Sending email costs 100 quota units — hitting the limit blocks all sending, not just the current request"
     ],
     "doc_refs": ["https://developers.google.com/workspace/gmail/api/reference/rest"]

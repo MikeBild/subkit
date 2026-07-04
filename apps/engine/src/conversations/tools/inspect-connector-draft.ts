@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { withConnectorInspection } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
@@ -16,7 +17,11 @@ export const inspectConnectorDraftTool: ConversationTool = {
   async execute(ctx): Promise<ToolResult> {
     const nextDraft = withConnectorInspection(ctx.getDraft());
     await ctx.setDraft(nextDraft);
-    const validation = validateConnectorDraft(nextDraft.connector ?? null);
+    const templates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
+    const validation = validateConnectorDraft(
+      nextDraft.connector ?? null,
+      templates.map((entry) => entry.template),
+    );
     return {
       ok: true,
       data: buildLifecyclePayload(nextDraft, {

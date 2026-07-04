@@ -76,7 +76,7 @@ function buildBearerDraft(baseUrl: string): DraftDocument {
     withConnectorInspection(baseDraft),
     {
       ...baseDraft.connector,
-      validation: validateConnectorDraft(baseDraft.connector ?? null),
+      validation: validateConnectorDraft(baseDraft.connector ?? null, []),
     },
     true,
     "Connector draft validated.",
@@ -245,7 +245,7 @@ describe("probe_connector_draft + draft credential", () => {
         withConnectorInspection(gmailDraft),
         {
           ...gmailDraft.connector,
-          validation: validateConnectorDraft(gmailDraft.connector ?? null),
+          validation: validateConnectorDraft(gmailDraft.connector ?? null, []),
         },
         true,
         "validated",
@@ -298,7 +298,7 @@ describe("probe_connector_draft + draft credential", () => {
         withConnectorInspection(draft),
         {
           ...draft.connector,
-          validation: validateConnectorDraft(draft.connector ?? null),
+          validation: validateConnectorDraft(draft.connector ?? null, []),
         },
         true,
         "ok",
@@ -354,7 +354,7 @@ describe("probe_connector_draft + draft credential", () => {
         withConnectorInspection(gqlDraft),
         {
           ...gqlDraft.connector,
-          validation: validateConnectorDraft(gqlDraft.connector ?? null),
+          validation: validateConnectorDraft(gqlDraft.connector ?? null, []),
         },
         true,
         "validated",
@@ -403,7 +403,7 @@ describe("probe_connector_draft + draft credential", () => {
         withConnectorInspection(gqlDraft),
         {
           ...gqlDraft.connector,
-          validation: validateConnectorDraft(gqlDraft.connector ?? null),
+          validation: validateConnectorDraft(gqlDraft.connector ?? null, []),
         },
         true,
         "validated",
@@ -495,7 +495,7 @@ describe("probe_connector_draft + draft credential", () => {
           withConnectorInspection(cognitoDraft),
           {
             ...cognitoDraft.connector,
-            validation: validateConnectorDraft(cognitoDraft.connector ?? null),
+            validation: validateConnectorDraft(cognitoDraft.connector ?? null, []),
           },
           true,
           "validated",
@@ -560,7 +560,7 @@ describe("probe_connector_draft + draft credential", () => {
         withConnectorInspection(gqlDraft),
         {
           ...gqlDraft.connector,
-          validation: validateConnectorDraft(gqlDraft.connector ?? null),
+          validation: validateConnectorDraft(gqlDraft.connector ?? null, []),
         },
         true,
         "validated",
@@ -611,7 +611,7 @@ describe("probe_connector_draft + draft credential", () => {
         withConnectorInspection(gmailGraphqlDraft),
         {
           ...gmailGraphqlDraft.connector,
-          validation: validateConnectorDraft(gmailGraphqlDraft.connector ?? null),
+          validation: validateConnectorDraft(gmailGraphqlDraft.connector ?? null, []),
         },
         true,
         "validated",
@@ -666,7 +666,7 @@ describe("probe_connector_draft + draft credential", () => {
         withConnectorInspection(basicDraft),
         {
           ...basicDraft.connector,
-          validation: validateConnectorDraft(basicDraft.connector ?? null),
+          validation: validateConnectorDraft(basicDraft.connector ?? null, []),
         },
         true,
         "validated",
@@ -785,7 +785,7 @@ describe("probe_connector_draft + draft credential", () => {
         withConnectorInspection(gqlDraft),
         {
           ...gqlDraft.connector,
-          validation: validateConnectorDraft(gqlDraft.connector ?? null),
+          validation: validateConnectorDraft(gqlDraft.connector ?? null, []),
         },
         true,
         "validated",

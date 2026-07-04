@@ -62,6 +62,24 @@ function configOAuthBlock(cfg: ConnectorConfig): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Why an OAuth config could not be assembled. `template_oauth_credentials`
+ * is the actionable one: the connector is bound to a template whose OAuth
+ * block expects tenant-supplied client credentials, and none were ever
+ * stored (`POST /v1/connector-templates/{slug}/oauth-credentials` /
+ * `sk connector-templates set-oauth`).
+ */
+export type ConnectorOAuthConfigResolution =
+  | { ok: true; config: OAuth2ClientConfig }
+  | { ok: false; missing: "issuer_url" | "client_id" | "template_oauth_credentials" };
+
+/**
+ * Presence-only projection of `resolveConnectorOAuthConfigDetailed` for
+ * callers that only ask "is OAuth configured?" (capability flags, refresh
+ * worker). Throw sites that surface errors to an operator must use the
+ * detailed form so the missing reason is never collapsed into a generic
+ * message.
+ */
 export async function resolveConnectorOAuthConfig(
   db: Db,
   tenant_id: string,
@@ -70,6 +88,18 @@ export async function resolveConnectorOAuthConfig(
     "id" | "config" | "environment" | "template_slug" | "template_snapshot"
   >,
 ): Promise<OAuth2ClientConfig | null> {
+  const res = await resolveConnectorOAuthConfigDetailed(db, tenant_id, connector);
+  return res.ok ? res.config : null;
+}
+
+export async function resolveConnectorOAuthConfigDetailed(
+  db: Db,
+  tenant_id: string,
+  connector: Pick<
+    ConnectorView,
+    "id" | "config" | "environment" | "template_slug" | "template_snapshot"
+  >,
+): Promise<ConnectorOAuthConfigResolution> {
   const cfg = connectorConfig(connector);
   const o = configOAuthBlock(cfg);
   const snapshot = getConnectorTemplateSnapshot(connector);
@@ -95,7 +125,17 @@ export async function resolveConnectorOAuthConfig(
     nonEmptyString(o.client_id) ??
     nonEmptyString(templateCreds?.client_id) ??
     nonEmptyString(templateOauth?.client_id);
-  if (!issuer_url || !client_id) return null;
+  if (!issuer_url) return { ok: false, missing: "issuer_url" };
+  if (!client_id) {
+    // Template-bound connector whose template declares OAuth but ships no
+    // shared client_id, no dynamic registration, and the tenant never
+    // stored its own client credentials — the actionable case.
+    const missing =
+      connector.template_slug && templateOauth && templateCreds === null
+        ? "template_oauth_credentials"
+        : "client_id";
+    return { ok: false, missing };
+  }
 
   const out: OAuth2ClientConfig = {
     issuer_url,
@@ -207,5 +247,5 @@ export async function resolveConnectorOAuthConfig(
         ? templateOauth.token_response_ttl_ms
         : undefined;
   if (resolvedTtlMs !== undefined) out.token_response_ttl_ms = resolvedTtlMs;
-  return out;
+  return { ok: true, config: out };
 }

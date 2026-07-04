@@ -44,6 +44,18 @@ As of **v1.4.0** the surface also includes:
 These let authors stop hand-rolling encoders and stop reaching for the
 banned `new Date()` / `Date.now()` / `Math.random()`.
 
+As of **v1.5.0** the surface adds the MIME layer:
+
+- `mimeEncodeHeaderValue(value)` — RFC 2047 encoded-word(s) for non-ASCII
+  header values (`=?UTF-8?B?…?=`, folded at the 75-char limit). Email
+  headers are ASCII-only by RFC 5322; a raw non-ASCII Subject gets
+  Latin-1-mangled by the receiving server ("–" → "Ã¢Â€Â“").
+- `buildMimeMessage({ from, to, subject, html?, text?, … })` — a complete
+  RFC822 message plus its base64url form (the Gmail `raw` field). Headers
+  RFC-2047-encoded, bodies base64 with UTF-8 charset, html+text as
+  multipart/alternative, deterministic content-derived boundary. Author
+  code should never hand-assemble MIME.
+
 ## Layout
 
 | File                 | Role                                                                 |
@@ -114,10 +126,13 @@ new ambient value, inject it from the host execution context the same way
 ## Size budget
 
 The stdlib source is evaluated afresh on every `runJs` call (QuickJS does
-not share bytecode across contexts). Current size is ~21 KB (`wc -c
-stdlib.js` ≈ 20.7 KB) — the SHA-256 implementation (constant table +
-round function) dominates. A size tripwire (`tests/size.test.ts`) fails
-the build if the source crosses **25 KB**: the next additive surface
-should be split into an optional sub-module injected on demand rather than
-inflating the default preamble for every transform that never touches
-crypto.
+not share bytecode across contexts). Current size is ~26 KB — the SHA-256
+implementation and the MIME layer dominate. A size tripwire
+(`tests/size.test.ts`) fails the build if the source crosses **30 KB**.
+
+The ceiling was consciously raised from 25 KB for the MIME surface: `sk`
+is frozen at install time, so a lazily injected sub-module cannot attach
+to it — an on-demand loader would mean unfreezing the surface or a second
+global, both worse than the marginal extra parse per invocation. The next
+additive surface past 30 KB must revisit that trade-off rather than bump
+the number again.

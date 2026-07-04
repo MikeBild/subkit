@@ -341,6 +341,116 @@
     return out;
   }
 
+  // ── MIME (RFC 5322/2047/2045) ──────────────────────────────────
+  // Headers are ASCII-only; raw non-ASCII gets Latin-1-mangled by mail
+  // servers. Rationale + full contract: stdlib.d.ts / README.
+
+  function isAsciiPrintable(str) {
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      if (c < 0x20 || c > 0x7e) return false;
+    }
+    return true;
+  }
+
+  // RFC 2047 B-encoding: 45 payload bytes/word (word stays <= 75 chars,
+  // no mid-run padding); never splits a multi-byte UTF-8 sequence.
+  function mimeEncodeHeaderValue(input) {
+    const s = stringInput(input);
+    if (isAsciiPrintable(s)) return s;
+    const bytes = utf8Bytes(s);
+    const words = [];
+    let start = 0;
+    while (start < bytes.length) {
+      let end = Math.min(start + 45, bytes.length);
+      while (end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--;
+      words.push(`=?UTF-8?B?${bytesToBase64(bytes.slice(start, end))}?=`);
+      start = end;
+    }
+    return words.join("\r\n ");
+  }
+
+  function mimeBodyBase64(content) {
+    const b64 = bytesToBase64(utf8Bytes(content));
+    let out = "";
+    for (let i = 0; i < b64.length; i += 76) {
+      if (i > 0) out += "\r\n";
+      out += b64.slice(i, i + 76);
+    }
+    return out;
+  }
+
+  // Encoded-words around an addr-spec break routing -> require ASCII.
+  function mimeAddressList(value, field) {
+    const joined = Array.isArray(value) ? value.join(", ") : stringInput(value);
+    if (!isAsciiPrintable(joined)) {
+      throw new Error(`buildMimeMessage: ${field} must be ASCII`);
+    }
+    return joined;
+  }
+
+  function mimeTextPart(type, content) {
+    return [
+      `Content-Type: ${type}; charset=UTF-8`,
+      "Content-Transfer-Encoding: base64",
+      "",
+      mimeBodyBase64(content),
+    ];
+  }
+
+  function buildMimeMessage(opts) {
+    if (!opts || typeof opts !== "object" || Array.isArray(opts)) {
+      throw new Error("buildMimeMessage: options object required");
+    }
+    if (!opts.from || !opts.to) throw new Error("buildMimeMessage: from and to are required");
+    const html = opts.html === undefined || opts.html === null ? null : stringInput(opts.html);
+    const text = opts.text === undefined || opts.text === null ? null : stringInput(opts.text);
+    if (html === null && text === null) {
+      throw new Error("buildMimeMessage: provide html and/or text");
+    }
+    const lines = [`From: ${mimeAddressList(opts.from, "from")}`];
+    lines.push(`To: ${mimeAddressList(opts.to, "to")}`);
+    if (opts.cc !== undefined && opts.cc !== null)
+      lines.push(`Cc: ${mimeAddressList(opts.cc, "cc")}`);
+    if (opts.bcc !== undefined && opts.bcc !== null) {
+      lines.push(`Bcc: ${mimeAddressList(opts.bcc, "bcc")}`);
+    }
+    if (opts.replyTo !== undefined && opts.replyTo !== null) {
+      lines.push(`Reply-To: ${mimeAddressList(opts.replyTo, "replyTo")}`);
+    }
+    lines.push(`Subject: ${mimeEncodeHeaderValue(opts.subject === undefined ? "" : opts.subject)}`);
+    if (opts.headers && typeof opts.headers === "object" && !Array.isArray(opts.headers)) {
+      for (const key in opts.headers) {
+        if (!Object.hasOwn(opts.headers, key)) continue;
+        lines.push(`${key}: ${mimeEncodeHeaderValue(opts.headers[key])}`);
+      }
+    }
+    lines.push("MIME-Version: 1.0");
+
+    let body;
+    if (html !== null && text !== null) {
+      // Deterministic boundary (content hash) -> dry-runs reproduce.
+      const boundary = `sk-mime-${sha256(`${html} ${text}`).slice(0, 24)}`;
+      body = [
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        "",
+        `--${boundary}`,
+        ...mimeTextPart("text/plain", text),
+        `--${boundary}`,
+        ...mimeTextPart("text/html", html),
+        `--${boundary}--`,
+        "",
+      ];
+    } else if (html !== null) {
+      body = mimeTextPart("text/html", html);
+    } else {
+      body = mimeTextPart("text/plain", text);
+    }
+
+    const mime = lines.concat(body).join("\r\n");
+    return { raw: base64UrlEncodeUtf8(mime), mime: mime };
+  }
+
   // ── SHA-256 / HMAC-SHA-256 ─────────────────────────────────────────
   // Pure FIPS-180-4 implementation over the UTF-8 bytes of the input.
   // No host crypto, no clock, no random — fully deterministic so a
@@ -583,6 +693,8 @@
     base64DecodeUtf8: base64DecodeUtf8,
     hexEncode: hexEncode,
     hexDecode: hexDecode,
+    mimeEncodeHeaderValue: mimeEncodeHeaderValue,
+    buildMimeMessage: buildMimeMessage,
     sha256: sha256,
     hmacSha256: hmacSha256,
     now: now,
@@ -593,7 +705,7 @@
     isArray: isArray,
     isObject: isObject,
     isNil: isNil,
-    version: "1.4.0",
+    version: "1.5.0",
   });
 
   Object.defineProperty(globalThis, "sk", {

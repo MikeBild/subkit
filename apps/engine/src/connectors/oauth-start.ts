@@ -27,11 +27,14 @@ import {
 } from "../credentials/index.ts";
 import type { Db } from "../db/client.ts";
 import { connectorOauthStates, connectors } from "../db/schema/index.ts";
-import { BadRequestError, NotFoundError } from "../http/errors.ts";
+import { BadRequestError, HttpError, NotFoundError } from "../http/errors.ts";
 import { logger } from "../logging/index.ts";
 import { now } from "../utils/clock.ts";
 import { getConnector } from "./service.ts";
-import { getConnectorTemplateSnapshot, resolveConnectorOAuthConfig } from "./template-binding.ts";
+import {
+  getConnectorTemplateSnapshot,
+  resolveConnectorOAuthConfigDetailed,
+} from "./template-binding.ts";
 
 export type OAuthDanceResult =
   | { kind: "browser"; authorization_url: string; state: string }
@@ -149,10 +152,29 @@ export async function beginConnectorOAuthDance(
     }
   }
 
-  const cfg = await resolveConnectorOAuthConfig(db, tenant_id, connector);
-  if (!cfg) {
-    throw new BadRequestError("connector is missing oauth2 config (issuer_url + client_id)");
+  const resolution = await resolveConnectorOAuthConfigDetailed(db, tenant_id, connector);
+  if (!resolution.ok) {
+    // Each incomplete-config reason gets its own message — pre-fix every
+    // reason collapsed into one generic line, and the most common case
+    // (template OAuth credentials never stored) was undiagnosable from
+    // the CLI.
+    if (resolution.missing === "template_oauth_credentials") {
+      throw HttpError.withEnvelope(
+        400,
+        "bad_request",
+        `template "${connector.template_slug}" requires tenant OAuth client credentials, and none are stored`,
+        {
+          hint: `run \`sk connector-templates set-oauth ${connector.template_slug}\` (POST /v1/connector-templates/${connector.template_slug}/oauth-credentials), then retry oauth/start`,
+        },
+      );
+    }
+    throw new BadRequestError(
+      resolution.missing === "issuer_url"
+        ? "connector is missing oauth2 config: no issuer_url on config.oauth or the bound template"
+        : "connector is missing oauth2 config: no client_id on config.oauth, the bound template, or dynamic registration",
+    );
   }
+  const cfg = resolution.config;
 
   // client_credentials_json: M2M exchange — no browser redirect.
   if (cfg.grant_type === "client_credentials_json") {

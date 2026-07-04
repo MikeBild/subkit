@@ -23,7 +23,7 @@ function draft(over: Partial<ConnectorDraftDocument> = {}): ConnectorDraftDocume
 
 describe("validateConnectorDraft — placeholder host gate", () => {
   test("accepts a real-looking hostname", () => {
-    const result = validateConnectorDraft(draft({ base_url: "https://api.github.com" }));
+    const result = validateConnectorDraft(draft({ base_url: "https://api.github.com" }), []);
     expect(result.ok).toBe(true);
   });
 
@@ -33,7 +33,7 @@ describe("validateConnectorDraft — placeholder host gate", () => {
       "https://example.org",
       "https://test.example.net",
     ]) {
-      const result = validateConnectorDraft(draft({ base_url: url }));
+      const result = validateConnectorDraft(draft({ base_url: url }), []);
       expect(result.ok).toBe(false);
       expect(result.errors.some((e) => e.path === "base_url")).toBe(true);
       expect(result.errors[0]!.message).toMatch(/placeholder/);
@@ -46,14 +46,14 @@ describe("validateConnectorDraft — placeholder host gate", () => {
     // gate would be a false-positive nightmare for the tool-test
     // harness if it flagged 127.0.0.1.
     for (const url of ["http://localhost:3000", "http://127.0.0.1:8080", "http://0.0.0.0:9000"]) {
-      const result = validateConnectorDraft(draft({ base_url: url }));
+      const result = validateConnectorDraft(draft({ base_url: url }), []);
       expect(result.ok).toBe(true);
     }
   });
 
   test("rejects 'your-host' style fabrications via the placeholder gate", () => {
     for (const url of ["https://your-host.com", "https://api.your-company.com"]) {
-      const result = validateConnectorDraft(draft({ base_url: url }));
+      const result = validateConnectorDraft(draft({ base_url: url }), []);
       expect(result.ok).toBe(false);
       expect(result.errors[0]!.message).toMatch(/placeholder/);
     }
@@ -64,7 +64,7 @@ describe("validateConnectorDraft — placeholder host gate", () => {
     // important property is that they are refused with SOME blocking
     // error, not silently accepted.
     for (const url of ["https://<YOUR_HOST>", "https://[YOUR_API].com"]) {
-      const result = validateConnectorDraft(draft({ base_url: url }));
+      const result = validateConnectorDraft(draft({ base_url: url }), []);
       expect(result.ok).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
     }
@@ -76,6 +76,7 @@ describe("validateConnectorDraft — placeholder host gate", () => {
     // placeholder errors too.
     const result = validateConnectorDraft(
       draft({ base_url: "https://$" + "{region}.api.real.com" }),
+      [],
     );
     expect(result.errors.some((e) => e.message.includes("placeholder"))).toBe(false);
   });
@@ -98,6 +99,7 @@ describe("validateConnectorDraft — GraphQL endpoint url_pattern gate", () => {
         template_slug: "appsync-cognito",
         base_url: HOST_ROOT_APPSYNC_URL,
       }),
+      [],
     );
     expect(result.ok).toBe(false);
     const err = result.errors.find((e) => e.path === "base_url");
@@ -113,6 +115,7 @@ describe("validateConnectorDraft — GraphQL endpoint url_pattern gate", () => {
         template_slug: "appsync-cognito",
         base_url: FULL_APPSYNC_URL,
       }),
+      [],
     );
     expect(result.ok).toBe(true);
   });
@@ -128,6 +131,7 @@ describe("validateConnectorDraft — GraphQL endpoint url_pattern gate", () => {
         template_slug: "stripe",
         base_url: "https://api.stripe.com",
       }),
+      [],
     );
     expect(result.ok).toBe(true);
   });

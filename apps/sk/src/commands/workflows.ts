@@ -682,32 +682,22 @@ const restoreCommand = defineCommand({
   },
 });
 
-const createCommand = defineCommand({
-  meta: {
-    name: "create",
-    description:
-      "Create a workflow from a JSON file. Runs `validate` and `preview` by default; pass --skip-checks to bypass.",
-  },
-  args: {
-    file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
-    "skip-checks": {
-      type: "boolean",
-      description:
-        "Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.",
-    },
-    input: {
-      type: "string",
-      description: "Input JSON string passed to the preview dry-run.",
-    },
-    json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
-  },
-  async run({ args }) {
-    const { readFileSync } = await import("node:fs");
-    const client = makeClient();
-    const jsonMode = Boolean(args.json);
-    try {
+/**
+ * Shared validate → preview → save pipeline for `create` and `update`.
+ * `update` PUTs the full definition to /v1/workflows/{id} (the same body
+ * shape as create); an unchanged definition does not rotate a version.
+ */
+async function saveWorkflowFromFile(
+  target: { kind: "create" } | { kind: "update"; id: string },
+  args: Record<string, unknown>,
+): Promise<void> {
+  const { readFileSync } = await import("node:fs");
+  const client = makeClient();
+  const jsonMode = Boolean(args.json);
+  try {
+    {
       const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
-      const skip = Boolean((args as Record<string, unknown>)["skip-checks"]);
+      const skip = Boolean(args["skip-checks"]);
       const intent = intentFromBody(body);
       await renderIntent(intent, { jsonMode });
 
@@ -793,7 +783,9 @@ const createCommand = defineCommand({
         );
       }
 
-      const created = (await client.createWorkflow(body)) as Record<string, unknown> & {
+      const created = (await (target.kind === "create"
+        ? client.createWorkflow(body)
+        : client.updateWorkflow(target.id, body))) as Record<string, unknown> & {
         id?: string;
         version?: number;
         name?: string;
@@ -820,9 +812,53 @@ const createCommand = defineCommand({
             `${pc.dim("Tip:")} sk workflows invoke-snippet ${summary.id} --lang node\n`,
         );
       }
-    } catch (err) {
-      reportCommandError(err, { json: jsonMode });
     }
+  } catch (err) {
+    reportCommandError(err, { json: jsonMode });
+  }
+}
+
+const SAVE_ARGS = {
+  file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
+  "skip-checks": {
+    type: "boolean",
+    description:
+      "Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.",
+  },
+  input: {
+    type: "string",
+    description: "Input JSON string passed to the preview dry-run.",
+  },
+  json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
+} as const;
+
+const createCommand = defineCommand({
+  meta: {
+    name: "create",
+    description:
+      "Create a workflow from a JSON file. Runs `validate` and `preview` by default; pass --skip-checks to bypass.",
+  },
+  args: { ...SAVE_ARGS },
+  async run({ args }) {
+    await saveWorkflowFromFile({ kind: "create" }, args as Record<string, unknown>);
+  },
+});
+
+const updateCommand = defineCommand({
+  meta: {
+    name: "update",
+    description:
+      "Update a workflow from a JSON file (PUT the full definition). Runs `validate` and `preview` by default; pass --skip-checks to bypass. An unchanged definition does not rotate a version.",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Workflow id" },
+    ...SAVE_ARGS,
+  },
+  async run({ args }) {
+    await saveWorkflowFromFile(
+      { kind: "update", id: String((args as Record<string, unknown>).id) },
+      args as Record<string, unknown>,
+    );
   },
 });
 
@@ -839,6 +875,7 @@ export const workflowsCommand = defineCommand({
     history: historyCommand,
     restore: restoreCommand,
     create: createCommand,
+    update: updateCommand,
     "invoke-snippet": invokeSnippetCommand,
   },
 });

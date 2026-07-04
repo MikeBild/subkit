@@ -2036,6 +2036,9 @@ export class EngineClient {
   createWorkflow(body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.request("POST", "/v1/workflows", body);
   }
+  updateWorkflow(id: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("PUT", `/v1/workflows/${encodeURIComponent(id)}`, body);
+  }
   validateWorkflowDraft(
     body: Record<string, unknown>,
   ): Promise<{ ok: boolean; errors?: Array<{ path: string; message: string }> }> {

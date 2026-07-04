@@ -90,7 +90,7 @@ function readyDraft(slug: string): DraftDocument {
     withConnectorInspection(baseDraft),
     {
       ...baseDraft.connector,
-      validation: validateConnectorDraft(baseDraft.connector ?? null),
+      validation: validateConnectorDraft(baseDraft.connector ?? null, []),
     },
     true,
     "Connector draft validated.",

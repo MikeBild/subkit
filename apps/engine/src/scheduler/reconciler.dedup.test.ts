@@ -77,6 +77,10 @@ async function insertSchedule(
       paused: false,
       input: { from: "test" },
       last_enqueued_at,
+      // All ticks in this suite are fixed historical instants; a fresh
+      // schedule is only due once its first cron occurrence after
+      // CREATION has passed, so creation must predate every tick.
+      created_at: new Date("2026-05-01T00:00:00.000Z"),
     })
     .returning({ id: workflowsSchedules.id });
   if (!row) throw new Error("schedule insert failed");

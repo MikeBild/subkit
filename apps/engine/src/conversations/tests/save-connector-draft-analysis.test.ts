@@ -119,7 +119,7 @@ describe("saveConnectorDraftTool — auto document analysis on attachment", () =
       withConnectorInspection(baseDraft),
       {
         ...baseDraft.connector,
-        validation: validateConnectorDraft(baseDraft.connector ?? null),
+        validation: validateConnectorDraft(baseDraft.connector ?? null, []),
       },
       true,
       "Connector draft validated.",

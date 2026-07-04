@@ -61,6 +61,34 @@ export interface Sk {
   /** Inverse of `hexEncode` — returns a binary string. */
   hexDecode(input: unknown): string;
 
+  /**
+   * RFC 2047 header encoding. ASCII-printable values pass through
+   * unchanged; anything else becomes `=?UTF-8?B?…?=` encoded-word(s)
+   * folded at the 75-char limit. Email headers are ASCII-only by
+   * RFC 5322 — a raw non-ASCII Subject gets Latin-1-mangled by the
+   * receiving server ("–" → "Ã¢Â€Â“").
+   */
+  mimeEncodeHeaderValue(input: unknown): string;
+  /**
+   * Build a complete RFC822 message and its base64url form (the Gmail
+   * `raw` field). Subject/custom headers are RFC-2047-encoded, bodies
+   * ride as base64 with UTF-8 charset, html+text together become
+   * multipart/alternative. Address fields must be ASCII. Deterministic
+   * (content-derived multipart boundary).
+   */
+  buildMimeMessage(opts: {
+    from: string | string[];
+    to: string | string[];
+    subject?: string;
+    html?: string | null;
+    text?: string | null;
+    cc?: string | string[] | null;
+    bcc?: string | string[] | null;
+    replyTo?: string | string[] | null;
+    /** Extra headers; values are RFC-2047-encoded when non-ASCII. */
+    headers?: Record<string, string>;
+  }): { raw: string; mime: string };
+
   /** Deterministic SHA-256 over the UTF-8 bytes of `input`, lowercase hex. */
   sha256(input: unknown): string;
   /** Deterministic HMAC-SHA-256(`key`, `msg`) over UTF-8 bytes, lowercase hex. */

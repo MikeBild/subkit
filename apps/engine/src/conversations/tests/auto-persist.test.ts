@@ -68,7 +68,7 @@ function readyDraft(slug: string): DraftDocument {
     withConnectorInspection(baseDraft),
     {
       ...baseDraft.connector,
-      validation: validateConnectorDraft(baseDraft.connector ?? null),
+      validation: validateConnectorDraft(baseDraft.connector ?? null, []),
     },
     true,
     "Connector draft validated.",
@@ -546,7 +546,7 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
       withConnectorInspection(oauth2Draft),
       {
         ...oauth2Draft.connector,
-        validation: validateConnectorDraft(oauth2Draft.connector ?? null),
+        validation: validateConnectorDraft(oauth2Draft.connector ?? null, []),
       },
       true,
       "Connector draft validated.",
@@ -729,7 +729,7 @@ describe("auto-persist on confirmation — save_connector_draft basic-auth", () 
       withConnectorInspection(basicDraft),
       {
         ...basicDraft.connector,
-        validation: validateConnectorDraft(basicDraft.connector ?? null),
+        validation: validateConnectorDraft(basicDraft.connector ?? null, []),
       },
       true,
       "Connector draft validated.",

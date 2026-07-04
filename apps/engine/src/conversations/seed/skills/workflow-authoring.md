@@ -1091,6 +1091,13 @@ Available calls:
 - `btoa(input)` / `atob(input)` — Web-standard binary-string base64 globals
   (`btoa` throws on code points > 255 — use `sk.base64EncodeUtf8` for Unicode)
 - `sk.hexEncode(input)` / `sk.hexDecode(input)` — lowercase-hex codec
+- `sk.buildMimeMessage({ from, to, subject, html?, text?, cc?, bcc? })` —
+  complete RFC822 email + its base64url form (`raw` for Gmail send). ALWAYS
+  use this for email bodies: headers are ASCII-only per RFC 5322, and a raw
+  non-ASCII Subject ("–", umlauts) gets Latin-1-mangled by the mail server.
+  Never hand-assemble the MIME string
+- `sk.mimeEncodeHeaderValue(value)` — RFC 2047 encoded-word for one header
+  value, when custom header assembly is unavoidable
 - `sk.sha256(input)` — SHA-256 of `input` (UTF-8), lowercase hex
 - `sk.hmacSha256(key, msg)` — HMAC-SHA-256, lowercase hex (signed-request auth)
 - `sk.now()` / `sk.nowIso()` — the execution's fixed timestamp (epoch ms / ISO);

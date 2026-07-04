@@ -62,4 +62,4 @@ every API call.
 | `sk tenants` | — | List tenants you belong to or switch the active one | — |
 | `sk update` | — | Update sk CLI to the latest version | — |
 | `sk users` | `identity:read` | Manage identity users | `create`, `delete`, `get`, `invite`, `list`, `patch` |
-| `sk workflows` | `workflow:read` | Manage workflows | `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `preview`, `restore`, `run`, `validate` |
+| `sk workflows` | `workflow:read` | Manage workflows | `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `preview`, `restore`, `run`, `update`, `validate` |
