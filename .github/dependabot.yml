@@ -24,3 +24,7 @@ updates:
       # pdfjs-dist must match the exact version pdf-parse pins internally
       # (API/worker version handshake) — it moves only when pdf-parse does.
       - dependency-name: "pdfjs-dist"
+      # @hono/node-server v2 emits lightweight Response objects that break
+      # fetch interop under Bun; majors need a deliberate migration.
+      - dependency-name: "@hono/node-server"
+        update-types: ["version-update:semver-major"]
