@@ -131,7 +131,7 @@
     "ink-markdown": "^1.0.4",
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^5.2.1",
     "jsdom": "^29.1.1",
     "jsonata": "^2.1.0",
     "jsonrepair": "^3.14.0",
