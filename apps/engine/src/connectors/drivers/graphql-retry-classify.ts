@@ -88,3 +88,93 @@ export function isGraphqlRetryable(status: number, body: unknown): boolean {
 
   return errors.some(entryIsRetryable);
 }
+
+// ---------------------------------------------------------------------------
+// Schema-error classification (drift-detector feed).
+//
+// A GraphQL failure whose errors say "this field/operation does not exist in
+// the schema" is not transient and not an auth problem — the vendor changed
+// (or never implemented) the contract a committed workflow references. Same
+// structured-fields-first discipline as the transient classifier above; the
+// class tokens are the documented validation/implementation constants of the
+// major servers (graphql-js "GRAPHQL_VALIDATION_FAILED", graphql-java
+// "ValidationError"/"FieldUndefined", AppSync errorType, generic
+// "NOT_IMPLEMENTED"), with message phrases as the last-resort fallback.
+
+const SCHEMA_ERROR_CLASSES = [
+  "VALIDATION", // ValidationError, GRAPHQL_VALIDATION_FAILED, …
+  "FIELDUNDEFINED", // graphql-java FieldUndefined
+  "FIELD_UNDEFINED",
+  "NOT_IMPLEMENTED", // no resolver for the root field
+  "UNKNOWN_FIELD",
+] as const;
+
+const SCHEMA_ERROR_MESSAGE_PHRASES = [
+  "fieldundefined", // "Validation error of type FieldUndefined: …"
+  "cannot query field", // graphql-js
+  "no resolver", // "[NOT_IMPLEMENTED] no resolver for Query.chargers"
+  "not_implemented",
+  "not found in type", // Hasura "field 'x' not found in type: 'query_root'"
+  "is undefined", // "Field 'chargers' in type 'Query' is undefined"
+] as const;
+
+function containsSchemaClass(value: string | null | undefined): boolean {
+  if (typeof value !== "string") return false;
+  const upper = value.toUpperCase();
+  return SCHEMA_ERROR_CLASSES.some((cls) => upper.includes(cls));
+}
+
+/** Best-effort extraction of the failing root field from a schema-error
+ *  message ("Query.chargers", `Field 'chargers' …`, `Cannot query field
+ *  "chargers" …`). Null when no pattern matches. */
+function rootFieldFromMessage(message: string): string | null {
+  const qualified = message.match(/\b(?:Query|Mutation|Subscription)\.([A-Za-z_][A-Za-z0-9_]*)/);
+  if (qualified?.[1]) return qualified[1];
+  const singleQuoted = message.match(/[Ff]ield '([A-Za-z_][A-Za-z0-9_]*)'/);
+  if (singleQuoted?.[1]) return singleQuoted[1];
+  const doubleQuoted = message.match(/[Cc]annot query field "([A-Za-z_][A-Za-z0-9_]*)"/);
+  if (doubleQuoted?.[1]) return doubleQuoted[1];
+  return null;
+}
+
+export interface GraphqlSchemaErrorVerdict {
+  schema_shaped: boolean;
+  /** Failing root field when it could be parsed (e.g. "chargers"). */
+  root_field: string | null;
+}
+
+/**
+ * Classify a failed GraphQL response body: do its errors declare a SCHEMA
+ * mismatch (removed/never-implemented field) rather than a transient or
+ * auth failure? Transient entries never count — a throttled request is not
+ * drift no matter what its message contains.
+ */
+export function classifyGraphqlSchemaError(body: unknown): GraphqlSchemaErrorVerdict {
+  const errors = (body as { errors?: unknown } | null | undefined)?.errors;
+  if (!Array.isArray(errors) || errors.length === 0) {
+    return { schema_shaped: false, root_field: null };
+  }
+  let schemaShaped = false;
+  let rootField: string | null = null;
+  for (const entry of errors) {
+    if (!entry || typeof entry !== "object") continue;
+    if (entryIsRetryable(entry)) continue; // transient beats schema
+    const e = entry as Record<string, unknown>;
+    const ext =
+      e.extensions && typeof e.extensions === "object"
+        ? (e.extensions as Record<string, unknown>)
+        : null;
+    const message = typeof e.message === "string" ? e.message : "";
+    const structuredHit =
+      containsSchemaClass(ext?.code as string | undefined) ||
+      containsSchemaClass(e.errorType as string | undefined) ||
+      containsSchemaClass(ext?.classification as string | undefined);
+    const messageHit =
+      !structuredHit && SCHEMA_ERROR_MESSAGE_PHRASES.some((p) => message.toLowerCase().includes(p));
+    if (structuredHit || messageHit) {
+      schemaShaped = true;
+      rootField ??= rootFieldFromMessage(message);
+    }
+  }
+  return { schema_shaped: schemaShaped, root_field: rootField };
+}

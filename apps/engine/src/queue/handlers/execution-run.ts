@@ -6,21 +6,99 @@
 // it. The handler always resolves a tenant + workflow + input tuple
 // before calling into the engine.
 
+import { and, asc, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
+import { executionSteps } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { finalizeExecution } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
-import { log } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/logger.ts";
+import {
+  endpointKeyFromRequestMeta,
+  parsePersistedRequestMeta,
+} from "../../self-healing/step-snapshot.ts";
 import { withJobContext } from "../job-context.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queues.ts";
+import { enqueueRepair } from "./workflow-repair.ts";
 
 export interface RegisterExecutionRunOptions {
   boss: PgBoss;
   db: Db;
 }
 
-async function handleOne(job: Job<ExecutionRunJob>, db: Db): Promise<void> {
+/**
+ * Reactive self-healing producer. A failed run whose first failed
+ * REQUEST step carries a connector anchor becomes a `workflow.repair`
+ * job — the only path that can catch vendor-side contract drift the
+ * proactive scanner is blind to (a failing endpoint records no new
+ * shape to diff). Flood control is layered: `enqueueRepair` collapses
+ * repeats per (tenant, workflow, endpoint) under a pg-boss singleton
+ * window, and `processDriftSignal` dedups against active/terminal
+ * candidates by drift fingerprint. Best-effort: a repair enqueue
+ * failure must never fail the execution job itself.
+ */
+async function maybeEnqueueRepair(
+  boss: PgBoss,
+  db: Db,
+  p: { tenant_id: string; workflow_id: string; execution_id: string },
+): Promise<void> {
+  try {
+    const rows = await db
+      .select()
+      .from(executionSteps)
+      .where(
+        and(
+          eq(executionSteps.tenant_id, p.tenant_id),
+          eq(executionSteps.execution_id, p.execution_id),
+          eq(executionSteps.status, "failed"),
+          eq(executionSteps.kind, "request"),
+        ),
+      )
+      .orderBy(asc(executionSteps.step_index))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return;
+    const meta = parsePersistedRequestMeta(row.request_meta);
+    const connector_id =
+      meta && "connector" in meta && meta.connector ? meta.connector.connector_id : null;
+    if (!connector_id) return; // connectorless failures carry no repair anchor
+    const endpoint_key = endpointKeyFromRequestMeta(meta);
+    const jobId = await enqueueRepair(boss, {
+      tenant_id: p.tenant_id,
+      workflow_id: p.workflow_id,
+      execution_id: p.execution_id,
+      step_id: row.id,
+      connector_id,
+      endpoint_key,
+    });
+    logger.info({
+      module: "self-healing",
+      action: jobId ? "repair.enqueued" : "repair.enqueue_deduped",
+      msg: jobId
+        ? "failed request step enqueued for reactive repair"
+        : "reactive repair suppressed — singleton window already holds a job for this endpoint",
+      tenant_id: p.tenant_id,
+      workflow_id: p.workflow_id,
+      execution_id: p.execution_id,
+      step_id: row.id,
+      connector_id,
+      endpoint_key,
+    });
+  } catch (err) {
+    logger.warn({
+      module: "self-healing",
+      action: "repair.enqueue_failed",
+      msg: "reactive repair enqueue failed — execution outcome unaffected",
+      tenant_id: p.tenant_id,
+      workflow_id: p.workflow_id,
+      execution_id: p.execution_id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promise<void> {
   const data = job.data;
   log.queue.job.dequeued({
     msg: "execution.run job dequeued",
@@ -54,6 +132,13 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db): Promise<void> {
       status: result.status,
       duration_ms: Date.now() - started,
     });
+    if (result.status === "failed") {
+      await maybeEnqueueRepair(boss, db, {
+        tenant_id: data.tenant_id,
+        workflow_id: data.workflow_id,
+        execution_id: result.execution_id,
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.queue.job.failed({
@@ -103,7 +188,7 @@ export async function registerExecutionRunHandler(
       for (const job of jobs) {
         // Bridge the enqueuing trace_id/tenant across the queue boundary so
         // every downstream execution.* log inherits the originating context.
-        await withJobContext(job.data, () => handleOne(job, db));
+        await withJobContext(job.data, () => handleOne(job, db, boss));
       }
     },
   );

@@ -47,6 +47,26 @@ export interface S3Response {
 
 export type S3Method = "GET" | "PUT" | "HEAD" | "LIST" | "DELETE";
 
+/**
+ * Thrown when the stored credential cannot produce S3 signing material.
+ * Signing silently with no keys is never acceptable — an unsigned request
+ * surfaces as an upstream "Missing signature"/403 that hides the real
+ * cause from the operator, so every unusable-credential shape throws
+ * with a machine-branchable `error_code` instead.
+ */
+export class S3CredentialError extends Error {
+  constructor(
+    message: string,
+    public readonly error_code:
+      | "credential_missing"
+      | "credential_invalid"
+      | "credential_mode_unsupported_for_s3",
+  ) {
+    super(message);
+    this.name = "S3CredentialError";
+  }
+}
+
 function parseConfig(connector: ConnectorView): S3ConnectorConfig {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
   const region = typeof cfg.region === "string" ? cfg.region : "us-east-1";
@@ -59,14 +79,20 @@ function parseConfig(connector: ConnectorView): S3ConnectorConfig {
 }
 
 /**
- * Pull S3 credentials from the credentials store. The connector layer
- * stores them as a `header` mode credential whose headers contain the
- * canonical `x-access-key-id`/`x-secret-access-key`/`x-session-token`
- * keys. For `auth_type=none` (anonymous / public buckets), inline config
- * keys are still accepted so test fixtures keep working.
+ * Pull S3 credentials from the credentials store. Two stored shapes can
+ * sign S3 requests: `aws_sigv4` (the canonical AWS identity — keys land
+ * directly on the credential value) and `header` (the connector-layer
+ * convention carrying the keys as `x-access-key-id` /
+ * `x-secret-access-key` / `x-session-token` pseudo-headers). For
+ * `auth_type=none` (anonymous / public buckets), inline config keys are
+ * still accepted so test fixtures keep working.
  *
  * When `auth_type !== "none"` the inline config branch is bypassed — credentials
  * must come from the encrypted credential row to close the draft-auth shortcut.
+ *
+ * Every stored shape that cannot yield signing material throws
+ * `S3CredentialError` — returning null here would send unsigned requests
+ * whose upstream rejection masks the real cause.
  */
 async function resolveS3Credentials(
   db: Db,
@@ -93,13 +119,36 @@ async function resolveS3Credentials(
   }
   // auth_type !== "none": credentials must come from the encrypted store.
   const row = await getCredentialForConnector(tenant_id, connector.id, connector.environment, db);
-  if (!row) return { creds: null, credential_id: null };
+  if (!row) {
+    throw new S3CredentialError(
+      `s3 connector ${connector.slug} (auth_type ${connector.auth_type}) has no stored credential for environment ${connector.environment}`,
+      "credential_missing",
+    );
+  }
   const v = row.value;
-  if (v.mode !== "header") return { creds: null, credential_id: row.row.id };
+  if (v.mode === "aws_sigv4") {
+    const out: S3Credentials = {
+      access_key_id: v.access_key_id,
+      secret_access_key: v.secret_access_key,
+    };
+    if (v.session_token) out.session_token = v.session_token;
+    return { creds: out, credential_id: row.row.id };
+  }
+  if (v.mode !== "header") {
+    throw new S3CredentialError(
+      `s3 driver cannot sign with a "${v.mode}" credential — store the keys as aws_sigv4, or as header mode with x-access-key-id / x-secret-access-key`,
+      "credential_mode_unsupported_for_s3",
+    );
+  }
   const headers = v.headers;
   const id = headers["x-access-key-id"] ?? headers["X-Access-Key-Id"] ?? "";
   const secret = headers["x-secret-access-key"] ?? headers["X-Secret-Access-Key"] ?? "";
-  if (!id || !secret) return { creds: null, credential_id: row.row.id };
+  if (!id || !secret) {
+    throw new S3CredentialError(
+      "header-mode s3 credential is missing x-access-key-id / x-secret-access-key",
+      "credential_invalid",
+    );
+  }
   const out: S3Credentials = { access_key_id: id, secret_access_key: secret };
   const sess = headers["x-session-token"] ?? headers["X-Session-Token"];
   if (sess) out.session_token = sess;

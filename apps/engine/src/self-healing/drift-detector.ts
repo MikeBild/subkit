@@ -144,6 +144,31 @@ export function analyzeStepFailure(
     }
   }
 
+  // --- GraphQL schema error (vendor removed / never implemented a field) --
+  // Tagged by graphql-retry when the response errors declare a schema
+  // mismatch (FieldUndefined, no resolver, unknown field) — always at
+  // HTTP 200, so the http branch below can never catch it. Mapped onto
+  // the existing endpoint_contract variant: semantically the vendor
+  // removed a root field a committed workflow references, and that
+  // variant is already classified never-auto (classifier.ts) so the
+  // candidate PARKS for operator review.
+  if (err.kind === "graphql_schema_error") {
+    const details = asObj(err.details);
+    const rootField = typeof details?.root_field === "string" ? details.root_field : null;
+    const opName =
+      typeof details?.operation_name === "string" && details.operation_name.length > 0
+        ? details.operation_name
+        : null;
+    const path = rootField ?? opName;
+    return {
+      kind: "endpoint_contract",
+      severity: "removed",
+      request: { method: "POST", ...(path ? { path } : {}) },
+      sunset: null,
+      successor_uri: null,
+    };
+  }
+
   // --- HTTP 4xx/5xx with a new error shape -------------------------------
   if (err.kind === "http") {
     const statusRaw = err.status;

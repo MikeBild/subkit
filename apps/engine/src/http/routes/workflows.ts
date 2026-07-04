@@ -2,7 +2,15 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { listSchedules } from "../../scheduler/index.ts";
+import { AuditAction, auditAwait } from "../../audit/index.ts";
+import {
+  createSchedule,
+  deleteSchedule,
+  getSchedule,
+  listSchedules,
+  type ScheduleRow,
+  updateSchedule,
+} from "../../scheduler/index.ts";
 import * as svc from "../../workflows/index.ts";
 import {
   synthesizeInputSchema,
@@ -309,6 +317,99 @@ const listSchedulesRoute = createRoute({
   },
 });
 
+// Schedule write surface. The repo layer upserts on (tenant_id,
+// workflow_id) — one schedule per workflow, same invariant the inline
+// trigger path enforces — so POST on an already-scheduled workflow
+// updates the existing row instead of multiplying fire times.
+const ScheduleCreateBody = z
+  .object({
+    workflow_id: z.string().uuid(),
+    /** 5-field cron or the `every:<seconds>` dev shorthand. */
+    cron: z.string().min(1),
+    timezone: z.string().optional(),
+    paused: z.boolean().optional(),
+    /** Input payload passed to every scheduled run. */
+    input: z.unknown().optional(),
+  })
+  .openapi("ScheduleCreateBody");
+
+const ScheduleUpdateBody = z
+  .object({
+    cron: z.string().min(1).optional(),
+    timezone: z.string().optional(),
+    paused: z.boolean().optional(),
+    input: z.unknown().optional(),
+  })
+  .openapi("ScheduleUpdateBody");
+
+const ScheduleDeleteResponse = z
+  .object({ id: z.string(), deleted: z.boolean() })
+  .openapi("ScheduleDeleteResponse");
+
+const createScheduleRoute = createRoute({
+  method: "post",
+  path: "/v1/schedules",
+  tags: ["workflows"],
+  summary: "Schedule a workflow (upserts the workflow's single schedule)",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: { content: { "application/json": { schema: ScheduleCreateBody } } },
+  },
+  responses: {
+    201: { description: "Created", content: { "application/json": { schema: ScheduleEntry } } },
+    400: {
+      description: "Invalid cron",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    404: {
+      description: "Workflow not found",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
+const updateScheduleRoute = createRoute({
+  method: "put",
+  path: "/v1/schedules/{id}",
+  tags: ["workflows"],
+  summary: "Update a schedule's cron, timezone, paused flag, or input",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: { content: { "application/json": { schema: ScheduleUpdateBody } } },
+  },
+  responses: {
+    200: { description: "OK", content: { "application/json": { schema: ScheduleEntry } } },
+    400: {
+      description: "Invalid cron",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    404: {
+      description: "Schedule not found",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
+const deleteScheduleRoute = createRoute({
+  method: "delete",
+  path: "/v1/schedules/{id}",
+  tags: ["workflows"],
+  summary: "Delete a schedule",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: ScheduleDeleteResponse } },
+    },
+    404: {
+      description: "Schedule not found",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 const restoreRoute = createRoute({
   method: "post",
   path: "/v1/workflows/{id}/restore/{version}",
@@ -391,7 +492,17 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   });
   // /v1/workflows/validate is a read-only utility; operators that can read
   // workflows can validate a draft without write perms.
-  app.use("/v1/schedules", requirePermission("workflow:read"));
+  app.use("/v1/schedules", async (c, next) => {
+    if (c.req.method === "GET") return requirePermission("workflow:read")(c, next);
+    if (c.req.method === "POST") return requirePermission("workflow:write")(c, next);
+    return next();
+  });
+  app.use("/v1/schedules/:id", async (c, next) => {
+    if (c.req.method === "PUT" || c.req.method === "DELETE") {
+      return requirePermission("workflow:write")(c, next);
+    }
+    return next();
+  });
   app.use("/v1/workflows/validate", async (c, next) => {
     if (c.req.method === "POST") return requirePermission("workflow:read")(c, next);
     return next();
@@ -468,6 +579,141 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       200,
     );
+  });
+
+  // Shared serializer for the schedule write handlers — same shape the
+  // list route emits so `sk schedules` renders all four uniformly.
+  const serializeSchedule = async (
+    c: { get(key: "db"): unknown },
+    tenant_id: string,
+    row: ScheduleRow,
+  ) => {
+    const db = c.get("db") as Parameters<typeof listSchedules>[0];
+    const wf = await svc.getWorkflow(tenant_id, row.workflow_id, db);
+    return {
+      id: row.id,
+      workflow_id: row.workflow_id,
+      workflow_slug: wf?.slug ?? null,
+      workflow_name: wf?.name ?? null,
+      cron: row.cron,
+      timezone: row.timezone,
+      paused: row.paused,
+      created_at: row.created_at.toISOString(),
+    };
+  };
+
+  const rethrowScheduleError = (err: unknown): never => {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === "invalid_cron") {
+      throw new BadRequestError(err instanceof Error ? err.message : "invalid cron");
+    }
+    if (code === "workflow_not_found") throw new NotFoundError("workflow");
+    throw err;
+  };
+
+  app.openapi(createScheduleRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const body = c.req.valid("json");
+    let row: ScheduleRow;
+    try {
+      row = await createSchedule(db, {
+        tenant_id: principal.tenant_id,
+        workflow_id: body.workflow_id,
+        cron: body.cron,
+        ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+        ...(body.paused !== undefined ? { paused: body.paused } : {}),
+        ...(body.input !== undefined ? { input: body.input } : {}),
+      });
+    } catch (err) {
+      rethrowScheduleError(err);
+      throw err;
+    }
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: "user",
+        actor_id: principal.id,
+        action: AuditAction.SCHEDULE_CREATED,
+        resource_type: "schedule",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          workflow_id: row.workflow_id,
+          cron: row.cron,
+          timezone: row.timezone,
+          paused: row.paused,
+        },
+      },
+      db,
+    );
+    return c.json(await serializeSchedule(c, principal.tenant_id, row), 201);
+  });
+
+  app.openapi(updateScheduleRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    let row: ScheduleRow | null;
+    try {
+      row = await updateSchedule(db, principal.tenant_id, id, {
+        ...(body.cron !== undefined ? { cron: body.cron } : {}),
+        ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+        ...(body.paused !== undefined ? { paused: body.paused } : {}),
+        ...(body.input !== undefined ? { input: body.input } : {}),
+      });
+    } catch (err) {
+      rethrowScheduleError(err);
+      throw err;
+    }
+    if (!row) throw new NotFoundError("schedule");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: "user",
+        actor_id: principal.id,
+        action: AuditAction.SCHEDULE_UPDATED,
+        resource_type: "schedule",
+        resource_id: row.id,
+        result: "success",
+        metadata: {
+          workflow_id: row.workflow_id,
+          patch: {
+            ...(body.cron !== undefined ? { cron: body.cron } : {}),
+            ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+            ...(body.paused !== undefined ? { paused: body.paused } : {}),
+            ...(body.input !== undefined ? { input: true } : {}),
+          },
+        },
+      },
+      db,
+    );
+    return c.json(await serializeSchedule(c, principal.tenant_id, row), 200);
+  });
+
+  app.openapi(deleteScheduleRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    // Fetch before delete so the audit entry carries the workflow id.
+    const before = await getSchedule(db, principal.tenant_id, id);
+    const ok = await deleteSchedule(db, principal.tenant_id, id);
+    if (!ok) throw new NotFoundError("schedule");
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: "user",
+        actor_id: principal.id,
+        action: AuditAction.SCHEDULE_DELETED,
+        resource_type: "schedule",
+        resource_id: id,
+        result: "success",
+        metadata: { workflow_id: before?.workflow_id ?? null },
+      },
+      db,
+    );
+    return c.json({ id, deleted: true }, 200);
   });
 
   app.openapi(createRouteSpec, async (c) => {

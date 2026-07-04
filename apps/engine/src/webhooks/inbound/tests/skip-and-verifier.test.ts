@@ -123,6 +123,33 @@ describe("inbound: skip path + unknown verifier", () => {
     expect(outcome.reason).toBe("event_not_subscribed");
   });
 
+  test("real verifier + undecryptable stored secret denies secret_undecryptable (no 500)", async () => {
+    // The non-skip twin of the first test: a binding with a REAL
+    // verifier whose stored envelope is corrupt (legacy/hand-written
+    // row). The decrypt failure must become a clean 401 denial with a
+    // rotation hint — never an unhandled CryptoError → HTTP 500 on the
+    // public ingress.
+    const id = await insertRawBinding({
+      slug: "garbage-secret-verify",
+      verifier: "standard",
+      native_verifier_config: { source: "internal", events: [] },
+    });
+    const outcome = await handleInbound(
+      { db: ctx.db, boss: ctx.boss },
+      {
+        slug: "garbage-secret-verify",
+        rawBody: JSON.stringify({ x: 1 }),
+        headers: { "webhook-id": randomUUID() }, // allow-random: unique replay id per delivery
+      },
+    );
+    expect(outcome.status).toBe("denied");
+    if (outcome.status !== "denied") throw new Error("expected denied");
+    expect(outcome.reason).toBe("secret_undecryptable");
+    expect(outcome.inbound_id).toBe(id);
+    expect(outcome.hint).toBeString();
+    expect(outcome.hint).toContain("rotate");
+  });
+
   test("unknown stored verifier denies with an actionable hint", async () => {
     // A legacy/hand-written row that stored the trigger token "none" in
     // the verifier column. Verifier resolution runs before any decrypt,
