@@ -124,7 +124,7 @@
     "find-up": "^8.0.0",
     "fuse.js": "^7.4.2",
     "globby": "^16.2.0",
-    "graphql": "^16.9.0",
+    "graphql": "^17.0.2",
     "hono": "^4.12.27",
     "hono-rate-limiter": "^0.5.3",
     "ink": "^7.1.0",
