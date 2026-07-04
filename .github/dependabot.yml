@@ -21,3 +21,6 @@ updates:
       # zod versions are pinned to what the MCP SDK's schema types accept;
       # bumping it is deliberate work (type-compat fixes), not a routine update.
       - dependency-name: "zod"
+      # pdfjs-dist must match the exact version pdf-parse pins internally
+      # (API/worker version handshake) — it moves only when pdf-parse does.
+      - dependency-name: "pdfjs-dist"
