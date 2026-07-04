@@ -85,7 +85,7 @@
     "@anthropic-ai/tokenizer": "^0.0.4",
     "@bradenmacdonald/s3-lite-client": "^0.9.6",
     "@clack/prompts": "^1.7.0",
-    "@hono/node-server": "^1.19.14",
+    "@hono/node-server": "1.19.14",
     "@hono/otel": "^1.1.2",
     "@hono/zod-openapi": "^1.4.0",
     "@huggingface/transformers": "^4.2.0",
@@ -111,7 +111,6 @@
     "cli-highlight": "^2.1.11",
     "cli-table3": "^0.6.5",
     "clipboardy": "^5.3.1",
-    "cockatiel": "^3.2.1",
     "conf": "^15.1.0",
     "cron-parser": "^5.6.1",
     "dayjs": "^1.11.21",
@@ -205,7 +204,7 @@
     "openapi-fetch": "^0.17.0",
     "openapi-typescript": "^7.13.0",
     "testcontainers": "^12.0.4",
-    "typescript": "^5.9.3"
+    "typescript": "6.0.3"
   },
   "patchedDependencies": {
     "css-tree@3.2.1": "patches/css-tree@3.2.1.patch",
