@@ -187,7 +187,7 @@
     "@types/aws4": "^1.11.6",
     "@types/js-yaml": "^4.0.9",
     "@types/jsdom": "^28.0.3",
-    "@types/node": "^25.6.0",
+    "@types/node": "^26.1.0",
     "@types/pg": "^8.20.0",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.2.14",
