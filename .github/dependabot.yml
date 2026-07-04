@@ -17,3 +17,7 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # zod versions are pinned to what the MCP SDK's schema types accept;
+      # bumping it is deliberate work (type-compat fixes), not a routine update.
+      - dependency-name: "zod"
