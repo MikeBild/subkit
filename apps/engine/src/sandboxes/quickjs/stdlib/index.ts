@@ -9,7 +9,19 @@
 
 import stdlibSource from "./stdlib.js" with { type: "text" };
 
-export const STDLIB_SOURCE: string = stdlibSource as unknown as string;
+// stdlib.js is evaluated afresh on every runJs call (QuickJS shares no
+// bytecode across contexts), so every byte of the source is re-parsed
+// per transform/hook invocation. Full-line comments are ~a quarter of
+// the file and exist for humans, not the VM — strip them once at module
+// load so the documented source stays readable while the evaluated text
+// stays lean. Line-based on purpose: it can only mis-strip if a
+// MULTILINE template literal had a line starting with `//`, and the
+// stdlib has none (all template literals are single-line — the size
+// tripwire's parse check would catch a violation anyway).
+export const STDLIB_SOURCE: string = (stdlibSource as unknown as string)
+  .split("\n")
+  .filter((line) => !/^\s*\/\//.test(line))
+  .join("\n");
 
 // Extracted at load time so callers do not have to boot QuickJS just
 // to learn the stdlib version. Keep the regex aligned with stdlib.js.
