@@ -1,0 +1,485 @@
+// Integration tests for listWorkflowToolsForTenant.
+// Uses testcontainers postgres (createTestDb) — no mocks of the DB.
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../auth/types.ts";
+import { tenants } from "../db/schema/identity.ts";
+import { workflows, workflowVersions } from "../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { createSeededRandom, FROZEN_NOW } from "../test-helpers/determinism/index.ts";
+import { listWorkflowToolsForTenant } from "./catalog.ts";
+
+const seedRand = createSeededRandom(0xc47a106);
+
+let tdb: TestDb;
+let tenantId: string;
+let otherTenantId: string;
+
+function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
+  return {
+    provider: "test",
+    kind: "user",
+    id: "u-test",
+    tenant_id: tenantId,
+    roles: ["admin"],
+    ...overrides,
+  };
+}
+
+beforeAll(async () => {
+  tdb = await createTestDb("workflows-catalog");
+
+  const [t1] = await tdb.db
+    .insert(tenants)
+    .values({ slug: "t-catalog-1", display_name: "Catalog T1" })
+    .returning();
+  const [t2] = await tdb.db
+    .insert(tenants)
+    .values({ slug: "t-catalog-2", display_name: "Catalog T2" })
+    .returning();
+  if (!t1 || !t2) throw new Error("tenant seed failed");
+  tenantId = t1.id;
+  otherTenantId = t2.id;
+});
+
+afterAll(async () => {
+  await tdb.cleanup();
+});
+
+beforeEach(async () => {
+  await tdb.db.delete(workflowVersions);
+  await tdb.db.delete(workflows);
+});
+
+interface SeedOpts {
+  slug?: string;
+  name?: string;
+  tenant_id?: string;
+  is_tool?: boolean;
+  deleted?: boolean;
+  last_executed_at?: Date | null;
+  has_version?: boolean;
+  dag?: Record<string, unknown>;
+}
+
+async function seedWorkflow(
+  opts: SeedOpts = {},
+): Promise<{ id: string; version_id: string | null }> {
+  const tid = opts.tenant_id ?? tenantId;
+  const slug = opts.slug ?? `wf-${seedRand.int(0, 0xffffff).toString(36).padStart(6, "0")}`;
+  const name = opts.name ?? "Test Workflow";
+  const hasVersion = opts.has_version !== false;
+
+  const [wf] = await tdb.db
+    .insert(workflows)
+    .values({
+      tenant_id: tid,
+      slug,
+      name,
+      lifecycle: "active",
+      is_tool: opts.is_tool ?? true,
+      ...(opts.deleted ? { deleted_at: new Date(FROZEN_NOW) } : {}),
+      ...(opts.last_executed_at !== undefined ? { last_executed_at: opts.last_executed_at } : {}),
+    })
+    .returning();
+  if (!wf) throw new Error("seed workflow failed");
+
+  if (!hasVersion) return { id: wf.id, version_id: null };
+
+  const dag = opts.dag ?? { name, slug, steps: [] };
+  const [v] = await tdb.db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: tid,
+      workflow_id: wf.id,
+      version: 1,
+      dag,
+    })
+    .returning();
+  if (!v) throw new Error("seed workflow version failed");
+
+  await tdb.db.update(workflows).set({ current_version_id: v.id }).where(eq(workflows.id, wf.id));
+
+  return { id: wf.id, version_id: v.id };
+}
+
+// ---------------------------------------------------------------------------
+// is_tool filter
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — is_tool filter", () => {
+  test("workflows with is_tool=false are excluded", async () => {
+    await seedWorkflow({ slug: "visible-tool", is_tool: true });
+    await seedWorkflow({ slug: "hidden-non-tool", is_tool: false });
+
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const slugs = results.map((r) => r.slug);
+    expect(slugs).toContain("visible-tool");
+    expect(slugs).not.toContain("hidden-non-tool");
+  });
+
+  test("soft-deleted workflows are excluded regardless of is_tool", async () => {
+    await seedWorkflow({ slug: "deleted-tool", is_tool: true, deleted: true });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    expect(results.map((r) => r.slug)).not.toContain("deleted-tool");
+  });
+
+  test("draft workflows (no current_version_id) are excluded", async () => {
+    await seedWorkflow({ slug: "draft-wf", has_version: false });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    expect(results.map((r) => r.slug)).not.toContain("draft-wf");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ordering: last_executed_at DESC NULLS LAST
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — ordering", () => {
+  test("more recently executed workflows appear first", async () => {
+    const old = new Date("2026-01-01T00:00:00Z");
+    const recent = new Date("2026-05-01T00:00:00Z");
+
+    await seedWorkflow({ slug: "older", last_executed_at: old });
+    await seedWorkflow({ slug: "newer", last_executed_at: recent });
+
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const slugs = results.map((r) => r.slug);
+    expect(slugs.indexOf("newer")).toBeLessThan(slugs.indexOf("older"));
+  });
+
+  test("never-executed workflows (null last_executed_at) appear after executed ones", async () => {
+    await seedWorkflow({ slug: "executed", last_executed_at: new Date("2026-01-01T00:00:00Z") });
+    await seedWorkflow({ slug: "never-run", last_executed_at: null });
+
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const slugs = results.map((r) => r.slug);
+    expect(slugs.indexOf("executed")).toBeLessThan(slugs.indexOf("never-run"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// allowed_workflows allow-list
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — allowed_workflows", () => {
+  test("principal with allowed_workflows='all' sees all workflows", async () => {
+    const { id: id1 } = await seedWorkflow({ slug: "wf-allow-1" });
+    const { id: id2 } = await seedWorkflow({ slug: "wf-allow-2" });
+    void id2;
+
+    const results = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal({ allowed_workflows: "all" }),
+    });
+    expect(results.length).toBeGreaterThanOrEqual(2);
+    expect(results.find((r) => r.workflow_id === id1)).toBeDefined();
+  });
+
+  test("principal with allowed_workflows array only sees allowed ids", async () => {
+    const { id: id1 } = await seedWorkflow({ slug: "allowed-wf" });
+    const { id: id2 } = await seedWorkflow({ slug: "blocked-wf" });
+
+    const results = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal({ allowed_workflows: [id1] }),
+    });
+    expect(results.find((r) => r.workflow_id === id1)).toBeDefined();
+    expect(results.find((r) => r.workflow_id === id2)).toBeUndefined();
+  });
+
+  test("principal with empty allowed_workflows array sees nothing", async () => {
+    await seedWorkflow({ slug: "blocked-all" });
+    const results = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal({ allowed_workflows: [] }),
+    });
+    expect(results.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 40-row cap
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — 40-row cap", () => {
+  test("default limit caps at 40 rows", async () => {
+    // Seed 45 workflows
+    const seeds: Promise<unknown>[] = [];
+    for (let i = 0; i < 45; i++) {
+      seeds.push(seedWorkflow({ slug: `cap-wf-${i.toString().padStart(3, "0")}` }));
+    }
+    await Promise.all(seeds);
+
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    expect(results.length).toBeLessThanOrEqual(40);
+  });
+
+  test("explicit limit parameter is respected", async () => {
+    await seedWorkflow({ slug: "lim-a" });
+    await seedWorkflow({ slug: "lim-b" });
+    await seedWorkflow({ slug: "lim-c" });
+
+    const results = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal(),
+      limit: 2,
+    });
+    expect(results.length).toBeLessThanOrEqual(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// palette_truncated cap behavior
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — palette_truncated cap", () => {
+  test("limit is a hard cap: exactly `limit` descriptors are returned when more rows exist", async () => {
+    const limit = 3;
+    // Seed more workflows than the cap so the cap must fire.
+    for (let i = 0; i < limit + 2; i++) {
+      await seedWorkflow({ slug: `cap-small-${i}` });
+    }
+
+    const results = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal(),
+      limit,
+    });
+
+    // Must not exceed the limit.
+    expect(results.length).toBeLessThanOrEqual(limit);
+
+    // The workflows beyond the cap must not appear in the result.
+    const slugs = results.map((r) => r.slug);
+    // All returned slugs must be from the seeded set.
+    for (const slug of slugs) {
+      expect(slug).toMatch(/^cap-small-\d+$/);
+    }
+  });
+
+  test("workflows beyond the cap are absent from the returned descriptors", async () => {
+    const limit = 2;
+    // Seed with deterministic last_executed_at so the LRU order is stable:
+    // cap-lru-0 executed most recently → must appear; cap-lru-2 never
+    // executed → falls off the end when limit=2.
+    const recent = new Date("2026-05-01T00:00:00Z");
+    const older = new Date("2026-01-01T00:00:00Z");
+
+    const { id: id0 } = await seedWorkflow({ slug: "cap-lru-0", last_executed_at: recent });
+    const { id: id1 } = await seedWorkflow({ slug: "cap-lru-1", last_executed_at: older });
+    const { id: id2 } = await seedWorkflow({ slug: "cap-lru-2", last_executed_at: null });
+
+    const results = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal(),
+      limit,
+    });
+
+    // cap-lru-2 (null last_executed_at, last in LRU order) must be absent.
+    const ids = results.map((r) => r.workflow_id);
+    expect(ids).toContain(id0);
+    expect(ids).toContain(id1);
+    expect(ids).not.toContain(id2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Principal mismatch — tenant isolation
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — tenant isolation", () => {
+  test("principal from other tenant sees no workflows", async () => {
+    // Seed a workflow in the main tenant
+    await seedWorkflow({ slug: "tenant-own-wf" });
+
+    // Query with a principal from the other tenant
+    const results = await listWorkflowToolsForTenant({
+      db: tdb.db,
+      principal: makePrincipal({ tenant_id: otherTenantId }),
+    });
+    // Other tenant has no workflows — should be empty
+    expect(results.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Descriptor shape
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — descriptor shape", () => {
+  test("returned descriptors carry required fields", async () => {
+    await seedWorkflow({ slug: "shape-check", name: "Shape Check" });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results[0];
+    expect(item).toBeDefined();
+    expect(typeof item!.workflow_id).toBe("string");
+    expect(typeof item!.slug).toBe("string");
+    expect(typeof item!.name).toBe("string");
+    expect(typeof item!.description).toBe("string");
+    expect(typeof item!.inputSchema).toBe("object");
+    expect(item!.inputSchema.type).toBe("object");
+  });
+
+  test("descriptor description falls back to workflow name when dag has no description field", async () => {
+    await seedWorkflow({
+      slug: "no-desc-wf",
+      name: "My Workflow Name",
+      // dag without description — catalog must use name as fallback
+      dag: {
+        name: "My Workflow Name",
+        slug: "no-desc-wf",
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "no-desc-wf");
+    expect(typeof item?.description).toBe("string");
+    expect(item?.description).toBe("My Workflow Name");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// inputSchema per-property description propagation
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — inputSchema property descriptions", () => {
+  test("declared input_schema properties with description flow into inputSchema", async () => {
+    await seedWorkflow({
+      slug: "schema-desc-wf",
+      name: "Schema Desc WF",
+      dag: {
+        name: "Schema Desc WF",
+        slug: "schema-desc-wf",
+        input_schema: {
+          type: "object",
+          properties: {
+            startDate: {
+              type: "string",
+              description: "ISO 8601 start date for the report range",
+            },
+            limit: {
+              type: "integer",
+              description: "Maximum number of rows to return",
+            },
+          },
+          required: ["startDate"],
+        },
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "schema-desc-wf");
+    expect(item).toBeDefined();
+
+    // Property descriptions must survive the catalog round-trip so MCP
+    // clients can render useful tooltips for the workflow's input fields.
+    const props = item?.inputSchema.properties as Record<string, unknown> | undefined;
+    expect(props).toBeDefined();
+    expect((props?.startDate as Record<string, unknown>)?.description).toBe(
+      "ISO 8601 start date for the report range",
+    );
+    expect((props?.limit as Record<string, unknown>)?.description).toBe(
+      "Maximum number of rows to return",
+    );
+  });
+
+  test("inputSchema without per-property description is still returned (empty string not injected)", async () => {
+    await seedWorkflow({
+      slug: "schema-no-desc-wf",
+      name: "Schema No Desc WF",
+      dag: {
+        name: "Schema No Desc WF",
+        slug: "schema-no-desc-wf",
+        input_schema: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+          },
+        },
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "schema-no-desc-wf");
+    expect(item).toBeDefined();
+    const props = item?.inputSchema.properties as Record<string, unknown> | undefined;
+    expect(props).toBeDefined();
+    // No description fabricated — the catalog must not inject an empty string.
+    expect((props?.id as Record<string, unknown>)?.description).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// outputSchema propagation
+// ---------------------------------------------------------------------------
+
+describe("listWorkflowToolsForTenant — outputSchema", () => {
+  test("declared output_schema with type:object is surfaced as outputSchema", async () => {
+    await seedWorkflow({
+      slug: "output-schema-wf",
+      name: "Output Schema WF",
+      dag: {
+        name: "Output Schema WF",
+        slug: "output-schema-wf",
+        output_schema: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string", description: "User display name" },
+          },
+        },
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "output-schema-wf");
+    expect(item).toBeDefined();
+
+    // outputSchema must be present and carry the declared contract.
+    expect(item?.outputSchema).toBeDefined();
+    expect(item?.outputSchema?.type).toBe("object");
+    const outProps = item?.outputSchema?.properties as Record<string, unknown> | undefined;
+    expect(outProps?.id).toBeDefined();
+    expect((outProps?.name as Record<string, unknown>)?.description).toBe("User display name");
+  });
+
+  test("workflow without output_schema has no outputSchema on descriptor", async () => {
+    await seedWorkflow({
+      slug: "no-output-schema-wf",
+      name: "No Output Schema WF",
+      dag: {
+        name: "No Output Schema WF",
+        slug: "no-output-schema-wf",
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "no-output-schema-wf");
+    expect(item).toBeDefined();
+    // outputSchema must be absent — the catalog never fabricates an output contract.
+    expect(item?.outputSchema).toBeUndefined();
+  });
+
+  test("output_schema with non-object type is rejected (no outputSchema on descriptor)", async () => {
+    // The toOutputSchema guard requires type:"object"; arrays/scalars are silently dropped.
+    await seedWorkflow({
+      slug: "array-output-schema-wf",
+      name: "Array Output Schema WF",
+      dag: {
+        name: "Array Output Schema WF",
+        slug: "array-output-schema-wf",
+        output_schema: {
+          type: "array",
+          items: { type: "string" },
+        },
+        steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
+      },
+    });
+    const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
+    const item = results.find((r) => r.slug === "array-output-schema-wf");
+    expect(item).toBeDefined();
+    expect(item?.outputSchema).toBeUndefined();
+  });
+});

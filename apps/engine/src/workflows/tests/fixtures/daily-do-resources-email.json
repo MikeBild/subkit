@@ -1,0 +1,72 @@
+{
+  "name": "Daily DigitalOcean Resources Email",
+  "slug": "daily-do-resources-email",
+  "steps": [
+    {
+      "id": "fetch_projects",
+      "kind": "request",
+      "path": "/v2/projects",
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "projects_loop",
+      "body": ["fetch_resources", "collect_project"],
+      "kind": "loop",
+      "over": "$scope.fetch_projects.data.projects",
+      "item_var": "project",
+      "on_error": "fail"
+    },
+    {
+      "id": "fetch_resources",
+      "kind": "request",
+      "path": "/v2/projects/${item.id}/resources",
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "collect_project",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "const item = input.scope.$item; return { name: item.name, purpose: item.purpose, environment: item.environment, resources: input.scope.fetch_resources.data.resources };"
+    },
+    {
+      "id": "format_email_html",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "const blocks = (input.scope.projects_loop.data || []).map((it) => it.collect_project.data); const body = '<html><body><h2>Daily DigitalOcean Resources Summary</h2><p>Date: ' + new Date().toISOString() + '</p>' + blocks.map((b) => { const resources = b.resources || []; return '<h3>Project: ' + b.name + '</h3>' + '<ul>' + '<li>Environment: ' + (b.environment !== '' ? b.environment : 'n/a') + '</li>' + '<li>Purpose: ' + b.purpose + '</li>' + '<li>Resource count: ' + String(resources.length) + '</li>' + '</ul>' + (resources.length > 0 ? '<ul>' + resources.map((r) => '<li>' + r.urn + ' (' + r.status + ')</li>').join('') + '</ul>' : '<p><em>No resources</em></p>'); }).join('') + '</body></html>'; return { html: body, subject: 'Daily DigitalOcean Resources Summary' };"
+    },
+    {
+      "id": "encode_email",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "const msg = 'To: ' + input.input.recipient_email + '\\r\\nSubject: ' + input.scope.format_email_html.data.subject + '\\r\\nMIME-Version: 1.0\\r\\nContent-Type: text/html; charset=utf-8\\r\\n\\r\\n' + input.scope.format_email_html.data.html; return { raw: sk.base64UrlEncode(msg) };"
+    },
+    {
+      "id": "send_email",
+      "body": "${scope.encode_email.data}",
+      "kind": "request",
+      "path": "/gmail/v1/users/me/messages/send",
+      "method": "POST",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000002"
+    }
+  ],
+  "description": "Sends a daily email at 7pm with all DigitalOcean resources organized by project",
+  "input_schema": {
+    "type": "object",
+    "required": ["recipient_email"],
+    "properties": {
+      "recipient_email": {
+        "type": "string",
+        "format": "email",
+        "description": "Email address to send the daily summary to"
+      }
+    }
+  }
+}

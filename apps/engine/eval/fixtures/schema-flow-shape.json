@@ -1,0 +1,10 @@
+{
+  "name": "schema-flow-shape",
+  "description": "Every schema-constrained flow calls AiSdkModel.generateObject with toolChoice='required' (submit/abort loop). Prevents a silent regression where a flow drops back to JSON mode without submit/abort.",
+  "flow": "generate",
+  "input": {
+    "expected_tool_choice": "required",
+    "expected_tools": ["submit", "abort"],
+    "flows": ["generate", "extract", "repair", "discover"]
+  }
+}

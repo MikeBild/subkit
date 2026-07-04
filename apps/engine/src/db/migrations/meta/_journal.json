@@ -1,0 +1,111 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1781801909253,
+      "tag": "0000_v6_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782114365573,
+      "tag": "0001_condemned_maestro",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782137986221,
+      "tag": "0002_kind_human_robot",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782300820647,
+      "tag": "0003_marvelous_stranger",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782308758088,
+      "tag": "0004_flaky_zarek",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782308758089,
+      "tag": "0005_m2m_oauth_credential_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782398242893,
+      "tag": "0006_remarkable_namor",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782401836895,
+      "tag": "0007_slimy_abomination",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782404824244,
+      "tag": "0008_outstanding_makkari",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782491224244,
+      "tag": "0009_authoring_capability_candidate",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782577624244,
+      "tag": "0010_local_invite_provisioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782706756864,
+      "tag": "0011_ambiguous_falcon",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782793156864,
+      "tag": "0012_mcp_task_heartbeat",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782793156865,
+      "tag": "0013_drop_provider_file_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782793156866,
+      "tag": "0014_dedup_workflow_schedules",
+      "breakpoints": true
+    }
+  ]
+}

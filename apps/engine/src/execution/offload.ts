@@ -1,0 +1,435 @@
+// Large-payload offload. When a serialized step result exceeds the
+// threshold (10 KB), the engine writes it to either:
+//
+//   (a) S3-compatible object storage when S3_OFFLOAD_BUCKET is set
+//       (plus S3_OFFLOAD_REGION / S3_OFFLOAD_ENDPOINT /
+//       S3_OFFLOAD_ACCESS_KEY / S3_OFFLOAD_SECRET_KEY). The returned
+//       `storage_uri` is `s3://<bucket>/<key>`.
+//
+//   (b) Otherwise, the `execution_fixtures` table with `kind = 'offload'`.
+//       The returned `storage_uri` is `fixture://<uuid>`.
+//
+// A 512-byte text preview is always stored inline so operators can see
+// at a glance what the payload looked like without resolving it.
+
+import { S3Client } from "@bradenmacdonald/s3-lite-client";
+import { and, eq } from "drizzle-orm";
+import { z } from "zod";
+import { getConfig } from "../config/loader.ts";
+import { assertInsertRow } from "../db/assert-insert.ts";
+import type { Db } from "../db/client.ts";
+import { executionFixtures } from "../db/schema/index.ts";
+import { logger } from "../logging/logger.ts";
+import { STEP_RESULT_DB_BYTES, STEP_RESULT_PREVIEW_BYTES } from "./timeouts.ts";
+
+export interface OffloadResult {
+  // 'fixture://<uuid>' or 's3://<bucket>/<key>' or null if inline.
+  storage_uri: string | null;
+  preview: string | null; // truncated string preview if offloaded
+  size_bytes: number;
+}
+
+/**
+ * Execution-internal placeholder for a large payload that has ALREADY
+ * been offloaded to durable storage (S3 or the `execution_fixtures`
+ * table) by an upstream step. Substituted into the in-memory `scope`
+ * in place of the full payload so a loop's `iterationResults` array
+ * holds bounded references instead of N resident envelopes — the OOM
+ * fix in `engine.ts`.
+ *
+ * INVARIANT: an `OffloadRef` is in-memory-only. It MUST be resolved
+ * back to plain JSON via `resolveOffloaded` before the value crosses
+ * ANY external surface — persisted execution result, validator input,
+ * `data_selector` input, MCP/HTTP response. A persisted result that
+ * still contains an `OffloadRef` is a contract violation.
+ */
+export interface OffloadRef {
+  $offloaded: true;
+  /** `fixture://<uuid>` or `s3://<bucket>/<key>` — the durable locator. */
+  storage_uri: string;
+  /** Inline `STEP_RESULT_PREVIEW_BYTES`-capped sample for diagnostics. */
+  preview: string;
+  /** Serialized byte size of the offloaded payload. */
+  size_bytes: number;
+}
+
+/**
+ * Runtime parser for an `OffloadRef`. `isOffloadRef` is the cheap
+ * structural guard for hot-path branching (the loop accumulator, the
+ * preview collapse); `OffloadRefSchema` is the fail-fast boundary —
+ * `resolveOffloaded` parses the incoming ref through it so a malformed
+ * value (missing `preview` / `size_bytes`, a re-targeted shape) is
+ * rejected with a typed error before any storage I/O runs.
+ */
+export const OffloadRefSchema = z.object({
+  $offloaded: z.literal(true),
+  storage_uri: z.string(),
+  preview: z.string(),
+  size_bytes: z.number(),
+});
+
+/**
+ * Redact a `storage_uri` to its scheme only. A full offload locator is
+ * `s3://<bucket>/<key>` or `fixture://<uuid>` — the bucket/key exposes
+ * the offload backend layout, so the user-facing error `.message` must
+ * never carry it. Operators get the full uri via the structured-log
+ * `storage_uri` field (and `OffloadResolutionError.storage_uri`).
+ *
+ * Exported so every external-surface marker (error `.message`, the
+ * `output_preview` offload marker in `offload-rehydrate.ts`) redacts a
+ * locator identically — one helper, one redaction shape.
+ */
+export function redactStorageUri(storage_uri: string): string {
+  const sep = storage_uri.indexOf("://");
+  return sep > 0 ? `${storage_uri.slice(0, sep)}://…` : "…";
+}
+
+/** Typed failure raised when an `OffloadRef` cannot be re-hydrated.
+ *  Never swallowed — re-hydration failure fails the consuming step.
+ *
+ *  `.message` carries only the REDACTED scheme (`s3://…` / `fixture://…`)
+ *  so it is safe to surface in a REST/MCP error envelope. The full
+ *  locator stays on `.storage_uri` — a non-message field — for operator
+ *  log lines. */
+export class OffloadResolutionError extends Error {
+  readonly code = "offload_resolution_failed";
+  readonly storage_uri: string;
+  constructor(storage_uri: string, detail: string) {
+    super(`failed to resolve offloaded payload ${redactStorageUri(storage_uri)}: ${detail}`);
+    this.name = "OffloadResolutionError";
+    this.storage_uri = storage_uri;
+  }
+}
+
+/**
+ * Race a promise against an `AbortSignal`. The s3-lite-client API takes
+ * no signal, so a cancelled execution cannot interrupt the in-flight
+ * `fetch`; this at least stops the engine from *awaiting* a multi-MB
+ * GET / body read on an already-cancelled run. The underlying socket is
+ * released by GC once the orphaned promise settles.
+ */
+function raceAbort<T>(p: Promise<T>, signal: AbortSignal | undefined, uri: string): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) {
+    return Promise.reject(new OffloadResolutionError(uri, "execution aborted during re-hydration"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(new OffloadResolutionError(uri, "execution aborted during re-hydration"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e);
+      },
+    );
+  });
+}
+
+/** Type guard for `OffloadRef`. */
+export function isOffloadRef(v: unknown): v is OffloadRef {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    (v as { $offloaded?: unknown }).$offloaded === true &&
+    typeof (v as { storage_uri?: unknown }).storage_uri === "string"
+  );
+}
+
+/**
+ * Re-hydrate an `OffloadRef` to the original payload.
+ *
+ * `fixture://<id>` → SELECT `body` from `execution_fixtures` filtered
+ * by **both** `tenant_id` AND `id` — the tenant predicate is mandatory;
+ * a cross-tenant read is the single highest isolation risk on this
+ * path. `s3://<bucket>/<key>` → stream the object via the offload S3
+ * client (the `storage.offload.*` credential block, NOT the
+ * `storage.files.*` object store).
+ *
+ * On a missing or unreadable ref this THROWS `OffloadResolutionError`
+ * — it never returns `undefined`. A silent fallback would let a
+ * truncated result reach a validator or the persisted execution
+ * record.
+ */
+export async function resolveOffloaded(
+  db: Db,
+  tenant_id: string,
+  ref: OffloadRef,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  // Fail-fast boundary: a malformed ref (missing preview/size_bytes, a
+  // re-targeted shape) must never reach storage I/O. Parse through the
+  // Zod schema and throw the typed `OffloadResolutionError` on failure.
+  // The error `.message` carries only the REDACTED locator scheme, so a
+  // best-effort `storage_uri` is recovered for redaction even when the
+  // overall shape is invalid.
+  const parsed = OffloadRefSchema.safeParse(ref);
+  if (!parsed.success) {
+    const rawUri =
+      ref &&
+      typeof ref === "object" &&
+      typeof (ref as { storage_uri?: unknown }).storage_uri === "string"
+        ? (ref as { storage_uri: string }).storage_uri
+        : "";
+    throw new OffloadResolutionError(rawUri, `malformed offload ref: ${parsed.error.message}`);
+  }
+  const uri = parsed.data.storage_uri;
+  if (signal?.aborted) {
+    throw new OffloadResolutionError(uri, "execution aborted before re-hydration");
+  }
+  if (uri.startsWith("fixture://")) {
+    const id = uri.slice("fixture://".length);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new OffloadResolutionError(uri, `invalid fixture id "${id}"`);
+    }
+    const rows = await db
+      .select({ body: executionFixtures.body })
+      .from(executionFixtures)
+      .where(and(eq(executionFixtures.tenant_id, tenant_id), eq(executionFixtures.id, id)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      throw new OffloadResolutionError(uri, "fixture row not found for this tenant");
+    }
+    // `body` is jsonb — drizzle returns the parsed value directly.
+    return row.body ?? null;
+  }
+  if (uri.startsWith("s3://")) {
+    const cfg = s3OffloadConfig();
+    if (!cfg) {
+      throw new OffloadResolutionError(uri, "s3 offload storage is not configured");
+    }
+    // uri is `s3://<bucket>/<key>` — split scheme, bucket, key.
+    const withoutScheme = uri.slice("s3://".length);
+    const slash = withoutScheme.indexOf("/");
+    if (slash < 0) {
+      throw new OffloadResolutionError(uri, "malformed s3 uri (no key component)");
+    }
+    const uriBucket = withoutScheme.slice(0, slash);
+    const key = withoutScheme.slice(slash + 1);
+    // The bucket segment is authoritative: a uri that names a bucket
+    // other than the configured offload bucket is a re-target attempt
+    // (or stale config) — fail with a typed error instead of silently
+    // reading from `cfg.bucket` and returning the wrong object.
+    if (uriBucket !== cfg.bucket) {
+      throw new OffloadResolutionError(
+        uri,
+        "s3 uri bucket does not match configured offload bucket",
+      );
+    }
+    try {
+      const client = offloadS3Client(cfg);
+      // s3-lite-client's `getObject` exposes no AbortSignal — plumb the
+      // signal as far as the API allows: a pre-call abort check above
+      // plus a race so a cancelled run stops awaiting the GET/body read
+      // instead of streaming a multi-MB object to completion.
+      const res = await raceAbort(client.getObject(key), signal, uri);
+      const text = await raceAbort(res.text(), signal, uri);
+      return JSON.parse(text);
+    } catch (err) {
+      if (err instanceof OffloadResolutionError) throw err;
+      // The raw S3 error can carry the bucket name, signed-URL fragments
+      // or a request-id — none of which is safe on the user-facing
+      // `.message`. Capture it in a structured log line only and throw a
+      // fixed category string.
+      logger.error({
+        module: "execution",
+        action: "offload.resolve_failed",
+        msg: "s3 offload re-hydration failed",
+        storage_uri: uri,
+        detail: err instanceof Error ? err.message : String(err),
+      });
+      throw new OffloadResolutionError(uri, "s3 read failed");
+    }
+  }
+  throw new OffloadResolutionError(uri, "unsupported storage uri scheme");
+}
+
+export function previewOf(value: unknown): string {
+  const s = JSON.stringify(value) ?? "null";
+  return s.length > STEP_RESULT_PREVIEW_BYTES ? s.slice(0, STEP_RESULT_PREVIEW_BYTES) : s;
+}
+
+export interface MaybeOffloadParams {
+  tenant_id: string;
+  execution_id: string;
+  step_id?: string | null;
+  result: unknown;
+}
+
+interface S3OffloadConfig {
+  bucket: string;
+  region: string;
+  endpoint?: string;
+  accessKey: string;
+  secretKey: string;
+  keyPrefix: string;
+}
+
+// Exported as `_s3OffloadConfigForTests` so the consumer read-back
+// suite can verify the resolver reflects setConfigKey writes without
+// a restart. Production code calls the unprefixed local binding via
+// the closure inside maybeOffload below.
+export function _s3OffloadConfigForTests(): S3OffloadConfig | null {
+  return s3OffloadConfig();
+}
+
+function s3OffloadConfig(): S3OffloadConfig | null {
+  // Prefer the runtime config; fall back to historical env vars when
+  // the loader is uninitialised (unit tests + standalone scripts).
+  let off: {
+    bucket: string;
+    region: string;
+    access_key: string;
+    secret_key: string;
+    endpoint: string;
+    key_prefix: string;
+  } | null = null;
+  let bedrockRegion = "";
+  let bedrockAccess = "";
+  let bedrockSecret = "";
+  try {
+    const cfg = getConfig();
+    off = cfg.storage.offload;
+    bedrockRegion = cfg.llm.providers.bedrock.region;
+    bedrockAccess = cfg.llm.providers.bedrock.access_key_id;
+    bedrockSecret = cfg.llm.providers.bedrock.secret_access_key;
+  } catch {
+    /* loader not initialised — fall through to env */
+  }
+  const bucket = off?.bucket || process.env.S3_OFFLOAD_BUCKET || "";
+  if (!bucket) return null;
+  const accessKey =
+    off?.access_key ||
+    process.env.S3_OFFLOAD_ACCESS_KEY ||
+    bedrockAccess ||
+    process.env.AWS_ACCESS_KEY_ID;
+  const secretKey =
+    off?.secret_key ||
+    process.env.S3_OFFLOAD_SECRET_KEY ||
+    bedrockSecret ||
+    process.env.AWS_SECRET_ACCESS_KEY;
+  if (!accessKey || !secretKey) {
+    logger.warn({
+      module: "execution",
+      action: "offload.s3_misconfigured",
+      msg: "storage.offload.bucket set but access keys missing — falling back to fixture table",
+    });
+    return null;
+  }
+  const cfg: S3OffloadConfig = {
+    bucket,
+    region:
+      off?.region ||
+      process.env.S3_OFFLOAD_REGION ||
+      bedrockRegion ||
+      process.env.AWS_REGION ||
+      "us-east-1",
+    accessKey,
+    secretKey,
+    keyPrefix: off?.key_prefix || process.env.S3_OFFLOAD_KEY_PREFIX || "offload",
+  };
+  const endpoint = off?.endpoint || process.env.S3_OFFLOAD_ENDPOINT;
+  if (endpoint) cfg.endpoint = endpoint;
+  return cfg;
+}
+
+// Lazily-memoised S3 client for the offload bucket. Both the WRITE
+// path (`writeToS3`) and the READ path (`resolveOffloaded`) share this
+// one client — a loop rehydrating N offloaded bodies would otherwise
+// build N clients (and N TLS pools). The memo key is the resolved
+// config so a `setConfigKey` change (new bucket/keys at runtime) builds
+// a fresh client instead of reusing a stale one.
+let memoisedOffloadClient: { key: string; client: S3Client } | null = null;
+
+function offloadS3Client(cfg: S3OffloadConfig): S3Client {
+  const key = JSON.stringify([
+    cfg.bucket,
+    cfg.region,
+    cfg.endpoint ?? "",
+    cfg.accessKey,
+    cfg.secretKey,
+  ]);
+  if (memoisedOffloadClient && memoisedOffloadClient.key === key) {
+    return memoisedOffloadClient.client;
+  }
+  const client = new S3Client({
+    endPoint: cfg.endpoint ?? `s3.${cfg.region}.amazonaws.com`,
+    region: cfg.region,
+    bucket: cfg.bucket,
+    accessKey: cfg.accessKey,
+    secretKey: cfg.secretKey,
+    pathStyle: Boolean(cfg.endpoint),
+  });
+  memoisedOffloadClient = { key, client };
+  return client;
+}
+
+async function writeToS3(
+  cfg: S3OffloadConfig,
+  params: MaybeOffloadParams,
+  serialized: string,
+): Promise<string> {
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const key = `${cfg.keyPrefix}/${params.tenant_id}/${params.execution_id}/${id}.json`;
+  const client = offloadS3Client(cfg);
+  await client.putObject(key, serialized);
+  return `s3://${cfg.bucket}/${key}`;
+}
+
+export async function maybeOffload(db: Db, params: MaybeOffloadParams): Promise<OffloadResult> {
+  const serialized = JSON.stringify(params.result) ?? "null";
+  const size = Buffer.byteLength(serialized, "utf8");
+  if (size <= STEP_RESULT_DB_BYTES) {
+    return { storage_uri: null, preview: null, size_bytes: size };
+  }
+
+  // Prefer S3 when configured. On any S3 error we fall back to the
+  // fixture table so the execution pipeline still completes — an
+  // offload failure should not fail a whole run.
+  const s3cfg = s3OffloadConfig();
+  if (s3cfg) {
+    try {
+      const uri = await writeToS3(s3cfg, params, serialized);
+      return {
+        storage_uri: uri,
+        preview: serialized.slice(0, STEP_RESULT_PREVIEW_BYTES),
+        size_bytes: size,
+      };
+    } catch (err) {
+      logger.warn({
+        module: "execution",
+        action: "offload.s3_failed",
+        msg: "s3 offload failed; falling back to fixture table",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // Fallback: insert into execution_fixtures.
+  const [row] = await db
+    .insert(executionFixtures)
+    .values({
+      tenant_id: params.tenant_id,
+      kind: "offload",
+      execution_id: params.execution_id,
+      step_id: params.step_id ?? null,
+      body: params.result as object,
+      byte_size: size,
+    })
+    .returning({ id: executionFixtures.id });
+  assertInsertRow(row, "offload");
+  return {
+    storage_uri: `fixture://${row.id}`,
+    preview: serialized.slice(0, STEP_RESULT_PREVIEW_BYTES),
+    size_bytes: size,
+  };
+}

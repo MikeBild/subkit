@@ -1,0 +1,14 @@
+{
+  "name": "authoring-repair-roundtrip",
+  "description": "Repair round-trip: a recorded-eval finding on a broken JS function body earns a verified repair proposal (bounded LLM repair against recorded scope, zero egress); ONE edit_workflow_patch applies it and the next recorded evaluation is green.",
+  "flow": "repair",
+  "input": {
+    "broken_expression": "return input.scope.fetch.data.wrong_field;",
+    "repaired_expression": "return input.scope.fetch.data.items;",
+    "recorded_output": { "items": [{ "name": "Ada" }, { "name": "Grace" }] },
+    "expect": {
+      "finding_site": "steps.shape.expression",
+      "finding_status": "empty_result"
+    }
+  }
+}

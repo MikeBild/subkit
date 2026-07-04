@@ -1,0 +1,271 @@
+name: nightly
+
+# Long-running suites that we want to catch regressions in but that are
+# too costly or too slow to gate every push:
+#
+#   * real-llm: 6 Tier 1.x e2e tests against a real Anthropic model.
+#     Validates the prompt-template + tool-palette + dispatch path
+#     end-to-end. Skipped on push because each run burns vendor cost
+#     (~$0.05/run) and adds 5+ min wall time. Requires the
+#     `ANTHROPIC_API_KEY` repo secret.
+#   * flake: 5 reseeded reruns of the unit suite. Catches order- and
+#     entropy-dependent flakes before they accumulate. Always runs.
+#
+# Both jobs are advisory in the sense that they don't block pushes, but
+# `continue-on-error: false` — failures here are real and should be
+# triaged the next morning.
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  real-llm:
+    name: real-llm tier 1.x
+    runs-on: ubuntu-24.04
+    if: ${{ github.repository_owner == 'MikeBild' }}
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit
+          POSTGRES_DB: subkit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U subkit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
+      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      # The engine reads its LLM config from `SK_OVERRIDE_*` env overlays (a bare
+      # ANTHROPIC_API_KEY / LLM_PROVIDER is NOT merged once the config loader has
+      # initialised). One rule, two values: which provider + its key.
+      SK_OVERRIDE_LLM_PROVIDER: anthropic
+      SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # Pin the model so model-side regressions are observable (Sonnet 4.6, not
+      # Haiku 4.5: the tier-1 prompts need multi-step tool ordering — `propose_step`
+      # → `validate_draft` → `ask_user_confirm` → `save_*`; Haiku 4.5 short-circuits
+      # to `ask_user_confirm` and commits an empty draft, failing the floor
+      # assertion. Sonnet 4.6 follows the sequence at ~6× the spend (~$0.30/run);
+      # catching real LLM-quality regressions is the whole point of this nightly).
+      SK_OVERRIDE_LLM_MODEL: claude-sonnet-4-6
+      SKIP_DOCKER: "1"
+      TZ: UTC
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      # Migrations are embedded in the engine binary and
+      # run in-process on boot. Integration tests provision per-file
+      # databases via apps/engine/src/db/tests/setup.ts which calls
+      # the embedded runner directly — no standalone CI step needed.
+      - name: Verify the ANTHROPIC_API_KEY secret is set
+        run: |
+          if [ -z "${SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY:-}" ]; then
+            echo "ANTHROPIC_API_KEY secret is not configured for this repo."
+            echo "Set it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+      - name: Build sk binary
+        run: bun run build:sk
+      - name: Tier 1.x e2e (real LLM)
+        # Real LLM tests probe whether the configured model actually
+        # picks the prescribed tool call out of the open palette. The
+        # model's routing varies between identical calls, so a single
+        # test run is a noisy signal. History on this workflow has
+        # shown ~50% flake rate; a single retry left ~25% nightly
+        # noise. Three attempts with 30 s backoff drops false-fail
+        # rate to ≤12.5% while still surfacing real LLM-quality
+        # regressions that fail consistently across all attempts.
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            bun test tests/e2e/tier1-conversation-lifecycle.e2e.test.ts
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
+              echo "Tier 1.x e2e passed on attempt $attempt"
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Tier 1.x e2e attempt $attempt failed (rc=$rc) — retrying for LLM-route flake"
+              sleep 30
+            fi
+          done
+          echo "::error::Tier 1.x e2e failed all 3 attempts — likely a real LLM-quality regression, not flake"
+          exit 1
+
+  judge-calibration:
+    name: judge calibration (real LLM)
+    runs-on: ubuntu-24.04
+    if: ${{ github.repository_owner == 'MikeBild' }}
+    # Blocking. The two historically-flaky misses are now DETERMINISTIC guards
+    # (findFilterViolations for wrong-filter, findMissingNamedFields for missing
+    # columns — both downgrade passes→partial without the LLM), and the runner
+    # now pools agreement over `TRIALS` (default 3) so a single stochastic judge
+    # call near the threshold can no longer flip the gate. A drop below 80%
+    # pooled lenient is therefore a real regression and blocks the nightly.
+    continue-on-error: false
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit
+          POSTGRES_DB: subkit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U subkit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
+      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      # Same rule as the real-llm job: provider + its key via SK_OVERRIDE_*.
+      SK_OVERRIDE_LLM_PROVIDER: anthropic
+      SK_OVERRIDE_LLM_PROVIDERS_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SKIP_DOCKER: "1"
+      TZ: UTC
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      # No separate secret-presence guard: eval:judge's own validateProviderSetup()
+      # fails fast with a clear message if the anthropic provider isn't ready
+      # (judge-calibration.ts). The prior guard checked a variable the job never
+      # exported, so it failed unconditionally and skipped the calibration.
+      - name: Judge calibration vs golden set
+        run: bun run eval:judge
+
+  flake:
+    name: flake (5 reseeded runs)
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit
+          POSTGRES_DB: subkit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U subkit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
+      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      LLM_PROVIDER: mock
+      SKIP_DOCKER: "1"
+      TZ: UTC
+      LANG: C.UTF-8
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      # Migrations are embedded in the engine binary and
+      # run in-process on boot. Integration tests provision per-file
+      # databases via apps/engine/src/db/tests/setup.ts which calls
+      # the embedded runner directly — no standalone CI step needed.
+      - name: 5 seeded reruns
+        run: bun run test:flake
+
+  docker-nightly:
+    name: docker e2e (full track)
+    runs-on: ubuntu-24.04
+    # Full Docker track incl. the in-container reconciler wait + PTY REPL —
+    # too slow for the PR gate, exercised here.
+    timeout-minutes: 35
+    env:
+      SUBKIT_DOCKER_BASE_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+      - name: Install expect (PTY REPL test)
+        # repl-smoke.docker drives the sk REPL over a PTY. In CI the
+        # SKIP_PTY_WHEN_NO_EXPECT predicate is false (CI is set), so a
+        # missing `expect` fails loudly instead of dropping coverage — this
+        # install is load-bearing. `command -v` surfaces a partial-mirror
+        # failure with a clear line. --no-install-recommends skips tcl/tk extras.
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends expect
+          command -v expect
+          expect -v
+      - name: Build sk binary
+        run: bun run build:sk
+      - name: Build + start the production image
+        run: bun run compose:test:up
+      - name: Full Docker E2E track
+        run: bun run test:docker
+      - name: Collect engine logs
+        if: always()
+        run: docker compose -f docker-compose.test.yml logs --no-color engine > engine-docker.log || true
+      - name: Upload engine logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-docker-nightly-log
+          path: engine-docker.log
+          if-no-files-found: ignore
+          retention-days: 5
+      - name: Tear down
+        if: always()
+        run: bun run compose:test:down

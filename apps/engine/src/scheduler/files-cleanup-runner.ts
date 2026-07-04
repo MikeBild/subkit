@@ -1,0 +1,571 @@
+// Global runner for the unified-files cleanup cron.
+//
+// Fires every hour from the scheduler reconciler and walks three
+// sweeps in order:
+//
+//   1) Pending / stuck-scanning orphans. Two row categories:
+//      a. `status='pending'` rows whose presign URL has been expired for
+//         at least an hour — the client minted a token but never
+//         finalized. Hard-deleted along with any partial object the
+//         client may have written; emits
+//         `FILE_DELETED { reason:'pending_expired' }`.
+//      b. `status='scanning'` rows older than an hour — the upload
+//         handler called the scanner and the scanner exceeded
+//         `SCANNER_TIMEOUT_SECONDS`, parking the row. We flip the row to
+//         `status='failed'` (not hard-delete) so the audit ledger keeps
+//         the FILE_CREATED row's resource_id resolvable; emits
+//         `FILE_SCAN_COMPLETED { verdict:'timeout' }` via the same audit
+//         path the upload handler uses on a normal timeout.
+//
+//   2) Unlinked TTL. A `status='ready'` row with no `file_links` referers
+//      AND no in-flight workflow run referencing the fid is soft-deleted
+//      (`deleted_at = now()`). Rows whose `deleted_at` is older than 7
+//      days are then hard-deleted together with the storage object;
+//      `FILE_DELETED { reason:'unlinked_ttl' }` is emitted per row.
+//
+//      The in-flight guard is the safety net for the
+//      workflow-holding-a-fid-while-cron-runs race: a workflow run that
+//      grabs a `$file` ref mid-execution must NOT have its bytes
+//      reaped. Implemented as a two-pass check rather than a brittle
+//      jsonb_path_query subquery — first SELECT candidate fids, then
+//      filter out fids that appear in the union of FIVE in-flight
+//      haystacks:
+//        - `executions.source_ref` (draft + step runs)
+//        - `execution_steps.input_preview` joined to running executions
+//          (saved runs' runtime trail)
+//        - `pgboss.job.data` for `execution.run` jobs in states
+//          (created, active, retry) — covers the dispatch-but-not-
+//          yet-running window AND long-horizon jobs (pg-boss keeps
+//          long-horizon jobs in `created` with a future `start_after`
+//          timestamp; there is no `scheduled` state in pg-boss's
+//          `job_state` enum)
+//        - `pgboss.schedule.data` — recurring schedule definitions that
+//          embed a `$file` ref in their input template
+//      pg-boss 12.x does NOT ship a separate `pgboss.archive` table —
+//      completed and failed jobs live in `pgboss.job` until the
+//      maintenance routine hard-deletes them.
+//      The soft-delete + 7-day grace bounds the cost of a missed-link.
+//
+// Audit `actor_type` convention: every row emitted from this cron
+// is `actor_type: "system"` (with `actor_id: null`). The audit_log
+// schema allows both `"system"` and `"system_account"`; the
+// distinction is "actor-less machine sweep" (`"system"`) vs
+// "service-account principal carrying a row id" (`"system_account"`).
+// The cleanup cron has no principal — it is a process-wide tick —
+// so `"system"` is the correct choice here.
+//
+// Best-effort `objectStore.delete`: a failure to remove the backing
+// object logs and continues; the sweep does not abort. Leaving an
+// orphan blob in the bucket is preferable to wedging the cron.
+
+import { and, count, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
+import {
+  AuditAction,
+  auditAwait,
+  FileDeletedMetadataSchema,
+  FileScanCompletedMetadataSchema,
+} from "../audit/index.ts";
+import type { Db } from "../db/client.ts";
+import { executionSteps, executions, fileLinks, files } from "../db/schema/index.ts";
+import { storageKey } from "../files/resolver.ts";
+import { errorFields, logger } from "../logging/logger.ts";
+import {
+  recordFilesCleanupPgbossScanMissing,
+  setFilesBytesTotal,
+  setFilesTotal,
+} from "../observability/instrumentation.ts";
+import { EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
+import { getObjectStore } from "../storage/object-store.ts";
+
+/** Hard-delete window for `deleted_at` rows. 7-day grace lets any
+ *  in-flight workflow run that already resolved a soft-deleted fid
+ *  complete before the bytes are reaped. */
+const UNLINKED_HARD_DELETE_AFTER = sql`interval '7 days'`;
+
+/** Pending presigned uploads get reaped one hour after their URL
+ *  expires. The extra hour absorbs clock skew between the engine and
+ *  S3 / the local presign minter. */
+const PENDING_EXPIRY_GRACE = sql`interval '1 hour'`;
+
+/** Stuck `scanning` rows: the scanner exceeded its per-call budget and
+ *  the row never flipped to `ready`/`failed`. One-hour cutoff matches
+ *  the pending grace — well above any plausible legitimate scan budget. */
+const STUCK_SCAN_GRACE = sql`interval '1 hour'`;
+
+/**
+ * Best-effort `objectStore.delete`. Logs and swallows on failure —
+ * leaving an orphan blob is preferable to aborting the sweep.
+ */
+async function bestEffortDeleteObject(storage_uri: string): Promise<void> {
+  try {
+    const store = getObjectStore();
+    await store.delete(storageKey(storage_uri));
+  } catch (err) {
+    logger.warn({
+      module: "scheduler",
+      action: "files_cleanup.object_delete_failed",
+      msg: "object store delete failed — orphan blob left in bucket",
+      storage_uri,
+      ...errorFields(err),
+    });
+  }
+}
+
+/**
+ * Sweep 1 — pending orphans + stuck scanning rows.
+ *
+ * Two passes share this sweep because both are "row never finished its
+ * upload pipeline" cases:
+ *
+ *  a. Hard-delete `status='pending'` rows whose presign URL expired more
+ *     than an hour ago. For each row emit `FILE_DELETED` with
+ *     `reason='pending_expired'` and best-effort remove any partial
+ *     object the client may have written before abandoning the upload.
+ *
+ *  b. Flip `status='scanning'` rows older than the stuck-scan grace
+ *     (the route handler timed out the scanner but the row never
+ *     transitioned to `ready`/`failed`). We move them to `status='failed'`
+ *     with `scan_result='timeout'` so the row remains discoverable in
+ *     audit + by id; the unlinked-TTL sweep eventually reclaims the
+ *     bytes via the normal grace path.
+ */
+async function sweepPendingOrphans(db: Db): Promise<{ pending: number; stuck_scanning: number }> {
+  // ---- Pass a — pending orphans (hard-delete) -----------------------------
+  // tenant-filter:exempt — global cron sweep; per-row audit carries tenant_id
+  const deleted = await db
+    .delete(files)
+    .where(
+      and(
+        eq(files.status, "pending"),
+        lt(files.upload_url_expires_at, sql`now() - ${PENDING_EXPIRY_GRACE}`),
+      ),
+    )
+    .returning({
+      id: files.id,
+      tenant_id: files.tenant_id,
+      storage_uri: files.storage_uri,
+    });
+
+  for (const row of deleted) {
+    await bestEffortDeleteObject(row.storage_uri);
+    await auditAwait(
+      {
+        tenant_id: row.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.FILE_DELETED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "success",
+        metadata: FileDeletedMetadataSchema.parse({
+          file_id: row.id,
+          reason: "pending_expired",
+          request_source: "scheduler",
+        }),
+      },
+      db,
+    );
+  }
+
+  // ---- Pass b — stuck scanning rows (flip to failed) ----------------------
+  // tenant-filter:exempt — global cron sweep
+  const stuckScanning = await db
+    .update(files)
+    .set({ status: "failed", scan_result: "timeout" })
+    .where(
+      and(eq(files.status, "scanning"), lt(files.created_at, sql`now() - ${STUCK_SCAN_GRACE}`)),
+    )
+    .returning({ id: files.id, tenant_id: files.tenant_id });
+
+  for (const row of stuckScanning) {
+    logger.warn({
+      module: "scheduler",
+      action: "files_cleanup.stuck_scanning_flipped",
+      msg: "row stuck in scanning state past grace — flipped to failed",
+      file_id: row.id,
+      tenant_id: row.tenant_id,
+    });
+    // Durable per-row audit so the file-header comment claim
+    // ("emits `FILE_SCAN_COMPLETED { verdict:'timeout' }`") matches
+    // the code. Mirrors the upload-handler timeout path so audit
+    // consumers see the same action whether the timeout fired in the
+    // route or got reaped here.
+    await auditAwait(
+      {
+        tenant_id: row.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.FILE_SCAN_COMPLETED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "error",
+        metadata: FileScanCompletedMetadataSchema.parse({
+          file_id: row.id,
+          verdict: "timeout",
+          engine: "scheduler.stuck_scan_timeout",
+          request_source: "scheduler",
+        }),
+      },
+      db,
+    );
+  }
+
+  return { pending: deleted.length, stuck_scanning: stuckScanning.length };
+}
+
+/**
+ * Build the set of fids referenced by any in-flight execution.
+ *
+ * Two-pass equivalent of the plan's `run_input::text ~ '\bfid_<uuid>\b'`
+ * subquery. We materialise three sources of in-flight state into one
+ * concatenated haystack, then test each candidate fid via substring
+ * match. The set is recomputed per cron tick so a long-running workflow
+ * that picks up a fid AFTER the cron began is still protected on the
+ * next tick — and the soft-delete grace bounds the cost of any miss.
+ *
+ * The three sources are unioned because saved-workflow runs go down a
+ * different code path than draft / step runs:
+ *
+ *   1. `executions.source_ref` — populated for draft + step runs
+ *      (the inline definition rides on the row). Saved runs set this
+ *      to NULL: their definition lives in `workflow_versions` and the
+ *      run input arrives via the pg-boss envelope. See
+ *      `apps/engine/src/execution/resolve-definition.ts`.
+ *
+ *   2. `execution_steps.input_preview` — the runtime trail for ANY
+ *      in-flight run (saved, draft, step). Each step's resolved input
+ *      is stamped here at dispatch time, so a fid that the workflow
+ *      pulled in via a `$file` placeholder shows up before the bytes
+ *      are read. This is the saved-run safety net for the
+ *      workflow-holding-a-fid-while-cron-runs race.
+ *
+ *   3. `pgboss.job.data` (queue=`execution.run`, state in created /
+ *      active / retry) — catches the queued-but-not-yet-running
+ *      window. The `ExecutionRunJob.input` body lives on the job
+ *      envelope. Without this scan a freshly-enqueued saved run could
+ *      have its fid reaped before the worker even picks the job up.
+ *
+ * Conservative by design: a fid mentioned in audit metadata or
+ * unrelated jsonb would also protect the row; the cleanup contract
+ * prefers a false positive (keep the file) over a false negative
+ * (reap a file the workflow is reading).
+ */
+/** Shape returned by `loadInFlightFidStrings`. `pgboss_scan_failed` is
+ *  `true` when the unioned pg-boss scan (job / schedule) threw —
+ *  typically because the `pgboss` schema is absent (deploy regression).
+ *  When set, the caller MUST skip the soft-delete pass for the tick:
+ *  a file referenced by an in-flight job that is unreachable through
+ *  the failed scan path would otherwise be reaped while the workflow
+ *  holds it. */
+interface InFlightFidScan {
+  haystack: string;
+  pgboss_scan_failed: boolean;
+}
+
+async function loadInFlightFidStrings(db: Db): Promise<InFlightFidScan> {
+  const parts: string[] = [];
+  let pgboss_scan_failed = false;
+
+  // Source 1 — running executions' source_ref (draft + step runs).
+  // tenant-filter:exempt — global sweep; the in-flight set covers every tenant
+  const execRows = await db
+    .select({
+      source_ref: executions.source_ref,
+    })
+    .from(executions)
+    .where(eq(executions.status, "running"));
+  for (const r of execRows) {
+    if (r.source_ref != null) parts.push(JSON.stringify(r.source_ref));
+  }
+
+  // Source 2 — execution_steps.input_preview for any step whose parent
+  // execution is still running. This is the saved-workflow path:
+  // saved runs leave `source_ref=null` but stamp their resolved input
+  // here as each step dispatches.
+  // tenant-filter:exempt — global sweep
+  const stepRows = await db
+    .select({
+      input_preview: executionSteps.input_preview,
+    })
+    .from(executionSteps)
+    .innerJoin(executions, eq(executions.id, executionSteps.execution_id))
+    .where(eq(executions.status, "running"));
+  for (const r of stepRows) {
+    if (r.input_preview != null) parts.push(JSON.stringify(r.input_preview));
+  }
+
+  // Sources 3 / 4 — pg-boss state, unioned into a single round-trip
+  // to keep the per-tick query count bounded on large queues. Two
+  // contributors share the `data::text` column:
+  //
+  //   - `pgboss.job`      (state ∈ created|active|retry for queue
+  //                        `execution.run`): live or
+  //                        soon-to-run envelopes carrying
+  //                        `ExecutionRunJob.input`. `created` covers
+  //                        long-horizon jobs too: pg-boss stores a
+  //                        future `start_after` on rows in state
+  //                        `created`, then flips them to `active`
+  //                        when the worker picks them up. There is
+  //                        no `scheduled` value in the pg-boss
+  //                        `job_state` enum — a previous version of
+  //                        this query included it under the wrong
+  //                        assumption and triggered an enum-cast
+  //                        error in prod (`invalid input value for
+  //                        enum pgboss.job_state: "scheduled"`),
+  //                        skipping the soft-delete pass every tick.
+  //   - `pgboss.schedule` (all rows): recurring schedule definitions
+  //     replayed into `pgboss.job` on each cron tick.
+  //
+  // Excluded states (`completed`, `failed`, `cancelled`) genuinely
+  // cannot resume so their fids are fair game. pg-boss 12.x does NOT
+  // ship a separate `pgboss.archive` table — completed and failed
+  // rows live in `pgboss.job` with the corresponding state until the
+  // maintenance routine hard-deletes them. A previous version of
+  // this query unioned `pgboss.archive` and produced
+  // `relation "pgboss.archive" does not exist` in prod.
+  //
+  // Outer try/catch degrades to "pg-boss not present" — the
+  // executions + execution_steps scans above still protect the
+  // dominant paths.
+  try {
+    const pgbossRows = await db.execute<{ data: string | null }>(sql`
+      SELECT data::text AS data
+      FROM pgboss.job
+      WHERE name = ${EXECUTION_RUN_QUEUE}
+        AND state IN ('created', 'active', 'retry')
+      UNION ALL
+      SELECT data::text AS data
+      FROM pgboss.schedule
+    `);
+    // drizzle's `execute()` return shape varies by driver; normalise.
+    const rows: Array<{ data: string | null }> = Array.isArray(pgbossRows)
+      ? (pgbossRows as unknown as Array<{ data: string | null }>)
+      : ((pgbossRows as unknown as { rows?: Array<{ data: string | null }> }).rows ?? []);
+    for (const r of rows) {
+      if (r.data != null) parts.push(r.data);
+    }
+  } catch (err) {
+    // The unioned scan covers two pg-boss tables (`job`, `schedule`);
+    // a missing `pgboss` schema fails them at once. We record one
+    // increment per source so an alert can fire on the counter
+    // regardless of which table the SQL engine reported first, and
+    // escalate to `error` (was `warn`): in production this is a
+    // deploy regression — the queue substrate is unreachable. The
+    // caller (sweepUnlinkedTtl) reads the `pgboss_scan_failed` flag
+    // and skips the soft-delete pass for the tick so a file
+    // referenced by an unreachable in-flight job is NOT reaped while
+    // the workflow holds it.
+    pgboss_scan_failed = true;
+    recordFilesCleanupPgbossScanMissing({ source: "job" });
+    recordFilesCleanupPgbossScanMissing({ source: "schedule" });
+    logger.error({
+      module: "scheduler",
+      action: "files_cleanup.pgboss_scan_failed",
+      msg: "pg-boss in-flight scan failed — deploy regression in production; unlinked-TTL soft-delete pass skipped this tick",
+      ...errorFields(err),
+    });
+  }
+
+  return { haystack: parts.join("\n"), pgboss_scan_failed };
+}
+
+/**
+ * Sweep 2 — unlinked TTL.
+ *
+ * First soft-deletes ready rows with no `file_links` referers and no
+ * in-flight execution reference, then hard-deletes any row whose
+ * `deleted_at` is older than the 7-day grace. The grace covers the
+ * "workflow run picks up a fid mid-cron" race — the read path through
+ * `requireFileForTenant` ignores `deleted_at`, so the workflow finishes
+ * before the bytes go away.
+ */
+async function sweepUnlinkedTtl(db: Db): Promise<{ soft: number; hard: number }> {
+  // ---- Soft-delete pass --------------------------------------------------
+  // tenant-filter:exempt — global sweep
+  const candidates = await db
+    .select({ id: files.id, tenant_id: files.tenant_id })
+    .from(files)
+    .where(
+      and(
+        eq(files.status, "ready"),
+        isNull(files.deleted_at),
+        notInArray(files.id, db.select({ file_id: fileLinks.file_id }).from(fileLinks)),
+      ),
+    );
+
+  let softDeleted = 0;
+  if (candidates.length > 0) {
+    const scan = await loadInFlightFidStrings(db);
+    if (scan.pgboss_scan_failed) {
+      // Conservative: when the pg-boss scan is unreachable we do NOT
+      // soft-delete this tick. A file referenced by an unreachable
+      // in-flight job (queued, scheduled, archived) would otherwise
+      // be reaped while the workflow still holds it. The hard-delete
+      // pass below stays — it operates on rows that have ALREADY been
+      // soft-deleted long enough ago (UNLINKED_HARD_DELETE_AFTER) to
+      // outlast every plausible deploy fix. Logged at debug so a
+      // dashboard reader correlates with the error log from the scan
+      // failure itself.
+      logger.warn({
+        module: "scheduler",
+        action: "files_cleanup.unlinked_soft_delete_skipped",
+        msg: "skipping unlinked-TTL soft-delete pass — pg-boss scan unreachable; in-flight files cannot be guarded this tick",
+      });
+    } else {
+      const inFlightHaystack = scan.haystack;
+      const toSoftDelete = candidates
+        .filter((c) => !inFlightHaystack.includes(c.id))
+        .map((c) => c.id);
+      if (toSoftDelete.length > 0) {
+        const updated = await db
+          .update(files)
+          .set({ deleted_at: new Date() })
+          .where(and(inArray(files.id, toSoftDelete), isNull(files.deleted_at)))
+          .returning({ id: files.id });
+        softDeleted = updated.length;
+      }
+    }
+  }
+
+  // ---- Hard-delete pass --------------------------------------------------
+  // tenant-filter:exempt — global sweep; per-row audit carries tenant_id
+  const hardDeleted = await db
+    .delete(files)
+    .where(lt(files.deleted_at, sql`now() - ${UNLINKED_HARD_DELETE_AFTER}`))
+    .returning({
+      id: files.id,
+      tenant_id: files.tenant_id,
+      storage_uri: files.storage_uri,
+    });
+
+  for (const row of hardDeleted) {
+    await bestEffortDeleteObject(row.storage_uri);
+    await auditAwait(
+      {
+        tenant_id: row.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.FILE_DELETED,
+        resource_type: "file",
+        resource_id: row.id,
+        result: "success",
+        metadata: FileDeletedMetadataSchema.parse({
+          file_id: row.id,
+          reason: "unlinked_ttl",
+          request_source: "scheduler",
+        }),
+      },
+      db,
+    );
+  }
+  return { soft: softDeleted, hard: hardDeleted.length };
+}
+
+/**
+ * Sweep 4 — refresh `subkit_files_total{tenant_id,status}` and
+ * `subkit_files_bytes_total{tenant_id}` gauges.
+ *
+ * Single GROUP BY pass that bundles row count + size sum per
+ * (tenant_id, status). Only live rows (deleted_at IS NULL) participate
+ * — soft-deleted rows are accounted out of the live size budget so the
+ * gauge tracks "bytes the operator can think of as on-disk for this
+ * tenant". Hourly cadence is precise enough for an SLO panel; the route
+ * handlers don't need to bump deltas.
+ */
+async function refreshFilesGauges(db: Db): Promise<void> {
+  // tenant-filter:exempt — global sweep, gauge labels include tenant_id
+  const rows = await db
+    .select({
+      tenant_id: files.tenant_id,
+      status: files.status,
+      n: count(),
+      bytes: sql<string | number>`COALESCE(SUM(${files.size_bytes}), 0)`,
+    })
+    .from(files)
+    .where(isNull(files.deleted_at))
+    .groupBy(files.tenant_id, files.status);
+
+  const bytesByTenant = new Map<string, number>();
+  for (const r of rows) {
+    setFilesTotal({
+      tenant_id: r.tenant_id,
+      status: r.status,
+      value: Number(r.n),
+    });
+    const prior = bytesByTenant.get(r.tenant_id) ?? 0;
+    bytesByTenant.set(r.tenant_id, prior + Number(r.bytes));
+  }
+  for (const [tenant_id, value] of bytesByTenant.entries()) {
+    setFilesBytesTotal({ tenant_id, value });
+  }
+}
+
+/**
+ * Run all three sweeps in order. Each sweep catches its own errors so
+ * a transient failure in sweep N does not block sweeps N+1..3 from
+ * running this tick. The cron is scheduled at hour resolution so even
+ * a fully-failed tick costs only a one-hour delay.
+ */
+export async function runFilesCleanup(started: Date, db: Db): Promise<void> {
+  const tickId = started.toISOString();
+  let pending_deleted = 0;
+  let stuck_scanning_flipped = 0;
+  let unlinked_soft = 0;
+  let unlinked_hard = 0;
+
+  try {
+    const r = await sweepPendingOrphans(db);
+    pending_deleted = r.pending;
+    stuck_scanning_flipped = r.stuck_scanning;
+  } catch (err) {
+    logger.error({
+      module: "scheduler",
+      action: "files_cleanup.pending_failed",
+      msg: "pending-orphan sweep failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
+  try {
+    const r = await sweepUnlinkedTtl(db);
+    unlinked_soft = r.soft;
+    unlinked_hard = r.hard;
+  } catch (err) {
+    logger.error({
+      module: "scheduler",
+      action: "files_cleanup.unlinked_failed",
+      msg: "unlinked-TTL sweep failed",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
+  // Gauge refresh runs after the row-mutating sweeps so the snapshot
+  // reflects the post-sweep live set. Failure here is non-fatal — the
+  // gauges keep their last value until the next tick.
+  try {
+    await refreshFilesGauges(db);
+  } catch (err) {
+    logger.warn({
+      module: "scheduler",
+      action: "files_cleanup.gauges_refresh_failed",
+      msg: "files gauge refresh failed — gauges retain prior values",
+      tick_id: tickId,
+      ...errorFields(err),
+    });
+  }
+
+  const duration_ms = Date.now() - started.getTime();
+  logger.info({
+    module: "scheduler",
+    action: "files_cleanup.fired",
+    msg: "files cleanup cron pass completed",
+    tick_id: tickId,
+    pending_deleted,
+    stuck_scanning_flipped,
+    unlinked_soft,
+    unlinked_hard,
+    duration_ms,
+  });
+}

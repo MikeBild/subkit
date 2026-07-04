@@ -1,0 +1,647 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { upsertCredential } from "../../credentials/service.ts";
+import {
+  createEngineCtx,
+  createMockServer,
+  type EngineTestCtx,
+  jsonResponse,
+  type MockServer,
+} from "../../execution/tests/setup.ts";
+import {
+  applyAuthMaterial,
+  buildRequestPlan,
+  executePlannedHttpRequest,
+  HttpRequestInvalidError,
+  parseResponseBody,
+  probeHttpConnector,
+  resolveUrl,
+} from "../drivers/http.ts";
+import { createConnector, getConnector } from "../service.ts";
+import type { ConnectorView } from "../types.ts";
+
+let ctx: EngineTestCtx;
+let mock: MockServer;
+let lastRequest: {
+  url: string;
+  headers: Record<string, string>;
+} | null = null;
+
+beforeAll(async () => {
+  ctx = await createEngineCtx("http-driver");
+  mock = await createMockServer((req: IncomingMessage, res: ServerResponse) => {
+    lastRequest = {
+      url: req.url ?? "",
+      headers: req.headers as Record<string, string>,
+    };
+    jsonResponse(res, 200, { ok: true });
+  });
+});
+
+afterAll(async () => {
+  await mock.close();
+  await ctx.cleanup();
+});
+
+async function makeConnector(params: {
+  auth_type: "none" | "header" | "query" | "bearer" | "basic";
+  config?: Record<string, unknown>;
+}) {
+  return await createConnector(
+    {
+      tenant_id: ctx.tenantId,
+      input: {
+        name: `cn-${Math.random().toString(36).slice(2, 8)}`, // allow-random: legacy; review before changing
+        driver: "http",
+        environment: "dev",
+        base_url: mock.baseUrl,
+        auth_type: params.auth_type,
+        config: params.config ?? {},
+      },
+      actor_id: null,
+    },
+    ctx.testDb.db,
+  );
+}
+
+describe("http driver auth application", () => {
+  test("bearer credential is turned into Authorization header", async () => {
+    const conn = await makeConnector({ auth_type: "bearer" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: conn.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "bearer-xyz" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+    const plan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: fresh!,
+      path_or_url: "/ping",
+    });
+    const res = await fetch(plan.url.toString(), { method: "GET", headers: plan.headers });
+    await res.text();
+    expect(res.status).toBe(200);
+    expect(lastRequest?.headers.authorization).toBe("Bearer bearer-xyz");
+    expect(lastRequest?.url).toBe("/ping");
+  });
+
+  test("step-level Authorization header wins over the connector's bearer credential", async () => {
+    // Reproduces the regression in session 8de01f2f. The LLM minted
+    // a Cognito IdToken in step N and tried to forward it as
+    // `headers: { Authorization: "<id_token>" }` to step N+1. Pre-fix
+    // `applyAuthMaterial` unconditionally clobbered the explicit
+    // header with the connector's bearer credential. The LLM had to
+    // work around by switching `auth_type` to `none`.
+    const conn = await makeConnector({ auth_type: "bearer" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: conn.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "stale-token" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+    const plan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: fresh!,
+      path_or_url: "/ping",
+      headers: { Authorization: "eyJraWQiOiJ.id-token-from-prior-step" },
+    });
+    expect(plan.headers.Authorization).toBe("eyJraWQiOiJ.id-token-from-prior-step");
+    expect(plan.headers.Authorization).not.toContain("Bearer stale-token");
+  });
+
+  test("parseResponseBody parses application/x-amz-json-1.1 (AWS Cognito IDP)", () => {
+    const cognito = `{"AuthenticationResult":{"IdToken":"eyJ…","AccessToken":"eyJ…","ExpiresIn":3600}}`;
+    const parsed = parseResponseBody(cognito, "application/x-amz-json-1.1");
+    expect(typeof parsed).toBe("object");
+    expect(
+      (parsed as { AuthenticationResult: { IdToken: string } }).AuthenticationResult.IdToken,
+    ).toBe("eyJ…");
+  });
+
+  test("parseResponseBody parses any +json subtype (JSON:API, HAL, JSON-LD)", () => {
+    const body = `{"data":{"id":"1"}}`;
+    expect(parseResponseBody(body, "application/vnd.api+json")).toEqual({ data: { id: "1" } });
+    expect(parseResponseBody(body, "application/hal+json")).toEqual({ data: { id: "1" } });
+    expect(parseResponseBody(body, "application/ld+json; charset=utf-8")).toEqual({
+      data: { id: "1" },
+    });
+  });
+
+  test("header credential is applied as raw request headers", async () => {
+    const conn = await makeConnector({ auth_type: "header" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: conn.id,
+        environment: "dev",
+        mode: "header",
+        value: { mode: "header", headers: { "x-api-key": "abc123", "x-extra": "v" } },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+    const plan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: fresh!,
+      path_or_url: "/hdr",
+    });
+    await fetch(plan.url.toString(), { method: "GET", headers: plan.headers });
+    expect(lastRequest?.headers["x-api-key"]).toBe("abc123");
+    expect(lastRequest?.headers["x-extra"]).toBe("v");
+  });
+
+  test("query credential is applied to the request URL", async () => {
+    const conn = await makeConnector({ auth_type: "query" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: conn.id,
+        environment: "dev",
+        mode: "query",
+        value: { mode: "query", query: { api_key: "k-789" } },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+    const plan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: fresh!,
+      path_or_url: "/q",
+    });
+    await fetch(plan.url.toString(), { method: "GET", headers: plan.headers });
+    expect(lastRequest?.url).toContain("api_key=k-789");
+  });
+
+  test("basic credential is base64-encoded into Authorization header", async () => {
+    const conn = await makeConnector({ auth_type: "basic" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: conn.id,
+        environment: "dev",
+        mode: "basic",
+        value: { mode: "basic", username: "alice", password: "s3cret" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+    const plan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: fresh!,
+      path_or_url: "/basic",
+    });
+    await fetch(plan.url.toString(), { method: "GET", headers: plan.headers });
+    const expected = `Basic ${Buffer.from("alice:s3cret", "utf8").toString("base64")}`;
+    expect(lastRequest?.headers.authorization).toBe(expected);
+  });
+
+  test("static_headers from connector config land on the request too", async () => {
+    const conn = await makeConnector({
+      auth_type: "none",
+      config: { static_headers: { "x-static": "static-v" } },
+    });
+    const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+    const plan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: fresh!,
+      path_or_url: "/s",
+    });
+    await fetch(plan.url.toString(), { method: "GET", headers: plan.headers });
+    expect(lastRequest?.headers["x-static"]).toBe("static-v");
+  });
+
+  test("plan reports applied auth_method per credential mode", async () => {
+    // none
+    const anon = await makeConnector({ auth_type: "none" });
+    const anonFresh = await getConnector(ctx.tenantId, anon.id, ctx.testDb.db);
+    const anonPlan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: anonFresh!,
+      path_or_url: "/a",
+    });
+    expect(anonPlan.auth_method).toBe("none");
+
+    // bearer
+    const bearer = await makeConnector({ auth_type: "bearer" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: bearer.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "t-123" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const bearerFresh = await getConnector(ctx.tenantId, bearer.id, ctx.testDb.db);
+    const bearerPlan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: bearerFresh!,
+      path_or_url: "/b",
+    });
+    expect(bearerPlan.auth_method).toBe("bearer");
+
+    // header
+    const header = await makeConnector({ auth_type: "header" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: header.id,
+        environment: "dev",
+        mode: "header",
+        value: { mode: "header", headers: { "x-api-key": "k" } },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const headerFresh = await getConnector(ctx.tenantId, header.id, ctx.testDb.db);
+    const headerPlan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: headerFresh!,
+      path_or_url: "/h",
+    });
+    expect(headerPlan.auth_method).toBe("header");
+
+    // basic
+    const basic = await makeConnector({ auth_type: "basic" });
+    await upsertCredential(
+      {
+        tenant_id: ctx.tenantId,
+        connector_id: basic.id,
+        environment: "dev",
+        mode: "basic",
+        value: { mode: "basic", username: "u", password: "p" },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const basicFresh = await getConnector(ctx.tenantId, basic.id, ctx.testDb.db);
+    const basicPlan = await buildRequestPlan({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      connector: basicFresh!,
+      path_or_url: "/ba",
+    });
+    expect(basicPlan.auth_method).toBe("basic");
+  });
+});
+
+describe("applyAuthMaterial — oauth2 token_type handling", () => {
+  // Pure-function tests on applyAuthMaterial (no DB) — exercise every
+  // permutation of the `token_type` field that ships from real IdPs.
+  function makeOauth2Connector(): ConnectorView {
+    return {
+      id: "00000000-0000-0000-0000-000000000099",
+      tenant_id: "tenant-test",
+      slug: "test-oauth2",
+      driver: "http",
+      environment: "dev",
+      auth_type: "oauth2",
+      base_url: "https://api.example.test",
+      config: {},
+      template_slug: null,
+      template_snapshot: null,
+    } as unknown as ConnectorView;
+  }
+
+  test("token_type='Bearer' produces standard Bearer prefix", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "tok-1",
+        token_type: "Bearer",
+        refresh_token: null,
+        expires_at: null,
+      },
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("Bearer tok-1");
+  });
+
+  test("token_type=null defaults to no prefix (raw token)", () => {
+    // Pre-fix this defaulted to "Bearer ", which broke AppSync Cognito.
+    // The new contract: missing/empty/none token_type → raw token.
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "eyJraWQiOiJ.abc",
+        token_type: null,
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("eyJraWQiOiJ.abc");
+  });
+
+  test("token_type='' (empty string from IdP) emits raw token, not leading-space", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "raw-jwt",
+        token_type: "",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("raw-jwt");
+    expect(headers.Authorization?.startsWith(" ")).toBe(false);
+  });
+
+  test("token_type='none' (explicit opt-out) emits raw token", () => {
+    // AppSync Cognito User-Pool flow — operator stores credential with
+    // token_type: "none" so the driver knows to skip the scheme prefix.
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "id-token-here",
+        token_type: "none",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("id-token-here");
+  });
+
+  test("token_type='no_prefix' alias also emits raw token", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "another-jwt",
+        token_type: "no_prefix",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("another-jwt");
+  });
+
+  test("custom scheme (e.g. 'Token' for GitLab PAT) is preserved", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "glpat-xyz",
+        token_type: "Token",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("Token glpat-xyz");
+  });
+
+  test("token_type='bearer' (lowercase from Google) canonicalises to 'Bearer'", () => {
+    // Google's OAuth2 token endpoint returns `token_type: "bearer"`
+    // (lowercase) — and Google's resource APIs (Gmail, Drive, …)
+    // reject the lowercase form with 401 even though RFC 6749 §5.1
+    // says the comparison is case-insensitive. Canonicalise so the
+    // header is interoperable across every provider we connect to.
+    // Regression caught in Gmail-OAuth2 session 1f96ccf7 (2026-05-12).
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "ya29.a0AQv",
+        token_type: "bearer",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("Bearer ya29.a0AQv");
+  });
+
+  test("token_type='BEARER' (uppercase) also canonicalises to 'Bearer'", () => {
+    const headers: Record<string, string> = {};
+    const query: Record<string, string | number | boolean> = {};
+    applyAuthMaterial(
+      makeOauth2Connector(),
+      {
+        mode: "oauth2",
+        access_token: "abc",
+        token_type: "BEARER",
+        refresh_token: null,
+        expires_at: null,
+      } as never,
+      headers,
+      query,
+    );
+    expect(headers.Authorization).toBe("Bearer abc");
+  });
+});
+
+// Regression: conversation 730c568a. The LLM authored a workflow step
+// where `headers` was a JSON-encoded object string. parseHeaderLines
+// happily turned `'{"Accept":"x"}'` into `{'{"Accept"': '"x"}'`. The
+// http driver's old contract trusted the type and crashed inside
+// `new Headers()` with "Invalid header name", which the retry loop
+// then misclassified as a transient connection error and retried 5×.
+// Post-fix the driver fails fast with HttpRequestInvalidError so the
+// retry loop converts to RequestError(request_invalid) and stops.
+describe("executePlannedHttpRequest header contract", () => {
+  test("rejects a non-object headers value before fetch", async () => {
+    await expect(
+      executePlannedHttpRequest({
+        tenant_id: ctx.tenantId,
+        method: "GET",
+        url: new URL(`${mock.baseUrl}/ping`),
+        headers: '{"Accept":"application/json"}' as unknown as Record<string, string>,
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBeInstanceOf(HttpRequestInvalidError);
+  });
+
+  test("rejects header names that aren't RFC 7230 tokens", async () => {
+    await expect(
+      executePlannedHttpRequest({
+        tenant_id: ctx.tenantId,
+        method: "GET",
+        url: new URL(`${mock.baseUrl}/ping`),
+        headers: { '{"Accept"': '"application/json"}' },
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBeInstanceOf(HttpRequestInvalidError);
+  });
+
+  test("rejects non-string header values", async () => {
+    await expect(
+      executePlannedHttpRequest({
+        tenant_id: ctx.tenantId,
+        method: "GET",
+        url: new URL(`${mock.baseUrl}/ping`),
+        headers: { "X-Number": 42 as unknown as string },
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBeInstanceOf(HttpRequestInvalidError);
+  });
+});
+
+// resolveUrl — pure-function tests. No DB required.
+//
+// The key invariant: a base_url with a non-root pathname must not have
+// its path segment silently discarded when the caller passes a
+// leading-slash path. The URL spec's `new URL('/foo', base)` behaviour
+// strips the base pathname — we normalise this before delegating to the
+// constructor (see W3.6 fix comment in http.ts).
+describe("resolveUrl — base-path preservation", () => {
+  test("base with subpath + leading-slash path: appends to base path", () => {
+    // This is the A5 failure pattern: base "…/gmail/v1" + path "/users/me/messages"
+    // was resolving to "…/users/me/messages" (drops /gmail/v1) → 404.
+    const url = resolveUrl("https://api.example.com/v1", "/users/me");
+    expect(url.href).toBe("https://api.example.com/v1/users/me");
+  });
+
+  test("base with subpath + no-leading-slash path: appends correctly", () => {
+    // Already worked before the fix; confirm it still does.
+    const url = resolveUrl("https://api.example.com/v1", "users/me");
+    expect(url.href).toBe("https://api.example.com/v1/users/me");
+  });
+
+  test("base with subpath + trailing slash + leading-slash path: appends to base path", () => {
+    // Explicit trailing slash on base should still work.
+    const url = resolveUrl("https://api.example.com/v1/", "/users/me");
+    expect(url.href).toBe("https://api.example.com/v1/users/me");
+  });
+
+  test("base root path + leading-slash path: resolves from origin (unchanged behaviour)", () => {
+    // When base is root ("/"), the URL spec behaviour is correct:
+    // "/users/me" against "https://api.example.com/" → "https://api.example.com/users/me".
+    const url = resolveUrl("https://api.example.com", "/users/me");
+    expect(url.href).toBe("https://api.example.com/users/me");
+  });
+
+  test("absolute URL passthrough: base_url is ignored entirely", () => {
+    const url = resolveUrl("https://api.example.com/v1", "https://other.example.com/endpoint");
+    expect(url.href).toBe("https://other.example.com/endpoint");
+  });
+
+  test("deep subpath base + leading-slash path: appends, does not double-slash", () => {
+    const url = resolveUrl("https://api.example.com/gmail/v1", "/users/me/messages");
+    expect(url.href).toBe("https://api.example.com/gmail/v1/users/me/messages");
+  });
+
+  test("path that already includes the base prefix is NOT doubled (regression: get-last-3-gmail-messages)", () => {
+    // The author wrote the full "/gmail/v1/..." prefix relying on the old
+    // leading-slash-replaces-base behavior. The dedupe must collapse it to a
+    // single prefix instead of "/gmail/v1/gmail/v1/...".
+    expect(
+      resolveUrl("https://gmail.googleapis.com/gmail/v1", "/gmail/v1/users/me/messages").href,
+    ).toBe("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    expect(
+      resolveUrl("https://gmail.googleapis.com/gmail/v1", "gmail/v1/users/me/messages").href,
+    ).toBe("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    // Query string is preserved through the dedupe.
+    expect(resolveUrl("https://api.example.com/v1", "/v1/users?limit=3").href).toBe(
+      "https://api.example.com/v1/users?limit=3",
+    );
+  });
+
+  test("null base_url with non-absolute path throws descriptive error", () => {
+    expect(() => resolveUrl(null, "/users/me")).toThrow("no base_url");
+  });
+});
+
+// A failed HTTP probe must carry the upstream's own words — a
+// scrubbed `body_snippet` plus the allowlisted diagnostic
+// `response_headers` (www-authenticate kept, set-cookie dropped) — so
+// the operator/LLM reads the real cause instead of a bare status code.
+describe("probeHttpConnector failure diagnostics", () => {
+  test("403 fallback probe carries body_snippet and allowlisted response_headers", async () => {
+    const failingMock = await createMockServer((_req: IncomingMessage, res: ServerResponse) => {
+      res.statusCode = 403;
+      res.setHeader("content-type", "application/json");
+      res.setHeader("www-authenticate", 'Basic realm="restricted"');
+      res.setHeader("set-cookie", "session=top-secret");
+      res.end(JSON.stringify({ message: "Basic auth with password is not allowed" }));
+    });
+    try {
+      const conn = await createConnector(
+        {
+          tenant_id: ctx.tenantId,
+          input: {
+            name: "probe-diag-403",
+            driver: "http",
+            environment: "dev",
+            base_url: failingMock.baseUrl,
+            auth_type: "none",
+            config: {},
+          },
+          actor_id: null,
+        },
+        ctx.testDb.db,
+      );
+      const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
+      const probe = await probeHttpConnector({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        connector: fresh!,
+      });
+
+      expect(probe.ok).toBe(false);
+      expect(probe.status).toBe(403);
+      // Fallback GET / 403 classifies as scope_insufficient (no
+      // body-aware upgrade for this generic JSON error body).
+      expect(probe.error_code).toBe("scope_insufficient");
+      expect(probe.body_snippet).toContain("Basic auth with password is not allowed");
+      expect(probe.response_headers?.["www-authenticate"]).toBe('Basic realm="restricted"');
+      expect(probe.response_headers?.["set-cookie"]).toBeUndefined();
+    } finally {
+      await failingMock.close();
+    }
+  });
+});

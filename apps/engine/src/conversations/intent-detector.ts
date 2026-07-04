@@ -1,0 +1,197 @@
+// Detect explicit user intent from the latest user message so the
+// conversation loop can steer the LLM via `tool_choice` instead of
+// relying on `toolChoice="auto"` and hoping the model picks the right
+// tool. The screenshot bug where the assistant said "Der Workflow
+// filtert bereits korrekt" without ever running the workflow is
+// exactly the failure mode this guards against.
+//
+// The detector is intentionally conservative: it matches only strong
+// signals (explicit verbs like "ausführen" / "run" / "execute") so
+// false-positives don't hijack benign messages. When no strong signal
+// is present, the caller falls back to `toolChoice="auto"`.
+
+import { matchesWorkflowAuthoringPattern } from "./loop/authoring-intent.ts";
+import type { AuthoringSummary, ConversationPermissionMode } from "./types.ts";
+
+export interface DetectedIntent {
+  /** The tool the user most likely wants the model to call. Empty when
+   *  no strong intent was detected. */
+  forceTool?: string;
+  /**
+   * When true, the caller should detach the conversation from the
+   * currently selected saved workflow before authoring. This covers
+   * explicit "create a workflow" / "another workflow" phrasing so a
+   * fresh workflow draft does not inherit an old save target.
+   */
+  startNewWorkflow?: boolean;
+  /**
+   * When true, the caller should set `toolChoice: "none"` for the
+   * first LLM call of this turn. Matches enumeration phrasing where
+   * the TENANT SNAPSHOT block already has the answer; forcing
+   * no-tools is the only reliable way to stop Sonnet-class models
+   * from reflexively calling `list_workflows` even when the data is
+   * already in the prompt.
+   */
+  forceNoTools?: boolean;
+  /** Human-readable reason — useful for logs / telemetry. */
+  reason: string;
+}
+
+// Strong run-intent signals — both verb-anchored: an explicit execution verb
+// adjacent to a workflow/pipeline noun. A previous third pattern
+// (`/\bworkflow\s+.*\b(running|run)\b/i`) bridged "workflow" to "run" across an
+// arbitrary `.*` span, so it matched the NEGATION "workflow … do NOT run"
+// identically to a command — a core driver of the build-new hijack. It is
+// removed: the verb→noun matcher covers every genuine imperative, and the
+// execution-tool gate (default-deny, in authoring-palette.ts) is the structural
+// backstop rather than an ever-wider regex.
+const RUN_WORKFLOW_PATTERNS = [
+  /\b(führe|starte|run|execute|dispatch|trigger)\s.+?\b(workflow|tool|pipeline|aus)/i,
+  /\bausf[üu]hren\b/i,
+];
+
+// "neu(en|es|e) workflow" / "another workflow" / "new pipeline" —
+// noun-modifier-only phrases the canonical authoring detector
+// intentionally does NOT match (no authoring verb required, so it can
+// also fire on "I want a new workflow" without `build|create|...`).
+// Kept here as a supplemental signal alongside the canonical pattern
+// imported from `loop/authoring-intent.ts`.
+const NEW_WORKFLOW_MODIFIER_PATTERN =
+  /\b(neu(?:en|es|e)?|another|new)\b.{0,20}\b(workflows?|pipelines?)\b/i;
+
+/**
+ * Enumeration phrases — the TENANT SNAPSHOT already lists workflows,
+ * connectors, and executions. Forcing `list_workflows` here would mean
+ * the model had no chance to use the snapshot and would always spin
+ * list_* calls. Instead we only signal "answer from prompt" and let the
+ * caller pin toolChoice accordingly.
+ */
+// Enumeration patterns — only for resources covered by the TENANT
+// SNAPSHOT (workflows + connectors). Executions are intentionally
+// excluded because they are not in the snapshot and the model must
+// call list_executions to answer accurately.
+//
+// `integrations?` is kept here for USER UTTERANCES only: many users
+// still type "show my integrations" when they mean connectors. The
+// regex matches their intent so they hit the snapshot path; it does
+// NOT mean the entity is called "integration" anywhere in the
+// codebase — the domain term is "connector". Do NOT strip this in a
+// rename pass: it is the one place the legacy user-facing word is
+// deliberately matched, precisely to route it onto the connector path.
+const ENUMERATION_PATTERNS = [
+  /\b(welche|which|list|show|zeige?|gib|wieviele|how many|anzahl)\b.*\b(workflows?|connectors?|integrations?)\b/i,
+  /\b(workflows?|connectors?|integrations?)\b.*\b(habe ich|do i have|listen?|available|vorhanden|insgesamt)/i,
+];
+
+const COMMIT_DRAFT_PATTERNS = [
+  /\b(speichere|save|commit|persist|bewahre)\b.*\b(workflow|draft|änderungen?)/i,
+];
+
+// "Multi-artifact" intent — the user asked for BOTH a connector AND a
+// workflow in one breath ("create a connector and a workflow ..."). When
+// the harness auto-persists the connector, the model often emits a
+// "Now let's build the workflow" closing sentence and ends the turn,
+// leaving the user to retype "yes" to continue. The step-router uses
+// this signal to force tool-calling on the step right after a
+// successful save_connector_draft auto-persist so the model proceeds
+// instead of hanging on the promise.
+const MULTI_ARTIFACT_PATTERNS = [
+  /\bconnectors?\b.{0,80}\b(and|und|plus|sowie|together with)\b.{0,40}\bworkflows?\b/i,
+  /\bworkflows?\b.{0,80}\b(and|und|plus|sowie|together with)\b.{0,40}\bconnectors?\b/i,
+];
+
+export function detectMultiArtifactIntent(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return MULTI_ARTIFACT_PATTERNS.some((p) => p.test(trimmed));
+}
+
+/** Parse the most recent user text for a strong tool intent. Returns
+ *  a bare reason when no forceTool match was found. */
+export function detectUserIntent(latestUserText: string | null | undefined): DetectedIntent {
+  if (!latestUserText) return { reason: "no_user_text" };
+  const text = latestUserText.trim();
+  if (!text) return { reason: "empty_user_text" };
+
+  // Compute the authoring signal up front so a co-present build-new request can
+  // never be overridden by an ambiguous run token. The canonical authoring
+  // pattern from `loop/authoring-intent.ts` keeps verbs + tightening (proximity
+  // window, connector-object reject) in one place; the supplemental modifier
+  // pattern still fires for noun-modifier phrasings without an authoring verb.
+  const authoringSignal =
+    matchesWorkflowAuthoringPattern(text) || NEW_WORKFLOW_MODIFIER_PATTERN.test(text);
+  for (const pattern of RUN_WORKFLOW_PATTERNS) {
+    if (pattern.test(text)) {
+      // A co-present build-new signal means the matched "run" is part of an
+      // authoring request — typically a NEGATED "do NOT run the existing one"
+      // or a descriptive mention, not a command. Authoring wins; run-intent is
+      // not promoted to a forced tool. (When NO signal is present the
+      // execution-tool gate still default-denies a lookalike run.)
+      if (authoringSignal) {
+        return { startNewWorkflow: true, reason: "authoring_intent_over_ambiguous_run" };
+      }
+      return { forceTool: "run_workflow", reason: "explicit_run_intent" };
+    }
+  }
+  if (authoringSignal) {
+    return { startNewWorkflow: true, reason: "explicit_new_workflow_intent" };
+  }
+  for (const pattern of ENUMERATION_PATTERNS) {
+    if (pattern.test(text)) {
+      return { forceNoTools: true, reason: "enumeration_answer_from_snapshot" };
+    }
+  }
+  for (const pattern of COMMIT_DRAFT_PATTERNS) {
+    if (pattern.test(text)) {
+      return { forceTool: "save_workflow_draft", reason: "explicit_commit_intent" };
+    }
+  }
+
+  return { reason: "no_strong_intent" };
+}
+
+/** Envelope-resolver: when a pending confirm is open, parse the user's
+ *  reply as an approval or rejection so "approve" / "reject" typed in
+ *  chat auto-resolves the dialog instead of opening a fresh LLM turn.
+ *
+ *  Returns null when the text does not match a resolution verb — the
+ *  envelope stays open and the next LLM turn runs normally. */
+export type EnvelopeResolution = "approve" | "reject" | null;
+
+const APPROVE_PATTERNS = [
+  /^(approve|ok|okay|yes|ja|yep|yeah|sure|bestätigt?|bestätige|freigegeben|freigabe|confirm)\b/i,
+  /^(ausführen|run it|execute|mach|los)\b/i,
+];
+
+const REJECT_PATTERNS = [/^(reject|no|nein|cancel|abbrechen|stop|halt|nicht|skip)\b/i];
+
+export function detectEnvelopeResolution(userText: string | null | undefined): EnvelopeResolution {
+  if (!userText) return null;
+  const text = userText.trim();
+  if (!text) return null;
+  if (text.length > 60) return null; // a long message is not a one-word ack
+  for (const p of APPROVE_PATTERNS) if (p.test(text)) return "approve";
+  for (const p of REJECT_PATTERNS) if (p.test(text)) return "reject";
+  return null;
+}
+
+/**
+ * State-driven follow-up intent for ready save paths. In auto mode a
+ * short approval like "yes" should reuse the draft's structured next
+ * tool instead of relying on the model to remember which save action
+ * it just offered.
+ */
+export function inferStateDrivenFollowUpTool(params: {
+  latestUserText: string | null | undefined;
+  permission_mode: ConversationPermissionMode | null;
+  summary: AuthoringSummary | null | undefined;
+}): string | null {
+  if (params.permission_mode !== "auto") return null;
+  if (detectEnvelopeResolution(params.latestUserText) !== "approve") return null;
+  const suggested = params.summary?.next_suggested_tool ?? null;
+  if (suggested === "save_workflow_draft" || suggested === "save_connector_draft") {
+    return suggested;
+  }
+  return null;
+}

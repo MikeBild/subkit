@@ -1,0 +1,8 @@
+{
+  "name": "cache-stability",
+  "description": "Per-turn quirk-category swaps must NOT change the stable cache prefix. The recipe-roster block is rendered from the immutable template_snapshot.recipes (stable); the quirks block lives in the stable head with category swaps appended outside, so the cache key for skills+docs+recipes stays identical across turns.",
+  "flow": "converse",
+  "input": {
+    "stable_head": "# Skill: subkit-concepts (global)\nbody-1\n\n# Available recipes — connector `stripe`\n- `list-customers` — List recent Stripe customers — keywords: list customers"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "client": "codex",
+  "verified_at": "2026-04-20",
+  "transports": ["streamable-http", "stdio"],
+  "config_path_hints": [
+    "Codex Settings → MCP Servers (UI)",
+    "$XDG_CONFIG_HOME/codex/config.toml (advanced)"
+  ],
+  "config_template_streamable_http": {
+    "mcpServers": {
+      "subkit": {
+        "url": "${engine_url}/mcp",
+        "transport": "streamable-http",
+        "headers": {
+          "Authorization": "Bearer ${plaintext_key}"
+        }
+      }
+    }
+  },
+  "config_template_stdio": {
+    "mcpServers": {
+      "subkit": {
+        "command": "sk",
+        "args": ["mcp"]
+      }
+    }
+  },
+  "notes": "Streamable HTTP is the recommended transport. The stdio path requires `sk login` on the local machine first; the proxy reads SUBKIT_API_KEY / SUBKIT_ENGINE_URL / ~/.sk/config.json."
+}

@@ -1,0 +1,249 @@
+{
+  "log": {
+    "level": "info",
+    "format": "ndjson"
+  },
+  "server": {
+    "port": 3000,
+    "public_base_url": ""
+  },
+  "database": {
+    "url": "postgresql://USER:PASSWORD@localhost:5432/subkit"
+  },
+  "llm": {
+    "provider": "mock",
+    "model": "",
+    "api_key": "",
+    "fallback_provider": null,
+    "fallback_model": "",
+    "summarize_provider": null,
+    "summarize_model": "",
+    "context_1m": false,
+    "web_search": true,
+    "output_guard": "soft",
+    "providers": {
+      "anthropic": {
+        "api_key": "",
+        "model": "",
+        "base_url": ""
+      },
+      "openai": {
+        "api_key": "",
+        "model": "",
+        "base_url": ""
+      },
+      "gemini": {
+        "api_key": "",
+        "model": "",
+        "base_url": ""
+      },
+      "azure": {
+        "api_key": "",
+        "model": "",
+        "base_url": "",
+        "resource_name": "",
+        "api_version": "",
+        "use_deployment_based_urls": false
+      },
+      "bedrock": {
+        "model": "",
+        "region": "",
+        "access_key_id": "",
+        "secret_access_key": "",
+        "session_token": "",
+        "base_url": ""
+      },
+      "vertex": {
+        "api_key": "",
+        "model": "",
+        "project": "",
+        "location": "",
+        "client_email": "",
+        "private_key": "",
+        "google_application_credentials": ""
+      },
+      "ai_gateway": {
+        "api_key": "",
+        "model": ""
+      }
+    },
+    "critic": {
+      "enabled": false,
+      "min_steps": 3,
+      "max_consecutive_rejections": 3
+    }
+  },
+  "auth": {
+    "provider": "subkit",
+    "oidc": {
+      "issuer_url": "",
+      "client_id": "",
+      "client_secret": "",
+      "redirect_uri": ""
+    },
+    "session": {
+      "secret": ""
+    },
+    "firebase": {
+      "project_id": "",
+      "login_url": "",
+      "tenant_slug": "default"
+    },
+    "mcp_oauth": {
+      "enabled": true,
+      "dynamic_registration_enabled": true,
+      "access_token_ttl_seconds": 3600,
+      "refresh_token_ttl_seconds": 2592000,
+      "authorization_code_ttl_seconds": 60,
+      "scopes_supported": ["mcp:read", "mcp:authoring", "mcp:admin"]
+    }
+  },
+  "platform": {
+    "slack": {
+      "signing_secret": "",
+      "client_id": "",
+      "client_secret": ""
+    },
+    "teams": {
+      "app_id": "",
+      "app_password": ""
+    },
+    "googlechat": {
+      "project_id": "",
+      "client_email": "",
+      "private_key": "",
+      "audience": ""
+    }
+  },
+  "storage": {
+    "s3": {
+      "endpoint": "",
+      "access_key": "",
+      "secret_key": ""
+    },
+    "files": {
+      "backend": "local",
+      "dir": "",
+      "bucket": ""
+    },
+    "offload": {
+      "bucket": "",
+      "region": "",
+      "access_key": "",
+      "secret_key": "",
+      "endpoint": "",
+      "key_prefix": "offload"
+    }
+  },
+  "observability": {
+    "langfuse": {
+      "host": "",
+      "public_key": "",
+      "secret_key": ""
+    },
+    "otlp": {
+      "endpoint": "",
+      "service_name": "subkit"
+    },
+    "analytics": {
+      "enabled": false,
+      "endpoint": "",
+      "api_key": "",
+      "project": ""
+    },
+    "field_truncation_chars": 2048,
+    "predictive": {
+      "pool_saturation_pct": 80,
+      "dlq_critical_depth": 5,
+      "transient_retry_rate": 1,
+      "memory_cap_fraction": 0.9,
+      "connector_unhealthy_pct": 80,
+      "llm_fallback_pct": 80
+    }
+  },
+  "egress": {
+    "mode": null,
+    "provider_hosts_extra": []
+  },
+  "mcp": {
+    "api_key": "",
+    "read_only": false,
+    "servers": [],
+    "client": {
+      "per_server_manifest_byte_cap": 30000,
+      "remote_tool_call_timeout_ms": 30000
+    }
+  },
+  "errors": {
+    "ring_size": 100
+  },
+  "spec": {
+    "allow_private_fetch": false
+  },
+  "queue": {
+    "concurrency": 8
+  },
+  "tokens": {
+    "monthly_budget": 0
+  },
+  "sandbox": {
+    "memory_bytes": 134217728,
+    "tick_budget": 10000000,
+    "wall_ms": 30000,
+    "stack_bytes": 2097152,
+    "transform_wall_ms": 60000
+  },
+  "repl": {
+    "permissionMode": "ask",
+    "portalTokenTtlMin": 15
+  },
+  "ui": {
+    "theme": "auto",
+    "personality": "balanced",
+    "title": {
+      "format": "session-id"
+    },
+    "statusline": {
+      "format": "compact"
+    }
+  },
+  "notifications": {
+    "push": {
+      "enabled": false,
+      "thresholdSec": 30,
+      "quietHoursStart": "",
+      "quietHoursEnd": ""
+    }
+  },
+  "connectors": {
+    "web_scraper": {
+      "runtime": {
+        "respect_robots": true,
+        "user_agent": "sk-web-scraper/1.0 (+https://subkit.io/bot)",
+        "max_pages": 1000,
+        "max_chars_readability": 100000,
+        "max_chars_markdown": 100000,
+        "default_wait_ms": 0
+      },
+      "robots_cache": {
+        "ttl_ms": 3600000,
+        "max_entries": 2000
+      },
+      "authoring": {
+        "yellow_sitemap_threshold": 10000,
+        "red_sitemap_threshold": 100000,
+        "extract_too_large_yellow_pct": 30
+      },
+      "optimization": {
+        "scan_cron": "0 3 * * *",
+        "sample_size": 10,
+        "trivial_markdown_bytes": 512,
+        "min_runs_before_proposing": 3
+      }
+    },
+    "http": {
+      "max_response_bytes": 104857600
+    }
+  },
+  "tenants": {}
+}

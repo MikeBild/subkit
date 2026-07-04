@@ -1,0 +1,12 @@
+{
+  "name": "convo-workflow-rerun-stays-chat-native",
+  "description": "A saved workflow that just ran stays runnable in chat and the structured abstention tool keeps follow-ups on the conversation surface.",
+  "flow": "converse",
+  "input": {
+    "workflow_id": "wf-1",
+    "workflow_version_id": "wfver-1",
+    "execution_id": "exec-1",
+    "slug": "berlin-weather",
+    "name": "Berlin Weather"
+  }
+}

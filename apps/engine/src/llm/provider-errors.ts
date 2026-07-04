@@ -1,0 +1,128 @@
+import type { SubkitProviderErrorKind } from "./core/base-types.ts";
+import { LlmProviderError } from "./errors.ts";
+
+const QUOTA_PATTERNS = [
+  "usage limit",
+  "usage limits",
+  "specified api usage limits",
+  "insufficient_quota",
+  "quota exceeded",
+  "quota exhausted",
+  "credit balance",
+  "billing hard limit",
+  "monthly spend limit",
+  "limit reached",
+] as const;
+
+const NETWORK_PATTERNS = [
+  "overloaded",
+  "service unavailable",
+  "timeout",
+  "econnrefused",
+  "etimedout",
+  "rate limit",
+  "temporarily unavailable",
+  "internal server error",
+  "503",
+  "500",
+  "502",
+  "504",
+  "529",
+  "context_length",
+  "too many tokens",
+] as const;
+
+function readErrorParts(err: unknown): { statusCode: number | null; message: string } {
+  const anyErr = err as { statusCode?: number; status?: number; message?: string } | undefined;
+  const statusCode =
+    typeof anyErr?.statusCode === "number"
+      ? anyErr.statusCode
+      : typeof anyErr?.status === "number"
+        ? anyErr.status
+        : null;
+  const message = (anyErr?.message ?? String(err ?? "")).toLowerCase();
+  return { statusCode, message };
+}
+
+export function classifyProviderError(err: unknown): SubkitProviderErrorKind {
+  const { statusCode, message } = readErrorParts(err);
+
+  if (message.includes("context_length") || message.includes("too many tokens")) {
+    return "context_length_exceeded";
+  }
+  if (QUOTA_PATTERNS.some((pattern) => message.includes(pattern))) {
+    return "quota_exhausted";
+  }
+  if (statusCode === 429 || message.includes("rate limit")) return "rate_limit";
+  if (message.includes("overloaded") || statusCode === 529) return "overloaded";
+  if (message.includes("timeout") || message.includes("etimedout")) return "timeout";
+  if (statusCode !== null && (statusCode >= 500 || statusCode === 503)) return "network_5xx";
+  if (NETWORK_PATTERNS.some((pattern) => message.includes(pattern))) return "network_5xx";
+  return "other";
+}
+
+export function isFallbackEligible(err: unknown): boolean {
+  const kind = classifyProviderError(err);
+  return (
+    kind === "rate_limit" ||
+    kind === "quota_exhausted" ||
+    kind === "overloaded" ||
+    kind === "context_length_exceeded" ||
+    kind === "network_5xx" ||
+    kind === "timeout"
+  );
+}
+
+function parseRetryAt(message: string): string | null {
+  const regainAccessUtc = /regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) utc/i.exec(
+    message,
+  );
+  if (regainAccessUtc?.[1] && regainAccessUtc[2]) {
+    return new Date(`${regainAccessUtc[1]}T${regainAccessUtc[2]}:00.000Z`).toISOString();
+  }
+  const regainAccess = /regain access on ([^.]+)/i.exec(message);
+  if (regainAccess?.[1]) {
+    const retryAt = regainAccess[1].trim();
+    const parsed = new Date(retryAt);
+    return Number.isNaN(parsed.getTime()) ? retryAt : parsed.toISOString();
+  }
+  const retryAfter = /retry after ([^.]+)/i.exec(message);
+  if (retryAfter?.[1]) {
+    const retryAt = retryAfter[1].trim();
+    const parsed = new Date(retryAt);
+    return Number.isNaN(parsed.getTime()) ? retryAt : parsed.toISOString();
+  }
+  return null;
+}
+
+export function buildProviderErrorDetails(err: unknown): Record<string, unknown> | undefined {
+  const anyErr = err as { statusCode?: number; status?: number; message?: string } | undefined;
+  const statusCode =
+    typeof anyErr?.statusCode === "number"
+      ? anyErr.statusCode
+      : typeof anyErr?.status === "number"
+        ? anyErr.status
+        : null;
+  const message = anyErr?.message ?? (err instanceof Error ? err.message : String(err));
+  const retryAt = parseRetryAt(message);
+  const details: Record<string, unknown> = {};
+  if (statusCode !== null) details.upstream_status = statusCode;
+  if (retryAt) details.retry_at = retryAt;
+  return Object.keys(details).length > 0 ? details : undefined;
+}
+
+export function toLlmProviderError(err: unknown): LlmProviderError {
+  const kind = classifyProviderError(err);
+  const message = err instanceof Error ? err.message : String(err);
+  const mappedKind =
+    kind === "rate_limit"
+      ? "rate_limit"
+      : kind === "quota_exhausted"
+        ? "quota_exhausted"
+        : kind === "overloaded"
+          ? "overloaded"
+          : kind === "context_length_exceeded"
+            ? "context_length_exceeded"
+            : "other";
+  return new LlmProviderError(mappedKind, message, buildProviderErrorDetails(err));
+}

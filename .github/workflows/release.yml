@@ -1,0 +1,520 @@
+name: release
+
+on:
+  # Triggered by `git push origin <tag>` — releases are cut by hand:
+  # bump the version, tag `v<version>`, and push the tag. This workflow
+  # then builds the binaries, publishes the GitHub Release, and pushes
+  # the Docker image.
+  #
+  # We intentionally do NOT listen on `release: published` — a single tag
+  # push must fan out exactly once.
+  push:
+    tags: ['v*.*.*']
+  # Manual recovery — two modes:
+  #   1. `gh workflow run release.yml --ref <tag>` — dispatch IS the tag;
+  #      github.ref becomes the tag ref and the workflow runs as if the
+  #      tag were just pushed. Uses the workflow file AT THAT TAG.
+  #   2. `gh workflow run release.yml --ref main -f tag=<tag>` — runs
+  #      the CURRENT main's workflow file but checks out `<tag>` for the
+  #      build + attaches assets to that tag's release. Use this when a
+  #      past tag's workflow file is broken (e.g. stuck macos-13 runners)
+  #      and you need main's fixes.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build+release against (leave blank to use github.ref)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  # `gh run download` in publish-release reads artifacts produced by
+  # earlier jobs of the same run — requires `actions: read`.
+  # The `gate` job dispatches ci.yml when no green run exists for the
+  # release SHA (`gh workflow run`); that needs `actions: write`. Without
+  # it the dispatch fails with HTTP 403 (Resource not accessible by
+  # integration) and the gate times out — releases stall even when
+  # ci.yml would have passed.
+  actions: write
+  # `docker-publish` pushes the image to GHCR using GITHUB_TOKEN.
+  packages: write
+
+# Prevent two runs for the same tag (e.g. a tag push plus a manual
+# workflow_dispatch) from building + publishing the same release assets
+# concurrently. Per-tag group — different versions may build in parallel.
+# NOTE: docker-publish mutates the shared `:latest` tag. Two different
+# versions releasing at once is last-write-wins on `:latest`; if that ever
+# matters (or a new step mutates other shared state), tighten this back to
+# a single global group.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The release gate is the SAME `ci.yml / build` job that protects `main`.
+  # We don't duplicate steps here. Two paths:
+  #
+  #  1. Tag points at a SHA that already has a green `ci / build` run →
+  #     skip the gate, save ~7 min per release.
+  #  2. Tag points at a SHA without a green run (e.g. retag, manual
+  #     dispatch with --ref main while ci is mid-flight) → invoke the
+  #     full ci.yml workflow on that SHA via `gh workflow run` and wait
+  #     on it.
+  gate:
+    name: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - name: Resolve tag SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require green ci.yml on this SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          # GitHub's `gh workflow run --ref` requires a branch or tag
+          # name; raw SHAs return HTTP 422 "No ref found". Pass the tag
+          # we're releasing (the workflow_dispatch ref or the inputs.tag
+          # override) so the dispatch resolves correctly.
+          DISPATCH_REF: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # A release tag is pushed alongside its `main` commit, so a
+          # ci.yml run for this exact SHA is normally ALREADY running
+          # (triggered by the `main` push). Wait for whatever ci.yml run
+          # exists on this SHA — only dispatch one if none exists at all.
+          # Previously this step always dispatched a fresh run and waited
+          # 30 min; ci.yml itself takes ~30+ min, so the wait timed out
+          # and failed the release even though ci.yml went green. The
+          # 100-min budget below comfortably exceeds ci.yml's runtime
+          # (the full suite grew past 45 min — releases 6.13.5-6.13.8 all
+          # timed out here while ci itself went on to succeed).
+          # `|| echo ""` — the step runs under `bash -e`, so a single
+          # transient GitHub API hiccup inside the polling loop would
+          # otherwise kill the whole gate (v6.15.1: one `dial tcp …
+          # i/o timeout` failed the release while ci.yml went green).
+          # An empty row is already handled by the callers as "not
+          # registered yet — keep polling".
+          latest_run() {
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow ci.yml \
+              --commit "$SHA" \
+              --limit 1 \
+              --json conclusion,status \
+              --jq '.[0] // ""' 2>/dev/null || echo ""
+          }
+          # Poll for the push-triggered ci.yml run to register instead
+          # of a fixed `sleep 30`. The push trigger usually fires within
+          # a few seconds, but a slow webhook can take longer — a fixed
+          # window either wastes time or dispatches a redundant run. Poll
+          # every 6s for up to 60s; proceed to the wait loop as soon as a
+          # run appears. Only if none has registered after the full poll
+          # budget do we dispatch one ourselves.
+          found=""
+          poll_deadline=$(( $(date +%s) + 60 ))
+          while [ "$(date +%s)" -lt "$poll_deadline" ]; do
+            if [ -n "$(latest_run)" ]; then
+              found="yes"
+              break
+            fi
+            sleep 6
+          done
+          if [ -z "$found" ]; then
+            echo "No ci.yml run for $SHA after 60s — dispatching one against ref=$DISPATCH_REF."
+            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$DISPATCH_REF"
+          else
+            echo "Found an existing ci.yml run for $SHA — waiting for it."
+          fi
+          # Wait up to 100 min for the ci.yml run on this SHA to complete.
+          deadline=$(( $(date +%s) + 6000 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            sleep 30
+            row=$(latest_run)
+            if [ -z "$row" ] || [ "$row" = "null" ]; then continue; fi
+            st=$(echo "$row" | jq -r '.status')
+            if [ "$st" = "completed" ]; then
+              cc=$(echo "$row" | jq -r '.conclusion')
+              if [ "$cc" = "success" ]; then
+                echo "ci.yml run for $SHA completed: success — gate passes."
+                exit 0
+              fi
+              echo "ci.yml run for $SHA completed: $cc — failing release gate."
+              exit 1
+            fi
+          done
+          echo "Timed out (100 min) waiting for ci.yml run on $SHA."
+          exit 1
+
+  # ── Multi-platform CLI binaries ──
+
+  build-cli-binaries:
+    name: build ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
+    needs: gate
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Using `include` only (no base dimensions) so every listed
+        # combination produces exactly one job. A previous base
+        # `binary: [...]` dimension made GitHub Actions merge each
+        # base entry with the LAST matching include, silently dropping
+        # every non-windows build. See git log for the fix.
+        include:
+          # darwin-arm64
+          - binary: sk
+            os: darwin
+            arch: arm64
+            runner: macos-14
+            target: ""
+            entry: apps/sk/src/index.ts
+          - binary: engine
+            os: darwin
+            arch: arm64
+            runner: macos-14
+            target: ""
+            entry: apps/engine/src/index.ts
+          # darwin-x64 (cross-compiled from macos-14 arm64; macos-13
+          # runners queue for 20+ min and are slated for GitHub
+          # deprecation. Ad-hoc codesign (`--sign -`) works cross-arch.)
+          - binary: sk
+            os: darwin
+            arch: x64
+            runner: macos-14
+            target: bun-darwin-x64
+            entry: apps/sk/src/index.ts
+          - binary: engine
+            os: darwin
+            arch: x64
+            runner: macos-14
+            target: bun-darwin-x64
+            entry: apps/engine/src/index.ts
+          # linux-x64
+          - binary: sk
+            os: linux
+            arch: x64
+            runner: ubuntu-latest
+            target: ""
+            entry: apps/sk/src/index.ts
+          - binary: engine
+            os: linux
+            arch: x64
+            runner: ubuntu-latest
+            target: ""
+            entry: apps/engine/src/index.ts
+          # linux-arm64 (cross-compiled from x64)
+          - binary: sk
+            os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: bun-linux-arm64
+            entry: apps/sk/src/index.ts
+          - binary: engine
+            os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: bun-linux-arm64
+            entry: apps/engine/src/index.ts
+          # windows-x64 (cross-compiled from linux-x64 — windows-latest
+          # runners spend 5–8 min per binary on NTFS small-file I/O +
+          # Defender scanning during `bun install` and `bun build
+          # --compile`. Cross-compile stamps the same Bun-windows runtime
+          # in ~30 s on a Linux runner.)
+          - binary: sk
+            os: windows
+            arch: x64
+            runner: ubuntu-latest
+            target: bun-windows-x64
+            entry: apps/sk/src/index.ts
+          - binary: engine
+            os: windows
+            arch: x64
+            runner: ubuntu-latest
+            target: bun-windows-x64
+            entry: apps/engine/src/index.ts
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # See bun-version comment in the `test` job above.
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      # Cache the embedded-embedding model so each engine matrix build
+      # doesn't re-download ~146 MB from the HuggingFace CDN. Keyed on the
+      # fetch script (pins the model id) + os/arch. No-op for the sk binary.
+      - name: Cache embedding assets
+        uses: actions/cache@v5
+        with:
+          path: apps/engine/assets/embeddings
+          key: ${{ runner.os }}-${{ matrix.arch }}-embed-assets-${{ hashFiles('scripts/fetch-embedding-assets.ts') }}
+      - run: bun install --frozen-lockfile
+
+      - name: Compile binary
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
+        run: |
+          VERSION="${RELEASE_REF#v}"
+          EXT=""
+          TARGET_FLAG=""
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            EXT=".exe"
+          fi
+          if [ -n "${{ matrix.target }}" ]; then
+            TARGET_FLAG="--target=${{ matrix.target }}"
+          fi
+          OUT="${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
+          mkdir -p dist
+          # ssh2's OPTIONAL cpu-features native addon is installed on Linux
+          # but never compiled, and bun build --compile cannot bundle the
+          # missing .node (it is simply absent on macOS). Strip it before the
+          # compile — mirrors package.json build:engine + the Dockerfile.
+          rm -rf node_modules/cpu-features
+          # The engine binary inlines the embedding model + tokenizer +
+          # onnxruntime-web WASM (see embedded-assets.ts); fetch them before
+          # the compile, exactly as package.json build:engine does. Skipped
+          # for the sk binary, which embeds nothing.
+          if [ "${{ matrix.binary }}" = "engine" ]; then
+            bun scripts/fetch-embedding-assets.ts
+          fi
+          # Identity-define NODE_ENV so the bundler does NOT inline its
+          # build-time value ("development" on a bare runner) into the
+          # binary — every runtime NODE_ENV gate (devtools wrap, egress
+          # guard strictness, OIDC Secure cookies) must stay runtime-
+          # resolved. See the same define in package.json build:* scripts.
+          bun build "${{ matrix.entry }}" \
+            --compile \
+            $TARGET_FLAG \
+            --define "process.env.NODE_ENV=process.env.NODE_ENV" \
+            --define "BUILD_VERSION=\"$VERSION\"" \
+            --outfile "dist/$OUT"
+
+      - name: macOS codesign
+        if: matrix.os == 'darwin'
+        run: |
+          BINARY="dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}"
+          codesign --remove-signature "$BINARY" 2>/dev/null || true
+          codesign --sign - --force "$BINARY"
+
+      # Smoke-test the native binary. Cross-targets (matrix.target != "")
+      # can't be executed on this runner, so they remain un-smoked — the
+      # un-pinned attack surface that justifies this step is "did
+      # `bun build --compile` produce a runnable binary on the runner's own
+      # arch", not "does the cross-compiled artifact work".
+      - name: Smoke native binary
+        if: matrix.target == ''
+        shell: bash
+        run: |
+          set -eux
+          BINARY="dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}"
+          if [ "${{ matrix.binary }}" = "engine" ]; then
+            "$BINARY" --smoke
+          else
+            "$BINARY" --version
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}
+          path: dist/${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${{ matrix.os == 'windows' && '.exe' || '' }}
+          # Intermediate hand-off to publish-release; the binaries also become
+          # Release assets, so keep the artifacts around for the shortest time.
+          retention-days: 1
+
+  # ── Publish GitHub Release with all binaries + checksums ──
+
+  publish-release:
+    name: publish-release
+    needs: build-cli-binaries
+    # Publish when we have a tag context — either a tag-ref trigger
+    # (push/release events) or a workflow_dispatch with inputs.tag set.
+    # Skips for branch-only dispatches that are validating the build
+    # matrix.
+    if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      # actions/download-artifact@v4 reliably fails when pulling 20+
+      # artifacts in parallel ("Artifact download failed after 5
+      # retries" — Azure blob transient). Iterate via `gh run download`
+      # with per-artifact retries instead.
+      - name: Download all artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          for binary in sk engine; do
+            for os in darwin linux windows; do
+              for arch in x64 arm64; do
+                if [ "$os" = "windows" ] && [ "$arch" = "arm64" ]; then continue; fi
+                name="${binary}_${os}_${arch}"
+                for attempt in 1 2 3 4 5; do
+                  if gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n "$name" --dir "artifacts/$name" 2>&1; then
+                    break
+                  fi
+                  if [ "$attempt" -eq 5 ]; then
+                    echo "FATAL: failed to download $name after 5 attempts"
+                    exit 1
+                  fi
+                  echo "retry $attempt for $name"
+                  sleep $((attempt * 5))
+                done
+              done
+            done
+          done
+          find artifacts -type f | sort
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          # Write to a temp file then move so the pipeline never reads and writes
+          # SHA256SUMS at once (atomic; silences shellcheck SC2094).
+          find . -type f ! -name SHA256SUMS | sort | while read -r f; do
+            sha256sum "$f" | sed 's|  \./[^/]*/||'
+          done > SHA256SUMS.tmp
+          mv SHA256SUMS.tmp SHA256SUMS
+          cat SHA256SUMS
+
+      # Sign the SHA256SUMS file with the project's
+      # Ed25519 release key. `updater.ts::performUpdate` refuses to
+      # install any binary whose SHA256SUMS does not validate against
+      # the embedded `RELEASE_PUBLIC_KEY`. Signature is uploaded as the
+      # `SHA256SUMS.sig` release asset alongside the sums file.
+      - name: Sign SHA256SUMS (Ed25519)
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_SIGNING_KEY:-}" ]; then
+            echo "FATAL: RELEASE_SIGNING_KEY secret is not set — refusing to publish an unsigned release."
+            exit 1
+          fi
+          # Stash the PEM-encoded private key into a tmpfile so openssl
+          # can read it; tmpfile is in the runner's ephemeral storage
+          # and is gone with the runner.
+          tmpkey=$(mktemp)
+          trap 'rm -f "$tmpkey"' EXIT
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$tmpkey"
+          openssl pkeyutl -sign -inkey "$tmpkey" -rawin -in artifacts/SHA256SUMS -out artifacts/SHA256SUMS.sig
+          ls -la artifacts/SHA256SUMS artifacts/SHA256SUMS.sig
+
+      - name: Generate SBOM (CycloneDX)
+        # Pinned to a commit SHA, not @v0, because anchore frequently
+        # republishes major-tagged actions with breaking changes. To
+        # update: pick the latest sha at https://github.com/anchore/sbom-action
+        # and re-pin here.
+        uses: anchore/sbom-action@7ccf588e3cf3cc2611714c2eeae48550fbc17552 # v0.20.4
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: artifacts/sbom.cdx.json
+          # Don't auto-attach to the GitHub Release here; we batch the
+          # whole upload in the next step so the SHA256SUMS line covers
+          # the SBOM too.
+          upload-release-assets: false
+          upload-artifact: false
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: |
+            artifacts/*/sk_*
+            artifacts/*/engine_*
+            artifacts/SHA256SUMS
+            artifacts/SHA256SUMS.sig
+            artifacts/sbom.cdx.json
+
+  # ── Publish the all-in-one Docker image (public) to GHCR + Docker Hub ──
+  # Mirrors scripts/docker-publish.sh (multi-arch, :version + :latest) but
+  # builds once and pushes to both registries via build-push-action.
+  docker-publish:
+    name: docker-publish
+    needs: gate
+    if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.tag != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Resolve version
+        id: meta
+        env:
+          RELEASE_REF: ${{ inputs.tag || github.ref_name }}
+        run: |
+          V="${RELEASE_REF#v}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build + push (amd64 + arm64) to both registries
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            ENGINE_VERSION=${{ steps.meta.outputs.version }}
+          tags: |
+            ghcr.io/mikebild/subkit:${{ steps.meta.outputs.version }}
+            ghcr.io/mikebild/subkit:latest
+            docker.io/mikebild/subkit:${{ steps.meta.outputs.version }}
+            docker.io/mikebild/subkit:latest
+
+  # ── Optional deploy hook ──
+  # Event-driven deploy trigger: once the GitHub Release assets exist, fire a
+  # repository_dispatch (`deploy-release`) at an operator-owned deployment
+  # repo so it can roll hosts to this version within seconds (a schedule poll
+  # would sit on GitHub's throttled cron for up to an hour).
+  # Opt-in via TWO repo settings; forks and plain clones no-op harmlessly:
+  #   * repository VARIABLE `DEPLOY_DISPATCH_REPO` — the target repo
+  #     ("owner/name") that listens for the dispatch.
+  #   * secret `DEPLOY_DISPATCH_TOKEN` — a PAT with write access to that repo
+  #     (the default GITHUB_TOKEN cannot dispatch cross-repo).
+  notify-deploy:
+    name: notify-deploy
+    needs: publish-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch deploy-release to the deployment repo
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_DISPATCH_TOKEN }}
+          DEPLOY_REPO: ${{ vars.DEPLOY_DISPATCH_REPO }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ] || [ -z "${DEPLOY_REPO:-}" ]; then
+            echo "DEPLOY_DISPATCH_REPO / DEPLOY_DISPATCH_TOKEN not set — skipping deploy dispatch (configure both to enable auto-deploy)"
+            exit 0
+          fi
+          # TAG is this release's own tag — trusted, but passed via env and a
+          # printf format arg (never interpolated into the shell). DEPLOY_REPO
+          # is an operator-set repo variable, validated to an owner/name shape.
+          echo "$DEPLOY_REPO" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' \
+            || { echo "DEPLOY_DISPATCH_REPO '$DEPLOY_REPO' is not owner/name — refusing" >&2; exit 1; }
+          printf '{"event_type":"deploy-release","client_payload":{"ref":"%s"}}' "$TAG" \
+            | gh api -X POST "repos/$DEPLOY_REPO/dispatches" --input -
+          echo "dispatched deploy-release ref=$TAG to $DEPLOY_REPO"
