@@ -14,6 +14,10 @@ jobs:
   # produces a `lint` check-run that branch protection won't see, blocking
   # all merges with a phantom missing required check.
   commitlint:
+    # Dependabot titles are conventional already; its auto-generated PR
+    # bodies blow the body-max-line-length rule with changelog tables.
+    # A skipped job still satisfies the required check, so protection holds.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
