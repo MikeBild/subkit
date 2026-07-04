@@ -1,0 +1,12 @@
+{
+  "name": "convo-new-workflow-intent-detaches-target",
+  "description": "An explicit request to create a new workflow detaches the conversation from the previously selected saved workflow before the next authoring move.",
+  "flow": "converse",
+  "input": {
+    "user_message": "create a workflow that gives me my private repos",
+    "workflow_id": "wf-1",
+    "workflow_version_id": "wfv-1",
+    "slug": "berlin-weather",
+    "name": "Berlin Weather"
+  }
+}

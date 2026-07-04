@@ -1,0 +1,70 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.11/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/docs",
+      "!**/.github",
+      "!**/.claude/worktrees",
+      "!**/.claude/workflows",
+      "!**/bun.lock",
+      "!**/bun.lockb",
+      "!packages/cli-core/src/engine-api/openapi.d.ts",
+      "!packages/cli-core/src/engine-api/openapi.json",
+      "!apps/engine/src/db/migrations/embedded.ts",
+      "!apps/engine/eval/out"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "trailingCommas": "all",
+      "semicolons": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "domains": {
+      "react": "none"
+    },
+    "rules": {
+      "recommended": true,
+      "style": {
+        "noNonNullAssertion": "off",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "**/_internal/*": "Imports from `_internal/` paths are package-private. The directory is the file-system enforcement of layering — only the same package's modules may reach in. Cross-package consumers must extend the package's public barrel (e.g. `./index.ts`) instead of reaching across this boundary."
+            }
+          }
+        }
+      },
+      "suspicious": {
+        "noExplicitAny": "error"
+      }
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "convo-sample-to-schema",
+  "description": "Schema inference on a flat object sample produces required list covering every key.",
+  "flow": "converse",
+  "input": {
+    "sample": {
+      "since": "2026-04-01T00:00:00Z",
+      "limit": 50,
+      "include_drafts": false
+    },
+    "expect_required": ["since", "limit", "include_drafts"]
+  }
+}

@@ -1,0 +1,307 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # release.yml's gate dispatches ci.yml against the release tag when no
+  # green run exists for that SHA. The dispatch needs this trigger.
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit
+          POSTGRES_DB: subkit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U subkit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
+      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      LLM_PROVIDER: mock
+      SKIP_DOCKER: "1"
+      TZ: UTC
+      LANG: C.UTF-8
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          # Pinned to match release.yml — see comment there. Keeping CI
+          # and release on the same Bun version avoids "works in CI,
+          # fails at publish" class of bugs.
+          bun-version: 1.3.12
+
+      - name: Cache Bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint (Biome)
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Recipe lint
+        run: bun run lint:recipes
+
+      - name: Docs reference integrity
+        # Fails if any markdown link/anchor or code `docs/NN-*.md` reference
+        # does not resolve.
+        run: bun run check:docs-refs
+
+      - name: Docs drift (generated pages)
+        run: bun run check:llms-txt-drift && bun run check:sk-settings-doc-drift && bun run check:cli-reference-drift
+
+      - name: Phantom dependencies
+        # Fails if any imported package is undeclared (resolves only
+        # transitively) — an upstream bump could break it silently.
+        run: bun run check:deps-phantom
+
+      - name: OpenAPI client drift
+        # Regenerates the typed cli-core client from the live OpenAPI surface
+        # and fails if `packages/cli-core/src/engine-api` would change. Catches
+        # routes that ship without their generated client being committed.
+        run: bun run check:openapi-drift
+
+      - name: Determinism lint
+        run: bun run test:determinism
+
+      # The standalone `bun run db:migrate` step was retired in #149.
+      # Integration tests migrate per-file via `apps/engine/src/db/tests/setup.ts`,
+      # so a separate CI migrate step is redundant. Production migrations
+      # are embedded in the engine binary and run in-process on every boot.
+
+      - name: Unit + integration tests
+        # `--max-concurrency=4` caps the number of test files bun runs
+        # in parallel. Without this, ~150 of the 612 test files race to
+        # spin up tenant-scoped Postgres databases (see
+        # `apps/engine/src/db/tests/setup.ts`) and exhaust the pool,
+        # surfacing as 5s timeouts in MCP / chat / journey
+        # tests that are otherwise green in isolation. The CI runner's
+        # 4-core sizing makes 4 the natural ceiling.
+        #
+        # `--timeout 60000` covers the worst-case `createTestDb`
+        # `beforeAll` on the GH runner (CREATE DATABASE + 14 embedded
+        # migrations applied via per-migration transactions). The
+        # default 5 s exceeds budget on contended runners and surfaces
+        # as `TypeError: undefined is not an object (evaluating
+        # 'ctx.cleanup')` for every downstream test that depends on
+        # the timed-out fixture.
+        run: bun test --max-concurrency=4 --timeout 60000 apps/ packages/
+
+      - name: AI eval contract
+        run: bun run verify:ai
+
+      # Cache the embedded-embedding model so the compile step doesn't
+      # re-download ~146 MB from the HuggingFace CDN on every run (and
+      # doesn't flake on a CDN blip). Keyed on the fetch script, which pins
+      # the model id + revision — a model change busts the cache.
+      - name: Cache embedding assets
+        uses: actions/cache@v5
+        with:
+          path: apps/engine/assets/embeddings
+          key: ${{ runner.os }}-embed-assets-${{ hashFiles('scripts/fetch-embedding-assets.ts') }}
+
+      - name: Build all binaries
+        run: bun run build:all
+
+      - name: Verify version injection
+        run: |
+          set -eux
+          SK_VERSION=$(./dist/sk --version)
+          echo "sk version: $SK_VERSION"
+          test -n "$SK_VERSION"
+
+      - name: Install expect (PTY REPL tests)
+        # The GitHub ubuntu-24.04 image ships without `expect`, so the
+        # PTY-driven REPL suites (repl-conversational.e2e) would self-skip
+        # via SKIP_PTY_WHEN_NO_EXPECT. In CI that predicate is false (CI is
+        # set) so a missing `expect` is a HARD failure, not a silent skip —
+        # this install is load-bearing. `command -v` surfaces a partial-
+        # mirror install failure here with a clear line, not minutes later
+        # inside an expect script. --no-install-recommends skips tcl/tk extras.
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends expect
+          command -v expect
+          expect -v
+
+      - name: E2E tests
+        run: bun test tests/e2e/
+
+      - name: Smoke run engine binary
+        id: smoke
+        run: |
+          set -eux
+          ./dist/engine --smoke 2>&1 | tee engine-smoke.log
+
+      - name: Upload engine log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-log
+          path: engine-smoke.log
+          if-no-files-found: ignore
+          retention-days: 5
+
+      - name: Validate docker compose
+        run: docker compose config > /dev/null
+
+  docker-e2e:
+    name: docker e2e (image smoke)
+    runs-on: ubuntu-24.04
+    # Build + container boot adds a few minutes; cap it so a hung boot
+    # fails fast instead of burning the job budget.
+    timeout-minutes: 25
+    env:
+      SUBKIT_DOCKER_BASE_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+
+      - name: Cache Bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The Docker track drives the HOST-built sk binary against the
+      # container (skDocker), so build it before the image boots.
+      - name: Build sk binary
+        run: bun run build:sk
+
+      # `--wait` blocks on the image's /v1/health healthcheck — no fixed
+      # sleeps. Mock LLM + ndjson logs come from docker-compose.test.yml.
+      - name: Build + start the production image
+        run: bun run compose:test:up
+
+      # PR subset: bootstrap + surface CRUD. The heavier scheduler / REPL /
+      # real-LLM Docker coverage runs in the nightly workflow.
+      - name: Docker E2E (bootstrap + surface CRUD)
+        run: bun test tests/docker/bootstrap.docker.test.ts tests/docker/surface-crud.docker.test.ts
+
+      - name: Collect engine logs
+        if: always()
+        run: docker compose -f docker-compose.test.yml logs --no-color engine > engine-docker.log || true
+
+      - name: Upload engine logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-docker-log
+          path: engine-docker.log
+          if-no-files-found: ignore
+          retention-days: 5
+
+      - name: Tear down
+        if: always()
+        run: bun run compose:test:down
+
+  secret-scan:
+    name: secret scan (gitleaks)
+    # We invoke the gitleaks binary directly instead of
+    # `gitleaks/gitleaks-action@v2`: that action runs `gitleaks detect`
+    # WITHOUT passing `--config` (and does not wire GITLEAKS_CONFIG into a
+    # `--config` flag), so it silently ignores this repo's `.gitleaks.toml`
+    # and runs the bundled default ruleset. That fails the scan on the
+    # intentional fake secrets in `*.test.ts(x)` fixtures + the
+    # `engine --smoke` redaction self-test once the full tree is scanned
+    # (as on the single root-commit baseline). Running gitleaks ourselves
+    # with an explicit `--config` is deterministic and matches local runs.
+    # Runs on push AND pull_request so fork contributions get the same
+    # scan before merge; the PR scope below narrows it to the new commits.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          # Scope the scan to history reachable from the PUSHED commit, not the
+          # whole object graph. With fetch-depth:0 the runner clones every
+          # branch; a bare `gitleaks git .` scans all of them, so a
+          # secret-shaped fixture on an unrelated branch fails this ref's scan.
+          # Restricting --log-opts to "$GITHUB_SHA" keeps the scan to this ref's
+          # own history (still the full history of the pushed branch). On a
+          # pull_request the scope narrows further to the PR's own commits
+          # (base..head), so a fork PR is scanned on exactly what it adds.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            LOG_OPTS="${BASE_SHA}..${HEAD_SHA}"
+          else
+            LOG_OPTS="$GITHUB_SHA"
+          fi
+          ./gitleaks git . --config .gitleaks.toml --redact --exit-code 2 --no-banner \
+            --log-opts="$LOG_OPTS" \
+            --report-format sarif --report-path results.sarif
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - name: Upload gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-results.sarif
+          path: results.sarif
+          if-no-files-found: ignore
+          retention-days: 5
+
+  dependency-review:
+    name: dependency review
+    runs-on: ubuntu-latest
+    # Only runs on PRs to public repos with Dependency Graph + GHAS
+    # enabled. Skips automatically when private (returns
+    # "Dependency review is not supported on this repository"). The
+    # condition below short-circuits the job entirely on private
+    # repos so it doesn't show up as a red check.
+    if: github.event_name == 'pull_request' && github.event.repository.private == false
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure

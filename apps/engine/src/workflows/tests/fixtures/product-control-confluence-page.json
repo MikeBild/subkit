@@ -1,0 +1,28 @@
+{
+  "name": "Get Product Control Confluence Page - Full HTML",
+  "slug": "product-control-confluence-page",
+  "steps": [
+    {
+      "id": "fetch_confluence_page",
+      "kind": "request",
+      "path": "/wiki/api/v2/pages/87263947",
+      "query": {
+        "body-format": "storage"
+      },
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "extract_content",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "return input.scope.fetch_confluence_page.data;"
+    }
+  ],
+  "description": "Retrieves full Confluence wiki page y4ozBQ containing Product Control architecture with complete HTML content"
+}

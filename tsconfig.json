@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@engine/*": ["apps/engine/src/*"],
+      "@shared/*": ["packages/shared/src/*"],
+      "@cli-core/*": ["packages/cli-core/src/*"],
+      "@chat-ui/*": ["packages/chat-ui/src/*"]
+    }
+  },
+  "include": [
+    "apps/engine/src/**/*.ts",
+    "apps/engine/src/**/*.tsx",
+    "apps/engine/src/**/*.d.ts",
+    "apps/sk/src/**/*.ts",
+    "apps/sk/src/**/*.tsx",
+    "packages/shared/src/**/*.ts",
+    "packages/cli-core/src/**/*.ts",
+    "packages/chat-ui/src/**/*.ts",
+    "packages/chat-ui/src/**/*.tsx",
+    "drizzle.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", "docs"]
+}

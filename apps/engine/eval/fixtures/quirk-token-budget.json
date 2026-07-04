@@ -1,0 +1,15 @@
+{
+  "name": "quirk-token-budget",
+  "description": "Per-turn quirk-category selection trims the rendered operator-quirks block to only the categories relevant to the current turn shape. The transform-stage turn must NOT include `auth`/`pagination`/`rate_limit` slots; the request-stage turn must NOT include `schema`. Pinned to guard the token-budget regression.",
+  "flow": "converse",
+  "input": {
+    "quirks": {
+      "auth": "AUTH_QUIRK_BODY",
+      "pagination": "PAG_QUIRK_BODY",
+      "rate_limit": "RL_QUIRK_BODY",
+      "schema": "SCHEMA_QUIRK_BODY",
+      "error_handling": "ERR_QUIRK_BODY",
+      "general": "GEN_QUIRK_BODY"
+    }
+  }
+}

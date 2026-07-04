@@ -1,0 +1,141 @@
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { tenantId, timestamps } from "./_common.ts";
+import { tenants } from "./identity.ts";
+
+export const conversationStatusEnum = pgEnum("conversation_status", [
+  "active",
+  "awaiting_input",
+  "committed",
+  "abandoned",
+]);
+
+export const conversationRoleEnum = pgEnum("conversation_role", [
+  "user",
+  "assistant",
+  "tool",
+  "system",
+]);
+
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    target_workflow_id: uuid("target_workflow_id"),
+    target_connector_id: uuid("target_connector_id"),
+    draft: jsonb("draft"),
+    status: conversationStatusEnum("status").notNull(),
+    // sk-cli rollout (migration 0018): owner_id identifies the user
+    // that created the conversation (used by `/resume` + `sk -c`);
+    // model/title are patchable via PATCH /v1/conversations/:id; memory
+    // holds the most recent user-supplied memory payload that the LLM
+    // context pipeline slots into the assembled prompt at turn time.
+    owner_id: uuid("owner_id"),
+    model: text("model"),
+    title: text("title"),
+    memory: text("memory"),
+    // Skills the conversation has loaded on-demand via `load_skill` or
+    // via context-driven autoload. Each entry carries the slug plus the
+    // `last_turn` it was last relevant on. The loop renders a skill's
+    // FULL body only while `(turn_count - last_turn) < K` (K=3, the
+    // recency window); outside that window the slug falls back to the
+    // always-present skill INDEX and re-promotes on the next match or an
+    // explicit `load_skill`. Persisted so resuming a session keeps the
+    // same skill palette + recency state in the LLM context.
+    loaded_skills: jsonb("loaded_skills")
+      .$type<Array<{ slug: string; last_turn: number }>>()
+      .default([])
+      .notNull(),
+    // Monotonic per-conversation turn counter. Incremented once at the
+    // start of every `runLoop` invocation and used as the recency clock
+    // for `loaded_skills[*].last_turn`. Starts at 0; the first turn
+    // becomes 1.
+    turn_count: integer("turn_count").notNull().default(0),
+    // Per-tool execution policy overrides (tool name → mode).
+    // { run_workflow: "confirm_before_execution", list_workflows: "no_confirm" }
+    tool_policies: jsonb("tool_policies").$type<Record<string, string>>().default({}).notNull(),
+    // Topic embedding for suggest-related-conversations routing — the
+    // conversation's first user message embedded with the local model
+    // (measured: first message alone matches a title-augmented variant, so
+    // no title dependency). Plain real[], no pgvector: the cosine match runs
+    // in JS over the caller's bounded owner-scoped candidate set. Nullable,
+    // populated out-of-band by backfillConversationTopics so the create path
+    // stays fast; embedding_model tags the producer for invalidation.
+    topic_embedding: real("topic_embedding").array(),
+    topic_embedding_model: text("topic_embedding_model"),
+    ...timestamps,
+  },
+  (t) => [
+    index("conversations_tenant_status_idx").on(t.tenant_id, t.status),
+    index("conversations_owner_idx").on(t.tenant_id, t.owner_id, t.updated_at),
+  ],
+);
+
+export const conversationMessages = pgTable(
+  "conversation_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    conversation_id: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    role: conversationRoleEnum("role").notNull(),
+    content: jsonb("content").notNull(),
+    tokens_in: integer("tokens_in"),
+    tokens_out: integer("tokens_out"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("conversation_messages_conv_created_idx").on(t.conversation_id, t.created_at)],
+);
+
+export const conversationToolCalls = pgTable(
+  "conversation_tool_calls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    conversation_id: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    // Causal anchor to the assistant message that produced this tool call.
+    // Nullable for legacy rows; the parts.ts read path falls back to a
+    // time-window join when null. Populated by the loop's wrapper for
+    // every new write so the timeline can interleave deterministically.
+    parent_message_id: uuid("parent_message_id").references(() => conversationMessages.id, {
+      onDelete: "set null",
+    }),
+    tool: text("tool").notNull(),
+    input: jsonb("input").notNull(),
+    output: jsonb("output"),
+    approval_required: boolean("approval_required").default(false).notNull(),
+    approved_at: timestamp("approved_at", { withTimezone: true }),
+    approved_by_user_id: uuid("approved_by_user_id"),
+    // Multi-state confirmation machine (replaces simple approval_required):
+    //   proposed | tested | confirmed | declined | partial | oauth_success
+    //   | oauth_failure | auto_declined
+    confirmation_state: text("confirmation_state"),
+    confirmation_data: jsonb("confirmation_data"),
+    // Append-only UI-action log per tool call.
+    // [{ type: "user_tested" | "user_confirmed" | "user_partial" | "user_declined"
+    //    | "auto_declined" | "retry", ts, meta? }]
+    interaction_log: jsonb("interaction_log")
+      .$type<Array<{ type: string; ts: string; meta?: Record<string, unknown> }>>()
+      .default([])
+      .notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("conversation_tool_calls_conv_created_idx").on(t.conversation_id, t.created_at),
+    index("conversation_tool_calls_parent_msg_idx").on(t.parent_message_id),
+  ],
+);

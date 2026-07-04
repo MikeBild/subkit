@@ -1,0 +1,1 @@
+ALTER TYPE "public"."discovery_artifact_kind" ADD VALUE 'capability_gap';

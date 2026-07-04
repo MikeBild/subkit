@@ -1,0 +1,1716 @@
+// Per-tool wrapping logic. Each in-repo `ConversationTool` becomes a
+// Vercel-AI-SDK `Tool` whose `execute` performs the side-effect
+// sequence the old hand-rolled loop did:
+//
+//   1. insert the `conversation_tool_calls` row
+//   2. emit `tool_call_start` / `tool_call_end` events
+//   3. log `conversation.tool.called`
+//   4. evaluate policy gates / dedupe / loop-breakers
+//   5. run the inner tool
+//   6. update the row with the output
+//   7. emit `tool_result` + optional `validation_error` / `elicit_request`
+//   8. stash any pause / committed markers on the shared `TurnSignals`
+//
+// Pause and commit are NOT thrown — the SDK must see a real tool-result
+// so the model can plan its next step. The loop halts via the
+// `stopWhen` conditions evaluated between steps.
+
+import { z } from "@hono/zod-openapi";
+import { type Tool, tool } from "ai";
+import { and, eq } from "drizzle-orm";
+import { recordToolPolicyConfirmationRequired } from "../../../audit/recorders/index.ts";
+import type { Db } from "../../../db/client.ts";
+import { conversations } from "../../../db/schema/index.ts";
+import { log, logger } from "../../../logging/logger.ts";
+import { stampMcpTaskProgress } from "../../../mcp/tasks/store.ts";
+import {
+  recordConversationToolCall,
+  recordToolCircuitOpen,
+} from "../../../observability/instrumentation.ts";
+import { startToolSpan } from "../../../observability/langfuse-spans.ts";
+import { listWorkflowsUsingConnector } from "../../../workflows/connector-dependents.ts";
+import { FileNotFoundError, type ResolvedFile, walkAndResolve } from "../../attachments.ts";
+import { recordTransition } from "../../confirmation.ts";
+import { isDangerousTool } from "../../dangerous-tools.ts";
+import { createDraftSnapshot } from "../../draft-checkpoints.ts";
+import { createElicitation } from "../../elicitations.ts";
+import { parseLoadedSkills } from "../../loop/skill-recency.ts";
+import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
+import { findPriorSaveWorkflowApproval } from "../../persistence/save-workflow-approval.ts";
+import { resolveScopeFactsForConversation } from "../../scope-facts.ts";
+import {
+  autoloadForToolCall,
+  loadActivationCatalog,
+  reaffirmLoadedForTurn,
+} from "../../skill-autoload.ts";
+import { computeLineDiff } from "../../text-line-diff.ts";
+import {
+  buildPendingOutputForTool,
+  type PermissionMode,
+  prerequisitesForTool,
+  resolveToolMode,
+  type ToolPolicies,
+} from "../../tool-policies.ts";
+import type { TurnEvent } from "../../types.ts";
+import { compileDescription } from "../describe.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
+import { checkToolPermission, type ToolPermissionResult } from "../permission-gate.ts";
+import { normalizeToolResultPayload } from "../result-payload.ts";
+import { resolveExecutionMode } from "../tool-policies.ts";
+import { truncateForLlm } from "../truncate.ts";
+import { decideConfirm } from "./confirm-decision.ts";
+import { buildCapAlternatives } from "./error-recovery-hints.ts";
+import { jsonSafeModelOutput } from "./json-safe-output.ts";
+import {
+  buildPolicyGateCommitIntent,
+  confirmationMetadataForTool,
+  mapToolToCommitIntentKind,
+  REVIEW_AFTER_EXECUTION_KIND,
+  summarizeToolData,
+  summarizeToolFailure,
+  topLevelElicitationKindForTool,
+} from "./policy-helpers.ts";
+import {
+  computeValidationFingerprint,
+  MAX_CONSECUTIVE_FAILURES,
+  MAX_ERROR_CODE_REPEAT,
+  MAX_TURN_LOOP_WARNINGS,
+  MAX_VALIDATION_FINGERPRINT_REPEAT,
+  type TurnSignals,
+  type WrappedToolOutput,
+} from "./state.ts";
+
+// Freshness window for a durable prior save-workflow approval. Beyond
+// this, the pre-confirm gate re-pauses (asks again) rather than reusing
+// a stale approval — the safe direction.
+const PRIOR_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
+
+// One heap snapshot per process (SUBKIT_HEAP_DIAG=1 only) — the spike
+// recurs every step, so the first capture is representative and repeat
+// snapshots would just hammer /tmp with ~hundreds-of-MB JSON files.
+let heapSnapshotWritten = false;
+
+// The `inputExamples` SDK channel was emitted from this helper
+// alongside the tool's `<example>` description block. AI SDK 6 /
+// Anthropic now strict-validates each example against the projected
+// JSON Schema, and the projection reflexively seals every object with
+// `additionalProperties: false` (including `z.record(...)` values,
+// which legitimately accept any string key). That mismatch breaks
+// every conversation turn with
+// `tools.N.custom: Example at index 0 is invalid: False schema does
+// not allow <value>`. The model already reads the same example from
+// the `<example>` block compileDescription appends to the description,
+// so the `inputExamples` channel is redundant for us today and the
+// safe move is to stop emitting it. We keep the helper (returning an
+// empty object) so the call-site stays one statement; a future fix in
+// either zod-to-json-schema's record handling or the SDK's projection
+// pass can flip this back on after the regression test below proves
+// every tool's example_input survives the strict JSON-Schema
+// validation. Exported for the test suite (propose-skill-strict.test.ts).
+export function toInputExamples(
+  _example: Readonly<Record<string, unknown>> | undefined,
+): { inputExamples: Array<{ input: Record<string, unknown> }> } | Record<string, never> {
+  return {};
+}
+
+function committedWorkflowIdFromResult(result: ToolResult): string | null {
+  const workflowId = result.committed_workflow_id;
+  if (typeof workflowId !== "string") return null;
+  const data = "data" in result ? result.data : undefined;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const record = data as Record<string, unknown>;
+    if (record.already_persisted === true || record.version_changed === false) return null;
+  }
+  return workflowId;
+}
+
+export function wrapOne(
+  inner: ConversationTool,
+  ctx: ToolContext,
+  signals: TurnSignals,
+  events: TurnEvent[],
+  db: Db,
+  toolPolicies: ToolPolicies,
+  permissionMode: PermissionMode | null,
+  loadedSkills: ReadonlyArray<string>,
+): Tool<Record<string, unknown>, WrappedToolOutput> {
+  // Cast the Zod-openapi schema to the SDK's `z.ZodType` shape — the
+  // two packages ship their own Zod re-exports and the variances do not
+  // reconcile at the type level, but the runtime `parse` contract is
+  // identical.
+  const baseInputSchema = inner.inputSchema as unknown as z.ZodType<Record<string, unknown>> & {
+    extend?: (shape: Record<string, z.ZodTypeAny>) => z.ZodType<Record<string, unknown>>;
+  };
+  // `__policy_confirmed` is the LLM-facing marker the model re-issues
+  // after a policy-gate elicitation resolves. Strictly typed as boolean
+  // here would be correct — except Anthropic's tool-call serialiser
+  // sometimes round-trips the boolean as a JSON-encoded string
+  // (`"true"`) when the schema description nests it inside a wider
+  // object. The AI SDK's Zod boundary then rejects with
+  // `expected boolean, received string`, the model emits
+  // `repair_tool_call.started`, the engine spends ~8s asking the model
+  // to fix the type, and the cycle repeats on EVERY OAuth flow (G2 in
+  // the runtime-logs review plan — 4 separate repair instances in one
+  // session). Accepting both representations and coercing eliminates
+  // the loop without changing downstream semantics; the boolean read
+  // at the policy gate (`policyMarker` below) still sees a real bool.
+  const policyMarkerSchema = z
+    .union([z.boolean(), z.literal("true"), z.literal("false")])
+    .transform((v) => v === true || v === "true")
+    .optional();
+  const inputSchema =
+    typeof baseInputSchema.extend === "function"
+      ? baseInputSchema.extend({ __policy_confirmed: policyMarkerSchema })
+      : baseInputSchema;
+  return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
+    description: compileDescription(inner),
+    inputSchema,
+    // AI SDK 7 rejects Date/undefined in tool outputs when validating the
+    // next step's ModelMessage[]; coerce to JSON-safe for the model. The
+    // loop's stop conditions still read the raw `output`. See json-safe-output.ts.
+    toModelOutput: jsonSafeModelOutput,
+    // Opt-in provider-native strict mode + inputExamples.
+    ...(inner.strict ? { strict: true as const } : {}),
+    // toInputExamples is intentionally a no-op since v4.6.0 — see the
+    // helper's header for the AI SDK 6 / Anthropic strict-validation
+    // regression that motivated suppressing this channel. The model
+    // still receives the example via the `<example>` block
+    // compileDescription appends to the description above.
+    ...toInputExamples(inner.example_input),
+    async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
+      // Per-call policy-mode resolution + confirmation audit. Folded in
+      // here from a second wrapper layer at loop.ts that doubled every
+      // tool's closure footprint per turn (~109 tools × 2 closures =
+      // ~218 closures held simultaneously, all referencing tenant_id /
+      // actor_id / conversation_id / db / logger). Keeping it inline
+      // with the existing prerequisite + circuit-breaker checks
+      // collapses the duplication without changing the policy
+      // resolution order: still BEFORE the toolChain mutex acquisition
+      // and BEFORE the inner tool runs.
+      const policyEnvironment =
+        typeof (rawArgs as { environment?: unknown }).environment === "string"
+          ? (rawArgs as { environment: string }).environment
+          : undefined;
+      const resolvedPolicy = resolveExecutionMode(inner.name, rawArgs, {
+        tenant_id: ctx.tenant_id,
+        ...(policyEnvironment ? { environment: policyEnvironment } : {}),
+      });
+      logger.debug({
+        module: "conversation_loop",
+        action: "tool_policy.resolved",
+        msg: "resolved tool execution mode",
+        conversation_id: ctx.conversation_id,
+        tenant_id: ctx.tenant_id,
+        tool: inner.name,
+        mode: resolvedPolicy.mode,
+        confirmation_kind: resolvedPolicy.confirmationKind,
+        reason: resolvedPolicy.reason,
+      });
+      if (resolvedPolicy.mode === "confirm_before_execution") {
+        // Best-effort audit; never blocks dispatch on a failed insert.
+        await recordToolPolicyConfirmationRequired({
+          tenant_id: ctx.tenant_id,
+          actor_id: ctx.actor_id ?? null,
+          executor: db,
+          conversation_id: ctx.conversation_id,
+          tool: inner.name,
+          mode: resolvedPolicy.mode,
+          confirmation_kind: resolvedPolicy.confirmationKind,
+          resolver_reason: resolvedPolicy.reason,
+          ...(policyEnvironment !== undefined ? { environment: policyEnvironment } : {}),
+        }).catch((err: unknown) => {
+          logger.warn({
+            module: "conversation_loop",
+            action: "tool_policy.audit_failed",
+            msg: "failed to record tool_policy.confirmation_required audit",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+      // Serialize against other tool executions in this turn — see
+      // TurnSignals.toolChain for rationale.
+      const prevChain = signals.toolChain;
+      let release!: () => void;
+      signals.toolChain = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await prevChain;
+      const executeBody = async (): Promise<WrappedToolOutput> => {
+        // Skill prerequisite gate. Some tools (author_workflow,
+        // edit_workflow_patch) declare a
+        // required skill in `tool-policies.ts#prerequisites`. If the
+        // skill is not loaded, return a structured error instead of
+        // running the tool — the model receives a clear "load
+        // workflow-authoring first" hint and can recover in the next
+        // turn. We surface the gate AFTER the model has chosen the
+        // tool (rather than hiding it) so the failure mode teaches
+        // the right next step instead of leaving the model guessing.
+        const needed = prerequisitesForTool(inner.name);
+        const missingSkills = needed.filter((slug) => !loadedSkills.includes(slug));
+        if (missingSkills.length > 0) {
+          return {
+            ok: false,
+            data: {
+              error: `tool ${inner.name} requires skill(s) not yet loaded: ${missingSkills.join(", ")}. Call load_skill for each one before retrying.`,
+              reason: "skill_prerequisites_unmet",
+              tool: inner.name,
+              missing_skills: missingSkills,
+            },
+          };
+        }
+
+        // Global consecutive-failures cap ("no more than 5 failed tool
+        // calls in a row"). Checked
+        // before the per-tool cap because it overrides — when the
+        // model has hit the cap on ANY mix of tools, the next dispatch
+        // returns a structured "ask the user" envelope instead of
+        // running the tool. The model is then forced to emit
+        // `ask_user_choice` / `ask_user_text` to break the loop.
+        // Exception: ask_user_* tools always run (those are how the
+        // model recovers). Read-only inspection tools also pass so the
+        // model can call inspect_workflow to read scope shape after
+        // the cap fires.
+        const isAskUser = inner.name.startsWith("ask_user_");
+        const isInspect =
+          inner.name.startsWith("inspect_") || inner.name === "diagnose_latest_execution";
+        if (!isAskUser && !isInspect && signals.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          // Count this short-circuit against the SAME turn-loop budget as
+          // the identical-args loop detector below. Pre-fix the cap only
+          // blocked the tool call and returned an "ask the user" envelope
+          // without ending the turn — a model that ignored it re-emitted
+          // the blocked call every step (observed ~60× / 3.5 min of
+          // `consecutive_failures_block` before the step budget finally
+          // ran out). Mirroring `loop_detected`: once the turn budget is
+          // exhausted, return `reason: "turn_loop_budget_exhausted"`,
+          // which `turnLoopBudgetStopCondition` (loop.ts stopWhen) detects
+          // to halt the stream and end the turn.
+          signals.totalLoopWarnings += 1;
+          const turnBudgetReached = signals.totalLoopWarnings >= MAX_TURN_LOOP_WARNINGS;
+          recordToolCircuitOpen({
+            tool: inner.name,
+            reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "consecutive_failures_cap",
+          });
+          logger.warn({
+            module: "conversation_tool",
+            action: "tool.consecutive_failures_block",
+            msg: turnBudgetReached
+              ? "global consecutive-failures cap + turn loop budget exhausted — ending turn"
+              : "global consecutive-failures cap reached — short-circuiting until model asks the user",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            consecutive_failures: signals.consecutiveFailures,
+            total_loop_warnings: signals.totalLoopWarnings,
+            turn_budget_reached: turnBudgetReached,
+          });
+          events.push({
+            type: "tool_log",
+            call_id: "consecutive-failures-cap",
+            tool: inner.name,
+            level: "warn",
+            message: turnBudgetReached
+              ? `tool.consecutive_failures_block: ${signals.consecutiveFailures} failed tool calls in a row; turn-level loop budget exhausted (${signals.totalLoopWarnings}) — ending turn`
+              : `tool.consecutive_failures_block: ${signals.consecutiveFailures} failed tool calls in a row — emit ask_user_choice / ask_user_text instead of retrying.`,
+            ts: new Date().toISOString(),
+          });
+          if (turnBudgetReached) {
+            return {
+              ok: false,
+              data: {
+                error_code: "turn_loop_budget_exhausted",
+                message: `this turn failed ${signals.consecutiveFailures} tool calls in a row and exceeded the loop-warning budget — stop, summarise what you already know, and end the turn with a single question for the user (use ask_user_choice or ask_user_text, not prose).`,
+                reason: "turn_loop_budget_exhausted",
+                consecutive_failures: signals.consecutiveFailures,
+                next_best_actions: ["ask_user_choice", "ask_user_text"],
+              },
+            };
+          }
+          const alternatives = buildCapAlternatives(signals.toolLastErrorHash);
+          // G3 (runtime-logs review plan): give the model a ready-made
+          // option set to drop straight into `ask_user_choice`. Pre-fix
+          // the cap envelope told the model "emit ask_user_choice with
+          // concrete options" but offered no concrete options — the
+          // model fell back to prose ("I hit the consecutive failure
+          // cap. Let me ask how you'd like to proceed.") and the user
+          // typed "restart_simple" as a free-text guess (session
+          // ed20f48d). Promoting the three universal recovery actions
+          // to first-class options here means the model has a typed
+          // drop-in even when the per-error hints in `alternatives`
+          // are empty.
+          const recommendedOptions = [
+            {
+              value: "restart_simple",
+              label: "Abandon the current draft and start over with a simpler design",
+            },
+            {
+              value: "inspect_failures",
+              label: "Show me the recent error traces before I decide",
+            },
+            { value: "abort", label: "Stop here — I'll come back to this later" },
+          ];
+          return {
+            ok: false,
+            data: {
+              error_code: "consecutive_failures_cap",
+              message: `${signals.consecutiveFailures} tool calls have failed in a row — stop patching and emit ask_user_choice with the recommended_options below (or derive your own from the most recent failure). The cap resets on the first successful tool call.${alternatives}`,
+              reason: "consecutive_failures_cap",
+              consecutive_failures: signals.consecutiveFailures,
+              recommended_options: recommendedOptions,
+              next_best_actions: ["ask_user_choice", "ask_user_text", "inspect_workflow"],
+            },
+          };
+        }
+
+        // Same-error_code breaker. Sits between the global
+        // consecutive-failures cap (reset by ANY successful tool) and
+        // the identical-args repeat detector below (reset when args
+        // change). Neither catches a tool that keeps returning the SAME
+        // structured `error_code` with FRESH args while successful reads
+        // are interleaved — the exact shape of the authoring-gate thrash
+        // (`transform_authoring_requires_inspect` repeated past a 240k-
+        // token, 30-minute turn that ended in `worker_expired`). The
+        // post-execution accounting below increments
+        // `toolErrorCodeRepeat` per tool/code and clears it when this
+        // tool succeeds or returns a different code; here we refuse the
+        // next call once it has already failed the same way
+        // `MAX_ERROR_CODE_REPEAT` times. ask_user_* and inspect_* always
+        // pass — those are how the model recovers and reads the shape.
+        const errorCodeStreak = signals.toolErrorCodeRepeat.get(inner.name);
+        if (
+          !isAskUser &&
+          !isInspect &&
+          errorCodeStreak &&
+          errorCodeStreak.count >= MAX_ERROR_CODE_REPEAT
+        ) {
+          signals.totalLoopWarnings += 1;
+          const turnBudgetReached = signals.totalLoopWarnings >= MAX_TURN_LOOP_WARNINGS;
+          recordToolCircuitOpen({
+            tool: inner.name,
+            reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "error_code_repeat",
+          });
+          logger.warn({
+            module: "conversation_tool",
+            action: "tool.error_code_repeat_block",
+            msg: "same error_code repeated for one tool — short-circuiting until the model asks the user",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            error_code: errorCodeStreak.code,
+            repeat_count: errorCodeStreak.count,
+            total_loop_warnings: signals.totalLoopWarnings,
+            turn_budget_reached: turnBudgetReached,
+          });
+          events.push({
+            type: "tool_log",
+            call_id: "error-code-repeat",
+            tool: inner.name,
+            level: "warn",
+            message: `tool.error_code_repeat_block: ${inner.name} returned \`${errorCodeStreak.code}\` ${errorCodeStreak.count}× this turn — different args, same refusal. Stop retrying; emit ask_user_choice / ask_user_text describing the blocker and offering a path forward.`,
+            ts: new Date().toISOString(),
+          });
+          return {
+            ok: false,
+            data: {
+              error_code: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_error_repeat",
+              message: turnBudgetReached
+                ? `this turn keeps hitting the same blocker (${errorCodeStreak.code}) — stop, summarise what you know, and end the turn with a single question for the user (use ask_user_choice or ask_user_text, not prose).`
+                : `${inner.name} has failed with \`${errorCodeStreak.code}\` ${errorCodeStreak.count}× in this turn — the args changed but the blocker did not. Stop retrying and ask the user via ask_user_choice / ask_user_text, or change approach entirely.`,
+              reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_error_repeat",
+              tool: inner.name,
+              repeated_error_code: errorCodeStreak.code,
+              repeat_count: errorCodeStreak.count,
+              next_best_actions: ["ask_user_choice", "ask_user_text", "inspect_workflow"],
+            },
+          };
+        }
+
+        // Adaptive loop-breaker. A single global step cap that trusts
+        // the model is too coarse — but plain per-tool counters fire
+        // even on legitimate iterative authoring where the model applies
+        // several distinct edit_workflow_patch calls in sequence.
+        //
+        // Adaptive shape:
+        //   - tenant_read tools have NO repeat cap. Reads are
+        //     idempotent — the model needs them.
+        //   - draft_write / tenant_write tools trip ONLY when the
+        //     SAME args are submitted REPEAT_THRESHOLD times in a
+        //     row. Five edit_workflow_patch calls with five different
+        //     patch sets = fine. Three edit_workflow_patch calls with
+        //     the same args = repair spiral, halt.
+        //   - The global step ceiling lives in the outer loop's
+        //     `stopWhen: stepCountIs(N)` (matches reference's
+        //     stopWhen contract). Per-tool repeat detection here
+        //     short-circuits before that ceiling fires.
+        const REPEAT_THRESHOLD = 3;
+        // Recursive stable serialiser: sort object keys at every
+        // depth so { a: { x: 1, y: 2 } } and { a: { y: 2, x: 1 } }
+        // hash the same. JSON.stringify's replacer-array only
+        // applies at the top level and silently drops keys at
+        // deeper levels — we need a deep-stable hash.
+        const stableStringify = (v: unknown): string => {
+          if (v === null || typeof v !== "object") return JSON.stringify(v);
+          if (Array.isArray(v)) {
+            return `[${v.map(stableStringify).join(",")}]`;
+          }
+          const keys = Object.keys(v as Record<string, unknown>).sort();
+          return `{${keys
+            .map(
+              (k) => `${JSON.stringify(k)}:${stableStringify((v as Record<string, unknown>)[k])}`,
+            )
+            .join(",")}}`;
+        };
+        const argsHash = (() => {
+          try {
+            return stableStringify(rawArgs);
+          } catch {
+            return "";
+          }
+        })();
+        // Exempt-by-name list: tools whose meaningful state lives
+        // in the conversation's DRAFT, not in args. Re-running them
+        // with identical args after editing the draft is the
+        // canonical "iterate the workflow" pattern — flagging it
+        // as a repeat spiral is a false positive.
+        // Pre-fix (session 8d152b9f 16:00:59): dry_run_workflow
+        // capped after 3 previews of the SAME draft args even
+        // though each preview ran against a DIFFERENT draft state.
+        // `validate_draft` used to live here too. It was removed once
+        // the authoring-context-block started inlining the current
+        // validation state on every turn (apps/engine/src/llm/core/
+        // authoring-context-block.ts#renderValidationStateLines): the
+        // LLM now sees errors continuously and never needs to repeat
+        // the same `validate_draft({})` call to re-check. If it does,
+        // that's the loop spiral the repeat cap is meant to catch.
+        const REPEAT_EXEMPT_TOOLS = new Set<string>([
+          "dry_run_workflow",
+          "dry_run_step",
+          "dry_run_transform",
+          "validate_connector_draft",
+          "inspect_workflow_draft",
+          "inspect_workflow",
+          "inspect_connector_draft",
+          "inspect_authoring_context",
+          "inspect_execution_step",
+          "list_skills",
+          "load_skill",
+          "search_docs",
+          "search_knowledge",
+        ]);
+        const isReadOnly = inner.category === "tenant_read" || REPEAT_EXEMPT_TOOLS.has(inner.name);
+        const repeatTracker = signals.toolArgsRepeat.get(inner.name);
+        let repeatCount = 0;
+        if (!isReadOnly && argsHash) {
+          if (repeatTracker?.hash === argsHash) {
+            repeatCount = repeatTracker.count + 1;
+          } else {
+            repeatCount = 1;
+          }
+          signals.toolArgsRepeat.set(inner.name, { hash: argsHash, count: repeatCount });
+        }
+        const priorCount = signals.toolInvocationCount.get(inner.name) ?? 0;
+        // Execution-shaped tools have tenant-visible side effects. Once an
+        // identical call already succeeded in this turn, the second call is
+        // not a useful retry: return the prior result instead of running the
+        // workflow again and creating duplicate execution/audit rows.
+        const priorSuccess =
+          signals.lastExecutionSuccess &&
+          signals.lastExecutionSuccess.tool === inner.name &&
+          signals.lastExecutionSuccess.args_hash === argsHash
+            ? signals.lastExecutionSuccess.output
+            : undefined;
+        const repeatsSuccessfulExecution = priorSuccess !== undefined && repeatCount >= 2;
+        const tripped =
+          !isReadOnly && (repeatCount >= REPEAT_THRESHOLD || repeatsSuccessfulExecution);
+        if (tripped) {
+          signals.totalLoopWarnings += 1;
+          const turnBudgetReached = signals.totalLoopWarnings >= MAX_TURN_LOOP_WARNINGS;
+          log.conversation.tool.called({
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            step: signals.step,
+          });
+          // Structured engine-log warning so the short-circuit is
+          // visible in Docker / stdout without reading the response
+          // tool_log events.
+          recordToolCircuitOpen({
+            tool: inner.name,
+            reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
+          });
+          logger.warn({
+            module: "conversation",
+            action: "tool.loop_detected",
+            msg: turnBudgetReached
+              ? "turn loop budget exhausted — ending turn"
+              : "same args submitted to a write tool 3× in a row — aborting further calls",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            tool_count: priorCount,
+            repeat_count: repeatCount,
+            args_hash: argsHash.slice(0, 64),
+            total_loop_warnings: signals.totalLoopWarnings,
+            repeat_threshold: REPEAT_THRESHOLD,
+            repeats_successful_execution: repeatsSuccessfulExecution,
+            turn_budget_reached: turnBudgetReached,
+          });
+          events.push({
+            type: "tool_log",
+            call_id: "loop-detected",
+            tool: inner.name,
+            level: "warn",
+            message: turnBudgetReached
+              ? `tool.loop_detected: ${inner.name} repeated identical args ${repeatCount}×; turn-level loop budget exhausted (${signals.totalLoopWarnings}) — ending turn`
+              : repeatsSuccessfulExecution
+                ? `tool.loop_detected: ${inner.name} already succeeded with identical args this turn — present the prior_success_output instead of running it again`
+                : `tool.loop_detected: ${inner.name} called with identical args ${repeatCount}× in a row — change approach or ask the user`,
+            ts: new Date().toISOString(),
+          });
+          return {
+            ok: false,
+            data: {
+              error_code: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
+              message: priorSuccess
+                ? `${inner.name} already succeeded with these exact args this turn — its result is attached as prior_success_output. Present THAT result to the user; do NOT run it again.`
+                : turnBudgetReached
+                  ? `this turn called tools ${signals.totalLoopWarnings}× past the loop-warning budget — stop, summarise what you already know, and end the turn with a single question for the user (use ask_user_choice or ask_user_text, not prose).`
+                  : `${inner.name} has been called with identical args ${repeatCount}× in a row in this turn — change the args or stop and ask the user via ask_user_choice / ask_user_text. Do NOT retry with the SAME shape.`,
+              reason: turnBudgetReached ? "turn_loop_budget_exhausted" : "tool_loop_detected",
+              tool: inner.name,
+              repeat_count: repeatCount,
+              ...(priorSuccess !== undefined ? { prior_success_output: priorSuccess } : {}),
+              next_best_actions: ["ask_user_choice", "ask_user_text", "diagnose_latest_execution"],
+            },
+          };
+        }
+        signals.toolInvocationCount.set(inner.name, priorCount + 1);
+
+        // One-shot memory bracket at the FIRST tool invocation of the turn.
+        // Splits the opaque step-0 window: the local probes measured the
+        // execution lane at ~23MB external peak, so if external is already
+        // high HERE, the ~750MB transient belongs to the provider
+        // request/stream segment that ran before this tool call.
+        if (signals.step === 0) {
+          const m = process.memoryUsage();
+          const external_mb = Math.round(m.external / (1024 * 1024));
+          // SUBKIT_HEAP_DIAG=1 (set via a systemd drop-in, never on by
+          // default): name WHO holds the step-0 external transient. The
+          // knob-perfect standalone replica of the streamText invocation
+          // peaks at 9MB external on the same host, so the retainer is
+          // engine-resident — only an in-process heap snapshot at the
+          // spike moment can identify it. One snapshot per process; the
+          // ~1GB-heap JSON lands in /tmp for offline analysis.
+          let heapDiag: Record<string, unknown> = {};
+          if (process.env.SUBKIT_HEAP_DIAG === "1") {
+            try {
+              const { heapStats } = await import("bun:jsc");
+              const h = heapStats();
+              heapDiag = {
+                heap_size_mb: Math.round(h.heapSize / (1024 * 1024)),
+                extra_memory_mb: Math.round((h.extraMemorySize ?? 0) / (1024 * 1024)),
+                heap_top: Object.entries(h.objectTypeCounts)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 8),
+              };
+              if (external_mb > 512 && !heapSnapshotWritten) {
+                heapSnapshotWritten = true;
+                const snapshotPath = `/tmp/subkit-heap-first-tool-${Date.now()}.json`;
+                await Bun.write(snapshotPath, JSON.stringify(Bun.generateHeapSnapshot()));
+                heapDiag.heap_snapshot_path = snapshotPath;
+              }
+            } catch (err) {
+              heapDiag = { heap_diag_error: err instanceof Error ? err.message : String(err) };
+            }
+          }
+          logger.info({
+            module: "process",
+            action: "step.memory",
+            at: "first_tool_start",
+            tool: inner.name,
+            external_mb,
+            rss_mb: Math.round(m.rss / (1024 * 1024)),
+            ...heapDiag,
+          });
+        }
+        const step = signals.step++;
+        const startedAt = Date.now();
+        const ensureAssistantMessageAnchor = async (): Promise<string> => {
+          if (signals.assistantMessageId) return signals.assistantMessageId;
+          const messageId = await appendMessage(
+            db,
+            ctx.tenant_id,
+            ctx.conversation_id,
+            "assistant",
+            {},
+          );
+          signals.assistantMessageId = messageId;
+          return messageId;
+        };
+        const assistantMessageId = await ensureAssistantMessageAnchor();
+        const toolCallId = await insertToolCall(db, {
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          parent_message_id: assistantMessageId,
+          tool: inner.name,
+          input: rawArgs,
+          approval_required: inner.name.startsWith("ask_user_"),
+        });
+        // Option-B worker heartbeat: stamp the live `mcp_tasks` row with
+        // this tool's phase/last_action/step + a fresh `heartbeat_at` as
+        // the tool starts executing. For a backgrounded MCP turn this is
+        // what `conversation_get` reports as accurate, monotonic progress;
+        // for an inline sk-REPL turn (no `mcp_tasks` row) it no-ops.
+        await stampMcpTaskProgress(ctx.tenant_id, ctx.conversation_id, inner.name, rawArgs, db);
+        signals.pendingChildToolCallIds.push(toolCallId);
+        events.push({
+          type: "tool_call_start",
+          call_id: toolCallId,
+          tool: inner.name,
+          input_partial: rawArgs,
+          parent_message_id: assistantMessageId,
+        });
+        events.push({
+          type: "tool_call_end",
+          call_id: toolCallId,
+          input: rawArgs,
+          parent_message_id: assistantMessageId,
+        });
+        // Single-line activity ticker: tell the operator WHAT the
+        // engine is doing right now. The transcript already shows the
+        // tool-call card; this just keeps the ticker accurate when
+        // the card scrolls out of view. Throttled in EventSink.
+        events.push({
+          type: "activity",
+          phase: "tool",
+          label: inner.name,
+          tool_name: inner.name,
+          call_id: toolCallId,
+        });
+        log.conversation.tool.called({
+          conversation_id: ctx.conversation_id,
+          tool: inner.name,
+          step,
+        });
+
+        // Per-call correlated log callback. Tools that want to emit
+        // progress updates during long-running work call
+        // `ctx.onLog("info", "...")` — each emission becomes a
+        // `tool_log` TurnEvent the client can render live.
+        const perCallCtx: ToolContext = {
+          ...ctx,
+          tool_call_id: toolCallId,
+          assistant_message_id: assistantMessageId,
+          onLog: (level, message) => {
+            events.push({
+              type: "tool_log",
+              call_id: toolCallId,
+              tool: inner.name,
+              level,
+              message,
+              ts: new Date().toISOString(),
+            });
+          },
+          // Inline diff emitter — tools that mutate the draft call this
+          // with canonical before/after JSON; we compute the unified
+          // line-diff once on the engine side and ship pre-built hunks
+          // over the wire.
+          emitDiff: ({ title, language, before, after }) => {
+            try {
+              const hunks = computeLineDiff(before, after, { context: 3 });
+              if (hunks.length === 0) return;
+              events.push({ type: "diff", title, language, hunks });
+            } catch {
+              // Best-effort — never block the tool on a diff failure.
+            }
+          },
+        };
+
+        // Resolve the effective execution mode (per-conversation
+        // override → dynamic compute-from-input → category default).
+        // The resolved mode is recorded in the interaction_log's
+        // `proposed` transition so operators / observability see it,
+        // and a `policy_confirm_required` elicit_request is emitted
+        // when the mode demands confirmation before execution.
+        const resolvedMode = resolveToolMode({
+          tool: inner.name,
+          category: inner.category,
+          input: rawArgs,
+          overrides: toolPolicies,
+          permission_mode: permissionMode,
+        });
+        const policyMarker = (rawArgs as { __policy_confirmed?: boolean }).__policy_confirmed;
+        // Retained purely for the forensic gate log below — it is no
+        // longer a gate INPUT. `buildPolicyGateCommitIntent` (below)
+        // still routes on `mapToolToCommitIntentKind` when it attaches
+        // the auto-persist carrier.
+        const intentKindForCurrentTool = mapToolToCommitIntentKind(inner.name);
+        // Durable prior-approval lookup — ONLY for the save-workflow
+        // path, and ONLY via the SHARED `findPriorSaveWorkflowApproval`
+        // predicate that `commitWorkflowAtomic` also authorizes on
+        // (`persistence/commit-workflow.ts`). Keying the pre-confirm gate
+        // and the commit backstop on the same predicate is what makes
+        // them impossible to disagree: if the pre-confirm skips on an
+        // approval, the commit gate would have accepted the same one.
+        //
+        // Every OTHER write tool has NO prior-approval shortcut here —
+        // it relies on the deterministic `decideConfirm` rule, which
+        // pauses unless `__policy_confirmed` is present. The pause emits
+        // an `ask_user_confirm` carrying a `commit_intent`, and the
+        // harness auto-persist path applies the write on approve. The
+        // fuzzy natural-language heuristics (a generic 20-row
+        // elicitation scan keyed on the cosmetic `kind` bucket, plus a
+        // prose-affirmation regex over recent messages) were deleted:
+        // they guessed at operator intent over a security-critical write.
+        let priorApproval = false;
+        if (inner.name === "save_workflow_draft") {
+          try {
+            const approval = await findPriorSaveWorkflowApproval(
+              db,
+              ctx.tenant_id,
+              ctx.conversation_id,
+            );
+            if (
+              approval &&
+              Date.now() - (approval.created_at?.getTime() ?? 0) < PRIOR_APPROVAL_WINDOW_MS
+            ) {
+              priorApproval = true;
+            }
+          } catch {
+            // DB blip: fall back to gating. Better to ask twice than
+            // silently elide a security-critical confirm.
+          }
+        }
+        // The ONE confirm-gate decision — the same pure rule the
+        // MCP-direct gate (`mcp/capabilities/policy-gate.ts`) evaluates,
+        // so both surfaces pause or proceed IDENTICALLY for the same
+        // tool/args. Biased to pause: reads auto-run; a write proceeds
+        // only with `policyMarker` OR a fresh durable `priorApproval`.
+        const confirmDecision = decideConfirm({
+          resolvedMode,
+          policyMarker: Boolean(policyMarker),
+          priorApproval,
+          category: inner.category,
+        });
+        const needsPreConfirmation = confirmDecision.pause;
+        // Forensic log when the gate was evaluated for a
+        // confirm_before_execution tool but skipped, so the next "tool
+        // ran without confirmation" investigation can read WHY directly
+        // from engine logs instead of bisecting the wrapper. Pre-fix
+        // this exact failure mode silently swallowed a save_workflow_draft
+        // call (session dca36b29 — `paused: false, committed: false,
+        // error: no_prior_approval`).
+        if (resolvedMode === "confirm_before_execution" && !needsPreConfirmation) {
+          logger.info({
+            module: "conversation_tool",
+            action: "policy.gate_skipped",
+            msg: "policy gate skipped despite confirm_before_execution mode",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            category: inner.category,
+            skip_reason: confirmDecision.reason,
+            ...(intentKindForCurrentTool ? { intent_kind: intentKindForCurrentTool } : {}),
+          });
+        }
+
+        // yolo audit: when the resolver short-circuits a dangerous
+        // tool because the operator armed yolo, emit a forensic-grade
+        // log line so an operator can later answer "did anyone click
+        // before this delete?". Lives next to the existing
+        // `recordTransition` so the trail also surfaces in the
+        // confirmation-state machine.
+        const bypassedConfirmation = permissionMode === "yolo" && isDangerousTool(inner.name);
+        if (bypassedConfirmation) {
+          logger.warn({
+            module: "tool",
+            action: "tool.executed_yolo",
+            msg: "dangerous tool executed under yolo — confirmation gate bypassed",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool_call_id: toolCallId,
+            tool: inner.name,
+            permission_mode: "yolo",
+            bypassed_confirmation: true,
+          });
+        }
+
+        // Confirmation-state machine entry: tenant_write tools stage a
+        // `proposed` state before execution. On success we transition
+        // to `confirmed`, on failure to `declined`. Read-only tools
+        // skip this entirely — the state columns stay null.
+        if (inner.category === "tenant_write") {
+          await recordTransition(db, {
+            tool_call_id: toolCallId,
+            tenant_id: ctx.tenant_id,
+            to_state: "proposed",
+            actor_id: ctx.actor_id,
+            tool: inner.name,
+            data: {
+              resolved_mode: resolvedMode,
+              ...(permissionMode ? { permission_mode: permissionMode } : {}),
+              ...(bypassedConfirmation ? { bypassed_confirmation: true } : {}),
+            },
+          });
+        }
+
+        // Policy-gated pre-execution confirmation: emit an elicitation
+        // without invoking the tool. The operator's `respond` posts an
+        // interaction_log entry; the model re-issues the same tool call
+        // with `__policy_confirmed: true` on a subsequent turn.
+        if (needsPreConfirmation) {
+          // Same-turn dedupe — defense in depth against parallel tool
+          // calls. Anthropic's `disableParallelToolUse` (loop.ts) keeps
+          // this to a single tool_use per turn at the provider layer;
+          // if a future provider or model variant slips a parallel call
+          // through anyway, the second call refuses with a structured
+          // error that points to the first elicitation. Without this,
+          // a single user turn could stage N pending elicitations and
+          // exhaust the loop-warning budget (session d34e5858 regression
+          // — "starte mit übermorgen" produced 5 parallel run_workflow
+          // pre-confirmations and surfaced the synthesised "I stopped
+          // this turn early" fallback).
+          if (signals.pendingElicitation) {
+            const dupOutput = {
+              error: "duplicate_pending_elicitation_in_turn",
+              note: "Another tool call in this turn already staged an ask_user_confirm. Wait for the user to resolve that one, then re-issue this call after the user confirms.",
+              existing_elicitation_id: signals.pendingElicitation.elicitation_id,
+              existing_tool: signals.pendingElicitation.tool_name,
+            };
+            await updateToolCallOutput(db, toolCallId, dupOutput);
+            events.push({
+              type: "tool_result",
+              call_id: toolCallId,
+              tool: inner.name,
+              output: dupOutput,
+              parent_message_id: assistantMessageId,
+            });
+            recordConversationToolCall({
+              category: inner.category,
+              tool: inner.name,
+              outcome: "denied",
+              duration_ms: Date.now() - startedAt,
+            });
+            return { ok: false, data: dupOutput };
+          }
+          // Structured pending-output preview so the confirm UI shows
+          // first-class fields (target id, environment, key shape)
+          // instead of a raw arg blob the user has to parse.
+          const pendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
+          // Per-tool summary so the confirmation card can show the
+          // operator what they're about to approve. For `run_workflow`,
+          // include the workflow's display name + the last preview's
+          // step count + summary so the operator sees concrete
+          // context, not just the policy mode — the confirm UX
+          // surfaces the test payload + last output.
+          const buildPolicyGateSummary = (): string => {
+            if (inner.name === "run_workflow") {
+              const draft = ctx.getDraft();
+              const explicitWorkflow =
+                typeof rawArgs.workflow === "string"
+                  ? rawArgs.workflow
+                  : typeof rawArgs.workflow_id === "string"
+                    ? rawArgs.workflow_id
+                    : null;
+              const wfName =
+                explicitWorkflow ??
+                draft.summary?.active_target?.name ??
+                draft.workflow?.name ??
+                "(unnamed)";
+              const env =
+                (rawArgs &&
+                  typeof rawArgs === "object" &&
+                  (rawArgs as { environment?: string }).environment) ??
+                "dev";
+              const lastPreview = draft.latest_preview;
+              const previewBit = lastPreview?.summary
+                ? ` · last preview: ${lastPreview.summary.slice(0, 80)}`
+                : "";
+              return `Run workflow "${wfName}" in ${env}${previewBit}`;
+            }
+            return `Confirm ${inner.name} (policy: ${resolvedMode})`;
+          };
+          const policyGateSummary = buildPolicyGateSummary();
+          // Top-level kind matters: `save_workflow_draft` MUST stamp
+          // `kind: "save_workflow_draft"` so the inner prior-approval gate in
+          // commit-workflow.ts:54-89 finds the resolved row when the
+          // LLM re-issues with __policy_confirmed: true.
+          const topLevelKind = topLevelElicitationKindForTool(inner.name);
+          // Optional commit_intent so `maybeAutoPersistFromElicitation`
+          // (service.ts:551 → auto-persist.ts) can apply the write
+          // atomically the moment the operator confirms — bypassing
+          // the LLM re-issue round-trip entirely.
+          const policyCommitIntent = buildPolicyGateCommitIntent(inner.name, rawArgs);
+          // Connector-delete dependency surface: when the target
+          // connector is still bound by live workflows, list them in the
+          // confirm card so the operator sees what will break before
+          // approving. The dispatcher backstop (dispatchDeleteConnector)
+          // refuses the auto-persist unless `confirm_orphan: true`, so
+          // this is the operator-facing half of the same guard.
+          let connectorDeleteDependents: Array<{ id: string; slug: string; name: string }> = [];
+          if (inner.name === "delete_connector") {
+            const connectorId = typeof rawArgs.id === "string" ? rawArgs.id : null;
+            if (connectorId) {
+              connectorDeleteDependents = await listWorkflowsUsingConnector(
+                ctx.tenant_id,
+                connectorId,
+                db,
+              );
+            }
+          }
+          const hasConnectorDeleteDependents = connectorDeleteDependents.length > 0;
+          const elicitationInput: Record<string, unknown> = {
+            kind: topLevelKind,
+            question: hasConnectorDeleteDependents
+              ? `Deleting this connector will break ${connectorDeleteDependents.length} live workflow${connectorDeleteDependents.length === 1 ? "" : "s"} (${connectorDeleteDependents.map((w) => w.slug).join(", ")}). Proceed anyway?`
+              : `Policy requires confirmation before running ${inner.name}. Proceed?`,
+            target: { tool: inner.name, args: rawArgs },
+            ...confirmationMetadataForTool(inner.name, rawArgs),
+            ...(pendingOutput ? { pending_output: pendingOutput } : {}),
+            ...(policyCommitIntent ? { commit_intent: policyCommitIntent } : {}),
+            ...(hasConnectorDeleteDependents
+              ? {
+                  dependents: connectorDeleteDependents,
+                  next_best_actions: ["edit_workflow_patch"],
+                }
+              : {}),
+          };
+          const elicitation = await createElicitation(
+            {
+              tenant_id: ctx.tenant_id,
+              conversation_id: ctx.conversation_id,
+              tool_call_id: toolCallId,
+              parent_message_id: assistantMessageId,
+              tool_name: "ask_user_confirm",
+              summary: policyGateSummary,
+              input: elicitationInput,
+              actor_id: ctx.actor_id,
+            },
+            db,
+          );
+          signals.pendingChildElicitationIds.push(elicitation.id);
+          // Forensic log: confirmation event was emitted with full
+          // payload context so an operator triaging "did the gate
+          // actually pause?" can answer it from logs alone.
+          logger.info({
+            module: "conversation_tool",
+            action: "policy.gate_paused",
+            msg: "policy gate paused tool execution and emitted ask_user_confirm",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            category: inner.category,
+            elicitation_id: elicitation.id,
+            tool_call_id: toolCallId,
+            elicitation_kind: topLevelKind,
+            has_commit_intent: policyCommitIntent !== null,
+            ...(policyCommitIntent
+              ? { commit_intent_kind: policyCommitIntent.kind as string }
+              : {}),
+          });
+          // Stamp `status: "awaiting_confirmation"` so any CLI card that
+          // dispatches on `tool: "run_workflow" | "save_workflow_draft"` and
+          // reads `data.status` shows a meaningful pending state instead
+          // of falling into the "Execution status missing" branch.
+          // Pre-fix this output was status-less and the ExecutionDiagnosisCard
+          // briefly rendered `× bug, not a state` for the operator.
+          const output = {
+            pending: true,
+            status: "awaiting_confirmation" as const,
+            policy_mode: resolvedMode,
+            elicitation_id: elicitation.id,
+            note: policyCommitIntent
+              ? "policy_confirm_required — the operator must confirm via the emitted ask_user_confirm. The harness will auto-persist on confirm via the attached commit_intent; you do NOT need to re-issue this tool call."
+              : "policy_confirm_required — operator must confirm before the tool executes. Re-issue the same call with __policy_confirmed: true after receiving confirmation.",
+          };
+          await updateToolCallOutput(db, toolCallId, output);
+          events.push({
+            type: "tool_result",
+            call_id: toolCallId,
+            tool: inner.name,
+            output,
+            parent_message_id: assistantMessageId,
+          });
+          events.push({
+            type: "elicit_request",
+            elicitation_id: elicitation.id,
+            tool_call_id: toolCallId,
+            tool_name: "ask_user_confirm",
+            summary: elicitation.summary,
+            input: elicitation.input,
+            parent_message_id: assistantMessageId,
+            ...(pendingOutput ? { pending_output: pendingOutput } : {}),
+          });
+          signals.pendingElicitation = {
+            elicitation_id: elicitation.id,
+            tool_name: "ask_user_confirm",
+            kind: topLevelKind,
+            summary: policyGateSummary,
+            input: elicitation.input,
+          };
+          recordConversationToolCall({
+            category: inner.category,
+            tool: inner.name,
+            outcome: "denied",
+            duration_ms: Date.now() - startedAt,
+          });
+          return {
+            ok: false,
+            data: output,
+            pause: {
+              elicitation_id: elicitation.id,
+              tool_name: "ask_user_confirm",
+              summary: policyGateSummary,
+              kind: topLevelKind,
+              input: elicitationInput,
+            },
+          };
+        }
+
+        // Resolve `{ "$file": "fid_..." }` refs inside rawArgs before
+        // handing them to the tool. The canonical resolver lives at
+        // `files/resolver.ts` — `walkAndResolve` replaces every ref
+        // leaf with a `ResolvedFile` whose `openRead()` returns the
+        // bytes stream. Unknown / cross-tenant fids throw
+        // `FileNotFoundError`; we surface that as a typed error
+        // exactly like the legacy attachment-slug failure mode.
+        const resolveCache = new Map<string, ResolvedFile>();
+        let resolvedArgs: Record<string, unknown>;
+        try {
+          resolvedArgs = await walkAndResolve(
+            rawArgs,
+            { db, tenant_id: ctx.tenant_id },
+            resolveCache,
+          );
+        } catch (err) {
+          if (err instanceof FileNotFoundError) {
+            const output: Record<string, unknown> = {
+              ok: false,
+              persistence: "none",
+              error: {
+                code: "file_not_found",
+                message: err.message,
+              },
+            };
+            await updateToolCallOutput(db, toolCallId, output);
+            events.push({
+              type: "tool_result",
+              call_id: toolCallId,
+              tool: inner.name,
+              output,
+              parent_message_id: assistantMessageId,
+            });
+            release();
+            return { ok: false, data: output };
+          }
+          throw err;
+        }
+
+        // Tool-driven skill autoload. Before dispatch, ask the
+        // data-driven matcher (skill-autoload.ts) which active skills'
+        // `activates_when` rules match the about-to-run tool and the
+        // conversation's connector scope, then append any missing
+        // slugs to `loaded_skills` so the next context assembly sees
+        // their bodies. Idempotent — already-loaded slugs are filtered.
+        try {
+          const convRow = await db
+            .select({
+              loaded_skills: conversations.loaded_skills,
+              turn_count: conversations.turn_count,
+            })
+            .from(conversations)
+            .where(
+              and(
+                eq(conversations.tenant_id, ctx.tenant_id),
+                eq(conversations.id, ctx.conversation_id),
+              ),
+            )
+            .limit(1);
+          const currentEntries = parseLoadedSkills(convRow[0]?.loaded_skills, ({ dropped, raw }) =>
+            logger.warn({
+              module: "conversation",
+              action: "skill_recency.malformed_loaded_skills",
+              msg: "dropped malformed loaded_skills entries during tool-call autoload",
+              conversation_id: ctx.conversation_id,
+              tenant_id: ctx.tenant_id,
+              dropped,
+              raw,
+            }),
+          );
+          // The loop increments `turn_count` at turn start, before any tool
+          // runs, so the persisted value is the current turn — stamp both
+          // new additions and tool-driven re-touches with it.
+          const currentTurn = convRow[0]?.turn_count ?? 0;
+          const membership = currentEntries.map((e) => e.slug);
+          const [catalog, scope] = await Promise.all([
+            loadActivationCatalog(ctx.tenant_id, db),
+            resolveScopeFactsForConversation(db, ctx.tenant_id, ctx.conversation_id, rawArgs),
+          ]);
+          // New slugs this tool unlocks (skip already-loaded — that path is
+          // re-affirmed below).
+          const additions = autoloadForToolCall(
+            { tool: inner.name, input: rawArgs, ...scope },
+            catalog,
+            membership,
+          );
+          // Already-loaded slugs whose `activates_when` still matches this
+          // tool call — refresh their recency so a tool-driven re-touch
+          // keeps the body alive.
+          const reaffirmed = new Set(
+            reaffirmLoadedForTurn(
+              { mode: "tool_call", tool: inner.name, input: rawArgs, ...scope },
+              catalog,
+              membership,
+            ),
+          );
+          if (additions.length > 0 || reaffirmed.size > 0) {
+            const refreshed = currentEntries.map((e) =>
+              reaffirmed.has(e.slug) ? { slug: e.slug, last_turn: currentTurn } : e,
+            );
+            const next = [
+              ...refreshed,
+              ...additions.map((slug) => ({ slug, last_turn: currentTurn })),
+            ];
+            await db
+              .update(conversations)
+              .set({ loaded_skills: next })
+              .where(
+                and(
+                  eq(conversations.tenant_id, ctx.tenant_id),
+                  eq(conversations.id, ctx.conversation_id),
+                ),
+              );
+            logger.debug({
+              module: "conversations.skill_autoload",
+              action: "skill_autoload.applied",
+              conversation_id: ctx.conversation_id,
+              tool: inner.name,
+              added_skills: additions,
+              reaffirmed_skills: [...reaffirmed],
+            });
+          }
+        } catch (err) {
+          // Autoload is best-effort: a DB blip must never block tool
+          // execution. The next turn will retry from the persisted
+          // state.
+          logger.warn({
+            module: "conversations.skill_autoload",
+            action: "skill_autoload.failed",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        // Langfuse trace span around the tool execution. Inert no-op
+        // when LANGFUSE_PUBLIC_KEY/SECRET_KEY are unset; redacts any
+        // ${cred.*} placeholders + sensitive-looking values in input
+        // and output before they leave the process.
+        const langfuseSpan = await startToolSpan({
+          name: inner.name,
+          input: resolvedArgs,
+          metadata: {
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            category: inner.category,
+            session_id: ctx.conversation_id,
+          },
+        });
+
+        let result: ToolResult;
+        // Central RBAC gate: enforce the tool's declarative `permission`
+        // descriptor before execution (replaces the per-tool inline can()
+        // checks). Runs at the same point the inline checks did — inside
+        // execute, after the confirm gate — so ordering is unchanged; a deny
+        // flows through the normal ok:false handling below (declined
+        // transition, row update, tool_result event).
+        const permCheck: ToolPermissionResult = inner.permission
+          ? await checkToolPermission(perCallCtx, inner.permission, rawArgs)
+          : { allow: true };
+        try {
+          result = permCheck.allow
+            ? await inner.execute(perCallCtx, resolvedArgs)
+            : (inner.permission?.denyResult?.(permCheck.permission, permCheck.reason) ?? {
+                ok: false,
+                data: {
+                  error: "permission_denied",
+                  permission: permCheck.permission,
+                  reason: permCheck.reason,
+                },
+              });
+        } catch (err) {
+          await langfuseSpan.finish({ status: "error", error: err });
+          const msg = err instanceof Error ? err.message : String(err);
+          const output = { error: msg };
+          await updateToolCallOutput(db, toolCallId, output);
+          events.push({
+            type: "tool_result",
+            call_id: toolCallId,
+            tool: inner.name,
+            output,
+            parent_message_id: assistantMessageId,
+          });
+          if (inner.category === "tenant_write") {
+            await recordTransition(db, {
+              tool_call_id: toolCallId,
+              tenant_id: ctx.tenant_id,
+              to_state: "declined",
+              actor_id: ctx.actor_id,
+              tool: inner.name,
+              data: { reason: msg, stage: "execute_threw" },
+            });
+          }
+          recordConversationToolCall({
+            category: inner.category,
+            tool: inner.name,
+            outcome: "error",
+            duration_ms: Date.now() - startedAt,
+          });
+          log.conversation.tool.failed({
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            error: msg,
+            duration_ms: Date.now() - startedAt,
+          });
+          return { ok: false, data: output };
+        }
+        if (inner.category === "tenant_write") {
+          await recordTransition(db, {
+            tool_call_id: toolCallId,
+            tenant_id: ctx.tenant_id,
+            to_state: result.ok ? "confirmed" : "declined",
+            actor_id: ctx.actor_id,
+            tool: inner.name,
+            ...(result.ok ? {} : { data: { reason: "tool returned ok=false" } }),
+          });
+        }
+
+        // Persist the FULL output to the conversation_tool_calls row
+        // (for audit / replay), but feed only a TRUNCATED view back to
+        // the model so a 200-row list doesn't blow subsequent context
+        // budgets. `raw_ref` carries a handle the model can fetch via
+        // `get_raw_result` when it actually needs the rest. Projection
+        // shared with the direct invocation path — see result-payload.ts.
+        const resultPayload: unknown = normalizeToolResultPayload(result);
+        // Close the Langfuse span with the post-tool payload. `success`
+        // mirrors the structured `ok` flag: a tool that returns
+        // `{ ok: false }` is a recoverable result, not an error,
+        // but it lights up `level: WARNING` so operators can spot
+        // a high rate of `ok:false` returns in the dashboard.
+        await langfuseSpan.finish({
+          output: resultPayload,
+          status: result.ok ? "success" : "error",
+        });
+        await updateToolCallOutput(db, toolCallId, resultPayload);
+
+        // Draft snapshot after every successful draft_write tool. Gives
+        // the operator a rollback target if the next edit goes wrong;
+        // LRU-capped at 10 per conversation so the table can't grow
+        // unbounded. Best-effort — a failure here logs but does not
+        // block the tool result from reaching the LLM.
+        if (result.ok && inner.category === "draft_write") {
+          try {
+            const draftAfter = ctx.getDraft();
+            await createDraftSnapshot(
+              {
+                tenant_id: ctx.tenant_id,
+                conversation_id: ctx.conversation_id,
+                turn_index: step,
+                draft: draftAfter,
+                label: inner.name,
+              },
+              db,
+            );
+          } catch (err) {
+            logger.warn({
+              module: "conversations.draft_snapshot",
+              action: "draft_snapshot.failed",
+              conversation_id: ctx.conversation_id,
+              tool: inner.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        // get_raw_result exists to drain a stored `raw_ref` back into the
+        // model's context — its whole purpose is to bypass the truncator.
+        // If we re-run its output through truncateForLlm, the truncator
+        // mints a NEW raw_ref and tells the model "full payload available
+        // via get_raw_result(ref=...)" — and the model follows the
+        // breadcrumb forever (session 0498925e: 10 consecutive calls,
+        // each output growing by 8 chars = the length of the fresh ref).
+        // Skip the truncator for this single tool; if the payload exceeds
+        // context, the model already accepted that cost by asking for it.
+        const skipTruncate = inner.name === "get_raw_result";
+        const truncated = skipTruncate
+          ? ({ truncated: false, data: resultPayload } as const)
+          : truncateForLlm(resultPayload);
+        events.push({
+          type: "tool_result",
+          call_id: toolCallId,
+          tool: inner.name,
+          output: truncated.truncated
+            ? {
+                ...(truncated.data as Record<string, unknown>),
+                _truncated: true,
+                _raw_ref: truncated.raw_ref,
+                _note: truncated.note,
+              }
+            : resultPayload,
+          parent_message_id: assistantMessageId,
+        });
+        // Activity ticker: tool ended → switch to idle so the CLI
+        // ticker stops showing the tool name. `last_completed` lets
+        // the operator see what just finished (prefer visibility over
+        // silence) even after the call card scrolls.
+        const completedDurationMs = Date.now() - startedAt;
+        events.push({
+          type: "activity",
+          phase: "idle",
+          label: `last: ${inner.name} ${result.ok ? "ok" : "fail"} · ${completedDurationMs}ms`,
+          last_completed: {
+            tool_name: inner.name,
+            ok: result.ok,
+            duration_ms: completedDurationMs,
+          },
+        });
+
+        const dataSummary = summarizeToolData(resultPayload);
+        const committedWorkflowId = committedWorkflowIdFromResult(result);
+        const logCtx = {
+          conversation_id: ctx.conversation_id,
+          tool: inner.name,
+          ok: result.ok,
+          paused: Boolean(result.pause),
+          committed: Boolean(committedWorkflowId),
+          duration_ms: Date.now() - startedAt,
+          ...dataSummary,
+          // Lift a structured `ok:false` reason (top-level error_code/message)
+          // into the log so tool.failed carries WHY, not just data_keys.
+          ...summarizeToolFailure(result),
+        };
+        if (result.ok) log.conversation.tool.succeeded(logCtx);
+        else log.conversation.tool.failed(logCtx);
+        recordConversationToolCall({
+          category: inner.category,
+          tool: inner.name,
+          outcome: result.ok ? "ok" : "error",
+          duration_ms: Date.now() - startedAt,
+        });
+
+        // Track the last error shape so repeated identical failures
+        // can break out of a loop. A "shape" is the (reason, error)
+        // pair — same reason + same first ~80 chars of error counts
+        // as a repeat.
+        if (result.ok) {
+          signals.toolLastErrorHash.delete(inner.name);
+          signals.toolValidationFingerprint.delete(inner.name);
+          // This tool succeeded — clear its same-error_code streak so a
+          // recovered tool is not penalised for earlier refusals.
+          signals.toolErrorCodeRepeat.delete(inner.name);
+          // First success resets the global consecutive-failures counter.
+          signals.consecutiveFailures = 0;
+          // Remember the last successful execution result keyed by args
+          // hash. If the model re-issues the IDENTICAL call and trips the
+          // loop guard, the abort envelope hands this back as
+          // `prior_success_output` instead of hiding the finished run
+          // behind "no output".
+          if (argsHash && (inner.name === "run_workflow" || inner.name.startsWith("wf_"))) {
+            signals.lastExecutionSuccess = {
+              tool: inner.name,
+              args_hash: argsHash,
+              output: resultPayload,
+            };
+          }
+        } else {
+          const errObj = (resultPayload ?? {}) as Record<string, unknown>;
+          const reason =
+            typeof errObj.reason === "string"
+              ? errObj.reason
+              : typeof errObj.error_code === "string"
+                ? errObj.error_code
+                : "";
+          const err =
+            typeof errObj.error === "string"
+              ? errObj.error
+              : typeof errObj.message === "string"
+                ? errObj.message
+                : Array.isArray(errObj.errors)
+                  ? JSON.stringify(errObj.errors).slice(0, 120)
+                  : "";
+          const shape = `${reason}|${err.slice(0, 120)}`;
+          signals.toolLastErrorHash.set(inner.name, shape);
+          // Same-error_code streak: track the STABLE code (`reason` ??
+          // `error_code`) independently of the volatile message tail.
+          // Read pre-dispatch on the NEXT call to short-circuit a tool
+          // that keeps refusing the same way even as its args change.
+          // Not reset by other tools succeeding (only by THIS tool
+          // succeeding or returning a different code), so it survives
+          // the interleaved read-tool successes that reset
+          // `consecutiveFailures`.
+          if (reason) {
+            const priorCode = signals.toolErrorCodeRepeat.get(inner.name);
+            const nextCount = priorCode?.code === reason ? priorCode.count + 1 : 1;
+            signals.toolErrorCodeRepeat.set(inner.name, { code: reason, count: nextCount });
+          }
+          // Validation-fingerprint tracker: catches the case where
+          // args differ but the engine keeps returning the same
+          // validation error shape. Args-hash repeat detection won't
+          // fire there because each call has unique args; this
+          // detector watches the OUTPUT shape instead.
+          if (Array.isArray(errObj.errors)) {
+            const fingerprint = computeValidationFingerprint(
+              errObj.errors as Array<{ path?: unknown; message?: unknown }>,
+            );
+            if (fingerprint) {
+              const prior = signals.toolValidationFingerprint.get(inner.name);
+              const nextCount = prior?.hash === fingerprint ? prior.count + 1 : 1;
+              signals.toolValidationFingerprint.set(inner.name, {
+                hash: fingerprint,
+                count: nextCount,
+              });
+              if (nextCount >= MAX_VALIDATION_FINGERPRINT_REPEAT) {
+                logger.warn({
+                  module: "conversation_tool",
+                  action: "tool.validation_fingerprint_cap",
+                  msg: "same validation error shape repeated — model must ask user or change approach",
+                  conversation_id: ctx.conversation_id,
+                  tool: inner.name,
+                  fingerprint,
+                  repeat_count: nextCount,
+                });
+                recordToolCircuitOpen({
+                  tool: inner.name,
+                  reason: "validation_fingerprint_repeat",
+                });
+                events.push({
+                  type: "tool_log",
+                  call_id: "validation-fingerprint-cap",
+                  tool: inner.name,
+                  level: "warn",
+                  message: `tool.validation_fingerprint_cap: ${inner.name} hit the SAME validation error shape ${nextCount}× — different args, same constraint. Stop iterating; emit ask_user_choice / ask_user_text describing the constraint and offering a path forward (e.g. simpler workflow, different connector field, hand-edited JSON).`,
+                  ts: new Date().toISOString(),
+                });
+              }
+            }
+          }
+          // Global cap: every ok=false tool result anywhere increments
+          // the running counter. The next dispatch tick reads this
+          // and short-circuits if the model has not asked the user yet.
+          signals.consecutiveFailures += 1;
+          if (signals.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            logger.warn({
+              module: "conversation_tool",
+              action: "tool.consecutive_failures_cap",
+              msg: "five consecutive failed tool calls — model must ask the user before continuing",
+              conversation_id: ctx.conversation_id,
+              tool: inner.name,
+              consecutive_failures: signals.consecutiveFailures,
+            });
+            const capAlternatives = buildCapAlternatives(signals.toolLastErrorHash);
+            events.push({
+              type: "tool_log",
+              call_id: "consecutive-failures",
+              tool: inner.name,
+              level: "warn",
+              message: `tool.consecutive_failures_cap: ${signals.consecutiveFailures} failed tool calls in a row — emit ask_user_choice / ask_user_text instead of patching further.${capAlternatives}`,
+              ts: new Date().toISOString(),
+            });
+          }
+        }
+
+        // Mirror the old loop: a `tool` role message keeps the audit
+        // trail of the turn self-contained in `conversation_messages`.
+        // The persisted message carries the full output (not truncated)
+        // for faithful replay.
+        await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "tool", {
+          tool: inner.name,
+          output: resultPayload,
+        });
+
+        if (
+          !result.ok &&
+          typeof resultPayload === "object" &&
+          resultPayload !== null &&
+          Array.isArray((resultPayload as { errors?: unknown }).errors)
+        ) {
+          events.push({
+            type: "validation_error",
+            errors: (resultPayload as { errors: Array<{ path: string; message: string }> }).errors,
+          });
+        }
+
+        if (result.pause) {
+          // Prefer the full input payload; fall back to reconstructing
+          // from legacy {kind, diff, target} fields.
+          const inputPayload =
+            result.pause.input !== undefined
+              ? result.pause.input
+              : {
+                  ...(result.pause.kind !== undefined ? { kind: result.pause.kind } : {}),
+                  ...(result.pause.diff !== undefined ? { diff: result.pause.diff } : {}),
+                  ...(result.pause.target !== undefined ? { target: result.pause.target } : {}),
+                };
+          const enrichedInputPayload =
+            inputPayload && typeof inputPayload === "object"
+              ? {
+                  ...confirmationMetadataForTool(inner.name, rawArgs),
+                  ...(inputPayload as Record<string, unknown>),
+                }
+              : inputPayload;
+          signals.pendingChildElicitationIds.push(result.pause.elicitation_id);
+          // Tool-emitted pause may carry its own pending_output; if
+          // not, derive one from the wrapping tool's policy hook so
+          // the confirm UI gets a structured preview either way.
+          const pausePending =
+            (inputPayload && typeof inputPayload === "object"
+              ? ((inputPayload as { pending_output?: Record<string, unknown> }).pending_output ??
+                null)
+              : null) ?? buildPendingOutputForTool(inner.name, rawArgs);
+          events.push({
+            type: "elicit_request",
+            elicitation_id: result.pause.elicitation_id,
+            tool_call_id: toolCallId,
+            tool_name: result.pause.tool_name,
+            summary: result.pause.summary,
+            input: enrichedInputPayload,
+            parent_message_id: assistantMessageId,
+            ...(pausePending ? { pending_output: pausePending } : {}),
+          });
+          log.conversation.approval.requested({
+            conversation_id: ctx.conversation_id,
+            approval_id: result.pause.elicitation_id,
+            kind: result.pause.kind ?? result.pause.tool_name,
+          });
+          signals.pendingElicitation = {
+            elicitation_id: result.pause.elicitation_id,
+            tool_name: result.pause.tool_name,
+            summary: result.pause.summary,
+            input: enrichedInputPayload,
+          };
+        }
+
+        if (committedWorkflowId) {
+          events.push({ type: "committed", workflow_id: committedWorkflowId });
+          log.conversation.completed({
+            conversation_id: ctx.conversation_id,
+            final_status: "committed",
+            committed_workflow_id: committedWorkflowId,
+            steps_taken: step + 1,
+          });
+          signals.committed = { workflow_id: committedWorkflowId };
+        }
+
+        // Post-execution review pause (`confirm_after_execution`).
+        // When the resolved mode says the
+        // tool's RESULT must be reviewed before the loop continues,
+        // and the tool body succeeded (ok=true) and didn't already
+        // emit its own pause, synthesise an `ask_user_confirm`
+        // elicitation carrying the captured result. The operator
+        // accepts → loop resumes; declines → loop receives a
+        // `result_review_declined` envelope (subkit's tenant_write
+        // tools are mostly idempotent / non-rollbackable, so we don't
+        // attempt automatic rollback — declining is logged + surfaced
+        // and the model decides on the next turn).
+        if (
+          resolvedMode === "confirm_after_execution" &&
+          result.ok &&
+          !result.pause &&
+          !signals.pendingElicitation &&
+          // Inline-credential safeguards already pre-confirmed; don't
+          // double-prompt.
+          !policyMarker
+        ) {
+          const reviewElicitation = await createElicitation(
+            {
+              tenant_id: ctx.tenant_id,
+              conversation_id: ctx.conversation_id,
+              tool_call_id: toolCallId,
+              parent_message_id: assistantMessageId,
+              tool_name: "ask_user_confirm",
+              summary: `Review result of ${inner.name}`,
+              input: {
+                kind: REVIEW_AFTER_EXECUTION_KIND,
+                summary: `Review result of ${inner.name}`,
+                target: { tool: inner.name, args: rawArgs },
+                ...confirmationMetadataForTool(inner.name, rawArgs),
+                pending_output: resultPayload,
+              },
+              actor_id: ctx.actor_id,
+            },
+            db,
+          );
+          const reviewElicitationId = reviewElicitation.id;
+          signals.pendingChildElicitationIds.push(reviewElicitationId);
+          events.push({
+            type: "elicit_request",
+            elicitation_id: reviewElicitationId,
+            tool_call_id: toolCallId,
+            tool_name: "ask_user_confirm",
+            summary: `Review result of ${inner.name}`,
+            input: {
+              kind: REVIEW_AFTER_EXECUTION_KIND,
+              question: `${inner.name} ran. Keep this result?`,
+              target: { tool: inner.name, args: rawArgs },
+              ...confirmationMetadataForTool(inner.name, rawArgs),
+            },
+            parent_message_id: assistantMessageId,
+            pending_output: resultPayload as Record<string, unknown>,
+          });
+          log.conversation.approval.requested({
+            conversation_id: ctx.conversation_id,
+            approval_id: reviewElicitationId,
+            kind: REVIEW_AFTER_EXECUTION_KIND,
+          });
+          signals.pendingElicitation = {
+            elicitation_id: reviewElicitationId,
+            tool_name: "ask_user_confirm",
+            kind: REVIEW_AFTER_EXECUTION_KIND,
+            summary: `Review result of ${inner.name}`,
+            input: {
+              kind: REVIEW_AFTER_EXECUTION_KIND,
+              question: `${inner.name} ran. Keep this result?`,
+              target: { tool: inner.name, args: rawArgs },
+              ...confirmationMetadataForTool(inner.name, rawArgs),
+            },
+          };
+          logger.info({
+            module: "conversation_tool",
+            action: "post_execution_pause.created",
+            msg: "tool ran; pausing for operator review (confirm_after_execution)",
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            elicitation_id: reviewElicitationId,
+          });
+          return {
+            ok: result.ok,
+            data: resultPayload,
+            pause: {
+              tool_name: "ask_user_confirm",
+              kind: "generic",
+              summary: `Review result of ${inner.name}`,
+              elicitation_id: reviewElicitationId,
+              input: {
+                kind: REVIEW_AFTER_EXECUTION_KIND,
+                question: `${inner.name} ran. Keep this result?`,
+                target: { tool: inner.name, args: rawArgs },
+              },
+            },
+            ...(committedWorkflowId ? { committed_workflow_id: committedWorkflowId } : {}),
+          };
+        }
+
+        return {
+          ok: result.ok,
+          data: resultPayload,
+          ...(result.pause ? { pause: result.pause } : {}),
+          ...(committedWorkflowId ? { committed_workflow_id: committedWorkflowId } : {}),
+        };
+      };
+
+      try {
+        return await executeBody();
+      } finally {
+        release();
+      }
+    },
+  });
+}

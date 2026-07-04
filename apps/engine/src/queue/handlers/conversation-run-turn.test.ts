@@ -1,0 +1,543 @@
+// conversation.run-turn worker lifecycle (integration).
+//
+// Drives the GENUINE pg-boss worker end-to-end. Pins the SEP-1686
+// background-turn contract:
+//   - a `start` job runs the turn and writes the terminal envelope
+//     into `mcp_tasks.result`,
+//   - a job whose `mcp_tasks` row is already terminal is an idempotent
+//     no-op (pg-boss at-least-once),
+//   - turn_seq increments monotonically per conversation.
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { and, eq } from "drizzle-orm";
+import { getConfig, loadConfig } from "../../config/loader.ts";
+import * as svc from "../../conversations/service.ts";
+import {
+  auditLog,
+  conversations,
+  mcpTasks,
+  tenantLlmSettings,
+  tenants,
+  users,
+} from "../../db/schema/index.ts";
+import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import {
+  getMcpTask,
+  insertMcpTask,
+  setMcpTaskCancelled,
+  setMcpTaskFailure,
+  setMcpTaskResult,
+} from "../../mcp/tasks/store.ts";
+import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
+import { flush, waitFor } from "../../test-helpers/determinism/wait.ts";
+import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
+import {
+  enqueueConversationRunTurn,
+  registerConversationRunTurnHandler,
+} from "./conversation-run-turn.ts";
+
+let queue: QueueTestCtx;
+let tenantId: string;
+let userId: string;
+
+async function ensureConfig(): Promise<void> {
+  try {
+    getConfig();
+    return;
+  } catch {
+    // not loaded
+  }
+  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-runturn-test-"));
+  await loadConfig({
+    env: { DATABASE_URL: "postgres://placeholder/runturn-test", NODE_ENV: "test" },
+    configPathOverride: join(dir, "subkit.config.json"),
+  });
+}
+
+/** Poll an mcp_tasks row until it reaches a terminal state. */
+async function waitForTerminal(taskId: string): Promise<void> {
+  await waitFor(
+    async () => {
+      const row = await getMcpTask(tenantId, taskId, queue.testDb.db);
+      return Boolean(row && (row.result || row.failure_reason || row.cancelled_at));
+    },
+    { tries: 120, sleepMs: 250, label: "mcp_task terminal state" },
+  );
+}
+
+beforeAll(async () => {
+  process.env.LLM_PROVIDER = "mock";
+  await ensureConfig();
+  resetMockProvider();
+  queue = await createQueueCtx("conversation_run_turn");
+  const [t] = await queue.testDb.db
+    .insert(tenants)
+    .values({ slug: "t-runturn", display_name: "RunTurn" })
+    .returning();
+  if (!t) throw new Error("seed tenant failed");
+  tenantId = t.id;
+  const [u] = await queue.testDb.db
+    .insert(users)
+    .values({ tenant_id: tenantId, email: "rt@test.local", role: "admin" })
+    .returning();
+  if (!u) throw new Error("seed user failed");
+  userId = u.id;
+  // Explicit mock model names so the failure-path test can fail both
+  // the primary and the fallback model deterministically.
+  await queue.testDb.db.insert(tenantLlmSettings).values({
+    tenant_id: tenantId,
+    llm_provider: "mock",
+    llm_primary_model: "runturn-primary",
+    llm_fallback_model: "runturn-fallback",
+  });
+  await registerConversationRunTurnHandler({ boss: queue.boss, db: queue.testDb.db });
+});
+
+afterAll(async () => {
+  await queue.cleanup();
+});
+
+async function seedConversationAndTask(
+  message: string,
+): Promise<{ conversation_id: string; mcp_task_id: string }> {
+  const created = await svc.createConversation(
+    { tenant_id: tenantId, actor_id: userId, initial_message: message },
+    queue.testDb.db,
+  );
+  const taskId = await insertMcpTask(
+    {
+      tenant_id: tenantId,
+      conversation_id: created.conversation.id,
+      kind: "start",
+      actor_id: userId,
+      request_source: "mcp",
+      // Pin the turn to the persisted first user message — the worker
+      // reads THAT row by id, never the most-recent one.
+      user_message_id: created.initial_message_id,
+    },
+    queue.testDb.db,
+  );
+  return { conversation_id: created.conversation.id, mcp_task_id: taskId };
+}
+
+describe("conversation.run-turn worker", () => {
+  test("a start job runs the turn and writes the terminal envelope into mcp_tasks.result", async () => {
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("list users");
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    await waitForTerminal(mcp_task_id);
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.result).toBeTruthy();
+    expect(row?.result?.conversation_id).toBe(conversation_id);
+    expect(row?.failure_reason).toBeNull();
+  }, 45_000);
+
+  test("a job whose mcp_tasks row is already terminal is an idempotent no-op", async () => {
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("list users");
+    // Pre-seed a terminal result — the worker entry guard must skip.
+    await setMcpTaskResult(
+      tenantId,
+      mcp_task_id,
+      { conversation_id, status: "active", events: [{ marker: "pre-seeded" }] },
+      queue.testDb.db,
+    );
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    // Give the worker time to dequeue + early-return, then assert the
+    // pre-seeded result was not overwritten. A few real-time polls span
+    // the worker's 2s polling interval without a bare wall-clock sleep.
+    for (let i = 0; i < 12; i++) await flush();
+    await waitFor(async () => true, { tries: 8, sleepMs: 250, label: "worker dequeue window" });
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    // The pre-seeded marker survived — the worker did NOT overwrite it.
+    const events = (row?.result?.events ?? []) as Array<{ marker?: string }>;
+    expect(events[0]?.marker).toBe("pre-seeded");
+  }, 20_000);
+
+  test("turn_seq increments monotonically per conversation", async () => {
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "hello" },
+      queue.testDb.db,
+    );
+    const first = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        kind: "start",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: created.initial_message_id,
+      },
+      queue.testDb.db,
+    );
+    const second = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id: created.conversation.id,
+        kind: "append",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: null,
+      },
+      queue.testDb.db,
+    );
+    const [r1] = await queue.testDb.db
+      .select({ turn_seq: mcpTasks.turn_seq })
+      .from(mcpTasks)
+      .where(eq(mcpTasks.id, first));
+    const [r2] = await queue.testDb.db
+      .select({ turn_seq: mcpTasks.turn_seq })
+      .from(mcpTasks)
+      .where(eq(mcpTasks.id, second));
+    expect(r1?.turn_seq).toBe(1);
+    expect(r2?.turn_seq).toBe(2);
+  });
+});
+
+describe("conversation.run-turn worker — failure path", () => {
+  test("a turn that throws writes failure_reason and emits a CONVERSATION_TURN_FAILED audit row", async () => {
+    // Both the primary and the fallback model fail — the conversation
+    // loop exhausts its fallback and rethrows the provider error out of
+    // `runConversationTurn`. The worker catch must (a) stamp
+    // failure_reason, (b) write the audit row, (c) re-throw for the DLQ.
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "fail me" },
+      queue.testDb.db,
+    );
+    const conversation_id = created.conversation.id;
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        kind: "start",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: created.initial_message_id,
+      },
+      queue.testDb.db,
+    );
+    getMockProvider().setFailure("runturn-primary", "overloaded");
+    getMockProvider().setFailure("runturn-fallback", "overloaded");
+
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    await waitFor(
+      async () => {
+        const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+        return Boolean(row?.failure_reason);
+      },
+      { tries: 80, sleepMs: 250, label: "mcp_task failure_reason" },
+    );
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.failure_reason).toContain("overloaded");
+    expect(row?.result).toBeNull();
+
+    // The task derives `failed`.
+    const store = new ConversationTaskStore({ db: queue.testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(mcp_task_id);
+    expect(task?.status).toBe("failed");
+    expect(task?.statusMessage).toContain("overloaded");
+
+    // A CONVERSATION_TURN_FAILED audit row was written with the failure
+    // reason + the mcp_task correlation id.
+    const audits = await queue.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "conversation.turn_failed"),
+          eq(auditLog.resource_id, conversation_id),
+        ),
+      );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.result).toBe("error");
+    expect(audits[0]?.reason).toContain("overloaded");
+    expect((audits[0]?.metadata as { mcp_task_id?: string }).mcp_task_id).toBe(mcp_task_id);
+  }, 45_000);
+
+  test("a job whose mcp_tasks row already has failure_reason is an idempotent no-op", async () => {
+    // pg-boss is at-least-once. A redelivery of a job that already
+    // failed must NOT re-run the turn and must NOT write a second audit
+    // row — the worker entry guard treats failure_reason as terminal.
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("idempotent fail");
+    await setMcpTaskFailure(tenantId, mcp_task_id, "pre_seeded_failure", queue.testDb.db);
+
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    for (let i = 0; i < 12; i++) await flush();
+    await waitFor(async () => true, { tries: 8, sleepMs: 250, label: "worker dequeue window" });
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    // The pre-seeded reason survived — the worker did not overwrite it.
+    expect(row?.failure_reason).toBe("pre_seeded_failure");
+    // No CONVERSATION_TURN_FAILED audit row was emitted by the no-op.
+    const audits = await queue.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "conversation.turn_failed"),
+          eq(auditLog.resource_id, conversation_id),
+        ),
+      );
+    expect(audits).toHaveLength(0);
+  }, 20_000);
+});
+
+describe("conversation.run-turn worker — cancel", () => {
+  test("a job whose mcp_tasks row already has cancelled_at is an idempotent no-op", async () => {
+    // `tasks/cancel` may land before the worker dequeues the job. The
+    // worker entry guard treats cancelled_at as terminal and skips the
+    // turn entirely — no result, no failure.
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("cancel before start");
+    await setMcpTaskCancelled(tenantId, mcp_task_id, queue.testDb.db);
+
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    for (let i = 0; i < 12; i++) await flush();
+    await waitFor(async () => true, { tries: 8, sleepMs: 250, label: "worker dequeue window" });
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.cancelled_at).toBeInstanceOf(Date);
+    // The cancelled task never produced a result and never failed.
+    expect(row?.result).toBeNull();
+    expect(row?.failure_reason).toBeNull();
+
+    const store = new ConversationTaskStore({ db: queue.testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(mcp_task_id);
+    expect(task?.status).toBe("cancelled");
+  }, 20_000);
+});
+
+describe("conversation.run-turn worker — elicitation pause", () => {
+  test("a turn that pauses on ask_user_* finishes the job but the task derives input_required", async () => {
+    // A backgrounded turn passes NO elicitationBridge, so an
+    // ask_user_confirm takes the DB-pause path: the turn FINISHES
+    // (result is written) while the conversation is left awaiting_input
+    // with a pending elicitation. The task derivation must surface
+    // `input_required`, NOT `completed`.
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "list users from the api" },
+      queue.testDb.db,
+    );
+    const conversation_id = created.conversation.id;
+    // A canned plan that walks to an ask_user_confirm and pauses there.
+    getMockProvider().setConversePlan(conversation_id, [
+      {
+        tool: "ask_user_confirm",
+        args: { question: "Proceed?", kind: "generic", summary: "confirm proceed" },
+      },
+    ]);
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        kind: "start",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: created.initial_message_id,
+      },
+      queue.testDb.db,
+    );
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    await waitForTerminal(mcp_task_id);
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    // The worker wrote a result envelope — the turn itself finished.
+    expect(row?.result).toBeTruthy();
+    expect(row?.failure_reason).toBeNull();
+    // But the conversation is parked at awaiting_input.
+    const [conv] = await queue.testDb.db
+      .select({ status: conversations.status })
+      .from(conversations)
+      .where(eq(conversations.id, conversation_id));
+    expect(conv?.status).toBe("awaiting_input");
+    // Derivation: input_required wins over completed.
+    const store = new ConversationTaskStore({ db: queue.testDb.db, tenant_id: tenantId });
+    const task = await store.getTask(mcp_task_id);
+    expect(task?.status).toBe("input_required");
+  }, 45_000);
+});
+
+describe("conversation.run-turn worker — cancel in the guard window", () => {
+  test("a cancel landing in the guard window still stops the turn — no result written", async () => {
+    // The cancel can land between the worker's entry guard and the
+    // `registerConversationAbort` call: it stamps `cancelled_at` AND
+    // calls `cancelConversationAbort` against a controller that does
+    // not exist yet, so the abort is lost. The worker re-reads the
+    // `mcp_tasks` row right after registering — `cancelled_at` is now
+    // set, so the turn must not run to completion. This test stamps
+    // `cancelled_at` before enqueue (so it is observable on the row)
+    // and asserts the worker bails: the system-level invariant is
+    // "a cancelled task never produces a `result`", which the entry
+    // guard + the S1 re-check together guarantee.
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "list users" },
+      queue.testDb.db,
+    );
+    const conversation_id = created.conversation.id;
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        kind: "start",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: created.initial_message_id,
+      },
+      queue.testDb.db,
+    );
+    // The cancel: stamp the terminal marker and fire the (lost) abort
+    // against a not-yet-registered controller — exactly the guard
+    // window the S1 re-check closes.
+    const store = new ConversationTaskStore({ db: queue.testDb.db, tenant_id: tenantId });
+    await store.updateTaskStatus(mcp_task_id, "cancelled");
+
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id,
+      actor_id: userId,
+      kind: "start",
+    });
+    for (let i = 0; i < 12; i++) await flush();
+    await waitFor(async () => true, { tries: 12, sleepMs: 250, label: "worker dequeue window" });
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.cancelled_at).toBeInstanceOf(Date);
+    // The turn did NOT run to completion — no result, no failure.
+    expect(row?.result).toBeNull();
+    expect(row?.failure_reason).toBeNull();
+    expect((await store.getTask(mcp_task_id))?.status).toBe("cancelled");
+  }, 30_000);
+});
+
+describe("conversation.run-turn worker — concurrent turns (B2)", () => {
+  test("two concurrent appends each run their OWN pinned message — neither is dropped", async () => {
+    // Two `conversation_append`s race on one conversation. Before the
+    // fix the worker picked the most-recent `user` row by MAX(created_at)
+    // — both workers would run the SAME (latest) message and the other
+    // turn's message was silently dropped. With `user_message_id`
+    // pinned on each `mcp_tasks` row the worker runs the EXACT message
+    // its task captured.
+    //
+    // The initial message is a non-canned phrase so no mock plan is
+    // seeded — `createConversation` leaves the conversation `active`
+    // and the append turns run a plain text-only turn that completes
+    // without parking at an elicitation.
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "concurrent turn seed" },
+      queue.testDb.db,
+    );
+    const conversation_id = created.conversation.id;
+    // Empty plan → the mock provider emits a text-only turn and the
+    // turn completes `active` (no tool calls, no elicitation pause).
+    getMockProvider().setConversePlan(conversation_id, []);
+
+    // Two appends BEFORE either turn runs — distinct messages, distinct
+    // persisted row ids. The conversation is `active`, so neither append
+    // is refused on a pending elicitation.
+    const appendA = await svc.appendUserMessage(
+      { tenant_id: tenantId, conversation_id, actor_id: userId, message: "MESSAGE-ALPHA" },
+      queue.testDb.db,
+    );
+    const appendB = await svc.appendUserMessage(
+      { tenant_id: tenantId, conversation_id, actor_id: userId, message: "MESSAGE-BRAVO" },
+      queue.testDb.db,
+    );
+    expect(appendA.message_id).not.toBe(appendB.message_id);
+
+    const taskA = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        kind: "append",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: appendA.message_id,
+      },
+      queue.testDb.db,
+    );
+    const taskB = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        kind: "append",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: appendB.message_id,
+      },
+      queue.testDb.db,
+    );
+    // Enqueue both — the worker processes them serially but each must
+    // run the message ITS task pinned.
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id: taskA,
+      actor_id: userId,
+      kind: "append",
+    });
+    await enqueueConversationRunTurn(queue.boss, {
+      tenant_id: tenantId,
+      conversation_id,
+      mcp_task_id: taskB,
+      actor_id: userId,
+      kind: "append",
+    });
+    await waitForTerminal(taskA);
+    await waitForTerminal(taskB);
+
+    const rowA = await getMcpTask(tenantId, taskA, queue.testDb.db);
+    const rowB = await getMcpTask(tenantId, taskB, queue.testDb.db);
+    // Each turn's own user-message event carries the message ITS task
+    // pinned — neither ran the other's message.
+    const userTextOf = (row: typeof rowA): string | undefined => {
+      const events = (row?.result?.events ?? []) as Array<{
+        type?: string;
+        role?: string;
+        content?: { text?: string };
+      }>;
+      return events.find((e) => e.type === "message" && e.role === "user")?.content?.text;
+    };
+    expect(userTextOf(rowA)).toBe("MESSAGE-ALPHA");
+    expect(userTextOf(rowB)).toBe("MESSAGE-BRAVO");
+  }, 90_000);
+});

@@ -1,0 +1,27 @@
+{
+  "name": "My Private GitHub Repos",
+  "slug": "my-private-github-repos",
+  "steps": [
+    {
+      "id": "fetch_repos",
+      "kind": "request",
+      "path": "/user/repos",
+      "query": {
+        "per_page": "100",
+        "visibility": "private",
+        "affiliation": "owner"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    },
+    {
+      "id": "filter_by_owner",
+      "kind": "transform",
+      "language": "javascript",
+      "on_error": "fail",
+      "expression": "return (input.scope.fetch_repos.data || []).filter((r) => r.owner && r.owner.login === 'octocat').map((r) => ({ name: r.name, full_name: r.full_name, private: r.private, html_url: r.html_url, description: r.description, updated_at: r.updated_at }));"
+    }
+  ],
+  "description": "List private GitHub repos owned by octocat"
+}
