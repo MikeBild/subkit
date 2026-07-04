@@ -7,7 +7,9 @@ updates:
     groups:
       actions:
         patterns: ["*"]
-  - package-ecosystem: "npm"
+  # "bun", not "npm": the npm ecosystem edits package.json only, leaving
+  # bun.lock stale — every PR then dies on the frozen-lockfile install.
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"
