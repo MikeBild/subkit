@@ -121,8 +121,13 @@ export async function runProactiveDriftScanForTenant(
           { allowAutoApply: true },
           db,
         );
-        candidates_created += 1;
-        recordProactiveDriftCandidate({ tenant_id, classification: result.classification });
+        // Count only fresh inserts. A dedup refresh of a still-open
+        // candidate returns a result too — counting those reported
+        // "3 created" every hour while nothing new was proposed.
+        if (result.created) {
+          candidates_created += 1;
+          recordProactiveDriftCandidate({ tenant_id, classification: result.classification });
+        }
       } catch (err) {
         logger.error({
           module: "scheduler",

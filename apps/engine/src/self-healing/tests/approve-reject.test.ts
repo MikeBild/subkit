@@ -41,6 +41,14 @@ async function seedProposedCandidate(): Promise<string> {
   // The loop's default policy auto-applies safe patches. We park the
   // proposal by switching the policy to never-auto, run the loop, and
   // get a candidate row in `proposed` state.
+  //
+  // Clean slate first: the reactive path dedups against active AND
+  // terminal candidates by drift fingerprint, so a leftover row from a
+  // previous test would be refreshed/skipped instead of freshly
+  // proposed — every seed must start from zero candidates.
+  await ctx.testDb.db
+    .delete(patchCandidates)
+    .where(eq(patchCandidates.workflow_id, ctx.workflow_id));
   await ctx.testDb.db
     .insert(workflowAutohealPolicies)
     .values({

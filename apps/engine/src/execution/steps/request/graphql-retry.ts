@@ -13,12 +13,16 @@ import {
   graphqlErrorMessages,
   query as graphqlQuery,
 } from "../../../connectors/drivers/graphql.ts";
-import { isGraphqlRetryable } from "../../../connectors/drivers/graphql-retry-classify.ts";
+import {
+  classifyGraphqlSchemaError,
+  isGraphqlRetryable,
+} from "../../../connectors/drivers/graphql-retry-classify.ts";
 import { HttpRequestInvalidError } from "../../../connectors/drivers/http.ts";
 import type { EgressInput } from "../../../connectors/egress.ts";
 import { withEgressAudit } from "../../../connectors/egress.ts";
 import { logger } from "../../../logging/logger.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
+import { graphqlEndpointKey, recordSuccessShape } from "../../../schema-versions/service.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import type { ConnectorResolutionSummary, StepResult, StepWarning } from "../../types.ts";
 import { buildStepErrorDetail } from "../error-detail.ts";
@@ -187,6 +191,27 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
   const httpOk = lastRes.status >= 200 && lastRes.status < 300;
   const errorPolicy = step.error_policy ?? "none";
 
+  // Best-effort success-shape recording, mirroring the HTTP/S3/pg
+  // drivers. Without it the proactive drift scanner has NOTHING to
+  // diff for GraphQL endpoints — a healthy-then-failing operation
+  // produces zero schema_versions rows and the outage stays invisible.
+  const recordShape = async (value: unknown): Promise<void> => {
+    if (!lastRes) return;
+    try {
+      await recordSuccessShape(
+        {
+          tenant_id: egressInput.tenant_id,
+          connector_id: egressInput.connector_id,
+          endpoint_key: graphqlEndpointKey(lastRes.operation_name),
+          value,
+        },
+        p.queryArgs.db,
+      );
+    } catch {
+      // observability, not load-bearing
+    }
+  };
+
   // error_policy:"all" + data present alongside errors → partial success.
   if (errorPolicy === "all" && gqlErrors !== null && httpOk) {
     const data = (lastRes.body as { data?: unknown }).data;
@@ -206,6 +231,7 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
         error_count: gqlErrors.length,
         status: lastRes.status,
       });
+      await recordShape(data);
       return {
         status: "succeeded",
         output: data,
@@ -216,6 +242,7 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
           method: "POST",
           status: lastRes.status,
           connector: connRes,
+          operation_name: lastRes.operation_name,
           extras: { partial: true, graphql_errors: gqlErrors },
         },
         warnings,
@@ -225,6 +252,17 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
 
   // Standard outcome: error_policy:"none" or no data alongside errors.
   const graphqlOk = httpOk && gqlErrors === null;
+  if (graphqlOk) {
+    await recordShape((lastRes.body as { data?: unknown }).data ?? null);
+  }
+  // Schema-shaped failures (FieldUndefined / no resolver / unknown field)
+  // carry a structured envelope the drift detector can match — a bare
+  // {code, message} string is invisible to self-healing.
+  const schemaVerdict = graphqlOk
+    ? null
+    : gqlErrors
+      ? classifyGraphqlSchemaError(lastRes.body)
+      : null;
   return {
     status: graphqlOk ? "succeeded" : "failed",
     output: (lastRes.body as { data?: unknown }).data ?? null,
@@ -235,6 +273,7 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
       method: "POST",
       status: lastRes.status,
       connector: connRes,
+      operation_name: lastRes.operation_name,
     },
     ...(graphqlOk
       ? {}
@@ -243,6 +282,16 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
             ? {
                 code: "graphql_error",
                 message: `graphql response returned errors: ${gqlErrors.slice(0, 3).join("; ")}`,
+                ...(schemaVerdict?.schema_shaped
+                  ? {
+                      kind: "graphql_schema_error",
+                      details: {
+                        operation_name: lastRes.operation_name,
+                        messages: gqlErrors,
+                        root_field: schemaVerdict.root_field,
+                      },
+                    }
+                  : {}),
               }
             : {
                 code: `graphql_${lastRes.status}`,

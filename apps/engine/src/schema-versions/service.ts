@@ -51,6 +51,19 @@ export function deriveShape(value: unknown): SchemaShape {
   return { type: "unknown" };
 }
 
+/**
+ * Operation-aware endpoint key for GraphQL requests. Every GraphQL
+ * call shares one URL, so keying shapes (and the patch-candidate
+ * dedup fingerprint) on the path alone would collapse ALL queries
+ * into a single identity — one recorded shape per connector instead
+ * of one per operation. The reactive repair enqueue derives the same
+ * key from the persisted request_meta.operation_name; keep the two
+ * in sync through this single helper.
+ */
+export function graphqlEndpointKey(operation_name: string): string {
+  return `POST /graphql#${operation_name || "anonymous"}`;
+}
+
 export interface RecordShapeParams {
   tenant_id: string;
   connector_id: string;

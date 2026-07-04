@@ -237,6 +237,9 @@ export type RequestMeta =
       method: string;
       status: number;
       connector: ConnectorResolutionSummary;
+      /** Operation name parsed from the query document — the anchor
+       *  for shape recording and the repair endpoint key. */
+      operation_name?: string;
       extras?: Record<string, unknown>;
     }
   | {
@@ -308,6 +311,10 @@ export type RequestMeta =
 export interface StepErrorDetail {
   code: string;
   message: string;
+  /** Driver-tagged failure class the drift detector branches on
+   *  (e.g. "graphql_schema_error"). Structured evidence for the
+   *  tagged class rides in `details`. */
+  kind?: string;
   details?: unknown;
   /** Final URL after `${...}` substitution. Absent for non-HTTP drivers. */
   resolved_url?: string;

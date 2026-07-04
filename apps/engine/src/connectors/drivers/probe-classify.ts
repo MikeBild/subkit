@@ -93,7 +93,17 @@ export function classifyPgProbeError(err: unknown): ProbeErrorCode {
  * https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
  */
 export function classifyS3ProbeError(err: unknown): ProbeErrorCode {
-  const e = err as { statusCode?: number; code?: string } | null | undefined;
+  const e = err as
+    | { statusCode?: number; code?: string; name?: string; error_code?: string }
+    | null
+    | undefined;
+
+  // Typed credential errors thrown by the s3 driver itself (before any
+  // request leaves the process). Matched by name, not instanceof, to keep
+  // this module free of a circular import on the driver.
+  if (e?.name === "S3CredentialError") {
+    return e.error_code === "credential_missing" ? "credential_missing" : "credential_invalid";
+  }
 
   // statusCode is the primary signal (present on ServerError).
   if (typeof e?.statusCode === "number") {

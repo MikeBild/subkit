@@ -82,9 +82,26 @@ export async function registerWorkflowRepairHandler(
   return workerId;
 }
 
+/**
+ * Window (seconds) inside which repeated failures of the same
+ * (tenant, workflow, endpoint) collapse into ONE repair job. A
+ * scheduled workflow failing every 20 minutes against a broken
+ * endpoint is one drift, not one LLM repair loop per run — without
+ * this cap a sustained outage multiplies into dozens of repair jobs
+ * and burns the tenant's token budget on identical proposals.
+ */
+export const REPAIR_SINGLETON_SECONDS = 3600;
+
 export async function enqueueRepair(
   boss: PgBoss,
   payload: WorkflowRepairJob,
 ): Promise<string | null> {
-  return await boss.send(WORKFLOW_REPAIR_QUEUE, payload);
+  // singletonKey dedups at the queue layer; the endpoint-candidate
+  // dedup inside processDriftSignal is the second, fingerprint-aware
+  // guard for jobs that do run.
+  const singletonKey = `${payload.tenant_id}:${payload.workflow_id}:${payload.endpoint_key ?? payload.step_id ?? "unknown"}`;
+  return await boss.send(WORKFLOW_REPAIR_QUEUE, payload, {
+    singletonKey,
+    singletonSeconds: REPAIR_SINGLETON_SECONDS,
+  });
 }

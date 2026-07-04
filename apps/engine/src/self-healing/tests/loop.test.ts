@@ -128,6 +128,10 @@ describe("self-healing/loop — direct call", () => {
   test("never-auto policy parks the patch even when safe + dry-run passes", async () => {
     const db = ctx.testDb.db;
 
+    // The first test auto-applied a candidate for this same drift
+    // fingerprint. A reactive recurrence after an applied patch falls
+    // through to a FRESH proposal (patch.applied_but_recurred) — so
+    // this test still gets its own row; no cleanup needed.
     // Override policy for this workflow.
     await db
       .insert(workflowAutohealPolicies)
@@ -181,11 +185,22 @@ describe("self-healing/loop — workflow.repair queue", () => {
     await disposeBoss(boss, 5_000);
   });
 
-  test("enqueue -> worker consumes -> patch_candidates row appears", async () => {
+  test("enqueue -> worker consumes -> same-fingerprint candidate refreshed, not duplicated", async () => {
     const db = ctx.testDb.db;
-    const countBefore = (
-      await db.select().from(patchCandidates).where(eq(patchCandidates.tenant_id, ctx.tenant_id))
-    ).length;
+    // Prior tests left an applied + a proposed candidate for this exact
+    // drift fingerprint. The reactive dedup contract: a still-open
+    // proposed candidate is REFRESHED (updated_at bump / re-evaluated
+    // for auto-apply), never duplicated — a sustained outage is one
+    // drift, not one candidate per failing run.
+    const before = await db
+      .select()
+      .from(patchCandidates)
+      .where(eq(patchCandidates.tenant_id, ctx.tenant_id));
+    const countBefore = before.length;
+    const openBefore = before
+      .filter((c) => c.status === "proposed")
+      .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime())[0];
+    if (!openBefore) throw new Error("expected an open candidate from the never-auto test");
 
     const jobId = await enqueueRepair(boss, {
       tenant_id: ctx.tenant_id,
@@ -199,15 +214,27 @@ describe("self-healing/loop — workflow.repair queue", () => {
 
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 15_000;
-    let after = countBefore;
+    let touched = false;
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     while (Date.now() < deadline) {
-      after = (
-        await db.select().from(patchCandidates).where(eq(patchCandidates.tenant_id, ctx.tenant_id))
-      ).length;
-      if (after > countBefore) break;
+      const row = (
+        await db.select().from(patchCandidates).where(eq(patchCandidates.id, openBefore.id))
+      )[0];
+      if (
+        row &&
+        (row.status !== "proposed" || row.updated_at.getTime() > openBefore.updated_at.getTime())
+      ) {
+        touched = true;
+        break;
+      }
       await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: self-healing loop debounce window before patch-candidate emission
     }
-    expect(after).toBeGreaterThan(countBefore);
+    expect(touched).toBe(true);
+
+    const after = await db
+      .select()
+      .from(patchCandidates)
+      .where(eq(patchCandidates.tenant_id, ctx.tenant_id));
+    expect(after.length).toBe(countBefore); // refreshed, no duplicate row
   });
 });

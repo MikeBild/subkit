@@ -618,23 +618,61 @@ export async function handleInbound(
   // an HTTP 500 on an otherwise-acceptable request. We only decrypt
   // inside the branch where a real verifier runs. On the skip path we
   // still synthesise a stable normalized.id for the replay-dedup table.
-  const verdict: VerifierResult =
-    config?.skip === true
-      ? skipVerify(input)
-      : verifier({
-          headers: input.headers,
-          rawBody: input.rawBody,
-          secret: decryptSecret(
-            {
-              ciphertext: row.secret_ciphertext,
-              iv: row.secret_iv,
-              auth_tag: row.secret_auth_tag,
-            },
-            aadFor(row.tenant_id, row.id),
-          ),
-          now: input.now ?? Date.now(),
-          config,
-        });
+  let verdict: VerifierResult;
+  if (config?.skip === true) {
+    verdict = skipVerify(input);
+  } else {
+    // A row whose stored envelope cannot decrypt (legacy/hand-written
+    // secret, wrong AAD, truncated iv) must deny like any other failed
+    // verification — the caller sent an unverifiable request. Letting
+    // the CryptoError escape turns a bad *stored row* into an HTTP 500
+    // on the public ingress and hides the actionable fix (rotate the
+    // secret) from the operator.
+    let secret: string;
+    try {
+      secret = decryptSecret(
+        {
+          ciphertext: row.secret_ciphertext,
+          iv: row.secret_iv,
+          auth_tag: row.secret_auth_tag,
+        },
+        aadFor(row.tenant_id, row.id),
+      );
+    } catch (err) {
+      const hint =
+        "the stored signing secret for this binding cannot be decrypted — rotate it " +
+        "(rotateInboundSecret / re-save the workflow trigger) or, if the sender does not " +
+        'sign requests, set the trigger to verify:"none"';
+      logger.warn({
+        module: "webhooks",
+        action: "inbound.secret_undecryptable",
+        inbound_id: row.id,
+        tenant_id: row.tenant_id,
+        slug: row.slug,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      audit(
+        {
+          tenant_id: row.tenant_id,
+          action: FAILED_ACTION,
+          resource_type: "webhook_inbound",
+          resource_id: row.id,
+          result: "denied",
+          reason: "secret_undecryptable",
+          metadata: { ...baseAuditMetadata, verifier: row.verifier, hint },
+        },
+        db,
+      );
+      return { status: "denied", reason: "secret_undecryptable", inbound_id: row.id, hint };
+    }
+    verdict = verifier({
+      headers: input.headers,
+      rawBody: input.rawBody,
+      secret,
+      now: input.now ?? Date.now(),
+      config,
+    });
+  }
   if (!verdict.ok) {
     audit(
       {
@@ -747,6 +785,29 @@ export async function handleInbound(
       db,
     );
     return { status: "denied", reason: "workflow_unresolved", inbound_id: row.id };
+  }
+  // Fire-time lifecycle guard, mirroring the schedule reconciler's
+  // deleted_at / archived filter. Archive now unbinds inbound rows, but
+  // rows bound before that cleanup existed (or hand-written ones) must
+  // still never trigger an archived or soft-deleted workflow.
+  if (wf.deleted_at !== null || wf.lifecycle === "archived") {
+    audit(
+      {
+        tenant_id: row.tenant_id,
+        action: FAILED_ACTION,
+        resource_type: "webhook_inbound",
+        resource_id: row.id,
+        result: "denied",
+        reason: "workflow_inactive",
+        metadata: {
+          ...baseAuditMetadata,
+          lifecycle: wf.lifecycle,
+          deleted: wf.deleted_at !== null,
+        },
+      },
+      db,
+    );
+    return { status: "denied", reason: "workflow_inactive", inbound_id: row.id };
   }
 
   const normalizedBody = (() => {
