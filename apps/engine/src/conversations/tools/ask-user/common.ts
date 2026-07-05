@@ -38,6 +38,7 @@ import {
   mapAskUserToPrimitiveSchema,
   mapElicitResultToAskUserOutput,
 } from "./elicit-bridge.ts";
+import { redactElicitationOutput } from "./redact-answer.ts";
 import { detectSecretElicitation, type SecretElicitationHit } from "./secret-detection.ts";
 import { validateElicitationAnswer } from "./validate-answer.ts";
 
@@ -305,8 +306,14 @@ export async function pauseForUserInput(
             elicitation: { id: row.id, tool_name: p.tool_name, input: p.input },
             db: ctx.db,
           });
-          // No `pause` — the loop continues with the answer in hand.
-          return { ok: true, data: output };
+          // No `pause` — the loop continues with the answer in hand. The
+          // credential cache + auto-persist above already consumed the RAW
+          // `output`; the value returned as tool-call `data` (persisted at
+          // invoke.ts) must not carry a masked secret, so redact it the
+          // same way the elicitation row is (#304). Replay prefers the
+          // redacted elicitation row anyway; this closes the at-rest
+          // tool-call-output copy.
+          return { ok: true, data: redactElicitationOutput(p.tool_name, p.input, output) };
         }
         // decline / cancel / protocol-violating-accept — resolve as
         // cancelled, no continuation. `resolveAndError` runs the same

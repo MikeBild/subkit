@@ -187,6 +187,16 @@ export class EngineClient {
     return `cli-${rand.slice(0, 16)}`;
   }
 
+  /** #304: the elicitation-respond POST body carries the operator's typed
+   *  answer — which may be a connector secret entered into a masked form.
+   *  The engine already redacts it at rest and on replay; the CLI's verbose
+   *  debug.log must not capture the raw POST body regardless of the value's
+   *  key name or entropy (the shared `redact()` only catches known key names
+   *  / value shapes). Match the endpoint and drop the body wholesale. */
+  private isSensitiveRequestBodyPath(path: string): boolean {
+    return /\/elicitations\/[^/]+\/respond$/.test(path);
+  }
+
   async request<T = unknown>(
     method: string,
     path: string,
@@ -218,7 +228,9 @@ export class EngineClient {
         ...(verbose
           ? {
               request_headers: normalizeHeaders(init.headers),
-              request_body: body ?? null,
+              request_body: this.isSensitiveRequestBodyPath(path)
+                ? { _redacted: "elicitation_respond_body" }
+                : (body ?? null),
             }
           : {}),
       },
@@ -402,7 +414,12 @@ export class EngineClient {
         query: null,
         request_kind: "sse",
         ...(verbose
-          ? { request_headers: normalizeHeaders(init.headers), request_body: body ?? null }
+          ? {
+              request_headers: normalizeHeaders(init.headers),
+              request_body: this.isSensitiveRequestBodyPath(path)
+                ? { _redacted: "elicitation_respond_body" }
+                : (body ?? null),
+            }
           : {}),
       },
       ctx,

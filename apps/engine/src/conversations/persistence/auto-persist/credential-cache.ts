@@ -33,7 +33,7 @@ import type { AtomicCredentialInput } from "../save-connector.ts";
  * connector config metadata only and never carries secret fields, so
  * leave that call site untouched.
  */
-const SECRET_SEED_FIELDS = new Set([
+export const SECRET_SEED_FIELDS = new Set([
   "token",
   "password",
   "header_value",
