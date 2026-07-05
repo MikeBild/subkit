@@ -484,37 +484,3 @@ jobs:
             docker.io/mikebild/subkit:${{ steps.meta.outputs.version }}
             docker.io/mikebild/subkit:latest
 
-  # ── Optional deploy hook ──
-  # Event-driven deploy trigger: once the GitHub Release assets exist, fire a
-  # repository_dispatch (`deploy-subkit`) at an operator-owned deployment
-  # repo so it can roll hosts to this version within seconds (a schedule poll
-  # would sit on GitHub's throttled cron for up to an hour).
-  # Opt-in via TWO repo settings; forks and plain clones no-op harmlessly:
-  #   * repository VARIABLE `DEPLOY_DISPATCH_REPO` — the target repo
-  #     ("owner/name") that listens for the dispatch.
-  #   * secret `DEPLOY_DISPATCH_TOKEN` — a PAT with write access to that repo
-  #     (the default GITHUB_TOKEN cannot dispatch cross-repo).
-  notify-deploy:
-    name: notify-deploy
-    needs: publish-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch deploy-subkit to the deployment repo
-        env:
-          GH_TOKEN: ${{ secrets.DEPLOY_DISPATCH_TOKEN }}
-          DEPLOY_REPO: ${{ vars.DEPLOY_DISPATCH_REPO }}
-          TAG: ${{ inputs.tag || github.ref_name }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GH_TOKEN:-}" ] || [ -z "${DEPLOY_REPO:-}" ]; then
-            echo "DEPLOY_DISPATCH_REPO / DEPLOY_DISPATCH_TOKEN not set — skipping deploy dispatch (configure both to enable auto-deploy)"
-            exit 0
-          fi
-          # TAG is this release's own tag — trusted, but passed via env and a
-          # printf format arg (never interpolated into the shell). DEPLOY_REPO
-          # is an operator-set repo variable, validated to an owner/name shape.
-          echo "$DEPLOY_REPO" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' \
-            || { echo "DEPLOY_DISPATCH_REPO '$DEPLOY_REPO' is not owner/name — refusing" >&2; exit 1; }
-          printf '{"event_type":"deploy-subkit","client_payload":{"ref":"%s"}}' "$TAG" \
-            | gh api -X POST "repos/$DEPLOY_REPO/dispatches" --input -
-          echo "dispatched deploy-subkit ref=$TAG to $DEPLOY_REPO"
