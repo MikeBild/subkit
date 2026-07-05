@@ -1,8 +1,10 @@
-// sk.notionRichTextToMarkdown / sk.notionBlocksToMarkdown — document
-// shapes. The silent-loss incident class these pin: ad-hoc transforms
-// over `results[].rich_text` drop every annotation (bold/links/code),
-// and a hand-rolled block renderer returns "" for unhandled block types
-// — the canonical "green run, lossy document" shape named in
+// sk.documentToMarkdown — document shapes behind ONE generic entry
+// point (the vendor format — today Notion's blocks/rich_text wire
+// format — is detected by shape, never named by the caller). The
+// silent-loss incident class these pin: ad-hoc transforms over
+// `results[].rich_text` drop every annotation (bold/links/code), and a
+// hand-rolled block renderer returns "" for unhandled block types — the
+// canonical "green run, lossy document" shape named in
 // transform-warnings. Tests run inside the real QuickJS sandbox.
 
 import { describe, expect, test } from "bun:test";
@@ -31,7 +33,7 @@ const span = (
   href: link,
 });
 
-describe("sk.notionRichTextToMarkdown", () => {
+describe("sk.documentToMarkdown — rich_text span arrays (inline markdown)", () => {
   test("annotations survive: bold, italic, strikethrough, code, links", async () => {
     const richText = [
       span("plain "),
@@ -45,7 +47,7 @@ describe("sk.notionRichTextToMarkdown", () => {
       span(" and a "),
       span("link", {}, "https://example.com/page"),
     ];
-    const out = await run<string>("return sk.notionRichTextToMarkdown(input.rt);", {
+    const out = await run<string>("return sk.documentToMarkdown(input.rt);", {
       rt: richText,
     });
     expect(out).toBe(
@@ -54,19 +56,20 @@ describe("sk.notionRichTextToMarkdown", () => {
   });
 
   test("combined annotations nest (bold code link)", async () => {
-    const out = await run<string>("return sk.notionRichTextToMarkdown(input.rt);", {
+    const out = await run<string>("return sk.documentToMarkdown(input.rt);", {
       rt: [span("api_key", { bold: true, code: true }, "https://example.com/docs")],
     });
     expect(out).toBe("[**`api_key`**](https://example.com/docs)");
   });
 
-  test("non-array input renders as empty string (quiet degrade inside block walks)", async () => {
-    const out = await run<string>("return sk.notionRichTextToMarkdown(input.rt);", { rt: null });
-    expect(out).toBe("");
+  test("non-array input throws — the generic surface never renders a green empty document", async () => {
+    await expect(run("return sk.documentToMarkdown(input.rt);", { rt: null })).rejects.toThrow(
+      /documentToMarkdown/,
+    );
   });
 });
 
-describe("sk.notionBlocksToMarkdown", () => {
+describe("sk.documentToMarkdown — block arrays and blocks.children.list responses", () => {
   test("a blocks.children.list response renders headings, lists, todos, quote, code, divider", async () => {
     const response = {
       object: "list",
@@ -108,7 +111,7 @@ describe("sk.notionBlocksToMarkdown", () => {
       next_cursor: null,
       has_more: false,
     };
-    const out = await run<string>("return sk.notionBlocksToMarkdown(input.blocks);", {
+    const out = await run<string>("return sk.documentToMarkdown(input.blocks);", {
       blocks: response,
     });
     expect(out).toBe(
@@ -133,7 +136,7 @@ describe("sk.notionBlocksToMarkdown", () => {
       { type: "paragraph", paragraph: { rich_text: [span("break")] } },
       { type: "numbered_list_item", numbered_list_item: { rich_text: [span("restart")] } },
     ];
-    const out = await run<string>("return sk.notionBlocksToMarkdown(input.blocks);", { blocks });
+    const out = await run<string>("return sk.documentToMarkdown(input.blocks);", { blocks });
     expect(out).toBe(["1. one", "2. two", "break", "1. restart"].join("\n\n"));
   });
 
@@ -142,13 +145,13 @@ describe("sk.notionBlocksToMarkdown", () => {
       { type: "paragraph", paragraph: { rich_text: [span("kept")] } },
       { type: "callout", callout: { rich_text: [span("important note")], icon: { emoji: "!" } } },
     ];
-    const out = await run<string>("return sk.notionBlocksToMarkdown(input.blocks);", { blocks });
+    const out = await run<string>("return sk.documentToMarkdown(input.blocks);", { blocks });
     expect(out).toBe("kept\n\nimportant note");
   });
 
   test("non-block input throws instead of rendering a green empty document", async () => {
     await expect(
-      run("return sk.notionBlocksToMarkdown(input.blocks);", { blocks: "nope" }),
-    ).rejects.toThrow(/notionBlocksToMarkdown/);
+      run("return sk.documentToMarkdown(input.blocks);", { blocks: "nope" }),
+    ).rejects.toThrow(/documentToMarkdown/);
   });
 });
