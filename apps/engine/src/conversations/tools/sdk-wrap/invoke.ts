@@ -70,6 +70,7 @@ import {
   summarizeToolFailure,
   topLevelElicitationKindForTool,
 } from "./policy-helpers.ts";
+import { redactToolArgsForPersist } from "./redact-tool-args.ts";
 import {
   computeValidationFingerprint,
   MAX_CONSECUTIVE_FAILURES,
@@ -650,7 +651,13 @@ export function wrapOne(
           conversation_id: ctx.conversation_id,
           parent_message_id: assistantMessageId,
           tool: inner.name,
-          input: rawArgs,
+          // #304: persist a credential-scrubbed projection of the args so a
+          // secret in a connector-credential slot never lands at rest in the
+          // tool-call row or replays into LLM context. Execution below uses
+          // the untouched `rawArgs` via `walkAndResolve`; auto-persist reads
+          // the elicitation output / draft cache, not this row — so the raw
+          // credential still reaches the store.
+          input: redactToolArgsForPersist(inner.name, rawArgs),
           approval_required: inner.name.startsWith("ask_user_"),
         });
         // Option-B worker heartbeat: stamp the live `mcp_tasks` row with
