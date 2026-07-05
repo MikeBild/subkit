@@ -300,3 +300,80 @@ describe("truncateNode array marker", () => {
     expect(marker._truncated).toMatch(/\(\d+ total\)/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Allocation pin — truncateForLlm must stay LINEAR in payload size.
+// ---------------------------------------------------------------------------
+// Pre-fix, collectHeaviestBranches full-stringified EVERY subtree
+// (Σ|subtree| ≈ payload × depth) and shrinkToCap re-stringified the whole
+// payload after every branch replacement — the dominant allocation of the
+// per-turn model-message assembly (issue: multi-GB transient). This pin
+// counts JSON.stringify bytes during one truncation of a deep payload and
+// bounds them at a small multiple of the payload size; the superlinear
+// implementation exceeds it by ~depth×.
+
+describe("truncateForLlm allocation bound", () => {
+  it("stringify bytes during one truncation stay under 8× the payload size", () => {
+    clearRawStore();
+    // ~1MB payload nested 14 levels deep.
+    const deepLeaf = (i: number): unknown => {
+      let node: unknown = { text: "d".repeat(600), i };
+      for (let d = 0; d < 12; d++) node = { [`level_${d}`]: node, pad: "p".repeat(40) };
+      return node;
+    };
+    const payload = {
+      step_trace: Array.from({ length: 160 }, (_, i) => ({
+        id: `step-${i}`,
+        snapshot: deepLeaf(i),
+        rows: Array.from({ length: 8 }, (_, j) => ({ j, blob: "r".repeat(300) })),
+      })),
+    };
+    const orig = JSON.stringify.bind(JSON);
+    const payloadBytes = orig(payload).length;
+
+    let bytes = 0;
+    // biome-ignore lint/suspicious/noExplicitAny: test-local shim
+    (JSON as any).stringify = function counted(value: unknown, ...rest: unknown[]) {
+      // biome-ignore lint/suspicious/noExplicitAny: passthrough
+      const s = (orig as any)(value, ...rest);
+      if (typeof s === "string") bytes += s.length;
+      return s;
+    };
+    try {
+      const r = truncateForLlm(payload);
+      expect(r.truncated).toBe(true);
+      expect(JSON.stringify(r.data).length).toBeLessThan(3 * TRUNCATE_INTERNALS.MAX_JSON_CHARS);
+    } finally {
+      // biome-ignore lint/suspicious/noExplicitAny: restore
+      (JSON as any).stringify = orig;
+    }
+    expect(bytes).toBeLessThan(8 * payloadBytes);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Protected root keys — control-flow branches survive pass-2.
+// ---------------------------------------------------------------------------
+
+describe("truncateForLlm protected root keys", () => {
+  it("judge and warnings are never stubbed, even when they are heavy branches", () => {
+    clearRawStore();
+    // Arrays stay within MAX_ARRAY_LEN — pass-1 clipping still applies to
+    // protected keys by design; the protection targets pass-2's branch
+    // stubs only.
+    const payload = {
+      judge: { missing: Array.from({ length: 15 }, (_, i) => `missing-item-${i}`) },
+      warnings: Array.from({ length: 15 }, (_, i) => ({ code: `warning_code_${i}` })),
+      bulk: "b".repeat(30_000),
+    };
+    const r = truncateForLlm(payload);
+    expect(r.truncated).toBe(true);
+    const data = r.data as Record<string, unknown>;
+    // The bulk branch was sacrificed…
+    expect(typeof data.bulk).toBe("string");
+    expect((data.bulk as string).startsWith("[omitted:")).toBe(true);
+    // …but the loop's stall-fingerprint branches survive intact.
+    expect(data.judge).toEqual(payload.judge);
+    expect(data.warnings).toEqual(payload.warnings);
+  });
+});

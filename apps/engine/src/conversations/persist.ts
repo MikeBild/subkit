@@ -549,9 +549,38 @@ export async function buildModelMessages(
     ELSE ${conversationToolCalls.output}
   END`;
 
+  // Tool-role message rows are full audit copies of every tool output
+  // (invoke.ts persists `{tool, output}` "for faithful replay"), but the
+  // replay loop below reads ONLY `decision`/`tool`/`reason` from them —
+  // real tool-results are emitted from conversation_tool_calls. Loading
+  // the full output JSONB here materialized every historical payload
+  // into the JS heap per build (~100s of MB on long conversations) just
+  // to be skipped. Reduce them in SQL: keep the three replayed keys,
+  // drop the bulk. Same sql.raw planner note as summaryOutputProjection.
+  const messageContentProjection = sql<unknown>`CASE
+    WHEN ${conversationMessages.role} = 'tool' AND ${conversationMessages.content}->>'decision' IS NULL
+      THEN '{}'::jsonb
+    WHEN ${conversationMessages.role} = 'tool'
+      THEN jsonb_build_object(
+        'decision', ${conversationMessages.content}->'decision',
+        'tool', ${conversationMessages.content}->'tool',
+        'reason', ${conversationMessages.content}->'reason'
+      )
+    ELSE ${conversationMessages.content}
+  END`;
+
   const [msgs, callsVerbatim, callsSummary, elicitations] = await Promise.all([
     db
-      .select()
+      .select({
+        id: conversationMessages.id,
+        tenant_id: conversationMessages.tenant_id,
+        conversation_id: conversationMessages.conversation_id,
+        role: conversationMessages.role,
+        content: messageContentProjection,
+        tokens_in: conversationMessages.tokens_in,
+        tokens_out: conversationMessages.tokens_out,
+        created_at: conversationMessages.created_at,
+      })
       .from(conversationMessages)
       .where(
         and(
@@ -817,7 +846,13 @@ export async function buildModelMessages(
         if (interactionLog.length > 0) augmented.interactionLog = interactionLog;
         const isOutsideVerbatimWindow =
           verbatimWindowStartAt !== null && call.created_at < verbatimWindowStartAt;
-        const augmentedSize = approxValueSize(augmented);
+        // Only outside-window rows consult the size (elide-or-not); rows
+        // INSIDE the verbatim window went straight to truncateForLlm and
+        // still paid a full JSON.stringify here just to discard it —
+        // per verbatim output, per build. Outside-window rows reaching
+        // this point are already ≤4 KB (bulkier ones were SQL-elided by
+        // summaryOutputProjection), so the remaining measurement is cheap.
+        const augmentedSize = isOutsideVerbatimWindow ? approxValueSize(augmented) : 0;
         if (isOutsideVerbatimWindow && augmentedSize > TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS) {
           // Older, bulky tool result — elide. Reuse the existing
           // `_raw_ref` if persist already truncated this output on the
