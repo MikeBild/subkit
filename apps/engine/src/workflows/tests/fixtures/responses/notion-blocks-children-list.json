@@ -1,0 +1,555 @@
+{
+  "object": "list",
+  "results": [
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "callout",
+      "callout": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "Dieser Bereich bündelt die ",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "Dieser Bereich bündelt die ",
+            "href": null
+          },
+          {
+            "type": "text",
+            "text": {
+              "content": "vier Strategie-Dokumente",
+              "link": null
+            },
+            "annotations": {
+              "bold": true,
+              "italic": true,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "vier Strategie-Dokumente",
+            "href": null
+          },
+          {
+            "type": "text",
+            "text": {
+              "content": " — strukturell aufbereitet.",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": " — strukturell aufbereitet.",
+            "href": null
+          }
+        ],
+        "icon": {
+          "type": "emoji",
+          "emoji": "📚"
+        },
+        "color": "blue_background"
+      },
+      "archived": false
+    },
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000002",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "heading_2",
+      "heading_2": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "Zentrales Axiom",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "Zentrales Axiom",
+            "href": null
+          }
+        ],
+        "is_toggleable": false,
+        "color": "default"
+      },
+      "archived": false
+    },
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000003",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "paragraph",
+      "paragraph": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "Drei Begriffe für dieselbe Sache — siehe ",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "Drei Begriffe für dieselbe Sache — siehe ",
+            "href": null
+          },
+          {
+            "type": "text",
+            "text": {
+              "content": "Vokabular",
+              "link": {
+                "url": "https://example.com/wiki/vokabular"
+              }
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "Vokabular",
+            "href": "https://example.com/wiki/vokabular"
+          },
+          {
+            "type": "text",
+            "text": {
+              "content": ".",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": ".",
+            "href": null
+          }
+        ],
+        "icon": null,
+        "color": "default"
+      },
+      "archived": false
+    },
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000004",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "bulleted_list_item",
+      "bulleted_list_item": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "Operational Execution Layer",
+              "link": null
+            },
+            "annotations": {
+              "bold": true,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "Operational Execution Layer",
+            "href": null
+          },
+          {
+            "type": "text",
+            "text": {
+              "content": " — Markt-Begriff für das geteilte System.",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": " — Markt-Begriff für das geteilte System.",
+            "href": null
+          }
+        ],
+        "color": "default"
+      },
+      "archived": false
+    },
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000005",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "bulleted_list_item",
+      "bulleted_list_item": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "The Operating Model",
+              "link": null
+            },
+            "annotations": {
+              "bold": true,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "The Operating Model",
+            "href": null
+          },
+          {
+            "type": "text",
+            "text": {
+              "content": " — ikonischer Kurzbegriff: ausführbar, versioniert, auditiert.",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": " — ikonischer Kurzbegriff: ausführbar, versioniert, auditiert.",
+            "href": null
+          }
+        ],
+        "color": "default"
+      },
+      "archived": false
+    },
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000006",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "numbered_list_item",
+      "numbered_list_item": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "These",
+              "link": null
+            },
+            "annotations": {
+              "bold": true,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "These",
+            "href": null
+          },
+          {
+            "type": "text",
+            "text": {
+              "content": " — warum diese Kategorie existiert.",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": " — warum diese Kategorie existiert.",
+            "href": null
+          }
+        ],
+        "color": "default"
+      },
+      "archived": false
+    },
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000007",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "numbered_list_item",
+      "numbered_list_item": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "System-Anforderungen",
+              "link": null
+            },
+            "annotations": {
+              "bold": true,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "System-Anforderungen",
+            "href": null
+          },
+          {
+            "type": "text",
+            "text": {
+              "content": " — was ein solches System leisten muss.",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": " — was ein solches System leisten muss.",
+            "href": null
+          }
+        ],
+        "color": "default"
+      },
+      "archived": false
+    },
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000008",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "child_database",
+      "child_database": {
+        "title": "Strategie-Dokumente"
+      },
+      "archived": false
+    },
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000009",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "divider",
+      "divider": {},
+      "archived": false
+    },
+    {
+      "object": "block",
+      "id": "00000000-0000-0000-0000-000000000010",
+      "parent": {
+        "type": "page_id",
+        "page_id": "00000000-0000-0000-0000-000000000100"
+      },
+      "created_time": "2026-06-21T05:55:00.000Z",
+      "last_edited_time": "2026-06-21T05:55:00.000Z",
+      "created_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "last_edited_by": {
+        "object": "user",
+        "id": "00000000-0000-0000-0000-000000000900"
+      },
+      "has_children": false,
+      "in_trash": false,
+      "type": "heading_2",
+      "heading_2": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": {
+              "content": "Referenz: Beispiel-Essay – The Magnificent Dead End",
+              "link": null
+            },
+            "annotations": {
+              "bold": false,
+              "italic": false,
+              "strikethrough": false,
+              "underline": false,
+              "code": false,
+              "color": "default"
+            },
+            "plain_text": "Referenz: Beispiel-Essay – The Magnificent Dead End",
+            "href": null
+          }
+        ],
+        "is_toggleable": false,
+        "color": "default"
+      },
+      "archived": false
+    }
+  ],
+  "next_cursor": "00000000-0000-0000-0000-000000000011",
+  "has_more": true,
+  "type": "block",
+  "block": {},
+  "request_id": "00000000-0000-0000-0000-000000000999"
+}

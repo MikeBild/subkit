@@ -1098,6 +1098,21 @@ Available calls:
   Never hand-assemble the MIME string
 - `sk.mimeEncodeHeaderValue(value)` — RFC 2047 encoded-word for one header
   value, when custom header assembly is unavoidable
+- `sk.gmailMessageBody(message)` — decoded `{ text, html }` bodies of a Gmail
+  `messages.get?format=full` resource (walks nested multipart parts, decodes
+  base64url as UTF-8). ALWAYS use this to read email content — `snippet` is a
+  truncated teaser, not the message; shipping it as the body is the
+  "succeeded with garbage output" failure
+- `sk.rfc3339Parts(dateTime)` — faithful `{ date, time, offset, wall }` split
+  of an RFC 3339 date/date-time WITHOUT timezone conversion (the sandbox has
+  no tz database). For calendar events, format via `wall` and pass the
+  vendor's `dateTime` + separate `timeZone` field through UNTOUCHED — slicing
+  the string drops the offset and silently shifts times
+- `sk.notionRichTextToMarkdown(richText)` / `sk.notionBlocksToMarkdown(blocks)`
+  — Notion rich_text spans / `blocks.children.list` responses to markdown,
+  preserving annotations (bold/italic/code) and links; unknown block types
+  degrade to their text content, never to `""`. Use these instead of
+  hand-rolled block renderers, which silently drop annotations
 - `sk.sha256(input)` — SHA-256 of `input` (UTF-8), lowercase hex
 - `sk.hmacSha256(key, msg)` — HMAC-SHA-256, lowercase hex (signed-request auth)
 - `sk.now()` / `sk.nowIso()` — the execution's fixed timestamp (epoch ms / ISO);

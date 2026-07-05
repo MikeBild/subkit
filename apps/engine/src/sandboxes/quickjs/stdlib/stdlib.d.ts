@@ -89,6 +89,44 @@ export interface Sk {
     headers?: Record<string, string>;
   }): { raw: string; mime: string };
 
+  /**
+   * Decoded text/html bodies of a Gmail `messages.get` resource
+   * (format=full) or its bare `payload`. Walks nested multipart parts,
+   * decodes `body.data` (base64url) as UTF-8, returns the first
+   * text/plain and text/html parts. Ship THIS, not `snippet` — the
+   * snippet is a truncated teaser, not the message.
+   */
+  gmailMessageBody(message: unknown): { text: string | null; html: string | null };
+
+  /**
+   * Faithful split of an RFC 3339 date/date-time WITHOUT timezone
+   * conversion (the sandbox has no tz database by design). Calendar
+   * `dateTime` values already carry the local offset applied; `wall` is
+   * the human-facing local time. Date-only input (all-day events)
+   * yields `time`/`offset` null. Throws on non-RFC-3339 input. Keep the
+   * vendor's separate `timeZone` field alongside — never drop it.
+   */
+  rfc3339Parts(input: unknown): {
+    date: string;
+    time: string | null;
+    offset: string | null;
+    wall: string;
+  };
+
+  /**
+   * Notion rich_text spans → inline markdown, preserving annotations
+   * (bold/italic/strikethrough/code) and links. Non-arrays render "".
+   */
+  notionRichTextToMarkdown(richText: unknown): string;
+
+  /**
+   * Notion `blocks.children.list` response (or block array) → markdown.
+   * Paragraphs, headings 1-3, list items, to_do, quote, code fences,
+   * divider; unknown block types degrade to their rich_text content —
+   * never silently to "".
+   */
+  notionBlocksToMarkdown(blocks: unknown): string;
+
   /** Deterministic SHA-256 over the UTF-8 bytes of `input`, lowercase hex. */
   sha256(input: unknown): string;
   /** Deterministic HMAC-SHA-256(`key`, `msg`) over UTF-8 bytes, lowercase hex. */

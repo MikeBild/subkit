@@ -34,11 +34,23 @@ let gqlConnectorId: string;
 
 /** Every request the mock upstream actually received — the tripwire. */
 const hits: Array<{ method: string; url: string }> = [];
+/** Raw wire bodies by path — the held-vs-live parity oracle. */
+const wireBodies: Array<{ url: string; body: unknown }> = [];
 
 beforeAll(async () => {
   ctx = await createEngineCtx("hold-writes");
-  mock = await createMockServer((req, res) => {
+  mock = await createMockServer(async (req, res) => {
     hits.push({ method: req.method ?? "", url: req.url ?? "" });
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const raw = Buffer.concat(chunks).toString("utf8");
+    if (raw.length > 0) {
+      try {
+        wireBodies.push({ url: req.url ?? "", body: JSON.parse(raw) });
+      } catch {
+        wireBodies.push({ url: req.url ?? "", body: raw });
+      }
+    }
     if (req.url?.startsWith("/graphql")) {
       return jsonResponse(res, 200, { data: { things: [{ id: 1 }] } });
     }
@@ -380,6 +392,116 @@ describe("hold-writes · HTTP", () => {
     // empty-loop heuristic — held iterations are intentional.
     const warningCodes = (result.warnings ?? []).map((w) => w.code);
     expect(warningCodes).not.toContain("loop_body_empty");
+  });
+
+  test("held preview fails request_body_schema_violation exactly like the live run", async () => {
+    // Preview↔live parity: body-schema validation runs BEFORE the hold
+    // return. A body the live run refuses to send must fail the preview
+    // too — previously the step held green and the divergence only
+    // surfaced when the user executed for real.
+    hits.length = 0;
+    const steps = [
+      {
+        kind: "request",
+        id: "send",
+        method: "POST",
+        url: `${mock.baseUrl}/send`,
+        body: { to: "user@example.com" },
+        body_schema: {
+          type: "object",
+          required: ["to", "subject"],
+          properties: { to: { type: "string" }, subject: { type: "string" } },
+        },
+      },
+    ];
+    const { workflow_id } = await createWorkflowRow(ctx, { name: "hold-schema-parity", steps });
+
+    const held = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+    const live = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+
+    // Identical failure shape in both modes; nothing ever hit the wire.
+    for (const result of [held, live]) {
+      expect(result.status).toBe("failed");
+      const sendStep = result.steps.find((s) => s.step_key === "send");
+      expect(sendStep?.status).toBe("failed");
+      expect(sendStep?.held).toBeUndefined();
+      expect((sendStep?.error as { code?: string })?.code).toBe("request_body_schema_violation");
+      expect((sendStep?.error as { message?: string })?.message).toContain("subject");
+    }
+    expect(hitsFor("/send")).toHaveLength(0);
+  });
+
+  test("held_request.body deep-equals the body the live dispatch puts on the wire", async () => {
+    // The held artifact claims "this is exactly what would be sent" —
+    // pin that claim byte-for-byte against a live dispatch of the same
+    // workflow (non-secret payload: heldStepResult scrubs secret-shaped
+    // strings, so parity here is modulo scrubbing by construction).
+    hits.length = 0;
+    wireBodies.length = 0;
+    const steps = [
+      { kind: "request", id: "fetch", method: "GET", url: `${mock.baseUrl}/data` },
+      {
+        kind: "transform",
+        id: "shape",
+        language: "javascript",
+        expression:
+          "return { recipient: input.scope.fetch.data.email, items: input.scope.fetch.data.ids, note: 'parity' };",
+      },
+      {
+        kind: "request",
+        id: "send",
+        method: "POST",
+        url: `${mock.baseUrl}/parity-send`,
+        body: {
+          to: "${scope.shape.data.recipient}",
+          payload: { items: "${scope.shape.data.items}", note: "${scope.shape.data.note}" },
+          static_flag: true,
+        },
+      },
+    ];
+    const { workflow_id } = await createWorkflowRow(ctx, { name: "hold-body-parity", steps });
+
+    const held = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+      options: { hold_writes: true },
+    });
+    expect(held.status).toBe("succeeded");
+    expect(hitsFor("/parity-send")).toHaveLength(0);
+    const heldBody = (held.steps.find((s) => s.step_key === "send")?.held_request as HeldRequest)
+      .body;
+
+    const live = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(live.status).toBe("succeeded");
+    expect(hitsFor("/parity-send")).toHaveLength(1);
+    const liveWireBody = wireBodies.find((b) => b.url.startsWith("/parity-send"))?.body;
+
+    expect(liveWireBody).toBeDefined();
+    expect(heldBody).toEqual(liveWireBody);
+    // And the materialization is real (not the placeholder text).
+    expect(heldBody).toEqual({
+      to: "user@example.com",
+      payload: { items: [{ id: 1 }, { id: 2 }], note: "parity" },
+      static_flag: true,
+    });
   });
 
   test("default behavior unchanged — without the flag the write dispatches live", async () => {

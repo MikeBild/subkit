@@ -451,6 +451,169 @@
     return { raw: base64UrlEncodeUtf8(mime), mime: mime };
   }
 
+  // ── Vendor payload shaping ─────────────────────────────────────────
+  // Read-side decoders for the connector shapes that repeatedly reached
+  // users wrong or lossy while the run reported green: Gmail bodies left
+  // base64url-encoded (transforms shipped `snippet` and called it the
+  // message), calendar times reformatted with their offset/timeZone
+  // dropped, Notion rich_text flattened with every annotation lost.
+  // Each helper makes the faithful shape the easy one. Pure ES2020,
+  // deterministic, no host access — same contract as the rest of the
+  // stdlib.
+
+  // Extract the decoded text/html bodies from a Gmail `messages.get`
+  // resource (format=full) or its bare `payload`. Walks nested
+  // multipart/* parts (alternative inside mixed etc.), decodes
+  // `body.data` (base64url) as UTF-8, and returns the FIRST text/plain
+  // and text/html parts found: { text: string|null, html: string|null }.
+  function gmailMessageBody(message) {
+    if (!isObject(message)) {
+      throw new Error("gmailMessageBody: Gmail message object (or its payload) required");
+    }
+    const payload = isObject(message.payload) ? message.payload : message;
+    const found = { text: null, html: null };
+
+    function decodeBody(body) {
+      if (!isObject(body) || typeof body.data !== "string" || body.data.length === 0) return null;
+      return base64DecodeUtf8(body.data);
+    }
+
+    function walk(part) {
+      if (!isObject(part)) return;
+      const mime = typeof part.mimeType === "string" ? part.mimeType.toLowerCase() : "";
+      if (mime === "text/plain" && found.text === null) {
+        const decoded = decodeBody(part.body);
+        if (decoded !== null) found.text = decoded;
+      } else if (mime === "text/html" && found.html === null) {
+        const decoded = decodeBody(part.body);
+        if (decoded !== null) found.html = decoded;
+      }
+      if (Array.isArray(part.parts)) {
+        for (let i = 0; i < part.parts.length; i++) walk(part.parts[i]);
+      }
+    }
+
+    walk(payload);
+    // Single-part message with no/unknown mimeType: the body is still
+    // the message text — never return {null, null} while data exists.
+    if (found.text === null && found.html === null) {
+      const decoded = decodeBody(payload.body);
+      if (decoded !== null) found.text = decoded;
+    }
+    return found;
+  }
+
+  // Split an RFC 3339 date-time string into its faithful parts WITHOUT
+  // timezone conversion (the sandbox has no tz database by design):
+  //   { date: "YYYY-MM-DD", time: "HH:mm[:ss[.SSS]]"|null,
+  //     offset: "Z"|"+HH:mm"|"-HH:mm"|null, wall: "YYYY-MM-DD[ HH:mm]" }
+  // Calendar shapes (Google `start.dateTime`) already carry the local
+  // offset applied; `wall` is the human-facing local time. A date-only
+  // input (all-day event `start.date`) yields time/offset null. Throws
+  // on anything that is not RFC 3339 — a silent reformat is exactly the
+  // lossy shape this helper exists to prevent.
+  function rfc3339Parts(input) {
+    const s = stringInput(input);
+    const m =
+      /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)([Zz]|[+-]\d{2}:\d{2})?)?$/.exec(
+        s,
+      );
+    if (!m) throw new Error(`rfc3339Parts: not an RFC 3339 date or date-time: ${s}`);
+    const date = m[1];
+    const time = m[2] === undefined ? null : m[2];
+    const offset = m[3] === undefined ? null : m[3] === "z" ? "Z" : m[3];
+    const wall = time === null ? date : `${date} ${time.slice(0, 5)}`;
+    return { date: date, time: time, offset: offset, wall: wall };
+  }
+
+  // Render a Notion rich_text span array to inline markdown, preserving
+  // annotations (bold/italic/strikethrough/code) and links. Non-arrays
+  // render as "" so a missing field degrades quietly inside a block walk.
+  function notionRichTextToMarkdown(richText) {
+    if (!Array.isArray(richText)) return "";
+    let out = "";
+    for (let i = 0; i < richText.length; i++) {
+      const span = richText[i];
+      if (!isObject(span)) continue;
+      let text =
+        typeof span.plain_text === "string"
+          ? span.plain_text
+          : isObject(span.text) && typeof span.text.content === "string"
+            ? span.text.content
+            : "";
+      if (text === "") continue;
+      const ann = isObject(span.annotations) ? span.annotations : {};
+      if (ann.code) text = `\`${text}\``;
+      if (ann.bold) text = `**${text}**`;
+      if (ann.italic) text = `_${text}_`;
+      if (ann.strikethrough) text = `~~${text}~~`;
+      const href =
+        typeof span.href === "string" && span.href !== ""
+          ? span.href
+          : isObject(span.text) &&
+              isObject(span.text.link) &&
+              typeof span.text.link.url === "string"
+            ? span.text.link.url
+            : null;
+      if (href !== null) text = `[${text}](${href})`;
+      out += text;
+    }
+    return out;
+  }
+
+  // Render a Notion `blocks.children.list` response (or a bare block
+  // array) to markdown. Handles paragraph, heading_1-3, list items,
+  // to_do, quote, code (language fence), divider. An UNKNOWN block type
+  // degrades to its rich_text content — never "" (a renderer that
+  // returns "" for every unhandled type is the canonical silent-loss
+  // shape).
+  function notionBlocksToMarkdown(blocks) {
+    const list = Array.isArray(blocks)
+      ? blocks
+      : isObject(blocks) && Array.isArray(blocks.results)
+        ? blocks.results
+        : null;
+    if (list === null) {
+      throw new Error("notionBlocksToMarkdown: block array (or { results: [...] }) required");
+    }
+    const lines = [];
+    let numbered = 0;
+    for (let i = 0; i < list.length; i++) {
+      const block = list[i];
+      if (!isObject(block)) continue;
+      const type = typeof block.type === "string" ? block.type : "";
+      const data = type !== "" && isObject(block[type]) ? block[type] : {};
+      const text = notionRichTextToMarkdown(data.rich_text);
+      if (type !== "numbered_list_item") numbered = 0;
+      if (type === "paragraph") {
+        if (text !== "") lines.push(text);
+      } else if (type === "heading_1") {
+        lines.push(`# ${text}`);
+      } else if (type === "heading_2") {
+        lines.push(`## ${text}`);
+      } else if (type === "heading_3") {
+        lines.push(`### ${text}`);
+      } else if (type === "bulleted_list_item") {
+        lines.push(`- ${text}`);
+      } else if (type === "numbered_list_item") {
+        numbered += 1;
+        lines.push(`${numbered}. ${text}`);
+      } else if (type === "to_do") {
+        lines.push(`- [${data.checked ? "x" : " "}] ${text}`);
+      } else if (type === "quote") {
+        lines.push(`> ${text}`);
+      } else if (type === "code") {
+        const lang = typeof data.language === "string" ? data.language : "";
+        lines.push(`\`\`\`${lang}\n${text}\n\`\`\``);
+      } else if (type === "divider") {
+        lines.push("---");
+      } else if (text !== "") {
+        lines.push(text);
+      }
+    }
+    return lines.join("\n\n");
+  }
+
   // ── SHA-256 / HMAC-SHA-256 ─────────────────────────────────────────
   // Pure FIPS-180-4 implementation over the UTF-8 bytes of the input.
   // No host crypto, no clock, no random — fully deterministic so a
@@ -695,6 +858,10 @@
     hexDecode: hexDecode,
     mimeEncodeHeaderValue: mimeEncodeHeaderValue,
     buildMimeMessage: buildMimeMessage,
+    gmailMessageBody: gmailMessageBody,
+    rfc3339Parts: rfc3339Parts,
+    notionRichTextToMarkdown: notionRichTextToMarkdown,
+    notionBlocksToMarkdown: notionBlocksToMarkdown,
     sha256: sha256,
     hmacSha256: hmacSha256,
     now: now,
@@ -705,7 +872,7 @@
     isArray: isArray,
     isObject: isObject,
     isNil: isNil,
-    version: "1.5.0",
+    version: "1.6.0",
   });
 
   Object.defineProperty(globalThis, "sk", {
