@@ -80,6 +80,61 @@ describe("fixture replay idempotency (SUBKIT_BUGS Bug 2)", () => {
     expect((renderStep?.output_preview as Record<string, unknown>)?.data).toBeUndefined();
   });
 
+  test("a fixture payload larger than the 512-byte inline preview cap survives replay untruncated", async () => {
+    // Guard: `previewOf` (offload.ts) slices step results to a 512-byte
+    // inline text preview when serializing for the LLM/DB. That truncation
+    // must stay a serialization-only concern — a downstream step reading a
+    // replayed fixture must see the FULL payload, and the re-recorded
+    // output_preview must be the full raw body, or a preview→rerun loop
+    // silently loses data past the cap.
+    const bigText = "x".repeat(4096);
+    const rawPreview = { blob: bigText, items: Array.from({ length: 32 }, (_, i) => ({ i })) };
+    const fixtureEnvelope = { data: rawPreview, duration_ms: 0, error: null };
+
+    const draft = {
+      name: "big-fixture",
+      steps: [
+        {
+          kind: "transform" as const,
+          id: "render",
+          language: "javascript" as const,
+          expression: "return { should_be: 'replaced by fixture' };",
+        },
+        {
+          kind: "transform" as const,
+          id: "measure",
+          language: "javascript" as const,
+          expression:
+            "const d = input.scope.render.data; return { blob_len: d.blob.length, item_count: d.items.length, last_i: d.items[d.items.length - 1].i };",
+        },
+      ],
+    };
+
+    const run = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "draft", definition: draft },
+      input: null,
+      options: { step_output_fixtures: { render: fixtureEnvelope } },
+    });
+    expect(run.status).toBe("succeeded");
+
+    // The downstream transform saw the FULL payload, not a 512-byte slice.
+    const measured = run.steps.find((s) => s.step_key === "measure")?.output_preview as {
+      blob_len: number;
+      item_count: number;
+      last_i: number;
+    };
+    expect(measured).toEqual({ blob_len: 4096, item_count: 32, last_i: 31 });
+
+    // And the re-recorded preview of the replayed step is the untruncated
+    // raw body — the next rerun's fixture would carry everything.
+    const replayedPreview = run.steps.find((s) => s.step_key === "render")
+      ?.output_preview as typeof rawPreview;
+    expect(replayedPreview.blob.length).toBe(4096);
+    expect(replayedPreview.items).toHaveLength(32);
+  });
+
   test("two consecutive fixture replays do not deepen the envelope", async () => {
     const rawPreview = { slug: "title" };
     let envelope: Record<string, unknown> = { data: rawPreview, duration_ms: 0, error: null };

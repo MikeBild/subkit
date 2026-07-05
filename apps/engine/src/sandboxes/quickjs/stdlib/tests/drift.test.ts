@@ -22,12 +22,14 @@ describe("detectStdlibDrift", () => {
 
   test("additive minor bumps stay on major 1 — no drift vs an earlier 1.x", () => {
     // hex/hash/now/uuid shipped as 1.4.0; the MIME surface
-    // (mimeEncodeHeaderValue / buildMimeMessage) as 1.5.0. A workflow
-    // recorded against any earlier 1.x must NOT spawn a Patch
+    // (mimeEncodeHeaderValue / buildMimeMessage) as 1.5.0; the vendor
+    // payload shaping surface (gmailMessageBody / rfc3339Parts /
+    // notionRichTextToMarkdown / notionBlocksToMarkdown) as 1.6.0. A
+    // workflow recorded against any earlier 1.x must NOT spawn a Patch
     // Candidate — the surface is purely additive.
-    expect(STDLIB_VERSION).toBe("1.5.0");
+    expect(STDLIB_VERSION).toBe("1.6.0");
+    expect(detectStdlibDrift("1.5.0")).toBeNull();
     expect(detectStdlibDrift("1.4.0")).toBeNull();
-    expect(detectStdlibDrift("1.3.0")).toBeNull();
     expect(detectStdlibDrift("1.0.0")).toBeNull();
   });
 

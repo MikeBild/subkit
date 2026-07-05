@@ -1,0 +1,123 @@
+{
+  "kind": "calendar#events",
+  "etag": "\"p32ofpl9rd7bo20o\"",
+  "summary": "alex@example.com",
+  "description": "",
+  "updated": "2026-07-01T08:15:22.000Z",
+  "timeZone": "Europe/Berlin",
+  "accessRole": "owner",
+  "defaultReminders": [
+    {
+      "method": "popup",
+      "minutes": 10
+    }
+  ],
+  "items": [
+    {
+      "kind": "calendar#event",
+      "etag": "\"3410000000000001\"",
+      "id": "evt000000000000000000000001",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=evt-0001",
+      "created": "2026-06-20T09:00:00.000Z",
+      "updated": "2026-06-30T10:00:00.000Z",
+      "summary": "Sprint-Review – Woche 27",
+      "creator": {
+        "email": "alex@example.com",
+        "self": true
+      },
+      "organizer": {
+        "email": "alex@example.com",
+        "self": true
+      },
+      "start": {
+        "dateTime": "2026-07-06T10:00:00+02:00",
+        "timeZone": "Europe/Berlin"
+      },
+      "end": {
+        "dateTime": "2026-07-06T11:30:00+02:00",
+        "timeZone": "Europe/Berlin"
+      },
+      "iCalUID": "evt-0001@google.com",
+      "sequence": 0,
+      "reminders": {
+        "useDefault": true
+      },
+      "eventType": "default"
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3410000000000002\"",
+      "id": "evt000000000000000000000002",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=evt-0002",
+      "created": "2026-06-21T09:00:00.000Z",
+      "updated": "2026-06-30T10:00:00.000Z",
+      "summary": "Partner sync (US West)",
+      "creator": {
+        "email": "alex@example.com",
+        "self": true
+      },
+      "organizer": {
+        "email": "pat@partner.example.org"
+      },
+      "start": {
+        "dateTime": "2026-07-06T08:30:00-07:00",
+        "timeZone": "America/Los_Angeles"
+      },
+      "end": {
+        "dateTime": "2026-07-06T09:00:00-07:00",
+        "timeZone": "America/Los_Angeles"
+      },
+      "iCalUID": "evt-0002@google.com",
+      "sequence": 1,
+      "attendees": [
+        {
+          "email": "alex@example.com",
+          "responseStatus": "accepted",
+          "self": true
+        },
+        {
+          "email": "pat@partner.example.org",
+          "responseStatus": "accepted",
+          "organizer": true
+        }
+      ],
+      "reminders": {
+        "useDefault": true
+      },
+      "eventType": "default"
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3410000000000003\"",
+      "id": "evt000000000000000000000003",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=evt-0003",
+      "created": "2026-06-22T09:00:00.000Z",
+      "updated": "2026-06-30T10:00:00.000Z",
+      "summary": "Feiertag – Betriebsruhe",
+      "creator": {
+        "email": "alex@example.com",
+        "self": true
+      },
+      "organizer": {
+        "email": "alex@example.com",
+        "self": true
+      },
+      "start": {
+        "date": "2026-07-08"
+      },
+      "end": {
+        "date": "2026-07-09"
+      },
+      "transparency": "transparent",
+      "iCalUID": "evt-0003@google.com",
+      "sequence": 0,
+      "reminders": {
+        "useDefault": false
+      },
+      "eventType": "default"
+    }
+  ]
+}

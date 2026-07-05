@@ -1,0 +1,99 @@
+{
+  "id": "19f000000000a001",
+  "threadId": "19f000000000a001",
+  "labelIds": ["UNREAD", "INBOX"],
+  "snippet": "Team-Update – Woche 27 Hallo Alex, die Auswertung für die Größenänderung ist fertig: https://example.com/reports/week-27",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "alex@example.com"
+      },
+      {
+        "name": "Return-Path",
+        "value": "<jordan@example.com>"
+      },
+      {
+        "name": "Date",
+        "value": "Sat, 04 Jul 2026 12:48:07 -0700"
+      },
+      {
+        "name": "From",
+        "value": "Jordan Doe <jordan@example.com>"
+      },
+      {
+        "name": "To",
+        "value": "Alex Roe <alex@example.com>"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<team-update-w27-0001@mail.example.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Team-Update – Woche 27"
+      },
+      {
+        "name": "Mime-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Content-Type",
+        "value": "multipart/alternative; boundary=\"--==_mimepart_000000000000_000000000000\"; charset=UTF-8"
+      },
+      {
+        "name": "Content-Transfer-Encoding",
+        "value": "7bit"
+      }
+    ],
+    "body": {
+      "size": 0
+    },
+    "parts": [
+      {
+        "partId": "0",
+        "mimeType": "text/plain",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=UTF-8"
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "7bit"
+          }
+        ],
+        "body": {
+          "size": 160,
+          "data": "VGVhbS1VcGRhdGUg4oCTIFdvY2hlIDI3DQoNCkhhbGxvIEFsZXgsDQoNCmRpZSBBdXN3ZXJ0dW5nIGbDvHIgZGllIEdyw7bDn2Vuw6RuZGVydW5nIGlzdCBmZXJ0aWc6DQpodHRwczovL2V4YW1wbGUuY29tL3JlcG9ydHMvd2Vlay0yNw0KDQpWaWVsZSBHcsO8w59lDQpKb3JkYW4NCg"
+        }
+      },
+      {
+        "partId": "1",
+        "mimeType": "text/html",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "text/html; charset=UTF-8"
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "body": {
+          "size": 245,
+          "data": "PHA-VGVhbS1VcGRhdGUg4oCTIFdvY2hlIDI3PC9wPg0KPHA-SGFsbG8gQWxleCw8L3A-DQo8dWw-DQogIDxsaT5kaWUgQXVzd2VydHVuZyBmw7xyIGRpZSA8Yj5HcsO2w59lbsOkbmRlcnVuZzwvYj4gaXN0IGZlcnRpZzwvbGk-DQo8L3VsPg0KPHA-PGEgaHJlZj0iaHR0cHM6Ly9leGFtcGxlLmNvbS9yZXBvcnRzL3dlZWstMjciPlJlcG9ydCBhbnNlaGVuPC9hPjwvcD4NCjxwPlZpZWxlIEdyw7zDn2U8YnIgLz5Kb3JkYW48L3A-DQo"
+        }
+      }
+    ]
+  },
+  "sizeEstimate": 16400,
+  "historyId": "27000001",
+  "internalDate": "1783194487000"
+}

@@ -1619,6 +1619,30 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         method: p.step.method ?? "GET",
         digest,
       };
+  // Body schema validation runs BEFORE the hold-writes return so a preview
+  // fails exactly like the live run would. Holding first masked a
+  // request_body_schema_violation as a green held step — the preview judge
+  // saw a materialized body the live dispatch would refuse to send (a
+  // preview↔live output-shape divergence). Same guard as the live path:
+  // non-paginated steps only.
+  if (
+    !p.step.pagination &&
+    effectiveBodySchema &&
+    resolvedStepBody !== undefined &&
+    resolvedStepBody !== null
+  ) {
+    const bodyErrs = checkRequired(resolvedStepBody, effectiveBodySchema);
+    if (bodyErrs.length > 0) {
+      clearTimeout(timer);
+      return {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: Date.now() - start,
+        error: { code: "request_body_schema_violation", message: bodyErrs.join("; ") },
+      };
+    }
+  }
+
   // Hold-writes: the request is fully materialized at this point —
   // placeholders substituted, connector base URL composed, credential
   // headers applied by buildRequestPlan, policy hooks evaluated. This
@@ -1645,19 +1669,6 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   let inFlightCheckpoint: Promise<void> | null = null;
   try {
     if (!p.step.pagination) {
-      // Body schema validation (non-paginated path only)
-      if (effectiveBodySchema && resolvedStepBody !== undefined && resolvedStepBody !== null) {
-        const bodyErrs = checkRequired(resolvedStepBody, effectiveBodySchema);
-        if (bodyErrs.length > 0) {
-          clearTimeout(timer);
-          return {
-            status: "failed",
-            retry_count: 0,
-            duration_ms: Date.now() - start,
-            error: { code: "request_body_schema_violation", message: bodyErrs.join("; ") },
-          };
-        }
-      }
       const httpEgressInput = activeConnector
         ? {
             executor: p.ctx.db,
