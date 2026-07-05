@@ -42,6 +42,7 @@ import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persi
 import type { TurnEvent } from "../../types.ts";
 import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
 import type { ToolContext } from "../index.ts";
+import { sampleWorkflowOutputForLlm } from "../truncate.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
 
@@ -318,11 +319,28 @@ async function executeSyntheticRun(
       tool: name,
       output,
     });
+    // Model-visible envelope: the workflow output rides SAMPLED (mirrors
+    // run_workflow's envelope, same output_sampled markers the truncator
+    // protects). The full envelope above stays on the audit rows; pre-fix
+    // the raw output went back to the SDK unbounded and re-rode the
+    // cumulative prompt on every subsequent step of the turn.
+    const sampledOutput = sampleWorkflowOutputForLlm(result.output);
+    const modelOutput: Record<string, unknown> = {
+      ...output,
+      output: sampledOutput.value,
+      ...(sampledOutput.sampled
+        ? {
+            output_sampled: true,
+            output_note: `output is a sample (in-band "… sampled N of M" markers mark the cut points); full payload via get_raw_result(ref="${sampledOutput.raw_ref}") or inspect_execution_step. Present the sampled rows to the user directly — do NOT re-run the workflow to "get" the output.`,
+            ...(sampledOutput.raw_ref ? { output_raw_ref: sampledOutput.raw_ref } : {}),
+          }
+        : {}),
+    };
     events.push({
       type: "tool_result",
       call_id: toolCallId,
       tool: name,
-      output,
+      output: modelOutput,
       parent_message_id: assistantMessageId,
     });
     logger.info({
@@ -374,7 +392,7 @@ async function executeSyntheticRun(
       outcome: ok ? "ok" : "error",
       duration_ms: 0,
     });
-    return { ok, data: output };
+    return { ok, data: modelOutput };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const output: Record<string, unknown> = {

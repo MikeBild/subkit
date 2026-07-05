@@ -9,7 +9,7 @@
 // composing the call, mapping callbacks into DB writes + events, and
 // resolving the final per-turn status.
 
-import { hasToolCall, stepCountIs, streamText, type ToolSet } from "ai";
+import { hasToolCall, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -1069,17 +1069,23 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
    * error. Usage rows are written per-step with `modelId` as the
    * `model` column so fallback attempts show up as distinct rows.
    */
-  async function runOnce(modelId: string): Promise<void> {
+  async function runOnce(modelId: string, prebuiltMessages?: ModelMessage[]): Promise<void> {
     let lastStepEnd = now();
     // Per-turn repair counter for experimental_repairToolCall. See
     // MAX_REPAIRS_PER_TURN constant.
     let turnRepairCount = 0;
-    // Rebuild messages every attempt so a fallback retry picks up any
-    // tool calls that the failed primary already persisted.
-    const attemptMessages = await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
-      conversationEnvelope: true,
-      conversation_id: p.conversation_id,
-    });
+    // The first attempt reuses the preflight build — nothing persists
+    // between the token-count preflight and attempt #1, so rebuilding was
+    // a pure duplicate of the most allocation-heavy phase of the turn. A
+    // FALLBACK attempt passes nothing and rebuilds, because the failed
+    // primary may already have persisted tool calls this attempt must
+    // replay.
+    const attemptMessages =
+      prebuiltMessages ??
+      (await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
+        conversationEnvelope: true,
+        conversation_id: p.conversation_id,
+      }));
     // The SDK wraps provider-level errors thrown from `doStream` inside
     // `AI_NoOutputGeneratedError` when no step was recorded, which hides
     // the original error kind our fallback classifier needs. `onError`
@@ -1794,10 +1800,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
-  void messages; // messages rebuilt per-attempt inside runOnce
   let cancelled = false;
   try {
-    await runOnce(effectiveModel);
+    // Attempt #1 reuses the preflight `messages` build; fallback
+    // attempts rebuild inside runOnce (see its parameter note).
+    await runOnce(effectiveModel, messages);
   } catch (primaryErr) {
     // Cancel-vs-error split — see `abort.ts` header for reason coverage.
     if (isExpectedCancellation(primaryErr, turnAbortCtrl.signal)) {

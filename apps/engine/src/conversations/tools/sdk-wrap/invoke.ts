@@ -1343,18 +1343,41 @@ export function wrapOne(
         const truncated = skipTruncate
           ? ({ truncated: false, data: resultPayload } as const)
           : truncateForLlm(resultPayload);
-        events.push({
-          type: "tool_result",
-          call_id: toolCallId,
-          tool: inner.name,
-          output: truncated.truncated
+        // The model-visible view of this result. This is what the SDK
+        // return below carries as `data` — honoring the header contract
+        // ("persist the FULL output, feed only a TRUNCATED view back to
+        // the model"). Pre-fix only the CLI events stream got the
+        // truncated view while the SDK return shipped the full payload:
+        // every large output then rode the cumulative prompt on EVERY
+        // subsequent step of the turn (plus the SDK's response-message
+        // clone), which is the within-step multi-GB transient the heap
+        // brackets localized. Control-flow markers survive truncation:
+        // `pause`/`committed_workflow_id` stay on the wrapper, scalars
+        // (`requires_repair`, `classification`, `already_persisted`,
+        // `version_changed`) pass both truncation passes untouched, and
+        // `judge`/`warnings` are pass-2-protected root keys.
+        const modelVisibleOutput = truncated.truncated
+          ? truncated.data !== null &&
+            typeof truncated.data === "object" &&
+            !Array.isArray(truncated.data)
             ? {
                 ...(truncated.data as Record<string, unknown>),
                 _truncated: true,
                 _raw_ref: truncated.raw_ref,
                 _note: truncated.note,
               }
-            : resultPayload,
+            : {
+                data: truncated.data,
+                _truncated: true,
+                _raw_ref: truncated.raw_ref,
+                _note: truncated.note,
+              }
+          : resultPayload;
+        events.push({
+          type: "tool_result",
+          call_id: toolCallId,
+          tool: inner.name,
+          output: modelVisibleOutput,
           parent_message_id: assistantMessageId,
         });
         // Activity ticker: tool ended → switch to idle so the CLI
@@ -1683,7 +1706,7 @@ export function wrapOne(
           });
           return {
             ok: result.ok,
-            data: resultPayload,
+            data: modelVisibleOutput,
             pause: {
               tool_name: "ask_user_confirm",
               kind: "generic",
@@ -1701,7 +1724,7 @@ export function wrapOne(
 
         return {
           ok: result.ok,
-          data: resultPayload,
+          data: modelVisibleOutput,
           ...(result.pause ? { pause: result.pause } : {}),
           ...(committedWorkflowId ? { committed_workflow_id: committedWorkflowId } : {}),
         };
