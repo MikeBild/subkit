@@ -379,6 +379,27 @@ decision*. An audit query for "successful elicitations" must therefore filter on
 `action` / `decision_reason`, not on `elicitation_transport` — equating transport
 success with approval double-counts every declined-but-delivered prompt.
 
+### Secret answers never transit the transcript or LLM context
+
+A connector credential the operator supplies never lands in the conversation
+transcript, a persisted tool-call row, or the model's replayed context:
+
+- **Over MCP** a secret-shaped elicitation is refused (`secret_elicitation_blocked`)
+  and degraded to URL-mode elicitation or the portal DB-pause; poll-based clients
+  mask the field because `conversation_get` relays the form's `type:"password"` /
+  `sensitive:true` markers verbatim.
+- When a secret **is** typed into the sanctioned CLI/web masked form, its answer
+  value is projected to `***redacted***` at the single persist chokepoint
+  (`resolveElicitation`), and credential subtrees in
+  `save_connector_draft` / `update_connector_draft` args are scrubbed before the
+  tool-call row is written. The raw value still flows in-memory into the credential
+  cache and is stored AES-256-GCM-encrypted; only a by-reference credential lands
+  in the draft.
+
+The scrub is field-metadata-driven (it masks exactly the fields the form marked
+secret) and targeted (only known credential-bearing tool args) — never a blanket
+high-entropy sweep, which would corrupt authored workflow code.
+
 ## Layout
 
 ```
