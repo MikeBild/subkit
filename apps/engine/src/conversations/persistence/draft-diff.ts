@@ -31,14 +31,24 @@ import type { DraftDocument } from "../types.ts";
 import { workflowDefFromDraft } from "./commit-workflow.ts";
 
 /**
- * - `no_target`   — the draft is not bound to a live workflow version, or has no
- *                   workflow steps to compare (nothing to persist).
+ * - `no_target`   — nothing was compared. The `reason` says why:
+ *                   `unbound` (no target workflow id), `empty_draft` (no steps
+ *                   to compare), `no_persisted_version` (workflow row missing,
+ *                   deleted, or has no current version), `unreadable_dag`
+ *                   (a version row exists but its stored dag is missing or
+ *                   fails schema parse).
  * - `clean`       — the draft's structural def matches the persisted current
  *                   version (any difference is metadata-only, which is fine).
  * - `structural`  — the draft's steps/edges/schemas/trigger/output_transform
  *                   differ from the persisted version (uncommitted def edits).
  */
-export type DraftPersistedState = "no_target" | "clean" | "structural";
+export type DraftPersistedState =
+  | { state: "clean" }
+  | { state: "structural" }
+  | {
+      state: "no_target";
+      reason: "unbound" | "empty_draft" | "no_persisted_version" | "unreadable_dag";
+    };
 
 const STRUCTURAL_KEYS = [
   "steps",
@@ -77,13 +87,13 @@ export async function classifyDraftVsPersisted(
   draft: DraftDocument,
   target_workflow_id: string | null,
 ): Promise<DraftPersistedState> {
-  if (!target_workflow_id) return "no_target";
+  if (!target_workflow_id) return { state: "no_target", reason: "unbound" };
 
   const draftDef = workflowDefFromDraft(getWorkflowDraft(draft));
   if (!Array.isArray(draftDef.steps) || draftDef.steps.length === 0) {
     // An empty workflow draft (e.g. a connector-only or freshly-bound session
     // before any edit) has nothing to compare.
-    return "no_target";
+    return { state: "no_target", reason: "empty_draft" };
   }
 
   const wfRows = await exec
@@ -98,7 +108,7 @@ export async function classifyDraftVsPersisted(
     )
     .limit(1);
   const currentVersionId = wfRows[0]?.current_version_id;
-  if (!currentVersionId) return "no_target";
+  if (!currentVersionId) return { state: "no_target", reason: "no_persisted_version" };
 
   const versionRows = await exec
     .select({ dag: workflowVersions.dag })
@@ -108,10 +118,10 @@ export async function classifyDraftVsPersisted(
     )
     .limit(1);
   const dag = versionRows[0]?.dag;
-  if (!dag) return "no_target";
+  if (!dag) return { state: "no_target", reason: "unreadable_dag" };
 
   const parsedCurrent = WorkflowDefSchema.safeParse(dag);
-  if (!parsedCurrent.success) return "no_target";
+  if (!parsedCurrent.success) return { state: "no_target", reason: "unreadable_dag" };
 
   // Annotate the draft def so the comparison is like-for-like with the stored
   // (annotated) dag; fall back to the raw projection if validation fails so an
@@ -125,5 +135,5 @@ export async function classifyDraftVsPersisted(
   const same =
     structuralFingerprint(draftForCompare) ===
     structuralFingerprint(parsedCurrent.data as unknown as Record<string, unknown>);
-  return same ? "clean" : "structural";
+  return same ? { state: "clean" } : { state: "structural" };
 }

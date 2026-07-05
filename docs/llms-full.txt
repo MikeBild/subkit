@@ -5664,7 +5664,7 @@ but they manage *the conversation*, not a tenant resource.
 | `conversation_append` | Add the next user message and enqueue the next authoring turn. |
 | `conversation_get` | Read-only poll of a conversation's state — completion status, pending elicitation, and the live progress heartbeat (below). |
 | `conversation_respond_elicitation` | Resolve a pending elicitation (a form answer, an approval, an OAuth acknowledgement) and enqueue the following turn. |
-| `conversation_commit` | Commit the current draft from the conversation into a persisted, active workflow. |
+| `conversation_commit` | Report the persisted commit state of the conversation's workflow — version written, steps present, read from the persisted rows. Read-only; a draft with unpersisted edits returns a NOT COMMITTED error. |
 
 These five are the complete session surface. Authoring turns run in a background
 worker (a real turn outlasts the MCP client timeout), so a client `conversation_start`s
