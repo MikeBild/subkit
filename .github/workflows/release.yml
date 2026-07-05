@@ -486,7 +486,7 @@ jobs:
 
   # ── Optional deploy hook ──
   # Event-driven deploy trigger: once the GitHub Release assets exist, fire a
-  # repository_dispatch (`deploy-release`) at an operator-owned deployment
+  # repository_dispatch (`deploy-subkit`) at an operator-owned deployment
   # repo so it can roll hosts to this version within seconds (a schedule poll
   # would sit on GitHub's throttled cron for up to an hour).
   # Opt-in via TWO repo settings; forks and plain clones no-op harmlessly:
@@ -499,7 +499,7 @@ jobs:
     needs: publish-release
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch deploy-release to the deployment repo
+      - name: Dispatch deploy-subkit to the deployment repo
         env:
           GH_TOKEN: ${{ secrets.DEPLOY_DISPATCH_TOKEN }}
           DEPLOY_REPO: ${{ vars.DEPLOY_DISPATCH_REPO }}
@@ -515,6 +515,6 @@ jobs:
           # is an operator-set repo variable, validated to an owner/name shape.
           echo "$DEPLOY_REPO" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' \
             || { echo "DEPLOY_DISPATCH_REPO '$DEPLOY_REPO' is not owner/name — refusing" >&2; exit 1; }
-          printf '{"event_type":"deploy-release","client_payload":{"ref":"%s"}}' "$TAG" \
+          printf '{"event_type":"deploy-subkit","client_payload":{"ref":"%s"}}' "$TAG" \
             | gh api -X POST "repos/$DEPLOY_REPO/dispatches" --input -
-          echo "dispatched deploy-release ref=$TAG to $DEPLOY_REPO"
+          echo "dispatched deploy-subkit ref=$TAG to $DEPLOY_REPO"
