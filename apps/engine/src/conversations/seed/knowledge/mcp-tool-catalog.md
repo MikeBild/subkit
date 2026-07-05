@@ -76,8 +76,10 @@ inside the conversation and surfaces results back to you.
   any pending elicitation. (tenant_read)
 - `conversation_respond_elicitation` — answer an in-conversation elicitation
   (`elicitation_id`, `output`, optional `reason`). (tenant_write)
-- `conversation_commit` — commit the authored workflow/connector to a live,
-  versioned definition. (tenant_read gate; performs the commit)
+- `conversation_commit` — report the persisted commit state of the
+  conversation's workflow (version written, steps present, read from the
+  persisted rows). Read-only: it never persists; a draft with unpersisted
+  edits returns a NOT COMMITTED error. (tenant_read)
 - `suggest_related_conversations` — before starting fresh, check whether this
   prompt continues a prior conversation (ranked, caller's own only) so you can
   resume via `conversation_append`. Suggestion only.
