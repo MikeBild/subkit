@@ -92,6 +92,8 @@ function bigOutputTool(payload: unknown): ConversationTool {
   };
 }
 
+let toolCallSeq = 0;
+
 async function invokeWrapped(payload: unknown): Promise<Record<string, unknown>> {
   const wrapped = wrapOne(
     bigOutputTool(payload),
@@ -103,10 +105,11 @@ async function invokeWrapped(payload: unknown): Promise<Record<string, unknown>>
     null,
     [],
   );
+  toolCallSeq += 1;
   // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
   return (await (wrapped.execute as any)(
     {},
-    { toolCallId: `t-${Date.now()}`, messages: [] },
+    { toolCallId: `t-${toolCallSeq}`, messages: [] },
   )) as Record<string, unknown>;
 }
 
