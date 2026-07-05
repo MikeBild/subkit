@@ -38,7 +38,7 @@
       "kind": "transform",
       "language": "javascript",
       "on_error": "fail",
-      "expression": "const header = (m, n) => { const hs = (m.payload && m.payload.headers) || []; const h = hs.find((x) => x.name === n); return h ? h.value : undefined; }; return (input.scope.fetch_each.data || []).map((it) => it.get_message.data).map((m) => ({ id: m.id, from: header(m, 'From'), subject: header(m, 'Subject'), date: header(m, 'Date'), snippet: m.snippet }));"
+      "expression": "const header = (m, n) => { const hs = (m.payload && m.payload.headers) || []; const h = hs.find((x) => x.name === n); return h ? h.value : undefined; }; return (input.scope.fetch_each.data || []).map((it) => it.get_message.data).map((m) => { const body = sk.gmailMessageBody(m); return { id: m.id, from: header(m, 'From'), subject: header(m, 'Subject'), date: header(m, 'Date'), snippet: m.snippet, body: body.text !== null ? body.text : body.html }; });"
     }
   ],
   "description": "Fetch the last 3 Gmail messages with human-readable subject, sender, date, and snippet."

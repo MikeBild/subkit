@@ -126,13 +126,17 @@ new ambient value, inject it from the host execution context the same way
 ## Size budget
 
 The stdlib source is evaluated afresh on every `runJs` call (QuickJS does
-not share bytecode across contexts). Current size is ~26 KB — the SHA-256
-implementation and the MIME layer dominate. A size tripwire
-(`tests/size.test.ts`) fails the build if the source crosses **30 KB**.
+not share bytecode across contexts). A size tripwire (`tests/size.test.ts`)
+fails the build if the **evaluated** source crosses **30 KB**.
 
 The ceiling was consciously raised from 25 KB for the MIME surface: `sk`
 is frozen at install time, so a lazily injected sub-module cannot attach
 to it — an on-demand loader would mean unfreezing the surface or a second
-global, both worse than the marginal extra parse per invocation. The next
-additive surface past 30 KB must revisit that trade-off rather than bump
-the number again.
+global, both worse than the marginal extra parse per invocation. When the
+vendor-payload-shaping surface pushed past 30 KB, the trade-off was
+revisited (as that bump demanded) without touching the ceiling: the loader
+(`index.ts`) strips full-line comments before export, so the humans keep a
+documented `stdlib.js` while the VM parses only code. The tripwire governs
+the stripped text; keep writing full-line comments freely, but code bytes
+still count — the next surface past 30 KB of pure code must revisit the
+frozen-`sk` trade-off again.
