@@ -453,23 +453,22 @@
 
   // ── Vendor payload shaping ─────────────────────────────────────────
   // Read-side decoders for the connector shapes that repeatedly reached
-  // users wrong or lossy while the run reported green: Gmail bodies left
+  // users wrong or lossy while the run reported green: email bodies left
   // base64url-encoded (transforms shipped `snippet` and called it the
   // message), calendar times reformatted with their offset/timeZone
-  // dropped, Notion rich_text flattened with every annotation lost.
-  // Each helper makes the faithful shape the easy one. Pure ES2020,
-  // deterministic, no host access — same contract as the rest of the
-  // stdlib.
+  // dropped, document rich-text flattened with every annotation lost.
+  // Surface rule: the EXPORTED names are generic (emailBody,
+  // rfc3339Parts, documentToMarkdown); the vendor-specific wire-format
+  // handling hides behind them and is selected by shape detection, so a
+  // new vendor extends an existing helper instead of growing the `sk`
+  // surface. Pure ES2020, deterministic, no host access — same contract
+  // as the rest of the stdlib.
 
-  // Extract the decoded text/html bodies from a Gmail `messages.get`
-  // resource (format=full) or its bare `payload`. Walks nested
-  // multipart/* parts (alternative inside mixed etc.), decodes
-  // `body.data` (base64url) as UTF-8, and returns the FIRST text/plain
-  // and text/html parts found: { text: string|null, html: string|null }.
-  function gmailMessageBody(message) {
-    if (!isObject(message)) {
-      throw new Error("gmailMessageBody: Gmail message object (or its payload) required");
-    }
+  // Gmail wire format: a `messages.get` resource (format=full) or its
+  // bare `payload` — nested multipart/* parts with base64url
+  // `body.data`. Walks the tree, decodes as UTF-8, keeps the FIRST
+  // text/plain and text/html parts found.
+  function gmailPayloadTreeBody(message) {
     const payload = isObject(message.payload) ? message.payload : message;
     const found = { text: null, html: null };
 
@@ -503,6 +502,30 @@
     return found;
   }
 
+  // Extract the decoded text/html bodies of an email message envelope:
+  // { text: string|null, html: string|null }. Generic entry point —
+  // vendor wire formats are detected by shape, never named by the
+  // caller:
+  //   - pre-decoded body object ({ body: { contentType, content } },
+  //     the Microsoft-Graph-style shape)
+  //   - Gmail payload tree (nested multipart parts, base64url data)
+  function emailBody(message) {
+    if (!isObject(message)) {
+      throw new Error("emailBody: email message object (or its payload) required");
+    }
+    const preDecoded = message.body;
+    if (
+      isObject(preDecoded) &&
+      typeof preDecoded.content === "string" &&
+      typeof preDecoded.contentType === "string"
+    ) {
+      return preDecoded.contentType.toLowerCase() === "html"
+        ? { text: null, html: preDecoded.content }
+        : { text: preDecoded.content, html: null };
+    }
+    return gmailPayloadTreeBody(message);
+  }
+
   // Split an RFC 3339 date-time string into its faithful parts WITHOUT
   // timezone conversion (the sandbox has no tz database by design):
   //   { date: "YYYY-MM-DD", time: "HH:mm[:ss[.SSS]]"|null,
@@ -526,9 +549,10 @@
     return { date: date, time: time, offset: offset, wall: wall };
   }
 
-  // Render a Notion rich_text span array to inline markdown, preserving
-  // annotations (bold/italic/strikethrough/code) and links. Non-arrays
-  // render as "" so a missing field degrades quietly inside a block walk.
+  // Notion wire format, rich_text span array → inline markdown,
+  // preserving annotations (bold/italic/strikethrough/code) and links.
+  // Non-arrays render as "" so a missing field degrades quietly inside
+  // a block walk. Internal — reached via documentToMarkdown.
   function notionRichTextToMarkdown(richText) {
     if (!Array.isArray(richText)) return "";
     let out = "";
@@ -561,12 +585,12 @@
     return out;
   }
 
-  // Render a Notion `blocks.children.list` response (or a bare block
-  // array) to markdown. Handles paragraph, heading_1-3, list items,
-  // to_do, quote, code (language fence), divider. An UNKNOWN block type
-  // degrades to its rich_text content — never "" (a renderer that
-  // returns "" for every unhandled type is the canonical silent-loss
-  // shape).
+  // Notion wire format, `blocks.children.list` response or bare block
+  // array → document markdown. Handles paragraph, heading_1-3, list
+  // items, to_do, quote, code (language fence), divider. An UNKNOWN
+  // block type degrades to its rich_text content — never "" (a renderer
+  // that returns "" for every unhandled type is the canonical
+  // silent-loss shape). Internal — reached via documentToMarkdown.
   function notionBlocksToMarkdown(blocks) {
     const list = Array.isArray(blocks)
       ? blocks
@@ -574,7 +598,7 @@
         ? blocks.results
         : null;
     if (list === null) {
-      throw new Error("notionBlocksToMarkdown: block array (or { results: [...] }) required");
+      throw new Error("documentToMarkdown: block/rich-text array (or { results: [...] }) required");
     }
     const lines = [];
     let numbered = 0;
@@ -612,6 +636,37 @@
       }
     }
     return lines.join("\n\n");
+  }
+
+  // Render a rich document structure to markdown, preserving annotations
+  // (bold/italic/strikethrough/code) and links. Generic entry point —
+  // the vendor format is detected by shape, never named by the caller:
+  //   - a Notion `blocks.children.list` response ({ results: [...] })
+  //   - a bare Notion block array (document markdown)
+  //   - a Notion rich_text span array (inline markdown)
+  // Unknown block types degrade to their text content — never silently
+  // to "".
+  function documentToMarkdown(value) {
+    if (isObject(value) && Array.isArray(value.results)) {
+      return notionBlocksToMarkdown(value);
+    }
+    if (Array.isArray(value)) {
+      let probe = null;
+      for (let i = 0; i < value.length; i++) {
+        if (isObject(value[i])) {
+          probe = value[i];
+          break;
+        }
+      }
+      if (probe === null) return "";
+      // Rich-text spans carry plain_text/annotations; blocks carry a
+      // `type` key naming their nested data object.
+      if (typeof probe.plain_text === "string" || isObject(probe.annotations)) {
+        return notionRichTextToMarkdown(value);
+      }
+      return notionBlocksToMarkdown(value);
+    }
+    throw new Error("documentToMarkdown: block/rich-text array (or { results: [...] }) required");
   }
 
   // ── SHA-256 / HMAC-SHA-256 ─────────────────────────────────────────
@@ -858,10 +913,9 @@
     hexDecode: hexDecode,
     mimeEncodeHeaderValue: mimeEncodeHeaderValue,
     buildMimeMessage: buildMimeMessage,
-    gmailMessageBody: gmailMessageBody,
+    emailBody: emailBody,
     rfc3339Parts: rfc3339Parts,
-    notionRichTextToMarkdown: notionRichTextToMarkdown,
-    notionBlocksToMarkdown: notionBlocksToMarkdown,
+    documentToMarkdown: documentToMarkdown,
     sha256: sha256,
     hmacSha256: hmacSha256,
     now: now,

@@ -172,8 +172,7 @@ describe("CALENDAR — dateTime offset + timeZone survive shaping (events.list)"
 
 describe("DOCUMENT — Notion annotations survive markdown conversion (recorded blocks.children.list)", () => {
   const blocks = loadJson<Record<string, unknown>>("responses/notion-blocks-children-list.json");
-  const expression =
-    "return { markdown: sk.notionBlocksToMarkdown(input.scope.fetch_blocks.data) };";
+  const expression = "return { markdown: sk.documentToMarkdown(input.scope.fetch_blocks.data) };";
 
   test("bold spans, links, callouts, and dividers all reach the markdown output", async () => {
     const out = await runTransform<{ markdown: string }>(expression, {
