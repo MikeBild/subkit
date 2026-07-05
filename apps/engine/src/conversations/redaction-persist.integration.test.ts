@@ -20,6 +20,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
+  conversationElicitations,
   conversationMessages,
   conversations,
   tenants,
@@ -27,7 +28,9 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { createElicitation, resolveElicitation } from "./elicitations.ts";
 import { appendMessage, buildModelMessages } from "./persist.ts";
+import { ELICITATION_REDACTED_MARKER } from "./tools/ask-user/redact-answer.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 
@@ -178,6 +181,86 @@ describe("appendMessage — true secrets ARE still redacted in role=user message
     const stored = await readMessageContent(id);
     expect(stored.text as string).not.toContain(token);
     expect(stored.text as string).toContain("***REDACTED:generic***");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #304 — an elicitation ANSWER with a secret field is persisted redacted at
+// the resolveElicitation chokepoint. The masked value the operator typed
+// must not survive in conversation_elicitations.output.
+// ---------------------------------------------------------------------------
+
+describe("resolveElicitation — secret form answers persist redacted (#304)", () => {
+  test("a password field's answer is stored as the marker, not the secret", async () => {
+    if (skip) return;
+    const conv_id = await makeConversation();
+    const secret = "hunter2-super-secret";
+    const elicitation = await createElicitation(
+      {
+        tenant_id,
+        conversation_id: conv_id,
+        tool_call_id: null,
+        actor_id: null,
+        tool_name: "ask_user_form",
+        summary: "Enter API credentials",
+        input: {
+          kind: "ask_user_form",
+          fields: [
+            { name: "base_url", label: "Base URL", type: "text" },
+            { name: "api_token", label: "API token", type: "password" },
+          ],
+        },
+      },
+      ctx.db,
+    );
+
+    // The operator submits the RAW secret (as the CLI/web masked form does).
+    await resolveElicitation(
+      {
+        tenant_id,
+        id: elicitation.id,
+        output: { values: { base_url: "https://api.example.com", api_token: secret } },
+        decided_by: null,
+      },
+      ctx.db,
+    );
+
+    const [row] = await ctx.db
+      .select({ output: conversationElicitations.output })
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitation.id));
+    const stored = row?.output as { values: Record<string, string> };
+    // Secret masked, non-secret field intact.
+    expect(stored.values.api_token).toBe(ELICITATION_REDACTED_MARKER);
+    expect(stored.values.base_url).toBe("https://api.example.com");
+    // The raw secret is nowhere in the persisted row.
+    expect(JSON.stringify(stored)).not.toContain(secret);
+  });
+
+  test("a form with no secret fields persists its answer verbatim", async () => {
+    if (skip) return;
+    const conv_id = await makeConversation();
+    const elicitation = await createElicitation(
+      {
+        tenant_id,
+        conversation_id: conv_id,
+        tool_call_id: null,
+        actor_id: null,
+        tool_name: "ask_user_form",
+        summary: "Pick a name",
+        input: { kind: "ask_user_form", fields: [{ name: "name", label: "Name", type: "text" }] },
+      },
+      ctx.db,
+    );
+    await resolveElicitation(
+      { tenant_id, id: elicitation.id, output: { values: { name: "acme" } }, decided_by: null },
+      ctx.db,
+    );
+    const [row] = await ctx.db
+      .select({ output: conversationElicitations.output })
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitation.id));
+    expect((row?.output as { values: Record<string, string> }).values.name).toBe("acme");
   });
 });
 

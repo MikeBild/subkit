@@ -18,6 +18,7 @@ import {
   conversationToolCalls,
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { redactElicitationOutput } from "./tools/ask-user/redact-answer.ts";
 
 export type ElicitationStatus = "pending" | "resolved" | "cancelled" | "timeout";
 
@@ -479,11 +480,35 @@ export async function resolveElicitation(
   exec: Executor,
 ): Promise<ResolveElicitationResult> {
   const status: ElicitationStatus = p.status ?? "resolved";
+  // #304: the persisted answer must never carry a secret the operator typed
+  // into a masked form field, nor let one re-enter LLM context on replay.
+  // Read the pending row's definition (tool_name + input, which declares
+  // which fields are password/sensitive) and persist a REDACTED projection
+  // of the answer. Callers still hand the RAW `p.output` to the in-memory
+  // outcome pipeline (credential cache / auto-persist) — only this column
+  // is masked. A single PK-scoped read: the conditional UPDATE below only
+  // fires for a still-pending row, so a lost race persists nothing.
+  const [pendingRow] = await exec
+    .select({
+      tool_name: conversationElicitations.tool_name,
+      input: conversationElicitations.input,
+    })
+    .from(conversationElicitations)
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, p.tenant_id),
+        eq(conversationElicitations.id, p.id),
+      ),
+    )
+    .limit(1);
+  const persistedOutput = pendingRow
+    ? redactElicitationOutput(pendingRow.tool_name, pendingRow.input, p.output ?? null)
+    : (p.output ?? null);
   const [row] = await exec
     .update(conversationElicitations)
     .set({
       status,
-      output: (p.output ?? null) as Record<string, unknown> | null,
+      output: persistedOutput as Record<string, unknown> | null,
       decided_by: p.decided_by,
       decided_at: new Date(),
       decision_reason: p.reason ?? null,

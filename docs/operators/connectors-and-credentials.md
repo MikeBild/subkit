@@ -66,7 +66,11 @@ or the managed OAuth authorization flow. The credential goes straight into the
 encrypted vault outside the chat transcript; the AI client only learns that the
 connector is now authorized. This means a token can never leak into a conversation
 history, a tool argument, or a log — regardless of which surface drove the
-onboarding.
+onboarding. Even on a local CLI/web surface, where an operator _may_ type a secret
+into a masked form, the answer is redacted (`***redacted***`) before it is persisted
+or replayed to the model, and any credential slot in a tool argument is scrubbed at
+the same boundary — the raw value only ever exists in memory on its way to the
+encrypted vault.
 
 **End-User Credentials** extend this for multi-user scenarios: an individual user
 supplies their own credentials, and the platform acts as that user when executing

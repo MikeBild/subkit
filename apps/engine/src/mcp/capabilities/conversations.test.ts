@@ -343,6 +343,62 @@ describe("conversation_respond_elicitation", () => {
     expect(staged?.output).toEqual({ confirmed: true });
   });
 
+  test("conversation_get passes the password/sensitive form markers through so the client can mask (#304)", async () => {
+    const started = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: { message: "set up the connector" },
+    });
+    const conversation_id = (
+      JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
+    ).conversation_id;
+
+    // A pending credential form: the client renders these markers to mask
+    // the secret field. `conversation_get` must relay them verbatim — the
+    // "advertise the secret input mode" half of #304 for poll-based clients.
+    const [elicitation] = await testDb.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: principal.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_form",
+        summary: "Enter API credentials",
+        input: {
+          kind: "ask_user_form",
+          fields: [
+            { name: "base_url", label: "Base URL", type: "text" },
+            { name: "api_token", label: "API token", type: "password", sensitive: true },
+          ],
+        },
+        status: "pending",
+      })
+      .returning();
+    if (!elicitation) throw new Error("seed elicitation failed");
+
+    // Move the conversation into awaiting_input so conversation_get reports
+    // the pending form (mirrors the pause path).
+    await testDb.db
+      .update(conversations)
+      .set({ status: "awaiting_input" })
+      .where(eq(conversations.id, conversation_id));
+
+    const got = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_get",
+      args: { conversation_id },
+    });
+    const body = JSON.parse(got.content[0]?.text ?? "{}") as {
+      status: string;
+      input?: { fields?: Array<{ name: string; type: string; sensitive?: boolean }> };
+    };
+    expect(body.status).toBe("input_required");
+    const tokenField = body.input?.fields?.find((f) => f.name === "api_token");
+    expect(tokenField?.type).toBe("password");
+    expect(tokenField?.sensitive).toBe(true);
+  });
+
   test("respond_elicitation against a non-existent elicitation → error, no orphan task", async () => {
     // The handler stages the answer onto the elicitation row before
     // enqueue; a missing row must surface a structured error rather
