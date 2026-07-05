@@ -1,10 +1,13 @@
-// sk.gmailMessageBody — read-side Gmail decoding. Pins the data-fidelity
-// incident where transforms shipped `snippet` (a truncated teaser) as the
-// message body because decoding `payload.body.data` / walking `parts[]`
-// by hand was too fiddly — the run reported green while the user got
-// garbage output. Tests run inside the real QuickJS sandbox via runJs;
-// fixtures are encoded with Node's own base64url encoder so the decode
-// path is verified against an independent implementation.
+// sk.emailBody — read-side email decoding behind ONE generic entry
+// point (the vendor wire format — Gmail's payload tree or a pre-decoded
+// { body: { contentType, content } } object — is detected by shape,
+// never named by the caller). Pins the data-fidelity incident where
+// transforms shipped `snippet` (a truncated teaser) as the message body
+// because decoding `payload.body.data` / walking `parts[]` by hand was
+// too fiddly — the run reported green while the user got garbage
+// output. Tests run inside the real QuickJS sandbox via runJs; fixtures
+// are encoded with Node's own base64url encoder so the decode path is
+// verified against an independent implementation.
 
 import { describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
@@ -15,9 +18,9 @@ const run = <T>(code: string, input: unknown): Promise<T> =>
 
 const b64url = (s: string): string => Buffer.from(s, "utf8").toString("base64url");
 
-const CODE = "return sk.gmailMessageBody(input.message);";
+const CODE = "return sk.emailBody(input.message);";
 
-describe("sk.gmailMessageBody", () => {
+describe("sk.emailBody", () => {
   test("single-part text/plain body decodes", async () => {
     const message = {
       id: "m1",
@@ -98,6 +101,32 @@ describe("sk.gmailMessageBody", () => {
   });
 
   test("non-object input throws instead of returning a green empty shape", async () => {
-    await expect(run(CODE, { message: "not a message" })).rejects.toThrow(/gmailMessageBody/);
+    await expect(run(CODE, { message: "not a message" })).rejects.toThrow(/emailBody/);
+  });
+
+  test("a pre-decoded { body: { contentType, content } } message resolves without decoding", async () => {
+    const html = await run<{ text: string | null; html: string | null }>(CODE, {
+      message: {
+        id: "graph-1",
+        subject: "Team-Update",
+        body: { contentType: "html", content: "<p>bereits dekodiert – ✓</p>" },
+      },
+    });
+    expect(html).toEqual({ text: null, html: "<p>bereits dekodiert – ✓</p>" });
+
+    const text = await run<{ text: string | null; html: string | null }>(CODE, {
+      message: { body: { contentType: "text", content: "plain, pre-decoded" } },
+    });
+    expect(text).toEqual({ text: "plain, pre-decoded", html: null });
+  });
+
+  test("a Gmail payload whose body lacks contentType is NOT mistaken for the pre-decoded shape", async () => {
+    // Gmail's payload.body is { size, data } — no contentType/content
+    // strings — so shape detection must route it to the tree walk.
+    const message = {
+      payload: { mimeType: "text/plain", body: { size: 9, data: b64url("tree walk") } },
+    };
+    const out = await run<{ text: string | null; html: string | null }>(CODE, { message });
+    expect(out).toEqual({ text: "tree walk", html: null });
   });
 });

@@ -90,13 +90,14 @@ export interface Sk {
   }): { raw: string; mime: string };
 
   /**
-   * Decoded text/html bodies of a Gmail `messages.get` resource
-   * (format=full) or its bare `payload`. Walks nested multipart parts,
-   * decodes `body.data` (base64url) as UTF-8, returns the first
-   * text/plain and text/html parts. Ship THIS, not `snippet` — the
-   * snippet is a truncated teaser, not the message.
+   * Decoded text/html bodies of an email message envelope. Generic
+   * entry point — the vendor wire format is detected by shape: a Gmail
+   * `messages.get` resource/payload tree (nested multipart parts,
+   * base64url `body.data`, decoded as UTF-8) or a pre-decoded
+   * `{ body: { contentType, content } }` object. Ship THIS, not
+   * `snippet` — the snippet is a truncated teaser, not the message.
    */
-  gmailMessageBody(message: unknown): { text: string | null; html: string | null };
+  emailBody(message: unknown): { text: string | null; html: string | null };
 
   /**
    * Faithful split of an RFC 3339 date/date-time WITHOUT timezone
@@ -114,18 +115,14 @@ export interface Sk {
   };
 
   /**
-   * Notion rich_text spans → inline markdown, preserving annotations
-   * (bold/italic/strikethrough/code) and links. Non-arrays render "".
+   * Rich document structure → markdown, preserving annotations
+   * (bold/italic/strikethrough/code) and links. Generic entry point —
+   * the vendor format is detected by shape: a Notion
+   * `blocks.children.list` response, a bare block array (document
+   * markdown), or a rich_text span array (inline markdown). Unknown
+   * block types degrade to their text content — never silently to "".
    */
-  notionRichTextToMarkdown(richText: unknown): string;
-
-  /**
-   * Notion `blocks.children.list` response (or block array) → markdown.
-   * Paragraphs, headings 1-3, list items, to_do, quote, code fences,
-   * divider; unknown block types degrade to their rich_text content —
-   * never silently to "".
-   */
-  notionBlocksToMarkdown(blocks: unknown): string;
+  documentToMarkdown(value: unknown): string;
 
   /** Deterministic SHA-256 over the UTF-8 bytes of `input`, lowercase hex. */
   sha256(input: unknown): string;
