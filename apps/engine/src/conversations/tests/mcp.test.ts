@@ -148,8 +148,17 @@ describe("mcp conversation tools", () => {
     expect(commit.isError).toBeFalsy();
     const commitParsed = JSON.parse(
       (commit.content as Array<{ text: string }>)[0]?.text ?? "{}",
-    ) as { workflow_id: string; status: string };
+    ) as {
+      workflow_id: string;
+      status: string;
+      committed?: { version: number; steps_present: number };
+      draft_state?: string;
+    };
     expect(commitParsed.workflow_id.length).toBeGreaterThan(0);
     expect(commitParsed.status).toBe("committed");
+    // The reply carries persisted facts, not a draft echo.
+    expect(commitParsed.committed?.version).toBeGreaterThanOrEqual(1);
+    expect(commitParsed.committed?.steps_present).toBeGreaterThanOrEqual(1);
+    expect(commitParsed.draft_state).toBeDefined();
   }, 60_000);
 });

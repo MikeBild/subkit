@@ -96,7 +96,7 @@ export const updateWorkflowTool: ConversationTool = {
       ctx.getDraft(),
       args.id,
     );
-    if (draftState === "structural") {
+    if (draftState.state === "structural") {
       return {
         ok: false as const,
         data: {

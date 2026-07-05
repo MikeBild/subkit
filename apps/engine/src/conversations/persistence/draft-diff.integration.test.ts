@@ -11,7 +11,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
+import {
+  conversationElicitations,
+  conversations,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { handleConversationTool } from "../../mcp/capabilities/conversations.ts";
 import {
@@ -113,18 +118,46 @@ describe("classifyDraftVsPersisted", () => {
 
     expect(
       await classifyDraftVsPersisted(db, tenant_id, cleanDraft("wf-classify"), workflowId),
-    ).toBe("clean");
+    ).toEqual({ state: "clean" });
     expect(
       await classifyDraftVsPersisted(db, tenant_id, dirtyDraft("wf-classify"), workflowId),
-    ).toBe("structural");
-    expect(await classifyDraftVsPersisted(db, tenant_id, cleanDraft("wf-classify"), null)).toBe(
-      "no_target",
-    );
+    ).toEqual({ state: "structural" });
+    expect(await classifyDraftVsPersisted(db, tenant_id, cleanDraft("wf-classify"), null)).toEqual({
+      state: "no_target",
+      reason: "unbound",
+    });
     const emptyDraft: DraftDocument = {
       mode: "workflow_authoring",
       workflow: { name: "x", steps: [] },
     };
-    expect(await classifyDraftVsPersisted(db, tenant_id, emptyDraft, workflowId)).toBe("no_target");
+    expect(await classifyDraftVsPersisted(db, tenant_id, emptyDraft, workflowId)).toEqual({
+      state: "no_target",
+      reason: "empty_draft",
+    });
+  });
+
+  test("missing current version → no_persisted_version; corrupt dag → unreadable_dag", async () => {
+    const convId = await freshConversation();
+    const { workflowId } = await seedCommittedWorkflow(convId, "wf-classify-reason");
+    const { db, tenant_id } = { db: ctx.testDb.db, tenant_id: ctx.tenant_id };
+
+    // Corrupt the persisted dag: a version row exists but fails schema parse.
+    await db
+      .update(workflowVersions)
+      .set({ dag: { not_a: "workflow" } })
+      .where(eq(workflowVersions.workflow_id, workflowId));
+    expect(
+      await classifyDraftVsPersisted(db, tenant_id, cleanDraft("wf-classify-reason"), workflowId),
+    ).toEqual({ state: "no_target", reason: "unreadable_dag" });
+
+    // Detach the current version pointer entirely.
+    await db
+      .update(workflows)
+      .set({ current_version_id: null })
+      .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflowId)));
+    expect(
+      await classifyDraftVsPersisted(db, tenant_id, cleanDraft("wf-classify-reason"), workflowId),
+    ).toEqual({ state: "no_target", reason: "no_persisted_version" });
   });
 });
 
@@ -212,6 +245,47 @@ describe("RC2 — conversation_commit reports honestly", () => {
       args: { conversation_id: convId },
     });
     expect(ok.isError).toBe(false);
+    // Acceptance (#302): the reply is derived from the persisted rows — pin
+    // response == persisted state after a REAL commit (commitWorkflowAtomic).
+    const okBody = JSON.parse(ok.content[0]?.text ?? "{}") as {
+      committed?: {
+        workflow_version_id: string;
+        version: number;
+        steps_present: number;
+        slug: string;
+        updated_at: string;
+      };
+      draft_state?: string;
+      verified_against_draft?: boolean;
+    };
+    const [wfRow] = await ctx.testDb.db
+      .select({
+        id: workflows.id,
+        current_version_id: workflows.current_version_id,
+        updated_at: workflows.updated_at,
+      })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, ctx.tenant_id),
+          eq(workflows.slug, "wf-rc2"),
+          isNull(workflows.deleted_at),
+        ),
+      );
+    if (!wfRow?.current_version_id) throw new Error("committed workflow row missing");
+    const [vRow] = await ctx.testDb.db
+      .select({ version: workflowVersions.version, dag: workflowVersions.dag })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.id, wfRow.current_version_id));
+    expect(okBody.committed?.workflow_version_id).toBe(wfRow.current_version_id);
+    expect(okBody.committed?.version).toBe(vRow?.version ?? -1);
+    expect(okBody.committed?.steps_present).toBe(
+      ((vRow?.dag as { steps?: unknown[] })?.steps ?? []).length,
+    );
+    expect(okBody.committed?.slug).toBe("wf-rc2");
+    expect(okBody.committed?.updated_at).toBe(wfRow.updated_at.toISOString());
+    expect(okBody.draft_state).toBe("clean");
+    expect(okBody.verified_against_draft).toBe(true);
 
     // Make the working draft diverge from the live version (uncommitted step
     // edit). Derive from the BOUND draft so it keeps `persisted_resources` and
