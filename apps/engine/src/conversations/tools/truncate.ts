@@ -154,7 +154,74 @@ interface BranchHandle {
    *  transform over `[omitted: 9123 chars]` looked empty and the judge
    *  false-flagged a present-but-omitted payload as missing. */
   shape: string;
+  /** The container holding this branch — lets shrinkToCap detect that a
+   *  handle's subtree was already detached by an earlier (ancestor)
+   *  replacement, so it neither wastes a replace on an unreachable node
+   *  nor corrupts the running size estimate. */
+  owner: object;
+  /** The branch value itself when it is an object/array (string branches
+   *  keep only `owner`). Used to register replaced subtrees. */
+  node: object | null;
   replace: (marker: unknown) => void;
+}
+
+/**
+ * One bottom-up pass computing the exact JSON length of every
+ * object/array node, memoized per node. Replaces the previous per-node
+ * `JSON.stringify(child)` calls in `collectHeaviestBranches`, whose total
+ * transient was Σ|subtree JSON| ≈ payload size × average depth — the
+ * dominant allocation site of the per-turn assembly (multi-GB class on
+ * production payloads). Leaf strings still stringify once each (escaping
+ * makes their JSON length data-dependent), so total work is O(payload).
+ *
+ * `undefined`/function/symbol values follow JSON semantics: skipped as
+ * object entries, `null` (4 chars) as array items. Nodes with a custom
+ * `toJSON` fall back to a real stringify for exactness.
+ */
+function computeJsonSizes(root: unknown): Map<object, number> {
+  const sizes = new Map<object, number>();
+  function sizeOf(node: unknown): number {
+    if (node === null) return 4;
+    const t = typeof node;
+    if (t === "string" || t === "number" || t === "boolean") {
+      const s = JSON.stringify(node);
+      return s === undefined ? 4 : s.length;
+    }
+    if (t !== "object") return 4; // undefined/function as array item → null
+    const obj = node as object;
+    const cached = sizes.get(obj);
+    if (cached !== undefined) return cached;
+    // Cycle guard: pre-seed before recursing (JSON.stringify would throw
+    // on a cycle; approxJsonLength maps that to Infinity — a pre-seeded 4
+    // keeps the walk terminating and the branch merely under-counted).
+    sizes.set(obj, 4);
+    if (typeof (obj as { toJSON?: unknown }).toJSON === "function") {
+      const exact = approxJsonLength(obj);
+      sizes.set(obj, exact);
+      return exact;
+    }
+    let total: number;
+    if (Array.isArray(obj)) {
+      total = 2;
+      for (let i = 0; i < obj.length; i++) {
+        if (i > 0) total += 1;
+        total += sizeOf(obj[i]);
+      }
+    } else {
+      total = 2;
+      let first = true;
+      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+        if (v === undefined || typeof v === "function" || typeof v === "symbol") continue;
+        if (!first) total += 1;
+        total += JSON.stringify(k).length + 1 + sizeOf(v);
+        first = false;
+      }
+    }
+    sizes.set(obj, total);
+    return total;
+  }
+  sizeOf(root);
+  return sizes;
 }
 
 // Root-level keys pass-2 must NEVER null when the envelope declares its
@@ -166,14 +233,25 @@ interface BranchHandle {
 // the user's actual result is the one thing the envelope exists to carry.
 const SAMPLED_OUTPUT_PROTECTED_KEYS = new Set(["output", "output_note", "output_raw_ref"]);
 
-function collectHeaviestBranches(root: unknown): BranchHandle[] {
+// Root-level keys pass-2 must never stub on ANY payload: the turn loop's
+// stop conditions and stall fingerprinting read them from the SDK-visible
+// tool result (`requires_repair`/`classification` are scalars and survive
+// regardless; `judge.missing` and `warnings` are branches a heavy envelope
+// could otherwise sacrifice — see loop/stop-conditions.ts). Pass-1 array
+// clipping still applies to them, only the branch-stub pass skips them.
+const ALWAYS_PROTECTED_ROOT_KEYS = new Set(["judge", "warnings"]);
+
+function collectHeaviestBranches(
+  root: unknown,
+  sizes: Map<object, number>,
+  parents: Map<object, object>,
+): BranchHandle[] {
   const handles: BranchHandle[] = [];
   const rootProtected =
-    root !== null &&
-    typeof root === "object" &&
-    !Array.isArray(root) &&
-    (root as Record<string, unknown>).output_sampled === true
-      ? SAMPLED_OUTPUT_PROTECTED_KEYS
+    root !== null && typeof root === "object" && !Array.isArray(root)
+      ? (root as Record<string, unknown>).output_sampled === true
+        ? new Set([...SAMPLED_OUTPUT_PROTECTED_KEYS, ...ALWAYS_PROTECTED_ROOT_KEYS])
+        : ALWAYS_PROTECTED_ROOT_KEYS
       : null;
   function walk(node: unknown, protectedKeys: Set<string> | null = null): void {
     if (node === null || typeof node !== "object") return;
@@ -181,9 +259,12 @@ function collectHeaviestBranches(root: unknown): BranchHandle[] {
       for (let i = 0; i < node.length; i++) {
         const child = node[i];
         if (child !== null && typeof child === "object") {
+          parents.set(child, node);
           handles.push({
-            size: approxJsonLength(child),
+            size: sizes.get(child) ?? approxJsonLength(child),
             shape: summarizeScopeShape(child),
+            owner: node,
+            node: child,
             replace: (marker) => {
               node[i] = marker;
             },
@@ -198,9 +279,15 @@ function collectHeaviestBranches(root: unknown): BranchHandle[] {
       if (protectedKeys?.has(k)) continue;
       const child = obj[k];
       if (child !== null && (typeof child === "object" || typeof child === "string")) {
+        if (typeof child === "object") parents.set(child, obj);
         handles.push({
-          size: approxJsonLength(child),
+          size:
+            typeof child === "object"
+              ? (sizes.get(child) ?? approxJsonLength(child))
+              : (JSON.stringify(child)?.length ?? 0),
           shape: summarizeScopeShape(child),
+          owner: obj,
+          node: typeof child === "object" ? child : null,
           replace: (marker) => {
             obj[k] = marker;
           },
@@ -222,15 +309,50 @@ interface ShrinkResult {
   charsOmitted: number;
 }
 
+// After an estimate first dips under cap, one real stringify verifies it
+// (the decrement model can be optimistic when replaced subtrees nested).
+// Bounded so a pathological shape cannot re-create the old
+// stringify-per-replacement cost.
+const SHRINK_VERIFY_MAX = 5;
+
 function shrinkToCap(data: unknown, cap: number, rawRef: string): ShrinkResult {
-  let current = approxJsonLength(data);
+  const sizes = computeJsonSizes(data);
+  let current =
+    data !== null && typeof data === "object"
+      ? (sizes.get(data) ?? approxJsonLength(data))
+      : approxJsonLength(data);
   if (current <= cap) return { data, branchesOmitted: 0, charsOmitted: 0 };
-  const handles = collectHeaviestBranches(data);
+  const parents = new Map<object, object>();
+  const handles = collectHeaviestBranches(data, sizes, parents);
+  // Subtrees already replaced by a stub. A handle whose owner sits inside
+  // one is detached — replacing it would touch an unreachable object and
+  // double-subtract its size from the running estimate.
+  const replacedRoots = new Set<object>();
+  const isDetached = (owner: object): boolean => {
+    let node: object | undefined = owner;
+    let hops = 0;
+    while (node !== undefined && hops < 10_000) {
+      if (replacedRoots.has(node)) return true;
+      node = parents.get(node);
+      hops += 1;
+    }
+    return false;
+  };
   let branchesOmitted = 0;
   let charsOmitted = 0;
+  let verifies = 0;
   for (const handle of handles) {
-    if (current <= cap) break;
+    if (current <= cap) {
+      // The estimate says done — confirm with a real measurement (nested
+      // replacements can make the decrement optimistic). Correct and
+      // continue when it lied; trust it once the verify budget is spent.
+      if (verifies >= SHRINK_VERIFY_MAX) break;
+      verifies += 1;
+      current = approxJsonLength(data);
+      if (current <= cap) break;
+    }
     if (handle.size < 64) continue; // skip tiny branches; not worth it
+    if (isDetached(handle.owner)) continue;
     // Replace the heavy branch with a LABELED primitive stub, never a
     // bare `null` and never an inline marker OBJECT.
     //
@@ -255,9 +377,13 @@ function shrinkToCap(data: unknown, cap: number, rawRef: string): ShrinkResult {
     // the payload — skip those; they're too small to matter anyway.
     if (handle.size <= stub.length + 16) continue;
     handle.replace(stub);
+    if (handle.node !== null) replacedRoots.add(handle.node);
     branchesOmitted += 1;
     charsOmitted += handle.size;
-    current = approxJsonLength(data);
+    // Estimate-decrement instead of the old full re-stringify per
+    // replacement (which was O(payload × replacements)). The stub lands
+    // as a JSON string: quoted, so +2 over its raw length.
+    current -= handle.size - (stub.length + 2);
   }
   return { data, branchesOmitted, charsOmitted };
 }
