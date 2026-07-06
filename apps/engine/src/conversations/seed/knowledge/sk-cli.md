@@ -17,6 +17,23 @@ Two usage shapes:
 
 State lives under `~/.sk/`: `config.json` (profiles), `settings.json` (CLI settings), `sessions/` (cached conversation metadata), `debug.log` and `history.jsonl` (diagnostics).
 
+# Installing / accessing the CLI
+
+Install `sk` with a single shell one-liner — there is no package-manager step. Two equivalent sources:
+
+- Engine-served (version-matched to the engine you are talking to), where `<engine-url>` is that engine's base URL:
+  ```
+  curl -fsSL <engine-url>/install | bash
+  ```
+- GitHub fallback (public, latest release):
+  ```
+  curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash
+  ```
+
+Either script auto-detects platform/arch, downloads the matching `sk` binary, verifies its SHA256, and installs it to `~/.subkit/bin/sk`. Add `~/.subkit/bin` to your `PATH` if it is not already there. After installing, point `sk` at an engine and authenticate with `sk login` / `sk profile` (see below), or bootstrap a fresh engine with `sk init`.
+
+sk is **not** published on npm — do not run `npm install` or `npx` to get it; no such package exists. There is **no** `docker-compose` step to install the CLI, and no `sk login <url>`-as-installer step. Installation is only the `curl … | bash` one-liner above; `docker compose` runs the engine, not the CLI.
+
 # Global Flags and Profile Resolution
 
 Common flags accepted by most commands:

@@ -422,6 +422,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       detectedIntent.forceTool === "save_workflow_draft",
     multiArtifactIntent: detectMultiArtifactIntent(ingestedUserMessage),
     priorCriticFail: false,
+    // Threads the surface so the router can suppress the AUTHORING
+    // hard-stage escalation on the read-only `chat` surface (a bound
+    // workflow otherwise parks chat on `workflow_persisted` and escalates
+    // every turn). Genuine-difficulty escalations still fire on chat.
+    // Conditional spread satisfies exactOptionalPropertyTypes when unset.
+    ...(p.surface ? { surface: p.surface } : {}),
   };
 
   // Pre-check budget. Worst case: `budget` steps × ~1 K output each +
