@@ -54,6 +54,7 @@ import { recordChatDelivery } from "../observability/instrumentation.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { mapToolNameToKind } from "./api.ts";
+import { formatChatText } from "./format/outbound-format.ts";
 import { resolveChatPrincipal } from "./principal.ts";
 
 // Backward-compat re-export: `DispatchOutcome` moved to
@@ -174,12 +175,21 @@ async function sendTracked(
       return { platform_message_id: "rate_limited" };
     }
   }
+  // Convert the assistant's CommonMark to the platform's native text
+  // dialect (single choke point — every conversational reply funnels
+  // through here). Slack/Google Chat get real bold/bullets instead of
+  // literal `**`/bullet chars; teams/sk_cli pass through. Applied only
+  // here, never inside an adapter, to avoid double-conversion.
+  const outgoing =
+    delivery.text != null && delivery.text !== ""
+      ? { ...delivery, text: formatChatText(platform as ChatPlatform, delivery.text) }
+      : delivery;
   try {
     const out = await instrument({
       module: "chat",
       action: "outbound.send",
-      fields: { platform, channel: delivery.channel_id, tenant_id: delivery.tenant_id },
-      fn: () => adapter.send(delivery),
+      fields: { platform, channel: outgoing.channel_id, tenant_id: outgoing.tenant_id },
+      fn: () => adapter.send(outgoing),
     });
     recordChatDelivery({ platform, status: "delivered" });
     log.chat.outbound.delivered({
@@ -489,6 +499,10 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
         msg: "non-conversational platform event acked and ignored",
         tenant_id,
         platform: ev.platform,
+        // Include the native space id so "copy the space name from the
+        // log" operator guidance works for an already-registered space
+        // (the sibling removed_from_space branch already logs it).
+        channel_id: ev.channel_id,
         system_event: ev.system_event ?? "unknown",
       });
     }

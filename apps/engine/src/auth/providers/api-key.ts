@@ -13,7 +13,7 @@ import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { apiKeys, roles as rolesTable, systemAccounts, users } from "../../db/schema/index.ts";
-import { constantTimeHexEquals, parseKey } from "../../identity/api-key.ts";
+import { constantTimeHexEquals, KEY_PREFIX_LITERAL, parseKey } from "../../identity/api-key.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { recordAuthFailure } from "../failed-auth-tracker.ts";
 import type { AllowList, AuthProvider, ResolvedPrincipal } from "../types.ts";
@@ -116,7 +116,17 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
 
       const parsed = parseKey(token);
       if (!parsed) {
-        log.auth.denied({ provider: "api_key", reason: "malformed_token" });
+        // A bearer token that doesn't even carry the subkit key prefix is
+        // a foreign credential (a chat-platform JWT on the webhook route,
+        // an OIDC token, an unrelated probe), not a malformed subkit key.
+        // Return null silently so it falls through to the next provider
+        // without a spurious auth.denied WARN on every such request — the
+        // noise that fired on every /v1/chat/* call. Only a token that DOES
+        // carry the prefix but still fails to parse is a genuinely broken
+        // subkit key an operator should see.
+        if (token.startsWith(KEY_PREFIX_LITERAL)) {
+          log.auth.denied({ provider: "api_key", reason: "malformed_token" });
+        }
         return null;
       }
 

@@ -658,7 +658,9 @@ export async function setConfigKey(
   const requiresRestart = !!leaf.meta.requiresRestart;
   if (requiresRestart && process.env.NODE_ENV === "production" && !opts.force) {
     throw new RestartRequiredError(
-      `${leafPath.join(".")} requires a restart in production. Re-run with force=true to apply.`,
+      `${leafPath.join(".")} requires a restart in production. Re-run with the --force flag ` +
+        `(sk settings set … --force) to apply it now; the write takes effect in this process ` +
+        `immediately, and "restart" only matters for other running instances.`,
     );
   }
 
