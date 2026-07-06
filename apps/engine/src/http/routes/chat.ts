@@ -28,8 +28,11 @@ import {
   type ChatAdapterRegistry,
   type ChatEvent,
   type ChatPlatform,
+  type ChatSyncResult,
   ensureChatRegistryHydrated,
+  runChatTurnSync,
 } from "../../chat/index.ts";
+import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -40,6 +43,15 @@ export interface ChatRoutesDeps {
   /** System tenant id used to audit denies when we can't resolve the
    * real tenant. Optional; falls back to a synthetic id. */
   systemTenantId?: string;
+  /** Seam for the synchronous Google-Chat turn. Defaults to the real
+   *  `runChatTurnSync`; tests inject a fake to drive each delivery arm
+   *  without a live DB or LLM turn. */
+  runSyncTurn?: (args: {
+    db: Db;
+    adapter: ChatAdapter;
+    event: ChatEvent;
+    timeoutMs: number;
+  }) => Promise<ChatSyncResult>;
 }
 
 async function ingest(
@@ -175,6 +187,41 @@ async function ingest(
         }
       }
     }
+  }
+
+  // Google Chat requires a valid Chat Message in the SYNCHRONOUS HTTP
+  // response, or it renders "[app] is not responding". For a MESSAGE that
+  // runs a turn, run it inline (bounded) and return the rendered reply as
+  // the body when it finishes fast; otherwise fall through to the async
+  // queue exactly as today. `runChatTurnSync` claims the same dedup row
+  // the queue worker uses, so a fast/detached inline turn and the queue
+  // never both deliver (see chat/sync-turn.ts for the no-double-send proof).
+  //
+  // The `adapter` here is the verifier adapter (`findVerifier`), which for
+  // Google is the single app-level adapter (one per engine) — the correct
+  // send adapter. This branch is Google-only, so Slack's workspace-keyed
+  // bot-token concern does not apply.
+  if (
+    platform === "google_chat" &&
+    (event.kind === "mention" || event.kind === "slash_command") &&
+    db
+  ) {
+    const runSync = deps.runSyncTurn ?? runChatTurnSync;
+    const timeoutMs = getConfig().platform.googlechat.sync_turn_timeout_ms;
+    const sync = await runSync({ db, adapter, event, timeoutMs });
+    if (sync.deliver === "sync") {
+      return new Response(JSON.stringify({ text: sync.text }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (sync.deliver === "acked") {
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    // deliver === "defer" → fall through to the existing enqueue + {ok:true}.
   }
 
   if (deps.enqueue) {

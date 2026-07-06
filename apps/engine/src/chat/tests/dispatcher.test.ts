@@ -853,3 +853,45 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     expect(row.output).toBeNull();
   });
 });
+
+// ── F2 capture mode: dispatcher computes the terminal reply but the sync
+// Google-Chat helper owns delivery, so capture mode must NOT send it. ────────
+describe("handleChatEvent replyDelivery:capture", () => {
+  // Re-uses the T123 workspace + U_ALICE identity seeded by the first test
+  // in this file (same suite, sequential).
+  function mention(channel: string, text = "hello there"): ChatEvent {
+    return {
+      platform: "slack",
+      workspace_id: "T123",
+      channel_id: channel,
+      user_id: "U_ALICE",
+      kind: "mention",
+      text: `<@UBOT> ${text}`,
+      raw: {},
+    };
+  }
+
+  test("capture returns reply_text and performs NO terminal send", async () => {
+    const adapter = new FakeSlackAdapter();
+    const out = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("C_CAPTURE_1"), {
+      replyDelivery: "capture",
+    });
+    expect(out.status).toBe("ok");
+    expect(out.approval_sent).toBe(false);
+    // The terminal reply is captured, not sent.
+    expect(typeof out.reply_text).toBe("string");
+    expect((out.reply_text ?? "").length).toBeGreaterThan(0);
+    expect(adapter.sends.length).toBe(0);
+  });
+
+  test("default (send) mode is unchanged: sends the reply, reply_text null", async () => {
+    const adapter = new FakeSlackAdapter();
+    const out = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("C_CAPTURE_2"));
+    expect(out.status).toBe("ok");
+    // Capture field is only populated in capture mode.
+    expect(out.reply_text ?? null).toBeNull();
+    // The reply went out through the adapter exactly as before F2.
+    expect(adapter.sends.length).toBeGreaterThanOrEqual(1);
+    expect(adapter.sends[adapter.sends.length - 1]?.kind).toBe("message");
+  });
+});

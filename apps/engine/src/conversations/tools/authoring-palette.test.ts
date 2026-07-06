@@ -11,9 +11,7 @@ import {
   collectSyntheticWorkflowSlugs,
   isExecutionToolName,
   resolveExecutionToolGate,
-  resolveKeywordMatchedWorkflowSlug,
   resolveNamedWorkflowSlug,
-  type WorkflowKeywordCatalogEntry,
 } from "./authoring-palette.ts";
 
 describe("resolveExecutionToolGate", () => {
@@ -44,78 +42,13 @@ describe("resolveExecutionToolGate", () => {
     expect(d.reason).toBe("named_workflow_slug");
   });
 
-  test("a confident keyword match exposes execution (Tier 1)", () => {
+  test("no bound / named evidence still default-denies (authoring surface)", () => {
     const d = resolveExecutionToolGate({
       hasBoundSavedWorkflow: false,
       explicitlyNamedWorkflowSlug: null,
-      keywordMatchedWorkflowSlug: "berlin-weather-tomorrow",
-    });
-    expect(d.exposeExecution).toBe(true);
-    expect(d.reason).toBe("keyword_matched_workflow");
-  });
-
-  test("no bound / named / keyword evidence still default-denies", () => {
-    const d = resolveExecutionToolGate({
-      hasBoundSavedWorkflow: false,
-      explicitlyNamedWorkflowSlug: null,
-      keywordMatchedWorkflowSlug: null,
     });
     expect(d.exposeExecution).toBe(false);
     expect(d.reason).toBe("authoring_no_target");
-  });
-});
-
-describe("resolveKeywordMatchedWorkflowSlug", () => {
-  const catalog: WorkflowKeywordCatalogEntry[] = [
-    {
-      slug: "berlin-weather-tomorrow",
-      name: "Berlin Weather Tomorrow",
-      description: "Tomorrow's forecast for Berlin",
-    },
-    {
-      slug: "berlin-weather-by-date",
-      name: "Berlin Weather by Date",
-      description: "Weather for Berlin on a given date",
-    },
-    {
-      slug: "github-repo-leaderboard",
-      name: "GitHub Repo Leaderboard",
-      description: "Top repositories ranked by stars",
-    },
-  ];
-
-  test("two distinctive tokens uniquely identify one workflow → its slug", () => {
-    // "weather" + "tomorrow" both hit berlin-weather-tomorrow (3) more than
-    // berlin-weather-by-date (1) → unique top, score ≥ 2.
-    expect(
-      resolveKeywordMatchedWorkflowSlug("what's the weather in berlin tomorrow?", catalog),
-    ).toBe("berlin-weather-tomorrow");
-  });
-
-  test("a single distinctive token (score 1) does NOT open the gate", () => {
-    // "leaderboard" alone hits one workflow but only score 1 (< threshold 2).
-    expect(resolveKeywordMatchedWorkflowSlug("show me the leaderboard", catalog)).toBeNull();
-  });
-
-  test("a two-way tie at the top score routes to null (disambiguate elsewhere)", () => {
-    // "berlin" + "weather" hit BOTH weather workflows equally → tie → null.
-    expect(resolveKeywordMatchedWorkflowSlug("berlin weather please", catalog)).toBeNull();
-  });
-
-  test("generic verbs / filler never anchor a match", () => {
-    expect(resolveKeywordMatchedWorkflowSlug("please run a workflow for me", catalog)).toBeNull();
-  });
-
-  test("a cross-language paraphrase with no token overlap returns null (Tier 2's job)", () => {
-    // The live failing case — German prose, zero overlap with English fields.
-    expect(
-      resolveKeywordMatchedWorkflowSlug("gib mir das wetter von übermorgen", catalog),
-    ).toBeNull();
-  });
-
-  test("empty / null message returns null", () => {
-    expect(resolveKeywordMatchedWorkflowSlug("", catalog)).toBeNull();
-    expect(resolveKeywordMatchedWorkflowSlug(null, catalog)).toBeNull();
   });
 });
 
@@ -224,6 +157,23 @@ describe("applyExecutionToolGate", () => {
     const removed = applyExecutionToolGate(
       tools,
       { exposeExecution: true, reason: "bound_saved_workflow" },
+      slugs,
+    );
+    expect(removed).toBe(0);
+    expect(tools.run_workflow).toBeDefined();
+    expect(tools["wf_notion-essay-to-markdown"]).toBeDefined();
+  });
+
+  // The chat surface is exempt from the default-deny gate: the loop always
+  // decides `{ exposeExecution: true, reason: "chat_surface" }` for
+  // `p.surface === "chat"`, so execution tools survive regardless of whether a
+  // workflow is bound or was named this turn. Chat cannot author, so the
+  // build-new lookalike hijack the gate guards against is impossible there.
+  test("chat_surface decision keeps execution tools even with no bound/named target", () => {
+    const tools = palette();
+    const removed = applyExecutionToolGate(
+      tools,
+      { exposeExecution: true, reason: "chat_surface" },
       slugs,
     );
     expect(removed).toBe(0);

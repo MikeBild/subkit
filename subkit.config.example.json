@@ -112,7 +112,8 @@
       "project_id": "",
       "client_email": "",
       "private_key": "",
-      "audience": ""
+      "audience": "",
+      "sync_turn_timeout_ms": 25000
     }
   },
   "storage": {
