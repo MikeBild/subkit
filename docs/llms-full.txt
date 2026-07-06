@@ -35,6 +35,7 @@ Start with the **Overview** for the big picture, then the **Glossary** to lock t
 | [Connectors & Integration](connectors.md) | Drivers, Connector Templates, and Credentials — authenticate a system once, reuse it everywhere. |
 | [Workflow Execution](workflows.md) | The lifecycle, execution model, eight Step kinds, triggers, versioning, scheduling, and self-healing. |
 | [Knowledge & Skills](knowledge-and-skills.md) | How Knowledge Sources and Skills shape the AI that authors workflows. |
+| [FAQ](faq.md) | Fast answers on workflows, skills, and knowledge sources — each pointing to the page that covers it in full. |
 | [Governance & Audit](governance-and-audit.md) | Permission checks, immutable records, and the audit trail behind every run. |
 
 <!-- Source: docs/concepts/connectors.md -->
@@ -340,6 +341,84 @@ The deliberate non-fail-on-stale design lets the catalogue ship even when the sw
 - [Workflow execution](./workflows.md) — how workflows that use Connectors actually run: the execution model, step kinds, triggers, versioning, and self-healing.
 - [glossary — integration terms](./glossary.md#group-3-integration) — Connector, Connector Template, Driver, Credential.
 
+<!-- Source: docs/concepts/faq.md -->
+
+# FAQ
+
+> **Audience:** Anyone new to sk asking the first questions — what the pieces
+> are, how they differ, and where to create them.
+
+**Outcome:** a fast path from "what even is this?" to the one page that answers
+it in full. Each answer here is a pointer, not a re-explanation.
+
+---
+
+## What is a workflow?
+
+A workflow is an ordered list of **steps** the engine runs deterministically —
+every run is permission-checked, recorded, and replayable. You author one by
+describing the outcome in plain language; the AI proposes the steps and you
+approve them. Once committed, a workflow runs the same way every time. See
+[Workflow Execution](./workflows.md).
+
+## What is a Skill?
+
+A Skill is dense, operator-authored guidance the AI **follows** while authoring,
+discovering, and repairing workflows — your house conventions, integration
+patterns, and security policies. Skills load by scope (global, per-connector,
+per-workflow) so the right conventions are in context at the right moment. See
+[Custom Skills](../authors/custom-skills.md).
+
+## What is a Knowledge Source?
+
+A Knowledge Source is a persistent, indexed document store the AI **searches**
+for reference material — runbooks, API specs, compliance frameworks, glossaries.
+The engine ingests, chunks, embeds, and searches it, injecting the passages that
+match the current question. See [Knowledge Sources](../authors/knowledge-sources.md).
+
+## How do Skills and Knowledge Sources differ?
+
+**Skills prescribe; Knowledge Sources inform.** The AI *obeys* a Skill as a rule
+and *consults* a Knowledge Source as reference — never treating the document as a
+rule. A quick test: if the sentence starts with "always" or "never", it is a
+Skill; if it is a document you would hand a new hire, it is a Knowledge Source.
+The full comparison, scoping, and context-assembly order are in
+[Knowledge & Skills](./knowledge-and-skills.md).
+
+## How are Knowledge Sources processed?
+
+Four stages: **ingest** (upload, attach, paste, or crawl), **chunk** (split into
+searchable passages), **embed + index** (vectors plus tags and a description),
+and **search** (hybrid semantic + tag retrieval into the authoring context).
+Because retrieval is chunk-level, several focused documents beat one large blob.
+See [How grounding works](../authors/knowledge-sources.md#how-grounding-works).
+
+## How do I model a whole domain?
+
+Stand up three primitives around the domain: a **Connector** (its API / system of
+record), one or more **Skills** (the conventions the AI must follow), and one or
+more **Knowledge Sources** (its reference documents). Together the AI authors
+inside your domain — proposing against your conventions and grounding specifics
+in your documents. The worked walkthrough is [Model a Domain](../authors/model-a-domain.md).
+
+## Where do I create each?
+
+- **Knowledge Source** — self-serve: in a Conversation, upload or paste a
+  document and ask to add it; or `sk knowledge-sources create --file …`.
+- **Skill** — operator-owned: author one in a Conversation, `sk skills create
+  --file …`, or promote a detected **Skill Candidate**
+  (`sk skill-candidates approve <id>`).
+- **Workflow / Connector** — start a Conversation and describe the outcome; the
+  approve-to-commit loop is covered in the [authoring quickstart](../authors/quickstart.md).
+
+---
+
+## Further reading
+
+- [Knowledge & Skills](./knowledge-and-skills.md) — the conceptual model in full.
+- [Model a Domain](../authors/model-a-domain.md) — the connector + skills + knowledge trio, worked end to end.
+- [Concepts & Domain Model](./glossary.md) — one-place definitions of every term.
+
 <!-- Source: docs/concepts/glossary.md -->
 
 # Concepts & Domain Model
@@ -423,7 +502,7 @@ Collected so every reader has the same expansion at hand.
 
 **Draft** — a workflow under construction within a Conversation. A Draft exists only in the context of the Conversation until a User explicitly commits it. Committing a Draft creates a versioned, immutable Workflow. Drafts are never executed directly; only committed Workflows run in the execution engine.
 
-**Skill** — a reusable, curated piece of context loaded into the AI during Conversations and other AI-assisted authoring flows such as discovery, diagnosis, and bounded repair. Skills encode best practices, integration patterns, domain-specific knowledge, and known failure modes. They are authored or promoted by operators with explicit human approval. Skills are never auto-generated or auto-promoted from execution history, and committed deterministic workflow execution does not load them.
+**Skill** — a reusable, curated piece of context loaded into the AI during Conversations and other AI-assisted authoring flows such as discovery, diagnosis, and bounded repair. Skills encode best practices, integration patterns, domain-specific knowledge, and known failure modes. They are authored or promoted by operators with explicit human approval. Skills are never auto-generated or auto-promoted from execution history, and committed deterministic workflow execution does not load them. See [Model a Domain](../authors/model-a-domain.md) for a Skill and a Knowledge Source configured together for one domain.
 
 **Skill Candidate** — a pattern detected from execution history that might improve AI context quality. The platform proposes Skill Candidates automatically when it detects recurring patterns in successful or failed executions. A Skill Candidate becomes a Skill only through explicit operator approval — the platform never promotes one automatically.
 
@@ -762,6 +841,8 @@ gets smarter over time — but only with human approval at each step.
 
 ## Further reading
 
+- [Model a Domain](../authors/model-a-domain.md) — the connector + skills + knowledge trio, worked end to end.
+- [FAQ](./faq.md) — fast answers on how these pieces differ and where to create each.
 - [Custom Skills](../authors/custom-skills.md) — how to author, scope, and promote Skills.
 - [Knowledge Sources](../authors/knowledge-sources.md) — how to upload, tag, and refresh documents.
 - [Self-healing](../operators/self-healing.md) — the operational side of the repair loop.
@@ -2934,6 +3015,8 @@ flowchart TD
     A --> RC[recipes.md<br/>reusable recipes]
     A --> CS[custom-skills.md<br/>encode your conventions]
     A --> KS[knowledge-sources.md<br/>ground proposals in your docs]
+    CS --> MD[model-a-domain.md<br/>connector + skills + knowledge]
+    KS --> MD
     R --> SL[slash-commands.md<br/>REPL command reference]
     R --> SE[settings.md<br/>sk config reference]
 ```
@@ -2946,6 +3029,7 @@ flowchart TD
 | [recipes.md](recipes.md) | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
 | [custom-skills.md](custom-skills.md) | Author, scope, and promote Skills that encode your conventions. |
 | [knowledge-sources.md](knowledge-sources.md) | Upload, tag, and refresh the documents the AI grounds its proposals in. |
+| [model-a-domain.md](model-a-domain.md) | Teach sk a whole field of work — the connector + skills + knowledge-source trio, worked end to end. |
 | [slash-commands.md](slash-commands.md) | Generated reference of the `sk` REPL slash commands. |
 | [settings.md](settings.md) | Generated reference of every `sk` configuration key. |
 
@@ -3532,6 +3616,7 @@ JavaScript that authors write — transform steps with `language: "javascript"`,
 ## Further reading
 
 - [Knowledge & Skills](../concepts/knowledge-and-skills.md) — the conceptual model, context-assembly order, and the compounding loop.
+- [Model a Domain](./model-a-domain.md) — a Skill and a Knowledge Source configured side by side for one domain, worked end to end.
 - [Knowledge Sources](./knowledge-sources.md) — the broad-context counterpart.
 - [AI-assisted authoring](./authoring-workflows.md) — how Conversations load and use Skills.
 
@@ -3630,8 +3715,145 @@ hardware that warrants larger corpora. The full tunable table lives in
 ## Further reading
 
 - [Knowledge & Skills](../concepts/knowledge-and-skills.md) — the conceptual model and context-assembly order.
+- [Model a Domain](./model-a-domain.md) — a Knowledge Source and a Skill configured side by side for one domain, worked end to end.
 - [Custom Skills](./custom-skills.md) — the dense, prescriptive counterpart to Knowledge Sources.
 - [AI-assisted authoring](./authoring-workflows.md) — how Conversations draw on Knowledge Sources.
+
+<!-- Source: docs/authors/model-a-domain.md -->
+
+# Model a Domain
+
+> **Audience:** Authors and operators teaching sk about a whole field of work —
+> a policy, a process, a specialized domain — not just a single workflow.
+
+**Outcome:** the AI authors *inside your domain* — proposing against your
+conventions and grounding specifics in your documents — so workflows in that
+domain ship correct on the first pass instead of being corrected in review.
+
+A single workflow answers one question. A **domain** — your expense policy, your
+contract-review process, a compliance framework — is the shared context that
+makes *every* workflow in it correct. You model a domain by standing up three
+primitives around it: a **Connector**, one or more **Skills**, and one or more
+**Knowledge Sources**. This guide shows the trio working together.
+
+For the conceptual model behind the two context primitives, see
+[Knowledge & Skills](../concepts/knowledge-and-skills.md). For the quick "which
+one do I reach for?" answer, jump to the [FAQ](../concepts/faq.md).
+
+---
+
+## The trio
+
+```mermaid
+flowchart LR
+    C[Connector<br/>the domain's API / system of record] --> AI
+    S[Skill<br/>house conventions the AI FOLLOWS] --> AI
+    K[Knowledge Source<br/>reference docs the AI SEARCHES] --> AI
+    AI([AI authors inside your domain]) --> W[Correct-by-construction workflow]
+```
+
+| Primitive | Its job in the domain | Prescribes or informs |
+|---|---|---|
+| **Connector** | Authenticate the domain's system once; ground requests against its real, discovered surface | — |
+| **Skill** | Encode the rules the AI must obey — required validations, error handling, approval gates, tone | **Prescribes** |
+| **Knowledge Source** | Hold the domain's reference material — policy PDFs, runbooks, glossaries, rate tables | **Informs** |
+
+The mnemonic that keeps them straight: **Skills prescribe; Knowledge Sources
+inform.** The decision table for borderline cases lives in
+[Custom Skills](./custom-skills.md#authoring-and-scoping-a-skill) — reuse it
+rather than guessing.
+
+---
+
+## Worked example: an expense-approval domain
+
+Say your finance team wants sk to help build expense-handling automations that
+always honor company policy. Model the domain once:
+
+**1. Connector — the system of record.** Register the connector for wherever
+expenses live (your accounting API, an HR system). This is the normal
+connector-creation flow; the AI grounds every request against the connector's
+discovered endpoints.
+
+**2. Skill — the conventions the AI must follow.** Author a tight,
+single-purpose Skill scoped to that connector (or global if it spans several).
+It prescribes the rules, for example:
+
+> Expenses over €1,000 require a second approver. Never auto-approve travel
+> without an attached receipt. Reject line items with no cost-center code.
+
+Author it in a Conversation, or from the CLI:
+
+```bash
+sk skills create --file ./expense-policy-skill.json   # a SkillDef JSON
+sk skills list
+```
+
+Because it is prescriptive, the AI *follows* it — proposals that violate the
+policy never get authored in the first place.
+
+**3. Knowledge Source — the reference material.** Upload the actual policy so
+the AI can cite specifics (thresholds, eligible categories, per-diem rates):
+
+```bash
+sk knowledge-sources create --file ./expense-policy-2026.pdf \
+  --tags "expense,policy,finance"
+sk knowledge-sources search "per-diem cap for international travel"
+```
+
+Or, in a Conversation, attach the document and say *"add this as a knowledge
+source tagged expense, policy"* — sk creates it and (unless you supply them)
+auto-generates a description and tags.
+
+**The combined effect.** When someone now asks sk to build an
+expense-reimbursement workflow, the AI proposes steps that respect the
+two-approver rule (from the **Skill**) and fills in the correct per-diem figure
+(from the **Knowledge Source**), grounded against your accounting API (the
+**Connector**). Compliance ships by construction, not by review after the fact.
+
+---
+
+## Chunk for retrieval: many focused sources beat one blob
+
+Knowledge Sources are searched at the **chunk** level — the AI receives only the
+passages that match the current question. Granularity is therefore a quality
+lever. Split a domain's reference material into focused documents rather than one
+giant file:
+
+| Instead of | Prefer |
+|---|---|
+| `everything-about-expenses.pdf` (50 KB) | `per-diem-rates.md`, `approval-thresholds.md`, `eligible-categories.md` |
+
+Sharper matches, less wasted context budget, and each source is independently
+refreshable. See [Knowledge Sources](./knowledge-sources.md) for ingest,
+tagging, and refresh strategies, and
+[Knowledge & Skills → context assembly](../concepts/knowledge-and-skills.md#context-assembly-and-trimming)
+for how the retrieved chunks are ordered and trimmed under budget.
+
+---
+
+## The pattern is domain-agnostic
+
+Expense policy is just an instance. The identical trio models any field:
+
+| Domain | Connector | Skill | Knowledge Sources |
+|---|---|---|---|
+| Contract review | Your CLM / doc store | Clause-review conventions | Standard-clause library, redline policy |
+| Tax filing | Tax authority API | Filing-rule conventions | Rate tables, deduction glossary |
+| Music theory | (optional) score API | `music-theory-authoring` conventions | `harmonic-functions.md`, `chord-voicings.md`, glossary |
+
+Whatever the field, the shape is the same: a Connector to ground requests,
+Skills to prescribe how the work is done, Knowledge Sources to inform the
+specifics.
+
+---
+
+## Further reading
+
+- [Knowledge & Skills](../concepts/knowledge-and-skills.md) — the conceptual model and context-assembly order.
+- [Custom Skills](./custom-skills.md) — how to author, scope, and promote Skills.
+- [Knowledge Sources](./knowledge-sources.md) — how to upload, tag, and refresh documents.
+- [FAQ](../concepts/faq.md) — quick answers on workflows, skills, and knowledge sources.
 
 <!-- Source: docs/authors/quickstart.md -->
 

@@ -14,6 +14,12 @@
     },
     {
       "audience": "concepts",
+      "path": "docs/concepts/faq.md",
+      "title": "FAQ",
+      "summary": "Outcome: a fast path from \"what even is this?\" to the one page that answers it in full."
+    },
+    {
+      "audience": "concepts",
       "path": "docs/concepts/glossary.md",
       "title": "Concepts & Domain Model",
       "summary": "One vocabulary, defined once."
@@ -125,6 +131,12 @@
       "path": "docs/authors/knowledge-sources.md",
       "title": "Knowledge Sources",
       "summary": "Outcome: workflows follow your runbooks and compliance docs, not generic knowledge."
+    },
+    {
+      "audience": "authors",
+      "path": "docs/authors/model-a-domain.md",
+      "title": "Model a Domain",
+      "summary": "Outcome: the AI authors inside your domain — proposing against your conventions and grounding specifics in your documents — so workflows in that domain ship correct on the first pass instead of being corrected in review."
     },
     {
       "audience": "authors",

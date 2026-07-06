@@ -136,6 +136,33 @@ describe("install-grounding rule is surface-gated (chat/mcp/web), not in the aut
   });
 });
 
+describe("concept-grounding rule is surface-gated (chat/mcp/web), not in the authoring base", () => {
+  // Same architecture as install-grounding: the Skills-vs-Knowledge / model-a-
+  // domain rule is injected only on user-facing ANSWER surfaces so the concept
+  // answer is grounded there, but the authoring base prompt stays under the
+  // small-model context cap the assembler drop-ladder tests pin.
+  test("MCP and web surfaces carry the concept-grounding rule", async () => {
+    for (const surface of ["mcp", "web"] as const) {
+      const r = await generateMainAgentSystemPrompt({
+        surface,
+        authoring_hint: makeHint("workflow"),
+      });
+      expect(r.content).toContain("GROUNDING CONCEPT QUESTIONS");
+      expect(r.content).toContain("sk-platform-reference");
+    }
+  });
+
+  test("authoring/CLI surfaces do NOT carry the concept-grounding rule", async () => {
+    for (const surface of ["sk_interactive", "sk_headless"] as const) {
+      const r = await generateMainAgentSystemPrompt({
+        surface,
+        authoring_hint: makeHint("workflow"),
+      });
+      expect(r.content).not.toContain("GROUNDING CONCEPT QUESTIONS");
+    }
+  });
+});
+
 describe("chat surface persona", () => {
   test("chat surface wins over any authoring mode and never promises authoring", async () => {
     for (const mode of ["workflow", "connector", "execution", "diagnosis"] as const) {

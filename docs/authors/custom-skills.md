@@ -121,5 +121,6 @@ JavaScript that authors write — transform steps with `language: "javascript"`,
 ## Further reading
 
 - [Knowledge & Skills](../concepts/knowledge-and-skills.md) — the conceptual model, context-assembly order, and the compounding loop.
+- [Model a Domain](./model-a-domain.md) — a Skill and a Knowledge Source configured side by side for one domain, worked end to end.
 - [Knowledge Sources](./knowledge-sources.md) — the broad-context counterpart.
 - [AI-assisted authoring](./authoring-workflows.md) — how Conversations load and use Skills.
