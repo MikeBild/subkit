@@ -92,14 +92,14 @@ afterAll(async () => {
 // Pure — loadEmbeddedKnowledgeSeeds()
 // ---------------------------------------------------------------------------
 
-describe("loadEmbeddedKnowledgeSeeds — all 6 embedded files", () => {
-  test("parses all 6 files with 0 errors", () => {
+describe("loadEmbeddedKnowledgeSeeds — all 7 embedded files", () => {
+  test("parses all 7 files with 0 errors", () => {
     const r = loadEmbeddedKnowledgeSeeds();
     const reason = r.errors.length === 0 ? "" : `seed parse errors: ${JSON.stringify(r.errors)}`;
     expect(reason).toBe("");
     expect(r.errors).toEqual([]);
-    expect(r.knowledge.length).toBe(6);
-    expect(r.embedded_count).toBe(6);
+    expect(r.knowledge.length).toBe(7);
+    expect(r.embedded_count).toBe(7);
   });
 
   test("every embedded knowledge seed has scope 'global'", () => {
@@ -109,7 +109,7 @@ describe("loadEmbeddedKnowledgeSeeds — all 6 embedded files", () => {
     }
   });
 
-  test("all 6 expected slugs are present", () => {
+  test("all 7 expected slugs are present", () => {
     const r = loadEmbeddedKnowledgeSeeds();
     const slugs = new Set(r.knowledge.map((k) => k.slug));
     const expected = [
@@ -119,6 +119,7 @@ describe("loadEmbeddedKnowledgeSeeds — all 6 embedded files", () => {
       "sk-ref-cli",
       "sk-ref-status",
       "sk-ref-webhooks",
+      "sk-ref-knowledge-and-skills",
     ];
     for (const slug of expected) {
       expect(slugs.has(slug)).toBe(true);
@@ -558,8 +559,8 @@ describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference
     // Apply all embedded knowledge seeds to this tenant
     const { knowledge } = loadEmbeddedKnowledgeSeeds();
     const outcome = await applyKnowledgeSeeds(knowledge, searchTenantId, dbCtx.db);
-    // All 6 seeds must have been inserted (this is a fresh tenant)
-    expect(outcome.inserted).toBe(6);
+    // All 7 seeds must have been inserted (this is a fresh tenant)
+    expect(outcome.inserted).toBe(7);
   }, 30_000);
 
   test("'login' returns at least one hit (sk-ref-cli covers sk login command)", async () => {

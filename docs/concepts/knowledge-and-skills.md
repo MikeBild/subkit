@@ -141,6 +141,8 @@ gets smarter over time — but only with human approval at each step.
 
 ## Further reading
 
+- [Model a Domain](../authors/model-a-domain.md) — the connector + skills + knowledge trio, worked end to end.
+- [FAQ](./faq.md) — fast answers on how these pieces differ and where to create each.
 - [Custom Skills](../authors/custom-skills.md) — how to author, scope, and promote Skills.
 - [Knowledge Sources](../authors/knowledge-sources.md) — how to upload, tag, and refresh documents.
 - [Self-healing](../operators/self-healing.md) — the operational side of the repair loop.

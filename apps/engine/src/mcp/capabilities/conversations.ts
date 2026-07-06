@@ -113,7 +113,7 @@ export function listConversationTools(): Tool[] {
       // callable tool names and tries to invoke a phantom `author_workflow`
       // tool that this surface does not expose — which aborts its turn. State
       // only that THIS tool is the authoring entry point.
-      description: `Create or edit a workflow or connector — this is the ONLY way to author on this surface, and the entry point for OAuth authorization. There is no separate build, draft, or dry-run tool to call: the engine performs every authoring step inside this conversation and surfaces the results to you here. Opens a new authoring conversation and runs the first turn in the background — returns immediately with a task to poll via conversation_get. ${MCP_ELICITATION_BLURB}.`,
+      description: `Create or edit a workflow or connector, or set up the domain knowledge and conventions that ground authoring (knowledge sources and skills) — this is the ONLY way to author on this surface, and the entry point for OAuth authorization. There is no separate build, draft, or dry-run tool to call: the engine performs every authoring step inside this conversation and surfaces the results to you here. Opens a new authoring conversation and runs the first turn in the background — returns immediately with a task to poll via conversation_get. ${MCP_ELICITATION_BLURB}.`,
       inputSchema: jsonSchema(StartArgs),
       // Authoring entry point: a write, but non-destructive — it opens a
       // conversation; the real mutations stay confirm-gated inside the turn.
