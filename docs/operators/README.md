@@ -26,3 +26,4 @@ Start at the quickstart, attach a credential, then put workflows on a schedule o
 | Observability & Resource Limits | Diagnose a run in minutes with metrics, logs, and traces, bounded so no single workflow runs away. | [observability.md](observability.md) |
 | Self-Healing in Operations | Detect upstream API breaks during real execution and apply a validated repair instead of a 3am page. | [self-healing.md](self-healing.md) |
 | Runtime Dependencies | The one host dependency outside the single binary — Chromium + playwright for SPA-docs discovery — and how it is provisioned. | [runtime-dependencies.md](runtime-dependencies.md) |
+| Deploy & Upgrade | Replace the single binary and restart — the checksum-verified published-asset scp, `engine --self-update` (and why a private repo needs a token), and rollback. | [deploy.md](deploy.md) |
