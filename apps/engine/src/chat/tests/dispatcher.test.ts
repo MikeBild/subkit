@@ -267,6 +267,39 @@ describe("chat dispatcher", () => {
     // The dispatcher posted the turn's reply into the thread.
     const last = adapter.sends[adapter.sends.length - 1];
     expect(last?.text?.length ?? 0).toBeGreaterThan(0);
+
+    // Empty / mention-only message → friendly welcome, no turn. A bare
+    // mention (bot id, no ask) resolves to an empty prompt, so the
+    // dispatcher greets the user and returns without running a turn.
+    const execsBefore = (
+      await ctx.testDb.db.select().from(executions).where(eq(executions.workflow_id, wf.id))
+    ).length;
+    const emptyOut = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      {
+        platform: "slack",
+        workspace_id: "T_RUN",
+        channel_id: "C42",
+        thread_id: "1700000001.000900",
+        user_id: "U_RUNNER",
+        kind: "mention",
+        text: "<@UBOT>",
+        raw: {},
+      },
+    );
+    expect(emptyOut.status).toBe("help");
+    // Welcoming, actionable — no terse "Usage:" line, no emojis.
+    const welcome = adapter.sends[adapter.sends.length - 1]?.text ?? "";
+    expect(welcome).not.toContain("Usage");
+    expect(welcome.toLowerCase()).toContain("run a saved workflow");
+    expect(welcome).toContain("sk");
+    // Help path threads no conversation and runs no turn — execution
+    // count is unchanged and no conversation_id came back.
+    expect(emptyOut.conversation_id).toBeUndefined();
+    const execsAfter = (
+      await ctx.testDb.db.select().from(executions).where(eq(executions.workflow_id, wf.id))
+    ).length;
+    expect(execsAfter).toBe(execsBefore);
   });
 
   // -------------------------------------------------------------------

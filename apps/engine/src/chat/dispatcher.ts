@@ -725,7 +725,7 @@ async function handleChatEventImpl(
       channel_id: ev.channel_id,
       ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
       kind: "ephemeral",
-      text: "Usage: `/subkit chat <prompt>` or mention the bot with your ask.",
+      text: "Hi — I can run a saved workflow, look up executions, connectors, or knowledge, and answer questions about your sk setup. Just tell me what you need.",
     });
     return { status: "help" };
   }

@@ -197,6 +197,50 @@ describe("prepareStep — escalation rules", () => {
   });
 });
 
+describe("prepareStep — chat surface suppresses the authoring hard-stage escalation (P2)", () => {
+  it("does NOT escalate on stage='workflow_persisted' when surface='chat'", () => {
+    // The production bug: a chat conversation with a bound workflow parks on
+    // `workflow_persisted` (an AUTHORING marker) and escalated haiku→sonnet on
+    // every turn with reason `hard_stage:workflow_persisted`. Chat is
+    // read-only and cannot author, so no swap must happen.
+    const decision = prepareStep(
+      baseParams({
+        tenantDefaultModelId: "claude-haiku-4-5",
+        signals: { stage: "workflow_persisted", surface: "chat" },
+      }),
+    );
+    // No model swap and no hard_stage reason. `workflow_persisted` returns the
+    // full palette (undefined activeTools) and no other signal fires, so the
+    // whole decision collapses to `undefined`.
+    expect(decision?.modelId).toBeUndefined();
+    expect(decision?.reason ?? "").not.toContain("hard_stage");
+  });
+
+  it("STILL escalates on stage='workflow_persisted' for a non-chat surface (regression)", () => {
+    const decision = prepareStep(
+      baseParams({
+        tenantDefaultModelId: "claude-haiku-4-5",
+        signals: { stage: "workflow_persisted", surface: "sk_interactive" },
+      }),
+    );
+    expect(decision?.modelId).toBe("claude-sonnet-4-5");
+    expect(decision?.reason).toContain("hard_stage:workflow_persisted");
+  });
+
+  it("STILL escalates on chat when a genuine-difficulty signal fires (priorCriticFail)", () => {
+    const decision = prepareStep(
+      baseParams({
+        tenantDefaultModelId: "claude-haiku-4-5",
+        signals: { surface: "chat", priorCriticFail: true },
+      }),
+    );
+    // priorCriticFail is a genuine difficulty signal — it must escalate on
+    // every surface, chat included, all the way to the top tier.
+    expect(decision?.modelId).toBe("claude-opus-4-8");
+    expect(decision?.reason).toContain("prior_critic_fail");
+  });
+});
+
 describe("prepareStep — activeTools narrowing", () => {
   it("narrows to tenant_read tools on discover stages", () => {
     const decision = prepareStep(baseParams({ signals: { stage: "workflow_targeted" } }));

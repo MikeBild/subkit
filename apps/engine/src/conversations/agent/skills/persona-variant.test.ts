@@ -122,6 +122,33 @@ describe("chat surface persona", () => {
     }
   });
 
+  test("chat persona carries the install-grounding rule and never invents install commands", async () => {
+    const r = await generateMainAgentSystemPrompt({
+      surface: "chat",
+      authoring_hint: makeHint("execution"),
+    });
+    // P1: sk self-questions must be grounded, and the real install one-liner
+    // must be named so the bot stops inventing @subkit/cli / docker-compose.
+    expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
+    expect(r.content).toContain("curl -fsSL <engine-url>/install | bash");
+    expect(r.content).toContain("@subkit/cli");
+    expect(r.content).toContain("docker-compose install step");
+  });
+
+  test("chat persona forbids leaking authoring placeholders into chat replies", async () => {
+    const r = await generateMainAgentSystemPrompt({
+      surface: "chat",
+      authoring_hint: makeHint("execution"),
+    });
+    // P3: connector-inspect answers must not print ${connector...} / ${cred...}
+    // authoring template syntax to a read-only chat user.
+    expect(r.content).toContain("NO AUTHORING PLACEHOLDERS ON CHAT");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal authoring placeholder syntax the persona rule must name verbatim.
+    expect(r.content).toContain("${connector.<slug>...}");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal authoring placeholder syntax the persona rule must name verbatim.
+    expect(r.content).toContain("${cred.<slug>...}");
+  });
+
   test("chat surface skips the mode-gated authoring behaviour bodies", async () => {
     const chat = await generateMainAgentSystemPrompt({
       surface: "chat",
