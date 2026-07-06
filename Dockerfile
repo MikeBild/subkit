@@ -67,6 +67,16 @@ RUN set -eux; \
       --define "BUILD_VERSION=\"$VERSION\"" \
       --outfile /out/sk
 
+# Stage all five client-platform `sk` binaries + SHA256SUMS so the running
+# engine can serve the matching CLI for ANY client via GET /install/{asset}
+# (SUBKIT_BINARIES_DIR). This is what makes `curl <engine>/install | bash`
+# work without any github.com egress — the private-repo GitHub Release
+# fallback in the install script is never on the critical path. Single source
+# of truth for on-disk names + sums format: scripts/stage-cli-binaries.ts.
+RUN set -eux; \
+    VERSION="${ENGINE_VERSION:-$(bun -e 'console.log(require("./package.json").version)')}"; \
+    bun scripts/stage-cli-binaries.ts --dir /out/binaries --version "$VERSION"
+
 # ---------------------------------------------------------------------------
 # Stage 2 — runtime: postgres:18 base bundles PostgreSQL 18, initdb, gosu,
 # and a glibc userland for the bun-compiled binary. We only add curl +
@@ -89,6 +99,9 @@ RUN set -eux; \
 # wrappers that source the persisted bootstrap env so `docker exec` works.
 COPY --from=builder /out/engine /usr/local/bin/engine.bin
 COPY --from=builder /out/sk /usr/local/bin/sk.bin
+# All-platform `sk` binaries served by GET /install/{asset}. SUBKIT_BINARIES_DIR
+# defaults to this path (install-binary.ts), so no extra ENV is needed.
+COPY --from=builder /out/binaries /usr/local/share/subkit/binaries
 COPY deploy/docker/subkit-wrap.sh /usr/local/bin/subkit-wrap.sh
 COPY deploy/docker/entrypoint.sh /usr/local/bin/subkit-entrypoint.sh
 RUN chmod +x /usr/local/bin/engine.bin /usr/local/bin/sk.bin \

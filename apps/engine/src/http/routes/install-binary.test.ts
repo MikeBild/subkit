@@ -271,4 +271,28 @@ describe("manifest cache", () => {
     const second = await _internal.loadManifest(fixture.dir);
     expect(first).not.toBe(second);
   });
+
+  test("absence is NOT cached — a bundle staged after a miss is served without restart", async () => {
+    // An engine that booted before the deploy staged the CLI bundle must pick
+    // it up on a later request, not stay 404 until a process restart. Caching
+    // "absent" permanently would break this; this test pins the fix.
+    const dir = await fs.mkdtemp(path.join(tmpdir(), "subkit-late-stage-"));
+    activeDir = dir;
+    process.env.SUBKIT_BINARIES_DIR = dir;
+    _internal.clearCache();
+    const app = buildApp();
+
+    const miss = await app.request("/install/sk-linux-x64");
+    expect(miss.status).toBe(404);
+
+    // Deploy stages the bundle into the same dir — no restart, no clearCache.
+    const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
+    await fs.writeFile(path.join(dir, "sk_linux_x64"), bytes);
+    const sha = createHash("sha256").update(bytes).digest("hex");
+    await fs.writeFile(path.join(dir, "SHA256SUMS"), `${sha}  sk_linux_x64\n`);
+
+    const hit = await app.request("/install/sk-linux-x64");
+    expect(hit.status).toBe(200);
+    expect(hit.headers.get("x-subkit-sha256")).toBe(sha);
+  });
 });
