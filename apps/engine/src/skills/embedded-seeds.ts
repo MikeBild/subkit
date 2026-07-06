@@ -19,6 +19,9 @@ import dataHandling from "../conversations/seed/skills/data-handling.md" with { 
 import documentAnalysisGuidance from "../conversations/seed/skills/document-analysis-guidance.md" with {
   type: "text",
 };
+import domainSetupOnboarding from "../conversations/seed/skills/domain-setup-onboarding.md" with {
+  type: "text",
+};
 import engineRestApi from "../conversations/seed/skills/engine-rest-api.md" with { type: "text" };
 import engineStatusAndCapabilities from "../conversations/seed/skills/engine-status-and-capabilities.md" with {
   type: "text",
@@ -84,6 +87,7 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "connector-creation-guidance.md", content: connectorCreationGuidance },
   { file: "data-handling.md", content: dataHandling },
   { file: "document-analysis-guidance.md", content: documentAnalysisGuidance },
+  { file: "domain-setup-onboarding.md", content: domainSetupOnboarding },
   { file: "engine-rest-api.md", content: engineRestApi },
   { file: "engine-status-and-capabilities.md", content: engineStatusAndCapabilities },
   { file: "error-recovery.md", content: errorRecovery },

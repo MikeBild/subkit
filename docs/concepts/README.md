@@ -28,4 +28,5 @@ Start with the **Overview** for the big picture, then the **Glossary** to lock t
 | [Connectors & Integration](connectors.md) | Drivers, Connector Templates, and Credentials — authenticate a system once, reuse it everywhere. |
 | [Workflow Execution](workflows.md) | The lifecycle, execution model, eight Step kinds, triggers, versioning, scheduling, and self-healing. |
 | [Knowledge & Skills](knowledge-and-skills.md) | How Knowledge Sources and Skills shape the AI that authors workflows. |
+| [FAQ](faq.md) | Fast answers on workflows, skills, and knowledge sources — each pointing to the page that covers it in full. |
 | [Governance & Audit](governance-and-audit.md) | Permission checks, immutable records, and the audit trail behind every run. |

@@ -7,6 +7,7 @@
 
 - [Concepts](concepts/README.md): The shared mental model for sk: how connectors, workflows, knowledge, skills, and governance fit together — so every team means the same thing and reasons about the same system.
 - [Connectors & Integration](concepts/connectors.md): Outcome: authenticate an external system once, reuse it across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log.
+- [FAQ](concepts/faq.md): Outcome: a fast path from "what even is this?" to the one page that answers it in full.
 - [Concepts & Domain Model](concepts/glossary.md): One vocabulary, defined once.
 - [Governance & Audit](concepts/governance-and-audit.md): Pass the audit on the first pass.
 - [Knowledge & Skills](concepts/knowledge-and-skills.md): Outcome: authoring grounded in your own conventions — not generic API docs — so workflows ship faster, with fewer rework cycles and fewer compliance surprises.
@@ -32,6 +33,7 @@
 - [AI-Assisted Authoring](authors/authoring-workflows.md): Describe the outcome.
 - [Custom Skills](authors/custom-skills.md): Outcome: sk encodes your conventions once, then applies them on every Conversation, discovery, and repair — so authored workflows ship faster, pass review sooner, and stay policy-uniform across tenants.
 - [Knowledge Sources](authors/knowledge-sources.md): Outcome: workflows follow your runbooks and compliance docs, not generic knowledge.
+- [Model a Domain](authors/model-a-domain.md): Outcome: the AI authors inside your domain — proposing against your conventions and grounding specifics in your documents — so workflows in that domain ship correct on the first pass instead of being corrected in review.
 - [Quickstart — Authors](authors/quickstart.md): Turn a plain-language request into a governed, audited, runnable workflow — in about 5 minutes, no code.
 - [Recipe authoring](authors/recipes.md): Common automations start from a vetted blueprint, not a blank page.
 - [Using the `sk` REPL — authoring by conversation](authors/repl-tour.md): Go from idea to a governed, versioned workflow in minutes — no JSON, no glue code.

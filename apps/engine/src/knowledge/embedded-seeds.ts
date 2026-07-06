@@ -9,6 +9,9 @@
 // for the seed authors, not an ingestible Knowledge Source.
 
 import externalChat from "../conversations/seed/knowledge/external-chat.md" with { type: "text" };
+import knowledgeAndSkills from "../conversations/seed/knowledge/knowledge-and-skills.md" with {
+  type: "text",
+};
 import mcpToolCatalog from "../conversations/seed/knowledge/mcp-tool-catalog.md" with {
   type: "text",
 };
@@ -35,6 +38,7 @@ export interface EmbeddedKnowledgeSeedFile {
  */
 export const EMBEDDED_KNOWLEDGE_SEEDS: readonly EmbeddedKnowledgeSeedFile[] = [
   { file: "external-chat.md", content: externalChat },
+  { file: "knowledge-and-skills.md", content: knowledgeAndSkills },
   { file: "mcp-tool-catalog.md", content: mcpToolCatalog },
   { file: "rest-api.md", content: restApi },
   { file: "sk-cli.md", content: skCli },

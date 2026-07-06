@@ -12,6 +12,8 @@ flowchart TD
     A --> RC[recipes.md<br/>reusable recipes]
     A --> CS[custom-skills.md<br/>encode your conventions]
     A --> KS[knowledge-sources.md<br/>ground proposals in your docs]
+    CS --> MD[model-a-domain.md<br/>connector + skills + knowledge]
+    KS --> MD
     R --> SL[slash-commands.md<br/>REPL command reference]
     R --> SE[settings.md<br/>sk config reference]
 ```
@@ -24,5 +26,6 @@ flowchart TD
 | [recipes.md](recipes.md) | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
 | [custom-skills.md](custom-skills.md) | Author, scope, and promote Skills that encode your conventions. |
 | [knowledge-sources.md](knowledge-sources.md) | Upload, tag, and refresh the documents the AI grounds its proposals in. |
+| [model-a-domain.md](model-a-domain.md) | Teach sk a whole field of work — the connector + skills + knowledge-source trio, worked end to end. |
 | [slash-commands.md](slash-commands.md) | Generated reference of the `sk` REPL slash commands. |
 | [settings.md](settings.md) | Generated reference of every `sk` configuration key. |

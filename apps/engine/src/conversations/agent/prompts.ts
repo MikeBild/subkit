@@ -142,6 +142,14 @@ Loading rules:
 // authoring turn.
 export const SK_INSTALL_GROUNDING = `GROUNDING sk SELF-QUESTIONS: for any question about installing, running, updating, or the capabilities of sk or its CLI, call \`search_docs\` / \`search_knowledge\` FIRST and ground the answer. The CLI install is \`curl -fsSL <engine-url>/install | bash\`, served by this engine — that is the ONLY install path to give. NEVER invent an npm package (there is no \`@subkit/cli\`), a public download page or GitHub link, an \`sk login <url>\` install step, or a docker-compose install step.`;
 
+// sk concept grounding — the Skills-vs-Knowledge-Sources distinction and
+// domain-modeling. Injected on the SAME user-facing answer surfaces (chat,
+// mcp, web) as SK_INSTALL_GROUNDING and for the SAME reason: kept OUT of
+// GENERAL_RULES so the authoring/CLI base prompt stays under the small-model
+// context cap the assembler drop-ladder tests pin. The canonical answer is
+// retrievable — seed `sk-ref-knowledge-and-skills`, tag `sk-platform-reference`.
+export const SK_CONCEPT_GROUNDING = `GROUNDING CONCEPT QUESTIONS: for any question about what skills vs knowledge sources are, when to use which, how knowledge is processed, or how to model a domain, call \`search_knowledge\` (the \`sk-platform-reference\` corpus covers these) FIRST and ground the answer — do not improvise the distinction from memory.`;
+
 /** Per-surface verbosity directive. Spliced into the live-data block. */
 export function verbosityFor(
   surface: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat" | undefined,

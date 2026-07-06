@@ -91,5 +91,6 @@ hardware that warrants larger corpora. The full tunable table lives in
 ## Further reading
 
 - [Knowledge & Skills](../concepts/knowledge-and-skills.md) — the conceptual model and context-assembly order.
+- [Model a Domain](./model-a-domain.md) — a Knowledge Source and a Skill configured side by side for one domain, worked end to end.
 - [Custom Skills](./custom-skills.md) — the dense, prescriptive counterpart to Knowledge Sources.
 - [AI-assisted authoring](./authoring-workflows.md) — how Conversations draw on Knowledge Sources.
