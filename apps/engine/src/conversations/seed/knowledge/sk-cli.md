@@ -19,20 +19,15 @@ State lives under `~/.sk/`: `config.json` (profiles), `settings.json` (CLI setti
 
 # Installing / accessing the CLI
 
-Install `sk` with a single shell one-liner — there is no package-manager step. Two equivalent sources:
+Install `sk` with a single shell one-liner — there is no package-manager step. The CLI is served **by the engine you are already talking to**. Where `<engine-url>` is that engine's base URL (the same base URL this chat/API runs on):
 
-- Engine-served (version-matched to the engine you are talking to), where `<engine-url>` is that engine's base URL:
-  ```
-  curl -fsSL <engine-url>/install | bash
-  ```
-- GitHub fallback (public, latest release):
-  ```
-  curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash
-  ```
+```
+curl -fsSL <engine-url>/install | bash
+```
 
-Either script auto-detects platform/arch, downloads the matching `sk` binary, verifies its SHA256, and installs it to `~/.subkit/bin/sk`. Add `~/.subkit/bin` to your `PATH` if it is not already there. After installing, point `sk` at an engine and authenticate with `sk login` / `sk profile` (see below), or bootstrap a fresh engine with `sk init`.
+The engine returns a POSIX install script that auto-detects your platform/arch, downloads the matching `sk` binary directly from that engine (`GET <engine-url>/install/sk-<os>-<arch>`), verifies its SHA256 against `<engine-url>/install/sha256sums`, and installs it to `~/.subkit/bin/sk`. Add `~/.subkit/bin` to your `PATH` if it is not already there. After installing, point `sk` at an engine and authenticate with `sk login` / `sk profile` (see below), or bootstrap a fresh engine with `sk init`. Keep the CLI current with `sk update`.
 
-sk is **not** published on npm — do not run `npm install` or `npx` to get it; no such package exists. There is **no** `docker-compose` step to install the CLI, and no `sk login <url>`-as-installer step. Installation is only the `curl … | bash` one-liner above; `docker compose` runs the engine, not the CLI.
+The engine `/install` endpoint is the single supported way to get the CLI. Concretely, `sk` is **not** published on npm — do not run `npm install` or `npx` to get it; no such package exists. There is **no** public download page, **no** `docker-compose` step to install the CLI, and no `sk login <url>`-as-installer step. Installation is only the `curl -fsSL <engine-url>/install | bash` one-liner above; `docker compose` runs the engine, not the CLI.
 
 # Global Flags and Profile Resolution
 

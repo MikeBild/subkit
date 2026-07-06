@@ -39,6 +39,50 @@ ssh root@<engine-host> 'journalctl -u subkit-engine --since "60 seconds ago" | g
 `SHA256SUMS` uses a no-separator format (`<hash>engine_linux_x64`); extract the
 hash with `grep -oE '^[0-9a-f]{64}'` on the matching line, not `awk '{print $1}'`.
 
+## Serving the `sk` CLI from the engine (`/install`)
+
+Users install the CLI by running `curl -fsSL https://<engine-hostname>/install | bash`
+against the engine they already talk to (chat, MCP, or API), where
+`<engine-hostname>` is the DNS name the engine already knows via its
+`server.public_base_url` config — always the hostname, never a bare IP (the
+install script interpolates it into the profile and OAuth2 redirect URIs). That
+script probes `https://<engine-hostname>/install/sk-<os>-<arch>` first and only
+falls back to github.com. **While the repo is private, the GitHub fallback
+returns 404 for users**, so the engine must serve the binaries itself —
+otherwise the install one-liner the chat hands out dead-ends.
+
+Stage all five client-platform binaries into `SUBKIT_BINARIES_DIR` (default
+`/usr/local/share/subkit/binaries`), built straight from source with no
+github.com dependency:
+
+```bash
+# On a build host with the repo checked out at the deploy tag:
+bun scripts/stage-cli-binaries.ts --dir /tmp/sk-binaries --version X.Y.Z
+# → sk_{darwin,linux,windows}_{arm64,x64}[.exe] + SHA256SUMS
+
+# Ship to the engine host (address it by its DNS hostname, not an IP), then
+# (re)start so a cold cache picks them up.
+ssh root@<engine-hostname> 'mkdir -p /usr/local/share/subkit/binaries'
+scp /tmp/sk-binaries/* root@<engine-hostname>:/usr/local/share/subkit/binaries/
+ssh root@<engine-hostname> 'systemctl restart subkit-engine'
+
+# Verify against the public hostname (the same server.public_base_url users
+# hit): 200 + x-subkit-sha256 for every client platform.
+curl -fsSI https://<engine-hostname>/install/sk-darwin-arm64 | grep -i x-subkit-sha256
+```
+
+The staged `SHA256SUMS` uses the two-space `sha256sum` format
+(`<hash>  sk_<os>_<arch>`) that both the serving route and the install script's
+`grep`/`sha256sum -c` expect — it is intentionally distinct from the
+no-separator format of the release `SHA256SUMS` used by self-update. The route
+does not cache the empty-directory state, so staging after the engine is already
+up is picked up on the next request; the restart above is only needed if you
+want it live immediately without waiting for a request to re-probe.
+
+The all-in-one Docker image bakes these binaries in at build time (see the
+`stage-cli-binaries` step in the `Dockerfile`), so containerized deploys serve
+`/install/{asset}` with no extra step.
+
 ## Self-update (`engine --self-update`)
 
 The engine can pull the latest published GitHub release and swap its own binary:

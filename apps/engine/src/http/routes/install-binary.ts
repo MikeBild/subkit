@@ -47,7 +47,11 @@ interface BundleManifest {
   sumsRaw: string; // verbatim SHA256SUMS content
 }
 
-const manifestCache = new Map<string, BundleManifest | "absent">();
+// Only real manifests are cached. Absence is deliberately NOT cached: an
+// engine that booted before the deploy staged binaries into
+// SUBKIT_BINARIES_DIR must start serving them on the next request without a
+// process restart. Re-reading a missing small file on a miss is cheap.
+const manifestCache = new Map<string, BundleManifest>();
 
 function getBinariesDir(): string {
   const envDir = process.env.SUBKIT_BINARIES_DIR;
@@ -61,7 +65,6 @@ async function loadManifest(dir: string): Promise<BundleManifest | "absent"> {
   try {
     raw = await fs.readFile(path.join(dir, SUMS_FILENAME), "utf8");
   } catch {
-    manifestCache.set(dir, "absent");
     return "absent";
   }
   const sums = new Map<string, string>();
