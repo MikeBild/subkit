@@ -1228,6 +1228,14 @@ channel is deliberately **read-only**: nobody can build or change
 connectors, workflows, skills, or knowledge sources from chat, no
 matter which role their linked account holds.
 
+> **Not to be confused with the `google-chat` connector template.** The
+> connector catalog also contains a "Google Chat" connector used to
+> *post* messages into a space as a workflow step. It shares no
+> configuration, credentials, or code with the chat channel described
+> here. If you want people to *talk to sk from* Google Chat, you're in
+> the right doc; if you want a workflow to *send a message to* a space,
+> that's the connector, not this.
+
 ```mermaid
 flowchart LR
     u([Space member message]) --> ev[POST /v1/chat/google/events]
@@ -1281,6 +1289,34 @@ cannot read, summarize, or run a workflow over an attachment posted
 in chat. To work with a file, upload it to sk first via the sk CLI or
 the web portal; the bot can then list and preview the tenant's
 attachments and answer questions about them.
+
+## Message formatting
+
+The assistant writes standard Markdown; sk converts it to each
+platform's native text dialect before sending, so replies render
+cleanly instead of showing literal `**` asterisks or bullet
+characters. What renders correctly:
+
+| Construct | Google Chat & Slack |
+|---|---|
+| Bold, italic, strikethrough | rendered (single-asterisk `*bold*`, `_italic_`, `~strike~`) |
+| Inline code and short code blocks | rendered as monospace / fenced blocks |
+| Bullet lists (incl. nested) | rendered |
+| Links | rendered as tappable links |
+| Blockquotes | rendered |
+
+What has **no** clean chat equivalent, even after conversion:
+
+- **Headings** degrade to a bold line (neither platform has heading
+  syntax).
+- **Numbered lists** display as literal `1.`, `2.` lines — legible, but
+  the platform does not auto-renumber them.
+- **Tables** have no real chat equivalent and fall back to a fenced
+  monospace block. If someone needs tabular data in chat, ask the bot
+  for it as a list rather than a table for the cleanest result.
+
+Teams and the sk CLI render full Markdown natively, so no conversion is
+applied there.
 
 ## Conversation memory: one conversation per space
 
@@ -1336,6 +1372,13 @@ Prerequisites: a Google Workspace domain (consumer `@gmail.com`
 accounts cannot install custom Chat apps), a GCP project, and a public
 HTTPS route to the engine.
 
+> Worth knowing before you start: Google Chat can always deliver an
+> in-chat "this space isn't connected" reply for an unregistered space,
+> so a misconfigured Google space tells you so. Slack generally cannot
+> (its bot tokens are workspace-scoped), so an unregistered Slack space
+> just stays silent — on Slack, check the audit log rather than waiting
+> for an error in the channel.
+
 1. **GCP project** — enable the *Google Chat API*.
 2. **Service account** — create one, download a JSON key; you need
    `client_email` and `private_key`.
@@ -1351,18 +1394,46 @@ HTTPS route to the engine.
      URL") — sk verifies inbound JWTs against this audience.
    - Visibility: your domain users (up to 25 testers without a
      Marketplace listing).
-4. **Engine config** (restart required):
+4. **Engine config.** These three leaves are **engine-global** (shared
+   by every tenant on this engine — see *Adding a second tenant* below)
+   and marked `requiresRestart`. On a production engine
+   (`NODE_ENV=production`) each write is rejected unless you pass
+   `--force`:
 
    ```bash
-   sk settings set platform.googlechat.client_email "<sa>@<project>.iam.gserviceaccount.com"
-   sk settings set platform.googlechat.private_key "$(cat key.pem)"
-   sk settings set platform.googlechat.audience "<project number>"
+   sk settings set platform.googlechat.client_email "<sa>@<project>.iam.gserviceaccount.com" --force
+   sk settings set platform.googlechat.private_key "$(cat key.pem)" --force
+   sk settings set platform.googlechat.audience "<project number>" --force
    ```
+
+   **What "restart required" actually means here:** the write takes
+   effect in the running process immediately — `sk settings get
+   platform.googlechat.client_email` shows the new value right away, and
+   a chat event handled by this process picks it up on its next
+   workspace-hydration. The restart caveat only matters for (a) *other*
+   already-running instances in a multi-instance deploy, and (b) an
+   already-hydrated adapter in this process, which rebuilds on the next
+   registry install/miss. In a single-instance deployment you almost
+   never need to bounce a live engine for this — confirm with `sk
+   settings get` and only restart if a workspace still fails to hydrate.
+
+   **`private_key` is the most common copy/paste failure here:** shell
+   quoting can silently collapse newlines or trailing whitespace inside
+   the PEM, and there is no key-validation step — a mangled key isn't
+   caught until an outbound send fails later. Use `$(cat key.pem)`
+   verbatim as shown, then run `sk settings get
+   platform.googlechat.private_key` to confirm the leaf is recorded (the
+   value comes back masked, but a masked-but-present result confirms it
+   isn't empty).
 
 5. **Install each space** — add the app to the space in Google Chat,
    then register the space with your tenant (one install per space;
-   Google events carry no domain id). The space name is in the
-   `added_to_space` audit/log entry, or copy it from the space URL:
+   Google events carry no domain id). Two ways to get the space id
+   (`spaces/AAAA...`): copy it from the space URL (always works), or —
+   if the space is already messaging the bot and failing — find the
+   `chat.message.denied` audit row with `reason: "workspace_not_installed"`
+   and read its `metadata.workspace_id_native`. (There is no dedicated
+   "app added to space" audit action; don't grep logs for one.)
 
    ```bash
    curl -X POST https://<engine-host>/v1/chat/workspaces \
@@ -1385,6 +1456,19 @@ HTTPS route to the engine.
           "platform_user_id":"users/1234567890","user_id":"<subkit-user-uuid>"}'
    ```
 
+### Adding a second tenant on an already-configured engine
+
+`platform.googlechat.*` credentials are **engine-global** — one Google
+Chat app / service account serves every tenant on this engine. If
+Google Chat already works for tenant A and you're bringing tenant B
+onto the same engine, **do not repeat step 4**: re-running it with a
+different service account would break tenant A, and re-running it with
+the same values is an unnecessary no-op. Attempting to scope these
+leaves per-tenant (`--tenant <id>`) is rejected outright — they are not
+tenant-overlay settings. What *is* per-tenant is the space↔tenant
+binding, so for each new tenant only repeat steps 5–6: install the
+app in that tenant's space(s), then link its members.
+
 ## Which role should linked chat users have?
 
 The built-in `enduser` role fits the channel: run + read workflows,
@@ -1397,6 +1481,23 @@ their identities to users holding it. Admin-linked users get admin
 *reads and runs* — never authoring; the channel restriction does not
 care about roles.
 
+### Finding chat users who need to be linked
+
+There's no dedicated "pending link requests" view. To find everyone who
+has tried to message the bot in a workspace but isn't linked yet, pull
+the denied-audit rows and filter by reason client-side (the audit API
+doesn't filter on `reason` directly):
+
+```bash
+sk audit list --action chat.message.denied --json \
+  | jq '.items[] | select(.reason=="identity_not_linked") | {ts, metadata}'
+```
+
+Each match's `metadata` carries the sender's platform user id
+(`users/<id>` for Google Chat) — feed it into `POST /v1/chat/identities`
+as in *Link members*. This is a point-in-time snapshot, not a live
+queue; re-run it after onboarding a new group.
+
 ## Slash commands
 
 | Command | Effect |
@@ -1404,6 +1505,14 @@ care about roles.
 | `/subkit chat <prompt>` (or just mention the bot) | Continue the space conversation |
 | `/subkit run <workflow-slug>` | Run a saved workflow — same RBAC + confirmation card as asking in prose |
 | `/new` or `/reset` | Start a fresh conversation for this space/thread |
+
+Naming the exact slug (`/subkit run <workflow-slug>`) always works. You
+can also just describe what you want in plain prose (in any language) —
+when it unambiguously identifies one saved workflow, the bot resolves
+it (via the same fuzzy lookup behind `find_workflow`) and runs it
+behind the normal confirmation card. If more than one workflow
+plausibly matches, the bot asks which one instead of guessing. Naming
+the slug is still the fastest, most reliable path.
 
 ## Troubleshooting
 
@@ -1416,6 +1525,18 @@ care about roles.
 | "Your chat account isn't linked" | `chat.message.denied` audit (`identity_not_linked`) carries the sender's `users/<id>` for the link call |
 | Space stopped answering after the app was removed/re-added | Removal drops the space's session bindings by design; re-adding starts a fresh conversation |
 | User clicks a confirmation card, nothing happens | Only the requester can confirm (`actor_not_owner` audit); the clicking user gets an in-channel note |
+| Google shows "Subkit Chat Channels reagiert nicht" / "…isn't responding" after every message | Expected Google Chat behavior, not a sk failure. sk acknowledges the webhook immediately and posts the real reply asynchronously (turns can take seconds); Google's client shows this placeholder in the gap. A *real* failure looks different: no reply ever arrives, or a `chat.message.denied`/error audit row exists for that message |
+| Google Chat send fails after setup looked clean | The `private_key` PEM likely got mangled by shell quoting during `sk settings set`. Re-run with `$(cat key.pem)` verbatim; there is no server-side key validation, so a bad key only surfaces as a failed outbound send, not a rejected `settings set` |
+
+## Known friction / roadmap
+
+Installing a space and linking members today means hand-rolling the
+`curl` calls above against the HTTP API with an admin key — there is no
+`sk chat install` / `sk chat link` convenience wrapping those two
+routes yet. This is the single biggest rough edge in an otherwise
+straightforward setup; a CLI wrapper is a natural follow-up. Until it
+lands, keep the two `curl` templates handy — the request bodies are
+stable.
 
 ## Slack and Microsoft Teams
 
