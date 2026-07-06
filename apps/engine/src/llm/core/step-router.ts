@@ -9,6 +9,7 @@
 // Wired into `streamText({ prepareStep })` in conversations/loop.ts.
 
 import type { LanguageModel, ModelMessage, ToolChoice, ToolSet } from "ai";
+import type { ConversationSurface } from "../../conversations/agent/types.ts";
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import type { AuthoringStage } from "../../conversations/types.ts";
 import { logger } from "../../logging/logger.ts";
@@ -24,6 +25,16 @@ const NO_UPGRADE_WARNED: Set<string> = new Set();
 export interface StepRouterSignals {
   /** Active authoring stage (idle / discover / propose / commit / execute / etc). */
   stage?: AuthoringStage;
+  /**
+   * Surface the conversation is running on. Gates the hard-stage model
+   * escalation: the `chat` surface is read-only and cannot author, so a
+   * bound workflow parking the conversation on `workflow_persisted` must
+   * NOT escalate haiku→sonnet — that stage is an AUTHORING commit/execute
+   * marker, meaningless (and pure cost/latency waste) on chat. Genuine
+   * difficulty signals (`repair` / `priorCriticFail` / `strongRunIntent` /
+   * `escalate`) still escalate on every surface, chat included.
+   */
+  surface?: ConversationSurface;
   /**
    * True when the conversation has a PERSISTED workflow bound — either
    * the bound `target_workflow_id` resolves to a `workflows` row, or
@@ -452,6 +463,15 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
   let modelId: string | undefined;
   const reasonParts: string[] = [];
 
+  // The hard-stage escalation is an AUTHORING signal (composing schema-shaped
+  // artefacts / repairing). The read-only `chat` surface cannot author, yet a
+  // chat conversation with a bound workflow sits on `workflow_persisted` and
+  // would otherwise escalate haiku→sonnet on every turn — pure cost/latency
+  // waste. Suppress hard-stage escalation on chat only; the genuine-difficulty
+  // signals below (`repair` / `priorCriticFail` / `strongRunIntent` /
+  // `escalate`) still fire on every surface.
+  const hardStageEscalates = isHardStage(signals.stage) && signals.surface !== "chat";
+
   if (signals.escalateMax === true || signals.priorCriticFail === true) {
     const top = routeTop(provider, tenantDefaultModelId);
     if (top !== tenantDefaultModelId) {
@@ -462,7 +482,7 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
     signals.escalate === true ||
     signals.hadRepairThisTurn === true ||
     signals.strongRunIntent === true ||
-    isHardStage(signals.stage)
+    hardStageEscalates
   ) {
     const next = routeUp(provider, tenantDefaultModelId);
     if (next !== tenantDefaultModelId) {
@@ -470,7 +490,7 @@ export function prepareStep(params: StepRouterParams): StepDecision | undefined 
       if (signals.hadRepairThisTurn) reasonParts.push("repair_in_prior_step");
       if (signals.strongRunIntent) reasonParts.push("strong_run_intent");
       if (signals.escalate) reasonParts.push("escalate_signal");
-      if (isHardStage(signals.stage)) reasonParts.push(`hard_stage:${signals.stage}`);
+      if (hardStageEscalates) reasonParts.push(`hard_stage:${signals.stage}`);
     }
   }
 

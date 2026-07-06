@@ -125,6 +125,20 @@ describe("loadEmbeddedKnowledgeSeeds — all 6 embedded files", () => {
     }
   });
 
+  test("sk-ref-cli seed documents the real install one-liner and never the invented @subkit/cli npm package", () => {
+    const r = loadEmbeddedKnowledgeSeeds();
+    const cli = r.knowledge.find((k) => k.slug === "sk-ref-cli");
+    expect(cli).toBeDefined();
+    // P1: the real install path — engine-served `/install` + the GitHub
+    // `install.sh` fallback — must be present so retrieval grounds the bot.
+    expect(cli!.body).toContain("/install");
+    expect(cli!.body).toContain("install.sh");
+    expect(cli!.body).toContain("~/.subkit/bin");
+    // The hallucinated npm package must never appear in retrievable knowledge,
+    // even as a negation — the seed content must not re-introduce the string.
+    expect(cli!.body).not.toContain("@subkit/cli");
+  });
+
   test("every embedded seed has a non-empty name, description, body, and tags array", () => {
     const r = loadEmbeddedKnowledgeSeeds();
     for (const k of r.knowledge) {
