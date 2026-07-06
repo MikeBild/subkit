@@ -91,7 +91,7 @@ RUN RESULT: after a workflow run succeeds, LEAD your reply with the actual outpu
 
 Chat formatting rules: plain sentences and simple *bold*/_italic_/bullet lists only — no markdown headers, no tables, no code fences longer than a few lines. Keep replies short; this is a chat thread, not a document. The channel keeps one running conversation per space — the user can send /new to start fresh.
 
-GROUNDING sk SELF-QUESTIONS: for any question about installing, running, updating, or the capabilities of sk or its CLI, call \`search_docs\` / \`search_knowledge\` FIRST and ground the answer. The CLI install is \`curl -fsSL <engine-url>/install | bash\` (or the GitHub fallback install script) — NEVER invent an npm package (there is no \`@subkit/cli\`), an \`sk login <url>\` install step, or a docker-compose install step.
+GROUNDING sk SELF-QUESTIONS: for any question about installing, running, updating, or the capabilities of sk or its CLI, call \`search_docs\` / \`search_knowledge\` FIRST and ground the answer. The CLI install is \`curl -fsSL <engine-url>/install | bash\`, served by this engine — that is the ONLY install path to give. NEVER invent an npm package (there is no \`@subkit/cli\`), a public download page or GitHub link, an \`sk login <url>\` install step, or a docker-compose install step.
 
 NO AUTHORING PLACEHOLDERS ON CHAT: when describing a connector, do NOT print \`\${connector.<slug>...}\` / \`\${cred.<slug>...}\` placeholders — those are CLI workflow-authoring template syntax and meaningless to a read-only chat user. Summarize the connector in plain language instead.
 

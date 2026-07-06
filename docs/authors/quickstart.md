@@ -36,7 +36,7 @@ Your operator has given you **one** of the following. Pick the matching path.
 ## Path A — CLI with API key
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash
+curl -fsSL <URL>/install | bash          # the CLI is served by your engine
 sk login --engine-url <URL> --api-key <wf_live_…>
 sk                         # opens the TUI, picks up your session
 ```

@@ -125,18 +125,22 @@ describe("loadEmbeddedKnowledgeSeeds — all 6 embedded files", () => {
     }
   });
 
-  test("sk-ref-cli seed documents the real install one-liner and never the invented @subkit/cli npm package", () => {
+  test("sk-ref-cli seed documents the engine-served install one-liner and never npm or a public GitHub link", () => {
     const r = loadEmbeddedKnowledgeSeeds();
     const cli = r.knowledge.find((k) => k.slug === "sk-ref-cli");
     expect(cli).toBeDefined();
-    // P1: the real install path — engine-served `/install` + the GitHub
-    // `install.sh` fallback — must be present so retrieval grounds the bot.
+    // P1: the real install path is the engine-served `/install` one-liner —
+    // it must be present so retrieval grounds the bot on the working answer.
     expect(cli!.body).toContain("/install");
-    expect(cli!.body).toContain("install.sh");
+    expect(cli!.body).toContain("curl -fsSL <engine-url>/install | bash");
     expect(cli!.body).toContain("~/.subkit/bin");
     // The hallucinated npm package must never appear in retrievable knowledge,
     // even as a negation — the seed content must not re-introduce the string.
     expect(cli!.body).not.toContain("@subkit/cli");
+    // The GitHub repo is private, so a raw.githubusercontent / releases link is
+    // a dead end for users. The seed must not offer one as an install source.
+    expect(cli!.body).not.toContain("raw.githubusercontent.com");
+    expect(cli!.body).not.toContain("github.com");
   });
 
   test("every embedded seed has a non-empty name, description, body, and tags array", () => {

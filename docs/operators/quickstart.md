@@ -19,9 +19,16 @@ flowchart LR
 
 ## 1. Install the `sk` CLI
 
+The CLI is served by your engine. Once it is running (step 2), install the
+version-matched binary straight from it:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mikebild/subkit/main/scripts/install.sh | bash
+curl -fsSL <your-engine-url>/install | bash   # e.g. http://localhost:3000/install
 ```
+
+Before your engine exists, the all-in-one image also bundles `sk` on the
+container PATH — `docker exec <container> sk …` — so you can drive the engine
+without a local install first.
 
 See [docs/developers/input-surfaces.md](../developers/input-surfaces.md) for Windows and manual platform installs. The install script may place a `subkit` compatibility alias on disk; the canonical command surface is `sk`.
 
@@ -92,7 +99,7 @@ The engine serves install artifacts at `/install/sk-:platform-:arch`, `/install/
 curl -fsSL https://my-engine.example.com/install | bash
 ```
 
-The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it streams from there with `x-subkit-sha256` verification against `${ENGINE_URL}/install/sha256sums`. On `404` (the case for systemd-deployed engines that don't bundle CLI binaries on the host), the script falls back to the matching GitHub Release. Either way `~/.subkit/bin/sk` matches the engine's running version exactly — no version drift.
+The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it streams from there with `x-subkit-sha256` verification against `${ENGINE_URL}/install/sha256sums`. The all-in-one Docker image bundles these binaries; for a systemd deploy, stage them into `SUBKIT_BINARIES_DIR` (see [operators/deploy.md](deploy.md)). On `404` the script falls back to a GitHub Release, which only works when the repository is public — while it is private the engine must serve the binaries itself, so bundling/staging is what makes the one-liner work. Either way `~/.subkit/bin/sk` matches the engine's running version exactly — no version drift.
 
 ## Next steps
 
