@@ -14,6 +14,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
 import { type FastPathParams, tryFastPath } from "./fast-path.ts";
+import { renderRunOutput } from "./fast-path-render.ts";
 import { listWorkflowsTool } from "./tools/generated/workflows.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { TurnEvent } from "./types.ts";
@@ -313,6 +314,53 @@ describe("tryFastPath — run <slug> confirmation gate", () => {
     // result is not null (fast path handled it)
     expect(result).not.toBeNull();
     void wf;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderRunOutput — the success reply leads with the result, not a step trace
+// ---------------------------------------------------------------------------
+
+describe("renderRunOutput", () => {
+  test("a flat scalar object renders as a key: value bullet list, no JSON fence", () => {
+    const out = renderRunOutput({ min_temp: 16.9, max_temp: 20.9, city: "Berlin" });
+    expect(out).toBe("- min_temp: 16.9\n- max_temp: 20.9\n- city: Berlin");
+    expect(out).not.toContain("```");
+  });
+
+  test("a plain string renders directly", () => {
+    expect(renderRunOutput("done")).toBe("done");
+  });
+
+  test("scalars render as their string form", () => {
+    expect(renderRunOutput(42)).toBe("42");
+    expect(renderRunOutput(true)).toBe("true");
+  });
+
+  test("a nested object falls back to a fenced JSON block", () => {
+    const out = renderRunOutput({ a: { b: 1 } });
+    expect(out).toContain("```json");
+    expect(out).toContain('"b": 1');
+  });
+
+  test("an array falls back to a fenced JSON block", () => {
+    const out = renderRunOutput([1, 2, 3]);
+    expect(out).toContain("```json");
+  });
+
+  test("null / undefined / empty output returns null so the caller uses a fallback line", () => {
+    expect(renderRunOutput(null)).toBeNull();
+    expect(renderRunOutput(undefined)).toBeNull();
+    expect(renderRunOutput({})).toBeNull();
+    expect(renderRunOutput([])).toBeNull();
+    expect(renderRunOutput("   ")).toBeNull();
+  });
+
+  test("never emits the broken empty-version token or a step trace", () => {
+    const out = renderRunOutput({ temp: 20 }) ?? "";
+    expect(out).not.toContain("(v)");
+    expect(out).not.toContain("succeeded");
+    expect(out).not.toMatch(/\(transform\)|\(request\)/);
   });
 });
 

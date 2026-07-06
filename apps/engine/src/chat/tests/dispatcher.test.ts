@@ -10,7 +10,7 @@
 //   → conversation never commits: authoring from a chat channel is
 //     structurally impossible, even though the linked user has rights
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
   type ConversationTestCtx,
@@ -30,7 +30,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import type { ChatAdapter } from "../adapter.ts";
-import { handleChatEvent } from "../dispatcher.ts";
+import { deliver, handleChatEvent } from "../dispatcher.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../types.ts";
 
 const nextHex = createDeterministicHexFactory(0xc4a7d15);
@@ -531,6 +531,57 @@ describe("chat session mapping", () => {
     // The binding is gone: the next message opens a fresh conversation.
     const after = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
     expect(after.conversation_id).not.toBe(live.conversation_id);
+  });
+
+  test("sendTracked formats CommonMark to the platform dialect before adapter.send", async () => {
+    const adapter = new FakeSlackAdapter();
+    await deliver(adapter, {
+      tenant_id: ctx.tenant_id,
+      workspace_id: "T123",
+      channel_id: "C_FMT",
+      kind: "message",
+      text: "**Bold** and\n- a bullet\n• another\n[docs](https://x.io)",
+    });
+    expect(adapter.sends).toHaveLength(1);
+    const sent = adapter.sends[0]?.text ?? "";
+    expect(sent).toContain("*Bold*");
+    expect(sent).not.toContain("**Bold**");
+    expect(sent).toContain("* a bullet");
+    expect(sent).toContain("* another");
+    expect(sent).not.toContain("• another");
+    expect(sent).toContain("<https://x.io|docs>");
+  });
+
+  test("an ignored (non-removed) system event logs its channel_id", async () => {
+    const adapter = new FakeSlackAdapter();
+    // Register the workspace first so the event reaches the dispatcher's
+    // system-event branch under a resolved tenant.
+    await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
+
+    const { logger } = await import("../../logging/logger.ts");
+    const debugSpy = spyOn(logger, "debug");
+    try {
+      const sys = await handleChatEvent(
+        { db: ctx.testDb.db, adapter },
+        {
+          platform: "slack",
+          workspace_id: WS,
+          channel_id: "C_IGNORED",
+          user_id: "",
+          kind: "system",
+          system_event: "added_to_space",
+          raw: {},
+        },
+      );
+      expect(sys.status).toBe("ignored");
+      const ignoredLog = debugSpy.mock.calls.find(
+        (c) => (c[0] as { action?: string })?.action === "system_event.ignored",
+      );
+      expect(ignoredLog).toBeDefined();
+      expect((ignoredLog?.[0] as { channel_id?: string })?.channel_id).toBe("C_IGNORED");
+    } finally {
+      debugSpy.mockRestore();
+    }
   });
 });
 

@@ -120,6 +120,33 @@ export async function repairToolCall<TOOLS extends ToolSet>(
           input: JSON.stringify({ input: parsedInput }),
         };
       }
+      // Last resort: an execution tool is genuinely absent (gate closed,
+      // no draft target) and the model knows a slug. Dead-ending here is
+      // what made the chat channel hallucinate a "use the CLI" refusal
+      // (prod). `find_workflow` is READ-ONLY, gate-safe, and always in the
+      // chat palette — rewrite to it so the model identifies the workflow
+      // the user meant and then confirm-and-runs it (per the chat persona's
+      // find_workflow → ask_user_confirm rule). Nothing is auto-run.
+      if (toolset.find_workflow) {
+        const query = isWfAlias
+          ? toolCall.toolName.slice(3).replace(/_/g, " ")
+          : extractWorkflowQuery(toolCall.input);
+        if (query) {
+          logger.info({
+            module: "llm",
+            action: "repair_tool_call.find_workflow_rewrite",
+            msg: "execution tool absent — rewriting to find_workflow so the model can discover then confirm-run",
+            tool: toolCall.toolName,
+            query,
+          });
+          onRepair?.();
+          return {
+            ...toolCall,
+            toolName: "find_workflow",
+            input: JSON.stringify({ query }),
+          };
+        }
+      }
     }
     logger.warn({
       module: "llm",
@@ -237,6 +264,22 @@ function parseOriginalInput(input: unknown): unknown {
   } catch {
     return trimmed;
   }
+}
+
+/**
+ * Derive a `find_workflow` query from a failed bare `run_workflow` call's
+ * arguments: the `workflow` slug the model tried to run, kebab→spaces.
+ * Returns null when no usable slug is present (nothing to search on).
+ */
+function extractWorkflowQuery(input: unknown): string | null {
+  const parsed = parseOriginalInput(input);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const wf = (parsed as Record<string, unknown>).workflow;
+    if (typeof wf === "string" && wf.trim().length > 0) {
+      return wf.trim().replace(/-/g, " ");
+    }
+  }
+  return null;
 }
 
 const SCHEMA_REJECTION_MARKERS = [

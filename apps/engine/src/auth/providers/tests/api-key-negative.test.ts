@@ -6,13 +6,19 @@
 // existing http/tests/auth.test.ts covers malformed + missing cases
 // at the route layer; this file pins the provider-direct behavior for
 // the four time/state-bound rejections and the happy path.
+//
+// Malformed-token logging is split by prefix: a token WITHOUT the
+// wf_live_ prefix is a foreign credential (chat-platform JWT, OIDC
+// token, probe) and returns null SILENTLY; only a prefixed-but-corrupt
+// token WARN-logs malformed_token. The two tests below pin that split.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { apiKeys, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { generateKey } from "../../../identity/api-key.ts";
+import { logger } from "../../../logging/logger.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { createApiKeyProvider } from "../api-key.ts";
 
@@ -123,6 +129,42 @@ describe("api-key provider — negative paths", () => {
     expect(principal).not.toBeNull();
     expect(principal?.id).toBe(userId);
     expect(principal?.tenant_id).toBe(tenantId);
+  });
+
+  test("a foreign bearer token (no subkit prefix) returns null WITHOUT a malformed_token WARN", async () => {
+    // A chat-platform JWT / OIDC token / probe on any route currently
+    // hit the api-key provider and WARN-logged malformed_token on every
+    // request — the noise that fired on every /v1/chat/* call. A token
+    // that doesn't carry the wf_live_ prefix must fall through silently.
+    const warnSpy = spyOn(logger, "warn");
+    try {
+      const provider = createApiKeyProvider({ db });
+      const foreign = "eyJhbGciOiJSUzI1NiIsImtpZCI6ImZvbyJ9.eyJzdWIiOiJhYmMifQ.sig";
+      expect(await provider.resolve(bearerReq(foreign))).toBeNull();
+      const deniedWarn = warnSpy.mock.calls.find(
+        (c) => (c[0] as { action?: string; reason?: string })?.reason === "malformed_token",
+      );
+      expect(deniedWarn).toBeUndefined();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("a prefixed-but-corrupt subkit key returns null AND still WARN-logs malformed_token", async () => {
+    // A token that carries the wf_live_ prefix but is too short to be a
+    // real key is a genuinely broken subkit key — keep surfacing it.
+    const warnSpy = spyOn(logger, "warn");
+    try {
+      const provider = createApiKeyProvider({ db });
+      const corrupt = "wf_live_short"; // prefix present, tail too short to parse
+      expect(await provider.resolve(bearerReq(corrupt))).toBeNull();
+      const deniedWarn = warnSpy.mock.calls.find(
+        (c) => (c[0] as { action?: string; reason?: string })?.reason === "malformed_token",
+      );
+      expect(deniedWarn).toBeDefined();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   test("query-string token is also accepted", async () => {
