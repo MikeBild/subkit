@@ -18,6 +18,7 @@ import {
   EXECUTION_PERSONA,
   GENERAL_RULES,
   RBAC_EDITING_PERSONA,
+  SK_INSTALL_GROUNDING,
   SKILL_LOADING_INSTRUCTIONS,
   verbosityFor,
 } from "./prompts.ts";
@@ -187,6 +188,14 @@ export async function generateMainAgentSystemPrompt(
     SKILL_LOADING_INSTRUCTIONS,
     `VERBOSITY:\n- ${verbosityFor(input.surface)}`,
   ];
+  // sk install/run/update grounding only on user-facing answer surfaces
+  // (chat, mcp, web). Kept OUT of GENERAL_RULES so the authoring/CLI base
+  // prompt stays at its pinned size (the assembler drop-ladder tests run
+  // with no surface, so their base is unaffected); real MCP/chat/web turns
+  // still get the rule, so the install answer is grounded there too.
+  if (input.surface === "chat" || input.surface === "mcp" || input.surface === "web") {
+    sections.push(SK_INSTALL_GROUNDING);
+  }
   // The chat surface never authors — an authoring-focus block would
   // instruct the model to progress a draft it has no tools for.
   const focusBlock = input.surface === "chat" ? "" : authoringFocusPrompt(input.authoring_hint);

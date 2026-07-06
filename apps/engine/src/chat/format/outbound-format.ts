@@ -64,6 +64,13 @@ function convert(input: string, dialect: Dialect): string {
     // inline `code`
     .replace(/`[^`\n]+`/g, (m) => protect(m));
 
+  // 1.5. GFM pipe tables -> bold-head + bullet list. Neither Slack nor Google
+  // Chat renders markdown tables, so raw `| a | b |` rows leak as literal
+  // pipes. Runs AFTER code protection so a `|` inside a fenced/inline span
+  // (now a sentinel) is never misread as a table. Emits CommonMark bold +
+  // `- ` bullets, which the line/inline passes below normalize to the dialect.
+  text = convertTables(text);
+
   // 2. Line-level transforms (headers, bullet markers).
   text = text
     .split("\n")
@@ -80,6 +87,79 @@ function convert(input: string, dialect: Dialect): string {
   );
 
   return text;
+}
+
+// --- GFM pipe-table linearization ------------------------------------------
+
+// Split a table row into trimmed cells, dropping the empty cells produced by
+// the leading/trailing pipes (`| a | b |` -> ["a", "b"]).
+function splitTableCells(row: string): string[] {
+  let s = row.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  return s.split("|").map((c) => c.trim());
+}
+
+// The `|---|:--:|` alignment row that confirms a block is a real table (vs a
+// stray sentence containing a pipe). Every cell must be dashes with optional
+// alignment colons.
+function isTableSeparator(row: string): boolean {
+  if (!row.includes("|")) return false;
+  const cells = splitTableCells(row);
+  return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c));
+}
+
+function isTableRow(line: string): boolean {
+  return line.includes("|") && line.trim().length > 0;
+}
+
+// Strip a single surrounding bold marker so a cell the LLM already bolded
+// (`**Zweck**`) is not double-wrapped into `****Zweck****`.
+function unbold(cell: string): string {
+  return cell.replace(/^\*\*(.+)\*\*$/, "$1").replace(/^__(.+)__$/, "$1");
+}
+
+// Render one table (header cells + body rows) as bold-head + bullets.
+function renderTableBlock(header: string[], rows: string[][]): string {
+  return rows
+    .map((cells) => {
+      const head = `**${unbold(cells[0] ?? "")}**`;
+      // 2-column key/value tables read best inline: "*key*: value".
+      if (header.length === 2) return `${head}: ${cells[1] ?? ""}`;
+      const bullets = cells
+        .slice(1)
+        .map((val, i) => `- ${header[i + 1] ?? ""}: ${val}`)
+        .join("\n");
+      return bullets ? `${head}\n${bullets}` : head;
+    })
+    .join("\n\n");
+}
+
+// Detect GFM tables (header row + `|---|` separator + body rows) and replace
+// each with its linearized form. Non-table lines pass through untouched.
+function convertTables(text: string): string {
+  if (!text.includes("|")) return text;
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    const next = lines[i + 1];
+    if (isTableRow(line) && next !== undefined && isTableSeparator(next)) {
+      const header = splitTableCells(line);
+      i += 2; // consume header + separator
+      const rows: string[][] = [];
+      while (i < lines.length && isTableRow(lines[i] ?? "") && !isTableSeparator(lines[i] ?? "")) {
+        rows.push(splitTableCells(lines[i] ?? ""));
+        i++;
+      }
+      out.push(renderTableBlock(header, rows));
+      continue;
+    }
+    out.push(line);
+    i++;
+  }
+  return out.join("\n");
 }
 
 function transformLine(line: string, _dialect: Dialect): string {

@@ -105,13 +105,15 @@ describe("persona-variant selection", () => {
   });
 });
 
-describe("install-grounding rule reaches every surface", () => {
-  // The rule lives in GENERAL_RULES (appended to every persona), NOT only in
-  // CHAT_PERSONA — so an MCP client driving the engine's conversation loop or a
-  // web/CLI authoring turn is grounded the same way the chat channel is. Pins
-  // the fix for "does the corrected install answer work via MCP too?".
-  test("MCP, web, and interactive authoring surfaces all carry the grounding rule", async () => {
-    for (const surface of ["mcp", "web", "sk_interactive"] as const) {
+describe("install-grounding rule is surface-gated (chat/mcp/web), not in the authoring base", () => {
+  // The rule is injected by generateMainAgentSystemPrompt only on user-facing
+  // ANSWER surfaces (chat, mcp, web), NOT baked into GENERAL_RULES. So an MCP
+  // client driving the engine's conversation loop is grounded the same way the
+  // chat channel is — but the sk_interactive / sk_headless AUTHORING base is
+  // left unchanged (keeps it under the small-model context cap the assembler
+  // drop-ladder tests pin). Pins "does the corrected install answer work via MCP?".
+  test("MCP and web surfaces carry the grounding rule", async () => {
+    for (const surface of ["mcp", "web"] as const) {
       const r = await generateMainAgentSystemPrompt({
         surface,
         authoring_hint: makeHint("workflow"),
@@ -120,6 +122,16 @@ describe("install-grounding rule reaches every surface", () => {
       expect(r.content).toContain("curl -fsSL <engine-url>/install | bash");
       // Names the invented npm package only inside its negation, never as a path.
       expect(r.content).toContain("@subkit/cli");
+    }
+  });
+
+  test("authoring/CLI surfaces do NOT carry the rule (base stays lean)", async () => {
+    for (const surface of ["sk_interactive", "sk_headless"] as const) {
+      const r = await generateMainAgentSystemPrompt({
+        surface,
+        authoring_hint: makeHint("workflow"),
+      });
+      expect(r.content).not.toContain("GROUNDING sk SELF-QUESTIONS");
     }
   });
 });
