@@ -96,3 +96,60 @@ describe("formatChatText — passthrough platforms", () => {
     expect(formatChatText("sk_cli", src)).toBe(src);
   });
 });
+
+describe("formatChatText — GFM pipe tables", () => {
+  const g = (s: string) => formatChatText("google_chat", s);
+
+  test("3-column table becomes bold-head + bullets (google_chat)", () => {
+    const table = [
+      "| Aspekt | Knowledge Sources | Skills |",
+      "|--------|-------------------|--------|",
+      "| **Zweck** | Tenant-spezifisches Referenzmaterial | Interne Verhaltensspezifikationen |",
+      "| Quelle | Vom Operator hochgeladen | Vordefiniert im Skill-Katalog |",
+    ].join("\n");
+    const out = g(table);
+    // Row key becomes a bold head; other columns become labeled bullets.
+    expect(out).toContain("*Zweck*");
+    expect(out).toContain("* Knowledge Sources: Tenant-spezifisches Referenzmaterial");
+    expect(out).toContain("* Skills: Interne Verhaltensspezifikationen");
+    expect(out).toContain("*Quelle*");
+    expect(out).toContain("* Knowledge Sources: Vom Operator hochgeladen");
+    // No raw table syntax survives to render as literal pipes.
+    expect(out).not.toContain("|");
+    expect(out).not.toContain("---");
+  });
+
+  test("2-column key/value table becomes inline '*key*: value'", () => {
+    const table = ["| Key | Value |", "|-----|-------|", "| Zweck | Referenzmaterial |"].join("\n");
+    expect(g(table)).toBe("*Zweck*: Referenzmaterial");
+  });
+
+  test("prose around a table is preserved; only the table block is linearized", () => {
+    const src = [
+      "Hier der Vergleich:",
+      "",
+      "| A | B |",
+      "|---|---|",
+      "| x | y |",
+      "",
+      "Fertig.",
+    ].join("\n");
+    const out = g(src);
+    expect(out).toContain("Hier der Vergleich:");
+    expect(out).toContain("*x*: y");
+    expect(out).toContain("Fertig.");
+    expect(out).not.toContain("|");
+  });
+
+  test("a pipe inside a fenced code block is NOT treated as a table", () => {
+    const src = ["```", "| not | a | table |", "|---|---|---|", "```"].join("\n");
+    // The fence is protected verbatim, so its pipes survive untouched.
+    expect(g(src)).toContain("| not | a | table |");
+  });
+
+  test("teams and sk_cli pass tables through unchanged (native table rendering)", () => {
+    const table = ["| A | B |", "|---|---|", "| x | y |"].join("\n");
+    expect(formatChatText("teams", table)).toBe(table);
+    expect(formatChatText("sk_cli", table)).toBe(table);
+  });
+});
