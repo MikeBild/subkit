@@ -63,11 +63,13 @@ function makeGitHubResponse(tag: string, assets: Array<{ name: string }> = []) {
   };
 }
 
-function makeFetchImpl(handler: (url: string) => Response | Promise<Response>): typeof fetch {
-  return (async (input: RequestInfo | URL, _init?: RequestInit) => {
+function makeFetchImpl(
+  handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
+): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
       typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    return handler(url);
+    return handler(url, init);
   }) as typeof fetch;
 }
 
@@ -372,20 +374,56 @@ describe("checkForUpdate", () => {
     expect(result).toBeNull();
   });
 
-  test("returns null on network failure", async () => {
+  test("passive check (force=false) returns null on network failure — never nags", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
     const fetchImpl = makeFetchImpl(() => {
       throw new Error("network error");
     });
-    const result = await checkForUpdate(cfg, true, fetchImpl);
+    const result = await checkForUpdate(cfg, false, fetchImpl);
     expect(result).toBeNull();
   });
 
-  test("returns null on non-200 response", async () => {
+  test("passive check (force=false) returns null on a 404 — stays quiet", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
     const fetchImpl = makeFetchImpl(() => new Response("not found", { status: 404 }));
-    const result = await checkForUpdate(cfg, true, fetchImpl);
+    const result = await checkForUpdate(cfg, false, fetchImpl);
     expect(result).toBeNull();
+  });
+
+  test("explicit --self-update (force=true) THROWS on a network failure — surfaces the reason", async () => {
+    const cfg = makeConfig({ currentVersion: "1.0.0" });
+    const fetchImpl = makeFetchImpl(() => {
+      throw new Error("network error");
+    });
+    await expect(checkForUpdate(cfg, true, fetchImpl)).rejects.toThrow();
+  });
+
+  test("explicit --self-update (force=true) THROWS on a 404 with a private-repo/token hint", async () => {
+    const cfg = makeConfig({ currentVersion: "1.0.0" }); // no authToken
+    const fetchImpl = makeFetchImpl(() => new Response("not found", { status: 404 }));
+    await expect(checkForUpdate(cfg, true, fetchImpl)).rejects.toThrow(/private|GITHUB_TOKEN|404/i);
+  });
+
+  test("sends an Authorization header when authToken is set", async () => {
+    const cfg = makeConfig({ currentVersion: "1.0.0", authToken: "test-token-123" });
+    let sawAuth: string | null = null;
+    const fetchImpl = makeFetchImpl((_url, init) => {
+      sawAuth = new Headers(init?.headers as HeadersInit).get("authorization");
+      return new Response(JSON.stringify(makeGitHubResponse("v2.0.0")));
+    });
+    await checkForUpdate(cfg, true, fetchImpl);
+    expect(sawAuth as string | null).toBe("Bearer test-token-123");
+  });
+
+  test("no Authorization header when authToken is unset", async () => {
+    const cfg = makeConfig({ currentVersion: "1.0.0" });
+    let sawAuth: string | null = "unset";
+    const fetchImpl = makeFetchImpl((_url, init) => {
+      sawAuth = new Headers(init?.headers as HeadersInit).get("authorization");
+      return new Response(JSON.stringify(makeGitHubResponse("v2.0.0")));
+    });
+    await checkForUpdate(cfg, true, fetchImpl);
+    expect(sawAuth as string | null).toBeNull();
   });
 
   test("writes cache after successful fetch", async () => {

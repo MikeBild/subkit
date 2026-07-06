@@ -18,6 +18,7 @@
 - [Operators](operators/README.md): Run and govern the sk engine day-to-day — register connectors, wire schedules and webhooks, route notifications, watch the run, and apply repairs when an upstream API drifts.
 - [Chat Channels](operators/chat.md): Use sk from the chat your team already lives in.
 - [Connectors & Credentials (operator guide)](operators/connectors-and-credentials.md): Connect a system once, reuse it everywhere — and the credential is never exposed.
+- [Deploy & upgrade the engine](operators/deploy.md): The production engine is a single bun build --compile binary at /usr/local/bin/engine, run by the subkit-engine systemd unit.
 - [Notifications](operators/notifications.md): Operators hear about what matters, not noise.
 - [Observability & Resource Limits](operators/observability.md): See every run, catch drift before it costs you.
 - [Quickstart — Operator](operators/quickstart.md): Outcome: a governed, audited automation engine your whole team can use — live in production in 15 minutes.
