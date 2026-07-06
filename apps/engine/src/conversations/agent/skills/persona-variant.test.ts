@@ -105,6 +105,25 @@ describe("persona-variant selection", () => {
   });
 });
 
+describe("install-grounding rule reaches every surface", () => {
+  // The rule lives in GENERAL_RULES (appended to every persona), NOT only in
+  // CHAT_PERSONA — so an MCP client driving the engine's conversation loop or a
+  // web/CLI authoring turn is grounded the same way the chat channel is. Pins
+  // the fix for "does the corrected install answer work via MCP too?".
+  test("MCP, web, and interactive authoring surfaces all carry the grounding rule", async () => {
+    for (const surface of ["mcp", "web", "sk_interactive"] as const) {
+      const r = await generateMainAgentSystemPrompt({
+        surface,
+        authoring_hint: makeHint("workflow"),
+      });
+      expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
+      expect(r.content).toContain("curl -fsSL <engine-url>/install | bash");
+      // Names the invented npm package only inside its negation, never as a path.
+      expect(r.content).toContain("@subkit/cli");
+    }
+  });
+});
+
 describe("chat surface persona", () => {
   test("chat surface wins over any authoring mode and never promises authoring", async () => {
     for (const mode of ["workflow", "connector", "execution", "diagnosis"] as const) {
