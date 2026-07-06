@@ -65,9 +65,9 @@ import { resolveChatPrincipal } from "./principal.ts";
 // without churn. The duplicate local import below is the value-side
 // of the re-export — TypeScript requires both shapes when the name
 // is used in this file's own type annotations.
-export type { DispatchOutcome } from "./dispatcher-types.ts";
+export type { DispatchOutcome, HandleChatEventOpts } from "./dispatcher-types.ts";
 
-import type { DispatchOutcome } from "./dispatcher-types.ts";
+import type { DispatchOutcome, HandleChatEventOpts } from "./dispatcher-types.ts";
 import { classifyChatElicitError, routeChatInteraction } from "./elicit-routing.ts";
 import { withConversationTurnLock } from "./turn-lock.ts";
 import {
@@ -228,6 +228,21 @@ export async function deliver(
   return await sendTracked(adapter, adapter.platform, delivery, { skipRateLimit: true });
 }
 
+/**
+ * Send a conversation reply through the full `sendTracked` pipeline
+ * (rate-limit + `formatChatText` + metrics). Used by the sync Google-Chat
+ * path's DETACHED branch (timeout → route acks → this delivers on turn
+ * completion). NOT `deliver`: that skips the rate-limit, wrong for a
+ * per-channel reply that must share the outbound token bucket.
+ */
+export async function deliverChatReply(
+  adapter: ChatAdapter,
+  platform: string,
+  delivery: Parameters<ChatAdapter["send"]>[0],
+): Promise<{ platform_message_id: string }> {
+  return await sendTracked(adapter, platform, delivery);
+}
+
 function parseSlashCommand(
   text: string,
 ):
@@ -312,12 +327,13 @@ export function extractAssistantText(outcome: RunLoopResult): string | null {
 export async function handleChatEvent(
   deps: DispatcherDeps,
   ev: ChatEvent,
+  opts: HandleChatEventOpts = {},
 ): Promise<DispatchOutcome> {
   return instrument({
     module: "chat",
     action: "inbound.dispatch",
     fields: { platform: ev.platform, workspace_id: ev.workspace_id },
-    fn: () => handleChatEventImpl(deps, ev),
+    fn: () => handleChatEventImpl(deps, ev, opts),
   });
 }
 
@@ -445,7 +461,11 @@ async function salvageTypedReplyToPendingElicitation(args: {
   }
 }
 
-async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise<DispatchOutcome> {
+async function handleChatEventImpl(
+  deps: DispatcherDeps,
+  ev: ChatEvent,
+  opts: HandleChatEventOpts = {},
+): Promise<DispatchOutcome> {
   const { db, adapter } = deps;
 
   // tenant-filter:exempt — platform/workspace_id lookup pre-tenant
@@ -834,6 +854,11 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
   }
 
   let approval_sent = false;
+  // Capture mode: the dispatcher computes the terminal reply but does not
+  // send it (the sync Google-Chat helper owns delivery). Stays null on
+  // every non-terminal branch (awaiting_input/ignored/help) so the caller
+  // distinguishes "card already sent inline" from "reply text to post".
+  let captured_reply_text: string | null = null;
   if (outcome.status === "awaiting_input" && outcome.pending_elicitation_id) {
     const elicitEvent = outcome.events.find(
       (e): e is Extract<typeof e, { type: "elicit_request" }> => e.type === "elicit_request",
@@ -938,14 +963,20 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
     // "(no reply)" that trains them to ignore the bot.
     const replyText =
       extracted ?? (outcome.status === "committed" ? "Committed." : "Still thinking on this…");
-    await sendTracked(adapter, ev.platform, {
-      tenant_id,
-      workspace_id: ev.workspace_id,
-      channel_id: ev.channel_id,
-      ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
-      kind: "message",
-      text: replyText,
-    });
+    if (opts.replyDelivery === "capture") {
+      // Capture-only: the sync helper delivers this exactly once (HTTP
+      // body, or a detached send on timeout). Sending here double-posts.
+      captured_reply_text = replyText;
+    } else {
+      await sendTracked(adapter, ev.platform, {
+        tenant_id,
+        workspace_id: ev.workspace_id,
+        channel_id: ev.channel_id,
+        ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+        kind: "message",
+        text: replyText,
+      });
+    }
   }
 
   // Double-check the conversation got committed when we expect it
@@ -963,5 +994,6 @@ async function handleChatEventImpl(deps: DispatcherDeps, ev: ChatEvent): Promise
     conversation_id,
     approval_sent,
     loop: outcome,
+    reply_text: captured_reply_text,
   };
 }

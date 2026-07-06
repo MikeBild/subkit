@@ -118,6 +118,28 @@ describe("synthesizeFallbackMessage", () => {
     expect(msg).toContain("Summary of the latest tool results:");
   });
 
+  test("find_workflow read-only turn renders a match count, not a field dump", () => {
+    // A chat turn that ends silently right after find_workflow must not
+    // surface the raw envelope keys ("fields: matches, total, truncated").
+    // find_* tools return `{ matches, total }`, so the summary should read
+    // as the same "N of M entries" line its list_* siblings get.
+    const events: TurnEvent[] = [
+      {
+        type: "tool_result",
+        call_id: "c1",
+        tool: "find_workflow",
+        output: {
+          matches: [{ id: "w1" }, { id: "w2" }],
+          total: 5,
+          truncated: true,
+        },
+      },
+    ];
+    const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
+    expect(msg).toContain("find_workflow: 2 of 5 entries");
+    expect(msg).not.toContain("fields: matches");
+  });
+
   test("loop-aware header when loopWarnings > 0", () => {
     const events: TurnEvent[] = [
       {

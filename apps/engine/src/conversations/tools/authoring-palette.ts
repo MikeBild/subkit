@@ -349,22 +349,11 @@ export interface ExecutionToolGateState {
   hasBoundSavedWorkflow: boolean;
   /** A saved-workflow slug the user named verbatim this turn, or null. */
   explicitlyNamedWorkflowSlug: string | null;
-  /**
-   * A saved-workflow slug the user's DISTINCTIVE words unambiguously matched
-   * against the tenant's own workflow slug/name/description this turn, or null.
-   * Structural evidence (overlap with durable catalog fields), not run/authoring
-   * phrasing — so it can't resurrect the negation-blindness the gate closes.
-   */
-  keywordMatchedWorkflowSlug?: string | null;
 }
 
 export interface ExecutionToolGateDecision {
   exposeExecution: boolean;
-  reason:
-    | "bound_saved_workflow"
-    | "named_workflow_slug"
-    | "keyword_matched_workflow"
-    | "authoring_no_target";
+  reason: "bound_saved_workflow" | "named_workflow_slug" | "chat_surface" | "authoring_no_target";
 }
 
 /**
@@ -377,9 +366,6 @@ export function resolveExecutionToolGate(state: ExecutionToolGateState): Executi
   }
   if (state.explicitlyNamedWorkflowSlug != null) {
     return { exposeExecution: true, reason: "named_workflow_slug" };
-  }
-  if (state.keywordMatchedWorkflowSlug != null) {
-    return { exposeExecution: true, reason: "keyword_matched_workflow" };
   }
   return { exposeExecution: false, reason: "authoring_no_target" };
 }
@@ -437,103 +423,6 @@ export function resolveNamedWorkflowSlug(
     if (re.test(message)) return slug;
   }
   return null;
-}
-
-// Distinctive-token floor + a small bilingual (en/de) stopword set. Only tokens
-// ≥ this length that are NOT stopwords contribute to a keyword match — this is
-// what keeps the check keyed on the workflow's IDENTITY (its distinctive words),
-// never on generic run/authoring phrasing, so it can't reopen negation-blindness.
-const MIN_KEYWORD_TOKEN_LENGTH = 4;
-const MIN_KEYWORD_MATCH_SCORE = 2;
-const KEYWORD_STOPWORDS = new Set([
-  // English filler + generic verbs/nouns that must never anchor a match
-  "the",
-  "and",
-  "for",
-  "with",
-  "from",
-  "that",
-  "this",
-  "your",
-  "please",
-  "give",
-  "show",
-  "list",
-  "make",
-  "want",
-  "need",
-  "would",
-  "could",
-  "should",
-  "workflow",
-  "workflows",
-  // German filler
-  "bitte",
-  "mein",
-  "meine",
-  "eine",
-  "einen",
-  "oder",
-  "aber",
-  "auch",
-  "noch",
-]);
-
-/** A workflow's identity fields for keyword matching. */
-export interface WorkflowKeywordCatalogEntry {
-  slug: string;
-  name: string;
-  description: string;
-}
-
-/**
- * Return a saved-workflow slug the user's DISTINCTIVE words unambiguously
- * identify, else null. Tokenizes the message (≥4 chars, non-stopword), then
- * counts whole-word overlaps against each workflow's `slug + name +
- * description`. A confident match requires (a) a UNIQUE top scorer and (b) a
- * top score ≥ MIN_KEYWORD_MATCH_SCORE — a single incidental word can never
- * open the gate, and any tie routes to null (the model then disambiguates via
- * `find_workflow` + `ask_user_choice`, never an auto-picked lookalike).
- *
- * Searchable text is deliberately slug/name/description ONLY — tighter than
- * `find_workflow` (which also indexes step/connector internals) — because step
- * tokens over-match generic prose and would reopen the lookalike-hijack risk
- * the execution gate exists to prevent.
- */
-export function resolveKeywordMatchedWorkflowSlug(
-  message: string | null | undefined,
-  catalog: ReadonlyArray<WorkflowKeywordCatalogEntry>,
-): string | null {
-  if (!message) return null;
-  const tokens = Array.from(
-    new Set(
-      message
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((t) => t.length >= MIN_KEYWORD_TOKEN_LENGTH && !KEYWORD_STOPWORDS.has(t)),
-    ),
-  );
-  if (tokens.length === 0) return null;
-
-  let best: { slug: string; score: number } | null = null;
-  let tied = false;
-  for (const entry of catalog) {
-    const haystack = `${entry.slug} ${entry.name} ${entry.description}`.toLowerCase();
-    let score = 0;
-    for (const tok of tokens) {
-      const re = new RegExp(`(^|[^a-z0-9])${escapeRegExp(tok)}([^a-z0-9]|$)`);
-      if (re.test(haystack)) score += 1;
-    }
-    if (score === 0) continue;
-    if (best === null || score > best.score) {
-      best = { slug: entry.slug, score };
-      tied = false;
-    } else if (score === best.score) {
-      tied = true;
-    }
-  }
-  if (best === null || best.score < MIN_KEYWORD_MATCH_SCORE || tied) return null;
-  return best.slug;
 }
 
 /**
