@@ -66,6 +66,7 @@ import {
 import { timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
 import { isTracingActive } from "../observability/tracing.ts";
 import { now } from "../utils/clock.ts";
+import { listWorkflowToolsForTenant } from "../workflows/catalog.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
 import { resolveAttachmentSlugsInText } from "./attachments.ts";
@@ -119,6 +120,7 @@ import {
   applyExecutionToolGate,
   collectSyntheticWorkflowSlugs,
   resolveExecutionToolGate,
+  resolveKeywordMatchedWorkflowSlug,
   resolveNamedWorkflowSlug,
 } from "./tools/authoring-palette.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
@@ -998,12 +1000,30 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     workflowIdForTurn !== null ||
     (draft.summary?.active_target.kind === "workflow" &&
       draft.summary?.active_target.lifecycle_state === "persisted");
+  const namedWorkflowSlug = resolveNamedWorkflowSlug(ingestedUserMessage, syntheticWorkflowSlugs);
+  // Tier 1 keyword match — CHAT SURFACE ONLY. Match the user's distinctive
+  // words against the tenant's workflow slug/name/description to catch a
+  // same-vocabulary request that never named the literal slug. Scoped to chat
+  // on purpose: chat cannot author, so exposing run_workflow here can only lead
+  // to the intended run, never to the build-new lookalike hijack the gate
+  // guards on authoring surfaces. Only runs when the cheap checks didn't already
+  // open the gate and a principal scopes the catalog. A cross-language /
+  // paraphrased request (no token overlap) falls through and is handled by
+  // find_workflow + a confirm card (Tier 2).
+  let keywordMatchedWorkflowSlug: string | null = null;
+  if (
+    p.surface === "chat" &&
+    !hasBoundSavedWorkflowTarget &&
+    namedWorkflowSlug == null &&
+    p.principal
+  ) {
+    const catalog = await listWorkflowToolsForTenant({ db: p.db, principal: p.principal });
+    keywordMatchedWorkflowSlug = resolveKeywordMatchedWorkflowSlug(ingestedUserMessage, catalog);
+  }
   const executionGate = resolveExecutionToolGate({
     hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
-    explicitlyNamedWorkflowSlug: resolveNamedWorkflowSlug(
-      ingestedUserMessage,
-      syntheticWorkflowSlugs,
-    ),
+    explicitlyNamedWorkflowSlug: namedWorkflowSlug,
+    keywordMatchedWorkflowSlug,
   });
   const removedExecutionTools = applyExecutionToolGate(
     tools,
@@ -1018,6 +1038,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       conversation_id: p.conversation_id,
       reason: executionGate.reason,
       removed_count: removedExecutionTools,
+    });
+  } else if (executionGate.reason === "keyword_matched_workflow") {
+    logger.debug({
+      module: "conversation",
+      action: "loop.intent.expose_run_workflow",
+      msg: "distinctive-word match against a saved workflow — execution tools exposed this turn",
+      conversation_id: p.conversation_id,
+      reason: executionGate.reason,
+      matched_slug: keywordMatchedWorkflowSlug,
     });
   }
 

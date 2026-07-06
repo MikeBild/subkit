@@ -107,7 +107,7 @@ describe("repairToolCall — missing-tool draft-run rewrite", () => {
     expect(repairFired).toBe(true);
   });
 
-  test("neither run_workflow nor dry_run_workflow present → null (unknown_tool, existing behavior)", async () => {
+  test("neither run_workflow nor dry_run_workflow nor find_workflow present → null (unknown_tool, existing behavior)", async () => {
     let repairFired = false;
     const result = await repairToolCall({
       toolCall: {
@@ -128,5 +128,66 @@ describe("repairToolCall — missing-tool draft-run rewrite", () => {
 
     expect(result).toBeNull();
     expect(repairFired).toBe(false);
+  });
+
+  test("wf_<slug> with only find_workflow present → find_workflow query from the slug (chat discover-then-run)", async () => {
+    let repairFired = false;
+    const result = await repairToolCall({
+      toolCall: {
+        type: "tool-call",
+        toolCallId: "call_5",
+        toolName: "wf_berlin_weather_tomorrow",
+        input: JSON.stringify({}),
+      },
+      tools: { find_workflow: STUB_TOOL } as never,
+      messages: [],
+      system: "",
+      error: noSuchToolError("wf_berlin_weather_tomorrow"),
+      model: UNUSED_MODEL,
+      onRepair: () => {
+        repairFired = true;
+      },
+    });
+
+    expect(result?.toolName).toBe("find_workflow");
+    expect(JSON.parse(result?.input as string).query).toBe("berlin weather tomorrow");
+    expect(repairFired).toBe(true);
+  });
+
+  test("bare run_workflow with a workflow slug + only find_workflow → find_workflow query from that slug", async () => {
+    const result = await repairToolCall({
+      toolCall: {
+        type: "tool-call",
+        toolCallId: "call_6",
+        toolName: "run_workflow",
+        input: JSON.stringify({ workflow: "berlin-weather-by-date" }),
+      },
+      tools: { find_workflow: STUB_TOOL } as never,
+      messages: [],
+      system: "",
+      error: noSuchToolError("run_workflow"),
+      model: UNUSED_MODEL,
+    });
+
+    expect(result?.toolName).toBe("find_workflow");
+    expect(JSON.parse(result?.input as string).query).toBe("berlin weather by date");
+  });
+
+  test("bare run_workflow with NO slug + only find_workflow → null (nothing to search on)", async () => {
+    const result = await repairToolCall({
+      toolCall: {
+        type: "tool-call",
+        toolCallId: "call_7",
+        toolName: "run_workflow",
+        input: JSON.stringify({}),
+      },
+      tools: { find_workflow: STUB_TOOL } as never,
+      messages: [],
+      system: "",
+      error: noSuchToolError("run_workflow"),
+      model: UNUSED_MODEL,
+    });
+
+    expect(result).toBeNull();
   });
 });

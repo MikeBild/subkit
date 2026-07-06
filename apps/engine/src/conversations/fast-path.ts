@@ -44,6 +44,7 @@ import {
   renderSchedulesList,
   renderWorkflowsList,
 } from "./fast-path-lists.ts";
+import { renderRunOutput } from "./fast-path-render.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "./persist.ts";
 import type { ConversationStatus, TurnEvent } from "./types.ts";
 
@@ -386,27 +387,39 @@ async function executeRunWorkflow(
       },
     });
     const ok = result.status === "succeeded";
-    const stepLines = result.steps.map(
-      (s) =>
-        `- ${s.step_key} (${s.kind}) ${s.status}${s.duration_ms != null ? ` · ${s.duration_ms}ms` : ""}`,
-    );
     const warningCount = result.warnings?.length ?? 0;
-    const replyParts: string[] = [
-      `Ran ${wf.slug} (v${wf.current_version_id ? "" : "?"}): ${result.status}`,
-      ...stepLines,
-    ];
-    if (warningCount > 0) {
-      replyParts.push(
-        `${warningCount} warning(s): ${Array.from(
-          new Set((result.warnings ?? []).map((w) => w.code)),
-        )
-          .sort()
-          .join(", ")}`,
+    const warningLine =
+      warningCount > 0
+        ? `${warningCount} warning(s): ${Array.from(
+            new Set((result.warnings ?? []).map((w) => w.code)),
+          )
+            .sort()
+            .join(", ")}`
+        : null;
+
+    let reply: string;
+    if (ok) {
+      // Lead with the actual result, not a step-by-step execution trace —
+      // a chat user asked for the outcome, not a CI-style log. The full
+      // step list still rides in the `data` payload for anyone who wants
+      // to inspect it, and a failed run (below) keeps the trace inline
+      // for diagnosis.
+      const rendered = renderRunOutput(result.output);
+      reply = rendered ?? `Ran ${wf.slug}: succeeded`;
+      if (warningLine) reply += `\n\n${warningLine}`;
+    } else {
+      // A non-succeeded run wants its step breakdown inline for diagnosis.
+      const stepLines = result.steps.map(
+        (s) =>
+          `- ${s.step_key} (${s.kind}) ${s.status}${s.duration_ms != null ? ` · ${s.duration_ms}ms` : ""}`,
       );
+      const parts = [`Ran ${wf.slug}: ${result.status}`, ...stepLines];
+      if (warningLine) parts.push(warningLine);
+      reply = parts.join("\n");
     }
     return {
       ok,
-      reply: replyParts.join("\n"),
+      reply,
       data: {
         status: result.status,
         execution_id: result.execution_id,
