@@ -7218,6 +7218,7 @@ Chat platform integrations
 | `platform.googlechat.client_email` | string | `""` | global | no | yes |  |
 | `platform.googlechat.private_key` | string | `""` | global | yes | yes |  |
 | `platform.googlechat.project_id` | string | `""` | global | no | yes |  |
+| `platform.googlechat.sync_turn_timeout_ms` | number | `25000` | global | no | no | Bounded wait for the inline synchronous Google Chat turn before falling back to detached async delivery (must stay under Google's ~30s sync window) |
 | `platform.slack.client_id` | string | `""` | global | no | yes |  |
 | `platform.slack.client_secret` | string | `""` | global | yes | yes |  |
 | `platform.slack.signing_secret` | string | `""` | global | yes | yes |  |

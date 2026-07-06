@@ -13,4 +13,8 @@ export * from "./hydrate.ts";
 export * from "./registry.ts";
 export type { SlackAdapterOptions } from "./slack/adapter.ts";
 export { SlackAdapter } from "./slack/adapter.ts";
+// `sync-turn.ts` carries `runChatTurnSync`, the synchronous Google-Chat
+// entry point used by `http/routes/chat.ts`. Re-exported here so the route
+// reaches it through the barrel without tripping the route_layering gate.
+export * from "./sync-turn.ts";
 export * from "./types.ts";

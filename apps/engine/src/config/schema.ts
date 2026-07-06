@@ -397,6 +397,22 @@ const PlatformSection = z
           .string()
           .default("")
           .meta(global({ requiresRestart: true })),
+        // Bounded wait for the inline synchronous Google-Chat turn before
+        // the route acks and falls back to detached async delivery. Google
+        // renders "[app] is not responding" unless the synchronous webhook
+        // response is a valid Chat Message, so a fast turn returns its
+        // reply as the HTTP body; a slow one detaches. Max 29_000 keeps us
+        // inside Google's ~30s sync window including network.
+        sync_turn_timeout_ms: z
+          .number()
+          .int()
+          .min(1_000)
+          .max(29_000)
+          .default(25_000)
+          .meta(global())
+          .describe(
+            "Bounded wait for the inline synchronous Google Chat turn before falling back to detached async delivery (must stay under Google's ~30s sync window)",
+          ),
       })
       .prefault({})
       .describe("Google Chat"),

@@ -283,6 +283,13 @@ function describeToolOutput(output: Record<string, unknown>): string {
     "items",
     "hits",
     "results",
+    // The find_* read tools (find_workflow / find_connector / find_skill
+    // / find_role / find_user) return `{ matches, total }`. Without this
+    // key a read-only turn that ends silently after find_workflow fell
+    // through to the last-resort field dump ("fields: matches, total,
+    // truncated") instead of the "N of M entries" summary its siblings
+    // get (chat weather repro, conversation cd56aa7a).
+    "matches",
   ];
   for (const key of candidateKeys) {
     const value = output[key];

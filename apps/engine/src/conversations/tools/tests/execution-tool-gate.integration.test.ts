@@ -183,4 +183,24 @@ describe("execution-tool gate against a real palette", () => {
     expect(removed).toBe(0);
     expect(palette.run_workflow).toBeDefined();
   });
+
+  test("chat surface exposes execution with no bound target and no named slug", async () => {
+    // The loop sets `{ exposeExecution: true, reason: "chat_surface" }` for
+    // `p.surface === "chat"` INSTEAD of computing the default-deny gate. Chat is
+    // a fixed read-only palette that cannot author, so the build-new lookalike
+    // hijack the gate guards against is impossible there — default-denying
+    // instead dead-ends the intended run (e.g. after `ask_user_choice`
+    // disambiguation with no commit_intent). Model the chat decision against the
+    // REAL palette: both run_workflow and the wf_<slug> peer must survive even
+    // though nothing is bound and no slug was named this turn.
+    const palette = await buildRealPalette();
+    const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
+    const message = "gib mir das wetter von übermorgen"; // paraphrase, no slug named
+    expect(resolveNamedWorkflowSlug(message, slugs)).toBeNull();
+    const decision = { exposeExecution: true as const, reason: "chat_surface" as const };
+    const removed = applyExecutionToolGate(palette, decision, slugs);
+    expect(removed).toBe(0);
+    expect(palette.run_workflow).toBeDefined();
+    expect(palette[`wf_${LOOKALIKE_SLUG}`]).toBeDefined();
+  });
 });

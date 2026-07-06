@@ -66,7 +66,6 @@ import {
 import { timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
 import { isTracingActive } from "../observability/tracing.ts";
 import { now } from "../utils/clock.ts";
-import { listWorkflowToolsForTenant } from "../workflows/catalog.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
 import { resolveAttachmentSlugsInText } from "./attachments.ts";
@@ -119,8 +118,8 @@ import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
 import {
   applyExecutionToolGate,
   collectSyntheticWorkflowSlugs,
+  type ExecutionToolGateDecision,
   resolveExecutionToolGate,
-  resolveKeywordMatchedWorkflowSlug,
   resolveNamedWorkflowSlug,
 } from "./tools/authoring-palette.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
@@ -995,36 +994,29 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // gate rationale. The binding check runs AFTER the build-new detach above, so
   // a "create a new workflow" turn that detached its old target is correctly
   // treated as having no run target.
+  //
+  // The chat surface is exempt: it is a fixed read-only palette that CANNOT
+  // author (no save_*/author_* tools), so the build-new lookalike hijack the
+  // gate guards against is structurally impossible there. Default-denying
+  // execution on chat instead dead-ends the intended run — e.g. after the user
+  // disambiguates a workflow via `ask_user_choice` (no commit_intent), the
+  // follow-up turn could not run it. On chat, always expose execution and let
+  // per-user RBAC (`gateWorkflowRunRbac`) + the confirmation card
+  // (`confirmIfLiveWritesOrNonDevEnv`) be the enforcement — as they already are
+  // for every actual run.
   const syntheticWorkflowSlugs = collectSyntheticWorkflowSlugs(Object.keys(tools));
   const hasBoundSavedWorkflowTarget =
     workflowIdForTurn !== null ||
     (draft.summary?.active_target.kind === "workflow" &&
       draft.summary?.active_target.lifecycle_state === "persisted");
   const namedWorkflowSlug = resolveNamedWorkflowSlug(ingestedUserMessage, syntheticWorkflowSlugs);
-  // Tier 1 keyword match — CHAT SURFACE ONLY. Match the user's distinctive
-  // words against the tenant's workflow slug/name/description to catch a
-  // same-vocabulary request that never named the literal slug. Scoped to chat
-  // on purpose: chat cannot author, so exposing run_workflow here can only lead
-  // to the intended run, never to the build-new lookalike hijack the gate
-  // guards on authoring surfaces. Only runs when the cheap checks didn't already
-  // open the gate and a principal scopes the catalog. A cross-language /
-  // paraphrased request (no token overlap) falls through and is handled by
-  // find_workflow + a confirm card (Tier 2).
-  let keywordMatchedWorkflowSlug: string | null = null;
-  if (
-    p.surface === "chat" &&
-    !hasBoundSavedWorkflowTarget &&
-    namedWorkflowSlug == null &&
-    p.principal
-  ) {
-    const catalog = await listWorkflowToolsForTenant({ db: p.db, principal: p.principal });
-    keywordMatchedWorkflowSlug = resolveKeywordMatchedWorkflowSlug(ingestedUserMessage, catalog);
-  }
-  const executionGate = resolveExecutionToolGate({
-    hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
-    explicitlyNamedWorkflowSlug: namedWorkflowSlug,
-    keywordMatchedWorkflowSlug,
-  });
+  const executionGate: ExecutionToolGateDecision =
+    p.surface === "chat"
+      ? { exposeExecution: true, reason: "chat_surface" }
+      : resolveExecutionToolGate({
+          hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
+          explicitlyNamedWorkflowSlug: namedWorkflowSlug,
+        });
   const removedExecutionTools = applyExecutionToolGate(
     tools,
     executionGate,
@@ -1038,15 +1030,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       conversation_id: p.conversation_id,
       reason: executionGate.reason,
       removed_count: removedExecutionTools,
-    });
-  } else if (executionGate.reason === "keyword_matched_workflow") {
-    logger.debug({
-      module: "conversation",
-      action: "loop.intent.expose_run_workflow",
-      msg: "distinctive-word match against a saved workflow — execution tools exposed this turn",
-      conversation_id: p.conversation_id,
-      reason: executionGate.reason,
-      matched_slug: keywordMatchedWorkflowSlug,
     });
   }
 
