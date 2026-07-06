@@ -44,6 +44,12 @@ export interface UpdaterConfig {
   /** Override for tests / rotation transitions. Defaults to the
    *  baked-in `RELEASE_PUBLIC_KEY` constant. */
   publicKey?: string;
+  /** Optional GitHub token for the releases API. REQUIRED when the repo
+   *  is PRIVATE — GitHub returns 404 (not 401) to unauthenticated reads
+   *  of a private repo's releases, which otherwise silently reads as
+   *  "already at latest". Sourced from GITHUB_TOKEN / SUBKIT_UPDATE_TOKEN
+   *  in `defaultUpdaterConfig`. */
+  authToken?: string;
 }
 
 export interface UpdateInfo {
@@ -125,28 +131,66 @@ interface GitHubRelease {
   }>;
 }
 
+/** Non-ok GitHub responses throw this so the explicit `--self-update`
+ *  path can report WHY (a 404 on a private repo reads identically to
+ *  "no update" otherwise). The passive startup check swallows it. */
+export class UpdateCheckError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = "UpdateCheckError";
+  }
+}
+
+function releaseApiHeaders(authToken?: string): Record<string, string> {
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  return headers;
+}
+
+function describeReleaseHttpError(status: number, repo: string, authToken?: string): string {
+  if (status === 404) {
+    return authToken
+      ? `github releases API returned 404 for ${repo} — no published release found (or the token lacks access)`
+      : `github releases API returned 404 for ${repo} — the repo is private (GitHub returns 404 to unauthenticated reads); set GITHUB_TOKEN / SUBKIT_UPDATE_TOKEN to enable self-update`;
+  }
+  if (status === 401 || status === 403) {
+    return `github releases API returned ${status} for ${repo} — the update token is missing, invalid, or rate-limited`;
+  }
+  return `github releases API returned HTTP ${status} for ${repo}`;
+}
+
 async function fetchLatestRelease(
   repo: string,
   channel: "stable" | "beta",
   fetchImpl: typeof fetch = fetch,
+  authToken?: string,
 ): Promise<GitHubRelease | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
+    const headers = releaseApiHeaders(authToken);
     if (channel === "stable") {
       const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases/latest`, {
         signal: controller.signal,
-        headers: { Accept: "application/vnd.github+json" },
+        headers,
       });
-      if (!res.ok) return null;
+      if (!res.ok)
+        throw new UpdateCheckError(
+          describeReleaseHttpError(res.status, repo, authToken),
+          res.status,
+        );
       return (await res.json()) as GitHubRelease;
     }
     // Beta: find the first release (including pre-releases)
     const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases?per_page=1`, {
       signal: controller.signal,
-      headers: { Accept: "application/vnd.github+json" },
+      headers,
     });
-    if (!res.ok) return null;
+    if (!res.ok)
+      throw new UpdateCheckError(describeReleaseHttpError(res.status, repo, authToken), res.status);
     const releases = (await res.json()) as GitHubRelease[];
     return releases[0] ?? null;
   } finally {
@@ -173,8 +217,17 @@ export async function checkForUpdate(
 
   let release: Awaited<ReturnType<typeof fetchLatestRelease>>;
   try {
-    release = await fetchLatestRelease(config.githubRepo, config.channel, fetchImpl);
-  } catch {
+    release = await fetchLatestRelease(
+      config.githubRepo,
+      config.channel,
+      fetchImpl,
+      config.authToken,
+    );
+  } catch (err) {
+    // Explicit `--self-update` (force) surfaces WHY it could not check —
+    // a private-repo 404 otherwise reads as "already at latest". The
+    // passive startup check stays quiet so a network blip never nags.
+    if (force) throw err;
     return null;
   }
   if (!release) return null;
@@ -595,6 +648,9 @@ export function defaultUpdaterConfig(
   const cacheDir = isWindows
     ? join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), binaryName)
     : join(homedir(), `.${binaryName}`);
+  // Private-repo releases need auth (GitHub 404s unauthenticated reads).
+  // Opt-in via env so the manual-scp deploy still works without a token.
+  const authToken = process.env.GITHUB_TOKEN || process.env.SUBKIT_UPDATE_TOKEN;
   return {
     binaryName,
     currentVersion,
@@ -602,6 +658,7 @@ export function defaultUpdaterConfig(
     githubRepo: GITHUB_REPO,
     checkIntervalMs: 86_400_000, // 24 hours
     channel,
+    ...(authToken ? { authToken } : {}),
   };
 }
 

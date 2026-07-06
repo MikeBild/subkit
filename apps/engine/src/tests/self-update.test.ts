@@ -178,13 +178,24 @@ describe("engine runSelfUpdate", () => {
   });
   // (the `runSelfUpdate` calls below intentionally re-use makeConfig().)
 
-  test("network error is swallowed by checkForUpdate; runSelfUpdate prints 'already at latest'", async () => {
+  test("explicit self-update surfaces a network failure instead of a misleading 'already at latest'", async () => {
     captureWrites();
     const fetchImpl = makeFetchImpl(() => {
       throw new Error("network error");
     });
-    await runSelfUpdate(fetchImpl, makeConfig());
-    expect(stdoutOutput).toContain("already at latest version");
+    // force=true (explicit --self-update) now THROWS so the operator sees
+    // WHY it could not check, rather than a silent "already at latest".
+    await expect(runSelfUpdate(fetchImpl, makeConfig())).rejects.toThrow(/network error/);
+    expect(stdoutOutput).toContain("checking for updates");
+    expect(stdoutOutput).not.toContain("already at latest version");
+  });
+
+  test("explicit self-update on a private-repo 404 surfaces a token hint", async () => {
+    captureWrites();
+    const fetchImpl = makeFetchImpl(() => new Response("not found", { status: 404 }));
+    await expect(runSelfUpdate(fetchImpl, makeConfig())).rejects.toThrow(
+      /private|GITHUB_TOKEN|404/i,
+    );
   });
 });
 
