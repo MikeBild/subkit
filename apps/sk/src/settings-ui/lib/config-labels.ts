@@ -111,6 +111,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "platform.googlechat.client_email": "Google Chat service-account email",
   "platform.googlechat.private_key": "Google Chat service-account private key",
   "platform.googlechat.audience": "Google Chat inbound JWT audience (project number)",
+  "platform.googlechat.sync_turn_timeout_ms": "Google Chat synchronous-reply timeout (ms)",
 
   // ── Storage ────────────────────────────────────────────────────
   "storage.s3.endpoint": "S3 endpoint",
