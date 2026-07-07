@@ -12,6 +12,7 @@ export const listAllSkillsTool: ConversationTool = {
     "List every skill owned by the tenant. Different from `list_skills` which returns only skills applicable to the current conversation scope.",
   inputSchema: ListInput,
   category: "tenant_read",
+  permission: { action: "skill:read", resourceType: "skill" },
   async execute(ctx) {
     const rows = await ctx.engineClient.skills.list();
     return {
@@ -33,6 +34,7 @@ export const getSkillTool: ConversationTool = {
   description: "Fetch full skill body including examples, best_practices, pitfalls, doc_refs.",
   inputSchema: GetInput,
   category: "tenant_read",
+  permission: { action: "skill:read", resourceType: "skill", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = GetInput.parse(rawArgs);
     const s = await ctx.engineClient.skills.get(args.id);

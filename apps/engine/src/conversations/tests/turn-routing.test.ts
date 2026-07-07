@@ -89,4 +89,44 @@ describe("planTurnRouting", () => {
     expect(plan.required_grounding).toContain("get_engine_status");
     expect(plan.notes.join(" ")).toContain("actual tenant state");
   });
+
+  test("routes self-inventory (skills) to catalog-grounded enumeration", () => {
+    const plan = planTurnRouting({
+      draft: draft(),
+      user_message: "which skills do you have?",
+    });
+    expect(plan.intent).toBe("tenant_read");
+    expect(plan.required_grounding).toContain("list_skills");
+    expect(plan.required_grounding).toContain("list_knowledge_sources");
+    expect(plan.notes.join(" ")).toContain("Never invent");
+  });
+
+  test("routes self-inventory (knowledge sources) to catalog-grounded enumeration", () => {
+    const plan = planTurnRouting({
+      draft: draft(),
+      user_message: "what knowledge sources are built-in?",
+    });
+    expect(plan.intent).toBe("tenant_read");
+    expect(plan.required_grounding).toContain("list_knowledge_sources");
+  });
+
+  test("does NOT hijack a concept question into inventory enumeration", () => {
+    const plan = planTurnRouting({
+      draft: draft(),
+      user_message: "what is a skill?",
+    });
+    // "what is a skill" is a concept question → product_help + SK_CONCEPT_GROUNDING,
+    // NOT a tenant_read enumeration of the skill catalog.
+    expect(plan.intent).not.toBe("tenant_read");
+  });
+
+  test("routes a failing-run question to execution-grounded diagnosis", () => {
+    const plan = planTurnRouting({
+      draft: draft(),
+      user_message: "why did my last run fail?",
+    });
+    expect(plan.intent).toBe("tenant_read");
+    expect(plan.required_grounding).toContain("inspect_execution");
+    expect(plan.notes.join(" ")).toContain("Do not speculate");
+  });
 });

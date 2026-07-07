@@ -19,6 +19,11 @@ export const listConnectorsTool: ConversationTool = {
   ],
   inputSchema: ListInput,
   category: "tenant_read",
+  // Symmetric with the typed fast-path (`connector:read`) and the HTTP
+  // route: the engineClient query is tenant-scoped only, so without this
+  // a principal lacking connector:read would see the connector inventory
+  // on the LLM-mediated chat/MCP path.
+  permission: { action: "connector:read", resourceType: "connector" },
   async execute(ctx) {
     // Connectors are a bounded catalog: the call returns the COMPLETE
     // tenant set, and the envelope is self-describing so the model can
@@ -60,6 +65,7 @@ export const getConnectorTool: ConversationTool = {
   example_input: { id: "00000000-0000-0000-0000-000000000000" },
   inputSchema: GetInput,
   category: "tenant_read",
+  permission: { action: "connector:read", resourceType: "connector", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = GetInput.parse(rawArgs);
     const c = await ctx.engineClient.connectors.get(args.id);
