@@ -244,6 +244,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // via `p.onEvent` when supplied.
   const events: TurnEvent[] = sink.asArrayProxy();
   const budget = p.step_budget ?? DEFAULT_BUDGET;
+  // Resolve the engine's own public URL ONCE for this turn. REST passes it in
+  // `runtime_context`; the origin-less surfaces (chat queue job, MCP background
+  // turn) fall back to config.server.public_base_url. Used by BOTH the RUNTIME
+  // CONTEXT prompt block AND the output guard's url.unknown_origin check — they
+  // must agree, or the model is told the URL but the guard then scrubs it.
+  const resolvedEngineUrl = p.runtime_context?.engine_url ?? engineUrlFromConfig();
   // Caller registers + unregisters on their synchronous-accept frame
   // (A4). The loop only consumes the signal here;
   // re-registering inside this body would re-open the cancel race.
@@ -810,9 +816,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         // surfaces (chat queue job, MCP background turn) rely on this fallback,
         // so the model knows its own host on EVERY surface instead of guessing.
         ...(() => {
-          const engineUrl = p.runtime_context?.engine_url ?? engineUrlFromConfig();
           const rc = {
-            ...(engineUrl ? { engine_url: engineUrl } : {}),
+            ...(resolvedEngineUrl ? { engine_url: resolvedEngineUrl } : {}),
             ...(p.runtime_context?.tenant_slug
               ? { tenant_slug: p.runtime_context.tenant_slug }
               : {}),
@@ -1630,9 +1635,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             // `packages/shared/src/redaction.ts`.
             const guarded = hasText
               ? runOutputGuard(step.text, {
-                  ...(p.runtime_context?.engine_url
-                    ? { engine_url: p.runtime_context.engine_url }
-                    : {}),
+                  ...(resolvedEngineUrl ? { engine_url: resolvedEngineUrl } : {}),
                   ...(p.runtime_context?.tenant_slug
                     ? { tenant_slug: p.runtime_context.tenant_slug }
                     : {}),
@@ -1794,9 +1797,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             const latestParagraph = proseTail.slice(0, match.index);
             if (latestParagraph) {
               runOutputGuardStream(latestParagraph, {
-                ...(p.runtime_context?.engine_url
-                  ? { engine_url: p.runtime_context.engine_url }
-                  : {}),
+                ...(resolvedEngineUrl ? { engine_url: resolvedEngineUrl } : {}),
                 ...(p.runtime_context?.tenant_slug
                   ? { tenant_slug: p.runtime_context.tenant_slug }
                   : {}),
@@ -2098,13 +2099,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           // this only logs, so we measure that false-positive rate before
           // the gate is made blocking.
           snapshot: prompt.system,
-          ...(p.runtime_context
+          ...(resolvedEngineUrl || p.runtime_context?.tenant_slug
             ? {
                 runtimeContext: {
-                  ...(p.runtime_context.engine_url
-                    ? { engine_url: p.runtime_context.engine_url }
-                    : {}),
-                  ...(p.runtime_context.tenant_slug
+                  ...(resolvedEngineUrl ? { engine_url: resolvedEngineUrl } : {}),
+                  ...(p.runtime_context?.tenant_slug
                     ? { tenant_slug: p.runtime_context.tenant_slug }
                     : {}),
                 },
