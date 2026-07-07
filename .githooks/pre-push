@@ -45,12 +45,23 @@ echo "[pre-push] 4/7 audit:invariants (route layering, file size, tenant filter,
 # CI sets); audit-invariants.ts auto-skips it without env.
 bun run audit:invariants
 
-echo "[pre-push] 5/7 openapi-drift (regenerate client; fail on diff)"
-# Without this, adding/changing an engine route lands in main with
-# the generated client at packages/cli-core/src/engine-api/ stale —
-# CI's `check:openapi-drift` then fails on the same diff and the
-# round-trip repeats. Better to catch the drift before the push.
+echo "[pre-push] 5/7 generated-artifact drift (regenerate; fail on diff)"
+# EVERY generated page/client that CI's "Docs drift" step guards, mirrored
+# here so a stale artifact can't reach main and break CI. Without the full
+# set, adding a CLI command / slash command / route / setting lands with its
+# generated doc stale and the round-trip repeats — the exact v1.5.0 miss,
+# where a new `sk chat` command left cli-reference.md / slash-commands.md /
+# llms-full.txt stale (pre-push only checked openapi-drift then). Keep this
+# list in sync with the `check:*-drift` chain in package.json `verify`.
 bun run check:openapi-drift
+bun run check:settings-doc-drift
+bun run check:slash-doc-drift
+bun run check:sk-settings-doc-drift
+bun run check:cli-reference-drift
+bun run check:config-example-drift
+bun run check:embedded-drift
+bun run check:llms-txt-drift
+bun run check:docs-refs
 
 echo "[pre-push] 6/7 commit-message gate (each new commit on this push)"
 # Walks the commits being pushed via the pre-push stdin range and
