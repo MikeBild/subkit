@@ -188,6 +188,41 @@ export const connectorOauthStartGrants = pgTable(
   (t) => [uniqueIndex("connector_oauth_start_grants_token_sha256_key").on(t.token_sha256)],
 );
 
+// ----- connector_credential_setup_grants ------------------------------------
+// Single-use, 10-min-TTL grant tokens that allow an unauthenticated browser
+// to view + submit a credential-setup form for a non-OAuth (bearer / basic /
+// header / query) connector via
+//   GET  /v1/connectors/{id}/credentials/setup?grant=sksg_<token>  (validate,
+//        does NOT consume — the form must still be submittable)
+//   POST /v1/connectors/{id}/credentials/setup                     (consumes
+//        atomically, then writes the credential).
+// The token is stored as a sha256 hex digest only (portal-token discipline).
+// Deliberately a SEPARATE table from connector_oauth_start_grants: that
+// table's contract is consume-on-first-touch (a single GET starts the OAuth
+// dance), whereas a credential-setup flow is two hits (render, then submit) —
+// reusing the OAuth table would let a leaked OAuth grant redeem here too.
+
+export const connectorCredentialSetupGrants = pgTable(
+  "connector_credential_setup_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    connector_id: uuid("connector_id")
+      .notNull()
+      .references(() => connectors.id, { onDelete: "cascade" }),
+    // SHA-256 hex of the plaintext grant token. Only the hash is stored; the
+    // plaintext is returned once at mint time and never persisted.
+    token_sha256: text("token_sha256").notNull(),
+    // The principal that minted the grant (via request_connector_reauth).
+    // Recorded so consumeSetupGrant can attribute the resulting
+    // clearConnectorReauth() call to the operator who requested the fix.
+    created_by_actor_id: uuid("created_by_actor_id"),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("connector_credential_setup_grants_token_sha256_key").on(t.token_sha256)],
+);
+
 // ----- connector_environments ----------------------------------------------
 
 export const connectorEnvironments = pgTable(

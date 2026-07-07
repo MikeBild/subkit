@@ -176,9 +176,10 @@ describe("request_connector_reauth — cognito USER_PASSWORD_AUTH", () => {
 describe("request_connector_reauth — MCP surface routes to a secure setup URL (D7)", () => {
   // Over MCP the in-chat ask_user_form credential re-issue is unreachable
   // (a secret must never be collected as chat text). The non-OAuth path must
-  // instead return the secure `/v1/connectors/:id/credentials` setup URL and
-  // NOT bind a re-issue draft nor instruct ask_user_form.
-  test("non-OAuth connector over MCP → method:portal_setup with a bare setup_url", async () => {
+  // instead mint a real single-use credential-setup grant URL
+  // (/v1/connectors/:id/credentials/setup?grant=sksg_…) and NOT bind a
+  // re-issue draft nor instruct ask_user_form.
+  test("non-OAuth connector over MCP → method:portal_setup with a tokenized setup_url", async () => {
     await setConfigKey("server.public_base_url", "https://engine.test");
     const { connector_id } = await seedConnector({ slug: "rr-mcp-bearer", auth_type: "bearer" });
 
@@ -195,9 +196,13 @@ describe("request_connector_reauth — MCP surface routes to a secure setup URL 
     const data = (result as { data: Record<string, unknown> }).data;
     expect(data.method).toBe("portal_setup");
     expect(data.mode).toBe("credential_re_issue");
-    expect(String(data.setup_url)).toBe(
-      `https://engine.test/v1/connectors/${connector_id}/credentials`,
+    expect(String(data.setup_url)).toMatch(
+      new RegExp(
+        `^https://engine\\.test/v1/connectors/${connector_id}/credentials/setup\\?grant=sksg_`,
+      ),
     );
+    expect(data.single_use).toBe(true);
+    expect(typeof data.expires_at).toBe("string");
     // No in-chat form and no draft binding over MCP.
     expect("next_prompt" in data).toBe(false);
     expect(bound).toBe(false);
