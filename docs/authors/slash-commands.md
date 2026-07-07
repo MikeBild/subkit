@@ -76,6 +76,7 @@ so this column is the UX gate, not the security boundary.
 | `/audit` | — | `audit:read` | Tail your audit log |
 | `/discovery` | — | `discovery:read` | List discovery runs and artifacts |
 | `/executions` | `/runs` | `execution:read` | List recent workflow executions |
+| `/install-space` | — | `chat_workspace:write` | List/install pending chat spaces (Google Chat) |
 | `/logs` | — | `audit:read` | Tail recent engine errors via /v1/diagnostics/errors — `/logs [limit] [trace_id]` |
 | `/notifications` | — | `notification:read` | Toggle OS push, configure thresholds + channels |
 | `/patch-candidates` | — | `workflow:read` | List pending self-healing patch candidates |
