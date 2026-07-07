@@ -21,6 +21,7 @@ import {
   SK_CONCEPT_GROUNDING,
   SK_COUNT_HYGIENE,
   SK_INSTALL_GROUNDING,
+  SK_STATUS_GROUNDING,
   SKILL_LOADING_INSTRUCTIONS,
   verbosityFor,
 } from "./prompts.ts";
@@ -199,6 +200,7 @@ export async function generateMainAgentSystemPrompt(
     sections.push(SK_INSTALL_GROUNDING);
     sections.push(SK_CONCEPT_GROUNDING);
     sections.push(SK_COUNT_HYGIENE);
+    sections.push(SK_STATUS_GROUNDING);
   }
   // The chat surface never authors — an authoring-focus block would
   // instruct the model to progress a draft it has no tools for.

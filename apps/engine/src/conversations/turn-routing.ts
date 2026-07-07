@@ -54,6 +54,31 @@ const CAPABILITY_PATTERNS = [
   /what do i do next/,
   /what is possible/,
   /what's possible/,
+  /what can you do/,
+  /your (capabilities|capability)/,
+] as const;
+// Self-inventory enumeration: "which skills do you have", "what knowledge
+// sources are built-in". Deliberately narrow phrasing so a CONCEPT question
+// ("what is a skill") is NOT hijacked into an enumeration (that stays
+// product_help + SK_CONCEPT_GROUNDING).
+const SELF_INVENTORY_PATTERNS = [
+  /which skills/,
+  /what skills/,
+  /skills? (do you have|are (there|available|built[- ]?in|loaded))/,
+  /list .*skills/,
+  /which knowledge sources/,
+  /what knowledge sources/,
+  /knowledge sources? (do you have|are (there|available))/,
+  /list .*knowledge sources/,
+  /built[- ]?in (skills|knowledge)/,
+] as const;
+// Diagnosis: a specific failing run the user wants explained.
+const DIAGNOSIS_PATTERNS = [
+  /\bdiagnose\b/,
+  /why did .*(fail|break|error)/,
+  /what went wrong/,
+  /\bwhat failed\b/,
+  /\bdebug (the |this )?(run|execution|workflow)\b/,
 ] as const;
 const CONNECTOR_PATTERNS = [/\bconnector\b/, /\bapi spec\b/, /openapi/, /\bimport docs\b/] as const;
 const WORKFLOW_PATTERNS = [/\bbuild(?: a)? workflow\b/, /\bworkflow\b/] as const;
@@ -233,9 +258,56 @@ export function planTurnRouting(args: {
       action:
         "Ground the answer in real tenant state first, then suggest the next concrete job in sk: resume, create a connector, build a workflow, inspect existing resources, or ask about API/MCP/chat surfaces.",
       question: null,
-      required_grounding: ["get_engine_status", "list_workflows", "list_connectors"],
+      required_grounding: [
+        "get_engine_status",
+        "list_all_skills",
+        "list_knowledge_sources",
+        "list_workflows",
+        "list_connectors",
+      ],
       notes: [
         "Avoid generic onboarding menus when you can ground the answer in actual tenant state.",
+        "Never invent or pad a skill / knowledge-source name or count.",
+      ],
+      forbidden_fallbacks: fallbackList(),
+    };
+  }
+
+  // Self-inventory: "which skills do you have", "what knowledge sources exist".
+  // Ground the enumeration in the real catalog so the self-assistant never
+  // invents skill / knowledge-source names or counts. Honours RBAC: a
+  // permission_denied from the read tool is answered honestly, not guessed.
+  if (matchesAny(text, SELF_INVENTORY_PATTERNS)) {
+    return {
+      intent: "tenant_read",
+      confidence: "high",
+      action:
+        "Enumerate the tenant's actual skills and knowledge sources from the catalog before answering; report counts and names ONLY from the tool result. If a read tool returns permission_denied, say the current role cannot see that inventory and stop.",
+      question: null,
+      // list_skills is the chat-surface enumerator; list_all_skills is the
+      // broader mcp/web one. list the chat-callable tool first so every
+      // answer surface has a reachable grounding tool.
+      required_grounding: ["list_skills", "list_all_skills", "list_knowledge_sources"],
+      notes: [
+        "Never invent, guess, or pad a skill / knowledge-source name or count.",
+        "Do not claim which items are built-in vs tenant-added unless the tool result marks it; otherwise do not guess.",
+      ],
+      forbidden_fallbacks: fallbackList(),
+    };
+  }
+
+  // Diagnosis: ground a failing-run explanation in the real execution record.
+  if (matchesAny(text, DIAGNOSIS_PATTERNS)) {
+    return {
+      intent: "tenant_read",
+      confidence: "high",
+      action:
+        "Ground the diagnosis in the real execution record: inspect the failing run and its steps before explaining the cause or proposing a fix. Report only what the execution data shows.",
+      question: null,
+      required_grounding: ["inspect_execution", "get_execution", "list_executions"],
+      notes: [
+        "Do not speculate about a failure cause the execution record does not support.",
+        "If no execution id is given, list recent executions first, then inspect the failing one.",
       ],
       forbidden_fallbacks: fallbackList(),
     };

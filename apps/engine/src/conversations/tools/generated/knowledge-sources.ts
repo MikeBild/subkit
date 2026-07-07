@@ -18,6 +18,10 @@ export const listKnowledgeSourcesTool: ConversationTool = {
     "List the tenant's Knowledge Sources with their description and tags. Use this first to decide which source covers a topic, then call search_knowledge to pull the relevant chunks.",
   inputSchema: ListInput,
   category: "tenant_read",
+  // Enumeration is gated like the typed fast-path list intent
+  // (`knowledge:read`). `search_knowledge_v2` stays ungated so grounding
+  // over the global `sk-ref-*` reference still works for any principal.
+  permission: { action: "knowledge:read", resourceType: "knowledge" },
   async execute(ctx) {
     const rows = await ctx.engineClient.knowledgeSources.list();
     return {
@@ -43,6 +47,7 @@ export const getKnowledgeSourceTool: ConversationTool = {
   description: "Fetch a single knowledge source by id.",
   inputSchema: GetInput,
   category: "tenant_read",
+  permission: { action: "knowledge:read", resourceType: "knowledge", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = GetInput.parse(rawArgs);
     const k = await ctx.engineClient.knowledgeSources.get(args.id);

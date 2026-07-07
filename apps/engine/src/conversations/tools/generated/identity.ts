@@ -29,6 +29,7 @@ export const listUsersTool: ConversationTool = {
   description: "List tenant members (human users).",
   inputSchema: ListUsersInput,
   category: "tenant_read",
+  permission: { action: "identity:read", resourceType: "user" },
   async execute(ctx, rawArgs) {
     const args = ListUsersInput.parse(rawArgs);
     const users = await ctx.engineClient.identity.listUsers({
@@ -44,6 +45,7 @@ export const getUserTool: ConversationTool = {
   description: "Fetch a single user by id.",
   inputSchema: IdInput,
   category: "tenant_read",
+  permission: { action: "identity:read", resourceType: "user", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = IdInput.parse(rawArgs);
     const u = await ctx.engineClient.identity.getUser(args.id);
@@ -57,6 +59,7 @@ export const listApiKeysTool: ConversationTool = {
   description: "List API keys for the tenant (metadata only; never the raw secret).",
   inputSchema: EmptyInput,
   category: "tenant_read",
+  permission: { action: "api_key:read", resourceType: "api_key" },
   async execute(ctx) {
     const keys = await ctx.engineClient.identity.listApiKeys();
     return { ok: true, data: { api_keys: keys } };
@@ -68,6 +71,7 @@ export const getApiKeyTool: ConversationTool = {
   description: "Fetch API key metadata by id.",
   inputSchema: IdInput,
   category: "tenant_read",
+  permission: { action: "api_key:read", resourceType: "api_key", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = IdInput.parse(rawArgs);
     const k = await ctx.engineClient.identity.getApiKey(args.id);
@@ -81,6 +85,7 @@ export const listPortalTokensTool: ConversationTool = {
   description: "List active portal tokens for the tenant.",
   inputSchema: EmptyInput,
   category: "tenant_read",
+  permission: { action: "portal_token:read", resourceType: "portal_token" },
   async execute(ctx) {
     const tokens = await ctx.engineClient.identity.listPortalTokens();
     return { ok: true, data: { portal_tokens: tokens } };
@@ -92,6 +97,7 @@ export const listSystemAccountsTool: ConversationTool = {
   description: "List system (service) accounts for the tenant.",
   inputSchema: ListUsersInput,
   category: "tenant_read",
+  permission: { action: "identity:read", resourceType: "user" },
   async execute(ctx, rawArgs) {
     const args = ListUsersInput.parse(rawArgs);
     const rows = await ctx.engineClient.identity.listSystemAccounts({
