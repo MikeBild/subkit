@@ -343,6 +343,25 @@
     ],
     "doc_refs": ["https://developers.google.com/workspace/calendar/api/v3/reference"]
   },
+  "google-search-console-basics": {
+    "title": "Google Search Console API Basics",
+    "body": "Authenticate via OAuth 2.0 with the webmasters.readonly scope. All requests go to https://searchconsole.googleapis.com. The full Search Console property URL is passed as a URL-encoded path segment, e.g. https%3A%2F%2Fwww.mikebild.dev%2F.",
+    "examples": [
+      "GET /webmasters/v3/sites — list Search Console properties visible to the authenticated account",
+      "GET /webmasters/v3/sites/https%3A%2F%2Fwww.mikebild.dev%2F/sitemaps — list submitted sitemaps for the property",
+      "POST /webmasters/v3/sites/https%3A%2F%2Fwww.mikebild.dev%2F/searchAnalytics/query — query clicks, impressions, CTR, and position"
+    ],
+    "best_practices": [
+      "Use the exact Search Console property URL including trailing slash for URL-prefix properties",
+      "Use recent complete date ranges, typically ending yesterday, because same-day Search Console data can be incomplete",
+      "Keep rowLimit bounded and select dimensions deliberately, such as query, page, country, device, or date"
+    ],
+    "pitfalls": [
+      "A 403 often means the authenticated account lacks access to that Search Console property, not that OAuth failed",
+      "The Search Console API is separate from Programmable Search Engine and does not use a cx value"
+    ],
+    "doc_refs": ["https://developers.google.com/webmaster-tools/v1/api_reference_index"]
+  },
   "google-drive-basics": {
     "title": "Google Drive API Basics",
     "body": "Authenticate via OAuth 2.0. The drive.file scope limits access to app-created files; the drive scope grants full access. All requests go to https://www.googleapis.com/drive/v3. Rate limit is 12K queries per 60 seconds. Upload limit is 5TB per file and 750GB per day per user.",
