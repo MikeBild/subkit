@@ -25,7 +25,11 @@
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction, SYSTEM_TENANT_ID } from "../../audit/types.ts";
+import {
+  AuditAction,
+  ChatMessageDeniedMetadataSchema,
+  SYSTEM_TENANT_ID,
+} from "../../audit/types.ts";
 import { ChatEventJobSchema } from "../../chat/api.ts";
 import { markChatEventSeen } from "../../chat/dedup.ts";
 import { handleChatEvent } from "../../chat/dispatcher.ts";
@@ -35,6 +39,7 @@ import {
   ensureChatRegistryHydrated,
 } from "../../chat/hydrate.ts";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
+import { PLATFORM_HAS_GLOBAL_USER_IDS } from "../../chat/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces } from "../../db/schema/index.ts";
@@ -158,12 +163,24 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
           result: "denied",
           reason:
             auto.denied === "not_dm_autoregistrable" ? "workspace_not_installed" : auto.denied,
-          metadata: {
+          // Pinned by `ChatMessageDeniedMetadataSchema`. `sk chat`
+          // pending-space discovery reads `sender_platform_user_id` +
+          // `space_display_name` back off these SYSTEM-tenant rows.
+          // WRITE-GUARD: the sender id is recorded ONLY for platforms
+          // whose native user id is tenant-global — a workspace-scoped
+          // Slack/Teams id must never enter the tenant-blind SYSTEM pool
+          // (defense-in-depth: no downstream read can bridge tenants even
+          // if the read gate later regresses).
+          metadata: ChatMessageDeniedMetadataSchema.parse({
             platform: event.platform,
             workspace_id_native: event.workspace_id,
             event_key: event.event_key ?? null,
             kind: event.kind,
-          },
+            sender_platform_user_id: PLATFORM_HAS_GLOBAL_USER_IDS[event.platform]
+              ? event.user_id
+              : null,
+            space_display_name: event.space_display_name ?? null,
+          }),
         },
         db,
       );

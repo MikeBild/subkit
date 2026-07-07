@@ -39,6 +39,7 @@ import { registerAiSummarizeRoute } from "./routes/ai/summarize.ts";
 import { registerAuditLogRoutes } from "./routes/audit-log.ts";
 import { registerChatRoutes } from "./routes/chat.ts";
 import { registerChatIdentityRoutes } from "./routes/chat-identities.ts";
+import { registerChatSpaceRoutes } from "./routes/chat-spaces.ts";
 import { registerChatWorkspaceRoutes } from "./routes/chat-workspaces.ts";
 import { registerConnectorDiscoveryRoutes } from "./routes/connector-discovery.ts";
 import { registerConnectorDocsRoutes } from "./routes/connector-docs.ts";
@@ -323,6 +324,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   });
   registerChatWorkspaceRoutes(app, { registry: chatRegistry });
   registerChatIdentityRoutes(app);
+  registerChatSpaceRoutes(app);
   registerSubscriptionRoutes(app);
   registerNotificationRoutes(app);
   registerEventRoutes(app);

@@ -25,12 +25,19 @@ import {
   type ChatAdapterRegistry,
   ChatPlatformZodEnum,
   chatWorkspaceAad,
+  PLATFORM_HAS_GLOBAL_USER_IDS,
   SlackAdapter,
 } from "../../chat/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { encryptSecret } from "../../crypto/aes-gcm.ts";
 import { chatIdentities, chatWorkspaces } from "../../db/schema/index.ts";
-import { ConflictError, NotFoundError, ServiceUnavailableError } from "../errors.ts";
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -236,6 +243,85 @@ export function registerChatWorkspaceRoutes(
       throw new ConflictError(
         `${body.platform} workspace ${body.workspace_id} is already installed in another tenant`,
       );
+    }
+
+    // Teams has no hydrated adapter (chat/hydrate.ts) and no
+    // conversation-reference persistence, so an install row would be
+    // dead — non-routing, yet holding the global (platform, workspace_id)
+    // slot against a real future install. Reject rather than squat.
+    if (body.platform === "teams") {
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: "user",
+          actor_id: principal.id,
+          action: AuditAction.CHAT_WORKSPACE_INSTALLED,
+          resource_type: "chat_workspace",
+          resource_id: null,
+          result: "denied",
+          reason: "platform_unsupported",
+          metadata: { platform: body.platform, workspace_id: body.workspace_id },
+        },
+        db,
+      );
+      throw new BadRequestError(
+        "teams chat spaces are not supported yet — no adapter is hydrated for the teams platform",
+      );
+    }
+
+    // Tenant-capture guard for GLOBAL-id platforms (google_chat). Their
+    // native user id names one human across every space, and
+    // dm-autoregister.ts matches a DM sender on (platform,
+    // platform_user_id) IGNORING workspace — so seeding the identity link
+    // from an unproven `installer_platform_user_id` would let a caller
+    // bind a VICTIM's People-id to their own subkit user and hijack the
+    // victim's future DMs into this tenant. Require proof the CALLER owns
+    // the id: an EXISTING verified `chat_identity` in their tenant. That
+    // identity is bootstrapped by the JWT-verified DM auto-register path
+    // (dm-autoregister.ts) — DM the app once, then install named spaces.
+    // A raw SYSTEM deny row is NOT accepted as proof: its sender is
+    // whoever messaged the space, not necessarily the caller.
+    // Workspace-scoped platforms (slack) are exempt — their ids can't
+    // bridge tenants and never trigger dm-autoregister.
+    if (PLATFORM_HAS_GLOBAL_USER_IDS[body.platform]) {
+      const [owned] = await db
+        .select({ id: chatIdentities.id })
+        .from(chatIdentities)
+        .where(
+          and(
+            eq(chatIdentities.tenant_id, principal.tenant_id),
+            eq(chatIdentities.user_id, principal.id),
+            eq(chatIdentities.platform, body.platform),
+            eq(chatIdentities.platform_user_id, body.installer_platform_user_id),
+          ),
+        )
+        .limit(1);
+      if (!owned) {
+        await auditAwait(
+          {
+            tenant_id: principal.tenant_id,
+            actor_type: "user",
+            actor_id: principal.id,
+            action: AuditAction.CHAT_WORKSPACE_INSTALLED,
+            resource_type: "chat_workspace",
+            resource_id: null,
+            result: "denied",
+            reason: "installer_not_owned",
+            metadata: {
+              platform: body.platform,
+              workspace_id: body.workspace_id,
+              // The claimed id is the caller's own input; recording it
+              // aids forensics and does not leak another tenant's data.
+              installer_platform_user_id: body.installer_platform_user_id,
+            },
+          },
+          db,
+        );
+        throw new ForbiddenError(
+          "installer_platform_user_id is not a verified identity you own — " +
+            "DM the app once so your account links, then retry the install",
+        );
+      }
     }
 
     // Insert with a placeholder ciphertext, then re-encrypt with the

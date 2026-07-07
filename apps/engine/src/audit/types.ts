@@ -1064,6 +1064,33 @@ export const UserIdentityLinkedMetadataSchema = z.object({
 });
 export type UserIdentityLinkedMetadata = z.infer<typeof UserIdentityLinkedMetadataSchema>;
 
+/** `chat.message.denied` metadata for the `workspace_not_installed`
+ *  drop — a message into a named space the app was added to but that is
+ *  not yet registered. Emitted under `SYSTEM_TENANT_ID` from the
+ *  chat.event worker. `sender_platform_user_id` and `space_display_name`
+ *  are the two fields the `sk chat` pending-space discovery reads back;
+ *  both are OPTIONAL/NULLABLE so the other `CHAT_MESSAGE_DENIED` writers
+ *  (replay, identity-not-linked) are unaffected.
+ *
+ *  ISOLATION-CRITICAL: `sender_platform_user_id` is populated ONLY for
+ *  platforms whose native user id is tenant-global
+ *  (`PLATFORM_HAS_GLOBAL_USER_IDS`); a workspace-scoped Slack/Teams id
+ *  must never enter this tenant-blind SYSTEM pool, so it is written as
+ *  `null` there. The pending-spaces query matches on this field with a
+ *  NULL-safe equality (a `null` sender can never be attributed to a
+ *  caller). */
+export const ChatMessageDeniedMetadataSchema = z.object({
+  platform: z.string(),
+  workspace_id_native: z.string(),
+  event_key: z.string().nullable().optional(),
+  kind: z.string(),
+  /** Global-id-platform sender (`users/<People-id>`) or `null`. */
+  sender_platform_user_id: z.string().nullable().optional(),
+  /** Human-friendly space name for the pending-space picker label. */
+  space_display_name: z.string().nullable().optional(),
+});
+export type ChatMessageDeniedMetadata = z.infer<typeof ChatMessageDeniedMetadataSchema>;
+
 export type AuditEntry = {
   id: string;
   ts: Date;
