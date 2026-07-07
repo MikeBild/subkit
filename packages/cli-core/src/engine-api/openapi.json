@@ -19813,6 +19813,56 @@
         }
       }
     },
+    "/v1/connectors/{id}/credentials/setup": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Browser-openable credential-setup form (single-use grant token)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 20
+            },
+            "required": true,
+            "name": "grant",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (HTML form)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Grant invalid/expired (HTML error page)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connectors/discover": {
       "post": {
         "tags": [
