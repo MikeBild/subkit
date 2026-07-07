@@ -32,6 +32,7 @@ import sql0011AmbiguousFalcon from "./0011_ambiguous_falcon.sql" with { type: "t
 import sql0012McpTaskHeartbeat from "./0012_mcp_task_heartbeat.sql" with { type: "text" };
 import sql0013DropProviderFileIds from "./0013_drop_provider_file_ids.sql" with { type: "text" };
 import sql0014DedupWorkflowSchedules from "./0014_dedup_workflow_schedules.sql" with { type: "text" };
+import sql0015NervousSalo from "./0015_nervous_salo.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -71,6 +72,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0012_mcp_task_heartbeat": sql0012McpTaskHeartbeat,
   "0013_drop_provider_file_ids": sql0013DropProviderFileIds,
   "0014_dedup_workflow_schedules": sql0014DedupWorkflowSchedules,
+  "0015_nervous_salo": sql0015NervousSalo,
 };
 
 const journal = journalMeta as unknown as Journal;

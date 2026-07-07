@@ -15,7 +15,10 @@
 //   POST   /v1/connectors/:id/oauth/start          — returns authorization_url + state
 //   GET    /v1/oauth/callback                      — completes code exchange (single
 //                                                    global endpoint; routes by state)
-//   POST   /v1/connectors/:id/credentials          — attach non-oauth credential
+//   POST   /v1/connectors/:id/credentials          — attach non-oauth credential (API key)
+//   GET    /v1/connectors/:id/credentials/setup     — browser-openable credential-setup
+//                                                    form (single-use grant token)
+//   POST   /v1/connectors/:id/credentials/setup     — submits the form above (grant token)
 //   POST   /v1/connectors/:id/end-user-credentials — end-user-scoped credential
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
@@ -24,6 +27,7 @@ import type { AppEnv } from "../../openapi.ts";
 import { registerCallRoutes } from "./call.ts";
 import { registerCollectionRoutes } from "./collection.ts";
 import { registerCredentialsRoutes } from "./credentials.ts";
+import { registerCredentialsSetupRoutes } from "./credentials-setup.ts";
 import { registerOAuthRoutes } from "./oauth.ts";
 import { registerTestRoutes } from "./test.ts";
 
@@ -79,6 +83,13 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
     const id = c.req.param("id");
     return requirePermission("credential:write", () => ({ type: "connector", id }))(c, next);
   });
+  // GET/POST /v1/connectors/:id/credentials/setup are deliberately NOT
+  // gated by requirePermission — both are unauthenticated, grant-token-authed
+  // browser routes (single-use sksg_… token in the query string / hidden form
+  // field). Authentication is enforced inside the route handlers by
+  // validateSetupGrant (GET) and consumeSetupGrant (POST). Same discipline as
+  // the GET /v1/connectors/:id/oauth/start exemption above.
+  app.use("/v1/connectors/:id/credentials/setup", async (_c, next) => next());
   app.use("/v1/connectors/:id/end-user-credentials", async (c, next) => {
     const id = c.req.param("id");
     return requirePermission("credential:write", () => ({ type: "connector", id }))(c, next);
@@ -89,4 +100,5 @@ export function registerConnectorRoutes(app: OpenAPIHono<AppEnv>): void {
   registerCallRoutes(app);
   registerOAuthRoutes(app);
   registerCredentialsRoutes(app);
+  registerCredentialsSetupRoutes(app);
 }

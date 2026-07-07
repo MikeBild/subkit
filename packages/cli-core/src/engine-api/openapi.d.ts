@@ -5258,6 +5258,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connectors/{id}/credentials/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Browser-openable credential-setup form (single-use grant token) */
+        get: {
+            parameters: {
+                query: {
+                    grant: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK (HTML form) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Grant invalid/expired (HTML error page) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connectors/discover": {
         parameters: {
             query?: never;

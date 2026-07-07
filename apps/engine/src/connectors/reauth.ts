@@ -173,19 +173,23 @@ export async function emitConnectorAuthFailed(
 /**
  * Resolve the stable "reconnect here" URL for a connector that needs re-auth.
  *
- * PURE: no DB writes, no token/state minting. It returns a stable link to the
- * connector's canonical reconnect endpoint; the actual OAuth `state` / portal
- * token is minted at click-time by that endpoint. This is deliberate —
- * pre-minting a `state` here would (a) expire (the notification may be acted on
+ * PURE: no DB writes, no token/grant minting. It returns a stable link to the
+ * connector's canonical reconnect endpoint; the actual single-use grant token
+ * is minted at click-time by `request_connector_reauth`. This is deliberate —
+ * pre-minting a grant here would (a) expire (the notification may be acted on
  * minutes/hours later), (b) write an outbox-decoupled row that orphans if the
- * surrounding transaction rolls back, and (c) for static auth there is no
- * persisted token at all, so a pre-baked link would be dead. A stable endpoint
- * link has none of those failure modes.
+ * surrounding transaction rolls back. A stable endpoint link has neither
+ * failure mode.
  *
- *   - `oauth2` → `${origin}/v1/connectors/{id}/oauth/start` (mints fresh PKCE
- *     state + redirects to the provider when invoked).
- *   - basic/bearer/header/query/none → `${origin}/v1/connectors/{id}/credentials`
- *     (the credential-update surface).
+ * Both `oauth2` and non-OAuth (basic/bearer/header/query/none) connectors
+ * have NO click-through browser flow at these bare endpoint URLs — both
+ * `/oauth/start` (bearer-authed POST) and `/credentials` (API-key-authed
+ * POST) reject an unauthenticated browser hit. The honest instruction for
+ * an operator notification is the same for both: ask the assistant to run
+ * `request_connector_reauth`, which mints a fresh single-use browser link
+ * (`/oauth/start?grant=…` or `/credentials/setup?grant=…` respectively).
+ * `reauth_url` still exposes the bare endpoint so API-key/programmatic
+ * callers can hit it directly.
  *
  * Returns `reauth_url: null` only when no public engine origin resolves — the
  * `engine_public_url_missing` guard (buildOAuthRedirectUri() === null).
@@ -218,10 +222,14 @@ export function buildReauthUrl(connector: Pick<ConnectorView, "id" | "slug" | "a
       instructions: `Ask the assistant to run request_connector_reauth for '${connector.slug}' to get a one-time sign-in link, or POST this endpoint with an API key.`,
     };
   }
+  // The static /credentials endpoint requires an API key — it is not a
+  // browser-openable "secure page" (it 401s an unauthenticated hit). Same
+  // affordance as the oauth2 branch above: ask the assistant, which mints a
+  // fresh single-use credential-setup grant URL via request_connector_reauth.
   return {
     method,
     reauth_url: `${origin}/v1/connectors/${connector.id}/credentials`,
-    instructions: `Update the saved credentials for '${connector.slug}' at its credential endpoint (or via the connector page in the app).`,
+    instructions: `Ask the assistant to run request_connector_reauth for '${connector.slug}' to get a one-time credential-setup link, or POST this endpoint with an API key.`,
   };
 }
 

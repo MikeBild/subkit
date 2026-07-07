@@ -260,6 +260,10 @@ export type CredentialWriteSource =
   | "refresh_worker"
   | "http_route"
   | "cli_bootstrap"
+  // Browser-submitted via the single-use credential-setup grant form
+  // (GET/POST /v1/connectors/{id}/credentials/setup) — the non-OAuth
+  // counterpart to `oauth_callback`.
+  | "credential_setup_grant"
   | "unspecified";
 
 function toBuf(u: Uint8Array): Buffer {

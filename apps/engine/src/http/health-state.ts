@@ -15,10 +15,21 @@ export interface EngineHealthState {
    * the alarm without leaking it to unauthenticated callers.
    */
   schema_drift: boolean;
+
+  /**
+   * `true` once the process has begun graceful shutdown. Flipped at the
+   * top of `shutdown()` (apps/engine/src/index.ts) BEFORE the HTTP server
+   * stops accepting connections, so `/v1/readyz` returns 503 and the load
+   * balancer / systemd health gate stops routing to this instance while
+   * in-flight `conversation.run-turn` jobs drain. Deliberately NOT surfaced
+   * on `/v1/health` (that route must not leak operational posture).
+   */
+  draining: boolean;
 }
 
 const INITIAL: EngineHealthState = {
   schema_drift: false,
+  draining: false,
 };
 
 let _state: EngineHealthState = { ...INITIAL };

@@ -649,10 +649,21 @@ async function runServer(): Promise<void> {
   // Graceful shutdown, in reverse order of boot: close HTTP first (stop
   // accepting new requests + drain in-flight), then reconciler, pg-boss,
   // fanout, listener, connector pools, db, tracing. 15s hard-kill fallback.
+  // How long to let in-flight work — chiefly a `conversation.run-turn` job,
+  // which is non-idempotent (retryLimit:0) and can run up to
+  // CONVERSATION_RUN_TURN_VISIBILITY_SECONDS — drain before we force the
+  // process down. The prior 10s drain budget (+15s hard-kill) was far below a
+  // turn's runtime, so a deploy/restart mid-turn killed the worker → the job
+  // dead-lettered as `worker_expired` and the authoring session was lost.
+  // NOTE: subkit-deploy's systemd unit MUST set TimeoutStopSec above this.
+  const SHUTDOWN_DRAIN_TIMEOUT_MS = 120_000;
   let shutting = false;
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     if (shutting) return;
     shutting = true;
+    // Flip readiness to draining BEFORE closing the HTTP server so the load
+    // balancer / systemd gate stops routing here while in-flight turns finish.
+    setHealthState({ draining: true });
     stopMemorySampler();
     stopEventLoopLagMonitor();
     logger.info({
@@ -667,7 +678,7 @@ async function runServer(): Promise<void> {
         msg: "graceful shutdown timed out, exiting forcibly",
       });
       process.exit(1);
-    }, 15_000);
+    }, SHUTDOWN_DRAIN_TIMEOUT_MS + 20_000);
     (hardKill as unknown as { unref?: () => void }).unref?.();
     try {
       // Stop accepting new HTTP requests FIRST and let in-flight ones drain.
@@ -680,7 +691,7 @@ async function runServer(): Promise<void> {
           resolve();
       });
       await reconciler.stop();
-      await stopBoss(10_000);
+      await stopBoss(SHUTDOWN_DRAIN_TIMEOUT_MS);
       for (const off of fanoutUnsubscribers) off();
       await stopListener();
       // Drain every postgres-driver connection pool so the database

@@ -600,6 +600,17 @@ export const AuditAction = {
   // beginConnectorOAuthDance runs; a failure after this row means the
   // grant is burned but the dance did not start (HTML error page shown).
   CONNECTOR_OAUTH_GRANT_CONSUMED: "connector.oauth.grant_consumed",
+  // Single-use browser-openable credential-setup grant issued by
+  // mintCredentialSetupGrantUrl for non-OAuth (bearer/basic/header/query)
+  // connectors. Audited at mint time with the connector_id as resource.
+  // The grant is stored as a sha256 hash only; the plaintext is never
+  // logged.
+  CONNECTOR_CREDENTIAL_GRANT_ISSUED: "connector.credential_grant.issued",
+  // Grant consumed (atomically claimed) by the unauthenticated POST
+  // /v1/connectors/{id}/credentials/setup route. Written BEFORE the
+  // credential is written — a failure after this row means the grant is
+  // burned but the credential write did not complete.
+  CONNECTOR_CREDENTIAL_GRANT_CONSUMED: "connector.credential_grant.consumed",
 
   // ── MCP OAuth 2.1 authorization server ────────────────────────────────────
   MCP_OAUTH_CLIENT_REGISTERED: "mcp_oauth.client_registered",
