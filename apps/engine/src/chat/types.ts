@@ -114,6 +114,12 @@ export interface ChatEvent {
    *  `singleUserBotDm`). Drives DM auto-registration for platforms
    *  whose user ids are tenant-global (`PLATFORM_HAS_GLOBAL_USER_IDS`). */
   is_direct_message?: boolean;
+  /** Human-friendly space/channel name when the platform supplies one
+   *  (Google `space.displayName`). Surfaced only in the
+   *  `workspace_not_installed` deny audit so the `sk chat` pending-space
+   *  picker can label a candidate by its name rather than the raw
+   *  `spaces/<id>`. Absent for DMs and platforms that carry no name. */
+  space_display_name?: string;
   /** Platform-native event id used for replay dedup (`chat/dedup.ts`).
    *  Populated by the adapter's `receive()`. Slack: `event_id`
    *  (Events API), `view.id` (`view_submission`), `trigger_id`

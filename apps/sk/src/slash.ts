@@ -139,6 +139,16 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     routing: "local",
   },
   {
+    // Lists pending chat spaces (added-but-not-installed) and installs
+    // one by id. Local dispatch (direct REST call); the install route
+    // enforces chat_workspace:write + audits server-side.
+    name: "install-space",
+    help: "List/install pending chat spaces (Google Chat)",
+    category: "admin",
+    requires: "chat_workspace:write",
+    routing: "local",
+  },
+  {
     name: "compact",
     help: "Compact the message history",
     category: "session",

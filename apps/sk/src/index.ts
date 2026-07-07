@@ -19,6 +19,7 @@ import pc from "picocolors";
 import { apiKeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
 import { authCommand } from "./commands/auth.ts";
+import { chatCommand } from "./commands/chat.ts";
 import { connectorTemplatesCommand } from "./commands/connector-templates.ts";
 import { connectorsCommand } from "./commands/connectors.ts";
 import { credentialsCommand } from "./commands/credentials.ts";
@@ -604,6 +605,7 @@ const mainCommand = defineCommand({
     // operator commands
     workflows: workflowsCommand,
     connectors: connectorsCommand,
+    chat: chatCommand,
     "mcp-servers": mcpServersCommand,
     "connector-templates": connectorTemplatesCommand,
     credentials: credentialsCommand,
@@ -775,6 +777,7 @@ const PERM_TIER: Record<string, number> = {
   "workflow:read": 3,
   "connector:read": 3,
   "connector:write": 3,
+  "chat_workspace:read": 3,
   "mcp_server:manage": 3,
   "credential:read": 3,
   "execution:read": 3,
@@ -832,6 +835,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   // operator
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },
+  chat: { command: chatCommand, requires: "chat_workspace:read" },
   "mcp-servers": { command: mcpServersCommand, requires: "mcp_server:manage" },
   "connector-templates": { command: connectorTemplatesCommand, requires: "connector:read" },
   credentials: { command: credentialsCommand, requires: "credential:read" },

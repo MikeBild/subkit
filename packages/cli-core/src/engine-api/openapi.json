@@ -3004,6 +3004,8 @@
                 "workflow:write",
                 "connector:read",
                 "connector:write",
+                "chat_workspace:read",
+                "chat_workspace:write",
                 "skill:write",
                 "execution:read",
                 "notification:read",
@@ -3041,6 +3043,8 @@
                 "workflow:write",
                 "connector:read",
                 "connector:write",
+                "chat_workspace:read",
+                "chat_workspace:write",
                 "skill:write",
                 "execution:read",
                 "notification:read",
@@ -12345,6 +12349,44 @@
           "workspace_id",
           "platform_user_id",
           "user_id"
+        ]
+      },
+      "PendingChatSpaceListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingChatSpace"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "PendingChatSpace": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/ChatPlatform"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "installer_platform_user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "workspace_id",
+          "display_name",
+          "installer_platform_user_id"
         ]
       },
       "SubscriptionListResponse": {
@@ -25067,6 +25109,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chat/spaces/pending": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List spaces you added the app to but have not installed yet",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/ChatPlatform"
+            },
+            "required": false,
+            "name": "platform",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingChatSpaceListResponse"
                 }
               }
             }

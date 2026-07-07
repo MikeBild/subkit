@@ -29,6 +29,7 @@ import {
   isDebugVerbose,
   serializeDebugError,
 } from "./debug.ts";
+import { chatMethods } from "./engine-client/chat.ts";
 import { connectorsMethods } from "./engine-client/connectors.ts";
 import { conversationsMethods } from "./engine-client/conversations.ts";
 import { diagnosticsMethods } from "./engine-client/diagnostics.ts";
@@ -601,7 +602,8 @@ type ApiMethods<T> = { [K in keyof T]: OmitThisParameter<T[K]> };
 // Declaration merging: the per-resource method groups become part of
 // the `EngineClient` instance type…
 export interface EngineClient
-  extends ApiMethods<typeof connectorsMethods>,
+  extends ApiMethods<typeof chatMethods>,
+    ApiMethods<typeof connectorsMethods>,
     ApiMethods<typeof conversationsMethods>,
     ApiMethods<typeof diagnosticsMethods>,
     ApiMethods<typeof eventsMethods>,
@@ -620,6 +622,7 @@ export interface EngineClient
 // across the groups, so assignment order carries no meaning.
 Object.assign(
   EngineClient.prototype,
+  chatMethods,
   connectorsMethods,
   conversationsMethods,
   diagnosticsMethods,

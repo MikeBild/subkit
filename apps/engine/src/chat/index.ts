@@ -10,6 +10,10 @@ export * from "./api.ts";
 // the barrel without tripping the route_layering FAIL gate.
 export * from "./dispatcher.ts";
 export * from "./hydrate.ts";
+// `pending-spaces.ts` carries `listPendingSpacesForPrincipal`, read by
+// `http/routes/chat-spaces.ts`. Re-exported so the route reaches it
+// through the barrel without tripping the route_layering gate.
+export * from "./pending-spaces.ts";
 export * from "./registry.ts";
 export type { SlackAdapterOptions } from "./slack/adapter.ts";
 export { SlackAdapter } from "./slack/adapter.ts";
