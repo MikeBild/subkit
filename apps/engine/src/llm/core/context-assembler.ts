@@ -58,6 +58,7 @@ import type {
 } from "../types.ts";
 import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
 import {
+  applyRuntimeTemplate,
   formatChunk,
   formatConnectorRecipes,
   formatFailure,
@@ -272,7 +273,13 @@ export async function assembleEnhancedPrompt(
   const db = exec ?? getDb();
   const cap = Math.min(p.max_tokens, contextCapFor(p.model ?? "default"));
 
-  const baseSystem = await basePromptFor(p.flow, p.surface, p.authoring_hint);
+  // Substitute runtime tokens (`${engine_url}` in the install-grounding block)
+  // into the base prompt via the SAME mechanism as skill bodies, so the install
+  // command is pre-filled. No-op when the base carries no `${…}` token.
+  const baseSystem = applyRuntimeTemplate(
+    await basePromptFor(p.flow, p.surface, p.authoring_hint),
+    p.runtime_context,
+  );
   const skillsApplicable = await retrieveApplicableSkills(
     {
       tenant_id: p.tenant_id,

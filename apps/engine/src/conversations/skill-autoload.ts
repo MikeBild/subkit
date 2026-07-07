@@ -53,6 +53,28 @@ export interface UserTurnContext extends ScopeFacts {
   /** True when this is the conversation's first turn — `baseline`
    *  activations fire only on first-turn boot. */
   first_turn?: boolean;
+  /** Conversation surface. On the read-only `chat` surface,
+   *  authoring-oriented skills (see `AUTHORING_ONLY_TAG`) are suppressed
+   *  so the prompt never carries guidance the fail-closed chat palette
+   *  cannot act on. */
+  surface?: string | undefined;
+}
+
+/**
+ * Reserved skill tag. A skill carrying it is authoring-oriented — its
+ * body references write/authoring tools (`create_skill`, `author_workflow`,
+ * …). Such skills must NOT autoload on the read-only `chat` surface, whose
+ * palette is fail-closed to reads + run: loading them tempts the model to
+ * OFFER an action the surface cannot fulfil, which then dead-ends (the
+ * `create_skill`-on-chat approval failure). The tool palette is already
+ * surface-gated; this closes the matching gap in the prompt/skill layer.
+ * Tenant- or seed-authored skills opt in by adding this tag.
+ */
+export const AUTHORING_ONLY_TAG = "authoring-only";
+
+/** True when `rec` must be withheld from autoload on `surface`. */
+function suppressedOnSurface(rec: ActivationRecord, surface: string | undefined): boolean {
+  return surface === "chat" && rec.tags.includes(AUTHORING_ONLY_TAG);
 }
 
 /**
@@ -158,6 +180,7 @@ export function autoloadForUserTurn(
     if (have.has(rec.slug)) continue;
     if (out.has(rec.slug)) continue;
     if (rec.maturity === "experimental") continue;
+    if (suppressedOnSurface(rec, ctx.surface)) continue;
     if (matchesUserTurn(rec.activates_when, text, drivers, templates, ctx.first_turn === true)) {
       out.add(rec.slug);
     }
@@ -212,6 +235,9 @@ export function reaffirmLoadedForTurn(
     // Experimental skills cannot match `activates_when`; they re-promote
     // only via explicit `load_skill`. Skip without throwing.
     if (rec.maturity === "experimental") continue;
+    // Never re-affirm an authoring-oriented skill on the read-only chat
+    // surface — same contract as the autoload matchers above.
+    if (ctx.mode === "user_turn" && suppressedOnSurface(rec, ctx.surface)) continue;
     if (ctx.mode === "user_turn") {
       const text = (ctx.user_text ?? "").toLowerCase();
       // first_turn is irrelevant here — re-affirm runs over the loaded

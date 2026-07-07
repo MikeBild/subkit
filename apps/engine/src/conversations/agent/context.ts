@@ -19,6 +19,7 @@ import {
   GENERAL_RULES,
   RBAC_EDITING_PERSONA,
   SK_CONCEPT_GROUNDING,
+  SK_COUNT_HYGIENE,
   SK_INSTALL_GROUNDING,
   SKILL_LOADING_INSTRUCTIONS,
   verbosityFor,
@@ -197,6 +198,7 @@ export async function generateMainAgentSystemPrompt(
   if (input.surface === "chat" || input.surface === "mcp" || input.surface === "web") {
     sections.push(SK_INSTALL_GROUNDING);
     sections.push(SK_CONCEPT_GROUNDING);
+    sections.push(SK_COUNT_HYGIENE);
   }
   // The chat surface never authors — an authoring-focus block would
   // instruct the model to progress a draft it has no tools for.

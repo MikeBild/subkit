@@ -64,18 +64,18 @@ export function renderRuntimeContextBlock(ctx: RuntimeContext): string | null {
 }
 
 /**
- * Resolve a request's public origin into an `engine_url` string. Order:
- *   1) `req.url` origin (the host the caller actually reached).
+ * Resolve the engine's public URL from configuration alone — no request
+ * needed. Used by the origin-less surfaces (Google Chat runs in an async
+ * queue job; MCP background turns have no HTTP origin to trust). Order:
+ *   1) `config.server.public_base_url`.
  *   2) `SUBKIT_PUBLIC_BASE_URL` env override.
- *   3) `undefined` — caller decides to fall back or omit.
+ *   3) `undefined`.
+ *
+ * This is the authoritative public URL for those surfaces — set
+ * `server.public_base_url` in prod or the model has no honest URL to quote
+ * and (correctly) refuses to invent one.
  */
-export function resolveEngineUrl(req: Request | { url: string }): string | undefined {
-  try {
-    const origin = new URL(req.url).origin;
-    if (origin && origin !== "null") return origin;
-  } catch {
-    /* fall through */
-  }
+export function engineUrlFromConfig(): string | undefined {
   try {
     const cfg = getConfig().server.public_base_url;
     if (cfg && cfg.length > 0) return cfg;
@@ -85,4 +85,21 @@ export function resolveEngineUrl(req: Request | { url: string }): string | undef
   const envFallback = process.env.SUBKIT_PUBLIC_BASE_URL;
   if (envFallback && envFallback.length > 0) return envFallback;
   return undefined;
+}
+
+/**
+ * Resolve a request's public origin into an `engine_url` string. Order:
+ *   1) `req.url` origin (the host the caller actually reached).
+ *   2) `config.server.public_base_url` / `SUBKIT_PUBLIC_BASE_URL` (see
+ *      `engineUrlFromConfig`).
+ *   3) `undefined` — caller decides to fall back or omit.
+ */
+export function resolveEngineUrl(req: Request | { url: string }): string | undefined {
+  try {
+    const origin = new URL(req.url).origin;
+    if (origin && origin !== "null") return origin;
+  } catch {
+    /* fall through */
+  }
+  return engineUrlFromConfig();
 }

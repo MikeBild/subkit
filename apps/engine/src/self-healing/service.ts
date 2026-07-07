@@ -886,6 +886,28 @@ export async function runSelfHealingLoop(
     drift_kind: signal.kind,
   });
 
+  // Unpatchable semantic failure: the failing step produced NO output
+  // (`output_preview === null`) — a broken scrape, a dead upstream, an
+  // auth wall. No workflow-DEFINITION patch can fix a null runtime output,
+  // and the repair LLM correctly refuses every attempt. Short-circuit here
+  // so the job does not throw-and-retry (which spammed 4 error-level logs
+  // per broken run) and burns no repair tokens; surface it as a review
+  // item and exit gracefully. The failed execution itself stays visible in
+  // `sk review` / executions for the operator to fix at the source.
+  if (snapshot.output_preview === null) {
+    logger.warn({
+      module: "self-healing",
+      action: "repair.unpatchable_null_output",
+      msg: "failing step returned null — no definition patch can fix a null runtime output; parked for human review",
+      needs_review: true,
+      tenant_id: params.tenant_id,
+      workflow_id: params.workflow_id,
+      step_id: params.step_id,
+      execution_id: params.execution_id,
+    });
+    return emptyResult("unpatchable: failing step returned null output — needs human review");
+  }
+
   let result: ProcessSignalResult;
   try {
     result = await processDriftSignal(
