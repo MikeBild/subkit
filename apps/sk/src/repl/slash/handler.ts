@@ -43,6 +43,7 @@ import { classifySlash, removedSlashGuidance } from "./dispatcher.ts";
 import { dispatchAdminListSlash } from "./handlers/admin-lists.ts";
 import { dispatchAuthRedirectSlash } from "./handlers/auth-redirects.ts";
 import { dispatchAuthoringDraftSlash } from "./handlers/authoring-drafts.ts";
+import { dispatchChatSpaceSlash } from "./handlers/chat-spaces.ts";
 import { dispatchInspectSlash } from "./handlers/inspect.ts";
 import { dispatchOnboardingSlash } from "./handlers/onboarding.ts";
 import { dispatchSessionSlash } from "./handlers/session-lifecycle.ts";
@@ -503,6 +504,10 @@ export async function handleSlash(
       }
       return panify(ctx, "setup", formatSetupLines(setup), formatSetupSummary(setup));
     }
+    case "install-space":
+      // Pending-space list/install flow lives in handlers/chat-spaces.ts
+      // to keep this file under the size cap.
+      return (await dispatchChatSpaceSlash(rawArgs, ctx)) ?? null;
     // The `/onboard` wizard wiring (template catalog fetch + probe /
     // save callbacks) lives in handlers/onboarding.ts. The case labels
     // stay here so the dispatcher contract test keeps seeing one

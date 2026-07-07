@@ -131,6 +131,15 @@ export class GoogleChatAdapter implements ChatAdapter {
     // identity is a sound tenant anchor there).
     const isDm = space.spaceType === "DIRECT_MESSAGE" || space.singleUserBotDm === true;
 
+    // Human-friendly space name (`space.displayName`) — carried so the
+    // `workspace_not_installed` deny audit can label a pending-space
+    // candidate for the `sk chat` picker. Named spaces have one; DMs and
+    // some group chats do not.
+    const spaceDisplayName =
+      typeof space.displayName === "string" && space.displayName.length > 0
+        ? space.displayName
+        : undefined;
+
     // Replay dedup: Google retries deliveries best-effort on timeout /
     // non-2xx, so every ingested event needs a stable key. A MESSAGE is
     // uniquely `message.name`; a CARD_CLICKED reuses the card message's
@@ -219,6 +228,7 @@ export class GoogleChatAdapter implements ChatAdapter {
         kind: "interaction",
         interaction,
         ...(isDm ? { is_direct_message: true } : {}),
+        ...(spaceDisplayName ? { space_display_name: spaceDisplayName } : {}),
         ...(eventKey ? { event_key: eventKey } : {}),
         raw: ev.raw,
       };
@@ -247,6 +257,7 @@ export class GoogleChatAdapter implements ChatAdapter {
         kind: "system",
         system_event: systemEvent,
         ...(isDm ? { is_direct_message: true } : {}),
+        ...(spaceDisplayName ? { space_display_name: spaceDisplayName } : {}),
         ...(eventKey ? { event_key: eventKey } : {}),
         raw: ev.raw,
       };

@@ -9878,6 +9878,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chat/spaces/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List spaces you added the app to but have not installed yet */
+        get: {
+            parameters: {
+                query?: {
+                    platform?: components["schemas"]["ChatPlatform"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PendingChatSpaceListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/subscriptions": {
         parameters: {
             query?: never;
@@ -11985,9 +12023,9 @@ export interface components {
                 scopes: string[] | null;
             };
             /** @description Allowed UX-gating permissions for the principal. */
-            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "stats:read:all")[];
+            permissions: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "chat_workspace:read" | "chat_workspace:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "stats:read:all")[];
             /** @description Stable list of permissions probed; reflects the engine's known UX gating set. */
-            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "stats:read:all")[];
+            permissions_checked: ("conversation:read" | "conversation:write" | "memory:write" | "conversation:approve" | "conversation:list" | "mcp:read" | "skill:read" | "conversation:cancel" | "conversation:commit" | "workflow:read" | "workflow:write" | "connector:read" | "connector:write" | "chat_workspace:read" | "chat_workspace:write" | "skill:write" | "execution:read" | "notification:read" | "notification:write" | "discovery:read" | "file:read" | "file:write" | "file:delete" | "audit:read" | "identity:read" | "rbac:read" | "api_key:read" | "portal_token:read" | "knowledge:read" | "stats:read:all")[];
             tenant: {
                 /** Format: uuid */
                 id: string;
@@ -14402,6 +14440,15 @@ export interface components {
             platform_user_id: string;
             /** Format: uuid */
             user_id: string;
+        };
+        PendingChatSpaceListResponse: {
+            items: components["schemas"]["PendingChatSpace"][];
+        };
+        PendingChatSpace: {
+            platform: components["schemas"]["ChatPlatform"];
+            workspace_id: string;
+            display_name: string | null;
+            installer_platform_user_id: string;
         };
         SubscriptionListResponse: {
             items: components["schemas"]["Subscription"][];

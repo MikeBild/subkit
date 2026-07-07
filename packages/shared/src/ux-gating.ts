@@ -28,6 +28,9 @@ export const UX_GATING_PERMISSIONS = [
   "workflow:write",
   "connector:read",
   "connector:write",
+  // `sk chat` space install/discovery + the /install-space slash.
+  "chat_workspace:read",
+  "chat_workspace:write",
   "skill:write",
   "execution:read",
   "notification:read",
