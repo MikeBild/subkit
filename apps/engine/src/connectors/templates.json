@@ -6644,6 +6644,88 @@
   },
   {
     "version": 1,
+    "slug": "google-search-console",
+    "name": "Google Search Console",
+    "driver": "http",
+    "base_url": "https://searchconsole.googleapis.com",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/webmasters.readonly",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
+    },
+    "default_skill": "google-search-console-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://www.googleapis.com/discovery/v1/apis/webmasters/v3/rest",
+    "icon": "google-workspace.svg",
+    "description": "Google Search Console API",
+    "category": "analytics",
+    "tags": ["rest", "google", "search-console", "seo", "sitemaps"],
+    "setup_instructions": "Create a Google Cloud project, enable Search Console API, configure OAuth consent screen, create OAuth 2.0 credentials, and ensure the signed-in account has access to the Search Console property.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for read-only Search Console access.",
+        "oauth": {
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {},
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/webmasters.readonly"
+        }
+      }
+    ],
+    "url_pattern": "^https://searchconsole\\.googleapis\\.com(\\/|$)|^https://www\\.googleapis\\.com/webmasters/v3(\\/|$)",
+    "keywords": ["search console", "webmasters", "sitemaps", "search analytics", "indexing"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "operator_quirks": {
+      "site_url_encoding": "Search Console paths require the full property URL as a URL-encoded path segment, e.g. https%3A%2F%2Fwww.mikebild.dev%2F.",
+      "property_access": "The authenticated Google account must have access to the exact Search Console property; URL-prefix properties include the trailing slash.",
+      "search_analytics": "searchAnalytics.query uses a POST body with startDate, endDate, dimensions, rowLimit, and optional dimensionFilterGroups."
+    },
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
+  },
+  {
+    "version": 1,
     "slug": "google-chat",
     "name": "Google Chat",
     "driver": "http",
