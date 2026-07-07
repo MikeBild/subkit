@@ -11,6 +11,7 @@
 // header. This module owns the per-family parse + per-kind output
 // validation (via `validateElicitationOutput` in `chat/api.ts`).
 
+import { NoSuchToolError } from "ai";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
@@ -120,9 +121,24 @@ export type ChatElicitErrorClass =
       kind: "not_found";
       audit_reason: "conversation_not_found_for_actor" | "elicitation_not_found";
     }
+  | { kind: "surface_unsupported"; user_text: string; tool_name: string }
   | { kind: "rethrow" };
 
 export function classifyChatElicitError(err: unknown): ChatElicitErrorClass {
+  // The resumed chat turn tried to call a tool that isn't in the fail-closed
+  // chat palette — almost always an authoring/write tool (`create_skill`,
+  // `create_knowledge_source`, …) the model offered but the read-only surface
+  // cannot run. Degrade gracefully with an actionable redirect instead of
+  // rethrowing into the queue (which DLQs and leaves the user with Google
+  // Chat's opaque "can't process your request" card).
+  if (NoSuchToolError.isInstance(err)) {
+    return {
+      kind: "surface_unsupported",
+      tool_name: err.toolName,
+      user_text:
+        "Creating or editing connectors, workflows, skills, or knowledge sources isn't available from chat — this channel is read-only (I can look things up and run your saved workflows). To set that up, use the sk CLI or the web portal.",
+    };
+  }
   if (err instanceof ElicitationActorMismatchError) {
     return {
       kind: "actor_mismatch",
@@ -421,6 +437,28 @@ export async function routeChatInteraction(
           elicitation_id,
           conversation_id,
           field_errors: classified.field_errors,
+        });
+        return { status: "ignored", conversation_id };
+      }
+      case "surface_unsupported": {
+        // The resumed turn reached for a tool absent from the chat palette
+        // (authoring/write). Post an actionable redirect and SWALLOW: a
+        // pg-boss retry would just re-hit the same NoSuchToolError and DLQ.
+        if (notify) {
+          try {
+            await notify(classified.user_text);
+          } catch {
+            /* best-effort: the structured log below still records it */
+          }
+        }
+        logger.warn({
+          module: "chat",
+          action: "interaction.surface_unsupported_tool",
+          msg: "resumed chat turn called a tool absent from the read-only palette — redirected user, swallowed",
+          tenant_id,
+          elicitation_id,
+          conversation_id,
+          tool_name: classified.tool_name,
         });
         return { status: "ignored", conversation_id };
       }

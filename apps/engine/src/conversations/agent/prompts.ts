@@ -91,6 +91,8 @@ RUN RESULT: after a workflow run succeeds, LEAD your reply with the actual outpu
 
 Chat formatting rules: plain sentences and simple *bold*/_italic_/bullet lists only — no markdown headers, no tables, no code fences longer than a few lines. Keep replies short; this is a chat thread, not a document. The channel keeps one running conversation per space — the user can send /new to start fresh.
 
+NO FALSE ACTION PROMISES ON CHAT: you can run SAVED workflows and read tenant state — nothing else. NEVER promise to run an ad-hoc query, call a connector/API directly, execute JQL/SQL, or "fetch fuller details" for the user: those need a workflow you cannot author here. When a request needs data a saved workflow does not already return, say so plainly and offer the real options — run a matching saved workflow, or continue in the sk CLI / web portal to author one — instead of promising an action this channel cannot perform.
+
 NO AUTHORING PLACEHOLDERS ON CHAT: when describing a connector, do NOT print \`\${connector.<slug>...}\` / \`\${cred.<slug>...}\` placeholders — those are CLI workflow-authoring template syntax and meaningless to a read-only chat user. Summarize the connector in plain language instead.
 
 ${PERSONA_DUTIES}
@@ -140,7 +142,13 @@ Loading rules:
 // unchanged. This is why "how do I install sk?" is grounded identically on
 // Google Chat and via an MCP-driven conversation without inflating every
 // authoring turn.
-export const SK_INSTALL_GROUNDING = `GROUNDING sk SELF-QUESTIONS: for any question about installing, running, updating, or the capabilities of sk or its CLI, call \`search_docs\` / \`search_knowledge\` FIRST and ground the answer. The CLI install is \`curl -fsSL <engine-url>/install | bash\`, served by this engine — that is the ONLY install path to give. NEVER invent an npm package (there is no \`@subkit/cli\`), a public download page or GitHub link, an \`sk login <url>\` install step, or a docker-compose install step.`;
+//
+// The `${engine_url}` token is substituted with this turn's real engine URL
+// by `applyRuntimeTemplate` over the base prompt (see context-assembler.ts),
+// so the install command comes out pre-filled with the actual host. If the
+// URL is unknown for the turn the token is left literal and the RUNTIME
+// CONTEXT block's cannot_help rule takes over.
+export const SK_INSTALL_GROUNDING = `GROUNDING sk SELF-QUESTIONS: for any question about installing, running, updating, or the capabilities of sk or its CLI, call \`search_docs\` / \`search_knowledge\` FIRST and ground the answer. The CLI install is \`curl -fsSL \${engine_url}/install | bash\`, served by this engine — that is the ONLY install path to give. NEVER invent an npm package (there is no \`@subkit/cli\`), a public download page or GitHub link, an \`sk login <url>\` install step, or a docker-compose install step.`;
 
 // sk concept grounding — the Skills-vs-Knowledge-Sources distinction and
 // domain-modeling. Injected on the SAME user-facing answer surfaces (chat,
@@ -149,6 +157,13 @@ export const SK_INSTALL_GROUNDING = `GROUNDING sk SELF-QUESTIONS: for any questi
 // context cap the assembler drop-ladder tests pin. The canonical answer is
 // retrievable — seed `sk-ref-knowledge-and-skills`, tag `sk-platform-reference`.
 export const SK_CONCEPT_GROUNDING = `GROUNDING CONCEPT QUESTIONS: for any question about what skills vs knowledge sources are, when to use which, how knowledge is processed, or how to model a domain, call \`search_knowledge\` (the \`sk-platform-reference\` corpus covers these) FIRST and ground the answer — do not improvise the distinction from memory.`;
+
+// Count/summary hygiene for user-facing answers. Injected only on the
+// answer surfaces (chat, mcp, web) — NOT in GENERAL_RULES, so the
+// authoring/CLI base prompt (pinned near the small-model cap by the
+// assembler drop-ladder tests) is untouched. Fixes the observed
+// list-summary miscount (25 → 21 → 25 in one reply).
+export const SK_COUNT_HYGIENE = `COUNT CONSISTENCY: when you summarise a list, derive ONE authoritative total straight from the tool result (its item count or \`total\` field) and state it once. Every breakdown you give (by priority, status, project, …) MUST sum back to that total. Never state two different totals for the same set in one reply, and never invent a subtotal you did not read from the result.`;
 
 /** Per-surface verbosity directive. Spliced into the live-data block. */
 export function verbosityFor(

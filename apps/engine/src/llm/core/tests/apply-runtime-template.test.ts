@@ -15,6 +15,7 @@
 // placeholders the user or the executor will fill in later.
 
 import { describe, expect, it } from "bun:test";
+import { SK_INSTALL_GROUNDING } from "../../../conversations/agent/prompts.ts";
 import { applyRuntimeTemplate } from "../context-assembler.ts";
 
 describe("applyRuntimeTemplate", () => {
@@ -23,6 +24,23 @@ describe("applyRuntimeTemplate", () => {
       engine_url: "http://subkit-api.example.com",
     });
     expect(out).toBe("Hit http://subkit-api.example.com/mcp with a Bearer header.");
+  });
+
+  it("renders the install-grounding command with the real host (the P1 outcome)", () => {
+    // The base prompt is run through applyRuntimeTemplate in the assembler,
+    // so the install command comes out pre-filled instead of `${engine_url}`.
+    const out = applyRuntimeTemplate(SK_INSTALL_GROUNDING, {
+      engine_url: "https://engine.example.com",
+    });
+    expect(out).toContain("curl -fsSL https://engine.example.com/install | bash");
+    expect(out).not.toContain("${engine_url}");
+  });
+
+  it("leaves the install token literal when no engine_url is known", () => {
+    // No runtime URL → token preserved; the RUNTIME CONTEXT block's
+    // cannot_help rule then keeps the model from inventing a host.
+    const out = applyRuntimeTemplate(SK_INSTALL_GROUNDING, {});
+    expect(out).toContain("${engine_url}/install");
   });
 
   it("substitutes multiple whitelisted tokens in a single pass", () => {
