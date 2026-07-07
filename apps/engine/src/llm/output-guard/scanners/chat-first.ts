@@ -101,6 +101,11 @@ function inspectFencedBlock(body: string): { kind: string; cmd: string } | null 
     if (!head) continue;
     // sk is the in-product CLI; cliScanner owns those violations.
     if (head === "sk" || head === "subkit") continue;
+    // The sk CLI installer is the ONE grounded curl one-liner
+    // (`curl -fsSL <engine_url>/install | bash`) — bootstrapping the CLI has
+    // no in-chat tool equivalent, so it is exempt from the chat-first push
+    // rule. Narrowly scoped to the engine's own `/install` endpoint.
+    if (head === "curl" && /\/install(?:$|[\s/?])/.test(segment)) continue;
     if (head === "curl") return { kind: "chat_first.curl_in_chat", cmd: segment.slice(0, 200) };
     if (SHELL_HEAD_TOKENS.has(head)) {
       return { kind: "chat_first.shell_command_in_chat", cmd: segment.slice(0, 200) };
