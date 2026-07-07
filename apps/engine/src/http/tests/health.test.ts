@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Db } from "../../db/client.ts";
+import { setHealthState } from "../health-state.ts";
 import type { AppEnv } from "../openapi.ts";
 import { registerHealthRoute } from "../routes/health.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -80,5 +81,27 @@ describe("GET /v1/readyz", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.status).toBe("unavailable");
     expect(body.db_connected).toBe(false);
+  });
+
+  test("returns 503 unavailable while draining, even with the database reachable", async () => {
+    // Graceful shutdown flips setHealthState({ draining: true }) BEFORE the
+    // HTTP server closes so the load balancer / systemd gate stops routing
+    // here while in-flight conversation turns drain. readyz must report that
+    // as not-ready even though the DB is fine. Reset in finally so the shared
+    // module-scoped health-state singleton can't leak into other tests.
+    const okDb = { execute: async () => undefined } as unknown as Db;
+    const app = new OpenAPIHono<AppEnv>();
+    registerHealthRoute(app, { db: okDb });
+    setHealthState({ draining: true });
+    try {
+      const res = await app.request("http://127.0.0.1/v1/readyz");
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body.status).toBe("unavailable");
+      // db_connected stays true — not-ready here is due to draining, not the DB.
+      expect(body.db_connected).toBe(true);
+    } finally {
+      setHealthState({ draining: false });
+    }
   });
 });

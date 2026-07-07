@@ -146,7 +146,10 @@ function projectPriorWorkflowRef(view: WorkflowView): PriorWorkflowRef {
     id: view.id,
     slug: view.slug,
     name: view.name,
-    description: view.definition.description ?? null,
+    // Row description wins over the authoring-time DAG description (same
+    // precedence as the HTTP/MCP catalog) so LLM context never shows a
+    // description a metadata-only edit already superseded.
+    description: view.description ?? view.definition.description ?? null,
     trigger_summary: summariseTrigger(view.definition.trigger),
     step_topology: buildStepTopology(view.definition),
     output_keys: deriveOutputKeys(view.definition),

@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { getDb } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
+import { getHealthState } from "../health-state.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
 
@@ -106,12 +107,17 @@ export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps =
   app.openapi(readyRoute, async (c) => {
     const db = deps.db ?? c.get("db") ?? getDb();
     const db_connected = await pingDb(db);
+    // Draining (graceful shutdown in progress) is also "not ready": we want
+    // the load balancer / systemd gate to stop routing new traffic here while
+    // in-flight conversation turns finish, without leaking that posture on the
+    // public /v1/health route.
+    const ready = db_connected && !getHealthState().draining;
     return c.json(
       {
-        status: db_connected ? ("ready" as const) : ("unavailable" as const),
+        status: ready ? ("ready" as const) : ("unavailable" as const),
         db_connected,
       },
-      db_connected ? 200 : 503,
+      ready ? 200 : 503,
     );
   });
 }

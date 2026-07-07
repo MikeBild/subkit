@@ -15,8 +15,15 @@
 //   - OAuth2 (client_credentials_json): performs the M2M token exchange
 //     synchronously and returns {status:"reauthorized"} — no browser needed.
 //
-//   - Non-OAuth (basic/bearer/header/query): binds a re-issue draft and
-//     collects the new secret via ask_user_form; rotates in place.
+//   - Non-OAuth (basic/bearer/header/query) on sk-cli/web: binds a re-issue
+//     draft and collects the new secret via ask_user_form; rotates in place.
+//
+//   - Non-OAuth (basic/bearer/header/query) over MCP: mints a single-use
+//     credential-setup grant URL (sksg_… token, 10-min TTL,
+//     /v1/connectors/:id/credentials/setup?grant=…) that renders a real
+//     browser form for the new secret — a secret must never be collected as
+//     chat text over MCP. Submitting the form rotates the credential in
+//     place, same as the sk-cli/web path.
 //
 // Resolution:
 //   - `connector_id` (uuid) takes precedence.
@@ -32,6 +39,7 @@
 // conversation, so the recovery path must always be reachable.
 
 import { z } from "@hono/zod-openapi";
+import { mintCredentialSetupGrantUrl } from "../../connectors/credential-setup-grant.ts";
 import { beginConnectorOAuthDance } from "../../connectors/oauth-start.ts";
 import { mintOAuthStartGrantUrl } from "../../connectors/oauth-start-grant.ts";
 import { buildReauthUrl } from "../../connectors/reauth.ts";
@@ -83,8 +91,9 @@ export const requestConnectorReauthTool: ConversationTool = {
     "Pass either `connector_id` (uuid) or `slug`; `connector_id` wins when both are given.",
     "OAuth2 (authorization_code) → returns `method: oauth2`, `reauth_url` (present the URL verbatim on its own line as a bare URL — no markdown, no shortening), `single_use: true`, `expires_at`. Opening the link redirects to the provider sign-in page. If the link expires, call this tool again.",
     "OAuth2 (client_credentials) → returns `method: oauth2`, `status: reauthorized` — no URL needed.",
-    "Non-OAuth → returns `method: portal_setup`, `mode: credential_re_issue`, and stages a re-issue draft; follow with `ask_user_form(type: password, sensitive: true)` to collect the new secret and it rotates in place.",
-    "Never paste the secret in chat — always collect it through `ask_user_form(type: password, sensitive: true)`.",
+    "Non-OAuth on sk-cli/web → returns `method: portal_setup`, `mode: credential_re_issue`, and stages a re-issue draft; follow with `ask_user_form(type: password, sensitive: true)` to collect the new secret and it rotates in place.",
+    "Non-OAuth over MCP → returns `method: portal_setup`, `mode: credential_re_issue`, `setup_url` (a real single-use secure page — present it verbatim on its own line, no markdown, no shortening), `single_use: true`, `expires_at`. Opening it lets the user enter the new secret directly in the browser; submitting rotates the credential in place. If it expires before submission, call this tool again.",
+    "Never paste the secret in chat — on sk-cli/web collect it through `ask_user_form(type: password, sensitive: true)`; over MCP it is entered directly on the `setup_url` page, never in chat.",
     "Requires `connector:write` on the connector (the non-OAuth path stages a credential rotation).",
   ],
   example_input: { slug: "digitalocean" },
@@ -194,14 +203,25 @@ export const requestConnectorReauthTool: ConversationTool = {
 
       // D7: over MCP the in-chat `ask_user_form` credential re-issue is
       // NOT reachable — a secret must never be collected as chat text
-      // there (see `ask-user/common.ts`). Route to the secure
-      // credential-setup URL (`/v1/connectors/:id/credentials`) instead,
-      // presented verbatim for the operator to open in a browser. On
-      // sk-cli / web the masked in-chat form stays (a local operator may
-      // paste the secret), so this branch is scoped to `surface === "mcp"`.
+      // there (see `ask-user/common.ts`). Route to a real secure
+      // credential-setup page instead: mint a single-use grant URL
+      // (`/v1/connectors/:id/credentials/setup?grant=sksg_…`), presented
+      // verbatim for the operator to open in a browser. That endpoint is
+      // token-gated and unauthenticated (mirrors the OAuth `/oauth/start`
+      // grant flow) — unlike the API-key-protected `/credentials` route,
+      // it actually renders a form. On sk-cli / web the masked in-chat
+      // form stays (a local operator may paste the secret), so this
+      // branch is scoped to `surface === "mcp"`.
       if (ctx.surface === "mcp") {
-        const { reauth_url } = buildReauthUrl(connector);
-        if (!reauth_url) {
+        const grantResult = await mintCredentialSetupGrantUrl(ctx.db, {
+          tenant_id: ctx.tenant_id,
+          connector,
+          actor_id: ctx.actor_id,
+          ...(ctx.engineClient.context.actor_type
+            ? { actor_type: ctx.engineClient.context.actor_type }
+            : {}),
+        });
+        if (!grantResult.ok) {
           return structuredError(
             "engine_public_url_missing",
             "engine has no resolvable public origin — set server.public_base_url or SUBKIT_PUBLIC_BASE_URL so a secure credential-setup URL can be minted",
@@ -209,7 +229,7 @@ export const requestConnectorReauthTool: ConversationTool = {
         }
         logger.info({
           module: "conversation_tool",
-          action: "request_connector_reauth.portal_setup_url_issued",
+          action: "request_connector_reauth.portal_setup_grant_issued",
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
           connector_id: connector.id,
@@ -223,13 +243,17 @@ export const requestConnectorReauthTool: ConversationTool = {
             mode: "credential_re_issue",
             auth_type: connector.auth_type,
             ...(isCognito ? { grant_type: "cognito_user_password" } : {}),
-            setup_url: reauth_url,
+            setup_url: grantResult.url,
+            single_use: true,
+            expires_at: grantResult.expires_at.toISOString(),
             needs_reauth: connector.needs_reauth,
             auth_failed_at: connector.auth_failed_at?.toISOString() ?? null,
             instructions:
               "Present this URL verbatim on its own line as a bare URL — no markdown wrapper, no shortening. " +
-              "Opening it takes the user to a secure page to enter the new secret; it rotates in place on the " +
-              "existing connector (the id and every dependent workflow stay intact). " +
+              "It is single-use and expires in approximately 10 minutes. " +
+              "Opening it takes the user to a secure page to enter the new secret; submitting the form rotates " +
+              "the credential in place on the existing connector (the id and every dependent workflow stay intact). " +
+              "If the link expires before the user submits it, call request_connector_reauth again for a fresh one. " +
               "Never ask the user to paste the secret in chat.",
           },
         };

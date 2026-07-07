@@ -33,11 +33,12 @@ interface WorkflowSummary {
   steps: Array<{ id: string; kind: string; connector_id: string | null }>;
 }
 
-function summarize(wf: {
+export function summarize(wf: {
   id: string;
   slug: string;
   name: string;
   current_version: number | null;
+  description?: string | null | undefined;
   definition?: { description?: string | null | undefined; steps?: Array<Record<string, unknown>> };
   steps?: Array<Record<string, unknown>>;
 }): WorkflowSummary {
@@ -47,7 +48,10 @@ function summarize(wf: {
     slug: wf.slug,
     name: wf.name,
     current_version: wf.current_version ?? null,
-    description: wf.definition?.description ?? null,
+    // Row description (editable metadata) wins over the DAG's authoring-time
+    // description, matching the HTTP catalog (routes/workflows.ts) and MCP
+    // resources. Otherwise a metadata-only update_workflow leaves this stale.
+    description: wf.description ?? wf.definition?.description ?? null,
     steps: stepArr.map((s) => ({
       id: typeof s.id === "string" ? s.id : "",
       kind: typeof s.kind === "string" ? s.kind : "unknown",
