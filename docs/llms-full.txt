@@ -4769,6 +4769,7 @@ so this column is the UX gate, not the security boundary.
 | `/audit` | — | `audit:read` | Tail your audit log |
 | `/discovery` | — | `discovery:read` | List discovery runs and artifacts |
 | `/executions` | `/runs` | `execution:read` | List recent workflow executions |
+| `/install-space` | — | `chat_workspace:write` | List/install pending chat spaces (Google Chat) |
 | `/logs` | — | `audit:read` | Tail recent engine errors via /v1/diagnostics/errors — `/logs [limit] [trace_id]` |
 | `/notifications` | — | `notification:read` | Toggle OS push, configure thresholds + channels |
 | `/patch-candidates` | — | `workflow:read` | List pending self-healing patch candidates |
@@ -4847,6 +4848,7 @@ every API call.
 | `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
 | `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show`, `tail` |
 | `sk auth` | `connector:write` | Start a reauthentication flow for a connector (OAuth2 authorize URL) | — |
+| `sk chat` | `chat_workspace:read` | Manage external chat spaces (Google Chat / Slack) | `install-space`, `remove-space`, `spaces` |
 | `sk connector-templates` | `connector:read` | Manage connector templates | `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth` |
 | `sk connectors` | `connector:read` | Manage connectors | `create`, `delete`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `get`, `inspect`, `list`, `patch`, `probe`, `test` |
 | `sk credentials` | `credential:read` | Manage connector credentials | `delete`, `list`, `rotate`, `set` |
