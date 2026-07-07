@@ -12,6 +12,9 @@ export const listSkillsTool: ConversationTool = {
   description: "List applicable skills for the current conversation scope.",
   inputSchema,
   category: "tenant_read" as const,
+  // Chat-surface sibling of list_all_skills; gate identically so a
+  // principal without skill:read cannot enumerate skills via either tool.
+  permission: { action: "skill:read", resourceType: "skill" },
   async execute(ctx, _args): Promise<ToolResult> {
     const skills = await retrieveApplicableSkills(
       {

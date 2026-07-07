@@ -103,10 +103,17 @@ function describeDisabled(category: ToolCategory): { reason: string } | undefine
 /** Per-tool RBAC overrides. Conversation tools are pure (no inline
  *  `can()` calls); the dispatcher enforces RBAC declared here.
  *
- *  Coverage rule: every `tenant_write` tool reachable from MCP needs
- *  a permission entry. Tools reachable only from chat can defer to
- *  the conversation harness's session-scoped authorization (the chat
- *  surface gates at the loop layer, not per-tool). Keep this table
+ *  Coverage rule: every `tenant_write` tool AND every `tenant_read`
+ *  inventory/identity tool reachable from MCP needs a permission
+ *  entry. Read tools are covered because the LLM-mediated chat path
+ *  and the direct MCP path both dispatch through here, while the
+ *  typed fast-path already gates the equivalent list intents on
+ *  `*:read` (`fast-path.ts` `READ_PERMISSION_BY_LIST`); without an
+ *  entry those two paths would leak the full inventory tenant-wide,
+ *  asymmetric with the fast-path. The one deliberate carve-out is
+ *  `whoami`, which returns the CALLER'S OWN identity and must stay
+ *  ungated so a principal can discover its own rights before being
+ *  denied (mirrors `rbac/self-introspection.ts`). Keep this table
  *  in sync with `rbac/permissions.json`. */
 const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]>>> = {
   // inspect_execution is a tenant_read reachable on MCP; the dispatcher
@@ -213,6 +220,105 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       const id = (args as { candidate_id?: unknown }).candidate_id;
       return typeof id === "string" && id.length > 0 ? { type: "skill_candidate", id } : null;
     },
+  },
+
+  // ── tenant_read inventory / identity ───────────────────────────────
+  // These are enforced on the LLM-mediated chat path and the direct
+  // MCP path, symmetric with the typed fast-path (`READ_PERMISSION_BY_LIST`).
+  // `whoami` is intentionally absent (self-introspection carve-out).
+  //
+  // `get_engine_status` is intentionally NOT gated: the `enduser` role
+  // (the read-only chat/MCP principal) deliberately lacks `stats:read`
+  // (rbac/seed.ts), and get_engine_status is the DESIGNATED low-sensitivity
+  // self-status surface — the sensitive operator health digest is a
+  // separate, already `stats:read`-gated surface kept out of this tool
+  // (conversations/tools/generated/status.ts). Gating it here would break
+  // the core self-assistant use case (an enduser asking the engine to
+  // describe its own status).
+  get_execution: {
+    // Symmetric with inspect_execution (execution:read). get_execution's
+    // id arg is `id`, not `execution_id`.
+    permission: "execution:read",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "execution", id } : null;
+    },
+  },
+  list_all_skills: {
+    permission: "skill:read",
+  },
+  list_skills: {
+    permission: "skill:read",
+  },
+  get_skill: {
+    permission: "skill:read",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "skill", id } : null;
+    },
+  },
+  list_knowledge_sources: {
+    permission: "knowledge:read",
+  },
+  get_knowledge_source: {
+    permission: "knowledge:read",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
+    },
+  },
+  list_users: {
+    permission: "identity:read",
+  },
+  get_user: {
+    permission: "identity:read",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "user", id } : null;
+    },
+  },
+  list_system_accounts: {
+    permission: "identity:read",
+  },
+  list_api_keys: {
+    permission: "api_key:read",
+  },
+  get_api_key: {
+    permission: "api_key:read",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "api_key", id } : null;
+    },
+  },
+  list_portal_tokens: {
+    permission: "portal_token:read",
+  },
+  list_capability_gaps: {
+    permission: "discovery:read",
+  },
+  // Content reads that the enduser role does not hold (connector:read,
+  // schedule:read) — gated to match the typed fast-path
+  // (`READ_PERMISSION_BY_LIST`) so the LLM-mediated and direct-MCP paths
+  // do not leak connectors/schedules the fast-path would deny.
+  list_connectors: {
+    permission: "connector:read",
+  },
+  get_connector: {
+    permission: "connector:read",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
+    },
+  },
+  find_connector: {
+    permission: "connector:read",
+    resource: (args) => {
+      const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "connector", id } : null;
+    },
+  },
+  list_schedules: {
+    permission: "schedule:read",
   },
 };
 

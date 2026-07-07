@@ -118,6 +118,9 @@ export const findConnectorTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_read",
+  // Same connector inventory as list_connectors/get_connector — gate it
+  // identically so search cannot bypass the connector:read requirement.
+  permission: { action: "connector:read", resourceType: "connector", resourceIdArg: "id" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     if (args.id) {

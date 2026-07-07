@@ -50,6 +50,7 @@ export const getExecutionTool: ConversationTool = {
   description: "Fetch one execution by id (full row including status and timestamps).",
   inputSchema: GetInput,
   category: "tenant_read",
+  permission: { action: "execution:read", resourceType: "execution", resourceIdArg: "id" },
   async execute(ctx, rawArgs) {
     const args = GetInput.parse(rawArgs);
     const e = await ctx.engineClient.executions.get(args.id);

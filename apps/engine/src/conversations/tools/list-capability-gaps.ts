@@ -24,6 +24,9 @@ export const listCapabilityGapsTool: ConversationTool = {
     "List recorded capability gaps — requests the assistant could not serve because no connector, workflow, or knowledge source exists for them (captured from cannot_help). Returns a deduped backlog ranked by how often each gap recurred, so the operator can prioritise what to build next.",
   inputSchema,
   category: "tenant_read" as const,
+  // Operator backlog, not enduser self-description: the read-only chat
+  // `enduser` role deliberately lacks `discovery:read` (rbac/seed.ts).
+  permission: { action: "discovery:read", resourceType: "capability_gap" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const gaps = await listCapabilityGaps(

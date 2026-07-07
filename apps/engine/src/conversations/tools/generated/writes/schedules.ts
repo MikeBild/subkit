@@ -107,6 +107,10 @@ export const listSchedulesTool: ConversationTool = {
     "List all scheduled runs in the tenant, optionally filtered by workflow_id. Returns the current cadence, paused flag, and last update timestamp for each schedule.",
   inputSchema: ListInput,
   category: "tenant_read",
+  // Symmetric with the typed fast-path (`schedule:read`): the read is
+  // tenant-scoped only, so gate it here so the LLM-mediated path does not
+  // leak schedules to a principal lacking schedule:read.
+  permission: { action: "schedule:read", resourceType: "schedule" },
   async execute(ctx, rawArgs) {
     const args = ListInput.parse(rawArgs);
     // Schedules are a bounded catalog — the result is the COMPLETE set

@@ -165,6 +165,17 @@ export const SK_CONCEPT_GROUNDING = `GROUNDING CONCEPT QUESTIONS: for any questi
 // list-summary miscount (25 → 21 → 25 in one reply).
 export const SK_COUNT_HYGIENE = `COUNT CONSISTENCY: when you summarise a list, derive ONE authoritative total straight from the tool result (its item count or \`total\` field) and state it once. Every breakdown you give (by priority, status, project, …) MUST sum back to that total. Never state two different totals for the same set in one reply, and never invent a subtotal you did not read from the result.`;
 
+// sk self-status / capability / inventory grounding. Injected on the SAME
+// user-facing answer surfaces (chat, mcp, web) as SK_INSTALL_GROUNDING and for
+// the SAME reason: kept OUT of GENERAL_RULES so the authoring/CLI base prompt
+// stays under the small-model context cap the assembler drop-ladder tests pin.
+// This is the "self-assistant" contract — describe your OWN status, skills,
+// knowledge, and diagnoses only from a fresh read tool, never from memory, so
+// the inventory the engine reports matches the tenant's actual rows (and honours
+// the reader's RBAC: a `permission_denied` from a read tool is answered honestly,
+// not papered over with a guessed list).
+export const SK_STATUS_GROUNDING = `GROUNDING STATUS & INVENTORY QUESTIONS: before answering any free-form question about your own status, capabilities, or what skills / knowledge sources / workflows / connectors exist ("what can you do", "which skills do you have", "how many workflows are there", "what is your status"), call the matching read tool FIRST and answer ONLY from its result: \`list_skills\` (or \`list_all_skills\` where available) for skills, \`list_knowledge_sources\` for knowledge sources, \`list_workflows\` / \`list_connectors\` for those, \`get_engine_status\` for status/counts where available. NEVER invent, guess, or pad a skill name, knowledge-source name, or count from memory. If a read tool returns \`permission_denied\`, say the current role cannot see that inventory and stop — do NOT substitute a remembered list. For a specific past run or failure, ground in \`inspect_execution\` / \`get_execution\`.`;
+
 /** Per-surface verbosity directive. Spliced into the live-data block. */
 export function verbosityFor(
   surface: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat" | undefined,
