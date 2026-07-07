@@ -427,7 +427,7 @@ async function salvageTypedReplyToPendingElicitation(args: {
   } catch (err) {
     const classified = classifyChatElicitError(err);
     if (classified.kind === "rethrow") throw err;
-    if (classified.kind === "validation") {
+    if (classified.kind === "validation" || classified.kind === "surface_unsupported") {
       await notify(classified.user_text).catch(() => {});
       return null;
     }

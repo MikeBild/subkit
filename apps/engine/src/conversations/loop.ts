@@ -57,6 +57,7 @@ import {
   isFallbackEligible,
   toLlmProviderError,
 } from "../llm/provider-errors.ts";
+import { engineUrlFromConfig } from "../llm/runtime-context.ts";
 import { log, logger } from "../logging/logger.ts";
 import {
   recordLlmQuotaExhausted,
@@ -565,6 +566,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         user_text: currentUserText,
         connector_drivers: scope.connector_drivers,
         connector_templates: scope.connector_templates,
+        surface: p.surface,
       },
       skillCatalog,
       loadedSlugs,
@@ -579,6 +581,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         connector_drivers: scope.connector_drivers,
         connector_templates: scope.connector_templates,
         first_turn: currentTurn === 1,
+        surface: p.surface,
       },
       skillCatalog,
       loadedSlugs,
@@ -801,28 +804,27 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           : {}),
         ...(combinedPriorFailures.length > 0 ? { prior_failures: combinedPriorFailures } : {}),
         conversation_id: p.conversation_id,
-        ...(p.runtime_context
-          ? {
-              runtime_context: {
-                ...(p.runtime_context.engine_url
-                  ? { engine_url: p.runtime_context.engine_url }
-                  : {}),
-                ...(p.runtime_context.tenant_slug
-                  ? { tenant_slug: p.runtime_context.tenant_slug }
-                  : {}),
-                ...(p.runtime_context.actor_email
-                  ? { actor_email: p.runtime_context.actor_email }
-                  : {}),
-                ...(p.runtime_context.actor_role
-                  ? { actor_role: p.runtime_context.actor_role }
-                  : {}),
-                ...(p.surface ? { surface: p.surface } : {}),
-                ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
-              },
-            }
-          : p.permission_mode
-            ? { runtime_context: { permission_mode: p.permission_mode } }
-            : {}),
+        // Runtime context (engine_url / tenant / actor / surface). engine_url
+        // falls back to config.server.public_base_url when the caller didn't
+        // supply one — REST passes the request origin, but the origin-less
+        // surfaces (chat queue job, MCP background turn) rely on this fallback,
+        // so the model knows its own host on EVERY surface instead of guessing.
+        ...(() => {
+          const engineUrl = p.runtime_context?.engine_url ?? engineUrlFromConfig();
+          const rc = {
+            ...(engineUrl ? { engine_url: engineUrl } : {}),
+            ...(p.runtime_context?.tenant_slug
+              ? { tenant_slug: p.runtime_context.tenant_slug }
+              : {}),
+            ...(p.runtime_context?.actor_email
+              ? { actor_email: p.runtime_context.actor_email }
+              : {}),
+            ...(p.runtime_context?.actor_role ? { actor_role: p.runtime_context.actor_role } : {}),
+            ...(p.surface ? { surface: p.surface } : {}),
+            ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
+          };
+          return Object.keys(rc).length > 0 ? { runtime_context: rc } : {};
+        })(),
       },
       p.db,
     ),

@@ -387,6 +387,32 @@ describe("autoloadForUserTurn", () => {
       "subkit-concepts",
     );
   });
+
+  test("authoring-only skill is suppressed on the read-only chat surface", () => {
+    // Regression guard: an authoring-oriented seed skill (e.g.
+    // domain-setup-onboarding) must NOT autoload on chat — its
+    // `create_skill` guidance dead-ends on the fail-closed chat palette.
+    const catalog: ActivationRecord[] = [
+      {
+        slug: "domain-setup-onboarding",
+        activates_when: [{ kind: "intent_keyword", word: "music theory" }],
+        maturity: "stable",
+        side_effects: "read",
+        tags: ["onboarding", "authoring-only"],
+      },
+    ];
+    // Loads on authoring surfaces...
+    expect(
+      autoloadForUserTurn({ user_text: "help with music theory", surface: "mcp" }, catalog, []),
+    ).toContain("domain-setup-onboarding");
+    expect(autoloadForUserTurn({ user_text: "help with music theory" }, catalog, [])).toContain(
+      "domain-setup-onboarding",
+    );
+    // ...but is withheld on chat.
+    expect(
+      autoloadForUserTurn({ user_text: "help with music theory", surface: "chat" }, catalog, []),
+    ).not.toContain("domain-setup-onboarding");
+  });
 });
 
 describe("listBaselineSlugs", () => {

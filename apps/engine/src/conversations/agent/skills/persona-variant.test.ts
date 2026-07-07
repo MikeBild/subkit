@@ -119,7 +119,8 @@ describe("install-grounding rule is surface-gated (chat/mcp/web), not in the aut
         authoring_hint: makeHint("workflow"),
       });
       expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
-      expect(r.content).toContain("curl -fsSL <engine-url>/install | bash");
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal grounding token asserted verbatim; the assembler substitutes it.
+      expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
       // Names the invented npm package only inside its negation, never as a path.
       expect(r.content).toContain("@subkit/cli");
     }
@@ -163,6 +164,32 @@ describe("concept-grounding rule is surface-gated (chat/mcp/web), not in the aut
   });
 });
 
+describe("count-hygiene rule is surface-gated (chat/mcp/web), not in the authoring base", () => {
+  // Kept OUT of GENERAL_RULES so the authoring/CLI base prompt stays under the
+  // small-model cap the assembler drop-ladder tests pin (adding it to
+  // GENERAL_RULES tipped that base over the 12k mock cap). Fixes the observed
+  // list-summary miscount on chat.
+  test("MCP and web surfaces carry the count-hygiene rule", async () => {
+    for (const surface of ["mcp", "web"] as const) {
+      const r = await generateMainAgentSystemPrompt({
+        surface,
+        authoring_hint: makeHint("workflow"),
+      });
+      expect(r.content).toContain("COUNT CONSISTENCY");
+    }
+  });
+
+  test("authoring/CLI surfaces do NOT carry the count-hygiene rule", async () => {
+    for (const surface of ["sk_interactive", "sk_headless"] as const) {
+      const r = await generateMainAgentSystemPrompt({
+        surface,
+        authoring_hint: makeHint("workflow"),
+      });
+      expect(r.content).not.toContain("COUNT CONSISTENCY");
+    }
+  });
+});
+
 describe("chat surface persona", () => {
   test("chat surface wins over any authoring mode and never promises authoring", async () => {
     for (const mode of ["workflow", "connector", "execution", "diagnosis"] as const) {
@@ -188,7 +215,8 @@ describe("chat surface persona", () => {
     // P1: sk self-questions must be grounded, and the real install one-liner
     // must be named so the bot stops inventing @subkit/cli / docker-compose.
     expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
-    expect(r.content).toContain("curl -fsSL <engine-url>/install | bash");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal grounding token asserted verbatim; the assembler substitutes it.
+    expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
     expect(r.content).toContain("@subkit/cli");
     expect(r.content).toContain("docker-compose install step");
   });

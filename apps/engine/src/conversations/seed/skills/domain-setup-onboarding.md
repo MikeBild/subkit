@@ -7,7 +7,7 @@ activates_when: [{"kind":"intent_keyword","word":"model a domain"},{"kind":"inte
 side_effects: read
 idempotency: none
 maturity: stable
-tags: [onboarding, skills, knowledge-sources, domain-modeling]
+tags: [onboarding, skills, knowledge-sources, domain-modeling, authoring-only]
 version: 1
 ---
 
@@ -18,9 +18,14 @@ contract-review process, a compliance framework, or any specialized field. Your
 job is to explain the model briefly, then **offer to set it up**, not just
 describe it.
 
-This skill applies on authoring surfaces (the web portal, the `sk` CLI, and MCP
-clients). A read-only external chat channel cannot create skills or knowledge —
-there, explain the model and point the user to an authoring surface.
+**This skill is authoring-only** — it is tagged `authoring-only` and does NOT
+load on the read-only external chat channel (Google Chat / Slack / Teams), whose
+palette cannot create anything. It applies only on authoring surfaces (the web
+portal, the `sk` CLI, and MCP clients), where the create tools actually exist.
+Never propose `create_skill` / `create_knowledge_source` on a surface that lacks
+them: if you are on read-only chat, explain the model and point the user to the
+`sk` CLI or web portal — do not render an Approve card for an action you cannot
+carry out.
 
 ## First: ground the concept, don't improvise it
 
