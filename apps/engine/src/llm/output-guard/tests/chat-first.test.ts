@@ -39,6 +39,21 @@ describe("chatFirstScanner — fenced shell blocks", () => {
     expect(vs).toEqual([]);
   });
 
+  it("does not flag the sk CLI installer curl (the one grounded /install one-liner)", () => {
+    // Installing the CLI has no in-chat tool equivalent — the install curl
+    // must survive the guard, or the install answer comes out blank.
+    const vs = chatFirstScanner.scan(
+      bash("curl -fsSL https://subkit.example.com/install | bash"),
+      ctx,
+    );
+    expect(vs).toEqual([]);
+  });
+
+  it("still flags a curl to some other /path (only /install is exempt)", () => {
+    const vs = chatFirstScanner.scan(bash("curl https://api.example.com/things"), ctx);
+    expect(vs.map((v) => v.kind)).toContain("chat_first.curl_in_chat");
+  });
+
   it("does not flag a fenced JSON block that happens to contain the word curl", () => {
     const text = '```json\n{\n  "description": "Use curl when developing locally"\n}\n```';
     const vs = chatFirstScanner.scan(text, ctx);
