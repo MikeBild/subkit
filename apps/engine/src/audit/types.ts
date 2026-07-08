@@ -360,8 +360,19 @@ export const AuditAction = {
   SK_CLI_INBOX_ACKED: "sk_cli.inbox_acked",
 
   APPROVAL_REQUESTED: "approval.requested",
+  // A HUMAN granted (or refused to grant) the approval, out of band, through
+  // the approval portal — or in band, on a surface that actually reached them.
+  // `actor_id` is that human. Distinct from APPROVAL_APPROVED, which the
+  // engine writes later, once the granted approval survives RBAC + policy and
+  // is about to execute. Distinct from APPROVAL_REJECTED, which records a
+  // CLAIM the engine refused, not a decision a human made.
+  APPROVAL_GRANTED: "approval.granted",
+  APPROVAL_DECLINED: "approval.declined",
   APPROVAL_APPROVED: "approval.approved",
   APPROVAL_REJECTED: "approval.rejected",
+  // Emitted once per scheduler tick after the `tool_approvals` retention
+  // sweeps. Bounds how long the encrypted approved-args ciphertext lives.
+  APPROVAL_EXPIRED_PRUNED: "approval.expired_pruned",
   // A `protocol_native` (MCP-bridge) elicitation row degraded mid-call
   // to the portal DB-pause path because the MCP `elicitation`
   // capability raced away. The row flips `protocol_native: true →

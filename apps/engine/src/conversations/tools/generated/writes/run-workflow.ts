@@ -29,7 +29,7 @@ import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.
 import type { ConversationTool } from "../../index.ts";
 import { buildRawStepResults } from "../../step-results.ts";
 import { sampleWorkflowOutputForLlm, truncateStepPreviewForLlm } from "../../truncate.ts";
-import { normalizeWorkflowInput, workflowInputRecord } from "../../workflow-input-normalize.ts";
+import { normalizeWorkflowInput } from "../../workflow-input-normalize.ts";
 import { type RepairLoopVerdict, tallyRepairSignals } from "./repair-loop-tally.ts";
 
 /**
@@ -63,6 +63,42 @@ async function detectRepairLoop(
   }
 }
 
+/**
+ * The workflow's `$input` map. Typed as an OBJECT on the wire — a bare
+ * `z.unknown()` emits the empty JSON Schema `{}`, which tells a client
+ * nothing and therefore invites it to serialize the map into a string.
+ *
+ * The union accepts a stringified object too, but only as a TOLERANCE: the
+ * transform normalizes it back to a record, and the `.pipe()` re-validates
+ * so the emitted output-side schema (mcp/json-schema.ts uses
+ * `pipeStrategy: "output"`) is a plain object — never a `{}`, never an
+ * `anyOf` that reads as "a string is fine here". Same shape as the
+ * `policyMarkerSchema` union+transform in sdk-wrap/invoke.ts: accept both
+ * representations at the boundary, hand exactly one downstream.
+ *
+ * A string that is not a JSON object literal is a hallucinated input map
+ * (`input: "tomorrow"`), and is rejected here rather than travelling to the
+ * execution engine to fail as `$input: required field '<k>' is missing`.
+ */
+const workflowInputSlot = z
+  .union([z.record(z.string(), z.unknown()), z.string()])
+  .transform((raw, ctx) => {
+    const normalized = normalizeWorkflowInput(raw);
+    if (normalized !== null && typeof normalized === "object" && !Array.isArray(normalized)) {
+      return normalized as Record<string, unknown>;
+    }
+    // `input: ""` unambiguously means "no input" — treat it as the empty map
+    // instead of failing the call.
+    if (typeof normalized === "string" && normalized.trim() === "") return {};
+    ctx.addIssue({
+      code: "custom",
+      message:
+        'input must be the workflow\'s input map (a JSON object), e.g. {"city":"Berlin"} — not a bare string',
+    });
+    return z.NEVER;
+  })
+  .pipe(z.record(z.string(), z.unknown()));
+
 const Input = z
   .object({
     // Accepts a slug (kebab-case identifier from the tenant snapshot) or
@@ -71,7 +107,7 @@ const Input = z
     // `.max(256)` is a defensive cap (slugs are short, uuids are 36
     // chars, anything beyond is a hallucination).
     workflow: z.string().min(1).max(256).optional(),
-    input: z.unknown().optional(),
+    input: workflowInputSlot.optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
     /**
      * When true, the result envelope always includes a `step_trace`
@@ -98,14 +134,25 @@ const Input = z
      * DELETE, non-SELECT SQL/GraphQL mutations): they are fully resolved
      * (URL/headers/body materialized) but NOT dispatched, so verifying a
      * saved workflow during authoring can never fire a real email/write.
-     * Set `execute_writes: true` ONLY after the user explicitly confirmed a
-     * real, live run — the policy gate then requires a confirmation. The
-     * scheduler and the HTTP run endpoint are unaffected (they never route
-     * through this tool), so production runs still send.
+     * Set `execute_writes: true` ONLY when the user explicitly asked for a
+     * real, live run. It is a request for the operator's approval, not an
+     * approval: the call pauses on a confirmation the operator answers, and
+     * the engine performs the writes itself. It is never a way to run them
+     * yourself. The scheduler and the HTTP run endpoint are unaffected (they
+     * never route through this tool), so production runs still send.
      */
     execute_writes: z.boolean().optional(),
   })
   .openapi("RunWorkflowToolInput");
+
+/**
+ * The canonical args, post-parse. The dispatcher (and, on the chat loop, the
+ * AI SDK's tool boundary) parses `Input` before `execute` is reached, so this
+ * executor takes the parsed value as-is. `workflowInputSlot` is the transform
+ * whose OUTPUT `requestApproval` persists; `schema-idempotence.test.ts` pins it
+ * idempotent so replaying that value through `Input` cannot rewrite it.
+ */
+type RunWorkflowArgs = z.infer<typeof Input>;
 
 /**
  * Terminal status the CLI must always see for a `run_workflow` result.
@@ -131,12 +178,11 @@ function withStatus(
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
   description:
-    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. WRITE-classified steps (email sends, posts, publishes) are HELD by default — resolved but NOT dispatched — so a run is side-effect-safe; the envelope reports `writes_held` + `held_step_ids`. Do a real live send ONLY after the user confirms, by passing `execute_writes: true` (which then requires a confirmation even in dev). To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
+    "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. WRITE-classified steps (email sends, posts, publishes) are HELD by default — resolved but NOT dispatched — so a run is side-effect-safe; the envelope reports `writes_held` + `held_step_ids`. A live send is the operator's decision: pass `execute_writes: true` only when the user explicitly asked for one, and understand that it raises an approval the operator answers rather than performing the writes. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
   inputSchema: Input,
   category: "tenant_write",
   requires_persisted_workflow: true,
-  async execute(ctx, rawArgs) {
-    const args = Input.parse(rawArgs);
+  async execute(ctx, args: RunWorkflowArgs) {
     const currentDraft = ctx.getDraft();
     const activeTarget = currentDraft.summary?.active_target ?? null;
     let workflowId: string | null = null;
@@ -217,14 +263,11 @@ export const runWorkflowTool: ConversationTool = {
     // skipped the gate and failed at runtime with
     // "$input: required field '<k>' is missing".)
     const inputContract = resolveWorkflowInputContract(wf.definition as WorkflowDef);
-    const suppliedInput = normalizeWorkflowInput(args.input);
+    // `workflowInputSlot` normalized the slot to a record (or left it absent)
+    // at the dispatch boundary — a stringified payload can no longer reach here.
+    const suppliedInput = args.input;
     const suppliedInputIsEmpty =
-      suppliedInput === null ||
-      suppliedInput === undefined ||
-      (typeof suppliedInput === "object" &&
-        !Array.isArray(suppliedInput) &&
-        Object.keys(suppliedInput as Record<string, unknown>).length === 0) ||
-      (typeof suppliedInput === "string" && suppliedInput.trim().length === 0);
+      suppliedInput === undefined || Object.keys(suppliedInput).length === 0;
     if (inputContract) {
       const properties =
         inputContract.schema.properties && typeof inputContract.schema.properties === "object"
@@ -232,7 +275,7 @@ export const runWorkflowTool: ConversationTool = {
           : {};
       const propertyNames = inputContract.properties;
       const requiredKeys = inputContract.required;
-      const suppliedMap = workflowInputRecord(suppliedInput);
+      const suppliedMap = suppliedInput ?? {};
       const missingRequired = requiredKeys.filter((k) => {
         const v = suppliedMap[k];
         return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
@@ -305,11 +348,7 @@ export const runWorkflowTool: ConversationTool = {
         });
       }
     }
-    const inputIgnored =
-      inputContract === null &&
-      !suppliedInputIsEmpty &&
-      typeof suppliedInput === "object" &&
-      suppliedInput !== null;
+    const inputIgnored = inputContract === null && !suppliedInputIsEmpty;
     if (
       activeTarget?.kind === "workflow" &&
       activeTarget.lifecycle_state === "draft_only" &&
@@ -807,12 +846,15 @@ export const runWorkflowTool: ConversationTool = {
             workflow_version: wf.current_version,
             // make the held writes unmistakable to the agent so it
             // never reads a verification run as a real send (a live session
-            // once mailed stale snapshots this way).
+            // once mailed stale snapshots this way). State, then affordance —
+            // never an instruction to approve. See held-preview.ts for the
+            // same contract on the MCP `wf_<slug>` envelope: an operator
+            // approves; the model at most relays a decision it was given.
             ...(heldStepIds.length > 0
               ? {
                   writes_held: true,
                   held_step_ids: heldStepIds,
-                  writes_held_note: `${heldStepIds.length} write step(s) were resolved but NOT dispatched — no real send/write happened, so this run is safe for verification. To actually execute the writes, ask the user to confirm a live run, then call run_workflow again with execute_writes:true.`,
+                  writes_held_note: `${heldStepIds.length} write step(s) were resolved but NOT dispatched. Nothing was written or sent, so this run is safe for verification. A live run is the operator's decision, not yours: only if the user explicitly asks for one, re-issue run_workflow with execute_writes:true — that call does NOT perform the writes either, it puts the approval in front of the operator, and the engine performs them itself once they answer. Never set execute_writes on your own initiative, and never approve on the user's behalf.`,
                 }
               : {}),
             ...(failureStepKey ? { failure_step_key: failureStepKey } : {}),

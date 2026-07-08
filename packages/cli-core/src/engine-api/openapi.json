@@ -25472,6 +25472,47 @@
         }
       }
     },
+    "/v1/tool-approvals/decide": {
+      "get": {
+        "tags": [
+          "tool-approvals"
+        ],
+        "summary": "Browser-openable approval portal (single-use grant token)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 20
+            },
+            "required": true,
+            "name": "grant",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Grant invalid/expired (HTML error page)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/notifications/channels": {
       "get": {
         "tags": [

@@ -95,49 +95,41 @@ describe("sk CLI user story — real backend", () => {
         pending_approval?: { id: string; tool_name: string; summary: string } | null;
       } | null;
     };
-    let pendingId: string | null = null;
-    for (let attempt = 0; attempt < 30; attempt++) {
+    // Drain EVERY pending confirmation, not just the first. Declining one
+    // resumes the turn, and the model may raise another (e.g. re-attempting a
+    // save after its first draft was refused). We decline each in turn until
+    // the conversation leaves `awaiting_input` with nothing outstanding, so the
+    // resume turn below is never blocked by the 409 pending_elicitation guard.
+    // Bounded so a model that re-asks indefinitely fails loudly rather than
+    // hanging. Declining (not approving) keeps the conversation resumable:
+    // approving would advance to `committed` and leave `-r` nothing to continue.
+    let drained = false;
+    for (let attempt = 0; attempt < 40; attempt++) {
       const res = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
         headers: bearer(env),
       });
       const body = (await res.json()) as DetailShape;
       const candidate = body.resume_summary?.pending_approval ?? null;
       if (candidate) {
-        pendingId = candidate.id;
+        const respondRes = await fetch(
+          `${env.baseUrl}/v1/conversations/${conversationId}/elicitations/${candidate.id}/respond`,
+          {
+            method: "POST",
+            headers: { ...bearer(env), "content-type": "application/json" },
+            body: JSON.stringify({ output: { confirmed: false } }),
+          },
+        );
+        expect(respondRes.ok).toBe(true);
+        continue;
+      }
+      if (body.conversation.status !== "awaiting_input") {
+        drained = true;
         break;
       }
-      if (body.conversation.status !== "awaiting_input") break;
       // allow-wall-clock: e2e poll for HTTP-side state to settle.
       await new Promise<void>((resolve) => setTimeout(resolve, 100));
     }
-
-    if (pendingId) {
-      // Decline the commit — leaves the conversation in `active` so
-      // the resume turn has somewhere to continue. Approving would
-      // advance to `committed`, and `-r conversationId` would have
-      // nothing left to resume.
-      const respondRes = await fetch(
-        `${env.baseUrl}/v1/conversations/${conversationId}/elicitations/${pendingId}/respond`,
-        {
-          method: "POST",
-          headers: { ...bearer(env), "content-type": "application/json" },
-          body: JSON.stringify({ output: { confirmed: false } }),
-        },
-      );
-      expect(respondRes.ok).toBe(true);
-    }
-
-    // Wait until the conversation exits `awaiting_input` so the next
-    // turn is not blocked by the 409 pending_elicitation_blocked guard.
-    for (let attempt = 0; attempt < 30; attempt++) {
-      const res = await fetch(`${env.baseUrl}/v1/conversations/${conversationId}`, {
-        headers: bearer(env),
-      });
-      const body = (await res.json()) as DetailShape;
-      if (body.conversation.status !== "awaiting_input") break;
-      // allow-wall-clock: e2e poll for HTTP-side state to settle.
-      await new Promise<void>((resolve) => setTimeout(resolve, 100));
-    }
+    expect(drained).toBe(true);
 
     // Second turn, resuming the session via `-r <id>`.
     const turn2 = await cli(["--p", "status check", "-r", conversationId, "--output", "json"], {

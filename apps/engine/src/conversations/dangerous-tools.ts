@@ -42,8 +42,8 @@ export const DANGEROUS_TOOLS_SET: ReadonlySet<string> = new Set(DANGEROUS_TOOLS)
  *  for a dangerous tool. Caveat: that override only reaches resolution
  *  paths that thread the conversation's policies into `resolveToolMode`
  *  (the loop's wrapped in-repo tools in `sdk-wrap/invoke.ts`); the chat
- *  palette's external-MCP dispatch resolves through the MCP policy gate
- *  (`gateTenantToolCall`), which passes no per-conversation overrides, so
+ *  palette's external-MCP dispatch resolves through `policyDecide`
+ *  (`tools/policy.ts`), which passes no per-conversation overrides, so
  *  external `mcp_` tools always confirm on that path today. */
 export function isDangerousTool(name: string): boolean {
   return DANGEROUS_TOOLS_SET.has(name) || name.startsWith("mcp_");

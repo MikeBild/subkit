@@ -82,12 +82,12 @@ export function mapToolToCommitIntentKind(tool: string): string | null {
  * Top-level `input.kind` to stamp on a policy-gate elicitation so the
  * tool's downstream prior-approval gate (e.g. `commit-workflow.ts`'s
  * SQL filter `(input ->> 'kind') = 'save_workflow_draft'`) finds the resolved
- * row when the LLM re-issues the call with `__policy_confirmed: true`.
+ * row that authorizes the save.
  *
  * For `save_workflow_draft` we MUST use `"save_workflow_draft"` (not `"external_write"`)
  * — without this the policy-gate elicitation would never satisfy the
- * inner `commitWorkflowAtomic` prior-approval check, and a re-issue
- * would loop indefinitely with `error: no_prior_approval`. Other
+ * inner `commitWorkflowAtomic` prior-approval check, and the save would
+ * loop indefinitely with `error: no_prior_approval`. Other
  * persisting tools fall back to `"external_write"` — they do not gate
  * themselves on a specific `input.kind` value.
  */
@@ -119,13 +119,34 @@ export function topLevelElicitationKindForTool(
 export const REVIEW_AFTER_EXECUTION_KIND = "review_after_execution" as const;
 
 /**
- * Build the optional `commit_intent` carrier the harness reads in
- * `maybeAutoPersistFromElicitation` to atomically persist the write
- * the moment the operator confirms — no LLM re-issue required.
+ * The universal `commit_intent` carrier for a policy-gated chat tool call.
  *
- * Returns `null` when we have no shape contract for the tool's payload
- * yet; the call falls back to the legacy LLM-re-issue path
- * (`__policy_confirmed: true`).
+ * `approval_id` names a single-use, principal-bound, AES-GCM-encrypted approval
+ * the gate minted over the exact args the call paused on. The harness claims it
+ * and replays those args (`auto-persist.ts` → `execute_confirmed_tool_call`);
+ * the model never sees the id, and no wrapped tool publishes a slot it could
+ * carry one back in. Engine-authored only.
+ */
+export function buildConfirmedToolCallIntent(
+  tool: string,
+  approvalId: string,
+): Record<string, unknown> {
+  return {
+    kind: "execute_confirmed_tool_call",
+    payload: { tool, approval_id: approvalId },
+    description: `Run ${tool} with the arguments the operator is approving.`,
+  };
+}
+
+/**
+ * Build the shape-specific `commit_intent` carrier the harness reads in
+ * `maybeAutoPersistFromElicitation` to atomically persist the write
+ * the moment the operator confirms.
+ *
+ * Returns `null` when we have no shape contract for the tool's payload yet; the
+ * caller then attaches `buildConfirmedToolCallIntent`, which replays the
+ * approved args verbatim. Either way the HARNESS performs the call — the model
+ * never re-issues it.
  */
 export function buildPolicyGateCommitIntent(
   tool: string,
@@ -173,11 +194,7 @@ export function buildPolicyGateCommitIntent(
     };
   }
   if (intentKind === "create_api_key") {
-    const {
-      __policy_confirmed: _policyConfirmed,
-      _meta,
-      ...payload
-    } = rawArgs as Record<string, unknown>;
+    const { _meta, ...payload } = rawArgs as Record<string, unknown>;
     return {
       kind: "create_api_key",
       payload,
@@ -205,9 +222,9 @@ export function buildPolicyGateCommitIntent(
       description: `Run workflow ${workflow ?? workflowId} in ${environment}.`,
     };
   }
-  // update_* — payload shapes still owned by the LLM-driven
-  // ask_user_confirm path; the policy-gate fallback for these uses the
-  // re-issue contract.
+  // update_* and every other gated tool: no shape-specific payload contract, so
+  // the caller attaches `buildConfirmedToolCallIntent` and the harness replays
+  // the approved args verbatim.
   return null;
 }
 

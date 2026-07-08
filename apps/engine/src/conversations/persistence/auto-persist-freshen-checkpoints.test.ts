@@ -23,6 +23,7 @@ import {
   tenants,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { withConnectorProbe } from "../authoring-state.ts";
 import { appendSnapshot } from "../draft.ts";
 import type { DraftDocument } from "../types.ts";
@@ -122,6 +123,7 @@ describe("auto-persist · save_connector_draft freshens stale checkpoints", () =
     );
 
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id,
       conversation_id,
       actor_id: null,
@@ -166,6 +168,7 @@ describe("auto-persist · save_connector_draft freshens stale checkpoints", () =
     );
 
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id,
       conversation_id,
       actor_id: null,

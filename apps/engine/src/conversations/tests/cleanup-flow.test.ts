@@ -62,10 +62,13 @@ describe("cleanup write tools in the conversation loop", () => {
       },
       ctx.testDb.db,
     );
+    // Two steps, not three: the model NEVER re-issues a gated write. Its call
+    // pauses on the policy gate's ask_user_confirm, and the HARNESS performs
+    // the delete when the operator answers (auto-persist's
+    // `execute_confirmed_tool_call` claims the approval the gate minted).
     getMockProvider().setConversePlan(conversation.conversation.id, [
       { tool: "list_workflows", args: {} },
       { tool: "delete_workflow", args: { slug: workflow.slug } },
-      { tool: "delete_workflow", args: { slug: workflow.slug, __policy_confirmed: true } },
     ]);
 
     const first = await appendMessageWithTurn(
@@ -97,10 +100,10 @@ describe("cleanup write tools in the conversation loop", () => {
       ctx.testDb.db,
     );
     expect(resumed.result.status).toBe("active");
+    // The model issued NO tool call on the resume turn — the harness had
+    // already performed the delete before the LLM was re-entered.
     const resumedCalls = resumed.result.events.filter((e) => e.type === "tool_call_start");
-    expect(resumedCalls.map((e) => (e.type === "tool_call_start" ? e.tool : ""))).toEqual([
-      "delete_workflow",
-    ]);
+    expect(resumedCalls.map((e) => (e.type === "tool_call_start" ? e.tool : ""))).toEqual([]);
     const deletedWorkflow = await ctx.testDb.db
       .select({ id: auditLog.resource_id })
       .from(auditLog)
@@ -130,7 +133,6 @@ describe("cleanup write tools in the conversation loop", () => {
     getMockProvider().setConversePlan(conversation.conversation.id, [
       { tool: "list_api_keys", args: {} },
       { tool: "revoke_api_key", args: { id: apiKey!.id } },
-      { tool: "revoke_api_key", args: { id: apiKey!.id, __policy_confirmed: true } },
     ]);
 
     const first = await appendMessageWithTurn(

@@ -59,18 +59,37 @@ import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { logger } from "../../logging/logger.ts";
+import {
+  approvalAuditResource,
+  consumeApproval,
+  declineApproval,
+  grantApproval,
+  recordApprovalApproved,
+  recordApprovalUnfulfilled,
+} from "../../tools/approval.ts";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
+import type { AnswerActor } from "../answer-actor.ts";
+import { walkAndResolve } from "../attachments.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import { partitionDiffs, type ToolDiff } from "../json-patch-apply.ts";
-import { describePatchOps } from "../tools/ask-user/commit-intent.ts";
+import {
+  approvalHandleFromElicitationInput,
+  type CommitIntentKind,
+  describePatchOps,
+} from "../tools/ask-user/commit-intent.ts";
 import { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
+import { WORKFLOW_TOOL_PREFIX } from "../tools/authoring-palette.ts";
 import { applyWorkflowPatchToDraft } from "../tools/edit-workflow-patch.ts";
-import { createApiKeyTool } from "../tools/generated/writes/create-api-key.ts";
-import { updateWorkflowTool } from "../tools/generated/writes/update-workflow.ts";
-import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { CreateApiKeyInput, createApiKeyTool } from "../tools/generated/writes/create-api-key.ts";
+import {
+  UpdateWorkflowInput,
+  updateWorkflowTool,
+} from "../tools/generated/writes/update-workflow.ts";
+import { getTool, type ToolContext, type ToolResult } from "../tools/index.ts";
+import { checkToolPermission, resolveConversationPrincipal } from "../tools/permission-gate.ts";
 import { normalizeWorkflowInput, workflowInputRecord } from "../tools/workflow-input-normalize.ts";
 import { mergeFormIntoCredential } from "./auto-persist/credential-cache.ts";
 import {
@@ -111,6 +130,13 @@ export interface AutoPersistInput {
   /** Resolved principal of the actor who answered — required for the
    *  `run_workflow` intent's RBAC gate. Absent on legacy callers. */
   principal?: ResolvedPrincipal | null;
+  /**
+   * WHO answered. The `human` variant is the only thing that can grant the
+   * approval an engine-authored `commit_intent` names; a `relay` answer grants
+   * nothing, and the claim then refuses with `approval_not_granted`. See
+   * `conversations/answer-actor.ts`.
+   */
+  answer_actor: AnswerActor;
   /** The carrier elicitation's `output` after `resolveElicitation`. */
   elicitation_output: unknown;
   /** The persisted carrier — read from `conversation_elicitations`. */
@@ -122,13 +148,22 @@ export interface AutoPersistInput {
   /**
    * Surface the RESUME runs on. On `"chat"` (external chat channels —
    * read-only contract) every mutating commit_intent is refused with an
-   * honest synthetic result; only `run_workflow` dispatches. Without
-   * this gate the harness-side auto-persist would execute writes the
-   * chat palette structurally removed from the model.
+   * honest synthetic result; only the two run intents (`run_workflow`,
+   * `commit_held_workflow_writes`) dispatch. Without this gate the
+   * harness-side auto-persist would execute writes the chat palette
+   * structurally removed from the model.
    */
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   db: Db;
 }
+
+/** The only commit_intents an external chat channel may dispatch: running a
+ *  saved workflow, and releasing the writes a `wf_<slug>` preview held. Every
+ *  other kind mutates tenant state the read-only chat palette withholds. */
+const CHAT_DISPATCHABLE_INTENTS: ReadonlySet<CommitIntentKind> = new Set([
+  "run_workflow",
+  "commit_held_workflow_writes",
+]);
 
 export interface AutoPersistDispatch {
   /** True if a `commit_intent` was found and dispatched. */
@@ -183,6 +218,116 @@ function readApprovedIndices(output: unknown, total: number): number[] | null {
     if (typeof n === "number" && Number.isInteger(n) && n >= 0 && n < total) seen.add(n);
   }
   return [...seen].sort((a, b) => a - b);
+}
+
+/**
+ * Apply a PERSON's yes to the approval this elicitation carries, before anything
+ * claims it. `consumeApproval` requires `granted_at IS NOT NULL`; this is the
+ * only thing on the chat surface that sets it.
+ *
+ * A `relay` answer grants nothing and is not refused here. The claim is the
+ * gate: `consumeApproval` requires a granted row, so a relayed "yes" answers
+ * `approval_not_granted` and nothing runs. Leaving the refusal to the claim
+ * keeps ONE denial vocabulary, produced in one place, for every surface.
+ *
+ * A grant that names a real approval it can no longer decide on (declined,
+ * expired, already spent) is likewise left to the claim: `grantApproval` has
+ * already written the APPROVAL_GRANTED/denied row, and `consumeApproval`
+ * classifies the same row into the code the caller reports.
+ */
+async function grantApprovalIfHuman(p: {
+  db: Db;
+  tenant_id: string;
+  conversation_id: string;
+  approval_id: string;
+  tool: string;
+  actor: AnswerActor;
+}): Promise<boolean> {
+  if (p.actor.kind !== "human") {
+    logger.warn({
+      module: "conversation_persistence",
+      action: "auto_persist.approval_not_granted_by_relay",
+      msg: "an approval-bearing elicitation was answered by a non-human actor; nothing was granted and the claim will refuse unless a person granted it in the approval portal",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      approval_id: p.approval_id,
+      tool: p.tool,
+      relay_reason: p.actor.reason,
+    });
+    return false;
+  }
+  const granted = await grantApproval({
+    db: p.db,
+    approval_id: p.approval_id,
+    tenant_id: p.tenant_id,
+    granted_by_user_id: p.actor.user_id,
+    via: p.actor.via,
+  });
+  if (granted.ok) return true;
+  logger.warn({
+    module: "conversation_persistence",
+    action: "auto_persist.approval_grant_missed",
+    msg: "a person answered the approval but the grant did not land; the claim decides the outcome",
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    approval_id: p.approval_id,
+    tool: p.tool,
+    user_id: p.actor.user_id,
+    error_code: granted.code,
+  });
+  return false;
+}
+
+/**
+ * A PERSON's no, applied to the approval this elicitation carries. Terminal:
+ * the row can never be granted afterwards, so the model cannot re-ask it.
+ *
+ * A relay's "no" declines nothing. Declining is safe in itself, but it would
+ * put a refusal a machine invented into a human's mouth AND destroy a pending
+ * decision a person may still be looking at. The approval simply ages out.
+ */
+async function declineApprovalIfHuman(p: {
+  db: Db;
+  tenant_id: string;
+  conversation_id: string;
+  elicitation_id: string;
+  elicitation_input: unknown;
+  actor: AnswerActor;
+}): Promise<void> {
+  const approvalId = approvalHandleFromElicitationInput(p.elicitation_input);
+  if (!approvalId) return;
+  if (p.actor.kind !== "human") {
+    logger.warn({
+      module: "conversation_persistence",
+      action: "auto_persist.approval_not_declined_by_relay",
+      msg: "an approval-bearing elicitation was declined by a non-human actor; the approval was left pending a person's decision",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      elicitation_id: p.elicitation_id,
+      approval_id: approvalId,
+      relay_reason: p.actor.reason,
+    });
+    return;
+  }
+  const declined = await declineApproval({
+    db: p.db,
+    approval_id: approvalId,
+    tenant_id: p.tenant_id,
+    granted_by_user_id: p.actor.user_id,
+    via: p.actor.via,
+  });
+  logger.info({
+    module: "conversation_persistence",
+    action: "auto_persist.approval_declined",
+    msg: "a person declined the approval this elicitation carried; nothing ran and the approval is dead",
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    elicitation_id: p.elicitation_id,
+    approval_id: approvalId,
+    user_id: p.actor.user_id,
+    decision_recorded: declined.ok,
+    ...(declined.ok ? {} : { error_code: declined.code }),
+  });
 }
 
 export async function maybeAutoPersistFromElicitation(
@@ -260,6 +405,17 @@ export async function maybeAutoPersistFromElicitation(
 
   const declineCheck = checkDecline(p.elicitation.tool_name, p.elicitation_output);
   if (declineCheck) {
+    // The operator said no to a write the engine is holding. Kill the handle
+    // first — an APPROVAL_DECLINED row is the audit trail's record of the
+    // refusal, and a declined approval can never be claimed afterwards.
+    await declineApprovalIfHuman({
+      db: p.db,
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      elicitation_id: p.elicitation.id,
+      elicitation_input: p.elicitation.input,
+      actor: p.answer_actor,
+    });
     const synthetic = buildDeclineSynthetic(intent, declineCheck);
     const callId = await injectSyntheticToolCall({
       db: p.db,
@@ -276,10 +432,10 @@ export async function maybeAutoPersistFromElicitation(
   // become the bypass — a commit_intent that reaches a chat resume
   // (e.g. staged before the conversation ever reached chat, or a
   // mis-tagged confirm) would otherwise write at full harness
-  // authority. `run_workflow` stays dispatchable: running a saved
-  // workflow is the channel's one action, and its case below carries
-  // its own RBAC gate (`gateWorkflowRunRbac`).
-  if (p.surface === "chat" && intent.kind !== "run_workflow") {
+  // authority. Running a saved workflow is the channel's one action, so
+  // the two run intents stay dispatchable — both carry their own RBAC
+  // gate (`gateWorkflowRunRbac`) in the cases below.
+  if (p.surface === "chat" && !CHAT_DISPATCHABLE_INTENTS.has(intent.kind)) {
     logger.warn({
       module: "conversation_persistence",
       action: "auto_persist.denied_chat_readonly",
@@ -329,6 +485,9 @@ export async function maybeAutoPersistFromElicitation(
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
+    // Threaded so a harness-dispatched tool sees the SAME principal the chat
+    // wrapper would have handed it (`run_workflow` refuses without one).
+    ...(p.principal ? { principal: p.principal } : {}),
     connector_id: null,
     workflow_id: null,
     permission_mode: null,
@@ -653,9 +812,360 @@ export async function maybeAutoPersistFromElicitation(
         };
         break;
       }
+      case "commit_held_workflow_writes": {
+        // A PERSON approved the held writes of a `wf_<slug>` chat preview. The
+        // HARNESS performs them: it grants the approval on their behalf, claims
+        // the single-use handle the preview minted, and replays the encrypted
+        // inputs. A decline never reaches here — `checkDecline` returned above.
+        //
+        // WHAT RUNS IS WHAT THE APPROVAL NAMES. The claim's `tool` is a CAS
+        // predicate — `wf_<slug>` for the workflow the operator previewed — and
+        // the slug is read back off the claimed row, exactly as MCP reads it off
+        // the `tools/call` name. Nothing in the intent payload selects a target:
+        // an approval granted for a harmless preview must not be spendable on a
+        // different workflow, and validating an attacker-controlled target field
+        // against the approval is not the same as deriving it from one.
+        toolName = intentToolName(intent);
+        const approvalId = readString(intent.payload, "approval_id");
+        if (!approvalId) {
+          result = {
+            ok: false,
+            error_code: "invalid_commit_intent",
+            message:
+              "commit_held_workflow_writes commit_intent is missing payload.approval_id — nothing was written.",
+            data: {},
+          };
+          break;
+        }
+        if (!p.principal) {
+          result = {
+            ok: false,
+            error_code: "principal_required",
+            message:
+              "releasing held workflow writes needs the approving actor's principal for RBAC — nothing was written.",
+            data: {},
+          };
+          break;
+        }
+        // The person answering IS the approver. Grant before claiming —
+        // `consumeApproval` refuses an ungranted row by construction, so this
+        // is not bookkeeping, it is what makes the replay possible.
+        await grantApprovalIfHuman({
+          db: p.db,
+          tenant_id: p.tenant_id,
+          conversation_id: p.conversation_id,
+          approval_id: approvalId,
+          tool: toolName,
+          actor: p.answer_actor,
+        });
+        // Burn the handle first: a denial after this point must not be
+        // replayable, and the claim carries the args the operator approved.
+        const claim = await consumeApproval({
+          db: p.db,
+          principal: p.principal,
+          approval_id: approvalId,
+          tool: toolName,
+          surface: "chat",
+          via: "chat",
+          execution_mode: "dev",
+        });
+        if (!claim.ok) {
+          result = { ok: false, error_code: claim.code, message: claim.message, data: {} };
+          break;
+        }
+        // The approval's own tool name is the execution target.
+        const approvedTool = claim.tool;
+        const workflowSlug = approvedTool.startsWith(WORKFLOW_TOOL_PREFIX)
+          ? approvedTool.slice(WORKFLOW_TOOL_PREFIX.length)
+          : null;
+        const resolved = workflowSlug
+          ? await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, workflowSlug, {
+              require_published: true,
+            })
+          : null;
+        if (!resolved) {
+          // The handle is spent and nothing ran: the workflow was renamed or
+          // deleted between the preview and the approval (or the approval was
+          // never granted for a saved-workflow tool at all). The audit trail
+          // must record that outcome, not stop at APPROVAL_REQUESTED.
+          await recordApprovalUnfulfilled({
+            db: p.db,
+            principal: p.principal,
+            claim,
+            tool: approvedTool,
+            via: "chat",
+            reason: workflowSlug ? "workflow_not_found" : "not_a_workflow_tool",
+          });
+          result = {
+            ok: false,
+            error_code: workflowSlug ? "workflow_not_found" : "invalid_approval_target",
+            message: workflowSlug
+              ? `No saved workflow matches "${workflowSlug}" — it may have been renamed or deleted since the preview, so nothing was written. Re-run it to obtain a fresh preview.`
+              : `Approval ${claim.approval_id} was granted for ${approvedTool}, which is not a saved-workflow tool — nothing was written.`,
+            data: workflowSlug ? { workflow_slug: workflowSlug } : {},
+            next_best_actions: ["find_workflow", "list_workflows"],
+          };
+          break;
+        }
+        const workflowId = resolved.id;
+        // A grant can be revoked between the preview and the approval.
+        const rbac = await gateWorkflowRunRbac({
+          db: p.db,
+          principal: p.principal,
+          workflow_id: workflowId,
+          workflow_slug: resolved.slug,
+          request_source: "auto_persist",
+          tool: approvedTool,
+          approval: approvalAuditResource(claim),
+        });
+        if (!rbac.allow) {
+          result = {
+            ok: false,
+            error_code: "permission_denied",
+            message: rbac.error_message,
+            data: { workflow_id: workflowId },
+          };
+          break;
+        }
+        // The writes are about to leave the perimeter. An approved external
+        // write that never reached the audit log is the governance gap the log
+        // exists to close — refuse rather than run unrecorded.
+        const recorded = await recordApprovalApproved({
+          db: p.db,
+          principal: p.principal,
+          claim,
+          tool: approvedTool,
+          via: "chat",
+        });
+        if (!recorded) {
+          result = {
+            ok: false,
+            error_code: "approval_audit_failed",
+            message: `Approval ${claim.approval_id} could not be recorded in the audit log; ${approvedTool} did not run. Re-issue ${approvedTool} to obtain a fresh preview.`,
+            data: { workflow_id: workflowId },
+          };
+          break;
+        }
+        const replayInput = Object.keys(claim.args).length > 0 ? claim.args : null;
+        const heldRun = await runExecution({
+          db: p.db,
+          tenant_id: p.tenant_id,
+          source: { kind: "saved", workflow_id: workflowId },
+          input: replayInput,
+          options: {
+            request_source: "chat",
+            trace_id: null,
+            principal: p.principal,
+            // The synthetic chat palette always previews in dev, and
+            // `consumeApproval` rejects a claim that contradicts the stored
+            // environment — so the replay runs where the preview ran.
+            execution_mode: "dev",
+          },
+        });
+        await p.db
+          .update(conversations)
+          .set({ target_workflow_id: workflowId, updated_at: new Date() })
+          .where(
+            and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
+          );
+        result = {
+          ok: heldRun.status === "succeeded",
+          data: {
+            status: heldRun.status,
+            execution_id: heldRun.execution_id,
+            workflow_id: workflowId,
+            workflow_slug: resolved.slug,
+            output: heldRun.output,
+            writes_executed: true,
+            ...(heldRun.warnings && heldRun.warnings.length > 0
+              ? { warnings: heldRun.warnings }
+              : {}),
+          },
+        };
+        break;
+      }
+      case "execute_confirmed_tool_call": {
+        // A PERSON approved a policy-gated chat tool call. The HARNESS runs it:
+        // it grants the approval on their behalf, claims the single-use handle
+        // the gate minted, and replays the args it encrypted then. The model
+        // never held the approval id, no wrapped tool publishes a confirm
+        // marker, and a relayed answer grants nothing — so a person's answer is
+        // the only thing that releases the call. A decline never reaches here;
+        // `checkDecline` returned above.
+        const gatedToolName = readString(intent.payload, "tool");
+        const approvalId = readString(intent.payload, "approval_id");
+        toolName = gatedToolName ?? intentToolName(intent);
+        if (!gatedToolName || !approvalId) {
+          result = {
+            ok: false,
+            error_code: "invalid_commit_intent",
+            message:
+              "execute_confirmed_tool_call commit_intent is missing payload.tool or payload.approval_id — nothing ran.",
+            data: {},
+          };
+          break;
+        }
+        const gatedTool = getTool(gatedToolName);
+        if (!gatedTool) {
+          result = {
+            ok: false,
+            error_code: "unknown_tool",
+            message: `no conversation tool named '${gatedToolName}' — nothing ran.`,
+            data: {},
+          };
+          break;
+        }
+        // Resolved in the SAME order the gate used, so the id the approval was
+        // bound to is the id we claim it with (`sdk-wrap/invoke.ts`).
+        const approver = p.principal ?? (await resolveConversationPrincipal(ctx));
+        if (!approver) {
+          result = {
+            ok: false,
+            error_code: "principal_required",
+            message: `releasing the approved ${gatedToolName} call needs the approving actor's principal for RBAC — nothing ran.`,
+            data: {},
+          };
+          break;
+        }
+        // The person answering IS the approver — the same grant a portal click
+        // makes, through the channel they actually used.
+        await grantApprovalIfHuman({
+          db: p.db,
+          tenant_id: p.tenant_id,
+          conversation_id: p.conversation_id,
+          approval_id: approvalId,
+          tool: gatedToolName,
+          actor: p.answer_actor,
+        });
+        // Burn the handle first: a denial after this point must not be
+        // replayable, and the claim carries the args the operator approved.
+        const claim = await consumeApproval({
+          db: p.db,
+          principal: approver,
+          approval_id: approvalId,
+          tool: gatedToolName,
+          surface: "chat",
+          via: "chat",
+        });
+        if (!claim.ok) {
+          result = { ok: false, error_code: claim.code, message: claim.message, data: {} };
+          break;
+        }
+        // A grant can be revoked between the gate and the approval. Same
+        // declarative descriptor `wrapOne` enforces, on the replayed args. The
+        // handle is already burned, so the deny row anchors on the approval —
+        // its terminal outcome, not a free-standing tool denial.
+        if (gatedTool.permission) {
+          const perm = await checkToolPermission(
+            ctx,
+            gatedTool.permission,
+            claim.args,
+            approvalAuditResource(claim),
+          );
+          if (!perm.allow) {
+            result = gatedTool.permission.denyResult?.(perm.permission, perm.reason) ?? {
+              ok: false,
+              error_code: "permission_denied",
+              message: perm.reason,
+              data: { permission: perm.permission },
+            };
+            break;
+          }
+        }
+        // The write is about to happen. An approved write that never reached the
+        // audit log is the governance gap the log exists to close.
+        const recordedApproval = await recordApprovalApproved({
+          db: p.db,
+          principal: approver,
+          claim,
+          tool: gatedToolName,
+          via: "chat",
+        });
+        if (!recordedApproval) {
+          result = {
+            ok: false,
+            error_code: "approval_audit_failed",
+            message: `Approval ${claim.approval_id} could not be recorded in the audit log; ${gatedToolName} did not run. Re-issue it to obtain a fresh confirmation.`,
+            data: {},
+          };
+          break;
+        }
+        // `{$file: fid_…}` refs survive the encrypted round-trip as refs; resolve
+        // them here exactly as the chat wrapper does before `execute`.
+        const replayArgs = await walkAndResolve(
+          claim.args,
+          { db: p.db, tenant_id: p.tenant_id },
+          new Map(),
+        );
+        result = await gatedTool.execute(ctx, replayArgs);
+        break;
+      }
+      case "grant_relayed_tool_call": {
+        // A PERSON approved a policy-gated EXTERNAL MCP tool call. The harness
+        // CANNOT perform it: a remote MCP invocation must be re-issued by the
+        // MODEL and run in-engine (`executeExternalMcpTool` →
+        // `pool.invokeRemoteTool`), not from a harness resume. So this carrier
+        // GRANTS ONLY — it flips `granted_at` on the approval the external-MCP
+        // gate minted and STOPS. There is no `consumeApproval`, no execution
+        // here: the model's separate re-issue (carrying `__policy_confirm_id`)
+        // claims the now-granted row and performs the call. A decline never
+        // reaches here — `checkDecline` returned above and
+        // `declineApprovalIfHuman` already killed the handle, so the re-issue
+        // then refuses. A relayed (non-human) answer grants nothing, and the
+        // re-issue's claim answers `approval_not_granted`.
+        const relayedTool = readString(intent.payload, "tool");
+        const approvalId = readString(intent.payload, "approval_id");
+        toolName = relayedTool ?? intentToolName(intent);
+        if (!relayedTool || !approvalId) {
+          result = {
+            ok: false,
+            error_code: "invalid_commit_intent",
+            message:
+              "grant_relayed_tool_call commit_intent is missing payload.tool or payload.approval_id — nothing was granted.",
+            data: {},
+          };
+          break;
+        }
+        // The person answering IS the approver — the same grant a portal click
+        // makes, through the channel they actually used. Grant only; the CAS in
+        // `consumeApproval` (which the model's re-issue drives) still requires a
+        // granted row, so this is what makes the re-issue able to proceed.
+        const relayGranted = await grantApprovalIfHuman({
+          db: p.db,
+          tenant_id: p.tenant_id,
+          conversation_id: p.conversation_id,
+          approval_id: approvalId,
+          tool: relayedTool,
+          actor: p.answer_actor,
+        });
+        // Report the outcome that actually happened — never a blanket
+        // `granted:true`. A relay (non-human) answer or a missed/expired grant
+        // leaves the row ungranted; telling the model "approved, re-issue" would
+        // send it straight into `approval_not_granted` and leave an auditor a
+        // `granted:true` synthetic with no APPROVAL_GRANTED row behind it.
+        result = relayGranted
+          ? {
+              ok: true,
+              data: {
+                status: "approved",
+                granted: true,
+                tool: relayedTool,
+                note: `The operator approved ${relayedTool}. It has NOT run yet — the engine cannot perform an external MCP call for you. Re-issue ${relayedTool} with __policy_confirmed: true and __policy_confirm_id set to the confirm_id you were given; the engine replays the arguments it already holds.`,
+              },
+            }
+          : {
+              ok: false,
+              error_code: "approval_not_granted",
+              message: `${relayedTool} was not granted (the answer did not come from a person, or the approval expired). Nothing ran and nothing will — a person must approve it before ${relayedTool} can be re-issued.`,
+              data: { status: "not_granted", granted: false, tool: relayedTool },
+            };
+        break;
+      }
       case "create_api_key": {
+        // This is the tool's Zod boundary on this path: `intent.payload` is an
+        // LLM-authored commit_intent, and `execute` no longer parses.
         toolName = "create_api_key";
-        result = await createApiKeyTool.execute(ctx, intent.payload);
+        result = await createApiKeyTool.execute(ctx, CreateApiKeyInput.parse(intent.payload));
         break;
       }
       case "update_workflow_metadata": {
@@ -665,8 +1175,9 @@ export async function maybeAutoPersistFromElicitation(
         // NOT re-issue update_workflow itself. updateWorkflowMetadata writes the
         // column without rolling a version, so a description edit needs no
         // dry_run/preview.
+        // Zod boundary for this path — see the create_api_key case above.
         toolName = "update_workflow";
-        result = await updateWorkflowTool.execute(ctx, intent.payload);
+        result = await updateWorkflowTool.execute(ctx, UpdateWorkflowInput.parse(intent.payload));
         break;
       }
       case "oauth_completed": {
@@ -845,7 +1356,7 @@ export async function maybeAutoPersistFromElicitation(
     // ended on a colon with no question for the user).
     const translated = translateAutoPersistError(err, intent.kind);
     const synthetic: SyntheticToolResult = {
-      tool: intentToolName(intent.kind),
+      tool: intentToolName(intent),
       ok: false,
       error_code: translated.error_code,
       message: translated.message,

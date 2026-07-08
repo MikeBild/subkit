@@ -22,6 +22,7 @@
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { logger } from "../../../logging/logger.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
+import { humanInBandAnswer } from "../../answer-actor.ts";
 import { ElicitationUnsupportedError } from "../../elicitation-bridge.ts";
 import {
   createElicitation,
@@ -300,6 +301,11 @@ export async function pauseForUserInput(
             tenant_id: ctx.tenant_id,
             conversation_id: ctx.conversation_id,
             actor_id: ctx.actor_id,
+            // The client returned an `accept` to an `elicitation/create` prompt,
+            // which it can only do by putting the question in front of a person.
+            // That is the in-band grant channel — the optimization on top of the
+            // portal, not a substitute for it.
+            answer_actor: humanInBandAnswer(ctx.principal),
             ...(ctx.principal !== undefined ? { principal: ctx.principal } : {}),
             ...(ctx.surface ? { surface: ctx.surface } : {}),
             output,

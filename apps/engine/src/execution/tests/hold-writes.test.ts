@@ -225,8 +225,10 @@ describe("hold-writes · HTTP", () => {
     ) as { message?: string; step_key?: string; details?: Record<string, unknown> } | undefined;
     expect(warning).toBeTruthy();
     expect(warning?.step_key).toBe("$holds");
-    expect(warning?.message).toContain("execute_writes:true");
     expect(warning?.message).toContain("NOTHING was written");
+    // The engine states the STATE, never the remedy: `execute_writes` is a
+    // tool argument the surfaces own, not an execution-subsystem concept.
+    expect(warning?.message).not.toContain("execute_writes");
     expect(warning?.details?.held_steps).toEqual(["send"]);
     expect(warning?.details?.skipped_steps).toEqual(["confirm"]);
     expect(warning?.details?.would_write).toEqual([

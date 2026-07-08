@@ -12,6 +12,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { appendSnapshot, loadDraft } from "../draft.ts";
 import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts";
 import type { DraftDocument } from "../types.ts";
@@ -107,6 +108,7 @@ describe("auto-persist — apply_workflow_patch (D3)", () => {
     const conversation_id = await seedConversation();
     const elicitation = await carrier(conversation_id);
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id,
       conversation_id,
       actor_id: null,
@@ -135,6 +137,7 @@ describe("auto-persist — apply_workflow_patch (D3)", () => {
     const conversation_id = await seedConversation();
     const elicitation = await carrier(conversation_id);
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id,
       conversation_id,
       actor_id: null,
@@ -167,6 +170,7 @@ describe("auto-persist — apply_workflow_patch (D3)", () => {
     const before = await loadDraft(tenant_id, conversation_id, ctx.db);
     const elicitation = await carrier(conversation_id);
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id,
       conversation_id,
       actor_id: null,

@@ -1,10 +1,14 @@
-// preview_attachment surfaces under its bare name via the unified
+// preview_attachment is reachable under its bare name via the unified
 // registry — the canonical (and now only) MCP surface. The legacy
 // `tenant_preview_attachment` alias was removed (it was a pure duplicate
 // of the bare name that doubled the catalog).
 //
-// We force authoring MCP mode so the conversation tool surfaces in
-// the catalog (in product mode it's gated by the PRODUCT_MODE_ALLOW_LIST).
+// It is NOT published in the authoring `tools/list`: the catalog allow-list
+// publishes ~24 named tools to fit the schema-token budget, and the long tail
+// of inventory reads (preview_attachment among them) stays reachable through
+// `tools/call` / `conversation_start` rather than being advertised. So this
+// suite asserts the CALL contract (bare name resolves, no legacy alias), not
+// catalog membership.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
@@ -22,29 +26,14 @@ afterAll(async () => {
 });
 
 describe("mcp tools/list — preview_attachment naming", () => {
-  test("includes 'preview_attachment' as a bare name", async () => {
+  test("is long-tail: not advertised in authoring tools/list, and the legacy alias is gone", async () => {
     const client = await suite.connect();
     const result = await client.listTools();
     const names = new Set(result.tools.map((t) => t.name));
-    expect(names.has("preview_attachment")).toBe(true);
-  });
-
-  test("does NOT include the removed 'tenant_preview_attachment' alias", async () => {
-    const client = await suite.connect();
-    const result = await client.listTools();
-    const names = new Set(result.tools.map((t) => t.name));
+    // Long-tail inventory read: reachable via tools/call (below), not published.
+    expect(names.has("preview_attachment")).toBe(false);
+    // The removed duplicate alias never comes back under any mode.
     expect(names.has("tenant_preview_attachment")).toBe(false);
-  });
-
-  test("carries the _meta.subkit.category so clients can route", async () => {
-    const client = await suite.connect();
-    const result = await client.listTools();
-    const bare = result.tools.find((t) => t.name === "preview_attachment");
-    expect(bare).toBeDefined();
-    const meta = (bare as Record<string, unknown>)._meta as
-      | { subkit?: { category?: string } }
-      | undefined;
-    expect(meta?.subkit?.category).toBe("tenant_read");
   });
 });
 

@@ -48,8 +48,7 @@ export const getKnowledgeSourceTool: ConversationTool = {
   inputSchema: GetInput,
   category: "tenant_read",
   permission: { action: "knowledge:read", resourceType: "knowledge", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     const k = await ctx.engineClient.knowledgeSources.get(args.id);
     if (!k) return { ok: false, data: { error: "knowledge_source_not_found" } };
     return { ok: true, data: { source: k } };
@@ -62,8 +61,7 @@ export const searchKnowledgeV2Tool: ConversationTool = {
     "Search the tenant's Knowledge Sources for domain-specific notes, runbooks, compliance rules, and reference material. Results are chunks ranked by FTS relevance; each hit names its source via source_name. Prefer a short focused query (3–6 words). Optionally pass tags to narrow to sources carrying a topic (call list_knowledge_sources first to see available tags).",
   inputSchema: SearchInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = SearchInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof SearchInput>) {
     const hits = await ctx.engineClient.knowledgeSources.search(args.query, {
       ...(args.workflow_id !== undefined ? { workflow_id: args.workflow_id } : {}),
       ...(args.tags !== undefined ? { tags: args.tags } : {}),

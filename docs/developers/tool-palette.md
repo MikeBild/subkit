@@ -25,14 +25,15 @@ schema, RBAC, audit, and policy. Two failure modes followed:
   `ConversationTool` (`conversations/tools/test-connector.ts`) *and* as an
   MCP-only file (`mcp/tools/test-connector.ts`) — both calling the same
   `probeConnector()` driver and `recordConnectorInvoked()` recorder.
-- **Divergent gates.** Chat used `tool-policies.resolveToolMode()`; MCP used
-  `mcp/capabilities/policy-gate.gateTenantToolCall()`. They disagreed on
-  `tenant_read` escalation: a `probe_connector` POST against prod gated
-  correctly on chat and **silently bypassed** on MCP.
+- **Divergent gates.** Chat and MCP each carried their own confirm gate, and
+  they disagreed on `tenant_read` escalation: a `probe_connector` POST against
+  prod gated correctly on chat and **silently bypassed** on MCP.
 
 One registry, one dispatcher, one policy gate, and one envelope shape close
-both gaps. Per-surface adapters render that single envelope into MCP transport
-or chat SDK shape — the only place surface differences live.
+both gaps. The MCP-side gate is gone; `tools/policy.ts:policyDecide()` is the
+only confirm decision in the engine. Per-surface adapters render that single
+envelope into MCP transport or chat SDK shape — the only place surface
+differences live.
 
 ## Concepts
 
@@ -148,29 +149,44 @@ flowchart TD
     Resolve -->|miss| NotFound["tool_not_found"]
     Resolve -->|hit| Vis{"descriptor.disabled?"}
     Vis -->|yes| NAS["not_available_on_surface<br/>→ conversation_start"]
-    Vis -->|no| Policy{"policyDecide(category)"}
+    Vis -->|no| Confirm{"carries a confirm marker?"}
+    Confirm -->|yes| Claim["consumeApproval(confirm_id)<br/>single-use CAS → replayed args"]
+    Confirm -->|no| Canon["canonicalize args<br/>(inputSchema.safeParse, once)"]
+    Claim --> Rbac
+    Canon --> Rbac{"can(permission, resource)"}
+    Rbac -->|deny| Denied["policy_denied<br/>audit: POLICY_DENIED"]
+    Rbac -->|allow| Policy{"policyDecide(category)"}
     Policy -->|tenant_read · safe input| Proceed["proceed"]
-    Policy -->|tenant_write · destructive input| Confirm["needs_confirm"]
+    Policy -->|tenant_write · destructive input| Request["needs_confirm<br/>requestApproval → APPROVAL_REQUESTED"]
     Policy -->|surface mismatch| NAS
-    Confirm -->|operator approves| Proceed
-    Confirm -->|operator declines| Reject["error: declined"]
-    Proceed --> Audit["audit: APPROVAL_REQUESTED / APPROVED"]
-    Audit --> Exec["execute executor"]
+    Proceed --> Approve["claimed? recordApprovalApproved<br/>audit: APPROVAL_APPROVED"]
+    Approve --> Exec["execute executor"]
     Exec --> Norm["normalize → ToolEnvelope"]
     Norm --> Log["log: tool.dispatch.invoke"]
 ```
 
-The seven stages in order: **resolve** → `tool_not_found` on miss · **visibility**
-→ `not_available_on_surface` on `disabled` · **policy** → `proceed | needs_confirm
-| not_available` · **audit** → `APPROVAL_*` rows · **execute** the resolved
+The stages in order: **resolve** → `tool_not_found` on miss · **visibility** →
+`not_available_on_surface` on `disabled` · **confirm** → a confirm marker claims
+the stored approval and replays its args · **canonicalize** → the tool's own Zod
+schema parses the args that will execute, exactly once · **rbac** → `can()` on
+those args, before the gate, so an unauthorized caller never opens an approval ·
+**policy** → `proceed | needs_confirm | not_available` · **approve** → the claim
+that survived rbac + policy writes `APPROVAL_APPROVED` · **execute** the resolved
 executor · **normalize** into a `ToolEnvelope` · **log** one `tool.dispatch.invoke`
 event per call.
 
+`canonicalize` runs on the first call only. The args stored with the approval were
+already canonicalized at grant time, so a replay hands them to the executor
+untouched — a schema whose transform is not idempotent cannot corrupt its own
+approved payload. It follows that a `ConversationTool` executor **never re-parses
+its own input**: the dispatcher is the boundary, and it parses exactly once.
+
 ### Policy gate (unified)
 
-`policyDecide()` is a **pure synchronous function** that subsumes both
-`resolveToolMode()` (chat) and `gateTenantToolCall()` (MCP). Audit is emitted by
-the dispatcher, not the gate.
+`policyDecide()` (`tools/policy.ts`) is a **pure synchronous function** and the
+engine's only confirm decision — chat, MCP, and the conversation fast-path all
+call it and none re-derives the answer. It has no I/O: the durable half of the
+gate lives in `tools/approval.ts`, and audit is emitted by the dispatcher.
 
 ```ts
 type PolicyDecision =
@@ -185,11 +201,30 @@ type PolicyDecision =
 | `tenant_write` | mutates tenant state | `needs_confirm` for destructive input |
 | `draft_write` | authors a draft | MCP: `not_available_on_surface`; chat: in-loop |
 
-**Key behavioral change vs. the legacy paths: no `tenant_read` shortcut.** The
-legacy MCP gate (`policy-gate.ts:84`) returned `proceed` for every `tenant_read`
-tool, ignoring `computeModeFromInput` predicates. The unified gate consults
-`resolveToolMode` for every category, so `probe_connector` POST against prod
-gates correctly on both surfaces.
+**No `tenant_read` shortcut.** The deleted MCP-side gate returned `proceed` for
+every `tenant_read` tool, ignoring `computeModeFromInput` predicates. The unified
+gate runs `decideToolMode` for every category — a `tenant_read` tool without a
+dynamic predicate still resolves to `no_confirm`, so the common case is unchanged
+and `probe_connector` POST against prod now gates on both surfaces.
+
+### Approvals (`tools/approval.ts`)
+
+An approval is a **capability handle, not a re-transmission challenge**.
+
+| Function | Role |
+|---|---|
+| `requestApproval` | Persists the canonical args (AES-256-GCM, AAD-bound to `tenant_id:approval_id`) and the `APPROVAL_REQUESTED` row in one transaction. |
+| `consumeApproval` | Claims the handle with one atomic CAS on `(id, tenant_id, principal_id, tool, surface)` and returns the decrypted args to replay. Every CAS outcome but success writes `APPROVAL_REJECTED`. |
+| `recordApprovalApproved` | Writes `APPROVAL_APPROVED` after RBAC and policy pass, immediately before the executor runs. |
+
+The confirmation carries an **id and nothing else**. The client never re-sends the
+payload, so there is nothing for the model to swap between preview and approval,
+and a ~50 KB body is approvable. A claim is not yet an approval: it burns the
+single-use handle, then still has to survive RBAC and the policy gate — a grant
+revoked between preview and confirm denies, and the `POLICY_DENIED` row anchors on
+the approval's `(resource_type, resource_id)` so the contradiction is one JOIN.
+Handles expire after `APPROVAL_TTL_MS` (15 min), measured entirely on Postgres'
+clock.
 
 ## Adapters
 
@@ -270,16 +305,49 @@ as a growing `elapsed_ms` against an unchanged `last_action`.
 
 ### `confirm_tool_call`
 
-A `tenant_write` tool call returns `needs_confirm`, and the canonical way to
-approve it is to re-issue the same call with `_meta.sk_confirm: true`. A model-only
-client that cannot set `_meta` on an outgoing call has no way to express that
-approval — the gate would dead-end. `confirm_tool_call` is the escape hatch: it is
-an ordinary MCP tool the client invokes with the pending call's identifier to
-record the operator's approval, after which the gated write proceeds. It exists so
-the confirm gate is satisfiable on *every* MCP client, not only those that can
-attach `_meta` to a retried call. The approval is audited exactly like the
-`_meta.sk_confirm` path — a `confirm_tool_call` is a governance decision, not a
-bypass.
+**`confirm_tool_call` is a trigger, not a gate.** It cannot approve anything. An
+approval is minted UNGRANTED (`granted_at IS NULL`), and the claim CAS demands
+`granted_at IS NOT NULL`, which only `grantApproval` sets, and which only a human
+channel reaches. So every client may call `confirm_tool_call`, and it succeeds iff a
+person already said yes. There is no capability-based refusal, because there is
+nothing left for one to protect.
+
+**A human approves out of band, through the approval portal.** The gated call
+returns `needs_confirm` carrying a `tool_call_id` (the trigger handle), an
+`approval_url` (the human channel), and an `approval.requested` audit row that
+persists the encrypted arguments and the `would_write` preview. A person opens the
+link, sees exactly what will be written, and grants or declines — one atomic CAS,
+recorded as `approval.granted` / `approval.declined`. Afterwards the model relays
+`confirm_tool_call({ tool, confirm_id })`, or — if it can set `_meta` — re-issues
+with `_meta.sk_confirm: true` + `_meta.sk_confirm_id: <tool_call_id>`. Both are the
+same trigger, and both fail with `approval_not_granted` until the human decides.
+There is no second door to bolt, because neither door opens by itself.
+
+**In-band elicitation is an optimization, not the gate.** When a client advertises
+`elicitation`, the engine also puts an `elicitation/create` confirmation in front of
+the operator before returning: `dispatchTool#gateConfirm` for a registry tool,
+`gateHeldWrites` for a `wf_<slug>` preview. An accept grants the approval
+(`granted_via: "in_band_elicitation"`) and claims it, so the call executes in the
+same round-trip — the identical lifecycle a portal grant produces. A decline
+declines the approval: terminal, auditable, never claimable.
+
+Production settled how much this path can be relied on: across the full journal
+retention, **29 `elicitation/create` timeouts and not one fulfilled prompt**. Clients
+advertise the capability at handshake and never answer.
+
+**An unanswered prompt is not a decline.** A client that advertises `elicitation` and
+does not fulfil the round-trip leaves the engine with no decision from anyone — and
+that is *not* the same as "nobody was asked": the client may be showing its operator
+the prompt right now. The approval stays ungranted, and its `approval_url` goes back
+with the `needs_confirm` envelope. The prose says only what is true. A decline that
+arrives after that timeout is still honored: nothing could have been claimed in the
+interim, because nothing was ever granted.
+
+**No path re-sends the arguments.** `confirm_tool_call` publishes no `arguments`
+property at all, and on the `_meta` path the dispatcher discards whatever the client
+re-sent. The engine replays the args it already holds under that `confirm_id` (see
+*Approvals* above). The approval is the human's; the model only fires the trigger.
+Every path is audited identically.
 
 ## Self-diagnosis: `includeStepResults`
 
@@ -407,8 +475,11 @@ apps/engine/src/tools/
 ├── types.ts                    ToolDescriptor, ToolEnvelope, ToolInvocation, etc.
 ├── registry.ts                 ToolRegistry interface + buildRegistry()
 ├── policy.ts                   policyDecide() — pure unified policy gate
+├── approval.ts                 requestApproval / consumeApproval / recordApprovalApproved
 ├── dispatcher.ts               dispatchTool() — the orchestrator
 ├── index.ts                    barrel
+├── approval.test.ts            approval unit tests
+├── approval.int.test.ts        approval CAS + audit lifecycle against Postgres
 ├── providers/
 │   ├── static.ts               StaticToolProvider — MCP-unique handlers
 │   └── conversation.ts         ConversationToolProvider — listTools() wrapper
@@ -421,9 +492,13 @@ apps/engine/src/tools/
 
 apps/engine/src/mcp/
 ├── adapter.ts                  listToolsViaRegistry / callToolViaDispatcher
+├── capabilities/held-preview.ts  honest wf_<slug> preview envelope + confirm_id
+├── elicitation/confirm-resolver.ts  in-band elicitation confirm (best-effort)
 └── tests/
     ├── tools-call-parity.test.ts
     ├── policy-gate-snapshot.test.ts
+    ├── probe-connector-elicit-confirm.test.ts
+    ├── wf-confirm-loop.test.ts
     ├── tools-list-disabled.test.ts
     ├── preview-attachment-flat-name.test.ts
     └── test-connector-dedupe.test.ts
@@ -441,19 +516,18 @@ apps/engine/src/conversations/tools/
 - [`docs/admins/rbac-and-roles.md`](../admins/rbac-and-roles.md) — RBAC, audit, policy.
 - `AGENTS.md` lines 142–185 — subsystem map (the row for `tools` lives here).
 
-## Cutover plan
+## Cutover state
 
-Tests-first: characterization tests in `mcp/tests/policy-gate-snapshot.test.ts`
-and `mcp/tests/tools-call-parity.test.ts` pin current behavior. The new-behavior
-tests in `apps/engine/src/tools/tests/` and the new MCP tests are `test.todo`
-until their implementation commit lands.
+The MCP-side gate module is gone. `mcp/tests/policy-gate-snapshot.test.ts` and
+`mcp/tests/tools-call-parity.test.ts` remain as characterization tests for the
+unified resolver; `apps/engine/src/tools/tests/` owns the dispatcher, registry,
+and `policyDecide` contracts.
 
-The cutover in `mcp/capabilities/tools.ts` inserts a single early-return that
-delegates to `mcp/adapter.callToolViaDispatcher()` for any tool the unified
-registry recognizes; everything else falls through to the legacy prefix proxies
-(`conversation.*`, `wf.<slug>`). The named-tool branches (authenticate,
-list_recipes, test_connector, etc.) have all been deleted — the registry claims
-those names exclusively.
+`mcp/capabilities/tools.ts` early-returns into `mcp/adapter.callToolViaDispatcher()`
+for any tool the unified registry recognizes; everything else falls through to the
+surface-specific handlers (`confirm_tool_call`, `conversation.*`, `wf_<slug>`). The
+named-tool branches (authenticate, list_recipes, test_connector, etc.) have all
+been deleted — the registry claims those names exclusively.
 
 The `tenant_*` prefix aliases have been **removed**. Every conversation tool
 already surfaces under its bare name via the unified registry, so the aliases

@@ -14,6 +14,7 @@ import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
 import { can } from "../../rbac/evaluator.ts";
+import type { ApprovalAuditResource } from "../../tools/approval.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
 
 /**
@@ -92,16 +93,22 @@ export type ToolPermissionResult =
  * Write a `policy.denied` audit row for a conversation-tool RBAC deny. Mirrors
  * the dispatcher's `emitPolicyDenied` (MCP surface) so the chat path has audit
  * parity — every deny is recorded against the resolved resource.
+ *
+ * When the denied call is the confirmed replay of an approval whose single-use
+ * handle is already burned, the row anchors on the approval lifecycle instead,
+ * so "approval opened → confirmed replay denied" is one JOIN rather than two
+ * unrelated rows. The RBAC resource moves into metadata; nothing is lost.
  */
 async function recordPolicyDenied(
   ctx: ToolContext,
   permission: string,
   resource: { type: string; id: string },
   reason: string,
+  approval: ApprovalAuditResource | undefined,
 ): Promise<void> {
   await ctx.engineClient.audit_write({
-    resource_type: resource.type,
-    resource_id: resource.id,
+    resource_type: approval?.resource_type ?? resource.type,
+    resource_id: approval?.approval_id ?? resource.id,
     action: "policy.denied",
     result: "denied",
     reason,
@@ -110,6 +117,7 @@ async function recordPolicyDenied(
       resource_type: resource.type,
       resource_id: resource.id,
       conversation_id: ctx.conversation_id,
+      ...(approval ? { approval_id: approval.approval_id } : {}),
     },
   });
 }
@@ -120,11 +128,15 @@ async function recordPolicyDenied(
  * `ConversationTool.permission` (`resolveResourceId` → `resourceIdArg` → `"*"`),
  * calls `can()`, and on deny writes a `policy.denied` audit row. The returned
  * `reason`/`permission` feed the tool's `permission_denied` envelope.
+ *
+ * `approval` is set only when this call replays a burned approval — the deny is
+ * then the terminal row of that approval's lifecycle.
  */
 export async function checkToolPermission(
   ctx: ToolContext,
   descriptor: NonNullable<ConversationTool["permission"]>,
   rawArgs: Record<string, unknown>,
+  approval?: ApprovalAuditResource,
 ): Promise<ToolPermissionResult> {
   const principal = await resolveConversationPrincipal(ctx);
   if (!principal) return { allow: true };
@@ -150,6 +162,6 @@ export async function checkToolPermission(
   if (decision.allow) return { allow: true };
 
   const reason = decision.reason ?? `permission_denied:${descriptor.action}`;
-  await recordPolicyDenied(ctx, descriptor.action, resource, reason);
+  await recordPolicyDenied(ctx, descriptor.action, resource, reason, approval);
   return { allow: false, reason, permission: descriptor.action };
 }

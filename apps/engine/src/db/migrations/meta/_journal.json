@@ -113,6 +113,20 @@
       "when": 1783425257651,
       "tag": "0015_nervous_salo",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783521146662,
+      "tag": "0016_tranquil_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783522607975,
+      "tag": "0017_abandoned_sasquatch",
+      "breakpoints": true
     }
   ]
 }

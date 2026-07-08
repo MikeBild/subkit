@@ -10,9 +10,11 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
+import type { AnswerActor } from "../answer-actor.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { runLoop } from "../loop.ts";
 import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
+import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
 import {
   interpretConfirmDecision,
   normalizeConfirmOutput,
@@ -40,6 +42,15 @@ export interface RespondElicitationParams {
    * harnesses; tools guard the undefined case.
    */
   principal?: ResolvedPrincipal | null;
+  /**
+   * WHO answered. Required, and with no default: an approval is granted by a
+   * PERSON, and `principal` cannot tell us whether one answered — an MCP
+   * `conversation_respond_elicitation` authenticates as the same user principal
+   * the HTTP `/respond` route does, and the model is what calls it. The
+   * resuming surface declares the channel; only the `human` variant grants.
+   * See `conversations/answer-actor.ts`.
+   */
+  answer_actor: AnswerActor;
   /** User's answer — shape depends on the tool (choice/multi/text/form/confirm). */
   output: unknown;
   reason?: string;
@@ -135,13 +146,25 @@ export class ElicitationNotFoundError extends Error {
  *  `pending_elicitation` carries the original prompt with the field
  *  errors merged in (`error_message` pins on form fields) so clients
  *  re-render the dialog the same way `pending_elicitation_blocked`
- *  re-arms it. */
+ *  re-arms it.
+ *
+ *  The prompt is stripped of the approval handle IN THE CONSTRUCTOR. This
+ *  error is serialized straight into HTTP 422 bodies and SSE error frames, and
+ *  the persisted row it is built from may carry an engine-authored
+ *  `commit_intent.payload.approval_id`. Sanitizing here, not at each route,
+ *  is what makes the invariant hold for every future reader. */
 export class ElicitationValidationError extends Error {
+  readonly pending_elicitation: {
+    id: string;
+    tool_name: string;
+    summary: string;
+    input: unknown;
+  };
   readonly code = "ELICITATION_VALIDATION_FAILED";
   constructor(
     public readonly elicitation_id: string,
     public readonly field_errors: Array<{ name: string; message: string }>,
-    public readonly pending_elicitation: {
+    pending_elicitation: {
       id: string;
       tool_name: string;
       summary: string;
@@ -153,6 +176,10 @@ export class ElicitationValidationError extends Error {
         .map((e) => `${e.name}: ${e.message}`)
         .join("; ")}`,
     );
+    this.pending_elicitation = {
+      ...pending_elicitation,
+      input: elicitationInputForClient(pending_elicitation.input),
+    };
   }
 }
 
@@ -345,6 +372,9 @@ export async function respondElicitation(
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
+    // The grant channel. A `relay` here means no person answered, so no
+    // approval is granted and an approval-bearing commit_intent cannot run.
+    answer_actor: p.answer_actor,
     ...(p.principal !== undefined ? { principal: p.principal } : {}),
     ...(p.surface ? { surface: p.surface } : {}),
     output,

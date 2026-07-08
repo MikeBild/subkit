@@ -13,6 +13,7 @@ import { conversations, executions, workflows, workflowVersions } from "../db/sc
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
+import { TEST_HUMAN_ANSWER } from "../test-helpers/answer-actor.ts";
 import { type FastPathParams, tryFastPath } from "./fast-path.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
 import { listWorkflowsTool } from "./tools/generated/workflows.ts";
@@ -61,6 +62,7 @@ function makeParams(msg: string, overrides: Partial<FastPathParams> = {}): FastP
     actor_id: null,
     principal: makePrincipal(),
     user_message: msg,
+    answer_actor: TEST_HUMAN_ANSWER,
     ...overrides,
   };
 }
@@ -389,6 +391,7 @@ describe("tryFastPath — tenant isolation", () => {
       actor_id: null,
       principal: principalB,
       user_message: "list workflows",
+      answer_actor: TEST_HUMAN_ANSWER,
     });
     expect(result?.assistant_text).toContain("No saved workflows yet");
     expect(result?.assistant_text).not.toContain("tenant-a-only");
@@ -414,6 +417,7 @@ describe("tryFastPath — tenant isolation", () => {
       actor_id: null,
       principal: principalB,
       user_message: "run tenant-a-runable",
+      answer_actor: TEST_HUMAN_ANSWER,
     });
     // The slug doesn't exist in tenant B's scope, so resolveWorkflowByIdOrSlug
     // returns null → fast-path falls through to LLM (returns null).

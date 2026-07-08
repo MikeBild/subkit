@@ -8,6 +8,7 @@ import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import type { TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import {
+  humanChatAnswer,
   registerConversationAbort,
   serializeEvent,
   unregisterConversationAbort,
@@ -101,6 +102,9 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             actor_id: principal.id,
             principal,
             user_message: appended.message,
+            // A person typed this into an authenticated session, so a fast-path
+            // "yes" in it is their approval.
+            answer_actor: humanChatAnswer(principal),
             user_memory: appended.user_memory,
             turn_abort_ctrl: turnAbortCtrl,
             runtime_context: runtimeContext,
@@ -291,6 +295,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
           actor_id: principal.id,
           principal,
           user_message: appended.message,
+          answer_actor: humanChatAnswer(principal),
           user_memory: appended.user_memory,
           turn_abort_ctrl: turnAbortCtrl,
           runtime_context: buildRuntimeContextFromRequest(c, principal),

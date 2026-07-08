@@ -1,11 +1,10 @@
-// Unified policy-gate parity tests.
+// Policy-gate parity tests.
 //
-// policyDecide() must produce decisions structurally equivalent to:
-//   resolveToolMode()  (chat surface, the current sdk-wrap path)
-//   gateTenantToolCall() (MCP surface, current capabilities/policy-gate)
+// policyDecide() must produce decisions structurally equivalent to
+// resolveToolMode() (the chat sdk-wrap path) on every surface.
 //
-// We test the pure decision here. Audit emission happens in the
-// dispatcher — those assertions live in dispatcher.test.ts.
+// We test the pure decision here. Audit emission happens in
+// `tools/approval.ts` — those assertions live in dispatcher.test.ts.
 
 import { describe, expect, test } from "bun:test";
 import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";
@@ -197,11 +196,10 @@ describe("tools/policy.policyDecide (active parity)", () => {
   });
 
   // Regression unit test for the legacy MCP `tenant_read` shortcut
-  // bug: the old gateTenantToolCall in mcp/capabilities/policy-gate.ts
-  // short-circuited every `tenant_read` past `computeModeFromInput`,
-  // so probe_connector POST against prod silently executed without
-  // confirmation on MCP while chat correctly gated. The unified
-  // policyDecide() removes the shortcut. probe-connector-prod-confirm
+  // bug: the deleted MCP-side gate short-circuited every `tenant_read`
+  // past `computeModeFromInput`, so probe_connector POST against prod
+  // silently executed without confirmation on MCP while chat correctly
+  // gated. policyDecide() removes the shortcut. probe-connector-prod-confirm
   // covers this end-to-end via the live MCP transport; this unit test
   // pins the same regression at the policy-decision layer so a future
   // resolveToolMode refactor can't regress without a unit signal.
@@ -263,7 +261,9 @@ describe("tools/policy.policyDecide — call_connector gates on real side effect
         });
         expect(decision.kind).toBe("needs_confirm");
         if (decision.kind === "needs_confirm") {
-          expect(decision.envelope.reason).toBe("destructive_action");
+          // The envelope names the rule that was ENFORCED — here the
+          // side-effect classifier, not a fixed "destructive_action" label.
+          expect(decision.envelope.reason).toBe("computed_from_input");
         }
       }
     }

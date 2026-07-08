@@ -1,38 +1,49 @@
 // In-band confirm resolver for an MCP tools/call.
 //
-// A `confirm_before_execution` gate returns a `needs_confirm` envelope. When
-// the client advertises elicitation, we can resolve that gate in-band by
-// prompting the operator via `elicitation/create` instead of handing back an
-// envelope the model cannot satisfy (a model-only client cannot set `_meta`).
+// A `confirm_before_execution` gate needs a HUMAN, and the approval portal is
+// where that human always is. When the client advertises elicitation, one may
+// ALSO be reachable inside the call: `elicitation/create` puts the prompt in
+// front of them and this resolver returns their answer to the caller's gate.
 //
-// This in-band path is a best-effort OPTIMIZATION layered on top of the
-// always-present `confirm_tool_call` responder — not the primary path:
-//   - When the call ALREADY carries an in-band confirm marker
-//     (`_meta.sk_confirm` / `sk_confirm_id`), the caller is resolving a
-//     previously-issued durable confirmation out-of-band. Attaching a resolver
-//     would force a SECOND prompt and dead-end a programmatic driver, so we
-//     return `undefined` and let `verifyMcpConfirmation` adjudicate the token.
-//   - When the elicitation is not fulfilled (the client advertised the
-//     capability but never answers, or exceeds the bridge's bounded timeout),
-//     we treat it as a decline so the dispatcher returns the durable
-//     `needs_confirm` envelope and the model approves via `confirm_tool_call`.
+// So the in-band prompt is an OPTIMIZATION over the portal round-trip, never a
+// substitute for it. Production settles the point: 29 `elicitation/create`
+// timeouts across the full journal retention, and not one fulfilled prompt,
+// ever. Three consequences:
+//   - When the call ALREADY carries a confirm marker (`_meta.sk_confirm` /
+//     `sk_confirm_id`), the caller is TRIGGERING an approval a human already
+//     granted. Attaching a resolver would force a second prompt, so we return
+//     `undefined` and let `consumeApproval` (tools/approval.ts) claim the
+//     single-use approval and replay the args the engine already holds.
+//   - An explicit `decline` (or an `accept` that answers "no") is an ANSWER. The
+//     caller declines the approval; it is terminal and never becomes claimable.
+//     A decline that lands after this resolver's own timeout still reaches the
+//     caller's `declineApproval`, and is still honored — the approval was never
+//     granted, so nothing could have been claimed in the meantime.
+//   - An elicitation that is never fulfilled — the client advertised the
+//     capability but did not answer, or the round-trip exceeded the bridge's
+//     bounded timeout — is `unreachable`, NOT a decline. The engine holds no
+//     decision from anyone. The approval stays UNGRANTED and its `approval_url`
+//     goes back to the caller, so a person can still decide.
 
 import { logger } from "../../logging/logger.ts";
-import type { ConfirmEnvelope } from "../../tools/types.ts";
-import type { ConfirmResolver } from "../adapter.ts";
+import { CONFIRM_REASON_LABELS } from "../../tools/policy.ts";
+import type { ConfirmDecision, ConfirmEnvelope, ConfirmResolver } from "../../tools/types.ts";
 import type { ElicitationBridge } from "./bridge.ts";
 
-/** One-line operator prompt for an in-band confirm elicitation. */
+/** One-line operator prompt for an in-band confirm elicitation. Renders the
+ *  envelope's structured preview — never the call payload, which the engine
+ *  already holds under `tool_call_id`. */
 function buildConfirmPrompt(confirm: ConfirmEnvelope): string {
-  const reason = confirm.reason.replace(/_/g, " ");
-  let argsPreview = "";
+  const reason = CONFIRM_REASON_LABELS[confirm.reason];
+  if (!confirm.pending_output) return `Approve ${confirm.tool} (${reason})?`;
+  let preview: string;
   try {
-    const json = JSON.stringify(confirm.args);
-    argsPreview = json.length > 300 ? `${json.slice(0, 300)}…` : json;
+    const json = JSON.stringify(confirm.pending_output);
+    preview = json.length > 300 ? `${json.slice(0, 300)}…` : json;
   } catch {
-    argsPreview = "(unserializable)";
+    preview = "(unserializable)";
   }
-  return `Approve ${confirm.tool} (${reason})? Arguments: ${argsPreview}`;
+  return `Approve ${confirm.tool} (${reason})? ${preview}`;
 }
 
 /** Single-field confirm schema accepted by MCP `elicitation/create` form mode. */
@@ -50,8 +61,8 @@ const CONFIRM_ELICIT_SCHEMA = {
 
 /**
  * Build the in-band confirm resolver for a tools/call, or `undefined` when no
- * resolver should be attached (an out-of-band confirm marker is present, or the
- * client cannot do form elicitation). See the file header for the rationale.
+ * resolver should be attached (a confirm marker is present, or the client cannot
+ * do form elicitation). See the file header for the rationale.
  */
 export function buildElicitConfirmResolver(opts: {
   bridge: ElicitationBridge;
@@ -62,32 +73,44 @@ export function buildElicitConfirmResolver(opts: {
 }): ConfirmResolver | undefined {
   const { bridge, carriesInbandConfirm, toolName, principalId, tenantId } = opts;
   if (carriesInbandConfirm || !bridge.capabilities.form) return undefined;
-  return async (confirm: ConfirmEnvelope): Promise<boolean> => {
+  return async (confirm: ConfirmEnvelope): Promise<ConfirmDecision> => {
     try {
       const res = await bridge.elicitForm({
         message: buildConfirmPrompt(confirm),
         requestedSchema: CONFIRM_ELICIT_SCHEMA,
       });
-      return res.action === "accept" && res.content?.confirm === true;
-    } catch (err) {
-      // Advertisement ≠ fulfilment: a client may advertise the elicitation
-      // capability yet never answer the elicitation/create round-trip (or
-      // exceed its bounded timeout). Treat any elicit failure as a decline —
-      // the dispatcher then returns the durable needs_confirm envelope
-      // (carrying tool_call_id + resume), and the model approves out-of-band
-      // via the always-present confirm_tool_call tool. This is the same seam
-      // as an explicit operator decline; it never auto-approves and keeps the
-      // audit gate intact.
+      const approved = res.action === "accept" && res.content?.confirm === true;
+      if (approved) return "approved";
+      // A person answered. `decline`, `cancel`, and an `accept` carrying
+      // `confirm:false` are all a "no" — the one outcome that is terminal.
       logger.info({
         module: "mcp",
-        action: "mcp.elicit.fallback",
-        msg: "elicitation unfulfilled; returning durable confirm envelope for confirm_tool_call fallback",
+        action: "mcp.elicit.declined",
+        msg: "a person answered the in-band approval prompt with no; nothing ran",
         tool: toolName,
+        elicit_action: res.action,
+        principal_id: principalId,
+        tenant_id: tenantId,
+      });
+      return "declined";
+    } catch (err) {
+      // Advertisement ≠ fulfilment: a client may advertise the elicitation
+      // capability yet never answer the elicitation/create round-trip (or exceed
+      // its bounded timeout). The engine holds no decision — which does not mean
+      // nobody was asked; this client may be showing its operator the prompt
+      // right now. Reporting it as a decline would put words in a person's mouth.
+      // The approval stays ungranted and the caller hands back its approval_url.
+      logger.warn({
+        module: "mcp",
+        action: "mcp.elicit.unreachable",
+        msg: "client advertised elicitation but did not answer the prompt; the engine holds no decision — the approval waits for a human at its approval_url",
+        tool: toolName,
+        approval_id: confirm.tool_call_id,
         error: err instanceof Error ? err.message : String(err),
         principal_id: principalId,
         tenant_id: tenantId,
       });
-      return false;
+      return "unreachable";
     }
   };
 }

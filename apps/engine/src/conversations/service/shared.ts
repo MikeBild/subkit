@@ -7,6 +7,7 @@ import type { conversations } from "../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { appendSnapshot } from "../draft.ts";
 import type { RunLoopResult } from "../loop.ts";
+import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
 import type {
   ConversationPermissionMode,
   ConversationRecord,
@@ -99,13 +100,25 @@ export interface PendingElicitationSummary {
   input?: unknown;
 }
 
+/**
+ * Raised when a prompt (or a direct tool invoke) races an open `ask_user_*`
+ * dialog. Serialized into HTTP 409 bodies, SSE error frames, and the chat
+ * dispatcher's typed-reply salvage, so the persisted prompt it carries is
+ * projected through `elicitationInputForClient` HERE, in the constructor — the
+ * engine-authored `commit_intent.payload.approval_id` on a policy-gate row is an
+ * internal coordinate of a governance decision, and every one of those readers
+ * would otherwise have to remember to strip it.
+ */
 export class PendingElicitationBlockedError extends Error {
   readonly pending_elicitation: PendingElicitationSummary;
 
   constructor(pending: PendingElicitationSummary) {
     super("resolve the pending dialog before sending another prompt");
     this.name = "PendingElicitationBlockedError";
-    this.pending_elicitation = pending;
+    this.pending_elicitation =
+      "input" in pending
+        ? { ...pending, input: elicitationInputForClient(pending.input) }
+        : pending;
   }
 }
 

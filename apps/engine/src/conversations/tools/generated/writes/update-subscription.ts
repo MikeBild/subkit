@@ -48,8 +48,7 @@ export const updateSubscriptionTool: ConversationTool = {
   inputSchema: UpdateSubscriptionInput,
   category: "tenant_write",
   permission: { action: "subscription:write", resourceType: "subscription", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = UpdateSubscriptionInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof UpdateSubscriptionInput>) {
     try {
       const row = await ctx.engineClient.subscriptions.update(args.id, {
         ...(args.event_pattern !== undefined ? { event_pattern: args.event_pattern } : {}),

@@ -16,9 +16,9 @@
 //   - Same audit + RBAC + confirmation gate the LLM tools use. The
 //     `run <slug>` branch routes through `gateWorkflowRunRbac`
 //     (the canonical helper extracted from `mcp/capabilities/tools.ts`)
-//     and `gateTenantToolCall(via: "fast_path")`, so the RBAC
-//     decision + APPROVAL_* audit rows match MCP exactly — no "known
-//     slug" exemption. The list-side renderers gate on the same
+//     and the ONE confirm gate (`tools/policy.ts` + `tools/approval.ts`),
+//     so the RBAC decision + APPROVAL_* audit rows match MCP exactly —
+//     no "known slug" exemption. The list-side renderers gate on the same
 //     `*:read` permissions the HTTP routes enforce.
 
 import { and, asc, desc, eq } from "drizzle-orm";
@@ -29,13 +29,22 @@ import type { Db } from "../db/client.ts";
 import { conversationToolCalls, executionSteps, executions } from "../db/schema/index.ts";
 import { runExecution } from "../execution/engine.ts";
 import { logger } from "../logging/logger.ts";
-import { gateTenantToolCall } from "../mcp/capabilities/policy-gate.ts";
 import { recordConversationToolCall } from "../observability/instrumentation.ts";
 import { can } from "../rbac/evaluator.ts";
+import {
+  approvalAuditResource,
+  consumeApproval,
+  grantApproval,
+  recordApprovalApproved,
+  recordApprovalUnfulfilled,
+  requestApproval,
+} from "../tools/approval.ts";
+import { policyDecide } from "../tools/policy.ts";
 import { resolveWorkflowInputContract } from "../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
 import { getWorkflow } from "../workflows/service.ts";
+import type { AnswerActor } from "./answer-actor.ts";
 import {
   type RenderPayload,
   renderConnectorsList,
@@ -78,6 +87,13 @@ export interface FastPathParams {
    */
   principal: ResolvedPrincipal;
   user_message: string;
+  /**
+   * WHO wrote `user_message`. Only a `human` affirmation grants the approval the
+   * confirm gate opened; a `relay` one (the model, over MCP `conversation_append`)
+   * merely triggers a claim of what a person already approved out of band.
+   * `principal` cannot answer this — both channels authenticate identically.
+   */
+  answer_actor: AnswerActor;
 }
 
 /**
@@ -256,6 +272,9 @@ async function persistFastPathTurn(
   input: Record<string, unknown>,
   output: Record<string, unknown>,
   reply: string,
+  /** Engine-only bookkeeping — never replayed into LLM context, never projected
+   *  to a client. The confirm gate parks its approval id here. */
+  confirmation_data?: Record<string, unknown>,
 ): Promise<{ events: TurnEvent[]; assistant_message_id: string; tool_call_id: string }> {
   const assistantMessageId = await appendMessage(
     p.db,
@@ -271,6 +290,7 @@ async function persistFastPathTurn(
     tool,
     input,
     approval_required: false,
+    ...(confirmation_data ? { confirmation_data } : {}),
   });
   await updateToolCallOutput(p.db, toolCallId, output);
   await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", { tool, output });
@@ -450,9 +470,12 @@ async function executeRunWorkflow(
  * loop. Returns a `FastPathHit` when the matcher consumed the turn;
  * the caller appends `events` to its event stream and short-circuits.
  *
- * The `run <slug>` branch follows MCP's two-call confirmation gate
- * exactly: first turn emits the pending envelope; second turn (with
- * `__policy_confirmed: true` from the operator's approval) executes.
+ * The `run <slug>` branch follows the same two-turn confirmation gate MCP
+ * enforces: the first turn mints an UNGRANTED approval and ends the turn; a
+ * PERSON's affirmation grants it, claims it, and replays the args it was granted
+ * for. Neither the `confirm_id` nor the approval's portal token ever leaves the
+ * engine on this surface: the affirmation is prose, and the handle is read back
+ * off the tool-call row's `confirmation_data`.
  */
 export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null> {
   const text = p.user_message.trim();
@@ -738,33 +761,58 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           assistant_text: reply,
         };
       }
-      const gate = await gateTenantToolCall({
+      // The ONE confirm gate. `not_available_on_surface` is unreachable for
+      // (tenant_write, chat) — the gate only withholds `draft_write` on MCP.
+      const runArgs = { workflow: resolved.slug, environment: "dev" };
+      const gate = policyDecide({
         tool: "run_workflow",
         category: "tenant_write",
-        args: { workflow: resolved.slug, environment: "dev" },
-        meta: undefined,
-        principal: p.principal,
-        db: p.db,
-        via: "fast_path",
+        surface: "chat",
+        args: runArgs,
       });
-      if (gate.kind === "pending") {
+      if (gate.kind === "needs_confirm") {
+        // The approval persists these args (encrypted) under `confirm_id` and
+        // stamps APPROVAL_REQUESTED, UNGRANTED. The affirmation branch below
+        // claims it and REPLAYS them — nothing the operator's "yes" carries
+        // participates in what runs.
+        const confirm_id = gate.envelope.tool_call_id;
+        await requestApproval({
+          db: p.db,
+          principal: p.principal,
+          approval_id: confirm_id,
+          tool: "run_workflow",
+          surface: "chat",
+          via: "fast_path",
+          reason: gate.envelope.reason,
+          // `executeRunWorkflow` runs the fast path in dev, always.
+          execution_mode: "dev",
+          args: runArgs,
+        });
         const persisted = await persistFastPathTurn(
           p,
           "run_workflow",
-          { workflow: resolved.slug, environment: "dev" },
+          runArgs,
           {
             ok: false,
             pending: true,
             status: "awaiting_confirmation",
             policy_mode: "confirm_before_execution",
             confirm_required: true,
-            target: gate.envelope.target,
-            tool_call_id: gate.envelope.tool_call_id,
-            resume: gate.envelope.resume,
+            pending_output: gate.envelope.pending_output,
+            // Neither `confirm_id` NOR `approval_url`. This envelope is persisted
+            // on `conversation_tool_calls.output` and on a `tool`-role message,
+            // both of which `buildModelMessages` replays into LLM context — and
+            // the chat palette can make outbound HTTP calls, so a grant token in
+            // that context would be a live capability. The affirmation branch
+            // reads the handle off `confirmation_data` instead, the engine's own
+            // record of what it is holding, and the person's "yes" in this
+            // channel is the grant.
+            resume: `A person must approve this by replying "yes" here — the engine replays the arguments it already holds. Nothing runs until they do; you cannot approve on their behalf.`,
             skipped_llm: true,
             suggested_command: `/workflows run ${resolved.slug}`,
           },
           `Confirm: run ${resolved.slug} in dev?`,
+          { approval_id: confirm_id },
         );
         // The pending envelope is NOT a denial — the operator may yet
         // approve. Reporting `denied` would skew the run-vs-deny ratio
@@ -775,10 +823,13 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           outcome: "pending",
           duration_ms: 0,
         });
+        // No `pending_elicitation_id`: this gate opened an approval, not a
+        // `conversation_elicitations` row, so there is nothing for a client to
+        // POST an answer to — and the approval id is not a value the model may
+        // hold. The turn ends `awaiting_input`; the operator answers in chat.
         return {
           status: "awaiting_input",
           events: persisted.events,
-          pending_elicitation_id: gate.envelope.tool_call_id,
           fast_path_tool: "run_workflow",
           assistant_text: `Confirm: run ${resolved.slug} in dev?`,
         };
@@ -822,17 +873,19 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
 
   // Confirmation-resume branch: when the just-stored user message is a
   // plain affirmation ("yes", "ja", "approve") and the previous turn
-  // emitted a fast-path `run_workflow` pending envelope, execute the
-  // workflow now. Mirrors how MCP re-issues with `__policy_confirmed:
-  // true`. We resolve the slug from the prior tool_call input — no
-  // hidden state.
+  // emitted a fast-path `run_workflow` pending envelope, grant-if-human and then
+  // claim the approval that envelope minted, and run what it was granted for.
+  // The affirmation carries no payload — the args come out of the approval,
+  // which is single-use, tenant-, principal- and tool-bound.
   if (AFFIRM_RE.test(text)) {
     const recent = await p.db
       .select({
         id: conversationToolCalls.id,
         tool: conversationToolCalls.tool,
-        input: conversationToolCalls.input,
         output: conversationToolCalls.output,
+        // The approval handle lives HERE, not on `output`: `output` is replayed
+        // into LLM context by `buildModelMessages`, `confirmation_data` is not.
+        confirmation_data: conversationToolCalls.confirmation_data,
         created_at: conversationToolCalls.created_at,
       })
       .from(conversationToolCalls)
@@ -846,135 +899,232 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       .orderBy(desc(conversationToolCalls.created_at))
       .limit(1);
     const head = recent[0];
-    const headOutput = head?.output as { pending?: unknown; tool_call_id?: unknown } | null;
-    const headInput = head?.input as { workflow?: unknown } | null;
+    const headOutput = head?.output as { pending?: unknown } | null;
+    const headConfirmation = head?.confirmation_data as { approval_id?: unknown } | null;
+    const approvalId =
+      typeof headConfirmation?.approval_id === "string" ? headConfirmation.approval_id : null;
     if (
       head &&
       headOutput?.pending === true &&
-      Date.now() - (head.created_at?.getTime() ?? 0) < AFFIRM_RESUME_WINDOW_MS &&
-      typeof headInput?.workflow === "string"
+      approvalId !== null &&
+      Date.now() - (head.created_at?.getTime() ?? 0) < AFFIRM_RESUME_WINDOW_MS
     ) {
-      const resolved = await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, headInput.workflow, {
-        require_published: true,
+      // The person who typed "yes" IS the approver, and chat is their channel.
+      // A relay affirmation (the MODEL wrote this "user message" through
+      // `conversation_append` on MCP) grants nothing: the claim below then
+      // refuses with `approval_not_granted` unless a person already granted this
+      // approval in the portal. Affirming is a trigger, never a decision.
+      if (p.answer_actor.kind === "human") {
+        const granted = await grantApproval({
+          db: p.db,
+          approval_id: approvalId,
+          tenant_id: p.tenant_id,
+          granted_by_user_id: p.answer_actor.user_id,
+          via: p.answer_actor.via,
+        });
+        if (!granted.ok) {
+          logger.warn({
+            module: "conversation",
+            action: "fast_path.approval_grant_missed",
+            msg: "a person affirmed the fast-path run but the grant did not land; the claim decides the outcome",
+            tenant_id: p.tenant_id,
+            conversation_id: p.conversation_id,
+            approval_id: approvalId,
+            user_id: p.answer_actor.user_id,
+            error_code: granted.code,
+          });
+        }
+      } else {
+        logger.warn({
+          module: "conversation",
+          action: "fast_path.affirmation_not_human",
+          msg: "a non-human actor affirmed a held fast-path run; nothing was granted and the claim will refuse unless a person granted it in the approval portal",
+          tenant_id: p.tenant_id,
+          conversation_id: p.conversation_id,
+          approval_id: approvalId,
+          relay_reason: p.answer_actor.reason,
+        });
+      }
+      // Claim before anything else, exactly as the dispatcher does: the
+      // approval is what authorizes this run, and it is single-use. A later
+      // RBAC denial therefore burns it — the operator re-issues "run <slug>"
+      // and confirms again, which is the honest outcome for a revoked grant.
+      // The claim is not the approval: APPROVAL_APPROVED lands below, once the
+      // RBAC gate has passed.
+      const claim = await consumeApproval({
+        db: p.db,
+        principal: p.principal,
+        approval_id: approvalId,
+        tool: "run_workflow",
+        surface: "chat",
+        via: "fast_path",
+        execution_mode: "dev",
       });
-      if (resolved?.current_version_id) {
-        // Canonical RBAC gate — the resume branch must check the same
-        // permission MCP enforces. Without this, an operator whose
-        // role changed between the pending request and the approval
-        // could bypass `workflow:run` denial.
-        const rbac = await gateWorkflowRunRbac({
-          db: p.db,
-          principal: p.principal,
-          workflow_id: resolved.id,
-          workflow_slug: resolved.slug,
-          request_source: "fast_path",
-          tool: "run_workflow",
-        });
-        if (!rbac.allow) {
-          const reply = `Permission denied: ${rbac.error_message}.`;
-          const persisted = await persistFastPathTurn(
-            p,
-            "run_workflow",
-            { workflow: resolved.slug, environment: "dev", __policy_confirmed: true },
-            {
-              ok: false,
-              denied: true,
-              permission: "workflow:run",
-              reason: rbac.reason,
-              error: rbac.error_message,
-              skipped_llm: true,
-            },
-            reply,
-          );
-          recordConversationToolCall({
-            category: "tenant_write",
-            tool: "run_workflow",
-            outcome: "denied",
-            duration_ms: 0,
-          });
-          return {
-            status: "active",
-            events: persisted.events,
-            fast_path_tool: "run_workflow",
-            assistant_text: reply,
-          };
-        }
-        // Mirror MCP's APPROVAL_APPROVED via gateTenantToolCall with
-        // __policy_confirmed: true so the audit trail records the
-        // approval the same way. Capture the result — if a future
-        // stricter policy returns `pending` here despite the confirm
-        // marker, surface the re-pending envelope rather than running
-        // the workflow anyway.
-        const resumeGate = await gateTenantToolCall({
-          tool: "run_workflow",
-          category: "tenant_write",
-          args: { workflow: resolved.slug, environment: "dev", __policy_confirmed: true },
-          meta: undefined,
-          principal: p.principal,
-          db: p.db,
-          via: "fast_path",
-        });
-        if (resumeGate.kind !== "proceed") {
-          const persisted = await persistFastPathTurn(
-            p,
-            "run_workflow",
-            { workflow: resolved.slug, environment: "dev", __policy_confirmed: true },
-            {
-              ok: false,
-              pending: true,
-              status: "awaiting_confirmation",
-              policy_mode: "confirm_before_execution",
-              confirm_required: true,
-              target: resumeGate.envelope.target,
-              tool_call_id: resumeGate.envelope.tool_call_id,
-              resume: resumeGate.envelope.resume,
-              skipped_llm: true,
-            },
-            `Confirm: run ${resolved.slug} in dev?`,
-          );
-          recordConversationToolCall({
-            category: "tenant_write",
-            tool: "run_workflow",
-            outcome: "pending",
-            duration_ms: 0,
-          });
-          return {
-            status: "awaiting_input",
-            events: persisted.events,
-            pending_elicitation_id: resumeGate.envelope.tool_call_id,
-            fast_path_tool: "run_workflow",
-            assistant_text: `Confirm: run ${resolved.slug} in dev?`,
-          };
-        }
-        const payload = await executeRunWorkflow(p, { workflow: resolved }, null);
+      if (!claim.ok) {
         const persisted = await persistFastPathTurn(
           p,
           "run_workflow",
-          { workflow: resolved.slug, environment: "dev", __policy_confirmed: true },
-          { ok: payload.ok, ...payload.data, skipped_llm: true },
-          payload.reply,
+          {},
+          { ok: false, error_code: claim.code, message: claim.message, skipped_llm: true },
+          claim.message,
         );
         recordConversationToolCall({
           category: "tenant_write",
           tool: "run_workflow",
-          outcome: payload.ok ? "ok" : "error",
+          outcome: "error",
           duration_ms: 0,
-        });
-        logger.info({
-          module: "conversation",
-          action: "conversation.fast_path",
-          msg: "fast-path resumed run_workflow after confirmation",
-          tenant_id: p.tenant_id,
-          conversation_id: p.conversation_id,
-          workflow_id: resolved.id,
         });
         return {
           status: "active",
           events: persisted.events,
           fast_path_tool: "run_workflow",
-          assistant_text: payload.reply,
+          assistant_text: claim.message,
         };
       }
+      // The replay payload. The approval was granted over these args and
+      // nothing else; the affirmation contributed no data.
+      const replayArgs = claim.args;
+      const slug = typeof replayArgs.workflow === "string" ? replayArgs.workflow : null;
+      const resolved = slug
+        ? await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, slug, { require_published: true })
+        : null;
+      if (!resolved?.current_version_id) {
+        // The workflow was unpublished or deleted between the pending
+        // envelope and the approval. The approval is spent; say so rather
+        // than falling through to a model turn that cannot see it — and close
+        // its lifecycle on the approval id, so a spent handle never reads as an
+        // approval that simply stopped being written about.
+        await recordApprovalUnfulfilled({
+          db: p.db,
+          principal: p.principal,
+          claim,
+          tool: "run_workflow",
+          via: "fast_path",
+          reason: "workflow_not_found",
+        });
+        const reply = `The workflow ${slug ?? "(unknown)"} is no longer available; nothing was run.`;
+        const persisted = await persistFastPathTurn(
+          p,
+          "run_workflow",
+          replayArgs,
+          { ok: false, error: "workflow_not_found", skipped_llm: true },
+          reply,
+        );
+        recordConversationToolCall({
+          category: "tenant_write",
+          tool: "run_workflow",
+          outcome: "error",
+          duration_ms: 0,
+        });
+        return {
+          status: "active",
+          events: persisted.events,
+          fast_path_tool: "run_workflow",
+          assistant_text: reply,
+        };
+      }
+      // Canonical RBAC gate — the resume branch must check the same
+      // permission MCP enforces. Without this, an operator whose role
+      // changed between the pending request and the approval could bypass
+      // `workflow:run` denial.
+      const rbac = await gateWorkflowRunRbac({
+        db: p.db,
+        principal: p.principal,
+        workflow_id: resolved.id,
+        workflow_slug: resolved.slug,
+        request_source: "fast_path",
+        tool: "run_workflow",
+        approval: approvalAuditResource(claim),
+      });
+      if (!rbac.allow) {
+        const reply = `Permission denied: ${rbac.error_message}.`;
+        const persisted = await persistFastPathTurn(
+          p,
+          "run_workflow",
+          replayArgs,
+          {
+            ok: false,
+            denied: true,
+            permission: "workflow:run",
+            reason: rbac.reason,
+            error: rbac.error_message,
+            skipped_llm: true,
+          },
+          reply,
+        );
+        recordConversationToolCall({
+          category: "tenant_write",
+          tool: "run_workflow",
+          outcome: "denied",
+          duration_ms: 0,
+        });
+        return {
+          status: "active",
+          events: persisted.events,
+          fast_path_tool: "run_workflow",
+          assistant_text: reply,
+        };
+      }
+      // Authorized — now the approval is real. Refuse to run when its audit row
+      // cannot be persisted; an unrecorded approved run is the governance gap
+      // the log exists to close.
+      const approvalRecorded = await recordApprovalApproved({
+        db: p.db,
+        principal: p.principal,
+        claim,
+        tool: "run_workflow",
+        via: "fast_path",
+      });
+      if (!approvalRecorded) {
+        const reply = `The confirmation could not be recorded in the audit log; ${resolved.slug} was not run. Ask again to obtain a fresh confirmation.`;
+        const persisted = await persistFastPathTurn(
+          p,
+          "run_workflow",
+          replayArgs,
+          { ok: false, error_code: "approval_audit_failed", skipped_llm: true },
+          reply,
+        );
+        recordConversationToolCall({
+          category: "tenant_write",
+          tool: "run_workflow",
+          outcome: "error",
+          duration_ms: 0,
+        });
+        return {
+          status: "active",
+          events: persisted.events,
+          fast_path_tool: "run_workflow",
+          assistant_text: reply,
+        };
+      }
+      const payload = await executeRunWorkflow(p, { workflow: resolved }, null);
+      const persisted = await persistFastPathTurn(
+        p,
+        "run_workflow",
+        replayArgs,
+        { ok: payload.ok, ...payload.data, skipped_llm: true },
+        payload.reply,
+      );
+      recordConversationToolCall({
+        category: "tenant_write",
+        tool: "run_workflow",
+        outcome: payload.ok ? "ok" : "error",
+        duration_ms: 0,
+      });
+      logger.info({
+        module: "conversation",
+        action: "conversation.fast_path",
+        msg: "fast-path resumed run_workflow after confirmation",
+        tenant_id: p.tenant_id,
+        conversation_id: p.conversation_id,
+        workflow_id: resolved.id,
+      });
+      return {
+        status: "active",
+        events: persisted.events,
+        fast_path_tool: "run_workflow",
+        assistant_text: payload.reply,
+      };
     }
   }
   return null;

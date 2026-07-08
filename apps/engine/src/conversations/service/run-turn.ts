@@ -16,6 +16,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import type { AnswerActor } from "../answer-actor.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { tryFastPath } from "../fast-path.ts";
 import { type RunLoopResult, runLoop } from "../loop.ts";
@@ -34,6 +35,15 @@ export interface RunConversationTurnParams {
    * text (handled by `respondElicitation`, not this function).
    */
   user_message: string;
+  /**
+   * WHO wrote `user_message`. Required, and with no default. The fast path's
+   * affirmation branch ("yes" / "ja") releases an approval the previous turn
+   * minted, and on the MCP surface that message is authored by the MODEL — it
+   * authenticates as a user principal all the same. A `relay` affirmation is a
+   * TRIGGER, never a grant: it claims only what a person already approved at the
+   * approval portal. See `conversations/answer-actor.ts`.
+   */
+  answer_actor: AnswerActor;
   /** Memory payload persisted on the conversation row, if any. */
   user_memory?: string | null;
   /** Permission mode resolved by the caller; falls back to the stored one. */
@@ -63,7 +73,7 @@ export interface RunConversationTurnParams {
   /**
    * Resolved principal — threaded through so the fast-path matcher can
    * enforce the same RBAC / confirm-before-execution gate the LLM tools
-   * use (`gateTenantToolCall`). Absent on the MCP-worker resume path
+   * use (`tools/policy.ts`). Absent on the MCP-worker resume path
    * where no live HTTP principal exists; in that case the fast-path
    * matcher short-circuits to the LLM loop so confirmation discipline
    * stays correct.
@@ -98,6 +108,7 @@ export async function runConversationTurn(
       actor_id: p.actor_id,
       principal: p.principal,
       user_message: p.user_message,
+      answer_actor: p.answer_actor,
     });
     if (hit) {
       if (p.onEvent) {

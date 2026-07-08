@@ -157,9 +157,7 @@ export const createKnowledgeSourceTool: ConversationTool = {
   inputSchema: CreateKnowledgeSourceInput,
   category: "tenant_write",
   permission: { action: "knowledge:write", resourceType: "knowledge" },
-  async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = CreateKnowledgeSourceInput.parse(rawArgs);
-
+  async execute(ctx, args: z.infer<typeof CreateKnowledgeSourceInput>): Promise<ToolResult> {
     let buffer: Buffer;
     let filename: string;
     let mime: string | undefined;

@@ -126,14 +126,14 @@ describe("create_api_key", () => {
   });
 
   test("rejects malformed expires_at via the input schema", () => {
-    const tc = makeToolContext();
-    // The Zod schema's .datetime() rule rejects bad timestamps before
-    // execute body runs. Matches the existing tool convention (see
-    // propose-step / build-workflow); the SDK wrapper translates the
-    // throw into `{ok:false, data:{error:<msg>}}` for the LLM.
-    expect(() =>
-      createApiKeyTool.execute(tc, { name: "bad", expires_at: "2026-13-99T99:99:99Z" }),
-    ).toThrow();
+    // The dispatcher (and, on chat, the SDK tool boundary) parses `inputSchema`
+    // before `execute` runs, so the `.datetime()` rule is enforced there — this
+    // executor takes the parsed value as-is. Assert the rule where it is enforced.
+    const parsed = createApiKeyTool.inputSchema.safeParse({
+      name: "bad",
+      expires_at: "2026-13-99T99:99:99Z",
+    });
+    expect(parsed.success).toBe(false);
   });
 
   test("seals input schema at registration — rejects unknown fields", async () => {

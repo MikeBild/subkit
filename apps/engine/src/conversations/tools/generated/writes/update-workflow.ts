@@ -28,7 +28,10 @@ import { translateAutoPersistError } from "../../../persistence/auto-persist/err
 import { classifyDraftVsPersisted } from "../../../persistence/draft-diff.ts";
 import type { ConversationTool } from "../../index.ts";
 
-const UpdateWorkflowInput = z
+/** Exported so the ONE direct caller outside the dispatcher — the
+ *  `update_workflow_metadata` commit-intent in `persistence/auto-persist.ts` —
+ *  parses the LLM-authored payload at its own boundary. `execute` never parses. */
+export const UpdateWorkflowInput = z
   .object({
     id: z.string().uuid("workflow id must be a UUID"),
     slug: z
@@ -80,8 +83,7 @@ export const updateWorkflowTool: ConversationTool = {
   inputSchema: UpdateWorkflowInput,
   category: "tenant_write",
   permission: { action: "workflow:write", resourceType: "workflow", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = UpdateWorkflowInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof UpdateWorkflowInput>) {
     // Anti silent step-loss (B3): update_workflow writes METADATA only
     // (slug/name/description/lifecycle) and rolls no version. If the
     // conversation's working draft has uncommitted STEP edits for THIS workflow,

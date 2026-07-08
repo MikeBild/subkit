@@ -135,9 +135,9 @@ export interface RunLoopParams {
   actor_id: string | null;
   /**
    * Resolved principal — threaded so synthetic `wf_<slug>` tools in the
-   * chat palette can apply the same `gateTenantToolCall` / RBAC check
-   * MCP uses. Absent on the chat-adapter and MCP-worker resume paths;
-   * the synthetic tools are omitted from the palette in that case.
+   * chat palette can apply the same RBAC gate + hold-writes preview
+   * approval MCP uses. Absent on the chat-adapter and MCP-worker resume
+   * paths; the synthetic tools are omitted from the palette in that case.
    */
   principal?: ResolvedPrincipal | null;
   connector_id: string | null;
@@ -987,9 +987,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     tools_count: Object.keys(wrappedTools).length,
   });
 
-  // Pre-dispatch policy resolution (resolveExecutionMode +
-  // recordToolPolicyConfirmationRequired audit) lives inline at the top
-  // of `wrapOne`'s execute — no second wrapping layer here. See
+  // Pre-dispatch policy resolution (`decideToolMode` +
+  // recordToolPolicyConfirmationRequired audit) lives inline in
+  // `wrapOne`'s execute — no second wrapping layer here. See
   // `tools/sdk-wrap/invoke.ts` for the fold rationale: the previous
   // two-layer wrap held ~218 closures simultaneously per turn (one per
   // tool × two wraps) and forced a duplicate `tools` map.
@@ -1015,8 +1015,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // disambiguates a workflow via `ask_user_choice` (no commit_intent), the
   // follow-up turn could not run it. On chat, always expose execution and let
   // per-user RBAC (`gateWorkflowRunRbac`) + the confirmation card
-  // (`confirmIfLiveWritesOrNonDevEnv`) be the enforcement — as they already are
-  // for every actual run.
+  // (`run_workflow`'s compute-from-input rule in `tool-policies.ts`) be the
+  // enforcement — as they already are for every actual run.
   const syntheticWorkflowSlugs = collectSyntheticWorkflowSlugs(Object.keys(tools));
   const hasBoundSavedWorkflowTarget =
     workflowIdForTurn !== null ||

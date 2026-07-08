@@ -3,6 +3,7 @@
 // adapters all speak these types. See docs/developers/tool-palette.md for
 // the design rationale.
 
+import type { ToolModeRule } from "../conversations/tool-policies.ts";
 import type { ToolResultPause } from "../conversations/tools/index.ts";
 
 /** Which surface invoked the tool. Drives visibility filtering and
@@ -51,19 +52,84 @@ export interface ToolDescriptor {
   };
 }
 
+/** WHY a call paused. Exactly one of two provenances, and the value names it:
+ *
+ *  - a `ToolModeRule` — the branch of `decideToolMode` that resolved this call
+ *    to `confirm_before_execution`. `policyDecide` copies the rule it enforced;
+ *    it never re-labels it. Today the enforcement table has one rule that can
+ *    gate a destructive action by name (`tool_default`) and several that gate
+ *    it by context (`computed_from_input`, `permission_mode`, …) — a future
+ *    rule shows up here automatically instead of being mis-reported as an
+ *    existing one.
+ *  - `"held_writes"` — the run itself paused, not the policy table: a workflow
+ *    executed with `hold_writes` and produced a preview whose write steps are
+ *    waiting for an operator. No `decideToolMode` branch participates.
+ *
+ *  This is the value stamped on `approval.requested`'s `resolver_reason`, so
+ *  the audit trail records the decision that was actually enforced. */
+export type ConfirmReason = ToolModeRule | "held_writes";
+
 /** Confirmation envelope returned by `policyDecide()` when a tool call
  *  needs human approval. Both surfaces render this into their native
  *  pause/elicit shape — chat injects `ask_user_confirm`, MCP returns
  *  `_meta.subkit.confirm` in the tools/call response. */
 export interface ConfirmEnvelope {
   readonly tool: string;
-  readonly args: Record<string, unknown>;
+  /** Structured "what will happen" preview — the fields the tool's own
+   *  `buildPendingOutput` hook chose to surface. NEVER the full payload:
+   *  the dispatcher persists the canonical args under `tool_call_id`, and
+   *  the re-issue carries only that id, so echoing the payload would ship
+   *  a 50KB body the caller can never re-transmit byte-exactly. `null`
+   *  when the tool declares no preview hook. */
+  readonly pending_output: Record<string, unknown> | null;
   readonly policy_mode: "confirm_before_execution";
-  readonly reason: "destructive_action" | "external_call" | "sensitive_input" | "schema_change";
+  /** The enforced rule — see `ConfirmReason`. Never a fixed label: an envelope
+   *  that always said "destructive_action" would describe a decision the gate
+   *  did not make. */
+  readonly reason: ConfirmReason;
+  /** The approval's id, and the TRIGGER handle a later `confirm_tool_call` /
+   *  `ask_user_confirm` carries back. Holding it approves nothing. */
   readonly tool_call_id: string;
+  /** Where a HUMAN goes to grant or decline this call — the one channel that can
+   *  make the handle claimable. Attached by the confirm gate once
+   *  `requestApproval` has minted the link; `policyDecide` is pure and has no
+   *  I/O, so the envelope it returns never carries one. `null` when the engine
+   *  has no configured `server.public_base_url` and therefore no link to hand
+   *  out — say so rather than invent a host nobody can open. */
+  readonly approval_url?: string | null;
   /** Human-readable string telling the operator (or model) how to resume. */
   readonly resume: string;
 }
+
+/**
+ * What the operator said when a surface put the confirm prompt in front of
+ * them — or whether they were reached at all.
+ *
+ * A DECLINE IS AN ANSWER; A TIMEOUT IS THE ABSENCE OF ONE. Collapsing the two
+ * makes the engine report "the operator declined" about an operator nobody
+ * spoke to, and strands a call whose only approval path never opened.
+ *
+ *  - `approved`    — the operator accepted. Grant the approval, claim it, run.
+ *  - `declined`    — the operator answered no. Decline the approval. Terminal:
+ *                    a declined approval is never claimable and never revived.
+ *  - `unreachable` — the prompt was never fulfilled (the client advertised the
+ *                    capability and did not answer, or the transport faulted).
+ *                    The engine holds no decision from anyone, so the approval
+ *                    stays UNGRANTED and the caller hands back its
+ *                    `approval_url` for a human to decide out of band.
+ */
+export type ConfirmDecision = "approved" | "declined" | "unreachable";
+
+/**
+ * In-band approval resolver, an OPTIMIZATION over the approval portal — never a
+ * replacement for it. A surface that can put a prompt in front of a HUMAN inside
+ * the call (MCP `elicitation/create`) supplies one. The approval is minted
+ * UNGRANTED before the prompt goes out, so every outcome is recorded against a
+ * real row: an accept grants it and the call runs in the same pass, a decline
+ * declines it, and an unanswered prompt leaves it waiting for the portal. See
+ * `ConfirmDecision`.
+ */
+export type ConfirmResolver = (confirm: ConfirmEnvelope) => Promise<ConfirmDecision>;
 
 /** Status-discriminated dispatcher envelope. Replaces the legacy
  *  `ok: true | false` discriminated union in `ConversationTool.ToolResult`.

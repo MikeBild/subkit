@@ -31,8 +31,7 @@ export const getSkillCandidateTool: ConversationTool = {
   description: "Fetch one skill candidate with evidence and proposed body.",
   inputSchema: GetInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     const c = await ctx.engineClient.skillCandidates.get(args.id);
     if (!c) return { ok: false, data: { error: "skill_candidate_not_found" } };
     return { ok: true, data: { candidate: c } };
