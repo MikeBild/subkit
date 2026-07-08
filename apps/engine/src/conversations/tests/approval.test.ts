@@ -3,10 +3,22 @@
 // Covers:
 //   - an `ask_user_confirm` tool writes a `conversation_elicitations`
 //     row in `pending` and flips the conversation to `awaiting_input`
-//   - responding with `{ confirmed: false }` keeps the conversation
-//     in an active state and audits the decision
-//   - the audit row uses the shared APPROVAL_REJECTED action name
-//     (for backwards-compatible audit consumers).
+//   - responding with `{ confirmed: false }` resolves that row with the
+//     decline recorded (status `resolved`, `decision_reason` preserved)
+//     and the shared APPROVAL_APPROVED audit action (emitted for every
+//     resolved — i.e. non-cancelled — elicitation, confirmed or declined;
+//     the diagnostic detail lives in the stored `output`, not the action
+//     name)
+//   - the mock model's canned plan retries the SAME save_workflow_draft
+//     call right after the decline. No tool schema carries a
+//     model-settable confirm marker (`__policy_confirmed` was removed as
+//     a self-approval escape hatch), so that retry is challenged by a
+//     FRESH `ask_user_confirm` rather than silently bypassing the write
+//     gate — the conversation legitimately re-enters `awaiting_input` on
+//     a NEW elicitation, distinct from the one just declined
+//   - the conversation is genuinely resumable (not stuck): declining the
+//     second confirm too drives the loop to a terminal, non-paused state
+//     with no workflow ever committed.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
@@ -69,8 +81,19 @@ describe("conversations/elicitation", () => {
       ctx.testDb.db,
     );
     // After rejection the loop drives another turn with the negative
-    // tool_result; the mock plan ends with no commit.
-    expect(responded.conversation.status).not.toBe("awaiting_input");
+    // tool_result injected as a synthetic `save_workflow_draft` decline.
+    // The mock's canned plan is a fixed script, not a real model reasoning
+    // over that decline — its next scripted step re-issues
+    // `save_workflow_draft` regardless. Under the new write-safety
+    // contract no tool schema carries a model-settable confirm marker, so
+    // that retry cannot bypass the gate; it is challenged by a brand-new
+    // `ask_user_confirm` instead. The conversation therefore legitimately
+    // pauses again — on a DIFFERENT elicitation than the one we just
+    // declined.
+    expect(responded.conversation.status).toBe("awaiting_input");
+    const secondElicitationId = responded.result.pending_elicitation_id;
+    expect(secondElicitationId).toBeDefined();
+    expect(secondElicitationId).not.toBe(elicitationId);
 
     const afterRow = await ctx.testDb.db
       .select()
