@@ -16,6 +16,7 @@ const confirm: ConfirmEnvelope = {
   reason: "computed_from_input",
   tool_call_id: "tc-123",
   resume: "Approve the delete to continue.",
+  approval_url: "https://engine.example.test/v1/tool-approvals/decide?grant=skag_test",
 };
 
 describe("envelopeToMcpResponse — needs_confirm legibility", () => {

@@ -10,15 +10,19 @@
 //                    and REPLAYS its args; the client sends no args at all. The
 //                    marker approves nothing — an ungranted row refuses the
 //                    claim. And the claim is not yet an approval — see 7.
-//   4. canonicalize— parse the args that will execute through the
+//   4. rbac        — descriptor.rbac → can() → POLICY_DENIED on deny. Runs
+//                    BEFORE canonicalize and BEFORE policy: authorization is
+//                    prior to input validation, so an unauthorized caller gets
+//                    POLICY_DENIED (not INVALID_ARGS) whatever the arg shape,
+//                    never a confirm prompt, never an APPROVAL_REQUESTED.
+//                    Resource ids (connector_id, execution id, slug) are plain
+//                    top-level fields, identical raw or parsed. On a replay the
+//                    args are already `claim.args` (canonical).
+//   5. canonicalize— parse the args that will execute through the
 //                    descriptor's schema, so policy, approval, and the executor
 //                    all see the same value (defaults applied). Skipped on a
 //                    replay: those args were canonicalized at grant time.
 //                    Executors may parse again — see canonicalizeArgs.
-//   5. rbac        — descriptor.rbac → can() → POLICY_DENIED on deny.
-//                    Runs on the args that will actually execute, and
-//                    BEFORE policy so an unauthorized caller does not
-//                    pollute the audit log with APPROVAL_REQUESTED
 //   6. policy      — policyDecide() → proceed | needs_confirm | not_available
 //                    On needs_confirm the approval is minted UNGRANTED and its
 //                    `approval_url` handed back for a HUMAN to decide. A caller
@@ -518,35 +522,17 @@ export async function dispatchTool(
       }
     }
 
-    // 4. Canonicalize — once, before policy and before the approval record.
-    //    NOT on a replay: `claim.args` was canonicalized when the approval was
-    //    granted, and `requestApproval` stored it verbatim (AES-GCM, AAD- and
-    //    hash-bound). Parsing it again would run the schema's transforms a
-    //    second time on their own output — safe only for transforms that happen
-    //    to be idempotent, and a silent rewrite of the approved payload for any
-    //    that are not.
-    if (!halted && claimed === null) {
-      const canonical = canonicalizeArgs(entry.descriptor.inputSchema, execArgs);
-      if (!canonical.ok) {
-        envelope = {
-          status: "error",
-          error_code: "invalid_args",
-          message: `${invocation.name}: ${canonical.message}`,
-          details: canonical.details,
-        };
-        decisionLabel = "invalid_args";
-        halted = true;
-      } else {
-        execArgs = canonical.args;
-      }
-    }
-
-    // 5. RBAC — descriptor-declared permission, evaluated BEFORE the
-    //    policy gate so an unauthorized caller never sees a confirm
-    //    prompt and never pollutes the audit log with
-    //    APPROVAL_REQUESTED. Authorization is logically prior to
-    //    "should this need confirmation". Re-evaluated on the confirmed
-    //    replay too — a grant can be revoked between request and approval.
+    // 4. RBAC — descriptor-declared permission, evaluated BEFORE canonicalization
+    //    and BEFORE the policy gate. Authorization is logically prior to input
+    //    validation: an unauthorized caller must get `policy_denied` whether or
+    //    not their args are well-formed — never `invalid_args` (which would both
+    //    leak the arg schema and skip the denial audit row), never a confirm
+    //    prompt, never an `APPROVAL_REQUESTED`. Resource extraction reads plain
+    //    top-level ids (connector_id, execution id, workflow slug) that are
+    //    identical raw or parsed, so running before canonicalize is safe. On the
+    //    confirmed replay `execArgs` is already `claim.args` (canonical). RBAC is
+    //    re-evaluated on that replay too — a grant can be revoked between request
+    //    and approval.
     if (!halted && entry.descriptor.rbac) {
       const resource = entry.descriptor.rbac.resource
         ? entry.descriptor.rbac.resource(execArgs)
@@ -589,6 +575,29 @@ export async function dispatchTool(
         };
         decisionLabel = "policy_denied";
         halted = true;
+      }
+    }
+
+    // 5. Canonicalize — after RBAC, before policy and before the approval record.
+    //    NOT on a replay: `claim.args` was canonicalized when the approval was
+    //    granted, and `requestApproval` stored it verbatim (AES-GCM, AAD- and
+    //    hash-bound). Parsing it again would run the schema's transforms a
+    //    second time on their own output — safe only for transforms that happen
+    //    to be idempotent, and a silent rewrite of the approved payload for any
+    //    that are not.
+    if (!halted && claimed === null) {
+      const canonical = canonicalizeArgs(entry.descriptor.inputSchema, execArgs);
+      if (!canonical.ok) {
+        envelope = {
+          status: "error",
+          error_code: "invalid_args",
+          message: `${invocation.name}: ${canonical.message}`,
+          details: canonical.details,
+        };
+        decisionLabel = "invalid_args";
+        halted = true;
+      } else {
+        execArgs = canonical.args;
       }
     }
 
