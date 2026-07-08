@@ -30,8 +30,7 @@ export const listWorkflowsTool: ConversationTool = {
     "List the tenant's workflows — returns the COMPLETE set by default (workflows are a bounded catalog). `total` is the exact tenant count under the given filters; `has_more` is true only when an explicit limit/offset page was requested.",
   inputSchema: ListInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = ListInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof ListInput>) {
     const offset = args.offset ?? 0;
     const { rows, total } = await ctx.engineClient.workflows.list({
       ...(args.status !== undefined ? { status: args.status } : {}),
@@ -63,8 +62,7 @@ export const getWorkflowTool: ConversationTool = {
   description: "Fetch a single workflow by id or slug.",
   inputSchema: GetInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     let wf: Awaited<ReturnType<typeof ctx.engineClient.workflows.get>> | null = null;
     if (args.id) {
       wf = await ctx.engineClient.workflows.get(args.id);

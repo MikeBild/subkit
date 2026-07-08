@@ -50,9 +50,20 @@ export interface ConversationProviderEntry {
  *  tools, which already surface in product mode regardless of `readOnly`.
  *  Authorization stays with `gateWorkflowRunRbac`, not this list.)
  *
+ *  `get_execution` completes the run contract: a `wf_<slug>` / `run_workflow`
+ *  call that outruns the MCP inline window hands back an `execution_id` polling
+ *  handle (`mcp/capabilities/tools.ts`). Publishing the run tool while
+ *  withholding the only tool that resolves its handle advertises a result the
+ *  caller can never fetch. (`enduser`, the read-only chat/MCP role, holds
+ *  `execution:read` — the dispatcher's RBAC entry gates it either way.)
+ *
  *  Other `tenant_write` tools (e.g. `import_connector_from_spec`) stay out:
  *  exposing a config-mutating write to product callers is a category
- *  violation — those remain authoring+admin only. */
+ *  violation — those remain authoring+admin only.
+ *
+ *  Anything added here is automatically published in `authoring` too:
+ *  `mcp/capabilities/catalog-budget.ts` unions this set into the authoring
+ *  catalog so the mode hierarchy can never invert. */
 const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
   "match_connector_template_by_url",
   "test_connector",
@@ -63,6 +74,8 @@ const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
   // search-first core (see comment above)
   "find_workflow",
   "run_workflow",
+  // resolves the polling handle a long run hands back (see comment above)
+  "get_execution",
 ]);
 
 /** `tenant_write` tools exempt from the readOnly hide because they are

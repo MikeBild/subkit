@@ -173,8 +173,8 @@ const DIAGNOSIS_TOOLS: ReadonlySet<string> = new Set(["diagnose_latest_execution
  * first LLM turn without first loading `workflow-authoring`. Same
  * treatment `delete_workflow` already has in ALWAYS_AVAILABLE_CLEANUP.
  * The tool's input contract still resolves the slug against the live
- * workflows table, and `gateTenantToolCall` still applies before the run
- * actually fires.
+ * workflows table, and the confirm gate (`tools/policy.ts`) still applies
+ * before the run actually fires.
  */
 const ALWAYS_AVAILABLE_EXECUTION: ReadonlySet<string> = new Set(["run_workflow"]);
 
@@ -269,7 +269,7 @@ export function filterByAuthoringPalette<
  *
  * `run_workflow` and the synthetic `wf_<slug>` peers stay: running a
  * saved workflow is the channel's one action, and it remains behind
- * `resolveExecutionToolGate`, per-user RBAC (`gateTenantToolCall`), and
+ * `resolveExecutionToolGate`, per-user RBAC (`gateWorkflowRunRbac`), and
  * the confirm policy (rendered as a chat approval card).
  */
 export const CHAT_READONLY_TOOLS: ReadonlySet<string> = new Set([

@@ -27,8 +27,7 @@ export const rerunExecutionTool: ConversationTool = {
     "Rerun a finished execution: same workflow version, same input (unless overridden), with lineage back to the original (parent_execution_id). Use after a fix or a transient failure to verify the run now succeeds.",
   inputSchema: RerunInput,
   category: "tenant_write",
-  async execute(ctx, rawArgs) {
-    const args = RerunInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof RerunInput>) {
     const rows = await ctx.db
       .select()
       .from(executions)

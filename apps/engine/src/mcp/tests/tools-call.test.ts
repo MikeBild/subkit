@@ -9,6 +9,9 @@ let suite: McpTestSuite;
 let mock: MockServer;
 
 beforeAll(async () => {
+  // A public origin, so the held-writes preview can mint the `approval_url` a
+  // person opens to grant the writes.
+  process.env.SUBKIT_PUBLIC_BASE_URL = "https://engine.example.test";
   suite = await startMcpTestSuite("tools-call");
   mock = await createMockServer((_req, res) => {
     jsonResponse(res, 200, { hello: "world" });
@@ -18,6 +21,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await mock.close();
   await suite.cleanup();
+  delete process.env.SUBKIT_PUBLIC_BASE_URL;
 });
 
 describe("mcp tools/call", () => {
@@ -178,16 +182,45 @@ describe("mcp tools/call", () => {
       held_steps?: string[];
       would_write?: Array<{ step: string; method: string | null }>;
       message?: string;
+      remedy?: string;
+      confirm_id?: string;
+      approval_url?: string | null;
+      awaiting_human_approval?: boolean;
     };
     expect(body.preview).toBe(true);
     expect(body.writes_held).toBe(true);
     expect(body.held_steps).toEqual(["send"]);
     expect(body.would_write?.[0]?.step).toBe("send");
     expect(body.would_write?.[0]?.method).toBe("POST");
-    expect(body.message).toContain("execute_writes:true");
+    // There is no `execute_writes` opt-in on this surface (a model-driven MCP
+    // client cannot set transport-level `_meta`). The remedy names the HUMAN
+    // affordance — the approval_url a person opens — and only then the
+    // confirm_id the model triggers with.
+    expect(typeof body.confirm_id).toBe("string");
+    expect(body.awaiting_human_approval).toBe(true);
+    expect(String(body.approval_url)).toStartWith(
+      "https://engine.example.test/v1/tool-approvals/decide?grant=skag_",
+    );
+    expect(body.remedy).toContain("Send this link to the person who must approve");
+    expect(body.remedy).toContain(String(body.approval_url));
+    expect(body.remedy).toContain(`confirm_id: "${body.confirm_id}"`);
+    // It must never instruct the model to approve — it cannot.
+    expect(body.remedy).toContain("it cannot approve them");
 
-    const meta = (result as { _meta?: { subkit?: { execution?: { preview?: boolean } } } })._meta;
+    const meta = (
+      result as {
+        _meta?: {
+          subkit?: {
+            execution?: { preview?: boolean };
+            confirm?: { tool?: string; confirm_id?: string; approval_url?: string | null };
+          };
+        };
+      }
+    )._meta;
     expect(meta?.subkit?.execution?.preview).toBe(true);
+    expect(meta?.subkit?.confirm?.tool).toBe("wf_call-preview");
+    expect(meta?.subkit?.confirm?.confirm_id).toBe(body.confirm_id);
+    expect(meta?.subkit?.confirm?.approval_url).toBe(body.approval_url ?? null);
 
     // The execution materialized but the write never hit the wire (the
     // POST /send mock would have returned hello:world if it had run).

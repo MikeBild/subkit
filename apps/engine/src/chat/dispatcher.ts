@@ -38,6 +38,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
+import { humanChatAnswer } from "../conversations/answer-actor.ts";
 import type { RunLoopResult } from "../conversations/loop.ts";
 import {
   appendUserMessage,
@@ -413,6 +414,8 @@ async function salvageTypedReplyToPendingElicitation(args: {
           elicitation_id: pending.id,
           actor_id: user_id,
           principal,
+          // The user typed this reply into the channel themselves.
+          answer_actor: humanChatAnswer(principal),
           output,
           turn_abort_ctrl: turnAbortCtrl,
           // Shared-space contract: only the initiator may answer.
@@ -695,7 +698,7 @@ async function handleChatEventImpl(
     // conversation turn every other run takes. The previous inline
     // implementation duplicated a weaker copy of the run contract:
     // it checked `workflow:run` RBAC but skipped the confirm gate
-    // (`gateTenantToolCall`) and the input-contract deferral the
+    // (`tools/policy.ts`) and the input-contract deferral the
     // fast-path / `run_workflow` tool enforce — an execute_writes
     // workflow ran unconfirmed from chat. Handing the verb to the
     // conversation flow gives one run contract everywhere: RBAC +
@@ -777,6 +780,8 @@ async function handleChatEventImpl(
               actor_id: user_id,
               principal: chatPrincipal,
               user_message: appended.message,
+              // A channel member typed this message.
+              answer_actor: humanChatAnswer(chatPrincipal),
               user_memory: appended.user_memory,
               turn_abort_ctrl: turnAbortCtrl,
               // Channel-scoped read-only contract: the chat surface selects
@@ -839,6 +844,7 @@ async function handleChatEventImpl(
             actor_id: user_id,
             principal: chatPrincipal,
             user_message: created.initial_message ?? "",
+            answer_actor: humanChatAnswer(chatPrincipal),
             user_memory: created.user_memory,
             turn_abort_ctrl: turnAbortCtrl,
             // Same channel-scoped read-only contract as the resume path.

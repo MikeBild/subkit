@@ -1,13 +1,15 @@
 // create_skill — create a new tenant Skill.
 //
-// Mirrors `create_knowledge_source` / `delete_skill`: parse the args, call the
-// engine-client `skills.create` facet, emit a surface audit, and return the
-// uniform { ok, data } envelope.
+// Mirrors `create_knowledge_source` / `delete_skill`: call the engine-client
+// `skills.create` facet, emit a surface audit, and return the uniform
+// { ok, data } envelope. The args arrive already parsed — see the note on
+// `ConversationTool.execute`.
 //
 // The dispatcher now owns MCP RBAC (RBAC_OVERRIDES); the in-execute check
 // below stays because the chat surface invokes execute() directly and does
 // not route through the dispatcher's descriptor.rbac yet.
 
+import type { z } from "@hono/zod-openapi";
 import { CreateSkillSchema } from "../../../../skills/types.ts";
 import type { ConversationTool, ToolResult } from "../../index.ts";
 
@@ -19,8 +21,7 @@ export const createSkillTool: ConversationTool = {
   inputSchema: CreateSkillInput,
   category: "tenant_write",
   permission: { action: "skill:write", resourceType: "skill" },
-  async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = CreateSkillInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof CreateSkillInput>): Promise<ToolResult> {
     try {
       const skill = await ctx.engineClient.skills.create(args);
 

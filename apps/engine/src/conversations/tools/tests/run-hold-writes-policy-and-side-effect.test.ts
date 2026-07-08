@@ -3,104 +3,67 @@
 //
 // Coverage:
 //   C. Policy gate: `run_workflow` with execute_writes:true → confirm_before_execution
-//      even in dev; without it in dev → no_confirm/auto.
+//      even in dev; without it in dev → no_confirm.
 //   D. inspect_workflow_draft marks POST/send steps side_effect:"write" and
 //      GET/transform steps side_effect:"read".
 
 import { describe, expect, it } from "bun:test";
 import { createEmptyDraftDocument, withWorkflowDraft } from "../../authoring-state.ts";
+import { resolveToolMode } from "../../tool-policies.ts";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { inspectWorkflowDraftTool } from "../inspect-workflow-draft.ts";
-import { confirmIfLiveWritesOrNonDevEnv, resolveExecutionMode } from "../tool-policies.ts";
 
 // ---------------------------------------------------------------------------
-// C. Policy predicate: confirmIfLiveWritesOrNonDevEnv
+// C. Enforcement resolver: run_workflow's compute-from-input hook
 // ---------------------------------------------------------------------------
 
-const DEV_CTX = { tenant_id: "t-unit-test", environment: "dev" as const };
-const PROD_CTX = { tenant_id: "t-unit-test", environment: "prod" as const };
-
-describe("confirmIfLiveWritesOrNonDevEnv predicate", () => {
-  it("execute_writes:true always demands confirmation, even in dev", () => {
-    expect(
-      confirmIfLiveWritesOrNonDevEnv({ execute_writes: true, environment: "dev" }, DEV_CTX),
-    ).toBe("confirm_before_execution");
+function runWorkflowMode(input: Record<string, unknown>) {
+  return resolveToolMode({
+    tool: "run_workflow",
+    category: "tenant_write",
+    input,
+    overrides: {},
   });
+}
 
-  it("execute_writes:true with no environment still demands confirmation", () => {
-    expect(confirmIfLiveWritesOrNonDevEnv({ execute_writes: true }, DEV_CTX)).toBe(
+describe("resolveToolMode for run_workflow (enforcement table)", () => {
+  it("execute_writes:true always demands confirmation, even in dev", () => {
+    expect(runWorkflowMode({ workflow: "my-wf", execute_writes: true, environment: "dev" })).toBe(
       "confirm_before_execution",
     );
   });
 
-  it("execute_writes:false in dev → auto (hold-writes default path)", () => {
-    expect(
-      confirmIfLiveWritesOrNonDevEnv({ execute_writes: false, environment: "dev" }, DEV_CTX),
-    ).toBe("auto");
+  it("execute_writes:true with no environment still demands confirmation", () => {
+    expect(runWorkflowMode({ workflow: "my-wf", execute_writes: true })).toBe(
+      "confirm_before_execution",
+    );
   });
 
-  it("execute_writes omitted in dev → auto (hold-writes is the default)", () => {
-    expect(confirmIfLiveWritesOrNonDevEnv({ environment: "dev" }, DEV_CTX)).toBe("auto");
+  it("execute_writes omitted in dev → no_confirm (hold-writes is the default)", () => {
+    expect(runWorkflowMode({ workflow: "my-wf", environment: "dev" })).toBe("no_confirm");
+  });
+
+  it("execute_writes:false in dev → no_confirm (hold-writes default path)", () => {
+    expect(runWorkflowMode({ workflow: "my-wf", execute_writes: false, environment: "dev" })).toBe(
+      "no_confirm",
+    );
   });
 
   it("execute_writes omitted in prod → confirm (env rule fires as fallback)", () => {
-    expect(confirmIfLiveWritesOrNonDevEnv({ environment: "prod" }, PROD_CTX)).toBe(
+    expect(runWorkflowMode({ workflow: "my-wf", environment: "prod" })).toBe(
       "confirm_before_execution",
     );
   });
 
   it("execute_writes:true in prod → confirm (execute_writes rule wins before env check)", () => {
-    expect(
-      confirmIfLiveWritesOrNonDevEnv({ execute_writes: true, environment: "prod" }, PROD_CTX),
-    ).toBe("confirm_before_execution");
-  });
-
-  it("null input → auto (env defaults to dev)", () => {
-    expect(confirmIfLiveWritesOrNonDevEnv(null, DEV_CTX)).toBe("auto");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// C continued: resolveExecutionMode for run_workflow via TOOL_POLICIES
-// ---------------------------------------------------------------------------
-
-describe("resolveExecutionMode for run_workflow (tool-policies table)", () => {
-  it("run_workflow with execute_writes:true in dev → confirm_before_execution", () => {
-    const result = resolveExecutionMode(
-      "run_workflow",
-      { workflow: "my-wf", execute_writes: true, environment: "dev" },
-      DEV_CTX,
+    expect(runWorkflowMode({ workflow: "my-wf", execute_writes: true, environment: "prod" })).toBe(
+      "confirm_before_execution",
     );
-    expect(result.mode).toBe("confirm_before_execution");
-    expect(result.confirmationKind).toBe("external_call");
   });
 
-  it("run_workflow without execute_writes in dev → auto (hold-writes, no confirm)", () => {
-    const result = resolveExecutionMode(
-      "run_workflow",
-      { workflow: "my-wf", environment: "dev" },
-      DEV_CTX,
-    );
-    expect(result.mode).toBe("auto");
-  });
-
-  it("run_workflow without execute_writes in prod → confirm_before_execution (env rule)", () => {
-    const result = resolveExecutionMode(
-      "run_workflow",
-      { workflow: "my-wf", environment: "prod" },
-      PROD_CTX,
-    );
-    expect(result.mode).toBe("confirm_before_execution");
-  });
-
-  it("run_workflow execute_writes:false in dev → auto", () => {
-    const result = resolveExecutionMode(
-      "run_workflow",
-      { workflow: "my-wf", execute_writes: false, environment: "dev" },
-      DEV_CTX,
-    );
-    expect(result.mode).toBe("auto");
+  it("no environment named → confirm (the table never defaults the environment)", () => {
+    expect(runWorkflowMode({ workflow: "my-wf" })).toBe("confirm_before_execution");
   });
 });
 

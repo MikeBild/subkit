@@ -426,6 +426,126 @@ describe("conversation_respond_elicitation", () => {
     expect(responded.isError).toBe(true);
     expect(responded.content[0]?.text).toContain("elicitation not found");
   });
+
+  test("refuses an elicitation whose commit_intent carries an approval_id — a model cannot grant a human's approval", async () => {
+    // AN APPROVAL IS GRANTED BY A HUMAN, NEVER BY A MODEL (see tools/approval.ts).
+    // An elicitation whose commit_intent names an approval_id IS a person's
+    // pending decision, not a question the model may answer on their behalf —
+    // see `refuseApprovalElicitation` in ./conversations.ts.
+    const started = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: { message: "list users" },
+    });
+    const conversation_id = (
+      JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
+    ).conversation_id;
+
+    const approvalId = "11111111-2222-3333-4444-555555555555";
+    const [elicitation] = await testDb.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: principal.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        summary: "Approve the held write?",
+        input: {
+          kind: "generic",
+          commit_intent: {
+            kind: "execute_confirmed_tool_call",
+            payload: { tool: "wf_post_ledger_entries", approval_id: approvalId },
+            description: "Post the ledger entries",
+          },
+        },
+        status: "pending",
+      })
+      .returning();
+    if (!elicitation) throw new Error("seed elicitation failed");
+
+    const tasksBefore = await testDb.db
+      .select()
+      .from(mcpTasks)
+      .where(eq(mcpTasks.conversation_id, conversation_id));
+
+    const responded = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_respond_elicitation",
+      args: {
+        conversation_id,
+        elicitation_id: elicitation.id,
+        output: { confirmed: true },
+      },
+    });
+    expect(responded.isError).toBe(true);
+    const body = JSON.parse(responded.content[0]?.text ?? "{}") as {
+      status: string;
+      error_code: string;
+      approval_id: string;
+    };
+    expect(body.status).toBe("cannot_help");
+    expect(body.error_code).toBe("approval_requires_human");
+    expect(body.approval_id).toBe(approvalId);
+
+    // Nothing was resolved: the row is still pending, with no output staged —
+    // the refusal happens BEFORE stageElicitationAnswer would touch it.
+    const [row] = await testDb.db
+      .select({ status: conversationElicitations.status, output: conversationElicitations.output })
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitation.id));
+    expect(row?.status).toBe("pending");
+    expect(row?.output).toBeNull();
+
+    // And no turn was enqueued for it — the refusal never reaches backgroundTurn.
+    const tasksAfter = await testDb.db
+      .select()
+      .from(mcpTasks)
+      .where(eq(mcpTasks.conversation_id, conversation_id));
+    expect(tasksAfter).toHaveLength(tasksBefore.length);
+  });
+
+  test("an ordinary ask_user_confirm elicitation (no approval handle) is still model-resolvable", async () => {
+    // Guards against an over-broad refusal: only a commit_intent carrying
+    // `approval_id` is refused. A plain confirm — no commit_intent at all —
+    // must keep resolving through the normal path.
+    const started = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: { message: "list users" },
+    });
+    const conversation_id = (
+      JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
+    ).conversation_id;
+
+    const [elicitation] = await testDb.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: principal.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        summary: "proceed?",
+        input: { kind: "generic" },
+        status: "pending",
+      })
+      .returning();
+    if (!elicitation) throw new Error("seed elicitation failed");
+
+    const responded = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_respond_elicitation",
+      args: {
+        conversation_id,
+        elicitation_id: elicitation.id,
+        output: { confirmed: true },
+      },
+    });
+    expect(responded.isError).toBe(false);
+    const body = JSON.parse(responded.content[0]?.text ?? "{}") as { status: string };
+    expect(body.status).toBe("working");
+  });
 });
 
 describe("validation", () => {

@@ -13,8 +13,7 @@ export const approveSkillCandidateTool: ConversationTool = {
     "Approve a skill candidate and promote it to a tenant skill. Writes audit. Idempotent — already-approved candidates return ok=false.",
   inputSchema: IdInput,
   category: "tenant_write",
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const out = await approveSkillCandidate(
       { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor_id: ctx.actor_id },
       ctx.db,
@@ -46,8 +45,7 @@ export const approvePatchCandidateTool: ConversationTool = {
   description: "Apply a proposed patch candidate, creating a new workflow version. Writes audit.",
   inputSchema: IdInput,
   category: "tenant_write",
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     try {
       const newVersionId = await approvePatchCandidate(
         {

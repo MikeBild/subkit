@@ -31,6 +31,21 @@ import {
  * the cap surfaces only the generic "ask the user" hint.
  */
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  // Approval-gate signals — a write paused for HUMAN approval. The model is
+  // never the approver: a person grants out of band (chat confirm card or the
+  // approval portal link), then the write can be re-issued. Do NOT loop.
+  policy_confirm_required:
+    "this write paused for approval — nothing ran. A PERSON must approve it (they will see a confirmation in chat, or open the approval link). You cannot approve on their behalf and re-issuing without a human grant only reproduces this pause. Wait for the operator to answer, then continue.",
+  approval_not_granted:
+    "the approval has not been granted by a person yet — the confirm handle is a trigger, not a grant. Ask the operator to approve (via the chat confirmation or the approval link), and only re-issue once they have. Do not retry in a loop.",
+  approval_request_failed:
+    "the approval handle could not be opened, so this write cannot be released from the current turn — tell the operator the action must be performed from an authenticated session; do not retry.",
+  approval_audit_failed:
+    "the confirmation could not be recorded in the audit log, so the write was not performed — a write that cannot be audited is not performed. Re-issue the call to obtain a fresh confirmation.",
+  unexpected_gate_decision:
+    "an unconfirmed write must pause for human approval and did not resolve to that state, so it was refused rather than run unaudited — do not retry; report that the tool could not be gated.",
+  duplicate_pending_elicitation_in_turn:
+    "another approval is already pending in this turn — one confirmation at a time. Wait for the operator to answer the outstanding prompt before issuing another write.",
   // Connector self-description / lazy-fetch signals (fetch_connector_self_description).
   no_connector_in_scope:
     "no connector is in scope — pass an explicit connector_id (find it via find_connector / list_connectors), or run the call from a conversation already bound to a connector",

@@ -20,8 +20,7 @@ export const getRoleTool: ConversationTool = {
   description: "Fetch a single role by id including its permissions.",
   inputSchema: IdInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const role = await ctx.engineClient.rbac.getRole(args.id);
     if (!role) return { ok: false, data: { error: "role_not_found" } };
     const permissions = await ctx.engineClient.rbac.listRolePermissions(role.id);

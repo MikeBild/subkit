@@ -13,6 +13,7 @@ export {
   registerConversationAbort,
   unregisterConversationAbort,
 } from "./abort.ts";
+export * from "./answer-actor.ts";
 export * from "./attachments.ts";
 export {
   DirectInvokeError,
@@ -24,4 +25,7 @@ export * from "./parts.ts";
 export * from "./service.ts";
 export * from "./streaming.ts";
 export * from "./tool-policies.ts";
+// Re-exported so http/routes/conversations/* reach it through the subsystem
+// entry point (route_layering invariant) rather than the deep tools path.
+export { withoutApprovalHandle } from "./tools/ask-user/commit-intent.ts";
 export * from "./types.ts";

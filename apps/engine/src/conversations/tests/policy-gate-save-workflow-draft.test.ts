@@ -26,6 +26,7 @@ import {
 } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
+import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import {
   withLatestPreview,
   withWorkflowInspection,
@@ -221,10 +222,11 @@ describe("save_workflow_draft — policy gate", () => {
     expect(toolCallRow?.parent_message_id).toBe(parentMessageId);
   });
 
-  test("LLM-issued save_workflow_draft with __policy_confirmed: true skips the policy gate", async () => {
-    // Re-issue path: after the user confirms via the policy-gate
-    // elicitation, the LLM is told to re-call with this marker. The
-    // gate must not fire a second time.
+  test("save_workflow_draft with a fresh durable prior approval skips the policy gate", async () => {
+    // The save path's ONE shortcut: a resolved ask_user_confirm carrying
+    // commit_intent.kind=save_workflow_draft is the same durable approval the
+    // commit backstop authorizes on, so the pre-confirm gate must not fire a
+    // second time. Nothing the model puts in its args participates.
     const conversation_id = await freshConversation();
     const events: TurnEvent[] = [];
     const signals = freshSignals();
@@ -275,12 +277,12 @@ describe("save_workflow_draft — policy gate", () => {
 
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (wrapped.save_workflow_draft!.execute as any)(
-      { __policy_confirmed: true },
+      {},
       { toolCallId: "reissue-call-id", messages: [] },
     );
 
-    // No pause this time — the marker bypasses the gate, the inner
-    // prior-approval check finds the resolved elicit, and the
+    // No pause this time — `findPriorSaveWorkflowApproval` matches the resolved
+    // elicit, the inner prior-approval check accepts the same row, and the
     // workflow gets persisted.
     expect(result.pause).toBeUndefined();
     expect(result.ok).toBe(true);
@@ -293,72 +295,6 @@ describe("save_workflow_draft — policy gate", () => {
     const followUp = (data.usage as { follow_up: string }).follow_up;
     expect((data.next_prompt as string).startsWith(followUp)).toBe(true);
     expect(data.next_prompt as string).toContain("Skill-Candidate");
-  });
-
-  test('LLM-issued save_workflow_draft with __policy_confirmed: "true" (string) is coerced and skips the gate (G2)', async () => {
-    // Root cause of G2 in the runtime-logs review plan: Anthropic's
-    // tool-call serialiser sometimes round-trips the boolean as
-    // `"true"` (string). Pre-fix the AI SDK Zod boundary rejected
-    // with `expected boolean, received string`, the model emitted
-    // `repair_tool_call.started`, and the engine spent ~8s asking the
-    // model to fix the type — on EVERY OAuth call (4 separate
-    // instances logged in session ed20f48d). The wrapper now accepts
-    // both representations and coerces; downstream semantics unchanged.
-    const conversation_id = await freshConversation();
-    const events: TurnEvent[] = [];
-    const signals = freshSignals();
-    const engineClient = new EngineClient({
-      tenant_id: ctx.tenant_id,
-      actor_id: null,
-      actor_type: "system",
-      db: ctx.testDb.db,
-    });
-    await ctx.testDb.db.insert(conversationElicitations).values({
-      tenant_id: ctx.tenant_id,
-      conversation_id,
-      tool_name: "ask_user_confirm",
-      summary: "commit",
-      input: {
-        kind: "save_workflow_draft",
-        summary: "commit",
-        commit_intent: { kind: "save_workflow_draft", payload: {}, description: "commit" },
-      },
-      output: { confirmed: true },
-      status: "resolved",
-    });
-    const draft = readyWorkflowDraft("policy-gate-2-coerce");
-    const toolCtx: ToolContext = {
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenant_id,
-      conversation_id,
-      actor_id: null,
-      connector_id: null,
-      workflow_id: null,
-      engineClient,
-      getDraft: () => draft,
-      setDraft: async () => {},
-    };
-
-    const wrapped = await wrapTools(
-      toolCtx,
-      signals,
-      events,
-      ctx.testDb.db,
-      ["workflow-authoring"],
-      {},
-    );
-
-    // String-form marker — exactly what the SDK produced in production.
-    // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
-    const result = await (wrapped.save_workflow_draft!.execute as any)(
-      { __policy_confirmed: "true" },
-      { toolCallId: "reissue-call-id-string", messages: [] },
-    );
-
-    expect(result.pause).toBeUndefined();
-    expect(result.ok).toBe(true);
-    const data = result.data as Record<string, unknown>;
-    expect(data.workflow_id).toBeDefined();
   });
 });
 
@@ -394,6 +330,7 @@ describe("save_workflow_draft — auto-persist via commit_intent", () => {
     if (!carrier) throw new Error("failed to seed carrier elicitation");
 
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id: ctx.tenant_id,
       conversation_id,
       actor_id: null,
@@ -566,16 +503,15 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     expect(data.error_code).toBe("no_prior_approval");
   });
 
-  test("non-save writes get NO generic elicitation dedup — only __policy_confirmed proceeds", async () => {
+  test("non-save writes get NO generic elicitation dedup, and no model-supplied marker clears them", async () => {
     // The fuzzy generic 20-row elicitation scan is DELETED. A
     // non-`save_workflow_draft` write no longer proceeds just because a
     // prior resolved `ask_user_confirm` for the same (or a different)
     // tool happens to exist in history — guessing operator intent from
     // stale rows is exactly the class of heuristic the deterministic
-    // `decideConfirm` gate removes. The ONLY things that clear a write:
-    // a `policyMarker` (`__policy_confirmed`) or, for the save path
-    // alone, a fresh `findPriorSaveWorkflowApproval`. Every other write
-    // pauses.
+    // `decideConfirm` gate removes. The ONLY thing that clears a write is,
+    // for the save path alone, a fresh `findPriorSaveWorkflowApproval`.
+    // Every other write pauses, and no argument the MODEL emits changes that.
 
     // (a) A prior resolved run_workflow confirm does NOT dedup the
     // pre-confirm anymore — run_workflow in prod still PAUSES.
@@ -640,8 +576,10 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       expect(elicit).toBeDefined();
     }
 
-    // (b) The same call WITH `__policy_confirmed: true` proceeds — the
-    // marker is the single deterministic way past the gate.
+    // (b) The same call WITH a model-supplied `__policy_confirmed: true`
+    // STILL pauses. The gate reads no marker off the args, and the published
+    // schema declares none — one tool call must not be able to perform a live
+    // prod run with no elicitation, no approval row, and no human.
     {
       const conversation_id = await freshConversation();
       const events: TurnEvent[] = [];
@@ -679,13 +617,14 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
           environment: "prod",
           __policy_confirmed: true,
         },
-        { toolCallId: "marker-proceeds-call", messages: [] },
+        { toolCallId: "marker-inert-call", messages: [] },
       );
-      // Marker present → decideConfirm proceeds; the inner tool ran
-      // (fake id → not a pause envelope).
-      expect(result.pause).toBeUndefined();
+      // The marker is inert: same pause, same confirmation card.
+      expect(result.ok).toBe(false);
+      expect(result.pause).toBeDefined();
+      expect(result.pause?.tool_name).toBe("ask_user_confirm");
       const elicit = events.find((e) => e.type === "elicit_request");
-      expect(elicit).toBeUndefined();
+      expect(elicit).toBeDefined();
     }
   });
 

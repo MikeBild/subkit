@@ -34,7 +34,7 @@ const ToolEnvelopeSchema = z.discriminatedUnion("status", [
     status: z.literal("needs_confirm"),
     confirm: z.object({
       tool: z.string(),
-      args: z.record(z.string(), z.unknown()),
+      pending_output: z.record(z.string(), z.unknown()).nullable(),
       policy_mode: z.literal("confirm_before_execution"),
       reason: z.string(),
       tool_call_id: z.string(),

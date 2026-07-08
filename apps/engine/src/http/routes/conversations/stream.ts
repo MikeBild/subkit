@@ -9,7 +9,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import * as svc from "../../../conversations/index.ts";
-import { serializeEvent } from "../../../conversations/index.ts";
+import { serializeEvent, withoutApprovalHandle } from "../../../conversations/index.ts";
 import { monthlyUsage, resolveModelRoute } from "../../../llm/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -89,6 +89,13 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
       };
       const emitElicit = async (elicit: (typeof pendingElicitations)[number]) => {
         const anchor = (elicit as { parent_message_id?: string | null }).parent_message_id;
+        // The persisted row is the harness's own record and may carry an
+        // engine-authored approval handle. A replay is an outbound frame — strip
+        // it, the same way the live `elicit_request` did when the turn paused.
+        const rawInput =
+          elicit.input && typeof elicit.input === "object" && !Array.isArray(elicit.input)
+            ? (elicit.input as Record<string, unknown>)
+            : {};
         await stream.writeSSE(
           serializeEvent({
             type: "elicit_request",
@@ -96,7 +103,7 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
             ...(elicit.tool_call_id ? { tool_call_id: elicit.tool_call_id } : {}),
             tool_name: elicit.tool_name,
             summary: elicit.summary,
-            input: elicit.input ?? {},
+            input: withoutApprovalHandle(rawInput),
             ...(anchor ? { parent_message_id: anchor } : {}),
           }),
         );

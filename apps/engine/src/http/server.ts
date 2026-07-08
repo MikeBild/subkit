@@ -90,6 +90,7 @@ import { registerSkillRoutes } from "./routes/skills.ts";
 import { registerStatsRoutes } from "./routes/stats/index.ts";
 import { registerStatusRoute } from "./routes/status.ts";
 import { registerSubscriptionRoutes } from "./routes/subscriptions.ts";
+import { registerToolApprovalRoutes } from "./routes/tool-approvals.ts";
 import { registerWorkflowRoutes } from "./routes/workflows.ts";
 
 export interface CreateAppOptions {
@@ -326,6 +327,11 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerChatIdentityRoutes(app);
   registerChatSpaceRoutes(app);
   registerSubscriptionRoutes(app);
+  // GET/POST /v1/tool-approvals/decide are deliberately NOT gated by
+  // requirePermission: the approver is a human with a browser and no API key.
+  // Authentication is the single-use `skag_…` grant token, resolved inside the
+  // handlers. Same discipline as the credential-setup and OAuth callback routes.
+  registerToolApprovalRoutes(app);
   registerNotificationRoutes(app);
   registerEventRoutes(app);
   registerRbacRoutes(app);

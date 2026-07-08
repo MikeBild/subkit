@@ -15,6 +15,7 @@ import { NoSuchToolError } from "ai";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
+import { humanChatAnswer } from "../conversations/answer-actor.ts";
 import {
   ConversationNotFoundError,
   ElicitationActorMismatchError,
@@ -369,6 +370,9 @@ export async function routeChatInteraction(
           elicitation_id,
           actor_id: user_id,
           principal,
+          // A person clicked the Block-Kit button in a signed interaction, and
+          // `require_same_actor` below pins them to the conversation's owner.
+          answer_actor: humanChatAnswer(principal),
           output,
           turn_abort_ctrl: turnAbortCtrl,
           require_same_actor: true,

@@ -7,6 +7,13 @@
 // notifications (including `notifications/progress`) land on the right
 // stream.
 //
+// A map entry is a LEASE, not a permanent allocation: it survives while
+// requests keep touching it or work is in flight on it, and an idle sweeper
+// reclaims the rest (see `SESSION_IDLE_TTL_MS`). Clients that drop off without
+// the spec's `DELETE` would otherwise pin their server + transport — and the
+// `globalEmitter` listeners its capability modules registered — for the life of
+// the process.
+//
 // `enableJsonResponse` is OFF. Every POST /mcp — including `tools/call`
 // — opens an SSE stream for its response. This is REQUIRED for MCP
 // elicitation: a tool whose `execute` issues a server→client
@@ -32,10 +39,34 @@ import { UnauthorizedError } from "../../http/errors.ts";
 import { requireAuth } from "../../http/middleware/auth.ts";
 import type { AppEnv } from "../../http/openapi.ts";
 import { logger } from "../../logging/logger.ts";
+import { now } from "../../utils/clock.ts";
 import { createMcpServer } from "../server.ts";
 import { validateMcpStreamableHttpRequest } from "./guards.ts";
 
-interface Session {
+// A session is a lease, not a permanent allocation. The spec has clients send
+// `DELETE /mcp` when they are done and almost none do, so `onsessionclosed`
+// fires for a rounding error's worth of the sessions that `initialize` opens.
+// Every orphaned entry pins an `McpServer` + transport AND the `globalEmitter`
+// subscriptions its capability modules registered, so each `workflow.lifecycle`
+// event fans out across every session this process ever saw — an RSS leak and a
+// CPU leak. The sweeper below makes the map a TTL cache: a lease lives only as
+// long as requests keep touching it.
+export const SESSION_IDLE_TTL_MS = 30 * 60_000;
+export const SESSION_SWEEP_INTERVAL_MS = 60_000;
+// Hard ceiling on concurrent leases, so a client that re-initializes on every
+// call cannot outrun the sweeper. Oldest-idle lease is evicted first.
+export const MAX_LIVE_SESSIONS = 100;
+// A retain is bounded, like the lease it accounts against. An SSE body the
+// runtime never attaches to a socket is never pulled and never cancelled, so
+// its `onClosed` never fires and its retain pins `inFlight` at 1 forever — the
+// sweeper skips the lease and `evictOverflow` can never reclaim it. A stream
+// that has produced nothing and been neither pulled nor cancelled inside this
+// window is not in flight. Real consumers issue their first `pull` in the same
+// microtask the Response is returned in, so this only ever fires on a body
+// nobody took.
+export const STREAM_RETAIN_START_GRACE_MS = 30_000;
+
+export interface Session {
   transport: WebStandardStreamableHTTPServerTransport;
   server: Server;
   // Owner identity captured at `initialize`. The per-session `server` closes
@@ -45,6 +76,20 @@ interface Session {
   // context (MCP Security Best Practices: sessions MUST NOT be used for
   // authentication; bind the session id to the authorized user).
   owner: string;
+  // Wall clock of the request that most recently started or finished on this
+  // session. Written by the request path (`retain` / `release`) only; the
+  // sweeper reads it. Renewing the lease from the sweeper would make an idle
+  // session immortal.
+  lastSeenAt: number;
+  // Open units of work: a request still inside `handleRequest`, plus every SSE
+  // body that request handed back — the standalone GET notification channel
+  // (open for the life of the client's session) and each POST response stream
+  // (open until its JSON-RPC response is written). A session with
+  // `inFlight > 0` is not idle, and evicting it would close the transport out
+  // from under a live stream. Every retain is bounded: a stream body nobody
+  // consumed hands its retain back after `STREAM_RETAIN_START_GRACE_MS`, so
+  // `inFlight` can never latch above zero.
+  inFlight: number;
 }
 
 // Stable key for the principal that owns a session. Ties the session to the
@@ -55,8 +100,231 @@ function ownerKey(p: ResolvedPrincipal): string {
   return `${p.tenant_id}:${p.id}:${p.api_key_id ?? p.session_id ?? p.provider}`;
 }
 
-export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
+export interface SessionLeaseManager {
+  sessions: Map<string, Session>;
+  evict(sessionId: string, reason: "idle_ttl" | "capacity"): void;
+  /** One sweep pass: evict every session idle past `SESSION_IDLE_TTL_MS`.
+   *  Exposed separately from `startSweeper` so tests can drive a pass
+   *  deterministically (fake clock + direct call) instead of waiting on the
+   *  real `SESSION_SWEEP_INTERVAL_MS` timer. */
+  tick(): void;
+  startSweeper(): void;
+  stopSweeper(): void;
+  evictOverflow(): void;
+  /** Mark one unit of work as started on this session. Must be paired with
+   *  exactly one `release`. */
+  retain(session: Session): void;
+  /** Mark one unit of work as finished, and date the lease from that moment —
+   *  a stream that stayed open for an hour has an hour-old `lastSeenAt` and
+   *  would otherwise be swept the instant it closed. */
+  release(session: Session): void;
+}
+
+/** The three moves a tracked stream makes against its session's retain. */
+interface StreamRetain {
+  /** Give the retain back — the stream ended, was cancelled, or never started. */
+  release(): void;
+  /** Take the retain again after a force-release, because the stream turned out
+   *  to be live after all. Keeps "a genuinely active stream is never swept". */
+  reacquire(): void;
+  /** The force-release fired: a body nobody pulled or cancelled. */
+  onForceReleased(): void;
+}
+
+/**
+ * Hand a session's in-flight retain to the response body it produced, for a
+ * BOUNDED lifetime. An SSE body outlives the `handleRequest` promise by design:
+ * the standalone GET notification channel stays open for the life of the
+ * session, and a POST response stream stays open until the tool's JSON-RPC
+ * response is written. `release` then fires exactly once — on normal end,
+ * client cancel, or error.
+ *
+ * A body that is never consumed has none of those endings. Its retain is
+ * force-released once `STREAM_RETAIN_START_GRACE_MS` passes with no `pull` and
+ * no `cancel`; if a first `pull` arrives after that, the stream is live and
+ * takes the retain back. `release` and `reacquire` are therefore balanced in
+ * every ordering, and the retain is never released twice.
+ */
+function trackStreamLifetime(
+  body: ReadableStream<Uint8Array>,
+  retain: StreamRetain,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let started = false;
+  let held = true;
+  let closed = false;
+  let grace: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
+    grace = undefined;
+    if (started || closed) return;
+    held = false;
+    retain.release();
+    retain.onForceReleased();
+  }, STREAM_RETAIN_START_GRACE_MS);
+  (grace as unknown as { unref?: () => void }).unref?.();
+
+  const disarm = (): void => {
+    if (!grace) return;
+    clearTimeout(grace);
+    grace = undefined;
+  };
+  // First evidence the stream is alive. Reclaims a force-released retain.
+  const activate = (): void => {
+    started = true;
+    disarm();
+    if (held) return;
+    held = true;
+    retain.reacquire();
+  };
+  const finish = (): void => {
+    if (closed) return;
+    closed = true;
+    disarm();
+    if (!held) return;
+    held = false;
+    retain.release();
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      activate();
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          finish();
+          controller.close();
+          return;
+        }
+        controller.enqueue(chunk.value);
+      } catch (err) {
+        finish();
+        controller.error(err);
+      }
+    },
+    async cancel(reason) {
+      finish();
+      await reader.cancel(reason);
+    },
+  });
+}
+
+// Only SSE bodies outlive `handleRequest`. Buffered JSON errors and 202s are
+// complete the moment they are returned, so they must not pin a lease.
+function isEventStream(response: Response): boolean {
+  return response.headers.get("content-type")?.includes("text/event-stream") ?? false;
+}
+
+/**
+ * Session-lease bookkeeping (map + idle sweeper + overflow eviction), pulled
+ * out of `registerMcpHttpRoutes` so it can be unit tested against a fake
+ * clock instead of a real 60s `setInterval` tick. Reads "now" through the
+ * production clock seam (`utils/clock.ts`) — tests install a deterministic
+ * override via `installClock` and drive `startSweeper`'s tick manually
+ * without waiting on wall-clock time.
+ */
+export function createSessionLeaseManager(): SessionLeaseManager {
   const sessions = new Map<string, Session>();
+  let sweeper: ReturnType<typeof setInterval> | undefined;
+
+  // Drop the lease and close the server, which walks the SDK's `onclose` chain
+  // (`capabilities/tools.ts`, `capabilities/resources.ts`) and detaches their
+  // `globalEmitter` listeners. Closing is fire-and-forget: the map entry is gone
+  // either way, and a client that returns finds a 404 and re-initializes.
+  function evict(sessionId: string, reason: "idle_ttl" | "capacity"): void {
+    const session = sessions.get(sessionId);
+    if (!session) return;
+    sessions.delete(sessionId);
+    logger.info({
+      module: "mcp",
+      action: "mcp.session.evicted",
+      msg: "mcp session evicted",
+      session_id: sessionId,
+      reason,
+      idle_ms: now() - session.lastSeenAt,
+      sessions_open: sessions.size,
+    });
+    void session.server.close().catch((err: unknown) => {
+      logger.warn({
+        module: "mcp",
+        action: "mcp.session.evict_failed",
+        msg: "failed to close evicted mcp session",
+        session_id: sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  function stopSweeper(): void {
+    if (!sweeper) return;
+    clearInterval(sweeper);
+    sweeper = undefined;
+  }
+
+  function retain(session: Session): void {
+    session.inFlight += 1;
+    session.lastSeenAt = now();
+  }
+
+  function release(session: Session): void {
+    if (session.inFlight > 0) session.inFlight -= 1;
+    session.lastSeenAt = now();
+  }
+
+  // Idleness is "no work, and none for a full TTL". A session serving an open
+  // SSE stream is doing work no matter how old its `lastSeenAt` is: eviction
+  // closes the server, which closes the transport, which kills that stream.
+  function tick(): void {
+    const cutoff = now() - SESSION_IDLE_TTL_MS;
+    for (const [sessionId, session] of sessions) {
+      if (session.inFlight > 0) continue;
+      if (session.lastSeenAt <= cutoff) evict(sessionId, "idle_ttl");
+    }
+    if (sessions.size === 0) stopSweeper();
+  }
+
+  // Armed on the first lease and disarmed with the last one, so a process with
+  // no MCP traffic (and every test that builds an app) never holds a timer.
+  // `unref` on top of that so a live sweeper cannot hold the loop open either.
+  function startSweeper(): void {
+    if (sweeper) return;
+    sweeper = setInterval(tick, SESSION_SWEEP_INTERVAL_MS);
+    (sweeper as unknown as { unref?: () => void }).unref?.();
+  }
+
+  // Make room for one more lease. Oldest-idle first: a session nobody has
+  // touched is the cheapest one to lose. Sessions with in-flight work are never
+  // victims — a lease holding an open notification stream is the most valuable
+  // one in the map, not the least, and killing it strands a live client.
+  function evictOverflow(): void {
+    while (sessions.size >= MAX_LIVE_SESSIONS) {
+      let oldestId: string | undefined;
+      let oldestSeenAt = Number.POSITIVE_INFINITY;
+      for (const [sessionId, session] of sessions) {
+        if (session.inFlight > 0) continue;
+        if (session.lastSeenAt < oldestSeenAt) {
+          oldestSeenAt = session.lastSeenAt;
+          oldestId = sessionId;
+        }
+      }
+      if (!oldestId) {
+        // Every lease is busy. Admit over the cap rather than sever live work;
+        // the sweeper reclaims them as their streams close.
+        logger.warn({
+          module: "mcp",
+          action: "mcp.session.overflow_no_victim",
+          msg: "mcp session cap reached but every lease has in-flight work — admitting over cap",
+          sessions_open: sessions.size,
+        });
+        return;
+      }
+      evict(oldestId, "capacity");
+    }
+  }
+
+  return { sessions, evict, tick, startSweeper, stopSweeper, evictOverflow, retain, release };
+}
+
+export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
+  const { sessions, startSweeper, stopSweeper, evictOverflow, retain, release } =
+    createSessionLeaseManager();
 
   // Hono doesn't know about non-200 responses from raw handlers, but
   // `/mcp` is not part of the OpenAPI surface so we use the raw
@@ -146,17 +414,46 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
+    // A fresh transport only earns a lease once `initialize` completes. Until
+    // then nothing owns its server, so this request has to close it (below).
+    let freshSession = false;
+    let registered = false;
+
     if (!session) {
+      freshSession = true;
       // Spin up a new stateful transport. Per-session server so handlers
       // close over the current principal.
       const server = await createMcpServer({ db, principal, transport: "http" });
+      // Assigned a few statements below, before `server.connect` and therefore
+      // long before the SDK can invoke `onsessioninitialized` (it does so from
+      // inside `handleRequest`). Held as a mutable binding rather than a
+      // forward reference to a `const` declared further down, so the callback
+      // does not depend on statement ordering it has no way to enforce.
+      let lease: Session | undefined;
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         // OFF — see the header note: mid-tool-call `elicitation/create`
         // requests require the POST to keep an SSE stream open.
         enableJsonResponse: false,
         onsessioninitialized: (sid) => {
-          sessions.set(sid, { transport, server, owner: ownerKey(principal) });
+          if (!lease) {
+            // Unreachable given the SDK's call order. If it ever fires, leaving
+            // `registered` false is the fail-closed answer: the request's
+            // `finally` closes the orphaned server instead of registering a
+            // half-built lease.
+            logger.warn({
+              module: "mcp",
+              action: "mcp.session.init_before_lease",
+              msg: "mcp session initialized before its lease existed — refusing to register",
+              session_id: sid,
+              principal_id: principal.id,
+            });
+            return;
+          }
+          registered = true;
+          evictOverflow();
+          sessions.set(sid, lease);
+          startSweeper();
           logger.info({
             module: "mcp",
             action: "mcp.session.init",
@@ -164,15 +461,21 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
             session_id: sid,
             transport: "http",
             principal_id: principal.id,
+            sessions_open: sessions.size,
           });
         },
+        // Client sent `DELETE /mcp`. The SDK closes the transport right after
+        // this callback, which walks the `onclose` chain and detaches the
+        // capability listeners — so the map delete is all this owes.
         onsessionclosed: (sid) => {
           sessions.delete(sid);
+          if (sessions.size === 0) stopSweeper();
           logger.info({
             module: "mcp",
             action: "mcp.session.closed",
             msg: "mcp session closed",
             session_id: sid,
+            sessions_open: sessions.size,
           });
         },
       });
@@ -220,8 +523,17 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
           error: err.message,
         });
       };
+      // One `Session` object shared by the map and this request, so the
+      // `retain` below accounts against the same lease the sweeper reads.
+      lease = {
+        transport,
+        server,
+        owner: ownerKey(principal),
+        lastSeenAt: now(),
+        inFlight: 0,
+      };
       await server.connect(transport);
-      session = { transport, server, owner: ownerKey(principal) };
+      session = lease;
     }
 
     // Standalone GET SSE stream: the SDK permits exactly ONE per session
@@ -242,7 +554,59 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
       session.transport.closeStandaloneSSEStream();
     }
 
-    const res = await session.transport.handleRequest(c.req.raw);
-    return res;
+    // Take a retain for this request and renew the lease. `handleRequest`
+    // resolves as soon as it has a `Response` — for an SSE reply that is the
+    // moment the stream OPENS, not the moment it closes — so entry-time
+    // bookkeeping alone would let the sweeper terminate a live stream 30
+    // minutes in. When the reply is an SSE body, the retain is handed to that
+    // body (for a bounded lifetime — see `trackStreamLifetime`) and released
+    // only when the stream ends, is cancelled, or errors; for every other reply
+    // it is released here.
+    const active = session;
+    retain(active);
+    let streamed = false;
+
+    try {
+      const response = await active.transport.handleRequest(c.req.raw);
+      const body = response.body;
+      if (!body || !isEventStream(response)) return response;
+      streamed = true;
+      return new Response(
+        trackStreamLifetime(body, {
+          release: () => release(active),
+          reacquire: () => retain(active),
+          onForceReleased: () =>
+            logger.warn({
+              module: "mcp",
+              action: "mcp.session.retain_force_released",
+              msg: "sse body was never pulled or cancelled within the retain grace — releasing its lease retain so the sweeper can reclaim it",
+              session_id: active.transport.sessionId ?? null,
+              grace_ms: STREAM_RETAIN_START_GRACE_MS,
+              principal_id: principal.id,
+              tenant_id: principal.tenant_id,
+            }),
+        }),
+        { status: response.status, statusText: response.statusText, headers: response.headers },
+      );
+    } finally {
+      if (!streamed) release(active);
+      // The SDK awaits `onsessioninitialized` inside `handleRequest`, so by now
+      // `registered` is authoritative: a fresh transport that never completed
+      // the handshake (a non-initialize request with no session id self-rejects
+      // — see `transport.onerror`) holds no lease and never will. Its server
+      // still owns the capability modules' `globalEmitter` subscriptions, so
+      // close it here or it leaks for the life of the process. Eviction only
+      // ever touches registered sessions, so this cannot double-close.
+      if (freshSession && !registered) {
+        void active.server.close().catch((err: unknown) => {
+          logger.warn({
+            module: "mcp",
+            action: "mcp.session.orphan_close_failed",
+            msg: "failed to close mcp transport that never initialized",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+    }
   });
 }

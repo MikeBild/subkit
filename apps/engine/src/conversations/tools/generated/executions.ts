@@ -18,8 +18,7 @@ export const listExecutionsTool: ConversationTool = {
     "List recent executions for the tenant (newest first, paged — executions are an unbounded history). When the user names a workflow, first resolve it with get_workflow/find_workflow and pass workflow_id; never treat the tenant-wide latest execution as evidence for a named workflow. `total` is the exact count under the given filters; page with limit/offset while `has_more` is true.",
   inputSchema: ListInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = ListInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof ListInput>) {
     const offset = args.offset ?? 0;
     const { rows, total } = await ctx.engineClient.executions.list({
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
@@ -51,8 +50,7 @@ export const getExecutionTool: ConversationTool = {
   inputSchema: GetInput,
   category: "tenant_read",
   permission: { action: "execution:read", resourceType: "execution", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     const e = await ctx.engineClient.executions.get(args.id);
     if (!e) return { ok: false, data: { error: "execution_not_found" } };
     return { ok: true, data: { execution: e } };

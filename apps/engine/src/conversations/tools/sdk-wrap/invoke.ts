@@ -15,7 +15,7 @@
 // so the model can plan its next step. The loop halts via the
 // `stopWhen` conditions evaluated between steps.
 
-import { z } from "@hono/zod-openapi";
+import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import { and, eq } from "drizzle-orm";
 import { recordToolPolicyConfirmationRequired } from "../../../audit/recorders/index.ts";
@@ -28,6 +28,7 @@ import {
   recordToolCircuitOpen,
 } from "../../../observability/instrumentation.ts";
 import { startToolSpan } from "../../../observability/langfuse-spans.ts";
+import { requestApproval } from "../../../tools/approval.ts";
 import { listWorkflowsUsingConnector } from "../../../workflows/connector-dependents.ts";
 import { FileNotFoundError, type ResolvedFile, walkAndResolve } from "../../attachments.ts";
 import { recordTransition } from "../../confirmation.ts";
@@ -46,22 +47,27 @@ import {
 import { computeLineDiff } from "../../text-line-diff.ts";
 import {
   buildPendingOutputForTool,
+  decideToolMode,
   type PermissionMode,
   prerequisitesForTool,
-  resolveToolMode,
   type ToolPolicies,
 } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
+import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
-import { checkToolPermission, type ToolPermissionResult } from "../permission-gate.ts";
+import {
+  checkToolPermission,
+  resolveConversationPrincipal,
+  type ToolPermissionResult,
+} from "../permission-gate.ts";
 import { normalizeToolResultPayload } from "../result-payload.ts";
-import { resolveExecutionMode } from "../tool-policies.ts";
 import { truncateForLlm } from "../truncate.ts";
 import { decideConfirm } from "./confirm-decision.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import {
+  buildConfirmedToolCallIntent,
   buildPolicyGateCommitIntent,
   confirmationMetadataForTool,
   mapToolToCommitIntentKind,
@@ -135,34 +141,20 @@ export function wrapOne(
   permissionMode: PermissionMode | null,
   loadedSkills: ReadonlyArray<string>,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
-  // Cast the Zod-openapi schema to the SDK's `z.ZodType` shape — the
-  // two packages ship their own Zod re-exports and the variances do not
-  // reconcile at the type level, but the runtime `parse` contract is
-  // identical.
-  const baseInputSchema = inner.inputSchema as unknown as z.ZodType<Record<string, unknown>> & {
-    extend?: (shape: Record<string, z.ZodTypeAny>) => z.ZodType<Record<string, unknown>>;
-  };
-  // `__policy_confirmed` is the LLM-facing marker the model re-issues
-  // after a policy-gate elicitation resolves. Strictly typed as boolean
-  // here would be correct — except Anthropic's tool-call serialiser
-  // sometimes round-trips the boolean as a JSON-encoded string
-  // (`"true"`) when the schema description nests it inside a wider
-  // object. The AI SDK's Zod boundary then rejects with
-  // `expected boolean, received string`, the model emits
-  // `repair_tool_call.started`, the engine spends ~8s asking the model
-  // to fix the type, and the cycle repeats on EVERY OAuth flow (G2 in
-  // the runtime-logs review plan — 4 separate repair instances in one
-  // session). Accepting both representations and coercing eliminates
-  // the loop without changing downstream semantics; the boolean read
-  // at the policy gate (`policyMarker` below) still sees a real bool.
-  const policyMarkerSchema = z
-    .union([z.boolean(), z.literal("true"), z.literal("false")])
-    .transform((v) => v === true || v === "true")
-    .optional();
-  const inputSchema =
-    typeof baseInputSchema.extend === "function"
-      ? baseInputSchema.extend({ __policy_confirmed: policyMarkerSchema })
-      : baseInputSchema;
+  // The tool's own schema, verbatim. No confirm marker: the operator — not the
+  // model — clears the policy gate, through the `ask_user_confirm` this wrapper
+  // raises, and the HARNESS performs the call once they answer
+  // (`persistence/auto-persist.ts` → `execute_confirmed_tool_call`). A
+  // model-settable approval slot is an escape hatch, not a gate: one tool call
+  // carrying it would have performed a live write with no elicitation, no
+  // approval row, and no human. `sealSchema` (tools/index.ts) makes every
+  // object schema `.strict()`, so a marker the model volunteers anyway is
+  // rejected at the SDK boundary before `execute` ever runs.
+  //
+  // Cast the Zod-openapi schema to the SDK's `z.ZodType` shape — the two
+  // packages ship their own Zod re-exports and the variances do not reconcile
+  // at the type level, but the runtime `parse` contract is identical.
+  const inputSchema = inner.inputSchema as unknown as z.ZodType<Record<string, unknown>>;
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
     description: compileDescription(inner),
     inputSchema,
@@ -179,57 +171,6 @@ export function wrapOne(
     // compileDescription appends to the description above.
     ...toInputExamples(inner.example_input),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
-      // Per-call policy-mode resolution + confirmation audit. Folded in
-      // here from a second wrapper layer at loop.ts that doubled every
-      // tool's closure footprint per turn (~109 tools × 2 closures =
-      // ~218 closures held simultaneously, all referencing tenant_id /
-      // actor_id / conversation_id / db / logger). Keeping it inline
-      // with the existing prerequisite + circuit-breaker checks
-      // collapses the duplication without changing the policy
-      // resolution order: still BEFORE the toolChain mutex acquisition
-      // and BEFORE the inner tool runs.
-      const policyEnvironment =
-        typeof (rawArgs as { environment?: unknown }).environment === "string"
-          ? (rawArgs as { environment: string }).environment
-          : undefined;
-      const resolvedPolicy = resolveExecutionMode(inner.name, rawArgs, {
-        tenant_id: ctx.tenant_id,
-        ...(policyEnvironment ? { environment: policyEnvironment } : {}),
-      });
-      logger.debug({
-        module: "conversation_loop",
-        action: "tool_policy.resolved",
-        msg: "resolved tool execution mode",
-        conversation_id: ctx.conversation_id,
-        tenant_id: ctx.tenant_id,
-        tool: inner.name,
-        mode: resolvedPolicy.mode,
-        confirmation_kind: resolvedPolicy.confirmationKind,
-        reason: resolvedPolicy.reason,
-      });
-      if (resolvedPolicy.mode === "confirm_before_execution") {
-        // Best-effort audit; never blocks dispatch on a failed insert.
-        await recordToolPolicyConfirmationRequired({
-          tenant_id: ctx.tenant_id,
-          actor_id: ctx.actor_id ?? null,
-          executor: db,
-          conversation_id: ctx.conversation_id,
-          tool: inner.name,
-          mode: resolvedPolicy.mode,
-          confirmation_kind: resolvedPolicy.confirmationKind,
-          resolver_reason: resolvedPolicy.reason,
-          ...(policyEnvironment !== undefined ? { environment: policyEnvironment } : {}),
-        }).catch((err: unknown) => {
-          logger.warn({
-            module: "conversation_loop",
-            action: "tool_policy.audit_failed",
-            msg: "failed to record tool_policy.confirmation_required audit",
-            conversation_id: ctx.conversation_id,
-            tool: inner.name,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-      }
       // Serialize against other tool executions in this turn — see
       // TurnSignals.toolChain for rationale.
       const prevChain = signals.toolChain;
@@ -730,20 +671,65 @@ export function wrapOne(
           },
         };
 
-        // Resolve the effective execution mode (per-conversation
-        // override → dynamic compute-from-input → category default).
-        // The resolved mode is recorded in the interaction_log's
-        // `proposed` transition so operators / observability see it,
-        // and a `policy_confirm_required` elicit_request is emitted
-        // when the mode demands confirmation before execution.
-        const resolvedMode = resolveToolMode({
+        // Resolve the effective execution mode (secret safeguards →
+        // permission_mode → per-conversation override → dynamic
+        // compute-from-input → category default). The resolved mode is
+        // recorded in the interaction_log's `proposed` transition so
+        // operators / observability see it, and a `policy_confirm_required`
+        // elicit_request is emitted when the mode demands confirmation
+        // before execution.
+        //
+        // Everything downstream — the gate, the log line, the audit row —
+        // reads THIS decision. There is no second resolver whose verdict
+        // could be recorded while a different one is enforced.
+        const policyDecision = decideToolMode({
           tool: inner.name,
           category: inner.category,
           input: rawArgs,
           overrides: toolPolicies,
           permission_mode: permissionMode,
         });
-        const policyMarker = (rawArgs as { __policy_confirmed?: boolean }).__policy_confirmed;
+        const resolvedMode = policyDecision.mode;
+        // The environment the caller named, when it named one. Recorded on
+        // the audit row so an operator can tell a prod-gated confirm from
+        // a dev one.
+        const policyEnvironment =
+          typeof (rawArgs as { environment?: unknown }).environment === "string"
+            ? (rawArgs as { environment: string }).environment
+            : undefined;
+        logger.debug({
+          module: "conversation_loop",
+          action: "tool_policy.resolved",
+          msg: "resolved tool execution mode",
+          conversation_id: ctx.conversation_id,
+          tenant_id: ctx.tenant_id,
+          tool: inner.name,
+          mode: resolvedMode,
+          rule: policyDecision.rule,
+        });
+        if (resolvedMode === "confirm_before_execution") {
+          // Best-effort audit; never blocks dispatch on a failed insert.
+          await recordToolPolicyConfirmationRequired({
+            tenant_id: ctx.tenant_id,
+            actor_id: ctx.actor_id ?? null,
+            executor: db,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            mode: resolvedMode,
+            confirmation_kind: topLevelElicitationKindForTool(inner.name),
+            resolver_reason: policyDecision.rule,
+            ...(policyEnvironment !== undefined ? { environment: policyEnvironment } : {}),
+          }).catch((err: unknown) => {
+            logger.warn({
+              module: "conversation_loop",
+              action: "tool_policy.audit_failed",
+              msg: "failed to record tool_policy.confirmation_required audit",
+              conversation_id: ctx.conversation_id,
+              tool: inner.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }
         // Retained purely for the forensic gate log below — it is no
         // longer a gate INPUT. `buildPolicyGateCommitIntent` (below)
         // still routes on `mapToolToCommitIntentKind` when it attaches
@@ -757,15 +743,14 @@ export function wrapOne(
         // them impossible to disagree: if the pre-confirm skips on an
         // approval, the commit gate would have accepted the same one.
         //
-        // Every OTHER write tool has NO prior-approval shortcut here —
-        // it relies on the deterministic `decideConfirm` rule, which
-        // pauses unless `__policy_confirmed` is present. The pause emits
-        // an `ask_user_confirm` carrying a `commit_intent`, and the
-        // harness auto-persist path applies the write on approve. The
-        // fuzzy natural-language heuristics (a generic 20-row
-        // elicitation scan keyed on the cosmetic `kind` bucket, plus a
-        // prose-affirmation regex over recent messages) were deleted:
-        // they guessed at operator intent over a security-critical write.
+        // Every OTHER write tool has NO shortcut here: the deterministic
+        // `decideConfirm` rule pauses, the pause emits an `ask_user_confirm`
+        // carrying a `commit_intent`, and the harness auto-persist path
+        // performs the call on approve. There is no marker the model can set to
+        // clear the gate. The fuzzy natural-language heuristics (a generic
+        // 20-row elicitation scan keyed on the cosmetic `kind` bucket, plus a
+        // prose-affirmation regex over recent messages) were deleted: they
+        // guessed at operator intent over a security-critical write.
         let priorApproval = false;
         if (inner.name === "save_workflow_draft") {
           try {
@@ -785,14 +770,13 @@ export function wrapOne(
             // silently elide a security-critical confirm.
           }
         }
-        // The ONE confirm-gate decision — the same pure rule the
-        // MCP-direct gate (`mcp/capabilities/policy-gate.ts`) evaluates,
-        // so both surfaces pause or proceed IDENTICALLY for the same
-        // tool/args. Biased to pause: reads auto-run; a write proceeds
-        // only with `policyMarker` OR a fresh durable `priorApproval`.
+        // The ONE confirm-gate decision — the same pure rule `policyDecide`
+        // (`tools/policy.ts`) evaluates for the dispatcher surfaces, so all
+        // of them pause or proceed IDENTICALLY for the same tool/args.
+        // Biased to pause: reads auto-run; a write proceeds only on a fresh
+        // durable `priorApproval` the engine verified.
         const confirmDecision = decideConfirm({
           resolvedMode,
-          policyMarker: Boolean(policyMarker),
           priorApproval,
           category: inner.category,
         });
@@ -859,9 +843,10 @@ export function wrapOne(
         }
 
         // Policy-gated pre-execution confirmation: emit an elicitation
-        // without invoking the tool. The operator's `respond` posts an
-        // interaction_log entry; the model re-issues the same tool call
-        // with `__policy_confirmed: true` on a subsequent turn.
+        // without invoking the tool. The operator answers it and the HARNESS
+        // claims the approval and performs the call (`persistence/auto-persist.ts`
+        // → `execute_confirmed_tool_call`). The model re-issues nothing:
+        // `decideConfirm` reads no marker, and no wrapped tool publishes one.
         if (needsPreConfirmation) {
           // Same-turn dedupe — defense in depth against parallel tool
           // calls. Anthropic's `disableParallelToolUse` (loop.ts) keeps
@@ -937,14 +922,97 @@ export function wrapOne(
           const policyGateSummary = buildPolicyGateSummary();
           // Top-level kind matters: `save_workflow_draft` MUST stamp
           // `kind: "save_workflow_draft"` so the inner prior-approval gate in
-          // commit-workflow.ts:54-89 finds the resolved row when the
-          // LLM re-issues with __policy_confirmed: true.
+          // commit-workflow.ts:54-89 finds the resolved row that clears the
+          // save path's `priorApproval` shortcut.
           const topLevelKind = topLevelElicitationKindForTool(inner.name);
-          // Optional commit_intent so `maybeAutoPersistFromElicitation`
-          // (service.ts:551 → auto-persist.ts) can apply the write
-          // atomically the moment the operator confirms — bypassing
-          // the LLM re-issue round-trip entirely.
-          const policyCommitIntent = buildPolicyGateCommitIntent(inner.name, rawArgs);
+          // The commit_intent is what `maybeAutoPersistFromElicitation`
+          // (auto-persist.ts) dispatches the moment the operator confirms. It
+          // is the ONLY resume path: no wrapped tool publishes a confirm marker,
+          // so a model re-issue cannot clear the gate.
+          //
+          // Tools with a shape-specific carrier (save/delete/create_api_key/
+          // run_workflow) keep it. Everything else gets the universal
+          // `execute_confirmed_tool_call` carrier: a single-use approval over
+          // the exact args this call paused on, encrypted and hash-bound, which
+          // the harness claims and replays. A tool whose resume depended on the
+          // model re-issuing had no gate at all.
+          let policyCommitIntent = buildPolicyGateCommitIntent(inner.name, rawArgs);
+          if (!policyCommitIntent) {
+            // Same principal `checkToolPermission` gates on, resolved the same
+            // way — so the id this approval is bound to is the id the harness
+            // claims it with (`auto-persist.ts` resolves it identically).
+            const principal = ctx.principal ?? (await resolveConversationPrincipal(perCallCtx));
+            if (!principal) {
+              // Fail closed: an unattended system actor has no operator to bind
+              // the single-use approval to, so no handle can be minted and no
+              // resume can run. The gate still pauses — it never degrades into
+              // "run it anyway".
+              logger.warn({
+                module: "conversation_tool",
+                action: "policy.gate_no_principal",
+                msg: "policy gate paused a tool with no resolvable principal — no approval could be minted, so the operator's confirmation cannot release it",
+                tenant_id: ctx.tenant_id,
+                conversation_id: ctx.conversation_id,
+                tool: inner.name,
+              });
+            } else {
+              const approvalId = crypto.randomUUID();
+              try {
+                await requestApproval({
+                  db,
+                  principal,
+                  approval_id: approvalId,
+                  tool: inner.name,
+                  surface: "chat",
+                  via: "chat",
+                  // The rule the resolver actually enforced, verbatim.
+                  reason: policyDecision.rule,
+                  execution_mode:
+                    policyEnvironment === "prod" || policyEnvironment === "dev"
+                      ? policyEnvironment
+                      : null,
+                  args: rawArgs,
+                });
+                policyCommitIntent = buildConfirmedToolCallIntent(inner.name, approvalId);
+              } catch (err) {
+                // A handle we could not persist is a handle nobody can claim.
+                // Surface it instead of pausing on an approval that will never
+                // resolve.
+                logger.error({
+                  module: "conversation_tool",
+                  action: "policy.gate_approval_failed",
+                  msg: "could not persist the approval for a policy-gated tool call; nothing ran",
+                  tenant_id: ctx.tenant_id,
+                  conversation_id: ctx.conversation_id,
+                  tool: inner.name,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+                const failure = {
+                  ok: false as const,
+                  data: {
+                    error_code: "approval_request_failed",
+                    message: `${inner.name} requires the operator's confirmation, and the engine could not open one. Nothing ran. Tell the user, and retry only if they ask again.`,
+                    reason: "approval_request_failed",
+                  },
+                };
+                await updateToolCallOutput(db, toolCallId, failure.data);
+                events.push({
+                  type: "tool_result",
+                  call_id: toolCallId,
+                  tool: inner.name,
+                  output: failure.data,
+                  parent_message_id: assistantMessageId,
+                });
+                recordConversationToolCall({
+                  category: inner.category,
+                  tool: inner.name,
+                  outcome: "error",
+                  duration_ms: Date.now() - startedAt,
+                });
+                return failure;
+              }
+            }
+          }
           // Connector-delete dependency surface: when the target
           // connector is still bound by live workflows, list them in the
           // confirm card so the operator sees what will break before
@@ -993,6 +1061,11 @@ export function wrapOne(
             db,
           );
           signals.pendingChildElicitationIds.push(elicitation.id);
+          // The approval handle stays on the persisted row the harness reads.
+          // Every envelope that leaves this process — the SDK tool-result the
+          // model is shown, the `elicit_request` frame, the pause `conversation_get`
+          // relays — carries the same prompt minus the capability.
+          const operatorInput = withoutApprovalHandle(elicitationInput);
           // Forensic log: confirmation event was emitted with full
           // payload context so an operator triaging "did the gate
           // actually pause?" can answer it from logs alone.
@@ -1024,8 +1097,8 @@ export function wrapOne(
             policy_mode: resolvedMode,
             elicitation_id: elicitation.id,
             note: policyCommitIntent
-              ? "policy_confirm_required — the operator must confirm via the emitted ask_user_confirm. The harness will auto-persist on confirm via the attached commit_intent; you do NOT need to re-issue this tool call."
-              : "policy_confirm_required — operator must confirm before the tool executes. Re-issue the same call with __policy_confirmed: true after receiving confirmation.",
+              ? `policy_confirm_required — nothing ran. The operator must answer the emitted ask_user_confirm; the engine performs ${inner.name} itself once they approve. You do NOT re-issue this call, and you cannot approve on their behalf.`
+              : `policy_confirm_required — nothing ran, and this turn has no way to release ${inner.name}: no approval handle could be opened for it. Tell the user the action must be performed from an authenticated session.`,
           };
           await updateToolCallOutput(db, toolCallId, output);
           events.push({
@@ -1041,7 +1114,7 @@ export function wrapOne(
             tool_call_id: toolCallId,
             tool_name: "ask_user_confirm",
             summary: elicitation.summary,
-            input: elicitation.input,
+            input: operatorInput,
             parent_message_id: assistantMessageId,
             ...(pendingOutput ? { pending_output: pendingOutput } : {}),
           });
@@ -1050,7 +1123,7 @@ export function wrapOne(
             tool_name: "ask_user_confirm",
             kind: topLevelKind,
             summary: policyGateSummary,
-            input: elicitation.input,
+            input: operatorInput,
           };
           recordConversationToolCall({
             category: inner.category,
@@ -1066,7 +1139,7 @@ export function wrapOne(
               tool_name: "ask_user_confirm",
               summary: policyGateSummary,
               kind: topLevelKind,
-              input: elicitationInput,
+              input: operatorInput,
             },
           };
         }
@@ -1645,10 +1718,7 @@ export function wrapOne(
           resolvedMode === "confirm_after_execution" &&
           result.ok &&
           !result.pause &&
-          !signals.pendingElicitation &&
-          // Inline-credential safeguards already pre-confirmed; don't
-          // double-prompt.
-          !policyMarker
+          !signals.pendingElicitation
         ) {
           const reviewElicitation = await createElicitation(
             {

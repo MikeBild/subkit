@@ -19,6 +19,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { can } from "../rbac/evaluator.ts";
+import type { ApprovalAuditResource } from "../tools/approval.ts";
 
 export type WorkflowRunRequestSource = "mcp" | "chat" | "fast_path" | "auto_persist";
 
@@ -41,6 +42,14 @@ export interface GateWorkflowRunRbacParams {
    * omit otherwise.
    */
   workflow_slug?: string;
+  /**
+   * Set when this dispatch is the confirmed replay of an approval whose
+   * single-use handle is already burned. The POLICY_DENIED row then anchors on
+   * the approval lifecycle instead of the workflow, so "approval opened →
+   * confirmed replay denied" is one JOIN rather than two unrelated rows. The
+   * workflow stays reachable through `metadata.workflow_id`.
+   */
+  approval?: ApprovalAuditResource;
 }
 
 export type WorkflowRunRbacDecision =
@@ -85,8 +94,8 @@ export async function gateWorkflowRunRbac(
       actor_type: p.principal.kind === "user" ? "user" : "system",
       actor_id: p.principal.id,
       action: AuditAction.POLICY_DENIED,
-      resource_type: "workflow",
-      resource_id: p.workflow_id,
+      resource_type: p.approval?.resource_type ?? "workflow",
+      resource_id: p.approval?.approval_id ?? p.workflow_id,
       result: "denied",
       reason: auditReason,
       metadata: {
@@ -94,6 +103,8 @@ export async function gateWorkflowRunRbac(
         via: p.request_source,
         provider: p.principal.provider,
         permission: "workflow:run",
+        workflow_id: p.workflow_id,
+        ...(p.approval ? { approval_id: p.approval.approval_id } : {}),
         ...(p.workflow_slug ? { workflow_slug: p.workflow_slug } : {}),
       },
     },

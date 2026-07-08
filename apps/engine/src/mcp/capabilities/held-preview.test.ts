@@ -36,7 +36,7 @@ describe("buildResultEnvelope", () => {
     const warnings = [
       {
         code: "held_preview_no_writes" as const,
-        message: "Preview run … execute_writes:true …",
+        message: "Preview run (hold_writes): 1 write step(s) held — NOTHING was written.",
         step_key: "$holds",
         details: {
           held_steps: ["send"],
@@ -47,8 +47,11 @@ describe("buildResultEnvelope", () => {
     ];
     const env = buildResultEnvelope(base({ warnings }));
     expect(env.isHeldPreview).toBe(true);
-    expect(env.heldMessage).toContain("execute_writes:true");
+    expect(env.heldMessage).toContain("NOTHING was written");
     const body = env.rawBody as Record<string, unknown>;
+    // MCP names its OWN remedy — confirm_tool_call, never execute_writes
+    // (which this surface does not publish).
+    expect(String(body.remedy)).not.toContain("execute_writes");
     expect(body.preview).toBe(true);
     expect(body.writes_held).toBe(true);
     expect(body.held_steps).toEqual(["send"]);
@@ -60,4 +63,93 @@ describe("buildResultEnvelope", () => {
     expect(meta._meta?.subkit?.execution?.preview).toBe(true);
     expect(meta._meta?.subkit?.execution?.held_steps).toEqual(["send"]);
   });
+
+  test("confirm_required → prose names the approval_url and never tells the model to approve", () => {
+    const env = buildResultEnvelope(base({ warnings: heldWarnings() }), {
+      kind: "confirm_required",
+      tool: "wf_send-invoice",
+      confirm_id: "11111111-1111-1111-1111-111111111111",
+      approval_url: "https://engine.example.test/v1/tool-approvals/decide?grant=skag_abc",
+      reason: "client_cannot_prompt",
+    });
+    const body = env.rawBody as Record<string, unknown>;
+    expect(body.awaiting_human_approval).toBe(true);
+    expect(body.approval_url).toBe(
+      "https://engine.example.test/v1/tool-approvals/decide?grant=skag_abc",
+    );
+    const remedy = String(body.remedy);
+    expect(remedy).toContain("Nothing was written. 1 write step is held.");
+    expect(remedy).toContain("A person must approve before they run.");
+    expect(remedy).toContain(
+      "Send this link to the person who must approve: https://engine.example.test/v1/tool-approvals/decide?grant=skag_abc",
+    );
+    expect(remedy).toContain(
+      'call confirm_tool_call({ tool: "wf_send-invoice", confirm_id: "11111111-1111-1111-1111-111111111111" })',
+    );
+    // The model is told the trigger performs writes — never that it approves them.
+    expect(remedy).toContain("it cannot approve them");
+    // A `client_cannot_prompt` preview never raised a prompt, so it must not
+    // describe one as unanswered.
+    expect(remedy).not.toContain("did not answer");
+  });
+
+  test("in_band_prompt_unfulfilled → says the CLIENT did not answer, never that nobody was asked", () => {
+    const env = buildResultEnvelope(base({ warnings: heldWarnings() }), {
+      kind: "confirm_required",
+      tool: "wf_send-invoice",
+      confirm_id: "22222222-2222-2222-2222-222222222222",
+      approval_url: "https://engine.example.test/v1/tool-approvals/decide?grant=skag_xyz",
+      reason: "in_band_prompt_unfulfilled",
+    });
+    const remedy = String((env.rawBody as Record<string, unknown>).remedy);
+    // The client may be showing its operator the prompt right now. The engine
+    // knows only that it received no answer, and must claim nothing more.
+    expect(remedy).toContain("This client did not answer the approval prompt");
+    expect(remedy).toContain("the engine holds no decision from anyone");
+    expect(remedy).not.toContain("nobody has been asked");
+    expect(remedy).toContain("Send this link to the person who must approve");
+  });
+
+  test("confirm_required without a public origin → says no link exists, hands out none", () => {
+    const env = buildResultEnvelope(base({ warnings: heldWarnings() }), {
+      kind: "confirm_required",
+      tool: "wf_send-invoice",
+      confirm_id: "33333333-3333-3333-3333-333333333333",
+      approval_url: null,
+      reason: "client_cannot_prompt",
+    });
+    const body = env.rawBody as Record<string, unknown>;
+    expect(body.approval_url).toBeNull();
+    const remedy = String(body.remedy);
+    expect(remedy).toContain("no approval portal configured");
+    expect(remedy).not.toContain("Send this link");
+    expect(remedy).toContain("confirm_tool_call cannot grant it");
+  });
+
+  test("operator_declined → terminal, no confirm_id and no approval_url", () => {
+    const env = buildResultEnvelope(base({ warnings: heldWarnings() }), {
+      kind: "operator_declined",
+    });
+    const body = env.rawBody as Record<string, unknown>;
+    expect(body.operator_declined).toBe(true);
+    expect(body.confirm_id).toBeUndefined();
+    expect(body.approval_url).toBeUndefined();
+    expect(String(body.remedy)).toContain("declined it, so nothing ran and the approval is dead");
+    const meta = env.previewMeta as { _meta?: { subkit?: { confirm?: unknown } } };
+    expect(meta._meta?.subkit?.confirm).toBeUndefined();
+  });
 });
+
+function heldWarnings(): NonNullable<RunResult["warnings"]> {
+  return [
+    {
+      code: "held_preview_no_writes" as const,
+      message: "Preview run (hold_writes): 1 write step(s) held — NOTHING was written.",
+      step_key: "$holds",
+      details: {
+        held_steps: ["send"],
+        would_write: [{ step: "send", method: "POST", url: "https://api/send" }],
+      },
+    },
+  ];
+}

@@ -8,8 +8,8 @@
 //   - `tools/sdk-wrap/invoke.ts` — the loop confirm gate's `priorApproval`
 //     input to `decideConfirm`, which skips the pre-execution confirm IFF
 //     the commit gate would accept the same approval. This is the ONLY
-//     durable-approval shortcut left on the save path; every other write
-//     relies on `__policy_confirmed` alone.
+//     shortcut past the pre-execution gate on any surface; every other write
+//     pauses and is performed by the harness once the operator answers.
 //
 // Authorization is keyed on the AUTHORITATIVE field —
 // `input.commit_intent.kind === "save_workflow_draft"` — NOT the

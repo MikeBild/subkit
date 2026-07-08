@@ -7,17 +7,17 @@
 // write is exactly the drift the unified `decideConfirm` rule exists to
 // prevent. The deterministic rule now is:
 //
-//   - a write in `confirm_before_execution` mode PAUSES unless a
-//     structured confirm marker (`__policy_confirmed: true` in args, or
-//     `_meta.sk_confirm` on the MCP transport) OR a durable, fresh,
-//     matching prior approval is present.
+//   - a write in `confirm_before_execution` mode PAUSES unless a durable,
+//     fresh, matching prior approval the ENGINE verified is present.
 //   - prose "yes" alone NEVER skips the gate — no message-scanning,
 //     no affirmation regex.
+//   - nothing the MODEL puts in its own tool call skips the gate either. No
+//     wrapped tool publishes a confirm marker, and the gate reads none off
+//     the args — a boolean the model can set is a hole, not an approval.
 //
-// These tests pin that rule for `delete_workflow` / `delete_connector`:
-// the destructive write pauses without a marker (regardless of what the
-// prior prose said), and proceeds only when the structured marker is
-// present.
+// These tests pin that rule for `delete_workflow` / `delete_connector`: the
+// destructive write pauses regardless of what the prior prose said, and
+// regardless of a `__policy_confirmed` flag the model volunteers.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -144,7 +144,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     expect(events.find((e) => e.type === "elicit_request")).toBeDefined();
   });
 
-  test("delete_workflow with __policy_confirmed marker proceeds (no pause)", async () => {
+  test("delete_workflow with a model-supplied __policy_confirmed marker STILL pauses", async () => {
     const conversation_id = await freshConversation();
     const signals = freshSignals();
     const events: TurnEvent[] = [];
@@ -158,20 +158,21 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     );
     const tool = wrapped.delete_workflow;
     expect(tool).toBeDefined();
-    // Structured operator-confirmation marker present → the gate skips
-    // the pre-confirm and the tool runs (it fails on workflow_not_found
-    // in this unit test, but crucially it is NOT paused with a second
-    // confirmation card).
+    // The marker is inert: the gate reads no confirm flag off the args, and the
+    // published schema declares none. A model that volunteers one gets the same
+    // confirmation card as one that does not — the operator decides, and the
+    // harness performs the delete once they answer.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (tool!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000abc", __policy_confirmed: true },
       { toolCallId: "t-del-marker", messages: [] },
     );
-    expect(result.pause).toBeUndefined();
-    expect(events.find((e) => e.type === "elicit_request")).toBeUndefined();
+    expect(result.pause).toBeDefined();
+    expect(result.pause?.tool_name).toBe("ask_user_confirm");
+    expect(events.find((e) => e.type === "elicit_request")).toBeDefined();
   });
 
-  test("delete_connector with __policy_confirmed marker proceeds (no pause)", async () => {
+  test("delete_connector with a model-supplied __policy_confirmed marker STILL pauses", async () => {
     const conversation_id = await freshConversation();
     const signals = freshSignals();
     const events: TurnEvent[] = [];
@@ -190,8 +191,9 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
       { id: "00000000-0000-0000-0000-000000000def", __policy_confirmed: true },
       { toolCallId: "t-del-c-marker", messages: [] },
     );
-    expect(result.pause).toBeUndefined();
-    expect(events.find((e) => e.type === "elicit_request")).toBeUndefined();
+    expect(result.pause).toBeDefined();
+    expect(result.pause?.tool_name).toBe("ask_user_confirm");
+    expect(events.find((e) => e.type === "elicit_request")).toBeDefined();
   });
 
   test("delete_connector PAUSES without a marker (prior unrelated prose+yes does not proceed)", async () => {

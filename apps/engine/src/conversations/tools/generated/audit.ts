@@ -18,8 +18,7 @@ export const queryAuditTool: ConversationTool = {
     "Query the audit log for the tenant. Optional filters by resource_type, resource_id, and action.",
   inputSchema: QueryInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = QueryInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof QueryInput>) {
     const filters: Partial<Omit<AuditQueryFilters, "tenant_id">> = {};
     if (args.resource_type) filters.resource_type = args.resource_type;
     if (args.resource_id) filters.resource_id = args.resource_id;
@@ -37,8 +36,7 @@ export const getAuditEntryTool: ConversationTool = {
   description: "Fetch a single audit-log entry by id.",
   inputSchema: GetInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     const entry = await ctx.engineClient.audit.get(args.id);
     if (!entry) return { ok: false, data: { error: "audit_entry_not_found" } };
     return { ok: true, data: { entry } };

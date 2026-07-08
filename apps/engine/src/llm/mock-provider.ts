@@ -414,9 +414,11 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
         summary: "commit 2-step workflow",
       },
     },
-    // Resume after the user answers — `__policy_confirmed:true` so the
-    // post-rebuild tool-policy gate doesn't pause a second time.
-    { tool: "save_workflow_draft", args: { __policy_confirmed: true } },
+    // Resume after the user answers. No confirm marker exists on any tool
+    // schema: the resolved `ask_user_confirm` IS the durable approval
+    // `findPriorSaveWorkflowApproval` matches, so the post-rebuild tool-policy
+    // gate proceeds without pausing a second time.
+    { tool: "save_workflow_draft", args: {} },
   ];
 }
 
@@ -491,7 +493,7 @@ export function cannedListPrivateGithubReposPlan(connector_id?: string): Convers
         summary: "commit list-private-github-repos workflow",
       },
     },
-    { tool: "save_workflow_draft", args: { __policy_confirmed: true } },
+    { tool: "save_workflow_draft", args: {} },
   ];
 }
 
@@ -570,11 +572,12 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
         summary: "commit weather workflow",
       },
     },
-    // After the operator confirms (test-side or canned), save_workflow_draft
-    // runs with __policy_confirmed:true so the post-rebuild tool-policy
-    // gate does NOT pause again — otherwise turn-2 resume tests sit
-    // in awaiting_input forever waiting on a phantom second confirm.
-    { tool: "save_workflow_draft", args: { __policy_confirmed: true } },
+    // After the operator confirms (test-side or canned), the resolved
+    // ask_user_confirm is the durable approval the save path's prior-approval
+    // predicate matches, so the post-rebuild tool-policy gate does NOT pause
+    // again — otherwise turn-2 resume tests sit in awaiting_input forever
+    // waiting on a phantom second confirm.
+    { tool: "save_workflow_draft", args: {} },
   ];
 }
 
@@ -595,8 +598,10 @@ export function cannedConnectorWorkflowPlan(baseUrl: string): ConverseMockStep[]
     { tool: "validate_connector_draft", args: {} },
     { tool: "probe_connector_draft", args: { method: "GET", path: "/v1/health" } },
     { tool: "inspect_connector_draft", args: {} },
+    // One call. It pauses on the policy gate's ask_user_confirm, whose
+    // commit_intent the harness dispatches on approve — the model does not, and
+    // cannot, re-issue it.
     { tool: "save_connector_draft", args: {} },
-    { tool: "save_connector_draft", args: { __policy_confirmed: true } },
     {
       tool: "edit_workflow_patch",
       args: {

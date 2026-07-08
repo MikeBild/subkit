@@ -136,11 +136,17 @@ export type StepWarningCode =
   // Emitted by the engine when a hold-writes preview held a write step (or
   // skipped a step behind a held write) and NOTHING was persisted. The run
   // still succeeds; this MANDATORY warning tells the caller the returned
-  // output is an upstream read/transform value, no external write happened,
-  // and how to actually write (execute_writes:true). `step_key` is the
-  // sentinel "$holds"; `details` carries held_steps / skipped_steps /
-  // would_write. Prevents the "reported ≠ written" silent no-op.
+  // output is an upstream read/transform value and that no external write
+  // happened. It states the STATE, never the remedy — naming the remedy is
+  // the tool surface's job (it owns the argument or approval handle that
+  // releases the writes). `step_key` is the sentinel "$holds"; `details`
+  // carries held_steps / skipped_steps / would_write. Prevents the
+  // "reported ≠ written" silent no-op.
   | "held_preview_no_writes";
+
+/** The warning above as a value. The engine emits it; every tool surface that
+ *  lifts a held run into a preview envelope keys off this one constant. */
+export const HELD_PREVIEW_WARNING_CODE = "held_preview_no_writes" as const;
 
 export interface StepWarning {
   code: StepWarningCode;

@@ -20,8 +20,7 @@ export const getInboundHookTool: ConversationTool = {
   description: "Fetch one inbound webhook by id.",
   inputSchema: IdInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const h = await ctx.engineClient.hooks.getInbound(args.id);
     if (!h) return { ok: false, data: { error: "inbound_hook_not_found" } };
     return { ok: true, data: { hook: h } };

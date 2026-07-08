@@ -48,8 +48,7 @@ export const listDiscoveryArtifactsTool: ConversationTool = {
   },
   inputSchema: ListInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = ListInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof ListInput>): Promise<ToolResult> {
     const rows = await listDiscoveryArtifacts(
       {
         tenant_id: ctx.tenant_id,
@@ -93,8 +92,7 @@ export const getDiscoveryArtifactTool: ConversationTool = {
   example_input: { id: "00000000-0000-0000-0000-000000000000" },
   inputSchema: GetInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>): Promise<ToolResult> {
     const row = await getDiscoveryArtifact(ctx.tenant_id, args.id, ctx.db);
     if (!row) {
       return {
@@ -129,8 +127,7 @@ export const approveDiscoveryArtifactTool: ConversationTool = {
   example_input: { id: "00000000-0000-0000-0000-000000000000" },
   inputSchema: ApproveInput,
   category: "tenant_write",
-  async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = ApproveInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof ApproveInput>): Promise<ToolResult> {
     const result = await approveDiscoveryArtifact(
       {
         tenant_id: ctx.tenant_id,

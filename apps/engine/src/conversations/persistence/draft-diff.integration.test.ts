@@ -19,6 +19,7 @@ import {
 } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { handleConversationTool } from "../../mcp/capabilities/conversations.ts";
+import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import {
   withLatestPreview,
   withWorkflowDraft,
@@ -203,6 +204,7 @@ describe("B2 — update_workflow_metadata commit_intent auto-persists the descri
       .returning();
 
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id: ctx.tenant_id,
       conversation_id: convId,
       actor_id: ctx.user_id,

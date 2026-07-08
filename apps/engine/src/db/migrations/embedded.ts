@@ -33,6 +33,8 @@ import sql0012McpTaskHeartbeat from "./0012_mcp_task_heartbeat.sql" with { type:
 import sql0013DropProviderFileIds from "./0013_drop_provider_file_ids.sql" with { type: "text" };
 import sql0014DedupWorkflowSchedules from "./0014_dedup_workflow_schedules.sql" with { type: "text" };
 import sql0015NervousSalo from "./0015_nervous_salo.sql" with { type: "text" };
+import sql0016TranquilDragonMan from "./0016_tranquil_dragon_man.sql" with { type: "text" };
+import sql0017AbandonedSasquatch from "./0017_abandoned_sasquatch.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -73,6 +75,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0013_drop_provider_file_ids": sql0013DropProviderFileIds,
   "0014_dedup_workflow_schedules": sql0014DedupWorkflowSchedules,
   "0015_nervous_salo": sql0015NervousSalo,
+  "0016_tranquil_dragon_man": sql0016TranquilDragonMan,
+  "0017_abandoned_sasquatch": sql0017AbandonedSasquatch,
 };
 
 const journal = journalMeta as unknown as Journal;

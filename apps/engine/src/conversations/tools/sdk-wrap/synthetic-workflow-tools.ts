@@ -10,15 +10,33 @@
 // `apps/engine/src/workflows/catalog.ts` — MCP and chat read from
 // the same function. The `wf_` prefix is added here at the surface.
 //
-// Dispatch contract is identical to MCP's `tools/call` for `wf_<slug>`:
-//   1. `gateTenantToolCall` enforces RBAC + confirm-before-execution.
-//      A pending envelope is surfaced verbatim — the operator confirms,
-//      the LLM re-issues with `__policy_confirmed: true`, the second
-//      call proceeds.
-//   2. `runExecution({ source: { kind: "saved", workflow_id } })`
+// Dispatch contract mirrors MCP's `tools/call` for `wf_<slug>`:
+//   1. `gateWorkflowRunRbac` enforces `workflow:run` before anything runs.
+//   2. Preview-then-operator-commit. EVERY call through this tool holds its
+//      writes. When the run comes back carrying the mandatory
+//      `held_preview_no_writes` warning we mint an UNGRANTED approval over
+//      exactly that call's inputs and PAUSE THE TURN on an `ask_user_confirm`
+//      elicitation. The turn ending is the gate. A PERSON's answer resumes the
+//      conversation: the harness grants the approval on their behalf
+//      (`grantApproval`, via the channel they answered through) and only then
+//      releases the writes (`persistence/auto-persist.ts` →
+//      `commit_held_workflow_writes`), claiming the approval, deriving the
+//      workflow from the approval's own tool name, and replaying the encrypted
+//      inputs. Four things keep that unreachable from the model:
+//      `commit_held_workflow_writes` is not a member of the published
+//      `ask_user_*` commit_intent enum; `consumeApproval` claims only a row a
+//      human granted, and no model-callable path grants one; the approval id is
+//      stripped from every envelope that leaves the engine
+//      (`elicitationInputForClient`); and this tool's published schema carries
+//      no confirm marker. A model-settable approval marker is an escape hatch,
+//      not a gate.
+//      There is no pre-execution confirm envelope: `run_workflow` in dev
+//      resolves to `no_confirm`, so a gate here would never pause and the
+//      writes would never be reachable at all.
+//   3. `runExecution({ source: { kind: "saved", workflow_id } })`
 //      drives the run. Per-step progress is emitted via `ctx.onLog`
 //      the same way `run-workflow.ts` does.
-//   3. The envelope mirrors `run_workflow`: `status`, `execution_id`,
+//   4. The envelope mirrors `run_workflow`: `status`, `execution_id`,
 //      `output`, `warnings`, `suggested_command: "/workflows run <slug>"`,
 //      `next_best_actions`.
 
@@ -30,16 +48,19 @@ import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { runExecution } from "../../../execution/engine.ts";
+import { HELD_PREVIEW_WARNING_CODE } from "../../../execution/types.ts";
 import { logger } from "../../../logging/logger.ts";
-import { gateTenantToolCall } from "../../../mcp/capabilities/policy-gate.ts";
 import { recordConversationToolCall } from "../../../observability/instrumentation.ts";
+import { requestApproval, stripConfirmMarkers } from "../../../tools/approval.ts";
 import {
   listWorkflowToolsForTenant,
   type WorkflowToolDescriptor,
 } from "../../../workflows/catalog.ts";
 import { gateWorkflowRunRbac } from "../../../workflows/rbac.ts";
+import { createElicitation } from "../../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import type { TurnEvent } from "../../types.ts";
+import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
 import type { ToolContext } from "../index.ts";
 import { sampleWorkflowOutputForLlm } from "../truncate.ts";
@@ -83,7 +104,10 @@ function buildOneSyntheticWorkflowTool(
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
     // AI SDK 7: coerce tool output to JSON-safe for the model (see json-safe-output.ts).
     toModelOutput: jsonSafeModelOutput,
-    description: `${entry.description} — saved workflow, runs in dev. Dispatches /workflows run ${entry.slug}.`,
+    description: `${entry.description} — saved workflow, runs in dev. Dispatches /workflows run ${entry.slug}. Write steps resolve but never dispatch: the run is a PREVIEW. If it reports writes_held, nothing was written and the turn pauses for the operator — the engine performs the writes itself once they approve. Do not re-run to "perform" them.`,
+    // The workflow's authored schema, verbatim. No confirm marker: the operator
+    // — not the model — releases the held writes, through the elicitation this
+    // tool raises. A model-settable approval slot would be the escape hatch.
     inputSchema: jsonSchema(entry.inputSchema as Parameters<typeof jsonSchema>[0]),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
       const prevChain = signals.toolChain;
@@ -160,23 +184,16 @@ async function executeSyntheticRun(
     });
     return { ok: false, data: output };
   }
-  // Policy gate — identical contract to MCP and the regular `run_workflow`
-  // tool. The LLM re-issues with `__policy_confirmed: true` after the
-  // operator confirms. `tool` stays `run_workflow` so `resolveToolMode`
-  // applies the same dev → no_confirm shortcut MCP uses (the policy
-  // registry doesn't know `wf_<slug>` names). The specific slug surfaces
-  // in audit metadata via `subject_workflow_slug` so operators can still
-  // filter approvals by saved workflow.
-  const gate = await gateTenantToolCall({
-    tool: "run_workflow",
-    category: "tenant_write",
-    args: { ...rawArgs, workflow: entry.slug, environment: "dev" },
-    meta: undefined,
-    principal,
-    db,
-    via: "chat",
-    subject_workflow_slug: entry.slug,
-  });
+  // Writes are held on EVERY call through this tool. The model has no
+  // confirm marker to set (see the published schema) and the engine reads
+  // none off the args: the held-preview elicitation below is the only path
+  // to a released write, and the harness — not the model — walks it. In dev
+  // `run_workflow` resolves to `no_confirm`, so a pre-execution gate would
+  // never pause here; an unconfirmed chat `wf_<slug>` would dispatch real
+  // sends silently, the exact way an MCP `wf_<slug>` once mailed stale
+  // snapshots during a live authoring session. `stripConfirmMarkers` drops a
+  // marker the model volunteered anyway — it must never reach the executor.
+  const workflowInput = stripConfirmMarkers(rawArgs);
 
   // Anchor an assistant message + tool-call row so this synthetic
   // dispatch shows up in the same persisted trail real tool calls
@@ -194,67 +211,24 @@ async function executeSyntheticRun(
     conversation_id: ctx.conversation_id,
     parent_message_id: assistantMessageId,
     tool: name,
-    input: rawArgs,
+    input: workflowInput,
     approval_required: false,
   });
   events.push({
     type: "tool_call_start",
     call_id: toolCallId,
     tool: name,
-    input_partial: rawArgs,
+    input_partial: workflowInput,
     parent_message_id: assistantMessageId,
   });
   events.push({
     type: "tool_call_end",
     call_id: toolCallId,
-    input: rawArgs,
+    input: workflowInput,
     parent_message_id: assistantMessageId,
   });
 
-  if (gate.kind === "pending") {
-    const output: Record<string, unknown> = {
-      pending: true,
-      status: "awaiting_confirmation",
-      policy_mode: "confirm_before_execution",
-      confirm_required: true,
-      target: gate.envelope.target,
-      tool_call_id: gate.envelope.tool_call_id,
-      resume: gate.envelope.resume,
-      workflow_slug: entry.slug,
-      suggested_command: `/workflows run ${entry.slug}`,
-    };
-    await updateToolCallOutput(db, toolCallId, output);
-    events.push({
-      type: "tool_result",
-      call_id: toolCallId,
-      tool: name,
-      output,
-      parent_message_id: assistantMessageId,
-    });
-    recordConversationToolCall({
-      category: "tenant_write",
-      tool: name,
-      outcome: "pending",
-      duration_ms: 0,
-    });
-    return { ok: false, data: output };
-  }
-
-  // Strip the marker before handing the args to runExecution so its
-  // input contract stays clean.
-  const { __policy_confirmed: confirmed, ...workflowInput } = rawArgs;
   const inputForRun = Object.keys(workflowInput).length > 0 ? workflowInput : null;
-
-  // HOLD write-classified steps unless this run was explicitly
-  // confirmed. In dev the policy resolves to `no_confirm`, so without this a
-  // chat `wf_<slug>` would dispatch real sends silently — the exact way an
-  // MCP `wf_<slug>` once mailed stale snapshots during a live authoring
-  // session. A confirmed run (`__policy_confirmed: true`, set when the user
-  // approves the pending envelope) IS the explicit "send for real" signal;
-  // an unconfirmed dev run resolves + holds the writes so verification is
-  // side-effect-safe. Keeps this surface consistent with `run_workflow` and
-  // the MCP `wf_<slug>` hold-by-default contract.
-  const executeWrites = confirmed === true;
 
   ctx.onLog?.("info", `running workflow ${entry.slug} in env=dev`);
   try {
@@ -268,7 +242,7 @@ async function executeSyntheticRun(
         trace_id: null,
         principal,
         execution_mode: "dev",
-        ...(executeWrites ? {} : { hold_writes: true }),
+        hold_writes: true,
       },
     });
     // Mirror run-workflow.ts:306-329 per-step log emission so the user
@@ -299,8 +273,73 @@ async function executeSyntheticRun(
       );
     }
     const ok = result.status === "succeeded";
+    // Did this run hold a write? A read-only workflow emits no held-preview
+    // warning and so never mints an approval nor pauses the turn.
+    const heldPreview = result.warnings?.find((w) => w.code === HELD_PREVIEW_WARNING_CODE);
+    // Same-turn dedupe, mirroring invoke.ts's policy gate: a second pending
+    // elicitation in one turn would supersede the first (createElicitation
+    // cancels stale rows) and strand its approval. Refuse before minting.
+    if (heldPreview && signals.pendingElicitation) {
+      const dupOutput: Record<string, unknown> = {
+        ok: false,
+        status: result.status,
+        error_code: "duplicate_pending_elicitation_in_turn",
+        error: `Another tool call in this turn already paused for the operator (${signals.pendingElicitation.tool_name}). Nothing was written by ${name}. Wait for the user to answer, then start again.`,
+        workflow_id: entry.workflow_id,
+        workflow_slug: entry.slug,
+      };
+      await updateToolCallOutput(db, toolCallId, dupOutput);
+      events.push({
+        type: "tool_result",
+        call_id: toolCallId,
+        tool: name,
+        output: dupOutput,
+        parent_message_id: assistantMessageId,
+      });
+      recordConversationToolCall({
+        category: "tenant_write",
+        tool: name,
+        outcome: "denied",
+        duration_ms: 0,
+      });
+      return { ok: false, data: dupOutput };
+    }
+    const heldDetails = (heldPreview?.details ?? {}) as {
+      held_steps?: unknown;
+      would_write?: unknown;
+    };
+    const heldSteps = Array.isArray(heldDetails.held_steps) ? heldDetails.held_steps : [];
+    const wouldWrite = Array.isArray(heldDetails.would_write) ? heldDetails.would_write : [];
+    // Persist the inputs this preview ran with, encrypted, under a single-use
+    // approval id. The id NEVER reaches the model — it rides on the
+    // elicitation's commit_intent, and the harness claims it after the
+    // operator answers (persistence/auto-persist.ts).
+    let approvalId: string | null = null;
+    if (heldPreview) {
+      approvalId = crypto.randomUUID();
+      await requestApproval({
+        db,
+        principal,
+        approval_id: approvalId,
+        tool: name,
+        surface: "chat",
+        via: "chat",
+        // Not a policy-table verdict: the RUN held its writes.
+        reason: "held_writes",
+        // The synthetic chat palette always runs in dev (see runExecution above).
+        execution_mode: "dev",
+        args: workflowInput,
+        // Chat reaches a human in-band, so the portal is a fallback here rather
+        // than the only channel — but an approval is approvable from either, and
+        // both must show the same writes.
+        preview: heldDetails,
+      });
+    }
     const output: Record<string, unknown> = {
-      ok,
+      // A preview reports the reads that ran, never a completed action. `ok:
+      // false` keeps the model from narrating "sent" for a run that held
+      // every write, while `status` stays the honest execution status.
+      ok: heldPreview ? false : ok,
       status: result.status,
       execution_id: result.execution_id,
       workflow_id: entry.workflow_id,
@@ -308,11 +347,27 @@ async function executeSyntheticRun(
       output: result.output,
       warnings: result.warnings ?? [],
       suggested_command: `/workflows run ${entry.slug}`,
-      next_best_actions:
-        result.status === "succeeded"
+      // A held preview has NO next action for the model: the turn ends here and
+      // the operator decides. Re-running only reproduces the preview.
+      next_best_actions: heldPreview
+        ? []
+        : result.status === "succeeded"
           ? ["inspect_execution_step", "run_workflow"]
           : ["diagnose_latest_execution", "inspect_workflow"],
       ...(result.error ? { error: result.error } : {}),
+      ...(heldPreview
+        ? {
+            pending: true,
+            policy_mode: "confirm_before_execution",
+            awaiting_operator_approval: true,
+            preview: true,
+            writes_held: true,
+            message: heldPreview.message,
+            held_steps: heldSteps,
+            would_write: wouldWrite,
+            resume: `Nothing was written. ${wouldWrite.length || heldSteps.length} write step(s) are held and this turn is over: the operator must approve them. When they do, the engine performs them itself and reports back — you do not re-issue ${name}, and you cannot approve on the user's behalf.`,
+          }
+        : {}),
     };
     await updateToolCallOutput(db, toolCallId, output);
     await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "tool", {
@@ -343,6 +398,77 @@ async function executeSyntheticRun(
       output: modelOutput,
       parent_message_id: assistantMessageId,
     });
+    // The turn ENDS here when a write was held. `signals.pendingElicitation`
+    // makes runLoop resolve the turn as `awaiting_input`; the `pause` on the
+    // returned envelope trips `pausedStopCondition` so the SDK stops calling
+    // the model in this step. Between them the model cannot re-enter this tool
+    // — or any other — until a human answers. The commit_intent is what the
+    // harness dispatches on that answer.
+    let pause: WrappedToolOutput["pause"];
+    if (heldPreview && approvalId) {
+      const heldCount = wouldWrite.length || heldSteps.length;
+      const summary = `Run ${heldCount} held write step(s) of "${entry.slug}"`;
+      // `payload` carries the CAS predicate and the handle, nothing else: the
+      // workflow that runs is derived from the approval's own `tool` on claim
+      // (`persistence/auto-persist.ts`). A target field here would be a field an
+      // attacker could set.
+      const elicitationInput: Record<string, unknown> = {
+        kind: "external_write",
+        question: `Workflow "${entry.slug}" previewed ${heldCount} write step(s) — nothing has been written yet. Perform them now?`,
+        target: { tool: name, workflow_slug: entry.slug },
+        risk_level: "high",
+        reversible: false,
+        pending_output: { held_steps: heldSteps, would_write: wouldWrite },
+        commit_intent: {
+          kind: "commit_held_workflow_writes",
+          payload: { tool: name, approval_id: approvalId },
+          description: `Perform the ${heldCount} held write step(s) of workflow ${entry.slug}.`,
+        },
+      };
+      // The handle stays on the persisted row the harness reads. Everything that
+      // leaves this process — the SDK tool-result the model is shown, the
+      // `elicit_request` frame, the pause envelope `conversation_get` relays —
+      // carries the same prompt minus the capability.
+      const operatorInput = withoutApprovalHandle(elicitationInput);
+      const elicitation = await createElicitation(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          tool_call_id: toolCallId,
+          parent_message_id: assistantMessageId,
+          tool_name: "ask_user_confirm",
+          summary,
+          input: elicitationInput,
+          actor_id: ctx.actor_id,
+        },
+        db,
+      );
+      signals.pendingChildElicitationIds.push(elicitation.id);
+      events.push({
+        type: "elicit_request",
+        elicitation_id: elicitation.id,
+        tool_call_id: toolCallId,
+        tool_name: "ask_user_confirm",
+        summary,
+        input: operatorInput,
+        parent_message_id: assistantMessageId,
+        pending_output: { held_steps: heldSteps, would_write: wouldWrite },
+      });
+      signals.pendingElicitation = {
+        elicitation_id: elicitation.id,
+        tool_name: "ask_user_confirm",
+        kind: "external_write",
+        summary,
+        input: operatorInput,
+      };
+      pause = {
+        tool_name: "ask_user_confirm",
+        kind: "external_write",
+        summary,
+        elicitation_id: elicitation.id,
+        input: operatorInput,
+      };
+    }
     logger.info({
       module: "conversation_tool",
       action: "wf_synthetic.executed",
@@ -352,6 +478,9 @@ async function executeSyntheticRun(
       tool: name,
       workflow_id: entry.workflow_id,
       status: result.status,
+      preview: heldPreview !== undefined,
+      writes_held: true,
+      paused_for_operator: pause !== undefined,
     });
     // Mirror run-workflow.ts so chat-via-`wf_<slug>` and
     // chat-via-`run_workflow` are observationally indistinguishable:
@@ -389,10 +518,17 @@ async function executeSyntheticRun(
     recordConversationToolCall({
       category: "tenant_write",
       tool: name,
-      outcome: ok ? "ok" : "error",
+      // A held preview awaits the operator's confirmation — counting it as a
+      // completed run would skew the run-vs-pending ratio the same way the
+      // fast-path pending envelope would.
+      outcome: heldPreview ? "pending" : ok ? "ok" : "error",
       duration_ms: 0,
     });
-    return { ok, data: modelOutput };
+    return {
+      ok: heldPreview ? false : ok,
+      data: modelOutput,
+      ...(pause ? { pause } : {}),
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const output: Record<string, unknown> = {

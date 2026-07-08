@@ -129,11 +129,15 @@ describe("fitCatalogToBudget", () => {
       ...authoring,
       initialMode: "authoring",
     });
-    // Non-destructive levers fire (palette → Top-N, compression) because the
-    // rich authoring surface is over budget; the catalog shrinks but every
-    // NAMED (non-wf_) tool survives.
+    // Non-destructive levers fire (palette → Top-N, compression, then deeper
+    // palette trim) because the rich authoring surface is over budget; the
+    // catalog shrinks but every NAMED (non-wf_) tool survives. The palette is
+    // the only part of the manifest that yields — it has a complete fallback
+    // (find_workflow → run_workflow(slug)); the allow-list does not.
     expect(before.mode).toBe("authoring");
-    expect(before.paletteLimit).toBe(10);
+    expect(before.paletteLimit).toBeLessThanOrEqual(10);
+    expect(before.paletteLimit).toBeGreaterThan(0);
+    expect(before.compressed).toBe(true);
     expect(before.estTokensAfter).toBeLessThan(before.estTokensBefore);
     const namedFull = assembleTier({
       ...authoring,

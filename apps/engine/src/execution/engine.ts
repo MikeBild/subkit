@@ -67,13 +67,14 @@ import {
 import { runStep } from "./step-runner.ts";
 import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "./timeouts.ts";
-import type {
-  ExecutionStatus,
-  RequestSource,
-  RunOptions,
-  RunResult,
-  StepResult,
-  StepRunContext,
+import {
+  type ExecutionStatus,
+  HELD_PREVIEW_WARNING_CODE,
+  type RequestSource,
+  type RunOptions,
+  type RunResult,
+  type StepResult,
+  type StepRunContext,
 } from "./types.ts";
 
 export { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
@@ -1476,8 +1477,11 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   // the whole write chain skipped → the caller saw the converted blocks
   // and reported success while nothing was written). Emit a MANDATORY
   // warning (rides RunResult.warnings → the MCP envelope) so the caller
-  // knows nothing was persisted and how to actually write. Step ids +
-  // method/url only — never the (already-redacted) held bodies.
+  // knows nothing was persisted. The warning states the STATE only — the
+  // remedy is a tool argument (`execute_writes`) or an approval handle
+  // (`confirm_id`), and only the tool surface knows which of the two it
+  // publishes. Step ids + method/url only — never the (already-redacted)
+  // held bodies.
   if (outputUnavailableDueToHolds && finalStatus === "succeeded") {
     const heldWriteSteps = stepSummaries.filter((s) => s.held === true);
     const skippedDepSteps = stepSummaries.filter(
@@ -1486,12 +1490,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         (s.error as { code?: string } | null)?.code === "skipped_dependency_held",
     );
     warningsAccum.push({
-      code: "held_preview_no_writes",
+      code: HELD_PREVIEW_WARNING_CODE,
       message:
         `Preview run (hold_writes): ${heldWriteSteps.length} write step(s) held` +
         `${skippedDepSteps.length > 0 ? ` and ${skippedDepSteps.length} dependent step(s) skipped` : ""}` +
         ` — NOTHING was written to any external system. The returned output is from upstream` +
-        ` read/transform steps only. Re-run with execute_writes:true to perform the writes.`,
+        ` read/transform steps only.`,
       step_key: "$holds",
       details: {
         held_steps: heldWriteSteps.map((s) => s.step_key),

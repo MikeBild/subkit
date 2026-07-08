@@ -85,8 +85,7 @@ export const getLlmUsageTool: ConversationTool = {
     "Return this month's total LLM token usage and the N most recent llm_usage rows. Defaults to your own usage; pass user_id to scope to another user (requires stats:read:all).",
   inputSchema: UsageInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = UsageInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof UsageInput>) {
     const scope = await resolveUsageScope(ctx, args.user_id);
     if (!scope.ok) return scope.error;
     const limit = args.limit ?? 20;
@@ -128,8 +127,7 @@ export const getTokenBudgetTool: ConversationTool = {
     "Report current-month token usage against the configured budget. Defaults to your own usage + per-user budget; pass user_id to scope to another user (requires stats:read:all).",
   inputSchema: EmptyInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = EmptyInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof EmptyInput>) {
     const scope = await resolveUsageScope(ctx, args.user_id);
     if (!scope.ok) return scope.error;
 

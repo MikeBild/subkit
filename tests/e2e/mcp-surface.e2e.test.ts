@@ -285,9 +285,45 @@ describe("MCP tool surface", () => {
     expect(confirm.tool).toBe("delete_workflow");
     expect(confirm.policy_mode).toBe("confirm_before_execution");
     expect(typeof confirm.tool_call_id).toBe("string");
+    // The approval is minted UNGRANTED: the envelope hands back a human-only
+    // portal link, not a token the model can act on.
+    expect(typeof confirm.approval_url).toBe("string");
 
-    // Second call — re-issue with _meta.sk_confirm = true (carry the id so
-    // the approval is audited).
+    // The model cannot approve itself. Re-issuing with _meta.sk_confirm before
+    // any human has granted the approval must be REFUSED — this is the whole
+    // point of the change: confirm is a trigger, not a gate.
+    const premature = await session.call("tools/call", {
+      name: "delete_workflow",
+      arguments: { id: workflowId },
+      _meta: { sk_confirm: true, sk_confirm_id: confirm.tool_call_id },
+    });
+    const prematureResult = premature.result as {
+      isError?: boolean;
+      content?: Array<{ type: string; text: string }>;
+    };
+    expect(prematureResult.isError).toBe(true);
+    const prematurePayload = JSON.parse(prematureResult.content![0]!.text) as {
+      error_code?: string;
+    };
+    expect(prematurePayload.error_code).toBe("approval_not_granted");
+
+    // A HUMAN grants it out of band through the approval portal. The admin
+    // persona's API key is user-bound, so it stands in for the operator's
+    // browser session; the portal records the human as the approver.
+    const grantToken = new URL(confirm.approval_url!).searchParams.get("grant");
+    expect(typeof grantToken).toBe("string");
+    const grantRes = await fetch(`${env.baseUrl}/v1/tool-approvals/decide`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.personas.admin.apiKey}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ grant: grantToken!, decision: "approve" }).toString(),
+    });
+    expect(grantRes.ok).toBe(true);
+
+    // Now the trigger fires: the same re-issue claims the granted approval and
+    // the deletion runs.
     const second = await session.call("tools/call", {
       name: "delete_workflow",
       arguments: { id: workflowId },
@@ -298,7 +334,6 @@ describe("MCP tool surface", () => {
       content?: Array<{ type: string; text: string }>;
     };
     expect(secondResult.isError).toBeFalsy();
-    // The tool should have reported a successful deletion.
     const secondPayload = JSON.parse(secondResult.content![0]!.text);
     expect(secondPayload).toBeTruthy();
   }, 60_000);

@@ -158,6 +158,49 @@ describe("sdk helper parity — find_workflow (defaulted field in required)", ()
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// run_workflow — `$input` map parity (pipeStrategy:output regression gate)
+//
+// The workflow's `$input` map is a `z.union([z.record(...), z.string()])
+// .transform(...).pipe(z.record(...))` slot (see
+// `conversations/tools/generated/writes/run-workflow.ts`) so a client sees a
+// typed OBJECT rather than the empty `{}` schema a bare `z.unknown()` would
+// emit — the empty schema tells a client nothing and invites it to
+// serialize the input map into a string. `environment` carries
+// `.default("dev")`; under `pipeStrategy:'output'` a defaulted field still
+// appears in `required` because the model must always supply a value for
+// it. Do NOT "fix" that by dropping it from required — the contract is
+// designed, not a bug.
+// ---------------------------------------------------------------------------
+
+describe("sdk helper parity — run_workflow (input map + defaulted environment)", () => {
+  it("input is no longer the empty schema `{}`", () => {
+    const s = schema("run_workflow");
+    const props = s.properties as Record<string, Record<string, unknown>>;
+    const input = props.input;
+    expect(input).toBeDefined();
+    expect(Object.keys(input ?? {}).length).toBeGreaterThan(0);
+    // Never the bare empty-object escape hatch a `z.unknown()` would emit.
+    expect(input).not.toEqual({});
+  });
+
+  it('environment carries its default("dev") but stays in required (pipeStrategy:output)', () => {
+    const s = schema("run_workflow");
+    expect(s.required).toContain("environment");
+    const props = s.properties as Record<string, Record<string, unknown>>;
+    expect(props.environment?.enum).toEqual(["dev", "prod"]);
+    expect(props.environment?.default).toBe("dev");
+  });
+
+  it("root seals with additionalProperties:false and no $ref/$defs", () => {
+    const s = schema("run_workflow");
+    expect(s.type).toBe("object");
+    expect(s.additionalProperties).toBe(false);
+    expect(s.$ref).toBeUndefined();
+    expect(s.$defs).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // edit_workflow_patch — discriminated union structural check
 //
 // Confirms that a complex discriminated union (RFC 6902 patch ops) survives

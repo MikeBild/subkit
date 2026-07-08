@@ -16,6 +16,7 @@ import type { ConversationStatus, TurnEvent } from "../../../conversations/index
 import * as svc from "../../../conversations/index.ts";
 import {
   buildMessagesV2,
+  humanChatAnswer,
   registerConversationAbort,
   serializeEvent,
   unregisterConversationAbort,
@@ -171,6 +172,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
             actor_id: principal.id,
             principal,
             user_message: created.initial_message ?? "",
+            answer_actor: humanChatAnswer(principal),
             user_memory: created.user_memory,
             turn_abort_ctrl: turnAbortCtrl,
             runtime_context: runtimeContext,

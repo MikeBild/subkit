@@ -132,14 +132,13 @@ describe("update_connector tool — chat-native metadata patch", () => {
     expect(auditRows.some((r) => r.action === "connector.updated")).toBe(true);
   });
 
-  test("rejects an empty patch (no fields)", async () => {
-    const result = await updateConnectorTool
-      .execute(toolCtx(), { id: ctx.connector_id })
-      .catch((err) => ({ ok: false as const, threw: err }));
-    if ("threw" in result) {
-      expect(String(result.threw)).toMatch(/at least one of/i);
-    } else {
-      expect(result.ok).toBe(false);
+  test("rejects an empty patch (no fields)", () => {
+    // Enforced at the dispatch boundary, which parses `inputSchema` before
+    // `execute` runs; the executor no longer re-parses its own input.
+    const parsed = updateConnectorTool.inputSchema.safeParse({ id: ctx.connector_id });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues[0]?.message).toMatch(/at least one of/i);
     }
   });
 });

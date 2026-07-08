@@ -1,24 +1,24 @@
 // Confirm-gate integration test — the ONE deterministic rule end to end.
 //
-// The pre-execution confirm decision is a single pure function
-// (`decideConfirm`) consulted by BOTH the conversation loop gate
-// (`tools/sdk-wrap/invoke.ts`, driven here through `wrapTools`) and the
-// MCP-direct gate (`mcp/capabilities/policy-gate.ts#gateTenantToolCall`).
+// The pre-execution confirm decision is consulted by BOTH the conversation
+// loop gate (`tools/sdk-wrap/invoke.ts`, driven here through `wrapTools`,
+// which evaluates `decideConfirm`) and the unified `policyDecide()` every
+// dispatcher surface calls.
 //
-// The rule: reads auto-run; a write under `confirm_before_execution`
-// PAUSES unless a `policyMarker` (`__policy_confirmed` / `_meta.sk_confirm`)
-// or a durable `priorApproval` is present. This test pins that behaviour
-// on the loop surface AND proves the loop and MCP-direct surfaces reach
-// the IDENTICAL pause/proceed verdict for the same tool + args.
+// The rule: reads auto-run; a write under `confirm_before_execution` PAUSES
+// unless a durable, engine-verified `priorApproval` is present. Nothing the
+// MODEL puts in its own tool call clears the gate — the loop publishes no
+// confirm marker on any tool schema, and reads none off the args. This test
+// pins that behaviour on the loop surface AND proves the loop and MCP surfaces
+// reach the IDENTICAL pause/proceed verdict for the same tool + args.
 
 import { beforeAll, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
-import { gateTenantToolCall } from "../../mcp/capabilities/policy-gate.ts";
+import { policyDecide } from "../../tools/policy.ts";
 import { getElicitation } from "../elicitations.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
@@ -97,19 +97,6 @@ async function runLoopTool(
   return { result, events };
 }
 
-function mkPrincipal(): ResolvedPrincipal {
-  return {
-    id: "00000000-0000-0000-0000-0000000000aa",
-    tenant_id: ctx.tenant_id,
-    kind: "user",
-    provider: "api_key",
-    email: "admin@test.local",
-    role: "admin",
-    roles: ["admin"],
-    allowed_workflows: "all",
-  } as unknown as ResolvedPrincipal;
-}
-
 describe("confirm gate — loop surface follows the deterministic rule", () => {
   it("run_workflow in prod (write, no marker/approval) PAUSES and does not execute", async () => {
     const { result, events } = await runLoopTool("run_workflow", {
@@ -167,79 +154,97 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
     expect(result.pause).toBeUndefined();
   });
 
-  it("run_workflow in prod WITH __policy_confirmed proceeds past the gate (marker clears it)", async () => {
+  it("run_workflow in prod WITH a model-supplied __policy_confirmed still PAUSES (the marker is inert)", async () => {
     const { result } = await runLoopTool("run_workflow", {
       workflow_id: "00000000-0000-0000-0000-000000000002",
       environment: "prod",
       __policy_confirmed: true,
     });
-    // policyMarker present → decideConfirm proceeds; the inner tool ran
-    // (fake id → not a pause envelope).
-    expect(result.pause).toBeUndefined();
+    // The gate reads no marker off the args. One tool call carrying it must not
+    // become a live prod run with no elicitation, no approval row, no human.
+    expect(result.ok).toBe(false);
+    expect(result.pause).toBeDefined();
+    expect((result.pause as { tool_name?: string }).tool_name).toBe("ask_user_confirm");
+  });
+
+  it("no wrapped tool ADVERTISES a confirm marker in the schema it publishes", async () => {
+    const events: TurnEvent[] = [];
+    const wrapped = await wrapTools(
+      toolCtxFor(),
+      freshSignals(),
+      events,
+      ctx.testDb.db as unknown as Db,
+      ["workflow-authoring"],
+      {},
+    );
+    for (const [name, t] of Object.entries(wrapped)) {
+      const schema = (t as { inputSchema?: { shape?: Record<string, unknown> } }).inputSchema;
+      const shape = schema?.shape;
+      if (!shape) continue;
+      expect(`${name}:${"__policy_confirmed" in shape}`).toBe(`${name}:false`);
+      expect(`${name}:${"__policy_confirm_id" in shape}`).toBe(`${name}:false`);
+    }
   });
 });
 
-describe("confirm gate — loop and MCP-direct reach IDENTICAL verdicts", () => {
+describe("confirm gate — loop and MCP reach IDENTICAL verdicts", () => {
   // Same (tool, args) evaluated on both surfaces must pause-or-proceed
-  // identically. Both consult the single `decideConfirm` rule.
-  it("run_workflow prod: loop PAUSES and MCP-direct returns pending", async () => {
+  // identically. The loop gate and `policyDecide` both key on the same
+  // resolved mode + confirm marker.
+  it("run_workflow prod: loop PAUSES and MCP needs_confirm", async () => {
     const { result: loop } = await runLoopTool("run_workflow", {
       workflow: "render-upload-slides",
       environment: "prod",
     });
-    const mcp = await gateTenantToolCall({
+    const mcp = policyDecide({
       tool: "run_workflow",
       category: "tenant_write",
+      surface: "mcp",
       args: { workflow: "render-upload-slides", environment: "prod" },
-      meta: undefined,
-      principal: mkPrincipal(),
-      db: ctx.testDb.db as unknown as Db,
     });
     const loopPaused = Boolean(loop.pause);
-    const mcpPaused = mcp.kind === "pending";
+    const mcpPaused = mcp.kind === "needs_confirm";
     expect(loopPaused).toBe(true);
     expect(mcpPaused).toBe(true);
     expect(loopPaused).toBe(mcpPaused);
   });
 
-  it("run_workflow dev: loop PROCEEDS and MCP-direct proceeds", async () => {
+  it("run_workflow dev: loop PROCEEDS and MCP proceeds", async () => {
     const { result: loop } = await runLoopTool("run_workflow", {
       workflow_id: "00000000-0000-0000-0000-000000000001",
       environment: "dev",
     });
-    const mcp = await gateTenantToolCall({
+    const mcp = policyDecide({
       tool: "run_workflow",
       category: "tenant_write",
+      surface: "mcp",
       args: { environment: "dev" },
-      meta: undefined,
-      principal: mkPrincipal(),
-      db: ctx.testDb.db as unknown as Db,
     });
     const loopPaused = Boolean(loop.pause);
-    const mcpPaused = mcp.kind === "pending";
+    const mcpPaused = mcp.kind === "needs_confirm";
     expect(loopPaused).toBe(false);
     expect(mcpPaused).toBe(false);
     expect(loopPaused).toBe(mcpPaused);
   });
 
-  it("run_workflow prod WITH confirmation marker: both surfaces proceed", async () => {
+  it("run_workflow prod with execute_writes: both surfaces gate the live run", async () => {
+    // `execute_writes:true` is a request for the operator's approval, not an
+    // approval. Neither surface lets the model turn it into a live send.
     const { result: loop } = await runLoopTool("run_workflow", {
       workflow_id: "00000000-0000-0000-0000-000000000003",
-      environment: "prod",
-      __policy_confirmed: true,
+      environment: "dev",
+      execute_writes: true,
     });
-    const mcp = await gateTenantToolCall({
+    const mcp = policyDecide({
       tool: "run_workflow",
       category: "tenant_write",
-      args: { environment: "prod" },
-      meta: { sk_confirm: true },
-      principal: mkPrincipal(),
-      db: ctx.testDb.db as unknown as Db,
+      surface: "mcp",
+      args: { environment: "dev", execute_writes: true },
     });
     const loopPaused = Boolean(loop.pause);
-    const mcpPaused = mcp.kind === "pending";
-    expect(loopPaused).toBe(false);
-    expect(mcpPaused).toBe(false);
+    const mcpPaused = mcp.kind === "needs_confirm";
+    expect(loopPaused).toBe(true);
+    expect(mcpPaused).toBe(true);
     expect(loopPaused).toBe(mcpPaused);
   });
 });

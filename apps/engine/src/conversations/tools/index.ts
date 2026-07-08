@@ -258,6 +258,18 @@ export interface ConversationTool {
   // Keep output validation targeted there; do not generalise it here.
   readonly inputSchema: z.ZodTypeAny;
   readonly category: ToolCategory;
+  /**
+   * `args` is untrusted at the type level. The dispatcher (`tools/dispatcher.ts`
+   * canonicalizeArgs) and the chat loop's AI SDK boundary both hand over
+   * `inputSchema`'s OUTPUT; direct callers (`conversations/direct-invoke.ts`,
+   * the connector import route) hand over raw input, so an executor that needs
+   * defaults still parses. Because `tools/approval.ts` persists the canonical
+   * value and the approved replay re-enters the executor, that second parse is
+   * only safe while every `inputSchema` is parse-idempotent — enforced for the
+   * whole registry by `tools/schema-idempotence.test.ts`. Never add a schema
+   * transform without a fixture there. Declared `unknown` because the registry
+   * is heterogeneous; each tool narrows it to its own `z.infer`.
+   */
   execute(ctx: ToolContext, args: unknown): Promise<ToolResult>;
   /** One-sentence hint: when should the LLM reach for this tool? Rendered
    *  into the tool description as a `<use_case>` block so the model can
