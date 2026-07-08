@@ -20,8 +20,7 @@ export const getSubscriptionTool: ConversationTool = {
   description: "Fetch one subscription by id.",
   inputSchema: IdInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const s = await ctx.engineClient.subscriptions.get(args.id);
     if (!s) return { ok: false, data: { error: "subscription_not_found" } };
     return { ok: true, data: { subscription: s } };

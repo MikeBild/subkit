@@ -51,8 +51,7 @@ export const updateKnowledgeSourceTool: ConversationTool = {
   inputSchema: UpdateKnowledgeSourceInput,
   category: "tenant_write",
   permission: { action: "knowledge:write", resourceType: "knowledge", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = UpdateKnowledgeSourceInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof UpdateKnowledgeSourceInput>) {
     try {
       const view = await ctx.engineClient.knowledgeSources.update(args.id, {
         ...(args.name !== undefined ? { name: args.name } : {}),

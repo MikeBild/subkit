@@ -16,6 +16,7 @@ import {
   tenants,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -132,6 +133,7 @@ describe("auto-persist — decline path", () => {
     });
 
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id,
       conversation_id,
       actor_id: null,
@@ -199,6 +201,7 @@ describe("auto-persist — decline path", () => {
     });
 
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id,
       conversation_id,
       actor_id: null,
@@ -232,6 +235,7 @@ describe("auto-persist — decline path", () => {
     });
 
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id,
       conversation_id,
       actor_id: null,

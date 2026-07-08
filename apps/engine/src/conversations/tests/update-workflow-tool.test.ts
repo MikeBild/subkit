@@ -303,19 +303,14 @@ describe("update_workflow tool — chat-native metadata patch", () => {
   test("rejects an empty patch (no slug, name, description, or lifecycle)", async () => {
     const wf = await seedLiveWorkflow("empty-patch-uw", "Untouched");
 
-    const result = await updateWorkflowTool
-      .execute(toolCtx(), { id: wf.id })
-      .catch((err) => ({ ok: false as const, threw: err }));
-
-    // The Zod refinement throws — caller surfaces it as a parse error,
-    // which is the expected shape (Zod errors propagate without being
-    // wrapped in a structured tool result for invalid input).
-    if ("threw" in result) {
-      expect(String(result.threw)).toMatch(
+    // The Zod refinement is enforced at the dispatch boundary, not inside
+    // `execute` — the executor no longer re-parses its own input.
+    const parsed = updateWorkflowTool.inputSchema.safeParse({ id: wf.id });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues[0]?.message).toMatch(
         /at least one of slug, name, description, or lifecycle/i,
       );
-    } else {
-      expect(result.ok).toBe(false);
     }
   });
 

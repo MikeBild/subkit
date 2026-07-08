@@ -8,10 +8,17 @@
 // provider's descriptor (see providers/conversation.ts:RBAC_OVERRIDES
 // and providers/static.ts entries).
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { dispatchTool, hashToolArgs } from "../dispatcher.ts";
+import { runWorkflowTool } from "../../conversations/tools/generated/writes/run-workflow.ts";
+import type { ToolContext } from "../../conversations/tools/index.ts";
+import { auditLog, tenants } from "../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { requestApproval } from "../approval.ts";
+import { dispatchTool } from "../dispatcher.ts";
 import { conversationToolProvider, staticToolProvider } from "../index.ts";
 import {
   DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
@@ -42,6 +49,53 @@ const DB_STUB: any = {
   transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
 };
+
+// Deterministic replacement for crypto.randomUUID() — same seed, same
+// sequence, every run (determinism contract in apps/engine/AGENTS.md).
+const nextId = createDeterministicUuidFactory(2);
+
+// `consumeApproval` is DB-backed (a real CAS + AES-256-GCM round trip on
+// `tool_approvals`) — a stub `db` can no longer stand in for it. The
+// confirm-lifecycle tests below share one disposable Postgres database.
+let testDb: TestDb;
+let dbTenantId: string;
+
+beforeAll(async () => {
+  testDb = await createTestDb("dispatcher-confirm");
+  const [tenant] = await testDb.db
+    .insert(tenants)
+    .values({ slug: "t-dispatcher-confirm", display_name: "Dispatcher Confirm" })
+    .returning();
+  dbTenantId = tenant!.id;
+});
+
+afterAll(async () => {
+  await testDb.cleanup();
+});
+
+/** ResolvedPrincipal scoped to the real tenant `tool_approvals` FK-checks
+ *  against. `principal_id` carries no FK (polymorphic), so only tenant_id
+ *  needs to be real. */
+function dbPrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
+  // biome-ignore lint/suspicious/noExplicitAny: mirrors the PRINCIPAL stub above
+  return { ...(PRINCIPAL as any), tenant_id: dbTenantId, ...overrides } as ResolvedPrincipal;
+}
+
+/** Audit rows keyed by `resource_id` (the confirm/approval id) — used to
+ *  assert the APPROVAL_REQUESTED / APPROVAL_APPROVED lifecycle joins on a
+ *  single id. */
+async function approvalAuditRows(
+  approval_id: string,
+): Promise<Array<{ action: string; resource_id: string | null; metadata: unknown }>> {
+  return testDb.db
+    .select({
+      action: auditLog.action,
+      resource_id: auditLog.resource_id,
+      metadata: auditLog.metadata,
+    })
+    .from(auditLog)
+    .where(eq(auditLog.resource_id, approval_id));
+}
 
 describe("tools/dispatcher (active)", () => {
   test("unknown tool name → status:'error' error_code:'tool_not_found'", async () => {
@@ -131,27 +185,26 @@ describe("tools/dispatcher (active)", () => {
     };
     const registry = buildRegistry([watchedProvider]);
     // On MCP the confirm marker must reference a real, un-consumed
-    // APPROVAL_REQUESTED — stub the audit lookup to return the pending row.
-    const confirmId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-    // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape stub
-    const selectChain: any = {
-      from: () => selectChain,
-      where: () =>
-        Promise.resolve([
-          { action: AuditAction.APPROVAL_REQUESTED, metadata: { tool: "_test_confirmed_write" } },
-        ]),
-    };
-    // biome-ignore lint/suspicious/noExplicitAny: drizzle Db stub
-    const confirmDb: any = {
-      transaction: async (fn: (d: unknown) => unknown) => fn(confirmDb),
-      select: () => selectChain,
-      insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
-    };
+    // APPROVAL_REQUESTED. `consumeApproval` is a DB-backed CAS claim — seed
+    // one for real via `requestApproval` instead of stubbing the lookup.
+    const principal = dbPrincipal();
+    const confirmId = nextId();
+    await requestApproval({
+      db: testDb.db,
+      principal,
+      approval_id: confirmId,
+      tool: "_test_confirmed_write",
+      surface: "mcp",
+      via: "mcp",
+      reason: "category_default",
+      execution_mode: null,
+      args: {},
+    });
     const envelope = await dispatchTool(
       {
         registry,
-        db: confirmDb,
-        principal: PRINCIPAL,
+        db: testDb.db,
+        principal,
         conversationCtx: {} as never,
       },
       {
@@ -530,39 +583,16 @@ describe("tools/dispatcher — RBAC denial path", () => {
   });
 });
 
-describe("tools/dispatcher — MCP confirmation validation + APPROVAL_APPROVED lifecycle", () => {
-  // A configurable Db stub: `selectRows` is what an audit lookup resolves
-  // to; every insert().values() is captured so we can assert which audit
-  // rows were written.
-  function makeDb(
-    selectRows: ReadonlyArray<{ action: string; metadata?: unknown }>,
-    captured: Array<{ action?: string | undefined; resource_id?: string | undefined }>,
-    // biome-ignore lint/suspicious/noExplicitAny: drizzle Db stub
-  ): any {
-    // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape stub
-    const selectChain: any = {
-      from: () => selectChain,
-      where: () => Promise.resolve(selectRows),
-      leftJoin: () => selectChain,
-      innerJoin: () => selectChain,
-      limit: () => Promise.resolve(selectRows),
-      orderBy: () => Promise.resolve(selectRows),
-    };
-    // biome-ignore lint/suspicious/noExplicitAny: drizzle Db stub
-    const db: any = {
-      transaction: async (fn: (d: unknown) => unknown) => fn(db),
-      select: () => selectChain,
-      insert: () => ({
-        values: (row: { action?: string; resource_id?: string }) => {
-          captured.push({ action: row?.action, resource_id: row?.resource_id });
-          return { onConflictDoNothing: async () => undefined };
-        },
-      }),
-    };
-    return db;
-  }
-
-  function tenantWriteProvider(name: string): ToolProvider {
+describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (real Postgres)", () => {
+  // `consumeApproval` is a real DB CAS claim, so these exercise it against
+  // `testDb` (seeded via `beforeAll` above) rather than a select-stub. A
+  // tenant_write tool with no descriptor.rbac, executor captures the args
+  // it actually received — the property under test throughout this block
+  // is WHICH args reach the executor, not what the caller sent.
+  function tenantWriteProvider(
+    name: string,
+    onExecute?: (args: Record<string, unknown>) => void,
+  ): ToolProvider {
     const descriptor: ToolDescriptor = {
       name,
       description: "tenant_write, no rbac",
@@ -579,147 +609,304 @@ describe("tools/dispatcher — MCP confirmation validation + APPROVAL_APPROVED l
               executor: {
                 kind: "conversation",
                 tool: undefined as never,
-                execute: async () => ({ ok: true, data: { ran: true } }),
+                execute: async (_ctx: ToolContext, args: unknown) => {
+                  onExecute?.(args as Record<string, unknown>);
+                  return { ok: true, data: { ran: true } };
+                },
               },
             }
           : undefined,
     };
   }
 
-  test("MCP sk_confirm WITHOUT sk_confirm_id → rejected, not executed, no APPROVAL_APPROVED", async () => {
+  test("MCP sk_confirm WITHOUT sk_confirm_id → rejected, not executed, db untouched", async () => {
     // A model-suppliable confirm marker with no id can't be tied to any
     // APPROVAL_REQUESTED, so it must be rejected rather than executed —
-    // otherwise it's a gate bypass.
-    const captured: Array<{ action?: string | undefined; resource_id?: string | undefined }> = [];
-    const db = makeDb([], captured);
-    const registry = buildRegistry([tenantWriteProvider("_test_confirm_no_id")]);
+    // otherwise it's a gate bypass. `consumeApproval` short-circuits before
+    // touching the db (see approval.test.ts), so the plain DB_STUB suffices.
+    let executed = false;
+    const registry = buildRegistry([
+      tenantWriteProvider("_test_confirm_no_id", () => (executed = true)),
+    ]);
     const envelope = await dispatchTool(
-      { registry, db, principal: PRINCIPAL, conversationCtx: {} as never },
+      { registry, db: DB_STUB, principal: PRINCIPAL, conversationCtx: {} as never },
       { surface: "mcp", name: "_test_confirm_no_id", args: {}, meta: { sk_confirm: true } },
     );
     expect(envelope.status).toBe("error");
     if (envelope.status === "error") expect(envelope.error_code).toBe("confirmation_missing_id");
-    expect(captured.filter((r) => r.action === "approval.approved").length).toBe(0);
+    expect(executed).toBe(false);
   });
 
   test("MCP sk_confirm with an UNKNOWN id (no matching request) → rejected", async () => {
-    const captured: Array<{ action?: string | undefined; resource_id?: string | undefined }> = [];
-    const db = makeDb([], captured); // audit lookup finds nothing
-    const registry = buildRegistry([tenantWriteProvider("_test_confirm_unknown")]);
+    let executed = false;
+    const principal = dbPrincipal();
+    const registry = buildRegistry([
+      tenantWriteProvider("_test_confirm_unknown", () => (executed = true)),
+    ]);
     const envelope = await dispatchTool(
-      { registry, db, principal: PRINCIPAL, conversationCtx: {} as never },
+      { registry, db: testDb.db, principal, conversationCtx: {} as never },
       {
         surface: "mcp",
         name: "_test_confirm_unknown",
         args: {},
-        meta: { sk_confirm: true, sk_confirm_id: "11111111-2222-3333-4444-555555555555" },
+        meta: { sk_confirm: true, sk_confirm_id: nextId() },
       },
     );
     expect(envelope.status).toBe("error");
     if (envelope.status === "error") expect(envelope.error_code).toBe("unknown_confirmation");
-    expect(captured.filter((r) => r.action === "approval.approved").length).toBe(0);
+    expect(executed).toBe(false);
   });
 
-  test("MCP sk_confirm with a MATCHING un-consumed request → ok + one APPROVAL_APPROVED using that id", async () => {
-    const captured: Array<{ action?: string | undefined; resource_id?: string | undefined }> = [];
-    // Audit lookup returns the pending request for this tool, not yet approved.
-    const db = makeDb(
-      [{ action: AuditAction.APPROVAL_REQUESTED, metadata: { tool: "_test_confirm_with_id" } }],
-      captured,
-    );
-    const registry = buildRegistry([tenantWriteProvider("_test_confirm_with_id")]);
-    const carriedId = "11111111-2222-3333-4444-555555555555";
+  test("MCP sk_confirm with a MATCHING un-consumed request → ok + one APPROVAL_APPROVED sharing the id", async () => {
+    let executed = false;
+    const principal = dbPrincipal();
+    const registry = buildRegistry([
+      tenantWriteProvider("_test_confirm_with_id", () => (executed = true)),
+    ]);
+    const confirmId = nextId();
+    await requestApproval({
+      db: testDb.db,
+      principal,
+      approval_id: confirmId,
+      tool: "_test_confirm_with_id",
+      surface: "mcp",
+      via: "mcp",
+      reason: "category_default",
+      execution_mode: null,
+      args: {},
+    });
     const envelope = await dispatchTool(
-      { registry, db, principal: PRINCIPAL, conversationCtx: {} as never },
+      { registry, db: testDb.db, principal, conversationCtx: {} as never },
       {
         surface: "mcp",
         name: "_test_confirm_with_id",
         args: {},
-        meta: { sk_confirm: true, sk_confirm_id: carriedId },
+        meta: { sk_confirm: true, sk_confirm_id: confirmId },
       },
     );
     expect(envelope.status).toBe("ok");
-    const approved = captured.filter((r) => r.action === "approval.approved");
-    expect(approved.length).toBe(1);
+    expect(executed).toBe(true);
+    const rows = await approvalAuditRows(confirmId);
+    expect(rows.filter((r) => r.action === AuditAction.APPROVAL_APPROVED)).toHaveLength(1);
     // resource_id IS the carried tool_call_id → joins APPROVAL_REQUESTED.
-    expect(approved[0]?.resource_id).toBe(carriedId);
+    expect(rows.every((r) => r.resource_id === confirmId)).toBe(true);
   });
 
-  test("MCP confirm with args DIFFERENT from the approved ones → confirmation_args_mismatch, not executed", async () => {
-    // The approval was granted for {id:"A"}; the model re-issues {id:"B"} with
-    // the same confirm id. The args fingerprint must reject the swap.
-    const captured: Array<{ action?: string | undefined; resource_id?: string | undefined }> = [];
-    const db = makeDb(
-      [
-        {
-          action: AuditAction.APPROVAL_REQUESTED,
-          metadata: { tool: "_test_confirm_args", args_hash: hashToolArgs({ id: "A" }) },
-        },
-      ],
-      captured,
-    );
-    const registry = buildRegistry([tenantWriteProvider("_test_confirm_args")]);
-    const carriedId = "22222222-3333-4444-5555-666666666666";
+  // Rewrite of the old "confirmation_args_mismatch" test. The published
+  // `confirm_tool_call` schema carries only `tool` + `confirm_id` — MCP's
+  // handler always dispatches the confirmed re-issue with `args: {}`
+  // (mcp/capabilities/tools.ts), so there is no client-supplied payload
+  // left to "mismatch". The new contract: whatever a caller puts in `args`
+  // at confirm time is IGNORED — `consumeApproval` hands back the args it
+  // was granted at request time, and the dispatcher replaces `execArgs`
+  // with those unconditionally. Proven here by smuggling a DIFFERENT `id`
+  // at confirm time and asserting the executor still saw the granted one.
+  test("MCP confirm ignores any args sent alongside it — the STORED (granted) args execute", async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const principal = dbPrincipal();
+    const registry = buildRegistry([
+      tenantWriteProvider("_test_confirm_args", (args) => received.push(args)),
+    ]);
+    const confirmId = nextId();
+    await requestApproval({
+      db: testDb.db,
+      principal,
+      approval_id: confirmId,
+      tool: "_test_confirm_args",
+      surface: "mcp",
+      via: "mcp",
+      reason: "category_default",
+      execution_mode: null,
+      args: { id: "A" },
+    });
     const envelope = await dispatchTool(
-      { registry, db, principal: PRINCIPAL, conversationCtx: {} as never },
+      { registry, db: testDb.db, principal, conversationCtx: {} as never },
       {
         surface: "mcp",
         name: "_test_confirm_args",
+        // A buggy/hostile client smuggling a DIFFERENT id at confirm time —
+        // the MCP responder never actually sends this (args: {} always),
+        // but the dispatcher must not trust it even if something did.
         args: { id: "B" },
-        meta: { sk_confirm: true, sk_confirm_id: carriedId },
-      },
-    );
-    expect(envelope.status).toBe("error");
-    if (envelope.status === "error") expect(envelope.error_code).toBe("confirmation_args_mismatch");
-    expect(captured.filter((r) => r.action === "approval.approved").length).toBe(0);
-  });
-
-  test("MCP confirm with args MATCHING the approved ones → ok (confirm markers ignored in the fingerprint)", async () => {
-    const captured: Array<{ action?: string | undefined; resource_id?: string | undefined }> = [];
-    const db = makeDb(
-      [
-        {
-          action: AuditAction.APPROVAL_REQUESTED,
-          metadata: { tool: "_test_confirm_args_ok", args_hash: hashToolArgs({ id: "A" }) },
-        },
-      ],
-      captured,
-    );
-    const registry = buildRegistry([tenantWriteProvider("_test_confirm_args_ok")]);
-    const carriedId = "33333333-4444-5555-6666-777777777777";
-    const envelope = await dispatchTool(
-      { registry, db, principal: PRINCIPAL, conversationCtx: {} as never },
-      {
-        surface: "mcp",
-        name: "_test_confirm_args_ok",
-        // Same domain args as approval; the added confirm markers must NOT
-        // change the fingerprint.
-        args: { id: "A", __policy_confirmed: true, __policy_confirm_id: carriedId },
-        meta: { sk_confirm: true, sk_confirm_id: carriedId },
+        meta: { sk_confirm: true, sk_confirm_id: confirmId },
       },
     );
     expect(envelope.status).toBe("ok");
-    expect(captured.filter((r) => r.action === "approval.approved").length).toBe(1);
+    expect(received).toEqual([{ id: "A" }]);
   });
 
-  test("CHAT sk_confirm with id is NOT subject to MCP validation (UI-driven)", async () => {
-    // The validation is MCP-scoped; chat confirmations are UI-driven and
-    // keep the legacy id-optional path (no audit lookup).
-    const captured: Array<{ action?: string | undefined; resource_id?: string | undefined }> = [];
-    const db = makeDb([], captured);
-    const registry = buildRegistry([tenantWriteProvider("_test_confirm_chat")]);
-    const carriedId = "99999999-8888-7777-6666-555555555555";
+  test("CHAT confirm follows the same stored-args contract as MCP", async () => {
+    // Chat carries the confirm id inside `args` (no transport `_meta`). The
+    // claim binds the surface (a chat approval is not claimable over MCP), but
+    // the replay contract is identical: the STORED args execute.
+    const received: Array<Record<string, unknown>> = [];
+    const principal = dbPrincipal();
+    const registry = buildRegistry([
+      tenantWriteProvider("_test_confirm_chat", (args) => received.push(args)),
+    ]);
+    const confirmId = nextId();
+    await requestApproval({
+      db: testDb.db,
+      principal,
+      approval_id: confirmId,
+      tool: "_test_confirm_chat",
+      surface: "chat",
+      via: "chat",
+      reason: "category_default",
+      execution_mode: null,
+      args: { id: "A" },
+    });
     const envelope = await dispatchTool(
-      { registry, db, principal: PRINCIPAL, conversationCtx: {} as never },
+      { registry, db: testDb.db, principal, conversationCtx: {} as never },
       {
         surface: "chat",
         name: "_test_confirm_chat",
-        args: { __policy_confirmed: true, __policy_confirm_id: carriedId },
+        args: { __policy_confirmed: true, __policy_confirm_id: confirmId },
       },
     );
     expect(envelope.status).toBe("ok");
-    const approved = captured.filter((r) => r.action === "approval.approved");
-    expect(approved.length).toBe(1);
-    expect(approved[0]?.resource_id).toBe(carriedId);
+    expect(received).toEqual([{ id: "A" }]);
+    const rows = await approvalAuditRows(confirmId);
+    expect(rows.filter((r) => r.action === AuditAction.APPROVAL_APPROVED)).toHaveLength(1);
+  });
+});
+
+describe("tools/dispatcher — run_workflow canonicalization", () => {
+  // Uses run_workflow's REAL Zod schema (not a stand-in `{type:"object"}`
+  // descriptor) so the `.transform()` on `input` and the `.default("dev")`
+  // on `environment` are the actual ones canonicalizeArgs() runs against.
+  // The executor is a stub — this block tests the dispatcher's
+  // canonicalization step, not run_workflow's business logic.
+  function runWorkflowStub(onExecute: (args: Record<string, unknown>) => void): ToolProvider {
+    const descriptor: ToolDescriptor = {
+      name: "run_workflow",
+      description: "stub using the real run_workflow input schema",
+      category: "tenant_write",
+      inputSchema: runWorkflowTool.inputSchema,
+    };
+    return {
+      name: "RunWorkflowStubProvider",
+      list: () => [descriptor],
+      resolve: (n) =>
+        n === "run_workflow"
+          ? {
+              descriptor,
+              executor: {
+                kind: "conversation",
+                tool: undefined as never,
+                execute: async (_ctx: ToolContext, args: unknown) => {
+                  onExecute(args as Record<string, unknown>);
+                  return { ok: true, data: {} };
+                },
+              },
+            }
+          : undefined,
+    };
+  }
+
+  test("input as a JSON STRING vs an OBJECT canonicalize to the SAME args and the SAME execution", async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const registry = buildRegistry([runWorkflowStub((args) => received.push(args))]);
+    const inputObject = { city: "Berlin" };
+
+    // `environment: "dev"` keeps run_workflow's TOOL_POLICIES predicate at
+    // no_confirm (see conversations/tool-policies.ts) so both calls proceed
+    // straight to the executor — the canonical args are observable directly.
+    const envelope1 = await dispatchTool(
+      { registry, db: DB_STUB, principal: PRINCIPAL, conversationCtx: {} as never },
+      {
+        surface: "chat",
+        name: "run_workflow",
+        args: { workflow: "invoice-export", environment: "dev", input: inputObject },
+      },
+    );
+    const envelope2 = await dispatchTool(
+      { registry, db: DB_STUB, principal: PRINCIPAL, conversationCtx: {} as never },
+      {
+        surface: "chat",
+        name: "run_workflow",
+        args: {
+          workflow: "invoice-export",
+          environment: "dev",
+          input: JSON.stringify(inputObject),
+        },
+      },
+    );
+
+    expect(envelope1.status).toBe("ok");
+    expect(envelope2.status).toBe("ok");
+    expect(received).toHaveLength(2);
+    // Same canonical shape reached the executor both times — the object
+    // form was never re-serialized, and the string form was parsed back
+    // into an object, not left stringified.
+    expect(received[0]?.input).toEqual(inputObject);
+    expect(received[1]?.input).toEqual(inputObject);
+    expect(received[0]).toEqual(received[1]);
+  });
+
+  test("input as a JSON STRING vs an OBJECT produce the SAME args_hash on the paused approval", async () => {
+    // `environment: "prod"` forces run_workflow's confirm_before_execution
+    // mode (no execute_writes / auto-approve), so the canonical args are
+    // captured off the persisted APPROVAL_REQUESTED audit row's
+    // `metadata.args_hash` instead of the executor.
+    const principal = dbPrincipal();
+    const registry = buildRegistry([runWorkflowStub(() => {})]);
+    const inputObject = { city: "Berlin" };
+
+    const objectEnvelope = await dispatchTool(
+      { registry, db: testDb.db, principal, conversationCtx: {} as never },
+      {
+        surface: "mcp",
+        name: "run_workflow",
+        args: { workflow: "invoice-export", environment: "prod", input: inputObject },
+      },
+    );
+    const stringEnvelope = await dispatchTool(
+      { registry, db: testDb.db, principal, conversationCtx: {} as never },
+      {
+        surface: "mcp",
+        name: "run_workflow",
+        args: {
+          workflow: "invoice-export",
+          environment: "prod",
+          input: JSON.stringify(inputObject),
+        },
+      },
+    );
+    expect(objectEnvelope.status).toBe("needs_confirm");
+    expect(stringEnvelope.status).toBe("needs_confirm");
+    const [objectConfirmId, stringConfirmId] = [objectEnvelope, stringEnvelope].map((e) =>
+      e.status === "needs_confirm" ? e.confirm.tool_call_id : null,
+    );
+    expect(objectConfirmId).toBeTruthy();
+    expect(stringConfirmId).toBeTruthy();
+
+    const argsHashOf = async (confirmId: string): Promise<string | undefined> => {
+      const rows = await approvalAuditRows(confirmId);
+      const requested = rows.find((r) => r.action === AuditAction.APPROVAL_REQUESTED);
+      return (requested?.metadata as { args_hash?: string } | undefined)?.args_hash;
+    };
+    const objectHash = await argsHashOf(objectConfirmId as string);
+    const stringHash = await argsHashOf(stringConfirmId as string);
+    expect(objectHash).toBeDefined();
+    expect(objectHash).toBe(stringHash);
+  });
+
+  test("run_workflow WITHOUT an explicit environment resolves to the 'dev' default BEFORE policyDecide runs", async () => {
+    // Regression lock: canonicalizeArgs() must apply the Zod
+    // `.default("dev")` BEFORE policyDecide() reads `args.environment`.
+    // If policy ever saw the raw (environment-less) args again, run_workflow's
+    // computeModeFromInput would fall through to its `else` branch and
+    // demand a spurious confirm_before_execution for every dev-intent call
+    // that simply omitted the field.
+    const received: Array<Record<string, unknown>> = [];
+    const registry = buildRegistry([runWorkflowStub((args) => received.push(args))]);
+    const envelope = await dispatchTool(
+      { registry, db: DB_STUB, principal: PRINCIPAL, conversationCtx: {} as never },
+      { surface: "chat", name: "run_workflow", args: { workflow: "invoice-export" } },
+    );
+    expect(envelope.status).toBe("ok");
+    expect(received).toHaveLength(1);
+    expect(received[0]?.environment).toBe("dev");
   });
 });

@@ -15,8 +15,7 @@ export const listPatchCandidatesTool: ConversationTool = {
     "List Patch Candidates — LLM-proposed fixes for drifted workflow steps, awaiting approval.",
   inputSchema: ListInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = ListInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof ListInput>) {
     const rows = await ctx.engineClient.patchCandidates.list({
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
       ...(args.status !== undefined ? { status: args.status } : {}),
@@ -42,8 +41,7 @@ export const getPatchCandidateTool: ConversationTool = {
   description: "Fetch a patch candidate with full proposal body and reasoning.",
   inputSchema: GetInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     const p = await ctx.engineClient.patchCandidates.get(args.id);
     if (!p) return { ok: false, data: { error: "patch_candidate_not_found" } };
     return { ok: true, data: { candidate: p } };
@@ -56,8 +54,7 @@ export const previewPatchCandidateTool: ConversationTool = {
     "Human-readable before/after preview of a patch candidate: the affected step's current shape, the patched shape, and which paths change. Show this to the user BEFORE asking them to approve.",
   inputSchema: GetInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     const preview = await ctx.engineClient.patchCandidates.preview(args.id);
     if (!preview) return { ok: false, data: { error: "patch_candidate_not_found" } };
     return { ok: true, data: { preview } };
@@ -70,8 +67,7 @@ export const dryRunPatchCandidateTool: ConversationTool = {
     "Replay a patch candidate against a recorded (or synthesized) execution fixture WITHOUT applying it. Use to verify the patch projects cleanly before approval. Never mutates the candidate.",
   inputSchema: GetInput,
   category: "tenant_read",
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     const outcome = await ctx.engineClient.patchCandidates.dryRun(args.id);
     if (outcome.status === "not_found") {
       return { ok: false, data: { error: "patch_candidate_not_found" } };

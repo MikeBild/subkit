@@ -67,8 +67,7 @@ export const createScheduleTool: ConversationTool = {
   inputSchema: CreateInput,
   category: "tenant_write",
   requires_persisted_workflow: true,
-  async execute(ctx, rawArgs) {
-    const args = CreateInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof CreateInput>) {
     try {
       const row = await createSchedule(ctx.db, {
         tenant_id: ctx.tenant_id,
@@ -111,8 +110,7 @@ export const listSchedulesTool: ConversationTool = {
   // tenant-scoped only, so gate it here so the LLM-mediated path does not
   // leak schedules to a principal lacking schedule:read.
   permission: { action: "schedule:read", resourceType: "schedule" },
-  async execute(ctx, rawArgs) {
-    const args = ListInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof ListInput>) {
     // Schedules are a bounded catalog — the result is the COMPLETE set
     // and the envelope says so explicitly (self-describing cardinality).
     const { rows, total } = await listSchedules(
@@ -150,8 +148,7 @@ export const updateScheduleTool: ConversationTool = {
   inputSchema: UpdateInput,
   category: "tenant_write",
   requires_persisted_workflow: true,
-  async execute(ctx, rawArgs) {
-    const args = UpdateInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof UpdateInput>) {
     try {
       const patch: Record<string, unknown> = {};
       if (args.cron !== undefined) patch.cron = args.cron;
@@ -182,8 +179,7 @@ export const deleteScheduleTool: ConversationTool = {
   inputSchema: DeleteInput,
   category: "tenant_write",
   requires_persisted_workflow: true,
-  async execute(ctx, rawArgs) {
-    const args = DeleteInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof DeleteInput>) {
     // Fetch before delete so the audit entry carries the workflow id.
     const before = await getSchedule(ctx.db, ctx.tenant_id, args.id);
     const ok = await deleteSchedule(ctx.db, ctx.tenant_id, args.id);

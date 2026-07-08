@@ -15,7 +15,10 @@
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool, ToolResult } from "../../index.ts";
 
-const inputSchema = z
+/** Exported so the ONE direct caller outside the dispatcher — the
+ *  `create_api_key` commit-intent in `persistence/auto-persist.ts` — parses the
+ *  LLM-authored payload at its own boundary. `execute` never parses. */
+export const CreateApiKeyInput = z
   .object({
     name: z
       .string()
@@ -64,7 +67,7 @@ export const createApiKeyTool: ConversationTool = {
   name: "create_api_key",
   description:
     "Mint a new API key and return the plaintext token EXACTLY ONCE together with a paste-ready MCP/SDK config block. Call ONLY when the user has explicitly confirmed they want a new key minted (e.g. 'yes, create one', 'mint a key', 'I need a key'). Do NOT call in response to informational questions ('how do I connect…', 'what's the config…', 'can subkit work with X?') — answer those with a config template first, then ask the user to confirm before minting. Do NOT call ask_user_confirm yourself for this tool; the engine policy gate raises the confirmation and mints the key after approval. Never invent placeholder keys, never tell the user to run a CLI command to get one.",
-  inputSchema,
+  inputSchema: CreateApiKeyInput,
   category: "tenant_write",
   use_case:
     "Use AFTER the user explicitly confirms they want a new API key minted (for an MCP-client integration, an SDK quickstart, or a one-off script). Pair with `revoke_api_key` for rotation.",
@@ -77,9 +80,7 @@ export const createApiKeyTool: ConversationTool = {
     name: "MCP client",
     scopes: ["workflow:read", "workflow:invoke"],
   },
-  async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = inputSchema.parse(rawArgs);
-
+  async execute(ctx, args: z.infer<typeof CreateApiKeyInput>): Promise<ToolResult> {
     // Resolve the owner: explicit override only when the caller is admin.
     // EngineClient.context carries actor_id + actor_type; when the
     // calling actor is missing (system-driven flows) the tool refuses.

@@ -38,6 +38,7 @@ import { markConnectorNeedsReauth } from "../../connectors/reauth.ts";
 import * as oauthClient from "../../credentials/oauth2/client.ts";
 import { auditLog, connectors, conversationElicitations } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { appendSnapshot } from "../draft.ts";
 import { createConversation } from "../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
@@ -238,6 +239,7 @@ describe("Cognito re-issue form-submit path — Part B: dispatcher rotates crede
     let dispatchResult: Awaited<ReturnType<typeof maybeAutoPersistFromElicitation>>;
     try {
       dispatchResult = await maybeAutoPersistFromElicitation({
+        answer_actor: TEST_HUMAN_ANSWER,
         tenant_id: ctx.tenant_id,
         conversation_id,
         actor_id: ctx.user_id,

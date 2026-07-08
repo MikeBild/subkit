@@ -30,8 +30,7 @@ export const listUsersTool: ConversationTool = {
   inputSchema: ListUsersInput,
   category: "tenant_read",
   permission: { action: "identity:read", resourceType: "user" },
-  async execute(ctx, rawArgs) {
-    const args = ListUsersInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof ListUsersInput>) {
     const users = await ctx.engineClient.identity.listUsers({
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
       ...(args.offset !== undefined ? { offset: args.offset } : {}),
@@ -46,8 +45,7 @@ export const getUserTool: ConversationTool = {
   inputSchema: IdInput,
   category: "tenant_read",
   permission: { action: "identity:read", resourceType: "user", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const u = await ctx.engineClient.identity.getUser(args.id);
     if (!u) return { ok: false, data: { error: "user_not_found" } };
     return { ok: true, data: { user: u } };
@@ -72,8 +70,7 @@ export const getApiKeyTool: ConversationTool = {
   inputSchema: IdInput,
   category: "tenant_read",
   permission: { action: "api_key:read", resourceType: "api_key", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const k = await ctx.engineClient.identity.getApiKey(args.id);
     if (!k) return { ok: false, data: { error: "api_key_not_found" } };
     return { ok: true, data: { api_key: k } };
@@ -98,8 +95,7 @@ export const listSystemAccountsTool: ConversationTool = {
   inputSchema: ListUsersInput,
   category: "tenant_read",
   permission: { action: "identity:read", resourceType: "user" },
-  async execute(ctx, rawArgs) {
-    const args = ListUsersInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof ListUsersInput>) {
     const rows = await ctx.engineClient.identity.listSystemAccounts({
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
       ...(args.offset !== undefined ? { offset: args.offset } : {}),

@@ -32,8 +32,7 @@ export const updateSkillTool: ConversationTool = {
   inputSchema: UpdateSkillInput,
   category: "tenant_write",
   permission: { action: "skill:write", resourceType: "skill", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = UpdateSkillInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof UpdateSkillInput>) {
     const { id, ...patch } = args;
 
     try {

@@ -88,6 +88,7 @@ async function createConversationAndRunTurn(
         conversation_id: created.conversation.id,
         actor_id: params.actor_id ?? null,
         user_message: created.initial_message,
+        answer_actor: TEST_HUMAN_ANSWER,
         user_memory: created.user_memory,
         turn_abort_ctrl: ctrl,
       },
@@ -104,6 +105,7 @@ import type { DraftDocument } from "../../conversations/types.ts";
 import { conversationElicitations } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
+import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   createJourneyCtx,

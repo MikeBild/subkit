@@ -161,11 +161,13 @@ describe("run_workflow tool", () => {
           nextDraft = draft;
         },
       }),
-      {
+      // The dispatch boundary parses; the executor receives the canonical
+      // value. Stringified `input` is normalized to a record HERE, once.
+      runWorkflowTool.inputSchema.parse({
         workflow: workflow_id,
         environment: "dev",
         input: '{"date":"tomorrow +1"}',
-      },
+      }),
     );
 
     expect(result.ok).toBe(true);

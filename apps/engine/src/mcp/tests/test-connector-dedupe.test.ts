@@ -88,10 +88,12 @@ describe("mcp test_connector — deduplicated via unified dispatcher", () => {
     expect(data.error_code).toBe("connector_not_found");
   });
 
-  test("missing connector_id arg surfaces as tool_execute_failed envelope", async () => {
-    // Zod validation failure inside the conversation tool's execute()
-    // is normalized by the dispatcher to a structured error envelope
-    // (the conversation tool re-parses inputSchema and throws ZodError).
+  test("missing connector_id arg surfaces as invalid_args envelope", async () => {
+    // The dispatcher canonicalizes args against the tool's inputSchema ONCE, at
+    // the boundary, before the executor runs (Zod-at-the-boundary). A missing
+    // required arg is therefore an `invalid_args` validation failure at that
+    // gate — not a `tool_execute_failed` thrown from a re-parse inside
+    // execute(), which was the old double-parse behaviour.
     const client = await suite.connect();
     const result = await client.callTool({
       name: "test_connector",
@@ -103,7 +105,7 @@ describe("mcp test_connector — deduplicated via unified dispatcher", () => {
       error_code?: string;
       message?: string;
     };
-    expect(data.error_code).toBe("tool_execute_failed");
+    expect(data.error_code).toBe("invalid_args");
     expect(data.message).toBeTruthy();
   });
 

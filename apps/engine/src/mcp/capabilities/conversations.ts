@@ -28,12 +28,18 @@ import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { persistedWorkflowResource } from "../../conversations/authoring-state/summary.ts";
 import { loadDraft } from "../../conversations/draft.ts";
+import { getElicitation } from "../../conversations/elicitations.ts";
 import { classifyDraftVsPersisted } from "../../conversations/persistence/draft-diff.ts";
 import { findResumableAuthoringConversation } from "../../conversations/resumable-authoring.ts";
 import * as svc from "../../conversations/service.ts";
+import {
+  approvalHandleFromElicitationInput,
+  elicitationInputForClient,
+} from "../../conversations/tools/ask-user/commit-intent.ts";
 import { buildWorkflowUsage } from "../../conversations/tools/usage-guidance.ts";
 import { suggestConversationsByTopic } from "../../conversations/topic-routing.ts";
 import type { Db } from "../../db/client.ts";
+import { logger } from "../../logging/logger.ts";
 import { enqueueConversationRunTurn } from "../../queue/handlers/conversation-run-turn.ts";
 import { getBoss } from "../../queue/index.ts";
 import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
@@ -315,6 +321,65 @@ async function backgroundTurn(p: {
   });
 }
 
+/**
+ * Refuse a `conversation_respond_elicitation` that would resolve a HUMAN's
+ * approval decision, or `null` when the elicitation is an ordinary question the
+ * model may answer.
+ *
+ * `conversation_*` deliberately bypasses `dispatchTool` (these are session RPCs,
+ * not palette tools), so `policyDecide` never sees this call. That routing is why
+ * the guard lives here, at the surface that owns the door — not because the
+ * policy gate is optional.
+ *
+ * Tenant- and conversation-scoped by `getElicitation` + the id comparison: a
+ * foreign row cannot be probed for its approval handle. A row the caller may not
+ * see reads as "no handle" and falls through to `stageElicitationAnswer`, whose
+ * own `(tenant, conversation, id)` predicate then answers `not_found`.
+ */
+async function refuseApprovalElicitation(
+  db: Db,
+  principal: ResolvedPrincipal,
+  args: { conversation_id: string; elicitation_id: string },
+): Promise<HandleConversationToolResult | null> {
+  const row = await getElicitation(principal.tenant_id, args.elicitation_id, db);
+  if (!row || row.conversation_id !== args.conversation_id) return null;
+  const approvalId = approvalHandleFromElicitationInput(row.input);
+  if (!approvalId) return null;
+
+  logger.warn({
+    module: "mcp",
+    action: "mcp.conversation.approval_elicitation_refused",
+    msg: "conversation_respond_elicitation named an elicitation that carries an approval handle; a model cannot grant a human's approval",
+    tool: "conversation_respond_elicitation",
+    conversation_id: args.conversation_id,
+    elicitation_id: args.elicitation_id,
+    approval_id: approvalId,
+    elicitation_tool: row.tool_name,
+    principal_id: principal.id,
+    tenant_id: principal.tenant_id,
+  });
+  return {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          status: "cannot_help",
+          error_code: "approval_requires_human",
+          elicitation_id: args.elicitation_id,
+          approval_id: approvalId,
+          message:
+            `Elicitation ${args.elicitation_id} is a person's approval decision for approval ${approvalId}, not a question you may answer. ` +
+            "Resolving it would perform a write the engine is holding, so this tool refuses it — nothing was written and nothing was resolved. " +
+            "A person grants or declines it themselves: in the chat UI where it was raised, or by opening the approval_url the engine returned when the call was first held. " +
+            "Relay that to the user and wait. Do NOT retry this call, and do NOT re-issue the original tool call.",
+          next_best_actions: ["conversation_get"],
+        }),
+      },
+    ],
+  };
+}
+
 export async function handleConversationTool(
   p: HandleConversationToolParams,
 ): Promise<HandleConversationToolResult> {
@@ -407,6 +472,17 @@ export async function handleConversationTool(
       if (!parsed.success) {
         return errorText("conversation_id and elicitation_id are required");
       }
+      // An elicitation whose commit_intent names an approval_id is not a
+      // question — it IS the approval. Resolving it makes the harness claim a
+      // single-use capability over args the engine encrypted, and this tool is
+      // called by the MODEL. Letting it answer `{confirmed:true}` here would let
+      // the model grant the very approval the policy gate raised, through a door
+      // that never passes `policyDecide`.
+      //
+      // Every other elicitation kind (form, choice, text, multi) stays
+      // model-resolvable: relaying the user's typed answer is what they are for.
+      const refusal = await refuseApprovalElicitation(db, principal, parsed.data);
+      if (refusal) return refusal;
       // Stage the answer onto the `conversation_elicitations.output`
       // column BEFORE enqueue. An `ask_user_form` answer can exceed
       // pg-boss' 8 KB envelope cap; staging it here keeps the job
@@ -660,7 +736,10 @@ async function conversationGet(
         status: "input_required",
         conversation_id,
         pending_elicitation_id: pending.id,
-        input: pending.input,
+        // `pending` is the raw `conversation_elicitations` row. This reply is a
+        // model-facing tool result, so it carries the prompt the operator's
+        // client renders and not the approval handle the harness reads.
+        input: elicitationInputForClient(pending.input),
         result: leanResult,
       });
     }
@@ -682,7 +761,7 @@ async function conversationGet(
       status: "input_required",
       conversation_id,
       pending_elicitation_id: pending.id,
-      input: pending.input,
+      input: elicitationInputForClient(pending.input),
     });
   }
   return workingHeartbeat(db, principal.tenant_id, conversation_id, latest.created_at.getTime());

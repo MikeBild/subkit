@@ -38,8 +38,7 @@ export const deleteWorkflowTool: ConversationTool = {
   // the step-router drop it from the palette whenever no workflow was bound to
   // the conversation, so "delete workflow X" on a fresh chat had no tool to
   // reach for and the model fell back to delete_connector. See step-router.ts.
-  async execute(ctx, rawArgs) {
-    const args = WorkflowDeleteInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof WorkflowDeleteInput>) {
     // RBAC (`workflow:delete`) is enforced centrally via the `permission`
     // descriptor before execute runs — see permission-gate.ts.
     let workflow: Awaited<ReturnType<typeof ctx.engineClient.workflows.get>> | null = null;
@@ -114,8 +113,7 @@ export const deleteConnectorTool: ConversationTool = {
   inputSchema: IdInput,
   category: "tenant_write",
   permission: { action: "connector:delete", resourceType: "connector", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const connector = await ctx.engineClient.connectors.get(args.id);
     if (!connector) return { ok: false, data: { error: "connector_not_found" } };
 
@@ -182,8 +180,7 @@ export const deleteKnowledgeSourceTool: ConversationTool = {
   inputSchema: IdInput,
   category: "tenant_write",
   permission: { action: "knowledge:delete", resourceType: "knowledge_source", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const source = await ctx.engineClient.knowledgeSources.get(args.id);
     if (!source) return { ok: false, data: { error: "knowledge_source_not_found" } };
 
@@ -228,8 +225,7 @@ export const deleteSubscriptionTool: ConversationTool = {
   inputSchema: IdInput,
   category: "tenant_write",
   permission: { action: "subscription:delete", resourceType: "subscription", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const subscription = await ctx.engineClient.subscriptions.get(args.id);
     if (!subscription) return { ok: false, data: { error: "subscription_not_found" } };
 
@@ -276,8 +272,7 @@ export const revokeApiKeyTool: ConversationTool = {
   inputSchema: IdInput,
   category: "tenant_write",
   permission: { action: "api_key:revoke", resourceType: "api_key", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const apiKey = await ctx.engineClient.identity.getApiKey(args.id);
     if (!apiKey) return { ok: false, data: { error: "api_key_not_found" } };
 
@@ -317,8 +312,7 @@ export const revokePortalTokenTool: ConversationTool = {
   inputSchema: IdInput,
   category: "tenant_write",
   permission: { action: "portal_token:revoke", resourceType: "portal_token", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = IdInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof IdInput>) {
     const revoked = await ctx.engineClient.identity.revokePortalToken(args.id);
     if (!revoked) {
       const audit_log_id = await ctx.engineClient.audit_write({

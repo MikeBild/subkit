@@ -83,8 +83,12 @@ export function checkDecline(toolName: string, output: unknown): DeclineSignal |
   return null;
 }
 
-export function intentToolName(kind: CommitIntent["kind"]): string {
-  switch (kind) {
+/** The tool name the synthetic result is attributed to. Takes the whole intent
+ *  because `commit_held_workflow_writes` names its `wf_<slug>` tool in the
+ *  payload — attributing its result to a generic `run_workflow` would put a
+ *  tool the model never called into the transcript. */
+export function intentToolName(intent: CommitIntent): string {
+  switch (intent.kind) {
     case "save_connector_draft":
       return "save_connector_draft";
     case "save_workflow_draft":
@@ -109,6 +113,24 @@ export function intentToolName(kind: CommitIntent["kind"]): string {
       return "edit_workflow_patch";
     case "update_workflow_metadata":
       return "update_workflow";
+    case "commit_held_workflow_writes": {
+      const tool = intent.payload.tool;
+      return typeof tool === "string" && tool.length > 0 ? tool : "run_workflow";
+    }
+    case "execute_confirmed_tool_call": {
+      // The gated tool names itself in the payload — attributing its result to
+      // a generic placeholder would put a tool the model never called into the
+      // transcript.
+      const tool = intent.payload.tool;
+      return typeof tool === "string" && tool.length > 0 ? tool : "unknown_tool";
+    }
+    case "grant_relayed_tool_call": {
+      // The external MCP tool names itself in the payload — the synthetic
+      // "approved, now re-issue" result must be attributed to it so the model
+      // re-issues THAT tool, not a placeholder.
+      const tool = intent.payload.tool;
+      return typeof tool === "string" && tool.length > 0 ? tool : "unknown_tool";
+    }
   }
 }
 
@@ -117,12 +139,12 @@ export function buildDeclineSynthetic(
   signal: DeclineSignal,
 ): SyntheticToolResult {
   return {
-    tool: intentToolName(intent.kind),
+    tool: intentToolName(intent),
     ok: false,
     error_code: signal.error_code,
     message:
       signal.error_code === "user_declined"
-        ? `operator declined the ${intent.kind} action — do not retry without asking again`
+        ? `The operator declined this ${intent.kind}. It is settled — do NOT re-propose the same action or re-issue the same confirmation. Nothing was performed. Stop and wait for a new instruction from the user; only revisit this if they ask you to.`
         : "operator submitted an empty form — re-ask only if you have a different question to pose",
     next_best_actions: ["ask_user", "cannot_help"],
     source: "harness_auto_persist",

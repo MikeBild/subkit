@@ -20,6 +20,7 @@ import {
   tenants,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   withConnectorInspection,
@@ -131,6 +132,7 @@ describe("force_save through a resolved approval bypasses the probe-failure cool
     if (!row) throw new Error("failed to insert elicitation");
 
     const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
       tenant_id,
       conversation_id,
       actor_id: null,

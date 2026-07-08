@@ -60,8 +60,7 @@ export const updateConnectorTool: ConversationTool = {
   inputSchema: UpdateConnectorInput,
   category: "tenant_write",
   permission: { action: "connector:write", resourceType: "connector", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = UpdateConnectorInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof UpdateConnectorInput>) {
     try {
       const view = await ctx.engineClient.connectors.update(args.id, {
         ...(args.name !== undefined ? { name: args.name } : {}),

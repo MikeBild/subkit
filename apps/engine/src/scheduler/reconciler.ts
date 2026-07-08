@@ -41,6 +41,7 @@ import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
+import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
 
 /** Fixed cadence for proactive drift scans (per scope decision). One
  *  hour balances early-detection value against the cost of repeated
@@ -76,6 +77,12 @@ const MCP_OAUTH_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
  *  hourly keeps growth bounded and the cadence in line with the other
  *  retention sweeps. */
 const CHAT_DEDUP_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
+
+/** Fixed cadence for the `tool_approvals` retention sweep. Hourly, like the
+ *  other retention sweeps: the rows are bounded by a 15-minute TTL plus a
+ *  1-day retention window, and the sweep filters by `now() - interval ...`
+ *  so a concurrent instance is a no-op. */
+const TOOL_APPROVALS_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
 /** Cadence for the embedding backfill sweep — populates chunk + conversation
  *  topic embeddings out-of-band (ingest stays fast). Five minutes so new
@@ -318,6 +325,9 @@ export class SchedulerReconciler {
   /** Last instant the chat_events_seen retention sweep ran. */
   private lastChatDedupCleanupAt: Date | null = null;
 
+  /** Last instant the tool_approvals retention sweep ran. */
+  private lastToolApprovalsCleanupAt: Date | null = null;
+
   /** Last instant the embedding backfill sweep ran. In-process throttle to
    *  EMBEDDING_BACKFILL_CADENCE_MS; the sweep is idempotent so overlap is safe. */
   private lastEmbeddingBackfillAt: Date | null = null;
@@ -529,6 +539,18 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "chat_dedup_cleanup_failed",
         msg: "scheduler chat-dedup cleanup pass failed",
+        ...errorFields(err),
+      });
+    });
+    // tool_approvals retention sweep. Same hour-throttle pattern; bounds how
+    // long the encrypted approved-args ciphertext survives its own TTL.
+    await retryTransient(() => this.reconcileToolApprovalsCleanup(), {
+      label: "tool_approvals_cleanup",
+    }).catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "tool_approvals_cleanup_failed",
+        msg: "scheduler tool-approvals cleanup pass failed",
         ...errorFields(err),
       });
     });
@@ -1063,6 +1085,20 @@ export class SchedulerReconciler {
     }
     this.lastChatDedupCleanupAt = now;
     await runChatDedupCleanup(now, this.opts.db);
+  }
+
+  /**
+   * Throttle the `tool_approvals` retention sweep. Same semantics as
+   * `reconcileMcpOAuthCleanup` — the sweeps are filtered by
+   * `now() - interval '1 day'` so a concurrent instance is a no-op.
+   */
+  async reconcileToolApprovalsCleanup(now: Date = new Date()): Promise<void> {
+    if (this.lastToolApprovalsCleanupAt !== null) {
+      const elapsed = now.getTime() - this.lastToolApprovalsCleanupAt.getTime();
+      if (elapsed < TOOL_APPROVALS_CLEANUP_CADENCE_MS) return;
+    }
+    this.lastToolApprovalsCleanupAt = now;
+    await runToolApprovalsCleanup(now, this.opts.db);
   }
 
   /**

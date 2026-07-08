@@ -335,18 +335,14 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       // in dev: dispatching real sends/writes must be human-approved.
       // Default runs hold writes (no dispatch), so they need no confirm.
       if (obj.execute_writes === true) return "confirm_before_execution";
-      // Dev-environment runs default to auto; prod requires confirm
-      // unless the caller explicitly opts into auto-approval via
-      // `_meta.sk_auto_approve=true`. The auto-approval path was added so
-      // `permission_mode=auto` clients can run saved tools in prod
-      // without bouncing through a confirm envelope the user already
-      // authorized in chat input.
-      const env = obj.environment;
-      const meta = asObj(obj._meta);
-      const auto = meta.sk_auto_approve === true;
-      if (env === "dev") return "no_confirm";
-      if (auto) return "no_confirm";
-      return "confirm_before_execution";
+      // Dev-environment runs hold their writes and touch no production
+      // system, so they run unattended. A prod run confirms. The ONLY
+      // relaxation is the client's declared `permission_mode`, which
+      // `decideToolMode` applies above this hook — this predicate never
+      // reads transport metadata: `input` is the args canonicalized
+      // through this tool's own Zod schema, and an out-of-band
+      // auto-approve flag would be an escape hatch around the operator.
+      return obj.environment === "dev" ? "no_confirm" : "confirm_before_execution";
     },
     buildPendingOutput: (input) => {
       const obj = asObj(input);
@@ -549,30 +545,66 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
 };
 
 /**
- * Full mode-resolution stack:
- *   1. client permission_mode ("auto" / "ask" / "plan" / "yolo") — outer gate
- *   2. per-conversation override (`conversations.tool_policies` jsonb)
- *   3. dynamic compute-from-input hook
- *   4. per-tool default mode
- *   5. category default
- *
- * The permission_mode gate fires first and **short-circuits**:
- *   - `auto` short-circuits non-dangerous tools.
- *   - `yolo` short-circuits everything except inline-credential
- *     safeguards (those run before the mode check). yolo is gated at
- *     a higher layer by tenant policy + non-stickiness + expiry; by
- *     the time it reaches this resolver, the user has explicitly armed
- *     a destructive override and we honour it.
- *
- * Called from `sdk-wrap.ts` before every tool dispatch.
+ * Which rule in the resolution stack produced the enforced mode. The
+ * `tool_policy.confirmation_required` audit row records this verbatim, so
+ * an operator reading the trail sees WHY a call was gated — not merely
+ * that it was. Every value here names a branch of `decideToolMode`; there
+ * is no second, advisory table that could disagree with it.
  */
-export function resolveToolMode(args: {
+export type ToolModeRule =
+  | "inline_credential"
+  | "permission_mode"
+  | "conversation_override"
+  | "computed_from_input"
+  | "tool_default"
+  | "category_default";
+
+export interface ToolModeDecision {
+  mode: ToolPolicyMode;
+  rule: ToolModeRule;
+}
+
+/**
+ * Full mode-resolution stack:
+ *   1. inline-credential safeguard
+ *   2. client permission_mode ("auto" / "ask" / "plan" / "yolo") — outer gate
+ *   3. per-conversation override (`conversations.tool_policies` jsonb)
+ *   4. dynamic compute-from-input hook
+ *   5. per-tool default mode
+ *   6. category default
+ *
+ * The inline-credential safeguard fires FIRST and is category-independent: a
+ * tool that DECLARED its credential slots (`credentialFields`) and finds one
+ * filled confirms, whatever its category and whatever the client's
+ * permission_mode. A `no_confirm` category default must never be the reason a
+ * pasted PAT reaches a vendor unseen.
+ *
+ * There is deliberately no undeclared-secret heuristic here. Shape-matching
+ * every string of every payload against `SECRET_PATTERNS` is a REDACTION
+ * predicate, not an authorization one: it has no notion of what the call does,
+ * and its high-entropy branch already once matched a legitimate base64 literal
+ * inside a saved transform. Gating enforcement on it would pause `no_confirm`
+ * reads like `dry_run_transform` on every iteration of an authoring session,
+ * above the `yolo` short-circuit that is supposed to clear them.
+ *
+ * The permission_mode gate then short-circuits:
+ *   - `auto` short-circuits non-dangerous tools.
+ *   - `yolo` short-circuits everything except the inline-credential safeguard
+ *     above. yolo is gated at a higher layer by tenant policy +
+ *     non-stickiness + expiry; by the time it reaches this resolver, the
+ *     user has explicitly armed a destructive override and we honour it.
+ *
+ * This is the ONE enforcement table. `resolveToolMode` projects the mode
+ * for callers that only gate on it; `decideToolMode` additionally names
+ * the rule for the audit trail.
+ */
+export function decideToolMode(args: {
   tool: string;
   category: "draft_write" | "tenant_read" | "tenant_write";
   input: unknown;
   overrides: ToolPolicies;
   permission_mode?: PermissionMode | null;
-}): ToolPolicyMode {
+}): ToolModeDecision {
   const { tool, category, input, overrides, permission_mode } = args;
 
   const def = TOOL_POLICIES[tool];
@@ -588,34 +620,51 @@ export function resolveToolMode(args: {
   // pasted inline. The user still sees one confirm step that surfaces
   // exactly which credential field is being staged.
   if (def?.credentialFields && hasInlineCredential(input, def.credentialFields)) {
-    return "confirm_before_execution";
+    return { mode: "confirm_before_execution", rule: "inline_credential" };
   }
 
   if (permission_mode === "yolo") {
     // Hard-armed escape hatch. Tenant policy + client-side typed
     // confirmation + 10-turn / 10-min expiry already gated this; the
-    // resolver honours the override unconditionally. Inline-credential
-    // safeguard above still fires — yolo never auto-persists a secret
-    // the user pasted into chat.
-    return "no_confirm";
+    // resolver honours the override unconditionally. The inline-credential
+    // safeguard above still fires — yolo never auto-persists a credential
+    // the user pasted into a declared slot.
+    return { mode: "no_confirm", rule: "permission_mode" };
   }
   if (permission_mode === "auto" && !isDangerous) {
-    return "no_confirm";
+    return { mode: "no_confirm", rule: "permission_mode" };
   }
   if (permission_mode === "ask" || permission_mode === "plan") {
     // "plan" is surfaced to the client identically to "ask" — the UI
     // holds the confirmations until the user leaves plan mode. From
     // the engine's perspective both modes gate tenant_write on confirm.
-    if (category === "tenant_write" || isDangerous) return "confirm_before_execution";
+    if (category === "tenant_write" || isDangerous) {
+      return { mode: "confirm_before_execution", rule: "permission_mode" };
+    }
   }
 
-  if (overrides[tool]) return overrides[tool];
+  const override = overrides[tool];
+  if (override) return { mode: override, rule: "conversation_override" };
   if (def?.computeModeFromInput) {
     const computed = def.computeModeFromInput(input);
-    if (computed) return computed;
+    if (computed) return { mode: computed, rule: "computed_from_input" };
   }
-  if (def?.defaultMode) return def.defaultMode;
-  return defaultModeForCategory(category);
+  if (def?.defaultMode) return { mode: def.defaultMode, rule: "tool_default" };
+  return { mode: defaultModeForCategory(category), rule: "category_default" };
+}
+
+/**
+ * The enforced execution mode for a tool call. Called from `sdk-wrap.ts`
+ * and `policyDecide` before every tool dispatch.
+ */
+export function resolveToolMode(args: {
+  tool: string;
+  category: "draft_write" | "tenant_read" | "tenant_write";
+  input: unknown;
+  overrides: ToolPolicies;
+  permission_mode?: PermissionMode | null;
+}): ToolPolicyMode {
+  return decideToolMode(args).mode;
 }
 
 /**

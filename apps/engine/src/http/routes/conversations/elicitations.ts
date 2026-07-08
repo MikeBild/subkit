@@ -10,6 +10,7 @@ import { streamSSE } from "hono/streaming";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import * as svc from "../../../conversations/index.ts";
 import {
+  humanChatAnswer,
   registerConversationAbort,
   serializeEvent,
   unregisterConversationAbort,
@@ -103,6 +104,10 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         // `principal_required` and the loop guard blocks after 3 retries
         // (root cause of the `run_workflow.no_principal` warn floods).
         principal,
+        // A person answered, in an authenticated session. This is the grant
+        // channel for every approval the chat gate raises — 244 of these in
+        // production, against 0 fulfilled in-band MCP elicitations.
+        answer_actor: humanChatAnswer(principal),
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,
         ...(body.reason ? { reason: body.reason } : {}),
@@ -229,6 +234,9 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         conversation_id: id,
         elicitation_id: elicit.id,
         actor_id: principal.id,
+        // Same authenticated person, reaching the same dialog by the tool_call
+        // id they tracked instead of the elicitation id.
+        answer_actor: humanChatAnswer(principal),
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,
         ...(body.reason ? { reason: body.reason } : {}),

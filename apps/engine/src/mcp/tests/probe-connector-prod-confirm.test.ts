@@ -1,22 +1,25 @@
 // Probe-connector prod-write confirm-loop integration test.
 //
-// Before the unified palette, `mcp/capabilities/policy-gate.ts:84`
-// short-circuited every `tenant_read` tool past `computeModeFromInput`
-// — so `probe_connector` with `method: POST environment: prod` ran
-// without confirmation on MCP, while chat correctly demanded it. The
-// unified policy gate fixed this; this test pins the fix end-to-end.
+// Before the unified palette, the MCP-side gate short-circuited every
+// `tenant_read` tool past `computeModeFromInput` — so `probe_connector`
+// with `method: POST environment: prod` ran without confirmation on MCP,
+// while chat correctly demanded it. `policyDecide` fixed this; this test
+// pins the fix end-to-end.
 //
 // Confirmed flow:
 //   1. tools/call probe_connector {method:POST, environment:prod} →
 //      isError:false, content.status="needs_confirm", carries
-//      tool_call_id.
-//   2. tools/call probe_connector {...same args..., _meta:{sk_confirm:true,
+//      tool_call_id (the trigger handle) and approval_url (the human channel).
+//   2. A HUMAN grants the approval out of band (the portal). Nothing before this
+//      can release the call: `sk_confirm` is a trigger, not an approval.
+//   3. tools/call probe_connector {...same args..., _meta:{sk_confirm:true,
 //      sk_confirm_id:<id>}} → executes, returns HTTP envelope.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
+import { grantApproval } from "../../tools/approval.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -87,7 +90,44 @@ describe("probe_connector — prod-write confirm loop on MCP", () => {
     expect((after[0]?.c ?? 0) - baselineCount).toBe(1);
   });
 
-  test("re-issue with sk_confirm=true proceeds and APPROVAL_APPROVED correlates by tool_call_id", async () => {
+  test("sk_confirm=true on an UNGRANTED approval does not execute", async () => {
+    await suite.seedConnector({
+      slug: "prod-post-probe-ungranted",
+      environment: "prod",
+      base_url: mock.baseUrl,
+    });
+    const client = await suite.connect();
+    const args = {
+      connector_slug: "prod-post-probe-ungranted",
+      method: "POST",
+      path: "/orders",
+      environment: "prod",
+      body: { qty: 9 },
+    };
+
+    const first = await client.callTool({ name: "probe_connector", arguments: args });
+    const toolCallId = (
+      JSON.parse((first.content as Array<{ text: string }>)[0]!.text) as { tool_call_id?: string }
+    ).tool_call_id!;
+    expect(toolCallId).toBeTruthy();
+
+    // The model holds a real id for a real approval — and it is still not the
+    // person who must approve it.
+    const second = await client.callTool({
+      name: "probe_connector",
+      arguments: args,
+      _meta: { sk_confirm: true, sk_confirm_id: toolCallId },
+    });
+    expect(second.isError).toBe(true);
+    const payload = JSON.parse((second.content as Array<{ text: string }>)[0]!.text) as {
+      error_code?: string;
+      status_code?: number;
+    };
+    expect(payload.error_code).toBe("approval_not_granted");
+    expect(payload.status_code).toBeUndefined();
+  });
+
+  test("re-issue with sk_confirm=true after a human grant proceeds; APPROVAL_APPROVED correlates by tool_call_id", async () => {
     await suite.seedConnector({
       slug: "prod-post-probe-2",
       environment: "prod",
@@ -112,7 +152,18 @@ describe("probe_connector — prod-write confirm loop on MCP", () => {
     const toolCallId = firstPayload.tool_call_id!;
     expect(toolCallId).toBeTruthy();
 
-    // Approval count baseline (post-first-call, pre-confirm).
+    // A person opens the approval portal and grants it. This — not the marker
+    // below — is what makes the call claimable.
+    const granted = await grantApproval({
+      db: suite.http.db,
+      approval_id: toolCallId,
+      tenant_id: suite.http.tenantId,
+      granted_by_user_id: suite.http.userId,
+      via: "portal",
+    });
+    expect(granted.ok).toBe(true);
+
+    // Approval count baseline (post-grant, pre-confirm).
     const baseline = await suite.http.db
       .select({ c: count() })
       .from(auditLog)

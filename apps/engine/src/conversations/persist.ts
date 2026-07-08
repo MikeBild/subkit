@@ -252,6 +252,14 @@ export async function insertToolCall(
     tool: string;
     input: unknown;
     approval_required: boolean;
+    /**
+     * Engine-side bookkeeping about this call's confirmation. NOT model-facing:
+     * `buildModelMessages` replays `input`, `output`, `confirmation_state`, and
+     * `interaction_log`, never this column, and no client projection
+     * (`ConversationToolCallRecord`) carries it. The fast path parks its
+     * approval id here so the handle never enters LLM context.
+     */
+    confirmation_data?: Record<string, unknown>;
   },
 ): Promise<string> {
   const [row] = await db
@@ -263,6 +271,7 @@ export async function insertToolCall(
       tool: params.tool,
       input: params.input as Record<string, unknown>,
       approval_required: params.approval_required,
+      ...(params.confirmation_data ? { confirmation_data: params.confirmation_data } : {}),
     })
     .returning({ id: conversationToolCalls.id });
   assertInsertRow(row, "conversation_tool_calls");
@@ -800,9 +809,9 @@ export async function buildModelMessages(
         // Splice confirmation state + interaction_log into the
         // tool-result payload the model sees on the next turn. This
         // lets the model distinguish "user tested" from "user
-        // confirmed" and re-issue the tool with `__policy_confirmed`
-        // when appropriate — faithful replay of
-        // `conversation_tool_calls.interaction_log` append-only rows.
+        // confirmed" and narrate the outcome accurately — faithful replay of
+        // `conversation_tool_calls.interaction_log` append-only rows. It is not
+        // a resume channel: the harness performs the approved call itself.
         const confirmationState = call.confirmation_state;
         const interactionLog = Array.isArray(call.interaction_log)
           ? (call.interaction_log as Array<Record<string, unknown>>)

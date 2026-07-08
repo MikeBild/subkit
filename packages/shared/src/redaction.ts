@@ -324,19 +324,23 @@ function scrubPresignUrls(value: string): string {
 /**
  * Deliberately presentable token forms the scrubber must NOT redact.
  *
- * `skog_…` — single-use OAuth start grants (connector re-auth). Their
- * entire purpose is to be shown to a human who opens the URL in a
- * browser; redacting one bricks the re-auth flow on every surface
- * (caught live: `?grant=***REDACTED:generic***` in the first 6.18.x
- * deploy made the sign-in link unusable). The exposure is bounded by
- * design — 10-min TTL, atomic single-use claim, sha256-at-rest, and an
- * issued/consumed audit pair — which is exactly why the prefix exists:
- * it marks the token as a user-facing capability, not a credential.
+ * The `sk??_…` browser-grant family. Every one of them is a single-use,
+ * short-TTL, sha256-at-rest capability whose entire purpose is to be shown to a
+ * human who opens the URL in a browser; redacting one bricks the flow it exists
+ * to carry (caught live: `?grant=***REDACTED:generic***` in the first 6.18.x
+ * deploy made the sign-in link unusable). The prefix is what marks the token as
+ * a user-facing capability rather than a credential:
+ *
+ *   `skog_…` — OAuth start grants (connector re-auth).
+ *   `sksg_…` — credential-setup grants (non-OAuth connector re-auth).
+ *   `skag_…` — approval grants. The approval portal is the ONLY channel through
+ *              which a human grants a tool approval on MCP, so a redacted link
+ *              means no write is ever approvable.
  */
 // The generic charset includes `=`, so inside a URL the matched run is
 // `grant=skog_…` — allow exactly one optional `<param>=` prefix ahead
 // of the grant, nothing else.
-const PRESENTABLE_TOKEN_RE = /^(?:[A-Za-z]+=)?skog_[A-Za-z0-9_-]{20,}$/;
+const PRESENTABLE_TOKEN_RE = /^(?:[A-Za-z]+=)?sk(?:og|sg|ag)_[A-Za-z0-9_-]{20,}$/;
 
 function isPresentableToken(match: string): boolean {
   return PRESENTABLE_TOKEN_RE.test(match);

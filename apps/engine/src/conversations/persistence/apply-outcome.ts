@@ -19,6 +19,7 @@
 
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import type { AnswerActor } from "../answer-actor.ts";
 import {
   type AutoPersistDispatch,
   maybeAutoPersistFromElicitation,
@@ -32,6 +33,9 @@ export interface ApplyElicitationOutcomeInput {
   /** Resolved principal of the answering actor — threaded into the
    *  auto-persist dispatcher for RBAC-gated intents (run_workflow). */
   principal?: ResolvedPrincipal | null;
+  /** WHO answered — the only thing that can grant an engine-authored approval.
+   *  Declared by the resuming surface, never inferred from `principal`. */
+  answer_actor: AnswerActor;
   /** The resolved carrier elicitation row. */
   elicitation: {
     id: string;
@@ -69,6 +73,7 @@ export async function applyElicitationOutcome(
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     actor_id: p.actor_id,
+    answer_actor: p.answer_actor,
     ...(p.principal !== undefined ? { principal: p.principal } : {}),
     ...(p.surface ? { surface: p.surface } : {}),
     elicitation_output: p.output,

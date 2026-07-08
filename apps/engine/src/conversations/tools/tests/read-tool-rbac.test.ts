@@ -156,7 +156,12 @@ describe("gated read tools deny an unauthorized principal on MCP + write POLICY_
     { name: "list_api_keys", args: {} },
     { name: "list_portal_tokens", args: {} },
     { name: "list_capability_gaps", args: {} },
-    { name: "get_execution", args: {} },
+    // A well-formed id so the call reaches the RBAC gate: the dispatcher
+    // canonicalizes args before RBAC (step 4 → step 5) so a resource-scoped
+    // permission can read the parsed resource id. Empty args would stop at
+    // `invalid_args` before RBAC ever runs — a real denial, but not the one
+    // this suite asserts.
+    { name: "get_execution", args: { id: "00000000-0000-4000-8000-0000000000ff" } },
     { name: "list_connectors", args: {} },
     { name: "list_schedules", args: {} },
   ];

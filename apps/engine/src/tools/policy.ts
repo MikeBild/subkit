@@ -1,20 +1,20 @@
-// Unified policy gate — pure function that decides whether a tool call
+// The confirm gate — a pure function that decides whether a tool call
 // should proceed, pause for confirmation, or be rejected as unavailable
-// on this surface. Replaces both:
+// on this surface. There is exactly one: every surface (dispatcher, chat
+// fast-path, the synthetic `mcp_<ns>__<tool>` palette) calls it, and none
+// of them re-derives the decision.
 //
-//   conversations/tool-policies.ts::resolveToolMode()  (chat side)
-//   mcp/capabilities/policy-gate.ts::gateTenantToolCall() (MCP side)
-//
-// Audit emission (APPROVAL_REQUESTED / APPROVAL_APPROVED) lives in the
-// dispatcher, NOT here — `policyDecide()` is sync, deterministic, and
-// has no I/O.
+// Audit emission (APPROVAL_REQUESTED / APPROVAL_APPROVED) lives in
+// `tools/approval.ts`, NOT here — `policyDecide()` is sync, deterministic,
+// and has no I/O.
 
 import {
+  buildPendingOutputForTool,
+  decideToolMode,
   type PermissionMode,
-  resolveToolMode,
   type ToolPolicies,
 } from "../conversations/tool-policies.ts";
-import type { ConfirmEnvelope, ToolCategory, ToolSurface } from "./types.ts";
+import type { ConfirmEnvelope, ConfirmReason, ToolCategory, ToolSurface } from "./types.ts";
 
 export type PolicyDecision =
   | { kind: "proceed" }
@@ -86,6 +86,80 @@ export function isConfirmedRequest(
   return isConfirmed(args, meta);
 }
 
+/** The approval id a confirmed re-issue carried inside its args. Chat callers
+ *  have no transport `_meta`, so this is their only channel; the dispatcher
+ *  layers the `_meta.sk_confirm_id` alias on top for MCP. `null` when absent —
+ *  `consumeApproval` turns that into `confirmation_missing_id`. */
+export function confirmIdFromArgs(args: Record<string, unknown>): string | null {
+  const v = args[ARGS_CONFIRM_ID_KEY];
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/**
+ * Declare the confirm markers on a JSON-Schema the tool itself authored.
+ *
+ * ONLY for the synthetic external-MCP palette (`mcp_<ns>__<tool>`). Those tools
+ * proxy a REMOTE server: the engine cannot perform the call on the operator's
+ * behalf from a harness resume, so the model must relay the approval — and it
+ * relays an ID, not a decision. `__policy_confirmed` alone proceeds nowhere:
+ * `consumeApproval` demands the single-use `__policy_confirm_id`, which the
+ * engine minted and the operator's confirmation released. A parameterless
+ * remote tool publishes `{properties:{}, additionalProperties:false}`, leaving
+ * the model no legal slot for that id — publishing a gate the caller cannot
+ * resolve is the same defect as reading a confirmation off transport `_meta` no
+ * model-driven client can set.
+ *
+ * NOT for in-repo conversation tools, and NOT for `wf_<slug>`. Both are
+ * performed by the HARNESS after the operator answers the elicitation the gate
+ * raised (`persistence/auto-persist.ts`), so the model has nothing to carry
+ * back. A model-settable approval marker there is an escape hatch around the
+ * only human in the loop — `sdk-wrap/invoke.ts` publishes each tool's own
+ * schema, sealed `.strict()`, and reads no marker off it.
+ *
+ * Only the properties are added; `required` stays as authored, so an
+ * unconfirmed first call is still valid.
+ */
+export function withConfirmMarkerProperties(schema: unknown): Record<string, unknown> {
+  const base =
+    schema && typeof schema === "object" && !Array.isArray(schema)
+      ? (schema as Record<string, unknown>)
+      : { type: "object", properties: {} };
+  const properties =
+    base.properties && typeof base.properties === "object" && !Array.isArray(base.properties)
+      ? (base.properties as Record<string, unknown>)
+      : {};
+  return {
+    ...base,
+    properties: {
+      ...properties,
+      [ARGS_CONFIRM_KEY]: {
+        type: "boolean",
+        description:
+          "Set to true ONLY when re-issuing a call the operator explicitly approved. Must accompany __policy_confirm_id.",
+      },
+      [ARGS_CONFIRM_ID_KEY]: {
+        type: "string",
+        description:
+          "The confirm_id the engine returned with the pending or preview envelope. The engine replays the arguments it already holds under this id.",
+      },
+    },
+  };
+}
+
+/** Operator-facing prose for each `ConfirmReason`. The envelope carries the
+ *  machine rule so the audit trail is exact; a human prompt has to read as a
+ *  sentence. The `Record` is exhaustive by type — a new rule cannot ship
+ *  without an operator-legible explanation of why it paused the call. */
+export const CONFIRM_REASON_LABELS: Readonly<Record<ConfirmReason, string>> = {
+  inline_credential: "the arguments fill a declared credential field",
+  permission_mode: "the client's permission mode requires approval",
+  conversation_override: "this conversation overrides this tool to require approval",
+  computed_from_input: "these arguments make the call destructive",
+  tool_default: "this tool always requires approval",
+  category_default: "this tool writes tenant state",
+  held_writes: "the run held its write steps for an operator",
+};
+
 export interface PolicyDecideInput {
   readonly tool: string;
   readonly category: ToolCategory;
@@ -112,15 +186,16 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
   }
 
   // Note: we DO NOT shortcut on `category === "tenant_read"` here.
-  // The legacy MCP gate (mcp/capabilities/policy-gate.ts:84) did, which
-  // meant a tenant_read tool with a computeModeFromInput predicate
-  // (e.g. probe_connector POST against prod) silently bypassed the
-  // confirmation on MCP while gating correctly on chat. The unified
-  // policy lets resolveToolMode decide for every category — tenant_read
-  // tools without dynamic predicates still resolve to no_confirm, so
-  // the common case is unchanged; the dangerous tenant_read+escalation
-  // case is now consistent.
-  const mode = resolveToolMode({
+  // The deleted MCP-side gate did, which meant a tenant_read tool with a
+  // computeModeFromInput predicate (e.g. probe_connector POST against prod)
+  // silently bypassed the confirmation on MCP while gating correctly on
+  // chat. `resolveToolMode` decides for every category — tenant_read tools
+  // without dynamic predicates still resolve to no_confirm, so the common
+  // case is unchanged; the dangerous tenant_read+escalation case is now
+  // consistent.
+  // `decideToolMode`, not the `resolveToolMode` projection: the envelope must
+  // report the rule that was ENFORCED, and the projection throws it away.
+  const decision = decideToolMode({
     tool: input.tool,
     category: input.category,
     input: input.args,
@@ -128,29 +203,31 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
     permission_mode: input.permission_mode ?? null,
   });
 
-  if (mode !== "confirm_before_execution") return { kind: "proceed" };
+  if (decision.mode !== "confirm_before_execution") return { kind: "proceed" };
 
   // The caller already confirmed (or yolo'd around) the gate.
   if (isConfirmed(input.args, input.meta)) return { kind: "proceed" };
 
-  // Strip the args-side confirmation marker before echoing the target
-  // back — the client should re-submit the original payload, not the
-  // (already-rejected) confirmation form.
-  const echoArgs: Record<string, unknown> = { ...input.args };
-  delete echoArgs[ARGS_CONFIRM_KEY];
-
+  // The envelope carries a structured preview of what the call will do,
+  // never the payload itself: the dispatcher persists the canonical args
+  // under `tool_call_id` and the re-issue replays them from there. Echoing
+  // them back asked the caller to re-transmit a payload byte-exactly — a
+  // ~50KB markdown body no model can reproduce.
   return {
     kind: "needs_confirm",
     envelope: {
       tool: input.tool,
-      args: echoArgs,
+      pending_output: buildPendingOutputForTool(input.tool, input.args),
       policy_mode: "confirm_before_execution",
-      reason: "destructive_action",
+      reason: decision.rule,
       tool_call_id: crypto.randomUUID(),
+      // No `approval_url` here: `policyDecide` is pure. The confirm gate mints
+      // the approval and attaches the link before this envelope leaves the
+      // engine (`tools/dispatcher.ts#gateConfirm`).
       resume:
         input.surface === "mcp"
-          ? "Elicitation-capable clients are prompted to approve in-band automatically. Otherwise approve by calling confirm_tool_call with { tool, arguments, confirm_id: <this tool_call_id> }."
-          : "Resume via ask_user_confirm reply with confirmed=true.",
+          ? "Nothing has run. A person must approve this call at its approval_url. Once they have, confirm_tool_call({ tool, confirm_id: <this tool_call_id> }) performs it — it cannot approve it. The engine replays the arguments it already holds; do not re-send them."
+          : "The operator answers the emitted ask_user_confirm; the engine then performs the call itself.",
     },
   };
 }

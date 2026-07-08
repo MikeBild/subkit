@@ -11,9 +11,9 @@ import { envelopeToMcpResponse } from "./adapter.ts";
 
 const confirm: ConfirmEnvelope = {
   tool: "call_connector",
-  args: { connector_id: "c1", method: "DELETE" },
+  pending_output: { connector_id: "c1", method: "DELETE" },
   policy_mode: "confirm_before_execution",
-  reason: "destructive_action",
+  reason: "computed_from_input",
   tool_call_id: "tc-123",
   resume: "Approve the delete to continue.",
 };
@@ -49,5 +49,12 @@ describe("envelopeToMcpResponse — needs_confirm legibility", () => {
 
   test("still carries the structured envelope in _meta for parsing clients", () => {
     expect(res._meta?.subkit).toBeDefined();
+  });
+
+  test("never echoes the call payload — only the structured pending_output preview", () => {
+    // The engine replays the args it persisted under tool_call_id. Echoing
+    // them asked the model to re-transmit a payload byte-exactly.
+    expect(parsed.args).toBeUndefined();
+    expect(parsed.pending_output).toEqual({ connector_id: "c1", method: "DELETE" });
   });
 });

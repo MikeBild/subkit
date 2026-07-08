@@ -35,8 +35,7 @@ export const getSkillTool: ConversationTool = {
   inputSchema: GetInput,
   category: "tenant_read",
   permission: { action: "skill:read", resourceType: "skill", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     const s = await ctx.engineClient.skills.get(args.id);
     if (!s) return { ok: false, data: { error: "skill_not_found" } };
     return { ok: true, data: { skill: s } };

@@ -66,8 +66,7 @@ export const getConnectorTool: ConversationTool = {
   inputSchema: GetInput,
   category: "tenant_read",
   permission: { action: "connector:read", resourceType: "connector", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = GetInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof GetInput>) {
     const c = await ctx.engineClient.connectors.get(args.id);
     if (!c) return { ok: false, data: { error: "connector_not_found" } };
     // Tell the LLM exactly which `${cred.<slug>.<field>}`, `${connector.<slug>.base_url}`,

@@ -5,6 +5,8 @@
 // singleton. Consumers outside this package import only from this
 // barrel.
 
+export * from "./approval.ts";
+export * from "./approval-portal.ts";
 export * from "./dispatcher.ts";
 export * from "./policy.ts";
 export { conversationToolProvider } from "./providers/conversation.ts";

@@ -36,8 +36,7 @@ export const analyzeKnowledgeSourceTool: ConversationTool = {
   inputSchema: AnalyzeKnowledgeSourceInput,
   category: "tenant_write",
   permission: { action: "knowledge:write", resourceType: "knowledge", resourceIdArg: "id" },
-  async execute(ctx, rawArgs) {
-    const args = AnalyzeKnowledgeSourceInput.parse(rawArgs);
+  async execute(ctx, args: z.infer<typeof AnalyzeKnowledgeSourceInput>) {
     try {
       const view = await ctx.engineClient.knowledgeSources.analyze(args.id, {
         ...(args.force !== undefined ? { force: args.force } : {}),

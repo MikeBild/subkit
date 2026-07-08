@@ -18,7 +18,20 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
+import { type AnswerActor, MODEL_RELAYED_ANSWER } from "../answer-actor.ts";
 import * as svc from "../service.ts";
+
+/**
+ * A unit test stands in for a person at a keyboard: `answer_actor` defaults to
+ * the acting user, answering through the chat channel. Tests that assert the
+ * relay contract (a model-driven resume grants nothing) pass `MODEL_RELAYED_ANSWER`
+ * explicitly. The default lives HERE and nowhere in `src/` — every production
+ * surface must state the channel itself or fail to compile.
+ */
+function testAnswerActor(actor_id: string | null | undefined, override?: AnswerActor): AnswerActor {
+  if (override) return override;
+  return actor_id ? { kind: "human", user_id: actor_id, via: "chat" } : MODEL_RELAYED_ANSWER;
+}
 
 // ── Test helpers: create / append + drive the turn in one call ───────────────
 //
@@ -33,10 +46,12 @@ import * as svc from "../service.ts";
 /** create the conversation, persist the first message, run the turn. */
 export async function createConversationWithTurn(
   params: svc.CreateConversationParams &
-    Pick<svc.RunConversationTurnParams, "onEvent" | "runtime_context">,
+    Pick<svc.RunConversationTurnParams, "onEvent" | "runtime_context"> & {
+      answer_actor?: AnswerActor;
+    },
   db: Db,
 ): Promise<svc.ConversationTurnOutcome> {
-  const { onEvent, runtime_context, ...createParams } = params;
+  const { onEvent, runtime_context, answer_actor, ...createParams } = params;
   const created = await svc.createConversation(createParams, db);
   if (!created.initial_message) {
     return { conversation: created.conversation, result: { events: [], status: "active" } };
@@ -49,6 +64,7 @@ export async function createConversationWithTurn(
         conversation_id: created.conversation.id,
         actor_id: createParams.actor_id ?? null,
         user_message: created.initial_message,
+        answer_actor: testAnswerActor(createParams.actor_id, answer_actor),
         user_memory: created.user_memory,
         turn_abort_ctrl: ctrl,
         ...(createParams.permission_mode ? { permission_mode: createParams.permission_mode } : {}),
@@ -64,12 +80,21 @@ export async function createConversationWithTurn(
 
 /** resolve an elicitation + resume the loop, with a registered abort controller. */
 export async function respondElicitationForTest(
-  params: Omit<svc.RespondElicitationParams, "turn_abort_ctrl">,
+  params: Omit<svc.RespondElicitationParams, "turn_abort_ctrl" | "answer_actor"> & {
+    answer_actor?: AnswerActor;
+  },
   db: Db,
 ): Promise<svc.ConversationTurnOutcome> {
   const ctrl = registerConversationAbort(params.tenant_id, params.conversation_id);
   try {
-    return await svc.respondElicitation({ ...params, turn_abort_ctrl: ctrl }, db);
+    return await svc.respondElicitation(
+      {
+        ...params,
+        answer_actor: testAnswerActor(params.actor_id, params.answer_actor),
+        turn_abort_ctrl: ctrl,
+      },
+      db,
+    );
   } finally {
     unregisterConversationAbort(params.tenant_id, params.conversation_id, ctrl);
   }
@@ -81,10 +106,17 @@ export async function appendMessageWithTurn(
     Pick<
       svc.RunConversationTurnParams,
       "onEvent" | "runtime_context" | "surface" | "next_suggestion_suppress"
-    >,
+    > & { answer_actor?: AnswerActor },
   db: Db,
 ): Promise<svc.ConversationTurnOutcome> {
-  const { onEvent, runtime_context, surface, next_suggestion_suppress, ...appendParams } = params;
+  const {
+    onEvent,
+    runtime_context,
+    surface,
+    next_suggestion_suppress,
+    answer_actor,
+    ...appendParams
+  } = params;
   const appended = await svc.appendUserMessage(appendParams, db);
   const ctrl = registerConversationAbort(appendParams.tenant_id, appendParams.conversation_id);
   try {
@@ -94,6 +126,7 @@ export async function appendMessageWithTurn(
         conversation_id: appendParams.conversation_id,
         actor_id: appendParams.actor_id ?? null,
         user_message: appended.message,
+        answer_actor: testAnswerActor(appendParams.actor_id, answer_actor),
         user_memory: appended.user_memory,
         turn_abort_ctrl: ctrl,
         ...(appendParams.permission_mode ? { permission_mode: appendParams.permission_mode } : {}),

@@ -29,6 +29,7 @@ import {
   registerConversationAbort,
   unregisterConversationAbort,
 } from "../../conversations/abort.ts";
+import { MODEL_RELAYED_ANSWER } from "../../conversations/answer-actor.ts";
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
@@ -172,6 +173,13 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
           // from an elicitation also runs under RBAC instead of failing
           // principal_required.
           ...(data.principal ? { principal: data.principal } : {}),
+          // The MODEL called `conversation_respond_elicitation`; this worker only
+          // carried the answer across a queue. It authenticates as a user
+          // principal and is still not a person, so it grants nothing. An
+          // approval-bearing elicitation never reaches here — the MCP tool
+          // refuses it — and if one ever did, the claim would answer
+          // `approval_not_granted`.
+          answer_actor: MODEL_RELAYED_ANSWER,
           output: elicitation.output,
           turn_abort_ctrl: turnAbortCtrl,
           ...(data.reason ? { reason: data.reason } : {}),
@@ -195,6 +203,10 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
           // (run_workflow) execute instead of failing principal_required.
           ...(data.principal ? { principal: data.principal } : {}),
           user_message: message,
+          // The "user message" on this path was authored by the model calling
+          // `conversation_start` / `conversation_append`. A fast-path
+          // affirmation in it approves nothing.
+          answer_actor: MODEL_RELAYED_ANSWER,
           surface: "mcp",
           turn_abort_ctrl: turnAbortCtrl,
           ...(data.permission_mode ? { permission_mode: data.permission_mode } : {}),

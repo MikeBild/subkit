@@ -40,18 +40,18 @@ export function envelopeToToolResult(envelope: ToolEnvelope): ToolResult {
     return out;
   }
   if (envelope.status === "needs_confirm") {
-    // Render the ConfirmEnvelope as an ask_user_confirm pause — the
-    // chat loop's existing elicitation machinery picks it up from here.
+    // A chat pause is a persisted `conversation_elicitations` row, and this
+    // renderer is pure — it has no db to insert one. Synthesising a pause here
+    // would alias the approval's single-use `tool_call_id` into
+    // `elicitation_id`, handing the model the trigger handle and pointing the
+    // operator's answer at a row that does not exist. The cutover inserts the
+    // elicitation first (see `sdk-wrap/invoke.ts`) and renders the pause from
+    // that row's id; until then, say what happened and expose no handle.
     return {
-      ok: true,
-      data: envelope.confirm,
-      pause: {
-        tool_name: "ask_user_confirm",
-        kind: envelope.confirm.tool === "save_workflow_draft" ? "save_workflow_draft" : "generic",
-        summary: envelope.confirm.resume,
-        elicitation_id: envelope.confirm.tool_call_id,
-        input: envelope.confirm.args,
-      },
+      ok: false,
+      error_code: "policy_confirm_required",
+      message: `${envelope.confirm.tool} paused on a person's approval and nothing ran. No approval prompt was opened for it here.`,
+      details: { tool: envelope.confirm.tool, reason: envelope.confirm.reason },
     };
   }
   if (envelope.status === "paused") {

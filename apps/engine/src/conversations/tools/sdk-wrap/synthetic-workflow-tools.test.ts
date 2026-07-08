@@ -1,10 +1,14 @@
 // Integration tests for buildSyntheticWorkflowTools.
 // Uses testcontainers postgres (createTestDb) — no mocks of the DB.
 // Verifies:
-//   - pending envelope on first call (when policy gate returns pending)
-//   - post-confirmation run on __policy_confirmed: true
+//   - the catalog shape and per-tenant isolation of the wf_<slug> palette
+//   - per-execute gateWorkflowRunRbac denial
 //   - per-step ctx.onLog calls mirror run-workflow.ts:306-329
 //   - envelope carries suggested_command
+// The hold-writes preview → confirm_id → replay contract these tools share
+// with MCP's wf_<slug> is pinned in execution/tests/hold-writes.test.ts and
+// mcp/capabilities/held-preview.test.ts; the workflows seeded here have no
+// write-classified steps, so they never mint an approval.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";

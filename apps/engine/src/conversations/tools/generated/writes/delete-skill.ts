@@ -21,9 +21,7 @@ export const deleteSkillTool: ConversationTool = {
   inputSchema: DeleteSkillInput,
   category: "tenant_write",
   permission: { action: "skill:delete", resourceType: "skill", resourceIdArg: "id" },
-  async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = DeleteSkillInput.parse(rawArgs);
-
+  async execute(ctx, args: z.infer<typeof DeleteSkillInput>): Promise<ToolResult> {
     try {
       const ok = await ctx.engineClient.skills.delete(args.id);
       if (!ok) {
