@@ -46,12 +46,12 @@ function testAnswerActor(actor_id: string | null | undefined, override?: AnswerA
 /** create the conversation, persist the first message, run the turn. */
 export async function createConversationWithTurn(
   params: svc.CreateConversationParams &
-    Pick<svc.RunConversationTurnParams, "onEvent" | "runtime_context"> & {
+    Pick<svc.RunConversationTurnParams, "onEvent" | "runtime_context" | "principal"> & {
       answer_actor?: AnswerActor;
     },
   db: Db,
 ): Promise<svc.ConversationTurnOutcome> {
-  const { onEvent, runtime_context, answer_actor, ...createParams } = params;
+  const { onEvent, runtime_context, answer_actor, principal, ...createParams } = params;
   const created = await svc.createConversation(createParams, db);
   if (!created.initial_message) {
     return { conversation: created.conversation, result: { events: [], status: "active" } };
@@ -70,6 +70,7 @@ export async function createConversationWithTurn(
         ...(createParams.permission_mode ? { permission_mode: createParams.permission_mode } : {}),
         ...(onEvent ? { onEvent } : {}),
         ...(runtime_context ? { runtime_context } : {}),
+        ...(principal !== undefined ? { principal } : {}),
       },
       db,
     );
@@ -105,7 +106,7 @@ export async function appendMessageWithTurn(
   params: svc.AppendMessageParams &
     Pick<
       svc.RunConversationTurnParams,
-      "onEvent" | "runtime_context" | "surface" | "next_suggestion_suppress"
+      "onEvent" | "runtime_context" | "surface" | "next_suggestion_suppress" | "principal"
     > & { answer_actor?: AnswerActor },
   db: Db,
 ): Promise<svc.ConversationTurnOutcome> {
@@ -115,6 +116,7 @@ export async function appendMessageWithTurn(
     surface,
     next_suggestion_suppress,
     answer_actor,
+    principal,
     ...appendParams
   } = params;
   const appended = await svc.appendUserMessage(appendParams, db);
@@ -134,6 +136,7 @@ export async function appendMessageWithTurn(
         ...(runtime_context ? { runtime_context } : {}),
         ...(surface ? { surface } : {}),
         ...(next_suggestion_suppress !== undefined ? { next_suggestion_suppress } : {}),
+        ...(principal !== undefined ? { principal } : {}),
       },
       db,
     );

@@ -17,7 +17,7 @@ import type { ToolContext } from "../../conversations/tools/index.ts";
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { requestApproval } from "../approval.ts";
+import { grantApproval, requestApproval } from "../approval.ts";
 import { dispatchTool } from "../dispatcher.ts";
 import { conversationToolProvider, staticToolProvider } from "../index.ts";
 import {
@@ -184,9 +184,10 @@ describe("tools/dispatcher (active)", () => {
           : undefined,
     };
     const registry = buildRegistry([watchedProvider]);
-    // On MCP the confirm marker must reference a real, un-consumed
+    // On MCP the confirm marker must reference a real, GRANTED, un-consumed
     // APPROVAL_REQUESTED. `consumeApproval` is a DB-backed CAS claim — seed
-    // one for real via `requestApproval` instead of stubbing the lookup.
+    // one for real via `requestApproval`, then grant it as the human would
+    // via the approval portal, instead of stubbing the lookup.
     const principal = dbPrincipal();
     const confirmId = nextId();
     await requestApproval({
@@ -200,6 +201,14 @@ describe("tools/dispatcher (active)", () => {
       execution_mode: null,
       args: {},
     });
+    const granted = await grantApproval({
+      db: testDb.db,
+      approval_id: confirmId,
+      tenant_id: principal.tenant_id,
+      granted_by_user_id: principal.id,
+      via: "portal",
+    });
+    expect(granted.ok).toBe(true);
     const envelope = await dispatchTool(
       {
         registry,
@@ -219,6 +228,8 @@ describe("tools/dispatcher (active)", () => {
       expect(envelope.data).toEqual({ ran: true });
     }
     expect(executed).toBe(true);
+    const rows = await approvalAuditRows(confirmId);
+    expect(rows.filter((r) => r.action === AuditAction.APPROVAL_APPROVED)).toHaveLength(1);
   });
 
   test("executor throwing → status:'error' error_code:'tool_execute_failed'", async () => {
@@ -675,6 +686,14 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
       execution_mode: null,
       args: {},
     });
+    const granted = await grantApproval({
+      db: testDb.db,
+      approval_id: confirmId,
+      tenant_id: principal.tenant_id,
+      granted_by_user_id: principal.id,
+      via: "portal",
+    });
+    expect(granted.ok).toBe(true);
     const envelope = await dispatchTool(
       { registry, db: testDb.db, principal, conversationCtx: {} as never },
       {
@@ -719,6 +738,14 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
       execution_mode: null,
       args: { id: "A" },
     });
+    const granted = await grantApproval({
+      db: testDb.db,
+      approval_id: confirmId,
+      tenant_id: principal.tenant_id,
+      granted_by_user_id: principal.id,
+      via: "portal",
+    });
+    expect(granted.ok).toBe(true);
     const envelope = await dispatchTool(
       { registry, db: testDb.db, principal, conversationCtx: {} as never },
       {
@@ -756,6 +783,14 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
       execution_mode: null,
       args: { id: "A" },
     });
+    const granted = await grantApproval({
+      db: testDb.db,
+      approval_id: confirmId,
+      tenant_id: principal.tenant_id,
+      granted_by_user_id: principal.id,
+      via: "portal",
+    });
+    expect(granted.ok).toBe(true);
     const envelope = await dispatchTool(
       { registry, db: testDb.db, principal, conversationCtx: {} as never },
       {

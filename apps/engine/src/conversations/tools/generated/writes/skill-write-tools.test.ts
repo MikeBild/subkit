@@ -333,12 +333,23 @@ describe("(e) RBAC credential ceiling — skill / knowledge tools", () => {
     // The ceiling only denies when required permission is absent from the key's scopes.
     // With scopes: ["skill:write"] and permission "skill:write", the ceiling
     // does NOT fire — the admin role then grants access; policy → needs_confirm.
+    //
+    // Args must satisfy create_skill's own schema (title + body are required):
+    // the dispatcher canonicalizes args through the descriptor's schema BEFORE
+    // the policy gate runs, so an empty payload never reaches policyDecide at
+    // all — it fails canonicalization with invalid_args first. That ordering
+    // is orthogonal to the ceiling this test is pinning, so give it a valid
+    // payload to actually exercise the ceiling → policy path.
     const { db } = makeStubDb();
     const principal = makeTestPrincipal({ scopes: ["skill:write"], roles: ["admin"] });
 
     const envelope = await dispatchTool(
       { registry, db, principal },
-      { surface: "mcp", name: "create_skill", args: {} },
+      {
+        surface: "mcp",
+        name: "create_skill",
+        args: { scope: "global", title: "Ceiling Probe", body: "probe body" },
+      },
     );
 
     // Must NOT be policy_denied — the credential ceiling allows skill:write keys
@@ -350,9 +361,16 @@ describe("(e) RBAC credential ceiling — skill / knowledge tools", () => {
     const { db } = makeStubDb();
     const principal = makeTestPrincipal({ scopes: ["knowledge:write"], roles: ["admin"] });
 
+    // create_knowledge_source's schema requires mode='inline' to carry name +
+    // content (its `.refine()`) — same canonicalize-before-policy ordering as
+    // create_skill above, so the ceiling probe needs a schema-valid payload.
     const envelope = await dispatchTool(
       { registry, db, principal },
-      { surface: "mcp", name: "create_knowledge_source", args: {} },
+      {
+        surface: "mcp",
+        name: "create_knowledge_source",
+        args: { mode: "inline", name: "Ceiling Probe KS", content: "probe content" },
+      },
     );
 
     expect(envelope.status).toBe("needs_confirm");
@@ -362,8 +380,21 @@ describe("(e) RBAC credential ceiling — skill / knowledge tools", () => {
 // ─── (f) confirm-gate ────────────────────────────────────────────────────────
 //
 // tenant_write tools require confirmation before execution on every surface.
-// The dispatcher must return needs_confirm and emit an APPROVAL_REQUESTED
-// audit row when called without the sk_confirm marker.
+// Under the current contract the gate MINTS AN UNGRANTED APPROVAL up front:
+// `needs_confirm`'s envelope carries both a `tool_call_id` (the confirm/
+// approval id a later `confirm_tool_call` re-issue TRIGGERS, never approves)
+// and — when the engine has a `server.public_base_url` configured —
+// an `approval_url`, the one channel a HUMAN uses to actually grant it. The
+// dispatcher records APPROVAL_REQUESTED before returning the envelope; the
+// `tool_approvals` row it mints is `granted_at: NULL` until a human decides
+// (proved end-to-end, including the grant, in
+// `mcp/tests/wf-confirm-loop.test.ts`).
+//
+// This stub-DB unit describe doesn't configure `server.public_base_url`, so
+// `requestApproval` mints no portal link here (`approval_url` comes back
+// null) — that half of the contract is covered by the integration test
+// above. What this describe pins is the shape a bare dispatch call gets:
+// needs_confirm + a tool_call_id + exactly one APPROVAL_REQUESTED audit row.
 //
 // An admin principal with wildcard scopes passes RBAC without any DB
 // queries (credential ceiling: * → no ceiling; admin role → short-circuit allow).
@@ -376,22 +407,37 @@ describe("(f) confirm-gate on MCP surface", () => {
   test("create_skill dispatched on MCP without sk_confirm → needs_confirm + APPROVAL_REQUESTED audit", async () => {
     const { db, capture } = makeStubDb();
 
+    // Schema-valid args (title + body) so the call clears canonicalization
+    // and actually reaches the policy gate instead of failing invalid_args.
     const envelope = await dispatchTool(
       { registry, db, principal: adminPrincipal },
-      { surface: "mcp", name: "create_skill", args: {} },
+      {
+        surface: "mcp",
+        name: "create_skill",
+        args: { scope: "global", title: "Confirm Gate Probe", body: "probe body" },
+      },
     );
 
     expect(envelope.status).toBe("needs_confirm");
     if (envelope.status === "needs_confirm") {
       expect(envelope.confirm.tool).toBe("create_skill");
       expect(typeof envelope.confirm.tool_call_id).toBe("string");
+      // No `server.public_base_url` is configured in this unit describe, so
+      // `requestApproval` mints no portal link — `approval_url` is null, not
+      // absent-by-omission. A real link is proved end-to-end (grant included)
+      // in `mcp/tests/wf-confirm-loop.test.ts`.
+      expect(envelope.confirm.approval_url).toBeNull();
     }
 
-    // The dispatcher emits APPROVAL_REQUESTED before returning needs_confirm.
+    // The dispatcher emits APPROVAL_REQUESTED before returning needs_confirm,
+    // and mints the approval UNGRANTED — nothing in this call can grant it.
     const approvalRows = capture.inserts.filter((r) => r.action === AuditAction.APPROVAL_REQUESTED);
     expect(approvalRows.length).toBe(1);
     // On MCP the resource_type is "mcp_tool_call".
     expect(approvalRows[0]?.resource_type).toBe("mcp_tool_call");
+    if (envelope.status === "needs_confirm") {
+      expect(approvalRows[0]?.resource_id).toBe(envelope.confirm.tool_call_id);
+    }
   });
 
   test("delete_skill dispatched on MCP without sk_confirm → needs_confirm (force-confirmed like any tenant_write)", async () => {
@@ -410,9 +456,15 @@ describe("(f) confirm-gate on MCP surface", () => {
     expect(envelope.status).toBe("needs_confirm");
     if (envelope.status === "needs_confirm") {
       expect(envelope.confirm.tool).toBe("delete_skill");
+      expect(typeof envelope.confirm.tool_call_id).toBe("string");
+      // No portal configured in this unit describe — see the comment above.
+      expect(envelope.confirm.approval_url).toBeNull();
     }
 
     const approvalRows = capture.inserts.filter((r) => r.action === AuditAction.APPROVAL_REQUESTED);
     expect(approvalRows.length).toBe(1);
+    if (envelope.status === "needs_confirm") {
+      expect(approvalRows[0]?.resource_id).toBe(envelope.confirm.tool_call_id);
+    }
   });
 });

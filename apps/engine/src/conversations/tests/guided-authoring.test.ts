@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { setConfigKey } from "../../config/loader.ts";
+import { and, eq } from "drizzle-orm";
+import { _resetConfigForTests, setConfigKey } from "../../config/loader.ts";
+import { auditLog, conversationToolCalls } from "../../db/schema/index.ts";
 import { getConversation } from "../service.ts";
 import {
   type ConversationTestCtx,
@@ -38,6 +40,12 @@ beforeAll(async () => {
 afterAll(async () => {
   server.stop(true);
   await ctx.cleanup();
+  // Reset the config singleton + env this suite set in beforeAll. Bun runs
+  // files alphabetically, so a leaked `server.public_base_url` would make a
+  // later suite's stub-DB dispatch try to mint a portal link and throw. Same
+  // config-pollution-across-suites class as the global-pool test race.
+  delete process.env.SUBKIT_PUBLIC_BASE_URL;
+  _resetConfigForTests();
 });
 
 describe("guided authoring conversation loop", () => {
@@ -85,11 +93,51 @@ describe("guided authoring conversation loop", () => {
     );
     expect(resumedSave.result.status).toBe("awaiting_input");
     expect(resumedSave.result.pending_elicitation_id).toBeTruthy();
-    expect(
-      resumedSave.result.events.some(
-        (event) => event.type === "tool_call_start" && event.tool === "save_connector_draft",
-      ),
-    ).toBe(true);
+    // New contract: the LLM never re-issues save_connector_draft itself after
+    // confirming — no wrapped tool publishes a confirm marker any more. The
+    // harness auto-persists the write the instant the operator's "yes"
+    // resolves the elicitation, and the model's next turn moves straight on
+    // to editing the workflow. Assert the harness-side persistence directly:
+    // the synthetic tool-call row it injected, and the second audit row it
+    // tags `reason: auto_persist_on_confirmation`.
+    // Two rows share this tool name: the model's real (paused) invocation
+    // from turn one, and the harness-injected synthetic result from this
+    // resume. Only the latter carries `source: "harness_auto_persist"`.
+    const autoPersistCalls = await ctx.testDb.db
+      .select()
+      .from(conversationToolCalls)
+      .where(
+        and(
+          eq(conversationToolCalls.tenant_id, ctx.tenant_id),
+          eq(conversationToolCalls.conversation_id, created.conversation.id),
+          eq(conversationToolCalls.tool, "save_connector_draft"),
+        ),
+      );
+    const harnessCall = autoPersistCalls.find(
+      (row) =>
+        typeof row.output === "object" &&
+        row.output !== null &&
+        (row.output as Record<string, unknown>).source === "harness_auto_persist",
+    );
+    expect(harnessCall).toBeDefined();
+    const autoPersistOutput = harnessCall!.output as Record<string, unknown>;
+    expect(autoPersistOutput.ok).toBe(true);
+    const autoPersistAudit = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenant_id),
+          eq(auditLog.reason, "auto_persist_on_confirmation"),
+        ),
+      );
+    const connectorAutoPersist = autoPersistAudit.find(
+      (row) =>
+        typeof row.metadata === "object" &&
+        row.metadata !== null &&
+        (row.metadata as Record<string, unknown>).commit_intent_kind === "save_connector_draft",
+    );
+    expect(connectorAutoPersist).toBeDefined();
     expect(
       resumedSave.result.events.some(
         (event) => event.type === "tool_call_start" && event.tool === "edit_workflow_patch",
