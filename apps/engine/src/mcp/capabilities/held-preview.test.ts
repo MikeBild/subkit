@@ -70,7 +70,7 @@ describe("buildResultEnvelope", () => {
       tool: "wf_send-invoice",
       confirm_id: "11111111-1111-1111-1111-111111111111",
       approval_url: "https://engine.example.test/v1/tool-approvals/decide?grant=skag_abc",
-      reason: "client_cannot_prompt",
+      reason: "portal_grant_required",
     });
     const body = env.rawBody as Record<string, unknown>;
     expect(body.awaiting_human_approval).toBe(true);
@@ -88,26 +88,10 @@ describe("buildResultEnvelope", () => {
     );
     // The model is told the trigger performs writes — never that it approves them.
     expect(remedy).toContain("it cannot approve them");
-    // A `client_cannot_prompt` preview never raised a prompt, so it must not
-    // describe one as unanswered.
+    // Portal-only: no in-band prompt exists, so nothing is ever described as
+    // unanswered or declined.
     expect(remedy).not.toContain("did not answer");
-  });
-
-  test("in_band_prompt_unfulfilled → says the CLIENT did not answer, never that nobody was asked", () => {
-    const env = buildResultEnvelope(base({ warnings: heldWarnings() }), {
-      kind: "confirm_required",
-      tool: "wf_send-invoice",
-      confirm_id: "22222222-2222-2222-2222-222222222222",
-      approval_url: "https://engine.example.test/v1/tool-approvals/decide?grant=skag_xyz",
-      reason: "in_band_prompt_unfulfilled",
-    });
-    const remedy = String((env.rawBody as Record<string, unknown>).remedy);
-    // The client may be showing its operator the prompt right now. The engine
-    // knows only that it received no answer, and must claim nothing more.
-    expect(remedy).toContain("This client did not answer the approval prompt");
-    expect(remedy).toContain("the engine holds no decision from anyone");
-    expect(remedy).not.toContain("nobody has been asked");
-    expect(remedy).toContain("Send this link to the person who must approve");
+    expect(remedy).not.toContain("declined");
   });
 
   test("confirm_required without a public origin → says no link exists, hands out none", () => {
@@ -116,7 +100,7 @@ describe("buildResultEnvelope", () => {
       tool: "wf_send-invoice",
       confirm_id: "33333333-3333-3333-3333-333333333333",
       approval_url: null,
-      reason: "client_cannot_prompt",
+      reason: "portal_grant_required",
     });
     const body = env.rawBody as Record<string, unknown>;
     expect(body.approval_url).toBeNull();
@@ -124,19 +108,6 @@ describe("buildResultEnvelope", () => {
     expect(remedy).toContain("no approval portal configured");
     expect(remedy).not.toContain("Send this link");
     expect(remedy).toContain("confirm_tool_call cannot grant it");
-  });
-
-  test("operator_declined → terminal, no confirm_id and no approval_url", () => {
-    const env = buildResultEnvelope(base({ warnings: heldWarnings() }), {
-      kind: "operator_declined",
-    });
-    const body = env.rawBody as Record<string, unknown>;
-    expect(body.operator_declined).toBe(true);
-    expect(body.confirm_id).toBeUndefined();
-    expect(body.approval_url).toBeUndefined();
-    expect(String(body.remedy)).toContain("declined it, so nothing ran and the approval is dead");
-    const meta = env.previewMeta as { _meta?: { subkit?: { confirm?: unknown } } };
-    expect(meta._meta?.subkit?.confirm).toBeUndefined();
   });
 });
 

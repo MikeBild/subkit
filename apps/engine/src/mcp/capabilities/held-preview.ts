@@ -39,38 +39,27 @@ export interface ResultEnvelope {
  * What the engine decided about the writes this preview held.
  *
  * `confirm_required` means the approval exists, is UNGRANTED, and is waiting on a
- * person at `approval_url`. Two clients land here, and `reason` says which —
- * because the two are not the same fact and the model must not be told they are:
- *
- *   - `client_cannot_prompt` — the client never advertised `elicitation`, so
- *     the engine could not ask in-band. Expected, routine.
- *   - `in_band_prompt_unfulfilled` — the client DID advertise the capability and
- *     then did not answer the prompt. The engine holds no decision. It does NOT
- *     follow that nobody was asked: the client may be showing its operator that
- *     prompt right now, and simply never returned the answer. Either way the
- *     link is the channel that works.
- *
- * `operator_declined` is reserved for a real answer: a person saw the in-band
- * prompt and said no. The approval is declined and terminal, so no `confirm_id`
- * and no link go back — there is nothing left to grant. A client whose operator
- * accepted never reaches here at all: the writes are released inside the same
- * call. See `mcp/capabilities/tools.ts`.
+ * person at `approval_url`. Over MCP this is the ONLY outcome a held write can
+ * have: approval is portal-only. In-band elicitation is not a grant channel —
+ * claude.ai auto-declines the prompt with no human ever seeing it, and
+ * production recorded 29/29 elicitation prompts timing out — so the engine never
+ * holds an in-band accept or decline. A person opens `approval_url`, reads the
+ * `would_write` list, and grants; `confirm_tool_call` then releases the writes.
+ * See `mcp/capabilities/tools.ts`.
  */
-export type PreviewCommit =
-  | {
-      readonly kind: "confirm_required";
-      /** The `wf_<slug>` tool the approval was opened for. */
-      readonly tool: string;
-      /** The approval id — `confirm_tool_call`'s `confirm_id`. A TRIGGER handle:
-       *  presenting it performs writes a human granted, and approves nothing. */
-      readonly confirm_id: string;
-      /** Where a person grants or declines. `null` when the engine has no
-       *  configured `server.public_base_url` and cannot build a link. */
-      readonly approval_url: string | null;
-      /** WHY the engine has no decision yet. */
-      readonly reason: "client_cannot_prompt" | "in_band_prompt_unfulfilled";
-    }
-  | { readonly kind: "operator_declined" };
+export type PreviewCommit = {
+  readonly kind: "confirm_required";
+  /** The `wf_<slug>` tool the approval was opened for. */
+  readonly tool: string;
+  /** The approval id — `confirm_tool_call`'s `confirm_id`. A TRIGGER handle:
+   *  presenting it performs writes a human granted, and approves nothing. */
+  readonly confirm_id: string;
+  /** Where a person grants the call. `null` when the engine has no configured
+   *  `server.public_base_url` and cannot build a link. */
+  readonly approval_url: string | null;
+  /** WHY the engine has no decision yet — the writes wait on a portal grant. */
+  readonly reason: "portal_grant_required";
+};
 
 /** The one sentence that names the human affordance. Shared by the inline
  *  envelope and the offloaded summary so a >20 KB result cannot say something
@@ -135,19 +124,7 @@ export function buildResultEnvelope(
   // person approves — never to approve, which it cannot.
   const heldCount = wouldWrite.length > 0 ? wouldWrite.length : heldSteps.length;
   const statusLine = ` Nothing was written. ${heldCountPhrase(heldCount)}. A person must approve before they run.`;
-  // An unfulfilled in-band prompt left the engine with no decision. It does NOT
-  // license the claim that nobody has been asked — the client may be showing the
-  // operator that prompt right now. Say only what is true.
-  const unfulfilledLine =
-    commit?.kind === "confirm_required" && commit.reason === "in_band_prompt_unfulfilled"
-      ? " This client did not answer the approval prompt the engine sent it, so the engine holds no decision from anyone."
-      : "";
-  const commitLine =
-    commit?.kind === "confirm_required"
-      ? `${unfulfilledLine}${approvalAffordanceLine(commit)}`
-      : commit?.kind === "operator_declined"
-        ? " A person saw the approval prompt and declined it, so nothing ran and the approval is dead. Report that to the user. Do NOT re-run this tool unless the user asks again."
-        : "";
+  const commitLine = commit?.kind === "confirm_required" ? approvalAffordanceLine(commit) : "";
   return {
     isHeldPreview: true,
     heldMessage: heldPreview.message ?? null,
@@ -164,7 +141,6 @@ export function buildResultEnvelope(
             confirm_reason: commit.reason,
           }
         : {}),
-      ...(commit?.kind === "operator_declined" ? { operator_declined: true } : {}),
       held_steps: heldSteps,
       would_write: wouldWrite,
       output: result.output ?? null,
@@ -190,7 +166,6 @@ export function buildResultEnvelope(
                 },
               }
             : {}),
-          ...(commit?.kind === "operator_declined" ? { operator_declined: true } : {}),
         },
       },
     },

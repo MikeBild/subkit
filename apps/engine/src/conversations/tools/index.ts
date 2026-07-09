@@ -151,15 +151,13 @@ export interface ToolContext {
   }) => void;
   /**
    * MCP-native elicitation bridge. Present ONLY on the MCP surface and
-   * ONLY when the connected client advertised the `elicitation`
-   * capability — `undefined` on the HTTP/SSE portal surface and on MCP
-   * clients without the capability. Tools that collect user input
-   * (`ask_user_*`, `authenticate_oauth`) probe
-   * `elicitationBridge?.capabilities` and, when present, issue a
-   * server→client `elicitation/create` request instead of taking the
-   * DB-pause / `respondElicitation` round-trip. The contract lives in
-   * `conversations/elicitation-bridge.ts`; the concrete MCP
-   * implementation is `mcp/elicitation/bridge.ts`.
+   * Currently ALWAYS `undefined` — no surface constructs a concrete bridge
+   * (MCP write approval is portal-only, and MCP conversation elicitation
+   * uses the DB-pause path), so tools that collect user input (`ask_user_*`,
+   * `authenticate_oauth`) probe `elicitationBridge?.capabilities`, find
+   * none, and take the DB-pause / `respondElicitation` round-trip. The
+   * contract lives in `conversations/elicitation-bridge.ts` for a future
+   * in-process surface.
    */
   elicitationBridge?: ElicitationBridge;
 }

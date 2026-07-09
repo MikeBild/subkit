@@ -252,10 +252,11 @@ describe("mcp wf_<slug> confirm-tool-call closed loop", () => {
     expect(forThisTool).toHaveLength(0);
   });
 
-  // Hardening: no client capability changes the trigger-not-gate shape.
-  // `probe-connector-elicit-confirm.test.ts` proves this exhaustively for
-  // `probe_connector`; this pins the same invariant for `wf_<slug>`.
-  test("an elicitation-capable client cannot self-approve a wf_<slug> write either — confirm_tool_call is still a trigger", async () => {
+  // Hardening: approval over MCP is portal-only for every client shape. An
+  // elicitation-capable client gets no in-band prompt — the engine never issues
+  // one — and its held write still resolves through the portal + confirm_tool_call
+  // trigger, exactly like a non-elicitation client.
+  test("an elicitation-capable client still goes through the portal for a wf_<slug> write — no in-band prompt fires", async () => {
     await suite.seedWorkflow({
       name: "confirm loop elicit probe",
       slug: "confirm-loop-elicit-probe",
@@ -279,8 +280,8 @@ describe("mcp wf_<slug> confirm-tool-call closed loop", () => {
       { capabilities: { elicitation: {} } },
     );
     let elicitCount = 0;
-    // Advertises the capability but never fulfils the round-trip — exactly
-    // what production sees: the engine holds no decision from this client.
+    // Advertises the capability, but the engine never issues an in-band prompt:
+    // approval is portal-only, so this handler must never fire.
     client.setRequestHandler(ElicitRequestSchema, async () => {
       elicitCount += 1;
       throw new Error("client cannot fulfil elicitation");
@@ -298,7 +299,7 @@ describe("mcp wf_<slug> confirm-tool-call closed loop", () => {
       ) as PreviewBody;
       const confirmId = firstBody.confirm_id as string;
       expect(confirmId).toBeTruthy();
-      expect(elicitCount).toBe(1); // the bridge was attempted, once
+      expect(elicitCount).toBe(0); // no in-band prompt is ever attempted
 
       // The trigger fires blank — the approval was never granted by anyone.
       const triggered = await client.callTool({

@@ -101,36 +101,6 @@ export interface ConfirmEnvelope {
   readonly resume: string;
 }
 
-/**
- * What the operator said when a surface put the confirm prompt in front of
- * them — or whether they were reached at all.
- *
- * A DECLINE IS AN ANSWER; A TIMEOUT IS THE ABSENCE OF ONE. Collapsing the two
- * makes the engine report "the operator declined" about an operator nobody
- * spoke to, and strands a call whose only approval path never opened.
- *
- *  - `approved`    — the operator accepted. Grant the approval, claim it, run.
- *  - `declined`    — the operator answered no. Decline the approval. Terminal:
- *                    a declined approval is never claimable and never revived.
- *  - `unreachable` — the prompt was never fulfilled (the client advertised the
- *                    capability and did not answer, or the transport faulted).
- *                    The engine holds no decision from anyone, so the approval
- *                    stays UNGRANTED and the caller hands back its
- *                    `approval_url` for a human to decide out of band.
- */
-export type ConfirmDecision = "approved" | "declined" | "unreachable";
-
-/**
- * In-band approval resolver, an OPTIMIZATION over the approval portal — never a
- * replacement for it. A surface that can put a prompt in front of a HUMAN inside
- * the call (MCP `elicitation/create`) supplies one. The approval is minted
- * UNGRANTED before the prompt goes out, so every outcome is recorded against a
- * real row: an accept grants it and the call runs in the same pass, a decline
- * declines it, and an unanswered prompt leaves it waiting for the portal. See
- * `ConfirmDecision`.
- */
-export type ConfirmResolver = (confirm: ConfirmEnvelope) => Promise<ConfirmDecision>;
-
 /** Status-discriminated dispatcher envelope. Replaces the legacy
  *  `ok: true | false` discriminated union in `ConversationTool.ToolResult`.
  *  The chat adapter narrows `ok` from this; the MCP adapter narrows

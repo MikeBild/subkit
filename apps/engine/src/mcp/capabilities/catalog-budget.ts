@@ -88,7 +88,9 @@ const AUTHORING_SESSION_TOOL_NAMES: ReadonlySet<string> = new Set([
  *  the inventory reads — is driven by the ENGINE'S OWN conversation loop, not by
  *  an external client, and stays fully reachable through `conversation_start`.
  *  Omitting them from `tools/list` does not remove them: `tools/call` still
- *  resolves them through the unified dispatcher. */
+ *  resolves them through the unified dispatcher, and `find_tool` (core floor,
+ *  mode-resolver.ts) keeps them DISCOVERABLE — a client searches the full
+ *  registry by keyword and calls any hit directly by name. */
 const AUTHORING_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   "get_workflow",
   "get_execution",
