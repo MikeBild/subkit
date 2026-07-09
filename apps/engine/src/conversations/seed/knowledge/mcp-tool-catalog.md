@@ -4,7 +4,7 @@ name: sk Platform Reference — MCP Tool Catalog
 description: The public MCP callable surface of sk — every tool name (underscore form) tagged with the MCP mode that can call it, plus the write approval gate, warnings envelope, OAuth scopes, and resource URI schemes.
 tags: [sk-platform-reference, mcp, tools, oauth, resources]
 scope: global
-version: 1
+version: 2
 ---
 
 # MCP Tool Catalog — Overview
@@ -20,10 +20,17 @@ Workflow slugs are kebab-case (`wf_daily-price-report`).
 
 The catalog is shaped by the caller's MCP mode (OAuth scope) and trimmed to a
 token budget. A small **core floor** is never trimmed: `find_workflow`,
-`run_workflow`, `authenticate`, `confirm_tool_call`, `list_recipes`. The
-per-workflow `wf_<slug>` palette rides alongside (Top-40). The long tail stays
-reachable via `find_workflow` → `run_workflow(slug)` (search-first); nothing
-becomes unreachable.
+`run_workflow`, `authenticate`, `confirm_tool_call`, `list_recipes`,
+`find_tool`. The per-workflow `wf_<slug>` palette rides alongside (Top-40).
+The long tail stays reachable via `find_workflow` → `run_workflow(slug)`
+(search-first); nothing becomes unreachable.
+
+Not every tool is listed — the catalog fits a token budget. Use
+`find_tool(query)` to discover tools like `call_connector`,
+`dry_run_transform`, `probe_connector`, then call them directly by name. It
+searches your mode's full callable catalog by keyword and returns `name`,
+`category`, and a one-line `summary` per hit — a returned tool needs no
+registration or separate dispatch step.
 
 # Availability
 
@@ -37,8 +44,9 @@ Every tool below carries the **lowest MCP mode that can call it**:
 The tag is about *callability*, which is the only thing that matters to you.
 `tools/list` is a shorter list than this catalog: it is fitted to a token budget,
 so an authoring/admin client can call tools it never sees listed — name them from
-here. The reverse never happens. A tool tagged above your mode is rejected, and
-so is any tool you invent.
+here, or discover them with `find_tool(query)` **[product]**. The reverse never
+happens. A tool tagged above your mode is rejected, and so is any tool you
+invent.
 
 **Draft tools are rejected on MCP in every mode.** They mutate a conversation's
 working draft, and a stateless `tools/call` has no draft to mutate:
@@ -98,14 +106,9 @@ definition and `inspect_execution` for what a run actually did.
   performs the held writes. It approves nothing — before they decide it answers
   `approval_not_granted`. Never call it on your own initiative, and never in the
   same turn as the preview.
-- `confirm_reason` says why no decision is in hand yet: `client_cannot_prompt`
-  (your client never advertised `elicitation`) or `in_band_prompt_unfulfilled`
-  (it advertised the capability and did not answer the prompt). Neither means
-  nobody was asked. The link is the channel that works either way.
-- **If your client answers in-band elicitation**, the engine asks the operator
-  inside the call instead. An accept releases the writes in the same call and you
-  never see a `confirm_id`. A decline comes back `operator_declined: true` with
-  no `confirm_id` and no `approval_url` — terminal, nothing left to grant.
+- `confirm_reason` is `portal_grant_required`: the held writes wait on a person
+  who opens the `approval_url` and grants. Approval over MCP is **portal-only** —
+  there is no in-band prompt, and nothing you send releases the writes.
 - The engine replays the inputs it already holds. There is no `execute_writes`
   parameter on this surface, and re-running the tool only reproduces the preview.
 - `_meta.environment` selects `"dev"` (default) or `"prod"`.
@@ -146,7 +149,8 @@ though the token budget usually keeps them out of `tools/list`: `call_connector`
 `analyze_scrape_target`, `suggest_connector_templates`, `dry_run_transform`,
 `dry_run_patch_candidate`, `suggest_jsonata_paths`, `propose_schema_migration`,
 `test_rbac_expression`, `inspect_authoring_context`, `cannot_help` — all
-**[authoring]**. Prefer the `conversation_*` entry point; these are building
+**[authoring]**. `find_tool(query)` finds them (and anything else your mode can
+call) by keyword. Prefer the `conversation_*` entry point; these are building
 blocks, not the front door.
 
 # Connectors
@@ -282,13 +286,11 @@ One rule, every write tool — including `run_workflow` and `wf_<slug>`:
 - Once they approve, fire `confirm_tool_call({ tool, confirm_id })`, passing the
   envelope's `tool_call_id` as `confirm_id`. The engine replays the args it
   persisted and executes.
-- **If your client answers `elicitation`**, the engine may first show the operator
-  the same confirmation inside the call, as an optimization over that round-trip.
-  An accept executes immediately (you never see the envelope at all); a decline is
-  terminal (`confirm_declined`, and the approval is dead). If your client
-  advertises the capability and does not answer the prompt, you get the ordinary
-  `needs_confirm` envelope with its `approval_url` — the engine has no decision
-  from anyone. Do not report that as a refusal, and do not claim nobody was asked.
+- Approval over MCP is **portal-only**. Even if your client advertises
+  `elicitation`, the engine issues no in-band prompt: every write approval comes
+  back as a `needs_confirm` envelope with an `approval_url` a person grants at,
+  out of band. It is not a refusal — nothing ran, and the call is waiting on that
+  link.
 
 A confirm without a matching, GRANTED, un-consumed approval is rejected — you
 cannot approve a call that was never gated, you cannot approve one yourself, and
@@ -315,9 +317,9 @@ permissions — RBAC still bounds every action.
 
 - `mcp:read` — product mode (default when no `mcp:*` marker). The whole surface
   is: the `wf_<slug>` palette, the core floor (`find_workflow`, `run_workflow`,
-  `authenticate`, `confirm_tool_call`, `list_recipes`), plus `get_execution`,
-  `inspect_recipe`, `test_connector`, `match_connector_template_by_url`. Read +
-  run only; anything else is rejected.
+  `authenticate`, `confirm_tool_call`, `list_recipes`, `find_tool`), plus
+  `get_execution`, `inspect_recipe`, `test_connector`,
+  `match_connector_template_by_url`. Read + run only; anything else is rejected.
 - `mcp:authoring` — authoring mode: adds the `conversation_*` session tools and
   every tenant **read** tool (find/list/get/inspect/search/probe/dry-run). No
   tenant writes — `run_workflow` and `wf_<slug>` stay available because a

@@ -23,12 +23,7 @@ import { EngineClient } from "../engine-client/index.ts";
 import { logger as mcpStubLogger } from "../logging/logger.ts";
 import { dispatchTool } from "../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../tools/index.ts";
-import type {
-  ConfirmResolver,
-  ToolDescriptor,
-  ToolEnvelope,
-  ToolInvocation,
-} from "../tools/types.ts";
+import type { ToolDescriptor, ToolEnvelope, ToolInvocation } from "../tools/types.ts";
 import { buildConversationToolMeta, buildToolAnnotations } from "./capabilities/tool-meta.ts";
 import { zodToJsonSchema7 } from "./json-schema.ts";
 
@@ -164,15 +159,13 @@ export function envelopeToMcpResponse(envelope: ToolEnvelope): {
   if (envelope.status === "needs_confirm") {
     const c = envelope.confirm;
     // The approval exists, UNGRANTED, and is waiting on a HUMAN at `approval_url`.
-    // Reachable for every client: one that cannot be prompted in-band, and one
-    // that advertised the prompt and did not answer it. A client whose operator
-    // DID answer never gets here — accept executes, decline is a terminal
-    // `confirm_declined` error (see `tools/dispatcher.ts#gateConfirm`). Keep the
-    // content a single VALID JSON object (clients parse it) but enrich it so a
-    // text-only client that does not read `_meta` (e.g. ChatGPT) still sees this
-    // is an actionable "needs approval" state, not a refusal/decline. `c` carries
-    // the structured `pending_output` preview, never the call payload — the
-    // engine replays the args it persisted under `tool_call_id`.
+    // This is the only human channel over MCP: a person grants it out of band and
+    // a confirm marker then triggers the granted row. Keep the content a single
+    // VALID JSON object (clients parse it) but enrich it so a text-only client
+    // that does not read `_meta` (e.g. ChatGPT) still sees this is an actionable
+    // "needs approval" state, not a refusal/decline. `c` carries the structured
+    // `pending_output` preview, never the call payload — the engine replays the
+    // args it persisted under `tool_call_id`.
     const instruction = c.approval_url
       ? `This tool call is PAUSED awaiting a person's approval (reason: ${c.reason}) — it was NOT refused, and nothing ran. ` +
         `Send this link to the person who must approve: ${c.approval_url}. After they approve, call ` +
@@ -257,22 +250,13 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
  *  Wraps the dispatcher and renders the envelope to the MCP response
  *  shape.
  *
- *  Human-in-the-loop over MCP: a `confirm_before_execution` tool pauses on a
- *  human, and the approval is minted UNGRANTED. Nothing the model can emit —
- *  `confirm_tool_call`, `_meta.sk_confirm`, an id it invented — grants it.
- *  Which human answers, and how, is decided ONCE, inside `dispatchTool#gateConfirm`:
- *
- *   - No resolver (the client cannot be prompted in-band): the `needs_confirm`
- *     envelope carries the `tool_call_id` and the `approval_url` a person opens
- *     to grant or decline. Afterwards `confirm_tool_call` performs the call.
- *   - `confirmResolver` present (the client advertises elicitation): the operator
- *     is prompted in-band via `elicitation/create` first, as an OPTIMIZATION over
- *     that round-trip. Accept → the dispatcher grants, claims, and executes in the
- *     same pass. Decline → the approval is declined and a terminal
- *     `confirm_declined` error goes back.
- *   - A client that advertised the prompt and never answered it lands in the first
- *     case: the engine holds no decision, the approval stays ungranted, and its
- *     `approval_url` is the channel that still works.
+ *  Human-in-the-loop over MCP is portal-only: a `confirm_before_execution` tool
+ *  pauses on a human, and the approval is minted UNGRANTED. Nothing the model
+ *  can emit — `confirm_tool_call`, `_meta.sk_confirm`, an id it invented —
+ *  grants it. `dispatchTool#gateConfirm` hands back a `needs_confirm` envelope
+ *  carrying the `tool_call_id` and the `approval_url` a person opens to grant
+ *  the call out of band. Afterwards a confirm marker TRIGGERS the granted row
+ *  and the engine replays the persisted args.
  *
  *  The adapter itself makes no approval decision — it only renders. */
 export async function callToolViaDispatcher(opts: {
@@ -281,7 +265,6 @@ export async function callToolViaDispatcher(opts: {
   mcpMode: "product" | "authoring" | "admin";
   readOnly: boolean;
   invocation: ToolInvocation;
-  confirmResolver?: ConfirmResolver;
 }): Promise<ReturnType<typeof envelopeToMcpResponse>> {
   const envelope = await dispatchTool(
     {
@@ -291,7 +274,6 @@ export async function callToolViaDispatcher(opts: {
       buildMcpStubCtx: () => buildMcpStubCtx({ db: opts.db, principal: opts.principal }),
       mcpMode: opts.mcpMode,
       readOnly: opts.readOnly,
-      ...(opts.confirmResolver ? { confirmResolver: opts.confirmResolver } : {}),
     },
     opts.invocation,
   );

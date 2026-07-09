@@ -323,25 +323,17 @@ with `_meta.sk_confirm: true` + `_meta.sk_confirm_id: <tool_call_id>`. Both are 
 same trigger, and both fail with `approval_not_granted` until the human decides.
 There is no second door to bolt, because neither door opens by itself.
 
-**In-band elicitation is an optimization, not the gate.** When a client advertises
-`elicitation`, the engine also puts an `elicitation/create` confirmation in front of
-the operator before returning: `dispatchTool#gateConfirm` for a registry tool,
-`gateHeldWrites` for a `wf_<slug>` preview. An accept grants the approval
-(`granted_via: "in_band_elicitation"`) and claims it, so the call executes in the
-same round-trip — the identical lifecycle a portal grant produces. A decline
-declines the approval: terminal, auditable, never claimable.
-
-Production settled how much this path can be relied on: across the full journal
-retention, **29 `elicitation/create` timeouts and not one fulfilled prompt**. Clients
-advertise the capability at handshake and never answer.
-
-**An unanswered prompt is not a decline.** A client that advertises `elicitation` and
-does not fulfil the round-trip leaves the engine with no decision from anyone — and
-that is *not* the same as "nobody was asked": the client may be showing its operator
-the prompt right now. The approval stays ungranted, and its `approval_url` goes back
-with the `needs_confirm` envelope. The prose says only what is true. A decline that
-arrives after that timeout is still honored: nothing could have been claimed in the
-interim, because nothing was ever granted.
+**In-band elicitation is NOT a grant channel over MCP.** The engine never issues an
+`elicitation/create` confirmation for a write approval, whatever capabilities the
+client advertises. Production settled this: across the full journal retention,
+**29 `elicitation/create` timeouts and not one fulfilled prompt** — and the one
+client that did answer auto-declined without a human ever seeing the prompt. An
+in-band response over MCP is therefore never a verified human decision (an
+auto-accept would be a self-approval hole; an auto-decline killed writes a person
+still wanted). Every write approval takes the portal path above:
+`dispatchTool#gateConfirm` for a registry tool and `gateHeldWrites` for a
+`wf_<slug>` preview both mint the approval UNGRANTED and hand back the
+`approval_url` — the one channel where a person, and only a person, decides.
 
 **No path re-sends the arguments.** `confirm_tool_call` publishes no `arguments`
 property at all, and on the `_meta` path the dispatcher discards whatever the client
@@ -493,7 +485,6 @@ apps/engine/src/tools/
 apps/engine/src/mcp/
 ├── adapter.ts                  listToolsViaRegistry / callToolViaDispatcher
 ├── capabilities/held-preview.ts  honest wf_<slug> preview envelope + confirm_id
-├── elicitation/confirm-resolver.ts  in-band elicitation confirm (best-effort)
 └── tests/
     ├── tools-call-parity.test.ts
     ├── policy-gate-snapshot.test.ts

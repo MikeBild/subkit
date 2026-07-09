@@ -108,6 +108,24 @@ describe("fitCatalogToBudget · authoring mode fits under budget", () => {
     for (const sessionTool of AUTHORING_SESSION_NAMES) expect(names.has(sessionTool)).toBe(true);
     for (const core of MCP_CORE_TOOL_NAMES) expect(names.has(core)).toBe(true);
   });
+
+  // find_tool (mcp/tools/find-tool.ts) is the search-first bridge for the
+  // long tail AUTHORING_READ_TOOL_NAMES omits — it only solves that problem
+  // if it ships as part of MCP_CORE_TOOL_NAMES (the never-trimmed floor)
+  // AND its own presence never pushes the fitted catalog back over budget.
+  // A meta-tool that fixes a budget problem by reintroducing one would be
+  // no fix at all.
+  test("find_tool ships in the fitted authoring catalog and the fit still lands under budget", () => {
+    const fit = fitCatalogToBudget({
+      principal: principal([MCP_AUTHORING_SCOPE]),
+      readOnly: false,
+      fullPalette: PALETTE,
+      initialMode: "authoring",
+    });
+    expect(fit.estTokensAfter).toBeLessThanOrEqual(SCHEMA_TOKEN_BUDGET);
+    const names = new Set(fit.tools.map((t) => t.name));
+    expect(names.has("find_tool")).toBe(true);
+  });
 });
 
 describe("fitCatalogToBudget · authoring session cluster survives a tail truncation", () => {
