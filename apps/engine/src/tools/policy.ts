@@ -171,14 +171,10 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
     };
   }
 
-  // Note: we DO NOT shortcut on `category === "tenant_read"` here.
-  // The deleted MCP-side gate did, which meant a tenant_read tool with a
-  // computeModeFromInput predicate (e.g. probe_connector POST against prod)
-  // silently bypassed the confirmation on MCP while gating correctly on
-  // chat. `resolveToolMode` decides for every category — tenant_read tools
-  // without dynamic predicates still resolve to no_confirm, so the common
-  // case is unchanged; the dangerous tenant_read+escalation case is now
-  // consistent.
+  // We compute the enforced mode for EVERY category (no `tenant_read`
+  // shortcut): a tenant_read tool with a `computeModeFromInput` predicate
+  // (e.g. `probe_connector` POST against prod) still resolves its real mode,
+  // so the audit row and the MCP-gate invariant below both see the truth.
   // `decideToolMode`, not the `resolveToolMode` projection: the envelope must
   // report the rule that was ENFORCED, and the projection throws it away.
   const decision = decideToolMode({
@@ -190,6 +186,18 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
   });
 
   if (decision.mode !== "confirm_before_execution") return { kind: "proceed" };
+
+  // MCP: the CLIENT's native `destructiveHint` dialog is the human gate.
+  // Every MCP-reachable tool that can resolve to `confirm_before_execution`
+  // advertises `destructiveHint:true` (`mcp/capabilities/tool-meta.ts`; pinned
+  // by `mcp/tests/tools-list.test.ts`), so a trusted client (claude.ai,
+  // ChatGPT) renders a blocking, per-call, model-unbypassable approval BEFORE
+  // the call reaches the engine — empirically verified against both clients.
+  // A second server-side confirm would be redundant AND has no in-band grant
+  // channel over MCP (elicitation is advertised-but-unfulfilled), so it could
+  // only dead-end the write. Chat is unaffected: it carries a real user
+  // principal and gates via the HTTP `ask_user_confirm` elicitation route.
+  if (input.surface === "mcp") return { kind: "proceed" };
 
   // The caller already confirmed (or yolo'd around) the gate.
   if (isConfirmed(input.args, input.meta)) return { kind: "proceed" };
@@ -207,13 +215,12 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
       policy_mode: "confirm_before_execution",
       reason: decision.rule,
       tool_call_id: crypto.randomUUID(),
-      // No `approval_url` here: `policyDecide` is pure. The confirm gate mints
-      // the approval and attaches the link before this envelope leaves the
-      // engine (`tools/dispatcher.ts#gateConfirm`).
+      // Only the chat surface reaches this envelope: MCP collapses to `proceed`
+      // above (the client's destructiveHint dialog is the gate). Chat gates via
+      // the emitted `ask_user_confirm` HTTP elicitation, answered by the real
+      // user principal; the engine then performs the call itself.
       resume:
-        input.surface === "mcp"
-          ? "Nothing has run. A person must approve this call at its approval_url. Once they have, confirm_tool_call({ tool, confirm_id: <this tool_call_id> }) performs it — it cannot approve it. The engine replays the arguments it already holds; do not re-send them."
-          : "The operator answers the emitted ask_user_confirm; the engine then performs the call itself.",
+        "The operator answers the emitted ask_user_confirm; the engine then performs the call itself.",
     },
   };
 }

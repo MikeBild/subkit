@@ -122,6 +122,50 @@ describe("tools/dispatcher (active)", () => {
     }
   });
 
+  // MCP writes execute directly — the client's own destructiveHint dialog
+  // gates the call before it reaches the engine, so `policyDecide` collapses
+  // confirm_before_execution to `proceed` on `surface:"mcp"` (see
+  // tools/policy.ts). No approval is ever minted for this call; contrast with
+  // the "needs_confirm path" chat test right below, which proves chat is
+  // unaffected.
+  test("MCP tenant_write proceeds directly — no confirm gate, no minted approval", async () => {
+    let executed = false;
+    const watchedDescriptor: ToolDescriptor = {
+      name: "_test_mcp_write_proceeds",
+      description: "watched",
+      category: "tenant_write",
+      inputSchema: { type: "object" },
+    };
+    const watchedProvider: ToolProvider = {
+      name: "McpProceedsProvider",
+      list: () => [watchedDescriptor],
+      resolve: (n) =>
+        n === "_test_mcp_write_proceeds"
+          ? {
+              descriptor: watchedDescriptor,
+              executor: {
+                kind: "conversation",
+                tool: undefined as never,
+                execute: async () => {
+                  executed = true;
+                  return { ok: true, data: { ran: true } };
+                },
+              },
+            }
+          : undefined,
+    };
+    const registry = buildRegistry([watchedProvider]);
+    const envelope = await dispatchTool(
+      { registry, db: DB_STUB, principal: PRINCIPAL, conversationCtx: {} as never },
+      { surface: "mcp", name: "_test_mcp_write_proceeds", args: {} },
+    );
+    expect(envelope.status).toBe("ok");
+    if (envelope.status === "ok") {
+      expect(envelope.data).toEqual({ ran: true });
+    }
+    expect(executed).toBe(true);
+  });
+
   test("needs_confirm path → returns envelope without invoking executor", async () => {
     let executed = false;
     const watchedDescriptor: ToolDescriptor = {
@@ -600,6 +644,17 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
   // tenant_write tool with no descriptor.rbac, executor captures the args
   // it actually received — the property under test throughout this block
   // is WHICH args reach the executor, not what the caller sent.
+  //
+  // NOTE on surface: MCP no longer mints an approval through the normal
+  // policy path — `policyDecide` collapses confirm_before_execution to
+  // `proceed` on `surface:"mcp"`, so `gateConfirm` never fires there
+  // (see the "MCP tenant_write proceeds directly" test above). The tests
+  // below seed an approval directly via `requestApproval` (bypassing
+  // `gateConfirm`/`policyDecide` entirely) to exercise the dispatcher's
+  // generic confirm-marker claim mechanism — the same code path chat's
+  // `ask_user_confirm` resolution drives operationally today. The `surface`
+  // field on the approval is just part of the CAS predicate
+  // (`consumeApproval`); it is not evidence that MCP still gates writes.
   function tenantWriteProvider(
     name: string,
     onExecute?: (args: Record<string, unknown>) => void,
@@ -883,7 +938,9 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
     // `environment: "prod"` forces run_workflow's confirm_before_execution
     // mode (no execute_writes / auto-approve), so the canonical args are
     // captured off the persisted APPROVAL_REQUESTED audit row's
-    // `metadata.args_hash` instead of the executor.
+    // `metadata.args_hash` instead of the executor. Surface is CHAT: on MCP
+    // this same call collapses straight to `proceed` (`policyDecide`,
+    // tools/policy.ts) — no approval is minted there to compare hashes on.
     const principal = dbPrincipal();
     const registry = buildRegistry([runWorkflowStub(() => {})]);
     const inputObject = { city: "Berlin" };
@@ -891,7 +948,7 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
     const objectEnvelope = await dispatchTool(
       { registry, db: testDb.db, principal, conversationCtx: {} as never },
       {
-        surface: "mcp",
+        surface: "chat",
         name: "run_workflow",
         args: { workflow: "invoice-export", environment: "prod", input: inputObject },
       },
@@ -899,7 +956,7 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
     const stringEnvelope = await dispatchTool(
       { registry, db: testDb.db, principal, conversationCtx: {} as never },
       {
-        surface: "mcp",
+        surface: "chat",
         name: "run_workflow",
         args: {
           workflow: "invoice-export",

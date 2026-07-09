@@ -9,11 +9,12 @@
 //  (e) RBAC credential ceiling — a principal scoped to ["workflow:read"] is denied
 //                      create_skill AND create_knowledge_source via the dispatcher
 //                      credential ceiling; a ["skill:write"] / ["knowledge:write"]
-//                      principal is NOT denied by the ceiling (ceiling passes, policy
-//                      gate fires normally → needs_confirm, proving the gap fix).
-//  (f) confirm-gate  — dispatching create_skill on the MCP surface without sk_confirm
-//                      returns needs_confirm + APPROVAL_REQUESTED audit; delete_skill
-//                      dispatched without sk_confirm also returns needs_confirm.
+//                      principal is NOT denied by the ceiling (ceiling passes and the
+//                      call reaches the executor — no policy_denial).
+//  (f) confirm-gate  — on the MCP surface a tenant_write proceeds directly (the
+//                      client's native destructiveHint dialog is the human gate):
+//                      NO needs_confirm and NO minted approval. Chat still gates —
+//                      see tools/tests/policy-decide.test.ts + dispatcher.test.ts.
 //
 // Architecture note:
 //   Tests (a)–(d) live inside a single "integration" describe that owns
@@ -328,11 +329,15 @@ describe("(e) RBAC credential ceiling — skill / knowledge tools", () => {
     expect(denied.length).toBe(1);
   });
 
-  test("[skill:write] scoped admin key is NOT ceiling-denied for create_skill — ceiling passes, policy gate fires → needs_confirm", async () => {
+  test("[skill:write] scoped admin key is NOT ceiling-denied for create_skill — ceiling passes, dispatch reaches the executor", async () => {
     // Required permission for create_skill is "skill:write".
     // The ceiling only denies when required permission is absent from the key's scopes.
     // With scopes: ["skill:write"] and permission "skill:write", the ceiling
-    // does NOT fire — the admin role then grants access; policy → needs_confirm.
+    // does NOT fire — the admin role then grants access. On MCP the confirm
+    // gate collapses to `proceed` (the client's native destructiveHint dialog
+    // is the human gate), so the call passes RBAC + policy and reaches the
+    // executor. The stub DB has no skills table, so execution fails with
+    // `tool_execute_failed` — proof it got PAST RBAC, which is what this pins.
     //
     // Args must satisfy create_skill's own schema (title + body are required):
     // the dispatcher canonicalizes args through the descriptor's schema BEFORE
@@ -340,7 +345,7 @@ describe("(e) RBAC credential ceiling — skill / knowledge tools", () => {
     // all — it fails canonicalization with invalid_args first. That ordering
     // is orthogonal to the ceiling this test is pinning, so give it a valid
     // payload to actually exercise the ceiling → policy path.
-    const { db } = makeStubDb();
+    const { db, capture } = makeStubDb();
     const principal = makeTestPrincipal({ scopes: ["skill:write"], roles: ["admin"] });
 
     const envelope = await dispatchTool(
@@ -353,12 +358,18 @@ describe("(e) RBAC credential ceiling — skill / knowledge tools", () => {
     );
 
     // Must NOT be policy_denied — the credential ceiling allows skill:write keys
-    // to exercise skill:write operations. needs_confirm confirms RBAC passed.
-    expect(envelope.status).toBe("needs_confirm");
+    // to exercise skill:write operations. Reaching the executor (any non-denial
+    // outcome) confirms RBAC passed.
+    expect(envelope.status).toBe("error");
+    if (envelope.status === "error") {
+      expect(envelope.error_code).not.toBe("policy_denied");
+    }
+    const denied = capture.inserts.filter((r) => r.action === AuditAction.POLICY_DENIED);
+    expect(denied.length).toBe(0);
   });
 
   test("[knowledge:write] scoped admin key is NOT ceiling-denied for create_knowledge_source", async () => {
-    const { db } = makeStubDb();
+    const { db, capture } = makeStubDb();
     const principal = makeTestPrincipal({ scopes: ["knowledge:write"], roles: ["admin"] });
 
     // create_knowledge_source's schema requires mode='inline' to carry name +
@@ -373,38 +384,43 @@ describe("(e) RBAC credential ceiling — skill / knowledge tools", () => {
       },
     );
 
-    expect(envelope.status).toBe("needs_confirm");
+    // Ceiling passes → reaches the executor (MCP takes no confirm; the client
+    // gate is the human step). Not a denial is the pin.
+    expect(envelope.status).toBe("error");
+    if (envelope.status === "error") {
+      expect(envelope.error_code).not.toBe("policy_denied");
+    }
+    const denied = capture.inserts.filter((r) => r.action === AuditAction.POLICY_DENIED);
+    expect(denied.length).toBe(0);
   });
 });
 
-// ─── (f) confirm-gate ────────────────────────────────────────────────────────
+// ─── (f) confirm-gate on MCP surface ─────────────────────────────────────────
 //
-// tenant_write tools require confirmation before execution on every surface.
-// Under the current contract the gate MINTS AN UNGRANTED APPROVAL up front:
-// `needs_confirm`'s envelope carries both a `tool_call_id` (the confirm/
-// approval id a later `confirm_tool_call` re-issue TRIGGERS, never approves)
-// and — when the engine has a `server.public_base_url` configured —
-// an `approval_url`, the one channel a HUMAN uses to actually grant it. The
-// dispatcher records APPROVAL_REQUESTED before returning the envelope; the
-// `tool_approvals` row it mints is `granted_at: NULL` until a human decides
-// (proved end-to-end, including the grant, in
-// `mcp/tests/wf-confirm-loop.test.ts`).
+// tenant_write tools advertise `destructiveHint:true` (mcp/capabilities/
+// tool-meta.ts), so over MCP a trusted client (claude.ai, ChatGPT) renders a
+// blocking, per-call, model-unbypassable approval dialog BEFORE the call ever
+// reaches the engine — empirically verified against both clients. The server
+// therefore takes NO confirm on `surface:"mcp"` (`tools/policy.ts` collapses
+// `confirm_before_execution` → `proceed`): a second server gate would be
+// redundant and, since in-band MCP elicitation is advertised-but-unfulfilled,
+// has no grant channel. So a bare MCP dispatch of a tenant_write:
+//   - does NOT return `needs_confirm`,
+//   - mints NO approval (zero APPROVAL_REQUESTED rows),
+//   - proceeds to the executor (which fails `tool_execute_failed` on the stub
+//     DB — proof it got past the gate).
+// The chat surface is unchanged and STILL gates via `ask_user_confirm` — pinned
+// in `tools/tests/policy-decide.test.ts` and `tools/tests/dispatcher.test.ts`.
 //
-// This stub-DB unit describe doesn't configure `server.public_base_url`, so
-// `requestApproval` mints no portal link here (`approval_url` comes back
-// null) — that half of the contract is covered by the integration test
-// above. What this describe pins is the shape a bare dispatch call gets:
-// needs_confirm + a tool_call_id + exactly one APPROVAL_REQUESTED audit row.
-//
-// An admin principal with wildcard scopes passes RBAC without any DB
-// queries (credential ceiling: * → no ceiling; admin role → short-circuit allow).
-// The stub DB captures the APPROVAL_REQUESTED insert so we can assert it.
+// An admin principal with wildcard scopes passes RBAC without any DB queries
+// (credential ceiling: * → no ceiling; admin role → short-circuit allow), so
+// the only thing between dispatch and the executor is the (now absent) gate.
 
 describe("(f) confirm-gate on MCP surface", () => {
   const registry = buildRegistry([conversationToolProvider]);
   const adminPrincipal = makeTestPrincipal({ scopes: ["*"], roles: ["admin"] });
 
-  test("create_skill dispatched on MCP without sk_confirm → needs_confirm + APPROVAL_REQUESTED audit", async () => {
+  test("create_skill dispatched on MCP proceeds directly — no needs_confirm, no minted approval", async () => {
     const { db, capture } = makeStubDb();
 
     // Schema-valid args (title + body) so the call clears canonicalization
@@ -418,29 +434,19 @@ describe("(f) confirm-gate on MCP surface", () => {
       },
     );
 
-    expect(envelope.status).toBe("needs_confirm");
-    if (envelope.status === "needs_confirm") {
-      expect(envelope.confirm.tool).toBe("create_skill");
-      expect(typeof envelope.confirm.tool_call_id).toBe("string");
-      // No `server.public_base_url` is configured in this unit describe, so
-      // `requestApproval` mints no portal link — `approval_url` is null, not
-      // absent-by-omission. A real link is proved end-to-end (grant included)
-      // in `mcp/tests/wf-confirm-loop.test.ts`.
-      expect(envelope.confirm.approval_url).toBeNull();
+    // The client's destructiveHint dialog is the gate — the server proceeds.
+    expect(envelope.status).not.toBe("needs_confirm");
+    // NOT gated away by policy: it reached the executor (stub has no skills
+    // table → tool_execute_failed), never a policy_denied.
+    if (envelope.status === "error") {
+      expect(envelope.error_code).not.toBe("policy_denied");
     }
-
-    // The dispatcher emits APPROVAL_REQUESTED before returning needs_confirm,
-    // and mints the approval UNGRANTED — nothing in this call can grant it.
+    // Zero approvals minted: MCP takes no server-side confirm.
     const approvalRows = capture.inserts.filter((r) => r.action === AuditAction.APPROVAL_REQUESTED);
-    expect(approvalRows.length).toBe(1);
-    // On MCP the resource_type is "mcp_tool_call".
-    expect(approvalRows[0]?.resource_type).toBe("mcp_tool_call");
-    if (envelope.status === "needs_confirm") {
-      expect(approvalRows[0]?.resource_id).toBe(envelope.confirm.tool_call_id);
-    }
+    expect(approvalRows.length).toBe(0);
   });
 
-  test("delete_skill dispatched on MCP without sk_confirm → needs_confirm (force-confirmed like any tenant_write)", async () => {
+  test("delete_skill dispatched on MCP proceeds directly — no needs_confirm, no minted approval", async () => {
     const { db, capture } = makeStubDb();
 
     const envelope = await dispatchTool(
@@ -453,18 +459,11 @@ describe("(f) confirm-gate on MCP surface", () => {
       },
     );
 
-    expect(envelope.status).toBe("needs_confirm");
-    if (envelope.status === "needs_confirm") {
-      expect(envelope.confirm.tool).toBe("delete_skill");
-      expect(typeof envelope.confirm.tool_call_id).toBe("string");
-      // No portal configured in this unit describe — see the comment above.
-      expect(envelope.confirm.approval_url).toBeNull();
+    expect(envelope.status).not.toBe("needs_confirm");
+    if (envelope.status === "error") {
+      expect(envelope.error_code).not.toBe("policy_denied");
     }
-
     const approvalRows = capture.inserts.filter((r) => r.action === AuditAction.APPROVAL_REQUESTED);
-    expect(approvalRows.length).toBe(1);
-    if (envelope.status === "needs_confirm") {
-      expect(approvalRows[0]?.resource_id).toBe(envelope.confirm.tool_call_id);
-    }
+    expect(approvalRows.length).toBe(0);
   });
 });

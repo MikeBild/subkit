@@ -9,9 +9,6 @@ let suite: McpTestSuite;
 let mock: MockServer;
 
 beforeAll(async () => {
-  // A public origin, so the held-writes preview can mint the `approval_url` a
-  // person opens to grant the writes.
-  process.env.SUBKIT_PUBLIC_BASE_URL = "https://engine.example.test";
   suite = await startMcpTestSuite("tools-call");
   mock = await createMockServer((_req, res) => {
     jsonResponse(res, 200, { hello: "world" });
@@ -21,7 +18,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await mock.close();
   await suite.cleanup();
-  delete process.env.SUBKIT_PUBLIC_BASE_URL;
 });
 
 describe("mcp tools/call", () => {
@@ -151,87 +147,64 @@ describe("mcp tools/call", () => {
     }
   }, 10_000);
 
-  // Honest preview regression (gemeldet ≠ geschrieben): a wf_* run holds
-  // writes by default. The default run must NOT return a clean payload
-  // that looks like a real write — it must carry a `preview` envelope +
-  // `_meta.subkit.execution.preview` so the model knows nothing was
-  // written. This is the exact failure the notion-append no-op exposed.
-  test("a held-writes preview returns a preview envelope + _meta, not a bare result", async () => {
-    const wf = await suite.seedWorkflow({
-      name: "call preview",
-      slug: "call-preview",
-      steps: [
-        { kind: "request", id: "fetch", method: "GET", url: `${mock.baseUrl}/data` },
-        {
-          kind: "request",
-          id: "send",
-          method: "POST",
-          url: `${mock.baseUrl}/send`,
-          body: { ok: true },
-        },
-      ],
+  // MCP writes execute directly (gemeldet == geschrieben, now the intended
+  // contract): a `wf_*` run dispatches its write steps for real — the
+  // client's native `destructiveHint` dialog already gated the call before it
+  // reached the engine. There is no held-writes preview and no confirm
+  // envelope left on this surface; the model sees exactly what actually ran.
+  test("a wf_* run with a write step dispatches it for real — no preview envelope, no _meta.subkit.confirm", async () => {
+    const hits: string[] = [];
+    const writeMock = await createMockServer((req, res) => {
+      hits.push(req.url ?? "");
+      if (req.url?.startsWith("/data")) return jsonResponse(res, 200, { ok: true });
+      return jsonResponse(res, 200, { delivered: true });
     });
-    const client = await suite.connect();
-    const result = await client.callTool({ name: "wf_call-preview", arguments: {} });
-    expect(result.isError).toBeFalsy();
+    try {
+      const wf = await suite.seedWorkflow({
+        name: "call direct write",
+        slug: "call-direct-write",
+        steps: [
+          { kind: "request", id: "fetch", method: "GET", url: `${writeMock.baseUrl}/data` },
+          {
+            kind: "request",
+            id: "send",
+            method: "POST",
+            url: `${writeMock.baseUrl}/send`,
+            body: { ok: true },
+          },
+        ],
+      });
+      const client = await suite.connect();
+      const result = await client.callTool({ name: "wf_call-direct-write", arguments: {} });
+      expect(result.isError).toBeFalsy();
 
-    const content = result.content as Array<{ type: string; text: string }>;
-    const body = JSON.parse(content[0]!.text) as {
-      preview?: boolean;
-      writes_held?: boolean;
-      held_steps?: string[];
-      would_write?: Array<{ step: string; method: string | null }>;
-      message?: string;
-      remedy?: string;
-      confirm_id?: string;
-      approval_url?: string | null;
-      awaiting_human_approval?: boolean;
-    };
-    expect(body.preview).toBe(true);
-    expect(body.writes_held).toBe(true);
-    expect(body.held_steps).toEqual(["send"]);
-    expect(body.would_write?.[0]?.step).toBe("send");
-    expect(body.would_write?.[0]?.method).toBe("POST");
-    // There is no `execute_writes` opt-in on this surface (a model-driven MCP
-    // client cannot set transport-level `_meta`). The remedy names the HUMAN
-    // affordance — the approval_url a person opens — and only then the
-    // confirm_id the model triggers with.
-    expect(typeof body.confirm_id).toBe("string");
-    expect(body.awaiting_human_approval).toBe(true);
-    // Origin-agnostic: the public origin is environmental (a global-config
-    // singleton a concurrent suite can transiently repoint). Assert the portal
-    // PATH + a well-formed `skag_` grant token, not a specific host.
-    expect(String(body.approval_url)).toMatch(
-      /^https?:\/\/[^/]+\/v1\/tool-approvals\/decide\?grant=skag_[A-Za-z0-9_-]+$/,
-    );
-    expect(body.remedy).toContain("Send this link to the person who must approve");
-    expect(body.remedy).toContain(String(body.approval_url));
-    expect(body.remedy).toContain(`confirm_id: "${body.confirm_id}"`);
-    // It must never instruct the model to approve — it cannot.
-    expect(body.remedy).toContain("it cannot approve them");
+      const content = result.content as Array<{ type: string; text: string }>;
+      const body = JSON.parse(content[0]!.text) as {
+        preview?: boolean;
+        writes_held?: boolean;
+        confirm_id?: string;
+        approval_url?: string | null;
+      };
+      expect(body.preview).toBeUndefined();
+      expect(body.writes_held).toBeUndefined();
+      expect(body.confirm_id).toBeUndefined();
+      expect(body.approval_url).toBeUndefined();
 
-    const meta = (
-      result as {
-        _meta?: {
-          subkit?: {
-            execution?: { preview?: boolean };
-            confirm?: { tool?: string; confirm_id?: string; approval_url?: string | null };
-          };
-        };
-      }
-    )._meta;
-    expect(meta?.subkit?.execution?.preview).toBe(true);
-    expect(meta?.subkit?.confirm?.tool).toBe("wf_call-preview");
-    expect(meta?.subkit?.confirm?.confirm_id).toBe(body.confirm_id);
-    expect(meta?.subkit?.confirm?.approval_url).toBe(body.approval_url ?? null);
+      const meta = (result as { _meta?: { subkit?: { confirm?: unknown } } })._meta;
+      expect(meta?.subkit?.confirm).toBeUndefined();
 
-    // The execution materialized but the write never hit the wire (the
-    // POST /send mock would have returned hello:world if it had run).
-    const rows = await suite.http.db
-      .select({ c: count() })
-      .from(executions)
-      .where(eq(executions.workflow_id, wf.id));
-    expect(rows[0]?.c).toBeGreaterThanOrEqual(1);
+      // The write step actually hit the wire.
+      expect(hits.some((u) => u.startsWith("/data"))).toBe(true);
+      expect(hits.some((u) => u.startsWith("/send"))).toBe(true);
+
+      const rows = await suite.http.db
+        .select({ c: count() })
+        .from(executions)
+        .where(eq(executions.workflow_id, wf.id));
+      expect(rows[0]?.c).toBeGreaterThanOrEqual(1);
+    } finally {
+      await writeMock.close();
+    }
   });
 
   // Affordance regression guard: when a workflow tool result exceeds

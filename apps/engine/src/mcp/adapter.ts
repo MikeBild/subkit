@@ -157,31 +157,18 @@ export function envelopeToMcpResponse(envelope: ToolEnvelope): {
     };
   }
   if (envelope.status === "needs_confirm") {
-    const c = envelope.confirm;
-    // The approval exists, UNGRANTED, and is waiting on a HUMAN at `approval_url`.
-    // This is the only human channel over MCP: a person grants it out of band and
-    // a confirm marker then triggers the granted row. Keep the content a single
-    // VALID JSON object (clients parse it) but enrich it so a text-only client
-    // that does not read `_meta` (e.g. ChatGPT) still sees this is an actionable
-    // "needs approval" state, not a refusal/decline. `c` carries the structured
-    // `pending_output` preview, never the call payload — the engine replays the
-    // args it persisted under `tool_call_id`.
-    const instruction = c.approval_url
-      ? `This tool call is PAUSED awaiting a person's approval (reason: ${c.reason}) — it was NOT refused, and nothing ran. ` +
-        `Send this link to the person who must approve: ${c.approval_url}. After they approve, call ` +
-        `\`confirm_tool_call\` with tool="${c.tool}" and confirm_id="${c.tool_call_id}" to perform the call. ` +
-        "confirm_tool_call performs a call a person already approved — it cannot approve one, and it fails " +
-        "until they have. The engine replays the arguments it already holds — do not re-send them."
-      : `This tool call is PAUSED awaiting a person's approval (reason: ${c.reason}) — it was NOT refused, and nothing ran. ` +
-        "This engine has no approval portal configured (server.public_base_url is unset), so no approval link " +
-        `exists and ${c.tool} cannot be approved. Tell the user to ask an administrator to configure it. ` +
-        "Do NOT retry: confirm_tool_call cannot grant this approval.";
-    const payload = { status: "needs_confirm", instruction, ...c };
-    return {
-      isError: false,
-      content: [{ type: "text", text: JSON.stringify(payload) }],
-      _meta: { subkit: { confirm: c } },
-    };
+    // Unreachable on the MCP surface. `policyDecide` collapses
+    // `confirm_before_execution` to `proceed` for `surface:"mcp"` (see
+    // tools/policy.ts): the client's native `destructiveHint` dialog is the
+    // human gate, and every MCP-reachable confirm-capable tool advertises it
+    // (mcp/capabilities/tool-meta.ts, pinned by tools-list.test.ts). If this
+    // ever fires, a confirm-capable tool reached MCP WITHOUT an annotation gate
+    // — a governance regression to fix at the source, not a renderable state
+    // (there is no in-band grant channel over MCP to point a caller at).
+    throw new Error(
+      `MCP dispatch returned needs_confirm for ${envelope.confirm.tool}: MCP writes are gated ` +
+        "by the client's destructiveHint dialog, not a server confirm — this tool must advertise it.",
+    );
   }
   if (envelope.status === "paused") {
     return {
@@ -250,13 +237,13 @@ export function buildMcpStubCtx(opts: { db: Db; principal: ResolvedPrincipal }):
  *  Wraps the dispatcher and renders the envelope to the MCP response
  *  shape.
  *
- *  Human-in-the-loop over MCP is portal-only: a `confirm_before_execution` tool
- *  pauses on a human, and the approval is minted UNGRANTED. Nothing the model
- *  can emit — `confirm_tool_call`, `_meta.sk_confirm`, an id it invented —
- *  grants it. `dispatchTool#gateConfirm` hands back a `needs_confirm` envelope
- *  carrying the `tool_call_id` and the `approval_url` a person opens to grant
- *  the call out of band. Afterwards a confirm marker TRIGGERS the granted row
- *  and the engine replays the persisted args.
+ *  Human-in-the-loop over MCP is the CLIENT's native `destructiveHint` dialog:
+ *  a trusted client (claude.ai, ChatGPT) renders a blocking, per-call approval
+ *  BEFORE the call reaches the engine, so `policyDecide` takes no server-side
+ *  confirm on `surface:"mcp"` (it would be redundant and has no in-band grant
+ *  channel). Every MCP-reachable write advertises `destructiveHint:true`
+ *  (mcp/capabilities/tool-meta.ts) so the client gate always fires; the adapter
+ *  therefore never renders a `needs_confirm` envelope (see above).
  *
  *  The adapter itself makes no approval decision — it only renders. */
 export async function callToolViaDispatcher(opts: {

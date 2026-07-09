@@ -11,13 +11,13 @@
 //      immediately after the `wf_` palette — so a client that truncates the
 //      manifest tail cannot end up with the entry point but not the
 //      continuation.
-//   3. `confirm_tool_call`'s published `inputSchema` carries no `arguments`
-//      property — the approval is a capability handle (`tool` + `confirm_id`),
-//      never a re-transmission challenge.
-//   4. The mode hierarchy is monotone: authoring publishes every tool product
+//   3. The mode hierarchy is monotone: authoring publishes every tool product
 //      publishes. It once did not — authoring shipped `list_recipes` with no
 //      `inspect_recipe` to read a recipe, while a product client on the same
 //      engine held both.
+//   4. `confirm_tool_call` is GONE from the catalog: MCP writes execute
+//      directly, gated by the client's own `destructiveHint` dialog, never by
+//      a server-side confirm responder (`tools/policy.ts`).
 
 import { describe, expect, test } from "bun:test";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
@@ -26,7 +26,6 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { MCP_CORE_TOOL_NAMES } from "../mode-resolver.ts";
 import {
   assembleTier,
-  CONFIRM_TOOL_CALL_TOOL,
   DEFAULT_PALETTE_LIMIT,
   fitCatalogToBudget,
   SCHEMA_TOKEN_BUDGET,
@@ -225,15 +224,22 @@ describe("mode hierarchy is monotone · authoring ⊇ product", () => {
   });
 });
 
-describe("confirm_tool_call · capability handle, not a re-transmission challenge", () => {
-  test("published inputSchema has no `arguments` property", () => {
-    const schema = CONFIRM_TOOL_CALL_TOOL.inputSchema as Record<string, unknown>;
-    const props = schema.properties as Record<string, unknown>;
-    expect(props).not.toHaveProperty("arguments");
+describe("confirm_tool_call is gone from the MCP catalog", () => {
+  test("neither product nor authoring publishes a confirm_tool_call tool", () => {
+    for (const mode of ["product", "authoring"] as const) {
+      const tools = assembleTier({
+        principal: principal(mode === "authoring" ? [MCP_AUTHORING_SCOPE] : []),
+        readOnly: false,
+        mode,
+        paletteLimit: DEFAULT_PALETTE_LIMIT,
+        compress: false,
+        fullPalette: [],
+      });
+      expect(tools.some((t) => t.name === "confirm_tool_call")).toBe(false);
+    }
   });
 
-  test("published inputSchema requires only `tool` and `confirm_id`", () => {
-    const schema = CONFIRM_TOOL_CALL_TOOL.inputSchema as Record<string, unknown>;
-    expect(schema.required).toEqual(["tool", "confirm_id"]);
+  test("the search-first floor (MCP_CORE_TOOL_NAMES) no longer names confirm_tool_call", () => {
+    expect(MCP_CORE_TOOL_NAMES.has("confirm_tool_call")).toBe(false);
   });
 });

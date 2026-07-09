@@ -59,6 +59,12 @@ describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
     expect(names.has("conversation_start")).toBe(true);
   });
 
+  test("confirm_tool_call is NOT listed — MCP writes execute directly", async () => {
+    const client = await suite.connect();
+    const result = await client.listTools();
+    expect(result.tools.some((t) => t.name === "confirm_tool_call")).toBe(false);
+  });
+
   test("catalog stays under the size ceiling (no draft_write traps, no tenant_* duplicates)", async () => {
     // Tool-selection accuracy degrades past ~30-50 tools and large
     // catalogs bloat every turn's context. Before this change the
@@ -68,13 +74,14 @@ describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
     const client = await suite.connect();
     const result = await client.listTools();
     // Deliberate ceiling, raised as tools are consciously added:
-    //   +1 `confirm_tool_call` — the model-drivable confirm responder is
-    //      always listed as the guaranteed confirm fallback for every client;
     //   +2 grounding read tools — `list_capability_gaps` (durable capability
     //      gaps) and `suggest_related_conversations` (topic routing).
     //   +1 `run_workflow` — the search-first workflow runner is now exempt
     //      from the readOnly-implied hide so it surfaces in authoring/admin too
     //      (RBAC still gates execution); it was previously hidden here.
+    // `confirm_tool_call` is GONE (MCP writes execute directly, gated by the
+    // client's own destructiveHint dialog — see tools/policy.ts), so it no
+    // longer counts toward this ceiling.
     // Keep the guard tight so further additions stay a conscious choice,
     // not drift.
     expect(result.tools.length).toBeLessThan(85);
