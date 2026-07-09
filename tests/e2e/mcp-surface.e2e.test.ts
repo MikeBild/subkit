@@ -232,7 +232,7 @@ describe("MCP tool surface", () => {
     });
   }, 30_000);
 
-  test("destructive call returns needs_confirm, then completes with _meta.sk_confirm", async () => {
+  test("destructive call executes directly — the client's destructiveHint dialog is the gate, no server confirm", async () => {
     // Seed a workflow so the delete has a real target. Driving the full
     // authoring surface is out of scope here, so create one via the API.
     const createRes = await fetch(`${env.baseUrl}/v1/workflows`, {
@@ -266,76 +266,35 @@ describe("MCP tool surface", () => {
       clientInfo: { name: "e2e-test", version: "0.0.0" },
     });
 
-    // First call — expect a needs_confirm envelope from the unified
-    // dispatcher (rendered as isError:false with the ConfirmEnvelope JSON).
-    const first = await session.call("tools/call", {
+    // `delete_workflow` advertises `destructiveHint:true` (pinned in
+    // `mcp/tests/tools-list.test.ts`), so over MCP a trusted client (claude.ai,
+    // ChatGPT) renders a blocking human approval dialog BEFORE the call reaches
+    // the engine. The server therefore takes NO confirm on the MCP surface
+    // (`tools/policy.ts` collapses `confirm_before_execution` → `proceed`): a
+    // second server gate is redundant and has no in-band grant channel. So a raw
+    // MCP `tools/call` (which bypasses the client dialog) EXECUTES the delete
+    // directly — no `needs_confirm`, no `approval_url`, no `confirm_tool_call`
+    // dance, no minted approval.
+    const call = await session.call("tools/call", {
       name: "delete_workflow",
       arguments: { id: workflowId },
     });
-    const firstResult = first.result as {
+    const callResult = call.result as {
       isError?: boolean;
       content?: Array<{ type: string; text: string }>;
     };
-    expect(firstResult.isError).toBeFalsy();
-    const confirm = JSON.parse(firstResult.content![0]!.text) as {
-      tool?: string;
-      policy_mode?: string;
-      tool_call_id?: string;
-    };
-    expect(confirm.tool).toBe("delete_workflow");
-    expect(confirm.policy_mode).toBe("confirm_before_execution");
-    expect(typeof confirm.tool_call_id).toBe("string");
-    // The approval is minted UNGRANTED: the envelope hands back a human-only
-    // portal link, not a token the model can act on.
-    expect(typeof confirm.approval_url).toBe("string");
+    // Executed, not gated: no ConfirmEnvelope, no approval_url.
+    expect(callResult.isError).toBeFalsy();
+    const payload = JSON.parse(callResult.content![0]!.text) as Record<string, unknown>;
+    expect(payload).toBeTruthy();
+    expect(payload.policy_mode).toBeUndefined();
+    expect(payload.approval_url).toBeUndefined();
 
-    // The model cannot approve itself. Re-issuing with _meta.sk_confirm before
-    // any human has granted the approval must be REFUSED — this is the whole
-    // point of the change: confirm is a trigger, not a gate.
-    const premature = await session.call("tools/call", {
-      name: "delete_workflow",
-      arguments: { id: workflowId },
-      _meta: { sk_confirm: true, sk_confirm_id: confirm.tool_call_id },
+    // The write actually happened: the workflow is gone.
+    const getRes = await fetch(`${env.baseUrl}/v1/workflows/${workflowId}`, {
+      headers: { authorization: `Bearer ${env.personas.admin.apiKey}` },
     });
-    const prematureResult = premature.result as {
-      isError?: boolean;
-      content?: Array<{ type: string; text: string }>;
-    };
-    expect(prematureResult.isError).toBe(true);
-    const prematurePayload = JSON.parse(prematureResult.content![0]!.text) as {
-      error_code?: string;
-    };
-    expect(prematurePayload.error_code).toBe("approval_not_granted");
-
-    // A HUMAN grants it out of band through the approval portal. The admin
-    // persona's API key is user-bound, so it stands in for the operator's
-    // browser session; the portal records the human as the approver.
-    const grantToken = new URL(confirm.approval_url!).searchParams.get("grant");
-    expect(typeof grantToken).toBe("string");
-    const grantRes = await fetch(`${env.baseUrl}/v1/tool-approvals/decide`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${env.personas.admin.apiKey}`,
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({ grant: grantToken!, decision: "approve" }).toString(),
-    });
-    expect(grantRes.ok).toBe(true);
-
-    // Now the trigger fires: the same re-issue claims the granted approval and
-    // the deletion runs.
-    const second = await session.call("tools/call", {
-      name: "delete_workflow",
-      arguments: { id: workflowId },
-      _meta: { sk_confirm: true, sk_confirm_id: confirm.tool_call_id },
-    });
-    const secondResult = second.result as {
-      isError?: boolean;
-      content?: Array<{ type: string; text: string }>;
-    };
-    expect(secondResult.isError).toBeFalsy();
-    const secondPayload = JSON.parse(secondResult.content![0]!.text);
-    expect(secondPayload).toBeTruthy();
+    expect(getRes.status).toBe(404);
   }, 60_000);
 
   test("get_engine_status call returns a JSON summary", async () => {
