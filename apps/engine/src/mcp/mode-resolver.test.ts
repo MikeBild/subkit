@@ -38,6 +38,27 @@ describe("MCP catalog visibility · resolveMcpMode", () => {
   test("`mcp:admin` scope wins over `mcp:authoring`", () => {
     expect(resolveMcpMode(principal(["mcp:authoring", "mcp:admin"]))).toBe("admin");
   });
+
+  // The wildcard `*` scope asserts "no narrowing — full role-derived access"
+  // (auth/scopes.ts). Resolving it to `product` inverted that contract: the
+  // least-narrowed credential (default minted keys, admin@local, OIDC
+  // sessions) got the SMALLEST catalog while an OAuth token carrying the
+  // literal `mcp:authoring` marker got the full one.
+  test("wildcard `*` scope resolves to authoring mode", () => {
+    expect(resolveMcpMode(principal(["*"]))).toBe("authoring");
+  });
+
+  test("wildcard `*` scope NEVER resolves to admin — tenant writes stay behind the explicit `mcp:admin` marker", () => {
+    expect(resolveMcpMode(principal(["*"]))).not.toBe("admin");
+  });
+
+  test("explicit `mcp:admin` still wins when wildcard is also present", () => {
+    expect(resolveMcpMode(principal(["*", "mcp:admin"]))).toBe("admin");
+  });
+
+  test("narrowed permission-scoped key (no wildcard, no mcp marker) stays product", () => {
+    expect(resolveMcpMode(principal(["connector:read", "workflow:run"]))).toBe("product");
+  });
 });
 
 describe("MCP catalog visibility · modeFlags", () => {
