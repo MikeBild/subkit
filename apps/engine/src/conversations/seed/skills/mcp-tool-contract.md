@@ -42,7 +42,7 @@ Every sk callable entry ships a `_meta.subkit` envelope:
 **The human approves inside YOUR client, before the call ever reaches sk.** Every write/destructive entry advertises `destructiveHint: true` in its `tools/list` annotations. A trusted MCP client (claude.ai, ChatGPT, Claude Desktop, Cursor, …) reads that hint and renders a native, per-call approval dialog *before* dispatching the call — a blocking human gate you cannot bypass. There is **no** sk-side approval portal, **no** `approval_url`, **no** `confirm_tool_call`, and **no** `needs_confirm` envelope. Those were removed.
 
 1. Call the callable entry normally, e.g. `delete_workflow({id: "abc"})`.
-2. Your client shows the human its approval prompt (e.g. claude.ai: *"Claude möchte delete_workflow verwenden — Allow / Deny"*; ChatGPT surfaces the same under its permission mode). You do not send a link or paste anything — the client owns this step.
+2. Your client shows the human its approval prompt (e.g. claude.ai: *"Claude wants to use delete_workflow — Allow / Deny"*; ChatGPT surfaces the same under its permission mode). You do not send a link or paste anything — the client owns this step.
 3. If the human **allows**, the call reaches sk and **executes directly**, writing its audit row and returning the normal result. If they **deny**, the call never reaches sk.
 4. That is the whole flow. Do not look for an `approval_url` to forward, and do not call `confirm_tool_call` — it no longer exists. Just make the call and let the client's dialog gate it.
 
