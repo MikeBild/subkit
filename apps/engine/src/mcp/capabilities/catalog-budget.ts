@@ -104,7 +104,7 @@ const AUTHORING_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
 
 /** Registry tools published in `authoring` mode ON TOP OF everything product
  *  mode publishes. Admin keeps the full inventory. Together with the six
- *  `conversation_*` session tools, the appended `confirm_tool_call`, and the
+ *  `conversation_*` session tools and the
  *  `wf_` palette this lands at ~24 named tools — a catalog `fitCatalogToBudget`
  *  can actually fit, rather than one whose `over_budget` flag was true by
  *  construction.
@@ -153,67 +153,6 @@ function authoringPublishedTools(registryTools: Tool[], productNames: ReadonlySe
   }
   return published;
 }
-
-/**
- * Guaranteed approval TRIGGER, present in every client's catalog. A
- * `confirm_before_execution` gate returns a `_meta.subkit.confirm` envelope —
- * and a `wf_<slug>` run that held its writes returns the equivalent
- * `confirm_id` inside its preview envelope. Either way the approval is minted
- * UNGRANTED. A HUMAN grants it out of band at the envelope's `approval_url`;
- * only then does this tool claim the single-use handle and perform the call,
- * replaying the args the engine persisted when it paused.
- *
- * It approves nothing, so it needs no capability-based refusal: every client may
- * call it, and an ungranted approval answers `approval_not_granted`.
- *
- * The approval is a capability handle, not a re-transmission challenge, so the
- * published schema carries NO `arguments` property: there is nothing for the
- * model to echo (and nothing for it to swap). A ~50 KB payload is as
- * approvable as a one-liner.
- *
- * In-band elicitation (`capabilities/tools.ts`) is an OPTIMIZATION over that
- * round-trip, never a replacement. A client whose operator ACCEPTS the in-band
- * prompt never sees a `confirm_id` — the call already ran. A client that
- * advertises the capability and then never answers the prompt DOES get the
- * envelope: advertising is not fulfilment, and a paused call must keep a
- * reachable approval path or the gate is one no caller can satisfy.
- *
- * The annotations describe what happens after the human says yes. This tool is
- * the sole executor of every approved call — `delete_*` included, and live
- * `wf_<slug>` runs that reach external systems. Asserting `destructiveHint:false`
- * would let a strict client file it under "always allow", the same defect
- * `buildToolAnnotations` refuses for every other write.
- */
-export const CONFIRM_TOOL_CALL_NAME = "confirm_tool_call";
-export const CONFIRM_TOOL_CALL_TOOL: Tool = {
-  name: CONFIRM_TOOL_CALL_NAME,
-  title: "Confirm tool call",
-  description:
-    "Perform a paused tool call a person has ALREADY approved — a `status:needs_confirm` " +
-    "envelope, or a `wf_<slug>` run that came back `preview:true` with its writes held. This " +
-    "cannot approve anything: a human grants the approval out of band at the envelope's " +
-    "`approval_url`, and until they do this answers `approval_not_granted`. Set `confirm_id` to " +
-    "the envelope's `tool_call_id` and `tool` to the tool it names. The server replays the " +
-    "arguments it already holds for that approval — never re-send them.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      tool: { type: "string", description: "Name of the paused tool the person approved." },
-      confirm_id: {
-        type: "string",
-        description: "The `tool_call_id` from the confirm envelope (joins the approval audit).",
-      },
-    },
-    required: ["tool", "confirm_id"],
-  },
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: false,
-    openWorldHint: true,
-  },
-  execution: { taskSupport: "forbidden" },
-};
 
 /** Estimate the combined tools/list schema token cost (~4 chars/token). */
 export function estimateCatalogTokens(tools: Tool[]): number {
@@ -290,10 +229,9 @@ function orderEssentialsFirst(tools: Tool[]): Tool[] {
 /** Assemble one catalog tier (in-memory; no DB). The `wf_` palette is sliced
  *  from the pre-fetched full list; the registry tools follow the mode and, in
  *  `authoring`, are narrowed to product's set plus AUTHORING_EXTRA_TOOL_NAMES;
- *  the `conversation_*` session tools ship whole; and `confirm_tool_call` is
- *  always appended as the guaranteed confirm fallback so it is part of the
- *  measured floor for every client. The result is ordered essentials-first so a
- *  strict client that truncates anyway keeps the tools that matter. */
+ *  the `conversation_*` session tools ship whole. The result is ordered
+ *  essentials-first so a strict client that truncates anyway keeps the tools
+ *  that matter. */
 export function assembleTier(p: AssembleTierParams): Tool[] {
   const flags = modeFlags(p.mode, p.readOnly);
   const tools: Tool[] = [];
@@ -309,7 +247,6 @@ export function assembleTier(p: AssembleTierParams): Tool[] {
       : registryTools),
   );
   if (flags.showConversationTools) tools.push(...listConversationTools());
-  tools.push(CONFIRM_TOOL_CALL_TOOL);
   const compressed = p.compress ? tools.map(compressToolSchema) : tools;
   return orderEssentialsFirst(compressed);
 }

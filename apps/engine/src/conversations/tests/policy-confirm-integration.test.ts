@@ -18,6 +18,7 @@ import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
+import { buildToolAnnotations } from "../../mcp/capabilities/tool-meta.ts";
 import { policyDecide } from "../../tools/policy.ts";
 import { getElicitation } from "../elicitations.ts";
 import type { ToolContext } from "../tools/index.ts";
@@ -187,11 +188,20 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
   });
 });
 
-describe("confirm gate — loop and MCP reach IDENTICAL verdicts", () => {
-  // Same (tool, args) evaluated on both surfaces must pause-or-proceed
-  // identically. The loop gate and `policyDecide` both key on the same
-  // resolved mode + confirm marker.
-  it("run_workflow prod: loop PAUSES and MCP needs_confirm", async () => {
+describe("confirm gate — chat pauses server-side, MCP delegates to the client dialog", () => {
+  // A confirm-gated tool is gated on BOTH surfaces, but by DIFFERENT channels:
+  //   - chat  → the loop pauses on `ask_user_confirm` (server-side elicitation,
+  //             answered by the real user principal), so `policyDecide` returns
+  //             `needs_confirm`.
+  //   - MCP   → `policyDecide` returns `proceed` because the client's native
+  //             `destructiveHint` approval dialog is the human gate (it blocks
+  //             the call BEFORE it reaches the engine — empirically verified on
+  //             claude.ai and ChatGPT). A second server confirm would be
+  //             redundant and has no in-band grant channel over MCP.
+  // So the two surfaces DIVERGE on the server-side verdict but reach the same
+  // human-in-the-loop outcome. The invariant that keeps MCP safe: any tool that
+  // gates on chat advertises `destructiveHint:true`, so the MCP client gates it.
+  it("run_workflow prod: chat pauses (ask_user_confirm), MCP proceeds server-side but is client-gated", async () => {
     const { result: loop } = await runLoopTool("run_workflow", {
       workflow: "render-upload-slides",
       environment: "prod",
@@ -202,14 +212,15 @@ describe("confirm gate — loop and MCP reach IDENTICAL verdicts", () => {
       surface: "mcp",
       args: { workflow: "render-upload-slides", environment: "prod" },
     });
-    const loopPaused = Boolean(loop.pause);
-    const mcpPaused = mcp.kind === "needs_confirm";
-    expect(loopPaused).toBe(true);
-    expect(mcpPaused).toBe(true);
-    expect(loopPaused).toBe(mcpPaused);
+    // Chat gates server-side.
+    expect(Boolean(loop.pause)).toBe(true);
+    // MCP takes no server confirm — the client's destructiveHint dialog does.
+    expect(mcp.kind).not.toBe("needs_confirm");
+    // ...and that client gate provably exists: run_workflow advertises destructive.
+    expect(buildToolAnnotations("workflow_run", "run_workflow").destructiveHint).toBe(true);
   });
 
-  it("run_workflow dev: loop PROCEEDS and MCP proceeds", async () => {
+  it("run_workflow dev: both surfaces proceed (no gate on either)", async () => {
     const { result: loop } = await runLoopTool("run_workflow", {
       workflow_id: "00000000-0000-0000-0000-000000000001",
       environment: "dev",
@@ -220,16 +231,14 @@ describe("confirm gate — loop and MCP reach IDENTICAL verdicts", () => {
       surface: "mcp",
       args: { environment: "dev" },
     });
-    const loopPaused = Boolean(loop.pause);
-    const mcpPaused = mcp.kind === "needs_confirm";
-    expect(loopPaused).toBe(false);
-    expect(mcpPaused).toBe(false);
-    expect(loopPaused).toBe(mcpPaused);
+    expect(Boolean(loop.pause)).toBe(false);
+    expect(mcp.kind).not.toBe("needs_confirm");
   });
 
-  it("run_workflow prod with execute_writes: both surfaces gate the live run", async () => {
+  it("run_workflow prod with execute_writes: chat gates the live run; MCP delegates to the client dialog", async () => {
     // `execute_writes:true` is a request for the operator's approval, not an
-    // approval. Neither surface lets the model turn it into a live send.
+    // approval. On chat the loop pauses on `ask_user_confirm`; on MCP the
+    // client's destructiveHint dialog is the gate, so the server proceeds.
     const { result: loop } = await runLoopTool("run_workflow", {
       workflow_id: "00000000-0000-0000-0000-000000000003",
       environment: "dev",
@@ -241,10 +250,8 @@ describe("confirm gate — loop and MCP reach IDENTICAL verdicts", () => {
       surface: "mcp",
       args: { environment: "dev", execute_writes: true },
     });
-    const loopPaused = Boolean(loop.pause);
-    const mcpPaused = mcp.kind === "needs_confirm";
-    expect(loopPaused).toBe(true);
-    expect(mcpPaused).toBe(true);
-    expect(loopPaused).toBe(mcpPaused);
+    expect(Boolean(loop.pause)).toBe(true);
+    expect(mcp.kind).not.toBe("needs_confirm");
+    expect(buildToolAnnotations("workflow_run", "run_workflow").destructiveHint).toBe(true);
   });
 });

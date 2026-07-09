@@ -1,11 +1,16 @@
 // Unit tests for the MCP adapter's envelope rendering.
 //
-// Focus: a `needs_confirm` result must be LEGIBLE to a text-only client (one
-// that does not parse `_meta`, e.g. ChatGPT) — it must read as an actionable
-// "re-call confirm_tool_call" state, not a tool refusal/decline. Regressing
-// this is the ChatGPT confirm-loop failure.
+// `needs_confirm` is UNREACHABLE on the MCP surface: `policyDecide` collapses
+// `confirm_before_execution` to `proceed` for `surface:"mcp"` (see
+// tools/policy.ts) — the client's native `destructiveHint` dialog is the
+// human gate. If a `needs_confirm` envelope ever reaches the adapter it means
+// a confirm-capable tool reached MCP WITHOUT that annotation gate, which is a
+// governance regression, not a renderable state — so the adapter throws
+// rather than silently rendering a dead-end prompt with no in-band grant
+// channel.
 
 import { describe, expect, test } from "bun:test";
+import type { ToolResultPause } from "../conversations/tools/index.ts";
 import type { ConfirmEnvelope, ToolEnvelope } from "../tools/types.ts";
 import { envelopeToMcpResponse } from "./adapter.ts";
 
@@ -19,43 +24,80 @@ const confirm: ConfirmEnvelope = {
   approval_url: "https://engine.example.test/v1/tool-approvals/decide?grant=skag_test",
 };
 
-describe("envelopeToMcpResponse — needs_confirm legibility", () => {
-  const envelope: ToolEnvelope = { status: "needs_confirm", confirm };
-  const res = envelopeToMcpResponse(envelope);
-  const text = res.content[0]?.text ?? "";
-  const parsed = JSON.parse(text) as Record<string, unknown>;
-
-  test("content stays a single valid JSON object (parseable by clients)", () => {
-    // Must remain parseable — the confirm_tool_call fallback + tests JSON.parse it.
-    expect(typeof parsed).toBe("object");
-    expect(parsed.tool_call_id).toBe("tc-123");
-    expect(parsed.tool).toBe("call_connector");
+describe("envelopeToMcpResponse — needs_confirm is unreachable on MCP", () => {
+  test("throws naming the tool, rather than rendering a dead-end prompt", () => {
+    const envelope: ToolEnvelope = { status: "needs_confirm", confirm };
+    expect(() => envelopeToMcpResponse(envelope)).toThrow(/call_connector/);
   });
+});
 
-  test("carries an explicit status + actionable instruction naming confirm_tool_call", () => {
-    expect(parsed.status).toBe("needs_confirm");
-    const instruction = String(parsed.instruction ?? "");
-    expect(instruction).toContain("confirm_tool_call");
-    expect(instruction).toContain("call_connector");
-    expect(instruction).toContain("tc-123");
-  });
-
-  test("frames the pause as awaiting approval, NOT a refusal", () => {
-    const instruction = String(parsed.instruction ?? "").toLowerCase();
-    expect(instruction).toContain("not");
-    expect(instruction).toMatch(/paused|approval/);
-    // isError stays false: a paused approval is not a tool execution error.
+describe("envelopeToMcpResponse — ok rendering", () => {
+  test("status:'ok' renders isError:false with the data JSON-encoded", () => {
+    const envelope: ToolEnvelope = { status: "ok", data: { hello: "world" } };
+    const res = envelopeToMcpResponse(envelope);
     expect(res.isError).toBe(false);
+    expect(JSON.parse(res.content[0]!.text)).toEqual({ hello: "world" });
+    expect(res._meta).toBeUndefined();
   });
 
-  test("still carries the structured envelope in _meta for parsing clients", () => {
-    expect(res._meta?.subkit).toBeDefined();
+  test("status:'ok' with a pause carries _meta.subkit.paused", () => {
+    const pause: ToolResultPause = {
+      tool_name: "ask_user_confirm",
+      summary: "Confirm the delete",
+      elicitation_id: "elic-1",
+    };
+    const envelope: ToolEnvelope = { status: "ok", data: { hello: "world" }, pause };
+    const res = envelopeToMcpResponse(envelope);
+    expect(res.isError).toBe(false);
+    expect(res._meta?.subkit).toEqual({ paused: pause });
   });
+});
 
-  test("never echoes the call payload — only the structured pending_output preview", () => {
-    // The engine replays the args it persisted under tool_call_id. Echoing
-    // them asked the model to re-transmit a payload byte-exactly.
-    expect(parsed.args).toBeUndefined();
-    expect(parsed.pending_output).toEqual({ connector_id: "c1", method: "DELETE" });
+describe("envelopeToMcpResponse — error rendering", () => {
+  test("status:'error' renders isError:true with a structured JSON body", () => {
+    const envelope: ToolEnvelope = {
+      status: "error",
+      error_code: "tool_failed",
+      message: "boom",
+      next_best_actions: ["retry"],
+    };
+    const res = envelopeToMcpResponse(envelope);
+    expect(res.isError).toBe(true);
+    const parsed = JSON.parse(res.content[0]!.text) as Record<string, unknown>;
+    expect(parsed.error_code).toBe("tool_failed");
+    expect(parsed.message).toBe("boom");
+    expect(parsed.next_best_actions).toEqual(["retry"]);
+  });
+});
+
+describe("envelopeToMcpResponse — paused rendering", () => {
+  test("status:'paused' renders isError:false with the pause both in content and _meta", () => {
+    const pause: ToolResultPause = {
+      tool_name: "ask_user_text",
+      summary: "What is the workflow name?",
+      elicitation_id: "elic-2",
+    };
+    const envelope: ToolEnvelope = { status: "paused", pause };
+    const res = envelopeToMcpResponse(envelope);
+    expect(res.isError).toBe(false);
+    expect(JSON.parse(res.content[0]!.text)).toEqual(pause);
+    expect(res._meta?.subkit).toEqual({ paused: pause });
+  });
+});
+
+describe("envelopeToMcpResponse — not_available_on_surface rendering", () => {
+  test("renders isError:true with the reason in both content and _meta", () => {
+    const envelope: ToolEnvelope = {
+      status: "not_available_on_surface",
+      reason: "this tool needs a live conversation draft",
+    };
+    const res = envelopeToMcpResponse(envelope);
+    expect(res.isError).toBe(true);
+    const parsed = JSON.parse(res.content[0]!.text) as Record<string, unknown>;
+    expect(parsed.error_code).toBe("not_available_on_surface");
+    expect(parsed.reason).toBe("this tool needs a live conversation draft");
+    expect(res._meta?.subkit).toEqual({
+      not_available_on_surface: { reason: "this tool needs a live conversation draft" },
+    });
   });
 });
