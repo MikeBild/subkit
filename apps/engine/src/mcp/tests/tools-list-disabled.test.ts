@@ -65,28 +65,32 @@ describe("mcp tools/list — draft_write omitted (authoring mode)", () => {
     expect(result.tools.some((t) => t.name === "confirm_tool_call")).toBe(false);
   });
 
-  test("catalog stays under the size ceiling (no draft_write traps, no tenant_* duplicates)", async () => {
-    // Tool-selection accuracy degrades past ~30-50 tools and large
-    // catalogs bloat every turn's context. Before this change the
-    // authoring-mode catalog carried a full tenant_* duplicate set + 19
-    // listed-but-uncallable draft_write tools, pushing well past 100.
-    // Hold the line so future additions are a deliberate choice, not drift.
+  test("no tenant_* alias remains in the catalog", async () => {
     const client = await suite.connect();
     const result = await client.listTools();
-    // Deliberate ceiling, raised as tools are consciously added:
-    //   +2 grounding read tools — `list_capability_gaps` (durable capability
-    //      gaps) and `suggest_related_conversations` (topic routing).
-    //   +1 `run_workflow` — the search-first workflow runner is now exempt
-    //      from the readOnly-implied hide so it surfaces in authoring/admin too
-    //      (RBAC still gates execution); it was previously hidden here.
-    // `confirm_tool_call` is GONE (MCP writes execute directly, gated by the
-    // client's own destructiveHint dialog — see tools/policy.ts), so it no
-    // longer counts toward this ceiling.
-    // Keep the guard tight so further additions stay a conscious choice,
-    // not drift.
-    expect(result.tools.length).toBeLessThan(85);
-    // No tenant_* alias should remain in the catalog.
     expect(result.tools.filter((t) => t.name.startsWith("tenant_")).length).toBe(0);
+  });
+
+  test("the previously-trimmed long tail is advertised by name in authoring mode", async () => {
+    // The engine used to trim the authoring catalog to fit a schema-token
+    // budget; strict clients (claude.ai, ChatGPT) proved they defer-load large
+    // catalogs natively (an 80-tool probe was both discovered and called), so
+    // the trim was removed and the FULL authoring set is published instead.
+    // This is the regression this test guards against: these tools must stay
+    // discoverable by name, not hidden behind a meta search tool.
+    const client = await suite.connect();
+    const result = await client.listTools();
+    const names = new Set(result.tools.map((t) => t.name));
+    for (const longTail of [
+      "call_connector",
+      "list_skills",
+      "list_knowledge_sources",
+      "get_raw_result",
+      "dry_run_transform",
+      "search_docs",
+    ]) {
+      expect(names.has(longTail)).toBe(true);
+    }
   });
 });
 

@@ -46,12 +46,7 @@ import { callToolViaDispatcher } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
-import {
-  DEFAULT_PALETTE_LIMIT,
-  fitCatalogToBudget,
-  SCHEMA_TOKEN_BUDGET,
-  TOOL_PREFIX,
-} from "./catalog-budget.ts";
+import { assembleCatalog, DEFAULT_PALETTE_LIMIT, TOOL_PREFIX } from "./catalog-budget.ts";
 import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversations.ts";
 import { buildResultEnvelope } from "./held-preview.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
@@ -164,19 +159,17 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
   }
 
   server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-    // The catalog is assembled per mcp mode, then trimmed to fit the strict
-    // tools/list token budget (fitCatalogToBudget) so strict clients never
-    // silently drop tools. Sources per tier:
-    //   - listWorkflowTools     — wf_<slug> per-workflow tools (Top-N palette).
-    //   - listToolsViaRegistry  — unified registry: static (authenticate,
-    //                             list_recipes, self_healing.scan in admin)
-    //                             plus the conversation tools the mode's
-    //                             allow-list publishes under their bare names.
+    // The catalog is assembled per mcp mode and published in FULL — no
+    // server-side trim. Strict clients (claude.ai, ChatGPT) defer-load large
+    // catalogs natively, so the client's own tool-search handles size. Sources:
+    //   - listWorkflowTools     — wf_<slug> per-workflow tools (Top-N palette,
+    //                             the one remaining bound: DEFAULT_PALETTE_LIMIT).
+    //   - listToolsViaRegistry  — unified registry, per-mode set: static
+    //                             (authenticate, list_recipes, self_healing.scan
+    //                             in admin) plus the conversation tools the mode
+    //                             publishes under their bare names.
     //   - listConversationTools — MCP-only conversation.* session tools.
-    // Nothing becomes unreachable: trimmed workflows stay callable via
-    // find_workflow / run_workflow(slug), and an unpublished registry tool
-    // still resolves on tools/call and inside conversation_start's loop.
-    const initialMode = resolveMcpMode(principal);
+    const mode = resolveMcpMode(principal);
     // We log the client's advertised capabilities (elicitation, sampling,
     // roots, tasks) as a signal only. MCP writes are gated by the client's
     // native destructiveHint approval dialog, not by any server-side channel.
@@ -193,55 +186,45 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
-    // Fetch the full wf_ palette once (mode-independent); the cascade slices it.
+    // Fetch the wf_ palette (capped to DEFAULT_PALETTE_LIMIT), then assemble the
+    // full catalog for the mode.
     const fullPalette = await listWorkflowTools({
       db,
       principal,
       limit: DEFAULT_PALETTE_LIMIT,
     });
-    const fit = fitCatalogToBudget({
-      principal,
-      readOnly,
-      initialMode,
-      fullPalette,
-    });
-    // Defense-in-depth: the search-first floor must survive the trim. The
-    // leanest tier preserves it by construction (product allow-list + static),
+    const tools = assembleCatalog({ principal, readOnly, mode, fullPalette });
+    // Defense-in-depth: the search-first floor must always be present. The
+    // per-mode set includes it by construction (product allow-list + static),
     // but assert it so a future regression is loud rather than silent.
-    const presentNames = new Set(fit.tools.map((t) => t.name));
+    const presentNames = new Set(tools.map((t) => t.name));
     const missingCore = [...MCP_CORE_TOOL_NAMES].filter((coreName) => !presentNames.has(coreName));
     if (missingCore.length > 0) {
       logger.warn({
         module: "mcp",
         action: "mcp.catalog.floor_violation",
-        msg: "search-first core tool(s) missing from the fitted catalog",
+        msg: "search-first core tool(s) missing from the assembled catalog",
         missing: missingCore,
-        mode: fit.mode,
+        mode,
         principal_id: principal.id,
         tenant_id: principal.tenant_id,
       });
     }
-    // Product + authoring publish bounded allow-lists and fit the budget. Admin
-    // publishes the full inventory and can legitimately stay over it (its
-    // principals are deliberately-minted operator keys). So over-budget is
-    // informational (in the fitted event), not a warning; the only alarm is a
-    // floor violation (above). An over-budget authoring catalog means the
-    // allow-list outgrew the budget — see fitCatalogToBudget.
     logger.info({
       module: "mcp",
-      action: "mcp.catalog.fitted",
-      msg: "tools/list catalog fitted to budget",
-      tool_count: fit.tools.length,
-      est_tokens_before: fit.estTokensBefore,
-      est_tokens_after: fit.estTokensAfter,
-      mode: fit.mode,
-      palette_n: fit.paletteLimit,
-      compressed: fit.compressed,
-      over_budget: fit.estTokensAfter > SCHEMA_TOKEN_BUDGET,
+      action: "mcp.catalog.assembled",
+      msg: "tools/list catalog assembled",
+      tool_count: tools.length,
+      mode,
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
-    const page = paginate("tools/list", fit.tools, request.params?.cursor);
+    // Ship the whole catalog in ONE page when it fits (paginate clamps the
+    // page size to its own MAX). The full authoring/admin catalog is bounded
+    // (~123 authoring, ~152 admin), so a single response reaches clients that
+    // do not follow the pagination cursor; a larger-than-MAX catalog still
+    // paginates, with the conversation cluster + named tools ordered first.
+    const page = paginate("tools/list", tools, request.params?.cursor, tools.length);
     return { tools: page.page, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
   });
 

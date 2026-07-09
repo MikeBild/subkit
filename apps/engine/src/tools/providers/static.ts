@@ -1,14 +1,11 @@
 // StaticToolProvider — TRULY MCP-unique tools that have no
-// ConversationTool counterpart. Four entries today:
+// ConversationTool counterpart. Three entries today:
 //
 //   authenticate       — OAuth2 reauth-URL provider; MCP-specific
 //                        envelope (no conversation analog). Now audits
 //                        via CONNECTOR_REAUTH_REQUESTED.
 //   list_recipes       — recipe-catalog browse; conversation registry
 //                        has inspect_recipe but not list_recipes.
-//   find_tool          — keyword search over the FULL registry for the
-//                        caller's MCP mode; the discovery bridge for the
-//                        long tail the budget-fitted tools/list omits.
 //   self_healing.scan  — admin-only LLM repair trigger; MCP-only.
 //
 // All other "MCP-native" handlers are duplicates of conversation tools
@@ -17,7 +14,7 @@
 //
 // RBAC + category model for static tools:
 //
-//   authenticate / list_recipes / find_tool / self_healing.scan — all
+//   authenticate / list_recipes / self_healing.scan — all
 //   currently declared as `tenant_read` so the unified policy gate does
 //   NOT demand a confirm round-trip. Reasoning per tool:
 //
@@ -27,10 +24,6 @@
 //     authentication call would break MCP clients (they'd loop on
 //     needs_confirm with no human in the loop).
 //   - list_recipes: pure catalog read.
-//   - find_tool: pure read over tool METADATA the caller can already
-//     see (the registry filter scopes results to the caller's own mode
-//     and read-only flag). No tenant data, no state change — so no
-//     audit row and no confirm gate, same stance as list_recipes.
 //   - self_healing.scan: gated by the in-handler
 //     `principal.roles.includes("admin")` check + the
 //     `mcpMode: ["admin"]` visibility filter here; both defenses
@@ -53,7 +46,6 @@ import {
   authenticateTool,
   handleAuthenticate,
 } from "../../mcp/tools/authenticate.ts";
-import { FIND_TOOL_TOOL_NAME, findToolMcpTool, handleFindTool } from "../../mcp/tools/find-tool.ts";
 import {
   handleListRecipes,
   LIST_RECIPES_TOOL_NAME,
@@ -70,9 +62,9 @@ import type { ToolCategory, ToolDescriptor, ToolEnvelope } from "../types.ts";
 export interface StaticExecuteCtx {
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
-  /** The registry that resolved this call — lets a catalog meta-tool
-   *  (find_tool) enumerate the caller-visible tool set without importing
-   *  the registry singleton (which would cycle back into this module). */
+  /** The registry that resolved this call — lets a static tool enumerate the
+   *  caller-visible tool set without importing the registry singleton (which
+   *  would cycle back into this module). */
   readonly registry: ToolRegistry;
   /** MCP mode of this dispatch, threaded from the dispatcher exactly like
    *  every other MCP-dispatched tool receives it. Absent off the MCP
@@ -163,28 +155,6 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     },
   },
   {
-    // Visible in EVERY mode: MCP_CORE_TOOL_NAMES (mode-resolver.ts) makes
-    // find_tool part of the never-trimmed catalog floor, and the floor
-    // assertion in capabilities/tools.ts holds for every mode — so hiding
-    // it from product would fire a floor_violation warning on every
-    // product tools/list. The registry filter inside the handler scopes
-    // results to the caller's own mode, so a product caller can only ever
-    // discover the product-callable set; visibility here widens nothing.
-    tool: findToolMcpTool,
-    visibleInMcpModes: null,
-    visibleOnChat: false,
-    // tenant_read: pure read over tool metadata the caller can already
-    // see — no tenant data, no state change, so no audit row beyond the
-    // standard tool.dispatch.invoke log (match list_recipes), and the
-    // policy gate must not demand a confirm for a catalog search.
-    category: "tenant_read",
-    async invoke(ctx, args) {
-      const result = handleFindTool(ctx, args);
-      if (result.ok) return envelopeForOk(result.data);
-      return envelopeForError("find_tool_failed", result.data.error, result.data);
-    },
-  },
-  {
     tool: selfHealingScanMcpTool,
     visibleInMcpModes: ["admin"],
     visibleOnChat: false,
@@ -255,9 +225,4 @@ export const staticToolProvider: ToolProvider = {
   },
 };
 
-export {
-  AUTHENTICATE_TOOL_NAME,
-  FIND_TOOL_TOOL_NAME,
-  LIST_RECIPES_TOOL_NAME,
-  SELF_HEALING_SCAN_TOOL_NAME,
-};
+export { AUTHENTICATE_TOOL_NAME, LIST_RECIPES_TOOL_NAME, SELF_HEALING_SCAN_TOOL_NAME };

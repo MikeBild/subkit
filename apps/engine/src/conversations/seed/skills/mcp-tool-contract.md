@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [mcp, contract]
-version: 5
+version: 6
 ---
 
 # sk MCP callable contract
@@ -21,7 +21,9 @@ sk exposes three families of callable entries over MCP. Calling them correctly s
 - **`wf_<slug>`** — run a specific workflow. Arguments match the workflow's declared `input_schema`; when absent, sk synthesises one from the DAG's `${input.X}` placeholders and jsonata `$input.X` references.
 - **`conversation_*`** — multi-turn authoring sessions (`conversation_start`, `conversation_append`, `conversation_respond_elicitation`). Use these when the operator is **designing** a workflow or connector. Do NOT start a conversation for routine CRUD — the bare CRUD names are the cheap path.
 
-Not every tool is listed — `tools/list` fits a token budget, and the long tail is trimmed from the listing while staying callable. Use `find_tool(query)` to discover tools like `call_connector`, `dry_run_transform`, `probe_connector`, then call them directly by name. Each hit carries `name`, `category`, and a one-line `summary`; a returned tool needs no registration or separate dispatch step. For workflows use `find_workflow`; for connectors use `find_connector`.
+The FULL authoring catalog is advertised — `tools/list` publishes every tool the mode exposes, with no server-side trim. When a client caps how many tools it preloads, its OWN native tool-search / defer-loading fetches any remaining tool on demand; you do not need a discovery meta-tool. For workflows use `find_workflow`; for connectors use `find_connector` (these search tenant DATA, not the tool catalog).
+
+**claude.ai CACHES `tools/list`.** After an engine upgrade that changes the catalog, claude.ai keeps serving the old cached tool list — new tools will NOT appear until the user **removes and re-adds the connector** (GitHub claude-ai-mcp #137). If a documented tool is missing after an upgrade, that stale cache is the cause; tell the user to remove + re-add the connector.
 
 ## Reading `_meta.subkit` on every callable entry
 

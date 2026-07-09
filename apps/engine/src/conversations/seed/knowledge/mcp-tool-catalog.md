@@ -4,7 +4,7 @@ name: sk Platform Reference — MCP Tool Catalog
 description: The public MCP callable surface of sk — every tool name (underscore form) tagged with the MCP mode that can call it, plus the write approval gate, warnings envelope, OAuth scopes, and resource URI schemes.
 tags: [sk-platform-reference, mcp, tools, oauth, resources]
 scope: global
-version: 2
+version: 3
 ---
 
 # MCP Tool Catalog — Overview
@@ -18,19 +18,23 @@ Naming rule: **MCP tool names use underscores, never dots.** Correct: `wf_<slug>
 (`wf.<slug>`, `conversation.*`) seen in older prose is wrong — use underscore.
 Workflow slugs are kebab-case (`wf_daily-price-report`).
 
-The catalog is shaped by the caller's MCP mode (OAuth scope) and trimmed to a
-token budget. A small **core floor** is never trimmed: `find_workflow`,
-`run_workflow`, `authenticate`, `confirm_tool_call`, `list_recipes`,
-`find_tool`. The per-workflow `wf_<slug>` palette rides alongside (Top-40).
-The long tail stays reachable via `find_workflow` → `run_workflow(slug)`
-(search-first); nothing becomes unreachable.
+The catalog is shaped by the caller's MCP mode (OAuth scope). The FULL catalog
+for the mode is advertised — `tools/list` publishes every tool the mode exposes,
+with no server-side trim. A small **core floor** is always present:
+`find_workflow`, `run_workflow`, `authenticate`, `confirm_tool_call`,
+`list_recipes`. The per-workflow `wf_<slug>` palette rides alongside (Top-40);
+workflows past the cap stay reachable via `find_workflow` → `run_workflow(slug)`.
 
-Not every tool is listed — the catalog fits a token budget. Use
-`find_tool(query)` to discover tools like `call_connector`,
-`dry_run_transform`, `probe_connector`, then call them directly by name. It
-searches your mode's full callable catalog by keyword and returns `name`,
-`category`, and a one-line `summary` per hit — a returned tool needs no
-registration or separate dispatch step.
+When a client caps how many tools it preloads, its OWN native tool-search /
+defer-loading fetches any remaining tool on demand — there is no discovery
+meta-tool. For workflows use `find_workflow`; for connectors use `find_connector`
+(these search tenant DATA, not the tool catalog).
+
+**claude.ai CACHES `tools/list`.** After an engine upgrade that changes the
+catalog, claude.ai keeps serving the stale cached tool list — new tools do NOT
+appear until the user **removes and re-adds the connector** (GitHub
+claude-ai-mcp #137). If a documented tool is missing after an upgrade, that stale
+cache is the cause.
 
 # Availability
 
@@ -42,11 +46,10 @@ Every tool below carries the **lowest MCP mode that can call it**:
   sets `mcp.read_only`.
 
 The tag is about *callability*, which is the only thing that matters to you.
-`tools/list` is a shorter list than this catalog: it is fitted to a token budget,
-so an authoring/admin client can call tools it never sees listed — name them from
-here, or discover them with `find_tool(query)` **[product]**. The reverse never
-happens. A tool tagged above your mode is rejected, and so is any tool you
-invent.
+`tools/list` advertises the full catalog for your mode; if your client preloads
+only part of it, its native tool-search fetches the rest on demand, and you can
+always name a tool from here directly. The reverse never happens. A tool tagged
+above your mode is rejected, and so is any tool you invent.
 
 **Draft tools are rejected on MCP in every mode.** They mutate a conversation's
 working draft, and a stateless `tools/call` has no draft to mutate:
@@ -143,14 +146,13 @@ poll `conversation_get` until the turn settles (answer or elicitation).
 
 ## Authoring-mode helper tools
 
-Authoring mode can also call the engine's own authoring building blocks, even
-though the token budget usually keeps them out of `tools/list`: `call_connector`,
-`probe_connector`, `discover_connector_endpoints`, `discover_systems_from_files`,
+Authoring mode can also call the engine's own authoring building blocks — all
+advertised in `tools/list`: `call_connector`, `probe_connector`,
+`discover_connector_endpoints`, `discover_systems_from_files`,
 `analyze_scrape_target`, `suggest_connector_templates`, `dry_run_transform`,
 `dry_run_patch_candidate`, `suggest_jsonata_paths`, `propose_schema_migration`,
 `test_rbac_expression`, `inspect_authoring_context`, `cannot_help` — all
-**[authoring]**. `find_tool(query)` finds them (and anything else your mode can
-call) by keyword. Prefer the `conversation_*` entry point; these are building
+**[authoring]**. Prefer the `conversation_*` entry point; these are building
 blocks, not the front door.
 
 # Connectors
@@ -317,7 +319,7 @@ permissions — RBAC still bounds every action.
 
 - `mcp:read` — product mode (default when no `mcp:*` marker). The whole surface
   is: the `wf_<slug>` palette, the core floor (`find_workflow`, `run_workflow`,
-  `authenticate`, `confirm_tool_call`, `list_recipes`, `find_tool`), plus
+  `authenticate`, `confirm_tool_call`, `list_recipes`), plus
   `get_execution`, `inspect_recipe`, `test_connector`,
   `match_connector_template_by_url`. Read + run only; anything else is rejected.
 - `mcp:authoring` — authoring mode: adds the `conversation_*` session tools and
