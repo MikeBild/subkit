@@ -1,17 +1,16 @@
 // Elicitation-bridge contract — owned by `conversations/`.
 //
 // `conversations/*` tools (`ask_user_*`, `authenticate_oauth`) collect
-// operator input. On the MCP surface they may issue a server→client
-// `elicitation/create` request instead of taking the DB-pause /
-// `respondElicitation` round-trip. That capability is provided by the
-// `mcp/` layer's concrete `ElicitationBridge` class.
+// operator input. The contract allows a surface to offer an in-process
+// server→client `elicitation/create` round-trip instead of the DB-pause /
+// `respondElicitation` path — but NO surface currently constructs one:
+// MCP is portal-only for write approvals and uses the DB-pause path for
+// conversation elicitation, so the `elicitationBridge?` parameter is never
+// populated and every caller degrades to the DB-pause path.
 //
-// The CONTRACT — the public shape a conversation tool depends on — lives
-// here, in `conversations/`, so the dependency points the right way:
-// `mcp/elicitation/bridge.ts` `implements` this interface, and
-// `conversations/*` never has to import a `mcp/*` type to describe the
-// bridge it consumes. The `mcp/` side keeps the construction/transport
-// logic; `conversations/` owns the shape.
+// The CONTRACT lives here, in `conversations/`, so a future concrete
+// implementation depends inward on this shape and `conversations/*` never
+// imports a transport type to describe the bridge it consumes.
 
 import { z } from "@hono/zod-openapi";
 import type { ElicitRequestFormParams } from "@modelcontextprotocol/sdk/types.js";
@@ -69,9 +68,11 @@ export class ElicitationUnsupportedError extends Error {
 }
 
 /**
- * The bridge contract a conversation tool depends on. The concrete
- * implementation (`mcp/elicitation/bridge.ts#ElicitationBridge`) holds
- * the MCP `Server` + per-request transport and `implements` this shape.
+ * The bridge contract a conversation tool depends on. No surface constructs
+ * a concrete implementation today (MCP write approval is portal-only and MCP
+ * conversation elicitation uses the DB-pause path) — callers receive
+ * `undefined` and degrade accordingly. A future in-process surface would
+ * `implement` this shape.
  */
 export interface ElicitationBridge {
   /**

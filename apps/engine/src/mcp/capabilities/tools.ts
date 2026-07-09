@@ -40,22 +40,17 @@ import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import {
   approvalAuditResource,
-  approvalDecidingUserId,
   type ClaimedApproval,
   consumeApproval,
-  declineApproval,
-  grantApproval,
   recordApprovalApproved,
   recordApprovalUnfulfilled,
   requestApproval,
 } from "../../tools/approval.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
-import type { ConfirmEnvelope, ToolInvocation } from "../../tools/types.ts";
+import type { ToolInvocation } from "../../tools/types.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { callToolViaDispatcher } from "../adapter.ts";
-import { createElicitationBridge, type ElicitationBridge } from "../elicitation/bridge.ts";
-import { buildElicitConfirmResolver } from "../elicitation/confirm-resolver.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
@@ -195,13 +190,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     // The confirm responder is always surfaced (see assembleTier), for EVERY
     // client. It cannot approve anything — an approval is granted by a human at
     // its `approval_url` — so there is nothing for a capability check to protect.
-    // We read the client's elicitation capability here only as a logged signal:
-    // it tells us whether this session's approvals get the in-band shortcut.
+    // Every write approval over MCP is portal-only: in-band elicitation is not a
+    // grant channel (claude.ai auto-declines the prompt, and 29/29 prompts timed
+    // out in production). We log the client's elicitation capability as a signal
+    // only; it changes nothing about how an approval is granted.
     const clientCaps = server.getClientCapabilities();
     const elicitationCapable = clientCaps?.elicitation != null;
-    // Pin which path a given client takes, so we can prove from logs how often
-    // the advertised in-band prompt is actually fulfilled versus how often the
-    // approval falls back to the portal. Production says: always the portal.
     logger.info({
       module: "mcp",
       action: "mcp.client.capabilities",
@@ -210,7 +204,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       sampling: clientCaps?.sampling != null,
       roots: clientCaps?.roots != null,
       tasks: clientCaps?.tasks != null,
-      confirm_path: elicitationCapable ? "elicitation_then_portal" : "portal",
+      confirm_path: "portal",
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
@@ -309,12 +303,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       // surface-specific operational concerns, not LLM tool palette items.
       const mcpModeForCall = resolveMcpMode(principal);
       const readOnlyForCall = !modeFlags(mcpModeForCall, readOnly).showTenantWrites;
-      // One bridge per tools/call. Its `capabilities.form` decides only whether
-      // this client gets the in-band SHORTCUT — an `elicitation/create` prompt
-      // whose accept grants the approval inside the call. It never decides who
-      // may approve. Both the direct-dispatch path and the `wf_<slug>` path read
-      // it, so they cannot drift.
-      const elicitBridge = createElicitationBridge(server, extra);
 
       // Confirm responder — a TRIGGER, not a gate, and therefore open to every
       // client. The first call persisted the args and opened the approval
@@ -393,7 +381,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             db,
             principal,
             extra,
-            bridge: elicitBridge,
             name: targetTool,
             args: claim.args,
             holdWrites: false,
@@ -495,31 +482,13 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           args: args as Record<string, unknown>,
           ...(callMeta ? { meta: callMeta } : {}),
         };
-        // In-band human-in-the-loop: when the client advertises elicitation
-        // (and is not already replaying a confirm token), attach the resolver
-        // that prompts the operator via `elicitation/create`.
-        // `dispatchTool#gateConfirm` then owns the whole gate for this call: it
-        // opens the approval UNGRANTED, and an accept grants it in the same pass.
-        // Same shape `gateHeldWrites` uses for `wf_<slug>` — one mechanism, two
-        // entry points.
+        // Human-in-the-loop over MCP is portal-only. A `confirm_before_execution`
+        // tool mints its approval UNGRANTED and `dispatchTool#gateConfirm` hands
+        // back a `needs_confirm` envelope carrying the `approval_url` a person
+        // grants at, out of band. A `_meta.sk_confirm` marker is a TRIGGER, not an
+        // approval: `dispatchTool` claims with it, and the claim fails on any
+        // approval a human has not granted. No in-band elicitation participates.
         //
-        // No twin of the deleted `confirm_tool_call` refusal lives here either,
-        // and for the same reason: a `_meta.sk_confirm` marker is a TRIGGER, not
-        // an approval. `dispatchTool` claims with it, and the claim fails on any
-        // approval a human has not granted. There is no second door to refuse
-        // because neither door opens by itself.
-        const markerConfirmId = (callMeta as { sk_confirm_id?: unknown } | undefined)
-          ?.sk_confirm_id;
-        const carriesInbandConfirm =
-          (callMeta as { sk_confirm?: unknown } | undefined)?.sk_confirm === true ||
-          typeof markerConfirmId === "string";
-        const confirmResolver = buildElicitConfirmResolver({
-          bridge: elicitBridge,
-          carriesInbandConfirm,
-          toolName: name,
-          principalId: principal.id,
-          tenantId: principal.tenant_id,
-        });
         // Bound the dispatch so a stalled call (e.g. event-loop pressure or a
         // slow downstream) returns a clear "engine busy" error instead of
         // hanging until the client's own (much longer) request timeout. The
@@ -531,7 +500,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             mcpMode: mcpModeForCall,
             readOnly: readOnlyForCall,
             invocation,
-            ...(confirmResolver ? { confirmResolver } : {}),
           }),
           TOOLS_CALL_DEADLINE_MS,
         );
@@ -664,15 +632,14 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         db,
         principal,
         extra,
-        bridge: elicitBridge,
         name,
         args: args as Record<string, unknown>,
         // Every first-touch `wf_<slug>` call holds its write-classified steps
         // (sends, publishes, external writes): they resolve but never dispatch.
-        // Releasing them requires a HUMAN — one who grants the approval at its
-        // `approval_url`, or who answers the in-band prompt this call raises when
-        // the client actually fulfils one. The scheduler/HTTP run paths don't
-        // route through this handler, so production runs still send.
+        // Releasing them requires a HUMAN who grants the approval at its
+        // `approval_url` (portal-only over MCP); `confirm_tool_call` then triggers
+        // the granted approval. The scheduler/HTTP run paths don't route through
+        // this handler, so production runs still send.
         holdWrites: true,
         progressToken,
         execution_mode,
@@ -689,9 +656,6 @@ interface WorkflowToolCallParams {
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
   readonly extra: RequestHandlerExtra<ServerRequest, ServerNotification>;
-  /** The session's elicitation bridge. `capabilities.form` decides whether the
-   *  operator gets the in-band shortcut before the portal round-trip. */
-  readonly bridge: ElicitationBridge;
   /** Full MCP tool name (`wf_<slug>`) — also the approval's tool identity. */
   readonly name: string;
   /** The workflow's own inputs — verbatim from the call, or replayed out of
@@ -717,19 +681,12 @@ interface WorkflowToolCallParams {
  * Preview-to-commit: the first call ALWAYS holds writes. When the run comes
  * back carrying the mandatory `held_preview_no_writes` warning, a HUMAN — never
  * the model — decides whether those writes run. `gateHeldWrites` opens the
- * approval UNGRANTED and mints its `approval_url`, then picks the path:
- *
- *   - Elicitation-capable client → `elicitation/create` prompts the operator
- *     in-band with the preview's `would_write` list, as an OPTIMIZATION over the
- *     portal. On accept the engine grants the approval (`in_band_elicitation`),
- *     claims it, and re-enters this function with `holdWrites:false` itself.
- *     Nothing the model emits participates. Same shape every other write tool
- *     takes (see `tools/dispatcher.ts#gateConfirm`).
- *   - Everyone else → hand `confirm_id` + `approval_url` back inside the preview
- *     envelope. A person grants the approval at that link; `confirm_tool_call`
- *     then TRIGGERS this function again with `holdWrites:false`. "Everyone else"
- *     includes a client that advertised the in-band prompt and never answered it:
- *     the engine holds no decision, so the link is the channel that works.
+ * approval UNGRANTED and mints its `approval_url`, then hands `confirm_id` +
+ * `approval_url` back inside the preview envelope. Over MCP this is the ONLY
+ * grant channel — in-band elicitation is not one (claude.ai auto-declines the
+ * prompt, and production saw 29/29 prompts time out). A person grants the
+ * approval at that link; `confirm_tool_call` then TRIGGERS this function again
+ * with `holdWrites:false`.
  *
  * There is no `execute_writes` opt-in: a model-driven client cannot set
  * transport-level `_meta`, and the workflow's own input schema has no room for
@@ -744,7 +701,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     db,
     principal,
     extra,
-    bridge,
     name,
     args,
     holdWrites,
@@ -1046,47 +1002,14 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     const probe = buildResultEnvelope(result);
     let commit: PreviewCommit | undefined;
     if (probe.isHeldPreview && holdWrites) {
-      const gate = await gateHeldWrites({
+      commit = await gateHeldWrites({
         db,
         principal,
-        bridge,
         name,
         execution_mode,
         args,
         preview: probe.rawBody as { held_steps?: unknown; would_write?: unknown },
       });
-      if (gate.kind === "error") {
-        return {
-          isError: true,
-          content: [{ type: "text" as const, text: JSON.stringify(gate.body) }],
-        };
-      }
-      if (gate.kind === "approved") {
-        // A person approved in-band, so the approval is GRANTED and burned.
-        // Release the writes ourselves — re-entering with the claim, exactly as
-        // `confirm_tool_call` would have after a portal grant. The model never
-        // sees a `confirm_id` and never gets to decide. The replay emits its own
-        // progress frames.
-        logger.info({
-          module: "mcp",
-          action: "mcp.wf.commit_approved",
-          msg: "a person approved the held writes in-band; approval granted and claimed, replaying with writes released",
-          tool: name,
-          approval_id: gate.claim.approval_id,
-          duration_ms: Date.now() - started,
-          principal_id: principal.id,
-          tenant_id: principal.tenant_id,
-        });
-        extra.signal.removeEventListener("abort", onSignalAbort);
-        return await runWorkflowToolCall({
-          ...p,
-          args: gate.claim.args,
-          holdWrites: false,
-          approval: gate.claim,
-          execution_mode: gate.claim.execution_mode ?? execution_mode,
-        });
-      }
-      commit = gate.commit;
     }
     // Final progress frame @ 1.0. Emitted only on the hop that actually
     // answers the client — an in-band approval recurses above and the replay
@@ -1123,15 +1046,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         // envelope carries (`approvalAffordanceLine`) so the two cannot drift.
         summaryLines.push(
           `⚠ PREVIEW — no writes performed. ${envelope.heldMessage}` +
-            (commit?.kind === "confirm_required"
-              ? `${
-                  commit.reason === "in_band_prompt_unfulfilled"
-                    ? " This client did not answer the approval prompt the engine sent it, so the engine holds no decision from anyone."
-                    : ""
-                }${approvalAffordanceLine(commit)}`
-              : commit?.kind === "operator_declined"
-                ? " A person saw the approval prompt and declined it; nothing ran and the approval is dead."
-                : ""),
+            (commit?.kind === "confirm_required" ? approvalAffordanceLine(commit) : ""),
         );
       }
       if (off.preview) summaryLines.push(`Preview: ${off.preview}`);
@@ -1231,44 +1146,27 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
   }
 }
 
-/** Outcome of the human gate in front of a held-writes commit. */
-type HeldWritesGate =
-  /** A person answered the in-band prompt with yes; the approval is granted and
-   *  the handle burned. */
-  | { readonly kind: "approved"; readonly claim: ClaimedApproval }
-  /** Hand the preview back carrying this commit state. */
-  | { readonly kind: "preview"; readonly commit: PreviewCommit }
-  /** Terminal failure between granting and claiming the approval. */
-  | { readonly kind: "error"; readonly body: Record<string, unknown> };
-
 /**
- * Decide who approves the writes a `wf_<slug>` preview just held — and get their
- * answer. The model is never that person, and nothing it can emit makes it one.
+ * Open the approval a `wf_<slug>` preview's held writes need, and hand its
+ * `approval_url` back inside the preview envelope. Portal-only: the model is
+ * never the approver, and nothing over MCP grants the approval in-band.
  *
- * The approval is opened UNGRANTED, first, before anyone is asked. That single
- * ordering is what makes every branch below honest:
- *
- *   - It gives a DECLINE a row to be recorded against (APPROVAL_DECLINED),
- *     instead of a decision that leaves no trace.
- *   - It gives an UNANSWERED prompt an `approval_url` a person can still open,
- *     instead of a gate no caller can satisfy. Production: 29 unanswered prompts,
- *     0 fulfilled, ever. This is the path that actually runs.
- *   - It makes the in-band ACCEPT what it always should have been — an
- *     optimization. It grants the same approval a portal click would grant, via
- *     `in_band_elicitation`, and claims it here so the caller replays at once:
- *     APPROVAL_REQUESTED → APPROVAL_GRANTED → (RBAC) → APPROVAL_APPROVED, the
- *     identical lifecycle a `confirm_tool_call` trigger produces.
+ * The approval is opened UNGRANTED. A person opens the `approval_url` and grants
+ * it out of band; `confirm_tool_call` then TRIGGERS the granted row and replays
+ * the args the engine persisted here. In-band elicitation is deliberately NOT a
+ * grant channel over MCP: claude.ai auto-declines the prompt with no human ever
+ * seeing it, and production recorded 29/29 elicitation prompts timing out — an
+ * in-band answer is never a verified human decision.
  */
 async function gateHeldWrites(p: {
   db: Db;
   principal: ResolvedPrincipal;
-  bridge: ElicitationBridge;
   name: string;
   execution_mode: "dev" | "prod";
   args: Record<string, unknown>;
   preview: { held_steps?: unknown; would_write?: unknown };
-}): Promise<HeldWritesGate> {
-  const { db, principal, bridge, name, execution_mode, args, preview } = p;
+}): Promise<PreviewCommit> {
+  const { db, principal, name, execution_mode, args, preview } = p;
   const approvalId = crypto.randomUUID();
 
   const { approval_url } = await requestApproval({
@@ -1287,134 +1185,16 @@ async function gateHeldWrites(p: {
     execution_mode,
     args,
     // What the human reads in the approval portal before they decide. On MCP the
-    // portal is the channel that reaches them.
+    // portal is the only channel that reaches them.
     preview,
   });
-  const awaitingHuman = (
-    reason: "client_cannot_prompt" | "in_band_prompt_unfulfilled",
-  ): HeldWritesGate => ({
-    kind: "preview",
-    commit: { kind: "confirm_required", tool: name, confirm_id: approvalId, approval_url, reason },
-  });
-
-  if (!bridge.capabilities.form) return awaitingHuman("client_cannot_prompt");
-
-  // The preview's would_write list is the best "what will happen" summary the
-  // engine has: the exact requests that were resolved but not dispatched.
-  const confirm: ConfirmEnvelope = {
+  return {
+    kind: "confirm_required",
     tool: name,
-    pending_output: {
-      held_steps: preview.held_steps ?? [],
-      would_write: preview.would_write ?? [],
-      environment: execution_mode,
-    },
-    policy_mode: "confirm_before_execution",
-    reason: "held_writes",
-    tool_call_id: approvalId,
+    confirm_id: approvalId,
     approval_url,
-    resume: "Approve to release the held writes; decline and nothing runs.",
+    reason: "portal_grant_required",
   };
-  const resolver = buildElicitConfirmResolver({
-    bridge,
-    carriesInbandConfirm: false,
-    toolName: name,
-    principalId: principal.id,
-    tenantId: principal.tenant_id,
-  });
-  // `capabilities.form` is true, so the resolver is always built. An absent one
-  // means the prompt was never even attempted — that is unreachable, not a
-  // decline, and never permission to run.
-  const decision = resolver ? await resolver(confirm) : "unreachable";
-  if (decision === "declined") {
-    // Terminal, and safe to honor even when it lands after the prompt's own
-    // timeout: the approval was never granted, so nothing could have been
-    // claimed in the meantime, and a declined approval never becomes claimable.
-    const declined = await declineApproval({
-      db,
-      approval_id: approvalId,
-      tenant_id: principal.tenant_id,
-      granted_by_user_id: approvalDecidingUserId(principal),
-      via: "in_band_elicitation",
-    });
-    logger.info({
-      module: "mcp",
-      action: "mcp.wf.commit_declined",
-      msg: "a person answered the in-band prompt with no; nothing ran and the approval was declined",
-      tool: name,
-      approval_id: approvalId,
-      environment: execution_mode,
-      decision_recorded: declined.ok,
-      ...(declined.ok ? {} : { error_code: declined.code }),
-      principal_id: principal.id,
-      tenant_id: principal.tenant_id,
-    });
-    return { kind: "preview", commit: { kind: "operator_declined" } };
-  }
-  if (decision === "unreachable") {
-    // The client advertised a prompt and did not answer it. The engine holds no
-    // decision — which is NOT the same as "nobody was asked": that client may be
-    // showing its operator the prompt right now. Either way the approval stays
-    // UNGRANTED and the link is where a person decides.
-    logger.warn({
-      module: "mcp",
-      action: "mcp.wf.commit_unreachable",
-      msg: "the client did not answer the in-band approval prompt; nothing ran and the held writes are waiting on a human at the approval_url",
-      tool: name,
-      approval_id: approvalId,
-      environment: execution_mode,
-      approval_url_issued: approval_url !== null,
-      principal_id: principal.id,
-      tenant_id: principal.tenant_id,
-    });
-    return awaitingHuman("in_band_prompt_unfulfilled");
-  }
-
-  // Accepted, by a human, inside the call. Grant it exactly as the portal would,
-  // then claim it — `consumeApproval` refuses an ungranted row by construction,
-  // so the grant is not bookkeeping, it is the thing that makes this run.
-  const granted = await grantApproval({
-    db,
-    approval_id: approvalId,
-    tenant_id: principal.tenant_id,
-    granted_by_user_id: approvalDecidingUserId(principal),
-    via: "in_band_elicitation",
-  });
-  if (!granted.ok) {
-    logger.error({
-      module: "mcp",
-      action: "mcp.wf.commit_grant_failed",
-      msg: "a person accepted the in-band prompt but the approval could not be granted; nothing ran",
-      tool: name,
-      approval_id: approvalId,
-      error_code: granted.code,
-      principal_id: principal.id,
-      tenant_id: principal.tenant_id,
-    });
-    return { kind: "error", body: { error_code: granted.code, message: granted.message } };
-  }
-  const claim = await consumeApproval({
-    db,
-    principal,
-    approval_id: approvalId,
-    tool: name,
-    surface: "mcp",
-    via: "mcp",
-    execution_mode,
-  });
-  if (!claim.ok) {
-    logger.error({
-      module: "mcp",
-      action: "mcp.wf.commit_claim_failed",
-      msg: "could not claim the approval a person granted in-band; nothing ran",
-      tool: name,
-      approval_id: approvalId,
-      error_code: claim.code,
-      principal_id: principal.id,
-      tenant_id: principal.tenant_id,
-    });
-    return { kind: "error", body: { error_code: claim.code, message: claim.message } };
-  }
-  return { kind: "approved", claim };
 }
 
 /**

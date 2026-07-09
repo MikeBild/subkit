@@ -418,8 +418,8 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     // insertToolCall (sdk-wrap/redact-tool-args.ts) — so neither the
     // elicitation row nor the tool-call row nor their LLM replay carries the
     // value. The raw value still flows in-memory into the credential cache /
-    // auto-persist and is stored AES-256-GCM-encrypted. See
-    // mcp/elicitation/bridge.ts for the block/degrade path.
+    // auto-persist and is stored AES-256-GCM-encrypted. On MCP a secret-shaped
+    // ask blocks (secret_elicitation_blocked) and routes to the portal flow.
     //
     // The `credentialFields` below are now doubly load-bearing: the confirm
     // gate (a draft mutation with an inline credential forces a confirm step

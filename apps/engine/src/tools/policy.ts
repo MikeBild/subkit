@@ -14,7 +14,7 @@ import {
   type PermissionMode,
   type ToolPolicies,
 } from "../conversations/tool-policies.ts";
-import type { ConfirmEnvelope, ConfirmReason, ToolCategory, ToolSurface } from "./types.ts";
+import type { ConfirmEnvelope, ToolCategory, ToolSurface } from "./types.ts";
 
 export type PolicyDecision =
   | { kind: "proceed" }
@@ -145,20 +145,6 @@ export function withConfirmMarkerProperties(schema: unknown): Record<string, unk
     },
   };
 }
-
-/** Operator-facing prose for each `ConfirmReason`. The envelope carries the
- *  machine rule so the audit trail is exact; a human prompt has to read as a
- *  sentence. The `Record` is exhaustive by type — a new rule cannot ship
- *  without an operator-legible explanation of why it paused the call. */
-export const CONFIRM_REASON_LABELS: Readonly<Record<ConfirmReason, string>> = {
-  inline_credential: "the arguments fill a declared credential field",
-  permission_mode: "the client's permission mode requires approval",
-  conversation_override: "this conversation overrides this tool to require approval",
-  computed_from_input: "these arguments make the call destructive",
-  tool_default: "this tool always requires approval",
-  category_default: "this tool writes tenant state",
-  held_writes: "the run held its write steps for an operator",
-};
 
 export interface PolicyDecideInput {
   readonly tool: string;

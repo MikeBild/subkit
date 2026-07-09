@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [mcp, contract]
-version: 3
+version: 4
 ---
 
 # sk MCP callable contract
@@ -20,6 +20,8 @@ sk exposes three families of callable entries over MCP. Calling them correctly s
 - **Bare snake_case names** — the operator surface. Reads (`list_workflows`, `get_connector`, …) and writes (`delete_workflow`, `revoke_api_key`, …). Use these for CRUD. Names never carry a `tenant_` prefix and never contain dots.
 - **`wf_<slug>`** — run a specific workflow. Arguments match the workflow's declared `input_schema`; when absent, sk synthesises one from the DAG's `${input.X}` placeholders and jsonata `$input.X` references.
 - **`conversation_*`** — multi-turn authoring sessions (`conversation_start`, `conversation_append`, `conversation_respond_elicitation`). Use these when the operator is **designing** a workflow or connector. Do NOT start a conversation for routine CRUD — the bare CRUD names are the cheap path.
+
+Not every tool is listed — `tools/list` fits a token budget, and the long tail is trimmed from the listing while staying callable. Use `find_tool(query)` to discover tools like `call_connector`, `dry_run_transform`, `probe_connector`, then call them directly by name. Each hit carries `name`, `category`, and a one-line `summary`; a returned tool needs no registration or separate dispatch step. For workflows use `find_workflow`; for connectors use `find_connector`.
 
 ## Reading `_meta.subkit` on every callable entry
 
@@ -63,11 +65,7 @@ Every sk callable entry ships a `_meta.subkit` envelope:
 
 If you fire the trigger before a person has approved, you get `error_code: "approval_not_granted"`. That is not a failure to retry around: it means the human has not decided yet. Wait, and do not re-issue the original call — that only opens a second approval.
 
-**If your client answers elicitation**, the engine may also show the operator a confirmation inside the call, as an optimization over that round-trip:
-
-- They accept → the call executes immediately; you never see the `needs_confirm` envelope at all.
-- They decline → `error_code: "confirm_declined"`. Terminal. The approval is dead and cannot be revived. Report that; re-issue only if the user asks again.
-- Your client advertises the capability and does not answer the prompt → you get the ordinary `needs_confirm` envelope above, with its `approval_url`. Nothing ran, and the engine has no decision from anyone. Say that; do not tell the user their approval was refused, and do not tell them nobody was asked.
+Approval over MCP is **portal-only**. Even if your client advertises `elicitation`, the engine issues no in-band prompt: every write comes back as the `needs_confirm` envelope above, and the `approval_url` is the one channel that grants it. A `needs_confirm` is not a refusal — nothing ran, and the call is waiting on that link.
 
 There is no argument on any tool, and no `_meta` flag, that clears a confirmation gate. `_meta.sk_confirm` is the same trigger, and fails the same way on an ungranted approval.
 

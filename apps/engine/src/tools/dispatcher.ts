@@ -25,10 +25,9 @@
 //                    Executors may parse again — see canonicalizeArgs.
 //   6. policy      — policyDecide() → proceed | needs_confirm | not_available
 //                    On needs_confirm the approval is minted UNGRANTED and its
-//                    `approval_url` handed back for a HUMAN to decide. A caller
-//                    with a `confirmResolver` first asks them in-band: an accept
-//                    grants and claims it in the same pass, a decline declines
-//                    it, an unanswered prompt leaves it waiting on the portal.
+//                    `approval_url` handed back for a HUMAN to grant out of band.
+//                    The re-issue's confirm marker (step 3) then TRIGGERS the
+//                    granted row. Nothing in-band can grant it.
 //   7. approve     — a claimed approval that survived rbac + policy writes
 //                    APPROVAL_APPROVED, immediately before the executor runs
 //   8. execute     — call the resolved executor with the right context
@@ -48,11 +47,8 @@ import { type ConnectorAccessLevel, can, connectorAccessLevel } from "../rbac/ev
 import {
   type ApprovalAuditResource,
   approvalAuditResource,
-  approvalDecidingUserId,
   type ClaimedApproval,
   consumeApproval,
-  declineApproval,
-  grantApproval,
   recordApprovalApproved,
   recordApprovalUnfulfilled,
   requestApproval,
@@ -68,13 +64,7 @@ import {
 import type { ConversationProviderEntry } from "./providers/conversation.ts";
 import type { StaticProviderEntry } from "./providers/static.ts";
 import type { ToolRegistry } from "./registry.ts";
-import type {
-  ConfirmEnvelope,
-  ConfirmResolver,
-  ToolEnvelope,
-  ToolInvocation,
-  ToolSurface,
-} from "./types.ts";
+import type { ConfirmEnvelope, ToolEnvelope, ToolInvocation, ToolSurface } from "./types.ts";
 
 export interface DispatchDeps {
   readonly registry: ToolRegistry;
@@ -95,10 +85,6 @@ export interface DispatchDeps {
   readonly mcpMode?: "product" | "authoring" | "admin";
   /** Read-only flag (for tenant_write hiding on MCP). */
   readonly readOnly?: boolean;
-  /** Supplied by a surface that can prompt a human inside the call. When
-   *  present it OWNS the confirm gate: nothing is minted until the operator
-   *  accepts, and a refusal ends the call. See `ConfirmResolver`. */
-  readonly confirmResolver?: ConfirmResolver;
 }
 
 function normalizeConversationResult(r: ToolResult): ToolEnvelope {
@@ -252,33 +238,16 @@ async function emitPolicyDenied(
   );
 }
 
-/** Outcome of the confirm gate in front of a `needs_confirm` call. */
-type ConfirmGate =
-  /** A human accepted in-band; the approval is granted AND burned. */
-  | { readonly kind: "approved"; readonly claim: ClaimedApproval }
-  /** Answer the caller with this envelope; nothing ran. */
-  | { readonly kind: "halt"; readonly envelope: ToolEnvelope; readonly decisionLabel: string };
-
 /**
- * Resolve a `confirm_before_execution` gate. The model is never the approver.
+ * Resolve a `confirm_before_execution` gate — portal-only. The model is never
+ * the approver, and nothing inside this call can grant the approval.
  *
- * The approval is minted UNGRANTED before anyone is asked, and only a HUMAN can
- * grant it. That single fact orders everything below:
- *
- *   - Every caller gets the durable handle plus the `approval_url` a human opens
- *     to grant or decline. The handle is a TRIGGER — carrying it back through
- *     `confirm_tool_call` / `ask_user_confirm` performs a call a person already
- *     approved, and claims nothing until they have.
- *   - A surface that can reach a human inside the call (`deps.confirmResolver`)
- *     asks them first, as an OPTIMIZATION over that portal round-trip. An accept
- *     grants the approval (`in_band_elicitation`) and claims it here, so the
- *     caller executes in the same pass. A decline declines it: terminal, and
- *     recorded against the row the operator actually saw.
- *   - A prompt that could not be fulfilled (`unreachable`) reached no operator at
- *     all. The approval stays ungranted and its `approval_url` goes back with the
- *     envelope. Reporting it as a decline would attribute an answer to an
- *     operator who was never asked; refusing the handle would strand a call whose
- *     only human channel is that link.
+ * The approval is minted UNGRANTED and its `approval_url` is handed back with a
+ * `needs_confirm` envelope. A HUMAN grants it out of band at that link; a later
+ * `confirm_tool_call` / `ask_user_confirm` carrying the `tool_call_id` then
+ * TRIGGERS the granted row (dispatcher step 3), claiming it and replaying the
+ * args the engine persisted here. The handle claims nothing until a person has
+ * granted it — `consumeApproval` refuses an ungranted row by construction.
  */
 async function gateConfirm(
   deps: DispatchDeps,
@@ -286,17 +255,12 @@ async function gateConfirm(
   invocation: ToolInvocation,
   confirm: ConfirmEnvelope,
   args: { execArgs: Record<string, unknown> },
-): Promise<ConfirmGate> {
+): Promise<ToolEnvelope> {
   // Persist the args under the minted tool_call_id, mint the portal link, and
   // record APPROVAL_REQUESTED. The re-issue carries the id back; it never
   // re-transmits the payload. The dispatcher has no ambient execution
   // environment: a tool that targets one (`run_workflow`) carries it as an
   // argument, so it is already covered by the encrypted, hash-bound payload.
-  //
-  // Minted BEFORE the in-band prompt, not after it. The prompt is an
-  // optimization on top of a decision that must be recordable either way: a
-  // decline needs a row to write APPROVAL_DECLINED against, and an unanswered
-  // prompt needs a link a human can still open.
   const { approval_url } = await requestApproval({
     db: deps.db,
     principal: deps.principal,
@@ -309,127 +273,7 @@ async function gateConfirm(
     execution_mode: null,
     args: args.execArgs,
   });
-  const pending: ConfirmEnvelope = { ...confirm, approval_url };
-
-  if (!deps.confirmResolver) {
-    return {
-      kind: "halt",
-      envelope: { status: "needs_confirm", confirm: pending },
-      decisionLabel: "needs_confirm",
-    };
-  }
-
-  const decision = await deps.confirmResolver(confirm);
-  if (decision === "declined") {
-    // A decline that lands after the prompt's own timeout still arrives here,
-    // and is still honored: the approval was never granted, so nothing could
-    // have been claimed in the meantime, and `declineApproval` is terminal.
-    const declined = await declineApproval({
-      db: deps.db,
-      approval_id: confirm.tool_call_id,
-      tenant_id: deps.principal.tenant_id,
-      granted_by_user_id: approvalDecidingUserId(deps.principal),
-      via: "in_band_elicitation",
-    });
-    logger.info({
-      module: "tools",
-      action: "tool.confirm_declined",
-      msg: "operator answered the in-band prompt with no; nothing ran and the approval was declined",
-      tool: toolName,
-      surface: invocation.surface,
-      reason: confirm.reason,
-      approval_id: confirm.tool_call_id,
-      decision_recorded: declined.ok,
-      ...(declined.ok ? {} : { error_code: declined.code }),
-      principal_id: deps.principal.id,
-      tenant_id: deps.principal.tenant_id,
-    });
-    return {
-      kind: "halt",
-      envelope: {
-        status: "error",
-        error_code: "confirm_declined",
-        message: `The operator was asked to approve ${toolName} and declined. Nothing ran, and this approval is dead — it cannot be revived. Report that to the user. If they ask for it again, re-issue ${toolName}. You cannot approve it on their behalf.`,
-      },
-      decisionLabel: "confirm_declined",
-    };
-  }
-  if (decision === "unreachable") {
-    // The surface advertised a human it could not produce. The approval stays
-    // UNGRANTED; the link below is where a person still decides.
-    logger.warn({
-      module: "tools",
-      action: "tool.confirm_unreachable",
-      msg: "the client did not answer the in-band approval prompt; nothing ran and the approval is waiting on a human at its approval_url",
-      tool: toolName,
-      surface: invocation.surface,
-      reason: confirm.reason,
-      approval_id: confirm.tool_call_id,
-      approval_url_issued: approval_url !== null,
-      principal_id: deps.principal.id,
-      tenant_id: deps.principal.tenant_id,
-    });
-    return {
-      kind: "halt",
-      envelope: { status: "needs_confirm", confirm: pending },
-      decisionLabel: "confirm_unreachable",
-    };
-  }
-
-  // The operator accepted, in front of a human, inside the call. That is the
-  // same decision a portal click makes, so it travels the same way: grant, then
-  // claim. Without the grant the claim would answer `approval_not_granted` —
-  // `consumeApproval` refuses an ungranted row by construction.
-  const granted = await grantApproval({
-    db: deps.db,
-    approval_id: confirm.tool_call_id,
-    tenant_id: deps.principal.tenant_id,
-    granted_by_user_id: approvalDecidingUserId(deps.principal),
-    via: "in_band_elicitation",
-  });
-  if (!granted.ok) {
-    logger.error({
-      module: "tools",
-      action: "tool.confirm_grant_failed",
-      msg: "the operator accepted the in-band prompt but the approval could not be granted; nothing ran",
-      tool: toolName,
-      approval_id: confirm.tool_call_id,
-      error_code: granted.code,
-      principal_id: deps.principal.id,
-      tenant_id: deps.principal.tenant_id,
-    });
-    return {
-      kind: "halt",
-      envelope: { status: "error", error_code: granted.code, message: granted.message },
-      decisionLabel: granted.code,
-    };
-  }
-  const claim = await consumeApproval({
-    db: deps.db,
-    principal: deps.principal,
-    approval_id: confirm.tool_call_id,
-    tool: toolName,
-    surface: invocation.surface,
-    via: invocation.surface,
-  });
-  if (!claim.ok) {
-    logger.error({
-      module: "tools",
-      action: "tool.confirm_claim_failed",
-      msg: "could not claim the approval the operator granted in-band; nothing ran",
-      tool: toolName,
-      approval_id: confirm.tool_call_id,
-      error_code: claim.code,
-      principal_id: deps.principal.id,
-      tenant_id: deps.principal.tenant_id,
-    });
-    return {
-      kind: "halt",
-      envelope: { status: "error", error_code: claim.code, message: claim.message },
-      decisionLabel: claim.code,
-    };
-  }
-  return { kind: "approved", claim };
+  return { status: "needs_confirm", confirm: { ...confirm, approval_url } };
 }
 
 export async function dispatchTool(
@@ -642,20 +486,14 @@ export async function dispatchTool(
         decisionLabel = "not_available_on_surface";
         halted = true;
       } else if (policy.kind === "needs_confirm") {
-        const gate = await gateConfirm(deps, entry.descriptor.name, invocation, policy.envelope, {
+        // Portal-only: mint the ungranted approval and hand back its
+        // `approval_url`. A human grants it out of band; a later confirm marker
+        // (step 3) triggers the granted row. Nothing here grants it.
+        envelope = await gateConfirm(deps, entry.descriptor.name, invocation, policy.envelope, {
           execArgs,
         });
-        if (gate.kind === "approved") {
-          // A human answered the in-band prompt with yes. The approval was
-          // granted and burned inside the gate, so from here the call is
-          // indistinguishable from a portal-granted, out-of-band confirmed replay.
-          claimed = gate.claim;
-          execArgs = gate.claim.args;
-        } else {
-          envelope = gate.envelope;
-          decisionLabel = gate.decisionLabel;
-          halted = true;
-        }
+        decisionLabel = "needs_confirm";
+        halted = true;
       }
 
       if (halted) {
@@ -694,7 +532,16 @@ export async function dispatchTool(
             const result = await executor.execute(ctx, execArgs);
             envelope = normalizeConversationResult(result);
           } else if (isStaticExecutor(executor)) {
-            envelope = await executor.invoke({ db: deps.db, principal: deps.principal }, execArgs);
+            envelope = await executor.invoke(
+              {
+                db: deps.db,
+                principal: deps.principal,
+                registry: deps.registry,
+                ...(deps.mcpMode !== undefined ? { mcpMode: deps.mcpMode } : {}),
+                ...(deps.readOnly !== undefined ? { readOnly: deps.readOnly } : {}),
+              },
+              execArgs,
+            );
           } else {
             throw new Error("unknown executor kind in registry entry");
           }

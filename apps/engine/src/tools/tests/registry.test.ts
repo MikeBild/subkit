@@ -16,6 +16,7 @@ describe("tools/registry — providers (active)", () => {
     const names = staticToolProvider.list({ surface: "mcp", mcpMode: "admin" }).map((d) => d.name);
     expect(names).toContain("authenticate");
     expect(names).toContain("list_recipes");
+    expect(names).toContain("find_tool");
     expect(names).toContain("self_healing_scan");
     // The following names exist on the conversation registry — the
     // conversation version wins; the deleted mcp/tools/* duplicates
@@ -33,6 +34,9 @@ describe("tools/registry — providers (active)", () => {
       .map((d) => d.name);
     expect(productNames).not.toContain("self_healing_scan");
     expect(productNames).toContain("authenticate");
+    // find_tool is core-floor in EVERY mode (mode-resolver.ts); the handler's
+    // registry filter scopes its results to the caller's own mode.
+    expect(productNames).toContain("find_tool");
   });
 
   test("ConversationToolProvider mirrors listTools() on chat surface", () => {

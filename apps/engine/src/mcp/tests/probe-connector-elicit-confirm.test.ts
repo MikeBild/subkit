@@ -1,24 +1,21 @@
-// MCP confirm-gate resolution over the wire — ONE rule, every client shape.
+// MCP confirm-gate resolution over the wire — ONE rule, every client shape:
+// approval is PORTAL-ONLY.
 //
 // A `confirm_before_execution` tool (here `probe_connector` POST/prod) needs a
-// HUMAN. The approval is opened UNGRANTED and only a human channel grants it, so
-// nothing the model emits can release the call:
+// HUMAN. The approval is opened UNGRANTED and only the portal grants it, so
+// nothing the model emits — and nothing in-band — can release the call:
 //
 //   1. Every client may call `confirm_tool_call`, and for none of them does it
 //      approve anything. It is a TRIGGER: it claims an approval a person already
 //      granted, and answers `approval_not_granted` until they have. There is no
 //      capability-based refusal, because there is nothing left to refuse.
 //   2. The `needs_confirm` envelope carries `tool_call_id` (the trigger handle)
-//      and `approval_url` (where the person decides).
-//   3. Elicitation-capable client → the server ALSO issues an in-band
-//      `elicitation/create`, an optimization over that link. Accept → the engine
-//      grants the approval (`in_band_elicitation`), claims it, and the call
-//      executes in the same pass. Decline → the approval is DECLINED, terminal,
-//      never claimable, and the client receives `confirm_declined`.
-//   4. Elicitation-capable client that does NOT answer its own prompt → the
-//      engine holds no decision. Not a decline. The approval stays ungranted and
-//      its `approval_url` goes back. Production says this is the only path that
-//      ever runs: 29 unanswered prompts, 0 fulfilled.
+//      and `approval_url` (where the person grants, out of band).
+//   3. In-band elicitation is NOT a grant channel. Even a client that advertises
+//      `elicitation` gets no in-band prompt — the engine never issues one. It
+//      lands on the same portal path as everyone else: claude.ai auto-declines
+//      the prompt with no human seeing it, and production recorded 29/29 prompts
+//      timing out, so an in-band answer is never a verified human decision.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -53,13 +50,11 @@ afterAll(async () => {
   delete process.env.SUBKIT_PUBLIC_BASE_URL;
 });
 
-// Connect a client that advertises the `elicitation` capability and
-// answers `elicitation/create` according to `decision`. The returned
-// `elicitCount` ref lets a test assert how many in-band prompts fired —
-// used to prove the bridge is SKIPPED when a confirm token is supplied.
-async function connectElicitClient(
-  decision: "accept" | "decline" | "error",
-): Promise<{ client: Client; elicitCount: { n: number } }> {
+// Connect a client that advertises the `elicitation` capability. The engine is
+// portal-only and never issues an in-band prompt, so this client's elicitation
+// handler must never fire — `elicitCount` proves that (it stays 0). If it ever
+// went positive, an in-band grant channel would have reopened.
+async function connectElicitClient(): Promise<{ client: Client; elicitCount: { n: number } }> {
   const transport = new StreamableHTTPClientTransport(new URL(`${suite.http.baseUrl}/mcp`), {
     requestInit: { headers: { authorization: `Bearer ${suite.http.apiKey}` } },
   });
@@ -70,15 +65,7 @@ async function connectElicitClient(
   const elicitCount = { n: 0 };
   client.setRequestHandler(ElicitRequestSchema, async () => {
     elicitCount.n += 1;
-    // "error" models a client that ADVERTISES elicitation but does not
-    // fulfil the round-trip (throwing stands in for a non-answer / timeout
-    // without a real wall-clock wait). The server's elicitInput then rejects,
-    // the resolver reads it as `unreachable` — not a decline — and the approval
-    // waits, ungranted, for a person at its approval_url.
-    if (decision === "error") throw new Error("client cannot fulfil elicitation");
-    return decision === "accept"
-      ? { action: "accept" as const, content: { confirm: true } }
-      : { action: "decline" as const };
+    throw new Error("engine must not issue an in-band prompt — approval is portal-only");
   });
   await client.connect(transport as unknown as Transport);
   return { client, elicitCount };
@@ -138,9 +125,9 @@ const probeArgs = (slug: string) => ({
 });
 
 describe("probe_connector confirm gate — a human grants, the model triggers", () => {
-  test("elicitation-capable client: in-band accept → granted in-band, call executes", async () => {
+  test("elicitation-capable client: no in-band prompt fires; the call is portal-only", async () => {
     await suite.seedConnector({
-      slug: "elicit-accept",
+      slug: "elicit-portal-only",
       environment: "prod",
       base_url: mock.baseUrl,
     });
@@ -148,74 +135,47 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
     const grantedBaseline = await approvalCount("approval.granted");
     const approvedBaseline = await approvalCount("approval.approved");
 
-    const { client } = await connectElicitClient("accept");
+    const { client, elicitCount } = await connectElicitClient();
     try {
       // The responder is listed for every client, and callable by every client.
       const listed = await client.listTools();
       expect(listed.tools.some((t) => t.name === "confirm_tool_call")).toBe(true);
 
-      const result = await client.callTool({
+      // First call → needs_confirm envelope + the portal link. NOT executed, and
+      // no in-band prompt was ever issued to this elicitation-capable client.
+      const first = await client.callTool({
         name: "probe_connector",
-        arguments: probeArgs("elicit-accept"),
+        arguments: probeArgs("elicit-portal-only"),
       });
+      expect(first.isError).toBeFalsy();
+      const firstPayload = textPayload(first);
+      expect(firstPayload.status).toBe("needs_confirm");
+      expect(firstPayload.policy_mode).toBe("confirm_before_execution");
+      expect(firstPayload.status_code).toBeUndefined();
+      expect(elicitCount.n).toBe(0);
+      const confirmId = firstPayload.tool_call_id as string;
+      expect(confirmId).toBeTruthy();
+      expect(String(firstPayload.approval_url)).toMatch(
+        /^https?:\/\/[^/]+\/v1\/tool-approvals\/decide\?grant=skag_[A-Za-z0-9_-]+$/,
+      );
 
-      expect(result.isError).toBeFalsy();
-      const payload = textPayload(result);
-      // Executed, not a needs_confirm envelope.
-      expect(payload.status_code).toBe(201);
-      expect(payload.persistence).toBe("none");
+      // A person grants it at the portal; confirm_tool_call then executes.
+      await humanGrants(confirmId);
+      const confirmed = await client.callTool({
+        name: "confirm_tool_call",
+        arguments: { tool: "probe_connector", confirm_id: confirmId },
+      });
+      expect(confirmed.isError).toBeFalsy();
+      expect(textPayload(confirmed).status_code).toBe(201);
+      // Still no in-band prompt across the whole loop.
+      expect(elicitCount.n).toBe(0);
     } finally {
       await client.close();
     }
 
-    // The in-band accept IS a grant — the same row a portal click would write.
+    // The portal grant is the same grant a click would write — one grant, one approve.
     expect(await approvalCount("approval.granted")).toBe(grantedBaseline + 1);
     expect(await approvalCount("approval.approved")).toBe(approvedBaseline + 1);
-  });
-
-  test("elicitation-capable client: in-band decline → APPROVAL_DECLINED, terminal, never claimable", async () => {
-    await suite.seedConnector({
-      slug: "elicit-decline",
-      environment: "prod",
-      base_url: mock.baseUrl,
-    });
-
-    const requestedBaseline = await approvalCount("approval.requested");
-    const declinedBaseline = await approvalCount("approval.declined");
-
-    const { client } = await connectElicitClient("decline");
-    try {
-      const result = await client.callTool({
-        name: "probe_connector",
-        arguments: probeArgs("elicit-decline"),
-      });
-      expect(result.isError).toBe(true);
-      const payload = textPayload(result);
-      // Declining the in-band prompt must NOT execute the call...
-      expect(payload.status_code).toBeUndefined();
-      // ...and it must NOT hand back a handle at all. The person said no; that
-      // answer is the outcome, and this approval can never be revived.
-      expect(payload.error_code).toBe("confirm_declined");
-      expect(payload.tool_call_id).toBeUndefined();
-      expect(payload.approval_url).toBeUndefined();
-      expect(result._meta?.subkit).toBeUndefined();
-    } finally {
-      await client.close();
-    }
-
-    // The approval was opened (so the refusal is auditable) and then declined.
-    expect(await approvalCount("approval.requested")).toBe(requestedBaseline + 1);
-    expect(await approvalCount("approval.declined")).toBe(declinedBaseline + 1);
-
-    // A declined approval is dead. Even holding its id, the trigger cannot fire.
-    const declinedId = await latestApprovalId("approval.declined");
-    const client2 = await suite.connect();
-    const replay = await client2.callTool({
-      name: "confirm_tool_call",
-      arguments: { tool: "probe_connector", confirm_id: declinedId },
-    });
-    expect(replay.isError).toBe(true);
-    expect(textPayload(replay).error_code).toBe("approval_declined");
   });
 
   test("confirm_tool_call is open to an elicitation-capable client — and grants nothing", async () => {
@@ -228,7 +188,7 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
     // The call reaches the claim and loses there, which is the honest answer: the
     // approval it names was never granted by a person. Nothing is refused merely
     // for a capability the client happens to advertise — the claim is the gate.
-    const { client, elicitCount } = await connectElicitClient("error");
+    const { client, elicitCount } = await connectElicitClient();
     try {
       const first = await client.callTool({
         name: "probe_connector",
@@ -236,7 +196,7 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
       });
       const confirmId = textPayload(first).tool_call_id as string;
       expect(confirmId).toBeTruthy();
-      expect(elicitCount.n).toBe(1);
+      expect(elicitCount.n).toBe(0);
 
       const triggered = await client.callTool({
         name: "confirm_tool_call",
@@ -269,7 +229,7 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
     // The transport marker was the "second door" the old capability refusal
     // guarded. It needs no guard: `dispatchTool` claims with it, and the claim
     // fails on an approval no person granted.
-    const { client, elicitCount } = await connectElicitClient("error");
+    const { client, elicitCount } = await connectElicitClient();
     try {
       const first = await client.callTool({
         name: "probe_connector",
@@ -287,14 +247,14 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
       const payload = textPayload(marked);
       expect(payload.error_code).toBe("approval_not_granted");
       expect(payload.status_code).toBeUndefined();
-      // The marker suppresses a second prompt; only the first call elicited.
-      expect(elicitCount.n).toBe(1);
+      // Portal-only: no in-band prompt ever fired on either call.
+      expect(elicitCount.n).toBe(0);
     } finally {
       await client.close();
     }
   });
 
-  test("elicitation-capable client whose prompt goes unanswered: approval waits at its approval_url", async () => {
+  test("elicitation-capable client: single-use portal loop, early trigger fires blank, no in-band prompt", async () => {
     await suite.seedConnector({
       slug: "elicit-unfulfilled",
       environment: "prod",
@@ -302,7 +262,7 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
     });
 
     const requestedBaseline = await approvalCount("approval.requested");
-    const { client, elicitCount } = await connectElicitClient("error");
+    const { client, elicitCount } = await connectElicitClient();
     try {
       const first = await client.callTool({
         name: "probe_connector",
@@ -315,7 +275,7 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
       expect(firstPayload.error_code).toBeUndefined();
       expect(firstPayload.status_code).toBeUndefined();
       expect(firstPayload.policy_mode).toBe("confirm_before_execution");
-      expect(elicitCount.n).toBe(1); // the bridge WAS attempted, once
+      expect(elicitCount.n).toBe(0); // portal-only: no in-band prompt is issued
 
       const confirmId = firstPayload.tool_call_id as string;
       expect(confirmId).toBeTruthy();
@@ -351,8 +311,8 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
       expect(approved.isError).toBeFalsy();
       expect(textPayload(approved).status_code).toBe(201);
       expect(await approvalCount("approval.approved")).toBe(approvedBaseline + 1);
-      // The confirmed replay carries the marker, so no second prompt fired.
-      expect(elicitCount.n).toBe(1);
+      // No in-band prompt fired across the whole loop.
+      expect(elicitCount.n).toBe(0);
 
       // Single-use: the burned handle is refused.
       const replay = await client.callTool({
