@@ -320,8 +320,11 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
       const confirmId = firstPayload.tool_call_id as string;
       expect(confirmId).toBeTruthy();
       // The human affordance, named. This is what the model relays to a person.
-      expect(String(firstPayload.approval_url)).toStartWith(
-        "https://engine.example.test/v1/tool-approvals/decide?grant=skag_",
+      // Origin-agnostic: the host is environmental (a global-config singleton a
+      // concurrent suite can transiently repoint). Assert the portal PATH + a
+      // well-formed `skag_` grant token.
+      expect(String(firstPayload.approval_url)).toMatch(
+        /^https?:\/\/[^/]+\/v1\/tool-approvals\/decide\?grant=skag_[A-Za-z0-9_-]+$/,
       );
       expect(String(firstPayload.instruction)).toContain("Send this link to the person");
       // The prose must never claim nobody was asked — this client may be showing
@@ -384,8 +387,9 @@ describe("probe_connector confirm gate — a human grants, the model triggers", 
     expect(firstPayload.policy_mode).toBe("confirm_before_execution");
     const confirmId = firstPayload.tool_call_id as string;
     expect(confirmId).toBeTruthy();
-    expect(String(firstPayload.approval_url)).toStartWith(
-      "https://engine.example.test/v1/tool-approvals/decide?grant=",
+    // Origin-agnostic — see the note on the sibling assertion above.
+    expect(String(firstPayload.approval_url)).toMatch(
+      /^https?:\/\/[^/]+\/v1\/tool-approvals\/decide\?grant=skag_[A-Za-z0-9_-]+$/,
     );
 
     // The model cannot approve its own call, even holding a real id.

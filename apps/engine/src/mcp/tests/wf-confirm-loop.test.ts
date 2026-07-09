@@ -136,8 +136,11 @@ describe("mcp wf_<slug> confirm-tool-call closed loop", () => {
     expect(firstBody.would_write?.[0]?.method).toBe("POST");
     expect(typeof firstBody.confirm_id).toBe("string");
     const confirmId = firstBody.confirm_id as string;
-    expect(String(firstBody.approval_url)).toStartWith(
-      "https://engine.example.test/v1/tool-approvals/decide?grant=skag_",
+    // Origin-agnostic: the public origin is environmental (and a global-config
+    // singleton another concurrent suite can transiently repoint), so assert the
+    // portal PATH + a well-formed `skag_` grant token, not a specific host.
+    expect(String(firstBody.approval_url)).toMatch(
+      /^https?:\/\/[^/]+\/v1\/tool-approvals\/decide\?grant=skag_[A-Za-z0-9_-]+$/,
     );
 
     // The read step ran for real; the held write must NOT have hit the wire.

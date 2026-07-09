@@ -198,8 +198,11 @@ describe("mcp tools/call", () => {
     // confirm_id the model triggers with.
     expect(typeof body.confirm_id).toBe("string");
     expect(body.awaiting_human_approval).toBe(true);
-    expect(String(body.approval_url)).toStartWith(
-      "https://engine.example.test/v1/tool-approvals/decide?grant=skag_",
+    // Origin-agnostic: the public origin is environmental (a global-config
+    // singleton a concurrent suite can transiently repoint). Assert the portal
+    // PATH + a well-formed `skag_` grant token, not a specific host.
+    expect(String(body.approval_url)).toMatch(
+      /^https?:\/\/[^/]+\/v1\/tool-approvals\/decide\?grant=skag_[A-Za-z0-9_-]+$/,
     );
     expect(body.remedy).toContain("Send this link to the person who must approve");
     expect(body.remedy).toContain(String(body.approval_url));
