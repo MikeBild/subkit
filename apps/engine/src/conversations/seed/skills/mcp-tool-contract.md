@@ -2,13 +2,13 @@
 slug: mcp-tool-contract
 scope: global
 title: MCP Callable Contract
-description: Reference for sk's MCP callable surface — how callable entries are named, how a destructive call pauses on a human's approval at its `approval_url` and is then performed by `confirm_tool_call`, when to trust the synthesized `inputSchema`, and how to read the `warnings[]` envelope. Consult this before driving sk from any MCP client (Codex, Claude Desktop, Cursor, sk, etc.).
+description: Reference for sk's MCP callable surface — how callable entries are named, how a destructive call is gated by your MCP client's own native approval dialog (from the tool's `destructiveHint` annotation) and then executes directly, when to trust the synthesized `inputSchema`, and how to read the `warnings[]` envelope. Consult this before driving sk from any MCP client (Codex, Claude Desktop, Cursor, sk, etc.).
 activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp tool"},{"kind":"intent_keyword","word":"mcp tools"},{"kind":"intent_keyword","word":"tenant delete"},{"kind":"intent_keyword","word":"confirm_required"},{"kind":"intent_keyword","word":"sk_confirm"},{"kind":"intent_keyword","word":"ask_user_confirm"},{"kind":"intent_keyword","word":"unresolved_identifier"},{"kind":"intent_keyword","word":"warnings"},{"kind":"intent_keyword","word":"input schema"},{"kind":"intent_keyword","word":"wf_"},{"kind":"intent_keyword","word":"tenant_"},{"kind":"intent_keyword","word":"conversation_"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [mcp, contract]
-version: 4
+version: 5
 ---
 
 # sk MCP callable contract
@@ -32,42 +32,23 @@ Every sk callable entry ships a `_meta.subkit` envelope:
 ```
 
 - `category`: one of `tenant_read`, `tenant_write`, `draft_write`, `workflow_run`.
-- `confirm_required`: `true` → the first call returns a `needs_confirm` envelope and the callable entry does **not** execute. A HUMAN releases it, never you.
-- `destructive`: UI hint. Surface a warning to the human before asking.
+- `confirm_required`: `true` → this entry writes/mutates, so its `tools/list` annotation carries `destructiveHint: true`. Your MCP client gates it with its OWN native approval dialog (see below). It is a hint about how YOUR client behaves, not a signal that sk returns a pending envelope.
+- `destructive`: same signal, mirrored for clients that read the vendor block.
 
-**Do not author your own `ask_user_confirm` before a callable entry whose `_meta.subkit.confirm_required` is already true.** The policy gate raises exactly one confirmation. Pre-empting it produces two elicitations and a stalled loop.
+**Do not author your own `ask_user_confirm`/approval prompt before a write.** Your client already renders one from the `destructiveHint` annotation. Pre-empting it just double-prompts the human.
 
-## Destructive-action flow (a person approves; you only trigger)
+## Destructive-action flow (your client gates it; sk executes it)
 
-**You cannot approve anything.** An approval is granted by a human, out of band, in an approval portal. `confirm_tool_call` does not approve — it performs a call a person already approved. Until they do, it answers `approval_not_granted`.
+**The human approves inside YOUR client, before the call ever reaches sk.** Every write/destructive entry advertises `destructiveHint: true` in its `tools/list` annotations. A trusted MCP client (claude.ai, ChatGPT, Claude Desktop, Cursor, …) reads that hint and renders a native, per-call approval dialog *before* dispatching the call — a blocking human gate you cannot bypass. There is **no** sk-side approval portal, **no** `approval_url`, **no** `confirm_tool_call`, and **no** `needs_confirm` envelope. Those were removed.
 
 1. Call the callable entry normally, e.g. `delete_workflow({id: "abc"})`.
-2. sk replies with a structured envelope:
-   ```json
-   {
-     "status": "needs_confirm",
-     "tool": "delete_workflow",
-     "policy_mode": "confirm_before_execution",
-     "reason": "tool_default",
-     "pending_output": { "workflow_id": "abc" },
-     "tool_call_id": "<uuid>",
-     "approval_url": "https://<engine>/v1/tool-approvals/decide?grant=skag_…"
-   }
-   ```
-   Nothing ran. The envelope carries no `args` — the engine holds them. The handle is named `tool_call_id`; `approval_url` is `null` only when the deployment has no `server.public_base_url`, and then the call cannot be approved at all.
-3. **Send `approval_url` to the person who must approve.** They open it, see exactly what will be written, and approve or decline. Do not paraphrase the link away; it is the only channel that can release the call.
-4. Once they have approved, fire the trigger, passing the envelope's `tool_call_id` as `confirm_id`:
-   ```json
-   { "name": "confirm_tool_call", "arguments": { "tool": "delete_workflow", "confirm_id": "<uuid>" } }
-   ```
-   The engine replays the arguments it already holds under that id — never re-send them.
-5. sk executes the callable entry, writes the `approval.approved` audit row, and returns the normal result.
+2. Your client shows the human its approval prompt (e.g. claude.ai: *"Claude möchte delete_workflow verwenden — Allow / Deny"*; ChatGPT surfaces the same under its permission mode). You do not send a link or paste anything — the client owns this step.
+3. If the human **allows**, the call reaches sk and **executes directly**, writing its audit row and returning the normal result. If they **deny**, the call never reaches sk.
+4. That is the whole flow. Do not look for an `approval_url` to forward, and do not call `confirm_tool_call` — it no longer exists. Just make the call and let the client's dialog gate it.
 
-If you fire the trigger before a person has approved, you get `error_code: "approval_not_granted"`. That is not a failure to retry around: it means the human has not decided yet. Wait, and do not re-issue the original call — that only opens a second approval.
+If a write does not seem to run, the human declined in the client dialog, or the connector's tool-permission is set to block. Re-issuing the identical call simply re-prompts them — it does not open any server-side approval.
 
-Approval over MCP is **portal-only**. Even if your client advertises `elicitation`, the engine issues no in-band prompt: every write comes back as the `needs_confirm` envelope above, and the `approval_url` is the one channel that grants it. A `needs_confirm` is not a refusal — nothing ran, and the call is waiting on that link.
-
-There is no argument on any tool, and no `_meta` flag, that clears a confirmation gate. `_meta.sk_confirm` is the same trigger, and fails the same way on an ungranted approval.
+**Grant channel = the client dialog, not sk.** Even if your client advertises `elicitation`, sk issues no in-band prompt of its own: the `destructiveHint` annotation is the entire mechanism, and it is honored client-side. (The chat surface — not MCP — is the exception: there sk raises an `ask_user_confirm` elicitation over its own HTTP channel.)
 
 ## `warnings[]` on workflow runs
 
