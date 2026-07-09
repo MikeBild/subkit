@@ -38,14 +38,6 @@ import { maybeOffload } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
-import {
-  approvalAuditResource,
-  type ClaimedApproval,
-  consumeApproval,
-  recordApprovalApproved,
-  recordApprovalUnfulfilled,
-  requestApproval,
-} from "../../tools/approval.ts";
 import { getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
@@ -55,14 +47,13 @@ import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import {
-  CONFIRM_TOOL_CALL_NAME,
   DEFAULT_PALETTE_LIMIT,
   fitCatalogToBudget,
   SCHEMA_TOKEN_BUDGET,
   TOOL_PREFIX,
 } from "./catalog-budget.ts";
 import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversations.ts";
-import { approvalAffordanceLine, buildResultEnvelope, type PreviewCommit } from "./held-preview.ts";
+import { buildResultEnvelope } from "./held-preview.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
 import { paginate } from "./pagination.ts";
 import {
@@ -182,18 +173,13 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     //                             plus the conversation tools the mode's
     //                             allow-list publishes under their bare names.
     //   - listConversationTools — MCP-only conversation.* session tools.
-    //   - CONFIRM_TOOL_CALL_TOOL — always appended as the confirm fallback.
     // Nothing becomes unreachable: trimmed workflows stay callable via
     // find_workflow / run_workflow(slug), and an unpublished registry tool
     // still resolves on tools/call and inside conversation_start's loop.
     const initialMode = resolveMcpMode(principal);
-    // The confirm responder is always surfaced (see assembleTier), for EVERY
-    // client. It cannot approve anything — an approval is granted by a human at
-    // its `approval_url` — so there is nothing for a capability check to protect.
-    // Every write approval over MCP is portal-only: in-band elicitation is not a
-    // grant channel (claude.ai auto-declines the prompt, and 29/29 prompts timed
-    // out in production). We log the client's elicitation capability as a signal
-    // only; it changes nothing about how an approval is granted.
+    // We log the client's advertised capabilities (elicitation, sampling,
+    // roots, tasks) as a signal only. MCP writes are gated by the client's
+    // native destructiveHint approval dialog, not by any server-side channel.
     const clientCaps = server.getClientCapabilities();
     const elicitationCapable = clientCaps?.elicitation != null;
     logger.info({
@@ -204,7 +190,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       sampling: clientCaps?.sampling != null,
       roots: clientCaps?.roots != null,
       tasks: clientCaps?.tasks != null,
-      confirm_path: "portal",
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
@@ -221,10 +206,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       fullPalette,
     });
     // Defense-in-depth: the search-first floor must survive the trim. The
-    // leanest tier preserves it by construction (product allow-list +
-    // static + appended confirm), but assert it so a future regression is
-    // loud rather than silent. confirm_tool_call is an unconditional floor
-    // member for every client (the guaranteed confirm fallback).
+    // leanest tier preserves it by construction (product allow-list + static),
+    // but assert it so a future regression is loud rather than silent.
     const presentNames = new Set(fit.tools.map((t) => t.name));
     const missingCore = [...MCP_CORE_TOOL_NAMES].filter((coreName) => !presentNames.has(coreName));
     if (missingCore.length > 0) {
@@ -269,13 +252,9 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       const args = request.params.arguments ?? {};
       const progressToken = request.params._meta?.progressToken;
       const envMeta = (request.params._meta as { environment?: unknown } | undefined)?.environment;
-      // Distinguish "the client named an environment" from "it named none".
-      // On a first-touch call the absent case defaults to dev; on a
-      // `confirm_tool_call` the absent case means "replay in whatever
-      // environment the approval was granted for", while a NAMED one that
-      // contradicts the stored row is rejected by `consumeApproval`. Silently
-      // defaulting both to dev would have let a prod preview be confirmed as
-      // dev, and (worse) an absent-vs-prod client swap the other way.
+      // The client may name the environment (`dev`/`prod`) on `_meta.environment`
+      // to pick which credentials the run resolves against; an absent value
+      // defaults to dev. Only these two are honored, everything else falls back.
       let requestedEnvironment: "dev" | "prod" | undefined;
       if (typeof envMeta === "string") {
         const normalized = envMeta.toLowerCase();
@@ -303,148 +282,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       // surface-specific operational concerns, not LLM tool palette items.
       const mcpModeForCall = resolveMcpMode(principal);
       const readOnlyForCall = !modeFlags(mcpModeForCall, readOnly).showTenantWrites;
-
-      // Confirm responder — a TRIGGER, not a gate, and therefore open to every
-      // client. The first call persisted the args and opened the approval
-      // UNGRANTED (APPROVAL_REQUESTED); a HUMAN grants it at the `approval_url`
-      // that call handed back. This responder claims a GRANTED approval and
-      // replays those args — the caller carries back an id and nothing else.
-      //
-      // There is deliberately NO capability-based refusal here. `confirm_tool_call`
-      // can no longer approve anything: `consumeApproval` requires `granted_at IS
-      // NOT NULL`, which only `grantApproval` sets, and only a human channel
-      // reaches that. So refusing an elicitation-capable client would protect
-      // nothing and would strand the very clients the refusal was meant to
-      // protect — production shows all 29 of their in-band prompts timed out and
-      // not one was ever fulfilled. Every client may call it; it succeeds iff a
-      // human already granted the approval.
-      //
-      // Handled before the registry probe because neither the responder nor
-      // `wf_<slug>` is a registry tool.
-      if (name === CONFIRM_TOOL_CALL_NAME) {
-        const targetTool = typeof args.tool === "string" ? args.tool : "";
-        const confirmId = typeof args.confirm_id === "string" ? args.confirm_id : undefined;
-        if (!targetTool || !confirmId) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({
-                  error_code: "invalid_args",
-                  message: "confirm_tool_call requires `tool` and `confirm_id`.",
-                }),
-              },
-            ],
-          };
-        }
-
-        // `wf_<slug>` is not a registry tool (tools/index.ts registers no
-        // `wf_` provider), so a dispatcher re-dispatch resolves to
-        // `tool_not_found`. Claim the approval the held preview opened — the
-        // claim succeeds only if a human granted it — and replay the stored
-        // inputs against the workflow executor with the writes released.
-        // `runWorkflowToolCall` re-runs the RBAC gate (a grant can be revoked
-        // between preview and approval) and only then records APPROVAL_APPROVED.
-        if (targetTool.startsWith(TOOL_PREFIX)) {
-          const claim = await consumeApproval({
-            db,
-            principal,
-            approval_id: confirmId,
-            tool: targetTool,
-            surface: "mcp",
-            via: "mcp",
-            execution_mode: requestedEnvironment,
-          });
-          if (!claim.ok) {
-            logger.info({
-              module: "mcp",
-              action: "mcp.tool.confirm_rejected",
-              msg: "confirm_tool_call could not claim the approval",
-              tool: targetTool,
-              error_code: claim.code,
-              duration_ms: Date.now() - started,
-              principal_id: principal.id,
-              tenant_id: principal.tenant_id,
-            });
-            return {
-              isError: true,
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({ error_code: claim.code, message: claim.message }),
-                },
-              ],
-            };
-          }
-          return await runWorkflowToolCall({
-            db,
-            principal,
-            extra,
-            name: targetTool,
-            args: claim.args,
-            holdWrites: false,
-            progressToken,
-            // The STORED environment, never the confirming call's. The operator
-            // approved a preview of one system; the replay runs against that
-            // system. `null` is unreachable for a wf_ approval (the preview
-            // always persists one) — dev is the safe floor if it ever is.
-            execution_mode: claim.execution_mode ?? "dev",
-            approval: claim,
-            started,
-          });
-        }
-
-        const confirmedInvocation: ToolInvocation = {
-          surface: "mcp",
-          name: targetTool,
-          args: {},
-          meta: { sk_confirm: true, sk_confirm_id: confirmId },
-        };
-        // Bound the confirmed re-dispatch exactly like the first call. Without
-        // it the approved run blocked until the client's own ~60s abort, and
-        // the retry that followed executed the work a second time.
-        const raced = await raceInlineRun(
-          callToolViaDispatcher({
-            db,
-            principal,
-            mcpMode: mcpModeForCall,
-            readOnly: readOnlyForCall,
-            invocation: confirmedInvocation,
-          }),
-          TOOLS_CALL_DEADLINE_MS,
-        );
-        if (raced.timedOut) {
-          // Same async-ack as the direct path: a confirmed `run_workflow`
-          // keeps running past the deadline, so hand back its execution_id
-          // rather than a bare `engine_busy` the client would retry into a
-          // duplicate run. The confirm carries no args, so the target resolves
-          // from the caller's conversation-bound workflow.
-          if (targetTool === "run_workflow") {
-            const ack = await buildRunWorkflowAsyncAck({
-              db,
-              principal,
-              workflowArg: undefined,
-              started,
-            });
-            if (ack) return ack;
-          }
-          return engineBusyResult(targetTool, {
-            principal,
-            started,
-          });
-        }
-        const response = raced.result;
-        logger.info({
-          module: "mcp",
-          action: "mcp.tool.result",
-          msg: "mcp confirm_tool_call resolved",
-          tool: targetTool,
-          duration_ms: Date.now() - started,
-          is_error: response.isError,
-        });
-        return response;
-      }
 
       const probeEntry = getUnifiedRegistry().get(name, {
         surface: "mcp",
@@ -628,19 +465,16 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           ],
         };
       }
+      // A `wf_<slug>` call dispatches its write-classified steps directly: the
+      // MCP client already gated the call through its native destructiveHint
+      // approval dialog (which blocks before the server ever sees the call), so
+      // there is no server-side hold. RBAC still runs inside runWorkflowToolCall.
       return await runWorkflowToolCall({
         db,
         principal,
         extra,
         name,
         args: args as Record<string, unknown>,
-        // Every first-touch `wf_<slug>` call holds its write-classified steps
-        // (sends, publishes, external writes): they resolve but never dispatch.
-        // Releasing them requires a HUMAN who grants the approval at its
-        // `approval_url` (portal-only over MCP); `confirm_tool_call` then triggers
-        // the granted approval. The scheduler/HTTP run paths don't route through
-        // this handler, so production runs still send.
-        holdWrites: true,
         progressToken,
         execution_mode,
         started,
@@ -649,66 +483,35 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
   );
 }
 
-/** One `wf_<slug>` execution hop. The first call (writes held) and the
- *  confirmed replay (writes released) go through the SAME function, so the
- *  RBAC gate, progress bridge, offload, and preview envelope cannot drift. */
+/** One `wf_<slug>` execution hop. RBAC gate, progress bridge, offload, and
+ *  result envelope live here. */
 interface WorkflowToolCallParams {
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
   readonly extra: RequestHandlerExtra<ServerRequest, ServerNotification>;
-  /** Full MCP tool name (`wf_<slug>`) — also the approval's tool identity. */
+  /** Full MCP tool name (`wf_<slug>`). */
   readonly name: string;
-  /** The workflow's own inputs — verbatim from the call, or replayed out of
-   *  the approval on the confirmed hop. Never carries an engine-owned key:
-   *  the advertised inputSchema is the workflow's authored `input_schema`. */
+  /** The workflow's own inputs — verbatim from the call. Never carries an
+   *  engine-owned key: the advertised inputSchema is the workflow's authored
+   *  `input_schema`. */
   readonly args: Record<string, unknown>;
-  /** True on every first-touch call; false only on the confirmed replay. */
-  readonly holdWrites: boolean;
   readonly progressToken: string | number | undefined;
-  /** On the confirmed replay this is the approval's STORED environment. */
+  /** Which environment's credentials the run resolves against. */
   readonly execution_mode: "dev" | "prod";
-  /** The burned approval this hop replays, on the confirmed hop only. Its
-   *  APPROVAL_APPROVED row is written here — after the RBAC gate, before the
-   *  execution starts. */
-  readonly approval?: ClaimedApproval;
-  /** tools/call receipt timestamp, so both hops log one honest duration. */
+  /** tools/call receipt timestamp, so the run logs one honest duration. */
   readonly started: number;
 }
 
 /**
  * Run a saved workflow behind its `wf_<slug>` tool.
  *
- * Preview-to-commit: the first call ALWAYS holds writes. When the run comes
- * back carrying the mandatory `held_preview_no_writes` warning, a HUMAN — never
- * the model — decides whether those writes run. `gateHeldWrites` opens the
- * approval UNGRANTED and mints its `approval_url`, then hands `confirm_id` +
- * `approval_url` back inside the preview envelope. Over MCP this is the ONLY
- * grant channel — in-band elicitation is not one (claude.ai auto-declines the
- * prompt, and production saw 29/29 prompts time out). A person grants the
- * approval at that link; `confirm_tool_call` then TRIGGERS this function again
- * with `holdWrites:false`.
- *
- * There is no `execute_writes` opt-in: a model-driven client cannot set
- * transport-level `_meta`, and the workflow's own input schema has no room for
- * an engine key.
- *
- * A read-only workflow emits no held-preview warning and therefore opens no
- * approval row. The confirmed replay re-executes the read steps — the honest
- * cost of a preview the operator could inspect before committing.
+ * The call's write-classified steps dispatch directly — the MCP client already
+ * gated it through its native destructiveHint approval dialog, which blocks
+ * before the server ever sees the call. RBAC still runs before the execution
+ * starts (below), so a caller without run rights is refused regardless.
  */
 async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolResult> {
-  const {
-    db,
-    principal,
-    extra,
-    name,
-    args,
-    holdWrites,
-    progressToken,
-    execution_mode,
-    approval,
-    started,
-  } = p;
+  const { db, principal, extra, name, args, progressToken, execution_mode, started } = p;
   const slug = name.slice(TOOL_PREFIX.length);
   const wf = await resolveWorkflowBySlug(db, principal.tenant_id, slug);
   if (!wf) {
@@ -725,20 +528,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
-    // The confirmed replay burned its single-use handle before we learned the
-    // workflow is gone. Close the approval's lifecycle on its own id: the audit
-    // trail must record the OUTCOME (this approval released nothing), not stop
-    // at the APPROVAL_REQUESTED that opened it.
-    if (approval) {
-      await recordApprovalUnfulfilled({
-        db,
-        principal,
-        claim: approval,
-        tool: name,
-        via: "mcp",
-        reason: "workflow_not_found",
-      });
-    }
     return {
       isError: true,
       content: [
@@ -760,8 +549,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
   // the chat fast-path, synthetic palette, and fallback
   // `run_workflow` tool call the same helper so the four
   // execution surfaces cannot drift on permission semantics or
-  // audit metadata. Runs on the confirmed replay too: a grant can be
-  // revoked between the held preview and its approval.
+  // audit metadata.
   const rbac = await gateWorkflowRunRbac({
     db,
     principal,
@@ -769,39 +557,11 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     workflow_slug: slug,
     request_source: "mcp",
     tool: name,
-    ...(approval ? { approval: approvalAuditResource(approval) } : {}),
   });
   if (!rbac.allow) {
     const err = new Error(rbac.error_message) as Error & { code?: number };
     err.code = -32001;
     throw err;
-  }
-
-  // The claim survived the RBAC gate: this call IS approved, and the writes
-  // are about to leave the perimeter. An audit row that cannot be persisted
-  // means the approved write would run unrecorded — refuse instead.
-  if (approval) {
-    const recorded = await recordApprovalApproved({
-      db,
-      principal,
-      claim: approval,
-      tool: name,
-      via: "mcp",
-    });
-    if (!recorded) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              error_code: "approval_audit_failed",
-              message: `Confirmation ${approval.approval_id} could not be recorded in the audit log; ${name} did not run. Re-issue the call to obtain a fresh confirmation.`,
-            }),
-          },
-        ],
-      };
-    }
   }
 
   // Work out how many steps the current version has for the
@@ -878,7 +638,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       trace_id: null,
       principal,
       execution_mode,
-      ...(holdWrites ? { hold_writes: true } : {}),
     },
   });
 
@@ -992,33 +751,13 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     state.bridge?.stop();
     // When a run produced non-fatal warnings (e.g. jsonata
     // `unresolved_identifier`), wrap the output so the MCP client sees
-    // them alongside the payload. On top of that, a held-writes preview
-    // (every first-touch wf_* run) gets a first-class `preview` envelope +
-    // `_meta` flag so the model cannot mistake it for a real write —
-    // the "gemeldet ≠ geschrieben" no-op. See held-preview.ts.
+    // them alongside the payload. See held-preview.ts.
     const hasWarnings = (result.warnings?.length ?? 0) > 0;
-    // Probe the envelope with no commit decision attached: we need to know
-    // whether the run held a write before we can decide who approves it.
-    const probe = buildResultEnvelope(result);
-    let commit: PreviewCommit | undefined;
-    if (probe.isHeldPreview && holdWrites) {
-      commit = await gateHeldWrites({
-        db,
-        principal,
-        name,
-        execution_mode,
-        args,
-        preview: probe.rawBody as { held_steps?: unknown; would_write?: unknown },
-      });
-    }
-    // Final progress frame @ 1.0. Emitted only on the hop that actually
-    // answers the client — an in-band approval recurses above and the replay
-    // closes out its own progress.
+    // Final progress frame @ 1.0.
     if (progressToken !== undefined && progressToken !== null) {
       await notifier.send(1, 1, "completed").catch(() => {});
     }
-    const envelope = buildResultEnvelope(result, commit);
-    const { rawBody, previewMeta } = envelope;
+    const { rawBody } = buildResultEnvelope(result);
     // Offload if oversize. Warnings travel with the envelope.
     const serialized = JSON.stringify(rawBody);
     if (serialized.length > MCP_OFFLOAD_CHAR_CAP) {
@@ -1039,16 +778,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       const summaryLines: string[] = [
         `Execution ${result.execution_id} ${result.status}; result is ${off.size_bytes} bytes (offloaded — inline cap is ${MCP_OFFLOAD_CHAR_CAP} bytes).`,
       ];
-      if (envelope.isHeldPreview) {
-        // The offloaded body is the workflow output, not the preview envelope,
-        // so the human's approval affordance would otherwise be unreachable from
-        // the summary the client actually reads. Same sentence the inline
-        // envelope carries (`approvalAffordanceLine`) so the two cannot drift.
-        summaryLines.push(
-          `⚠ PREVIEW — no writes performed. ${envelope.heldMessage}` +
-            (commit?.kind === "confirm_required" ? approvalAffordanceLine(commit) : ""),
-        );
-      }
       if (off.preview) summaryLines.push(`Preview: ${off.preview}`);
       if (hasWarnings) {
         summaryLines.push(`Warnings: ${JSON.stringify(result.warnings)}`);
@@ -1063,7 +792,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         return {
           isError: result.status !== "succeeded",
           content: [{ type: "text" as const, text: serialized }],
-          ...previewMeta,
         };
       }
       const resourceLink = {
@@ -1084,14 +812,12 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         bytes,
         execution_id: result.execution_id,
         warnings_count: result.warnings?.length ?? 0,
-        preview: envelope.isHeldPreview,
         storage_uri: storageUri,
         size_bytes: off.size_bytes,
       });
       return {
         isError: result.status !== "succeeded",
         content: [{ type: "text" as const, text: summaryLines.join("\n\n") }, resourceLink],
-        ...previewMeta,
       };
     }
     const text = serialized;
@@ -1104,18 +830,15 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       bytes: text.length,
       execution_id: result.execution_id,
       warnings_count: result.warnings?.length ?? 0,
-      preview: envelope.isHeldPreview,
-      writes_held: holdWrites,
     });
     // structuredContent mirrors the workflow `output` (which the declared
-    // `output_schema` describes) — only for a clean, non-preview success
-    // where `output` is an object, so it always conforms to the advertised
-    // schema. The serialized text block stays for back-compat (spec SHOULD).
-    // The offloaded (>cap) branch above intentionally omits it — a
-    // resource_link, not an inlined large object.
+    // `output_schema` describes) — only for a clean success where `output` is
+    // an object, so it always conforms to the advertised schema. The serialized
+    // text block stays for back-compat (spec SHOULD). The offloaded (>cap)
+    // branch above intentionally omits it — a resource_link, not an inlined
+    // large object.
     const structured =
       outputSchemaDeclared &&
-      !envelope.isHeldPreview &&
       result.status === "succeeded" &&
       result.output != null &&
       typeof result.output === "object" &&
@@ -1126,7 +849,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       isError: result.status !== "succeeded",
       content: [{ type: "text" as const, text }],
       ...structured,
-      ...previewMeta,
     };
   } catch (err) {
     state.bridge?.stop();
@@ -1144,57 +866,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       content: [{ type: "text" as const, text: `error: ${text}` }],
     };
   }
-}
-
-/**
- * Open the approval a `wf_<slug>` preview's held writes need, and hand its
- * `approval_url` back inside the preview envelope. Portal-only: the model is
- * never the approver, and nothing over MCP grants the approval in-band.
- *
- * The approval is opened UNGRANTED. A person opens the `approval_url` and grants
- * it out of band; `confirm_tool_call` then TRIGGERS the granted row and replays
- * the args the engine persisted here. In-band elicitation is deliberately NOT a
- * grant channel over MCP: claude.ai auto-declines the prompt with no human ever
- * seeing it, and production recorded 29/29 elicitation prompts timing out — an
- * in-band answer is never a verified human decision.
- */
-async function gateHeldWrites(p: {
-  db: Db;
-  principal: ResolvedPrincipal;
-  name: string;
-  execution_mode: "dev" | "prod";
-  args: Record<string, unknown>;
-  preview: { held_steps?: unknown; would_write?: unknown };
-}): Promise<PreviewCommit> {
-  const { db, principal, name, execution_mode, args, preview } = p;
-  const approvalId = crypto.randomUUID();
-
-  const { approval_url } = await requestApproval({
-    db,
-    principal,
-    approval_id: approvalId,
-    tool: name,
-    surface: "mcp",
-    via: "mcp",
-    // Not a policy-table verdict: the RUN held its writes.
-    reason: "held_writes",
-    // Bind the environment the preview actually ran in. It arrives
-    // out-of-band on `_meta.environment`, so `args_hash` does not cover it —
-    // without this column the confirmed replay could target the other
-    // system's credentials.
-    execution_mode,
-    args,
-    // What the human reads in the approval portal before they decide. On MCP the
-    // portal is the only channel that reaches them.
-    preview,
-  });
-  return {
-    kind: "confirm_required",
-    tool: name,
-    confirm_id: approvalId,
-    approval_url,
-    reason: "portal_grant_required",
-  };
 }
 
 /**

@@ -153,10 +153,13 @@ describe("tools/result-shape — envelope union invariants", () => {
         data: {},
       })),
     ]);
-    // tenant_write without sk_confirm → needs_confirm
+    // tenant_write without sk_confirm → needs_confirm on CHAT. On MCP the same
+    // call would `proceed` — `policyDecide` collapses confirm_before_execution
+    // to `proceed` for `surface:"mcp"` (see tools/policy.ts), because the
+    // client's own destructiveHint dialog gates it there instead.
     const envelope = await dispatchTool(
       { registry: reg, db: DB_STUB, principal: PRINCIPAL },
-      { surface: "mcp", name: "_writes", args: {} },
+      { surface: "chat", name: "_writes", args: {} },
     );
     expect(ToolEnvelopeSchema.safeParse(envelope).success).toBe(true);
     expect(envelope.status).toBe("needs_confirm");

@@ -28,11 +28,19 @@ export interface SubkitToolMetaEnvelope {
  * Tools deliberately categorized `tenant_read` for VISIBILITY (so they stay
  * available in read-only MCP mode) but which CAN mutate external or tenant
  * state. Their advertised MCP side-effect must be honest (write) so a trusted
- * client (claude.ai) files them under its approval-gated group instead of
- * "always allow":
+ * client (claude.ai/ChatGPT) files them under its approval-gated group instead
+ * of "always allow":
  *   - call_connector — issues GET/SELECT/query (read) OR PATCH/POST/DELETE/
  *     mutation/S3-PUT (write); conservatively advertised as write/destructive.
  *   - authenticate / self_healing_scan — change state (reauth / repair scan).
+ *   - probe_connector / probe_connector_draft — a prod probe can POST against
+ *     the vendor surface (`tool-policies.ts` escalates prod probes to
+ *     `confirm_before_execution`). They are advertised destructive so the
+ *     client's native gate secures that call — the server no longer confirms
+ *     on MCP (see `policyDecide`'s MCP shortcut in `tools/policy.ts`), so the
+ *     annotation IS the gate. This keeps the invariant "every MCP-reachable
+ *     `confirm_before_execution` tool advertises `destructiveHint:true`" whole;
+ *     `mcp/tests/tools-list.test.ts` pins it.
  * The runtime gate already treats these correctly via `computeDangerFromInput`
  * (tool-policies.ts); this set keeps the STATIC manifest honest in lockstep.
  */
@@ -40,6 +48,8 @@ const WRITE_DESPITE_READ_CATEGORY: ReadonlySet<string> = new Set([
   "call_connector",
   "authenticate",
   "self_healing_scan",
+  "probe_connector",
+  "probe_connector_draft",
 ]);
 
 /**

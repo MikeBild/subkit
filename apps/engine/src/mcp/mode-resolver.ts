@@ -80,18 +80,17 @@ export function modeFlags(mode: McpMode, readOnly: boolean): McpModeFlags {
 /** The search-first floor of the `tools/list` catalog. These tools are never
  *  trimmed by the budget-fit cascade, regardless of mode or catalog size, so
  *  that every client can always discover and run the full workflow library on
- *  demand (`find_workflow` → `run_workflow(slug)`), confirm gated calls
- *  (`confirm_tool_call`), authenticate a connector, and inspect recipes.
- *  `find_tool` extends the same search-first pattern to the TOOL catalog
- *  itself: the budget fit advertises a bounded allow-list, and find_tool
- *  searches the full registry for the caller's mode so the unadvertised long
- *  tail stays discoverable, not merely callable. The per-workflow `wf_`
- *  palette (capped to its Top-N) rides alongside this floor. */
+ *  demand (`find_workflow` → `run_workflow(slug)`), authenticate a connector,
+ *  and inspect recipes. `find_tool` extends the same search-first pattern to
+ *  the TOOL catalog itself: the budget fit advertises a bounded allow-list, and
+ *  find_tool searches the full registry for the caller's mode so the
+ *  unadvertised long tail stays discoverable, not merely callable. The
+ *  per-workflow `wf_` palette (capped to its Top-N) rides alongside this
+ *  floor. */
 export const MCP_CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "find_workflow",
   "run_workflow",
   "authenticate",
-  "confirm_tool_call",
   "list_recipes",
   "find_tool",
 ]);

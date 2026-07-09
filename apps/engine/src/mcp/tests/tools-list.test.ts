@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { buildToolAnnotations } from "../capabilities/tool-meta.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -121,6 +122,38 @@ describe("mcp tools/list", () => {
       expect(cc.title).not.toContain("_");
       expect(cc.title).not.toBe(cc.name);
     }
+  });
+
+  // MCP writes execute directly (no server-side confirm gate) — the client's
+  // native `destructiveHint` dialog is the ONLY human gate left, so it must
+  // fire for `probe_connector`: its prod path can POST against the vendor's
+  // own surface (tool-policies.ts escalates a prod probe to
+  // confirm_before_execution). If it ever advertised `readOnlyHint:true` or
+  // `destructiveHint:false`, a trusted client would file it under "always
+  // allow" and a model could fire a live prod write with no human in the loop.
+  test("probe_connector advertises readOnlyHint:false + destructiveHint:true", async () => {
+    const { plaintext: adminKey } = await suite.issueApiKey(["*", "mcp:admin"]);
+    const client = await suite.connectWithApiKey(adminKey);
+    const byName = new Map((await client.listTools()).tools.map((t) => [t.name, t]));
+    const tool = byName.get("probe_connector");
+    expect(tool).toBeDefined();
+    expect(tool?.annotations?.readOnlyHint).toBe(false);
+    expect(tool?.annotations?.destructiveHint).toBe(true);
+  });
+
+  // probe_connector_draft is `draft_write` — it never appears in a live MCP
+  // `tools/list` (draft_write tools are omitted from the MCP catalog and
+  // rejected with `not_available_on_surface` on `tools/call`; see
+  // `tools/policy.ts` and `tools/providers/conversation.ts`). So its
+  // destructiveHint contract is pinned directly against the shared
+  // annotation builder (`mcp/capabilities/tool-meta.ts`) instead of a live
+  // fetch — this is what every OTHER surface that ever rendered this
+  // descriptor would see, and what would fire the day it stops being
+  // draft_write-gated off MCP.
+  test("probe_connector_draft's annotation builder output stays readOnlyHint:false + destructiveHint:true", () => {
+    const annotations = buildToolAnnotations("draft_write", "probe_connector_draft");
+    expect(annotations.readOnlyHint).toBe(false);
+    expect(annotations.destructiveHint).toBe(true);
   });
 
   // P2 — execution.taskSupport: conversation_* tools support async Tasks
