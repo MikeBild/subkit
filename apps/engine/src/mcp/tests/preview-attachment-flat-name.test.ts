@@ -3,12 +3,10 @@
 // `tenant_preview_attachment` alias was removed (it was a pure duplicate
 // of the bare name that doubled the catalog).
 //
-// It is NOT published in the authoring `tools/list`: the catalog allow-list
-// publishes ~24 named tools to fit the schema-token budget, and the long tail
-// of inventory reads (preview_attachment among them) stays reachable through
-// `tools/call` / `conversation_start` rather than being advertised. So this
-// suite asserts the CALL contract (bare name resolves, no legacy alias), not
-// catalog membership.
+// It IS published in the authoring `tools/list`: the catalog no longer trims —
+// it advertises the full authoring set and lets the client's native
+// tool-search/defer-loading handle size. So this suite asserts both catalog
+// membership (bare name advertised, no legacy alias) and the CALL contract.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
@@ -26,12 +24,12 @@ afterAll(async () => {
 });
 
 describe("mcp tools/list — preview_attachment naming", () => {
-  test("is long-tail: not advertised in authoring tools/list, and the legacy alias is gone", async () => {
+  test("is advertised in the full authoring tools/list under its bare name, with no legacy alias", async () => {
     const client = await suite.connect();
     const result = await client.listTools();
     const names = new Set(result.tools.map((t) => t.name));
-    // Long-tail inventory read: reachable via tools/call (below), not published.
-    expect(names.has("preview_attachment")).toBe(false);
+    // Advertised now: the full authoring catalog publishes every registry tool.
+    expect(names.has("preview_attachment")).toBe(true);
     // The removed duplicate alias never comes back under any mode.
     expect(names.has("tenant_preview_attachment")).toBe(false);
   });

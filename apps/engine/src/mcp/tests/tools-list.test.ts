@@ -220,6 +220,30 @@ describe("mcp tools/list", () => {
     expect(echoed?.type).toBe("object");
   });
 
+  // Regression guard for the catalog-trim reversal: the engine used to trim
+  // authoring `tools/list` to fit a schema-token budget and ship a `find_tool`
+  // meta-tool as the search-first bridge to the trimmed-out long tail. That
+  // trim is gone — strict clients (claude.ai, ChatGPT) proved they defer-load
+  // large catalogs natively (an 80-tool probe with a deep canary was both
+  // discovered and called), so the engine now advertises the FULL authoring
+  // catalog and lets the client's own tool-search handle size. This drives the
+  // assertion through the REAL MCP tools/list handler with an
+  // authoring-scoped principal — not the pure `assembleCatalog` unit path.
+  test("authoring mode advertises the previously-trimmed long tail by name", async () => {
+    const { plaintext: authoringKey } = await suite.issueApiKey(["*", "mcp:authoring"]);
+    const client = await suite.connectWithApiKey(authoringKey);
+    const result = await client.listTools();
+    const names = new Set(result.tools.map((t) => t.name));
+    expect(names.has("call_connector")).toBe(true);
+    expect(names.has("dry_run_transform")).toBe(true);
+    expect(names.has("list_skills")).toBe(true);
+    // At least one inventory-read tool from the long tail.
+    expect(names.has("list_knowledge_sources")).toBe(true);
+    // find_tool itself is gone — the search-first bridge is no longer needed
+    // because everything it used to bridge to is now advertised directly.
+    expect(names.has("find_tool")).toBe(false);
+  });
+
   test("rejects malformed cursors", async () => {
     for (let i = 0; i < 101; i++) {
       await suite.seedWorkflow({
