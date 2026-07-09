@@ -161,10 +161,10 @@ describe("mcp tools/list", () => {
   // decide which call pattern to use.
   //
   // Conversation tools only appear when the MCP session is in "admin" or
-  // "authoring" mode (i.e. principal scopes include mcp:admin/mcp:authoring).
-  // In "product" mode (the default for a ["*"] key) showConversationTools is
-  // false. We issue a key that carries mcp:admin so this test runs in admin
-  // mode and conversation_start is visible.
+  // "authoring" mode. A ["*"] wildcard key resolves to "authoring" (no
+  // narrowing — see mode-resolver.ts), which already shows them; this key
+  // ALSO carries mcp:admin so the test runs in admin mode and covers the
+  // widest catalog.
   test("P2: conversation_* tools have taskSupport=optional; wf_* tools have taskSupport=forbidden", async () => {
     await suite.seedWorkflow({
       name: "task support probe",

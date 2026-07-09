@@ -302,12 +302,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           args: args as Record<string, unknown>,
           ...(callMeta ? { meta: callMeta } : {}),
         };
-        // Human-in-the-loop over MCP is portal-only. A `confirm_before_execution`
-        // tool mints its approval UNGRANTED and `dispatchTool#gateConfirm` hands
-        // back a `needs_confirm` envelope carrying the `approval_url` a person
-        // grants at, out of band. A `_meta.sk_confirm` marker is a TRIGGER, not an
-        // approval: `dispatchTool` claims with it, and the claim fails on any
-        // approval a human has not granted. No in-band elicitation participates.
+        // Human-in-the-loop over MCP is the CLIENT's native `destructiveHint`
+        // dialog: every MCP-reachable write advertises the annotation and a
+        // trusted client gates the call BEFORE it reaches the engine (see
+        // adapter.ts#callToolViaDispatcher). No server-side confirm participates
+        // on this surface — `policyDecide` collapses confirm to proceed for
+        // `surface:"mcp"` (tools/policy.ts).
         //
         // Bound the dispatch so a stalled call (e.g. event-loop pressure or a
         // slow downstream) returns a clear "engine busy" error instead of

@@ -10,7 +10,7 @@
 // and keeps the rich authoring/admin surface available for callers that
 // explicitly ask for it.
 
-import { MCP_ADMIN_SCOPE, MCP_AUTHORING_SCOPE } from "../auth/scopes.ts";
+import { MCP_ADMIN_SCOPE, MCP_AUTHORING_SCOPE, WILDCARD_SCOPE } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 
 export type McpMode = "product" | "authoring" | "admin";
@@ -31,12 +31,22 @@ function readEnvOverride(): McpMode | null {
 // otherwise make. So the 2025-11-25 `insufficient_scope` step-up challenge
 // (SEP-835) has no trigger point in this model and is intentionally NOT
 // implemented; adding a 403 WWW-Authenticate challenge would be dead code.
+//
+// The wildcard `*` scope asserts "no narrowing — full role-derived access"
+// (auth/scopes.ts): it is the default minted key scope, the admin-key scope,
+// and the OIDC session scope. Treating it as `product` inverted that contract —
+// the LEAST-narrowed credential got the SMALLEST catalog while an OAuth token
+// carrying the literal `mcp:authoring` marker got the full one. A wildcard
+// principal therefore resolves to `authoring`. It never resolves to `admin`:
+// the admin catalog adds tenant writes, and that surface stays opt-in behind
+// the explicit `mcp:admin` marker regardless of how broad the credential is.
 export function resolveMcpMode(principal: ResolvedPrincipal): McpMode {
   const env = readEnvOverride();
   if (env) return env;
   const scopes = principal.scopes ?? [];
   if (scopes.includes(MCP_ADMIN_SCOPE)) return "admin";
   if (scopes.includes(MCP_AUTHORING_SCOPE)) return "authoring";
+  if (scopes.includes(WILDCARD_SCOPE)) return "authoring";
   return "product";
 }
 
