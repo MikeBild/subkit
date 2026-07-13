@@ -175,12 +175,16 @@ describe("create_knowledge_source tool — mode='inline'", () => {
 describe("create_knowledge_source tool — mode='from_attachment'", () => {
   test("happy path: derives name from filename, creates KS row", async () => {
     // Seed a real file row + object-store bytes via the production helper.
+    // Byte-unique content: files rows are content-addressed per tenant, so
+    // reusing MARKDOWN_CONTENT would dedup onto the inline test's row and
+    // this test would inherit THAT row's filename instead of exercising
+    // the ocpp-reference.md derivation.
     const attached = await attachInlineForTest({
       db: ctx.testDb.db,
       tenant_id: ctx.tenant_id,
       conversation_id: "00000000-0000-0000-0000-000000000001",
       filename: "ocpp-reference.md",
-      content: MARKDOWN_CONTENT,
+      content: `${MARKDOWN_CONTENT}\n\n## Attachment fixture marker\n`,
       content_type: "text/markdown",
     });
 
