@@ -16,13 +16,34 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import { scrubString } from "../../logging/scrub-secrets.ts";
+import { recordConversationToolCall } from "../../observability/instrumentation.ts";
 import type { AnswerActor } from "../answer-actor.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
+import { createElicitation } from "../elicitations.ts";
 import { tryFastPath } from "../fast-path.ts";
 import { type RunLoopResult, runLoop } from "../loop.ts";
-import type { ConversationPermissionMode } from "../types.ts";
+import { appendMessage, insertToolCall, updateToolCallOutput } from "../persist.ts";
+import type { ConversationPermissionMode, TurnEvent } from "../types.ts";
 import { getConversation } from "./get.ts";
 import { type ConversationTurnOutcome, getStoredPermissionMode } from "./shared.ts";
+
+/**
+ * Typed client event carried on POST /v1/conversations/{id}/messages.
+ * Single-variant union for now — widen to a discriminated union when a
+ * second event type lands (the Zod wire schema in
+ * `http/routes/conversations/schemas.ts` mirrors this shape).
+ *
+ * `credential_hint` is a short, client-detected credential KIND label
+ * (e.g. "digitalocean_pat") used only to title the masked form field —
+ * NEVER the secret itself.
+ */
+export interface RequestCredentialFormEvent {
+  type: "request_credential_form";
+  /** `| undefined` (not just optional) so the Zod-inferred wire shape
+   *  assigns cleanly under `exactOptionalPropertyTypes`. */
+  credential_hint?: string | undefined;
+}
 
 export interface RunConversationTurnParams {
   tenant_id: string;
@@ -71,6 +92,16 @@ export interface RunConversationTurnParams {
    */
   elicitationBridge?: ElicitationBridge;
   /**
+   * Typed client event for a deterministic, no-LLM turn. Threaded only
+   * from the HTTP append route (`http/routes/conversations/messages.ts`)
+   * — the pg-boss / MCP async path never carries one. Handled BEFORE
+   * `tryFastPath` and `runLoop`, so an event turn never reaches the
+   * model. Today's only variant opens the masked `ask_user_form`
+   * credential form the sk composer requests after its input-side
+   * secret filter fired.
+   */
+  event?: RequestCredentialFormEvent;
+  /**
    * Resolved principal — threaded through so the fast-path matcher can
    * enforce the same RBAC / confirm-before-execution gate the LLM tools
    * use (`tools/policy.ts`). Absent on the MCP-worker resume path
@@ -94,6 +125,21 @@ export async function runConversationTurn(
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
   const effectivePermissionMode = p.permission_mode ?? getStoredPermissionMode(conv.draft);
+
+  // Typed-event short-circuit: `request_credential_form` synthesizes
+  // the exact pause the LLM produces when it calls `ask_user_form` with
+  // a sensitive field — deterministic, zero LLM calls, same
+  // RunLoopResult envelope as the fast path below. Runs BEFORE the
+  // prose matcher: an explicit typed event outranks intent regexes.
+  if (p.event?.type === "request_credential_form") {
+    const result = await runRequestCredentialFormEvent(p, exec);
+    if (p.onEvent) {
+      for (const ev of result.events) p.onEvent(ev);
+    }
+    const updated = await getConversation(p.tenant_id, p.conversation_id, exec);
+    if (!updated) throw new Error("conversation disappeared");
+    return { conversation: updated.conversation, result };
+  }
 
   // Fast-path matcher: deterministic intents (list_*, run <slug>,
   // inspect execution <uuid>) skip the LLM turn entirely. The matcher
@@ -174,4 +220,138 @@ export async function runConversationTurn(
   }
 
   return { conversation: updated.conversation, result };
+}
+
+/**
+ * Deterministic no-LLM handler for the `request_credential_form` event.
+ *
+ * Synthesizes row-for-row what the model loop persists when the LLM
+ * calls `ask_user_form` with a password field and the DB-pause path
+ * fires (`tools/sdk-wrap/invoke.ts` + `ask-user/common.ts#pauseForUserInput`):
+ *
+ *   1. an assistant message anchoring the turn,
+ *   2. a `conversation_tool_calls` row carrying the `ask_user_form`
+ *      tool_use (anchored via `parent_message_id`),
+ *   3. an elicitation row PAIRED to that tool call via `tool_call_id` —
+ *      a bare elicitation (`tool_call_id: null`) would orphan the
+ *      resume path: `buildModelMessages` could not pair the tool_use
+ *      with the answered tool_result on replay,
+ *   4. the paused tool call's `{ status: "awaiting_input" }` placeholder
+ *      output (never replayed once resolved — the resolved elicitation
+ *      answer overrides it, exactly like the LLM path).
+ *
+ * The form spec is a REAL `AskUserFormInput` with `type: "password"` +
+ * `sensitive: true`, so `resolveElicitation`'s existing field-metadata
+ * redaction masks the typed secret at persist — zero new redaction
+ * code on this path. `createElicitation` already writes the
+ * APPROVAL_REQUESTED audit row and flips the conversation to
+ * `awaiting_input`; nothing else is audited here.
+ *
+ * Nothing event-derived is persisted as a user message: the client's
+ * benign prose fallback (already inserted by `appendUserMessage`) is
+ * the only user-role row of the turn, so no data-as-instructions
+ * channel opens.
+ */
+async function runRequestCredentialFormEvent(
+  p: RunConversationTurnParams,
+  exec: Db,
+): Promise<RunLoopResult> {
+  // Defensive scrub: the hint is a short kind label by contract
+  // (Zod caps it at 120 chars), but it is client-supplied text headed
+  // into a persisted form spec — run it through the same pattern scrub
+  // `pauseForUserInput` applies to LLM-authored payloads.
+  const hint = p.event?.credential_hint ? scrubString(p.event.credential_hint).trim() : "";
+  const label = hint.length > 0 ? hint.replace(/_/g, " ") : "credential";
+  const question = `Please enter the ${label}. The value is collected through a masked field and never echoed into the chat transcript.`;
+  const formInput = {
+    question,
+    fields: [
+      {
+        name: "credential",
+        label,
+        type: "password" as const,
+        required: true,
+        sensitive: true,
+      },
+    ],
+  };
+  const assistantText = `I need the ${label} from you — please fill in the masked form below. Never paste secrets directly into the chat.`;
+  const assistantMessageId = await appendMessage(
+    exec,
+    p.tenant_id,
+    p.conversation_id,
+    "assistant",
+    { text: assistantText, fast_path: true },
+  );
+  const toolCallId = await insertToolCall(exec, {
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    parent_message_id: assistantMessageId,
+    tool: "ask_user_form",
+    input: formInput,
+    approval_required: false,
+  });
+  const elicitation = await createElicitation(
+    {
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      tool_call_id: toolCallId,
+      parent_message_id: assistantMessageId,
+      tool_name: "ask_user_form",
+      summary: question,
+      input: formInput,
+      actor_id: p.actor_id,
+    },
+    exec,
+  );
+  // Same pending placeholder the paused LLM tool writes (see the
+  // DB-pause `data` payload in `pauseForUserInput`, persisted by
+  // invoke.ts). Replay never re-sends it once answered: the resolved
+  // elicitation output takes priority in `buildModelMessages`.
+  await updateToolCallOutput(exec, toolCallId, {
+    status: "awaiting_input",
+    elicitation_id: elicitation.id,
+  });
+  recordConversationToolCall({
+    category: "draft_write",
+    tool: "ask_user_form",
+    outcome: "pending",
+    duration_ms: 0,
+  });
+  const events: TurnEvent[] = [
+    {
+      type: "message",
+      role: "assistant",
+      content: assistantText,
+      id: assistantMessageId,
+    },
+    {
+      type: "tool_call_start",
+      call_id: toolCallId,
+      tool: "ask_user_form",
+      input_partial: formInput,
+      parent_message_id: assistantMessageId,
+    },
+    {
+      type: "tool_call_end",
+      call_id: toolCallId,
+      input: formInput,
+      parent_message_id: assistantMessageId,
+    },
+    {
+      type: "elicit_request",
+      elicitation_id: elicitation.id,
+      tool_call_id: toolCallId,
+      tool_name: "ask_user_form",
+      summary: question,
+      input: formInput,
+      parent_message_id: assistantMessageId,
+    },
+    { type: "completed", status: "awaiting_input" },
+  ];
+  return {
+    events,
+    status: "awaiting_input",
+    pending_elicitation_id: elicitation.id,
+  };
 }

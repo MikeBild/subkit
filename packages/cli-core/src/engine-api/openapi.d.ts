@@ -15183,6 +15183,11 @@ export interface components {
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
             step_budget?: number;
             client_suppress?: boolean;
+            event?: {
+                /** @enum {string} */
+                type: "request_credential_form";
+                credential_hint?: string;
+            };
         };
         ConversationUploadRunOutcome: components["schemas"]["ConversationRunOutcome"] & {
             ingested_knowledge_source_ids: string[];

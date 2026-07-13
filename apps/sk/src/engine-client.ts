@@ -57,6 +57,7 @@ export type {
   ConversationRunOutcome,
   ConversationSummary,
   ExtendedTurnUsage,
+  RequestCredentialFormEvent,
   ResumeSummary,
 } from "./engine-client/conversations.ts";
 export { readExtendedTurnUsage } from "./engine-client/conversations.ts";

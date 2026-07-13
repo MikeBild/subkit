@@ -11,6 +11,7 @@ import type { SkSessionState, TurnEvent } from "@cli-core/index.ts";
 import type {
   EngineClient,
   OperatorHealthDigest,
+  RequestCredentialFormEvent,
   SetupValidationResponse,
   StatusSummary,
 } from "../engine-client.ts";
@@ -102,10 +103,17 @@ export interface InkAppProps {
    * false, the Composer ignores incoming `next_suggestion` frames.
    */
   nextCommandPreviewEnabled?: boolean;
-  /** Called when the user submits a plain prompt (non-slash). */
+  /** Called when the user submits a plain prompt (non-slash). The
+   *  optional `event` is the typed no-LLM turn event (secret-redirect
+   *  confirmation); the host threads it onto the message-append body —
+   *  it only exists on the append route, so a create-conversation
+   *  first turn drops it and relies on the prose fallback in `text`. */
   onPrompt: (
     text: string,
-    opts?: { permission_mode?: "auto" | "ask" | "plan" | "yolo" },
+    opts?: {
+      permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      event?: RequestCredentialFormEvent;
+    },
   ) => Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }>;
   /** Called when the user submits a slash command other than `/exit`. */
   onSlash?: (

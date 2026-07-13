@@ -9946,6 +9946,24 @@
           },
           "client_suppress": {
             "type": "boolean"
+          },
+          "event": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "request_credential_form"
+                ]
+              },
+              "credential_hint": {
+                "type": "string",
+                "maxLength": 120
+              }
+            },
+            "required": [
+              "type"
+            ]
           }
         },
         "required": [
