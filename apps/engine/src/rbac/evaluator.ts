@@ -272,7 +272,7 @@ function matchesPortalTokenAllowlist(check: PermissionCheck): boolean {
   if (allow === undefined) return false;
   const perm = check.permission;
   if (perm === "workflow:run" || perm === "workflow:read") {
-    if (!check.resource || check.resource.type !== "workflow") return false;
+    if (check.resource?.type !== "workflow") return false;
     if (allow === "all") return true;
     return Array.isArray(allow) && allow.includes(check.resource.id);
   }

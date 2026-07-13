@@ -273,7 +273,7 @@ describe("conversation.run-turn worker — failure path", () => {
     expect(audits).toHaveLength(1);
     expect(audits[0]?.result).toBe("error");
     expect(audits[0]?.reason).toContain("overloaded");
-    expect((audits[0]?.metadata as { mcp_task_id?: string }).mcp_task_id).toBe(mcp_task_id);
+    expect((audits[0]!.metadata as { mcp_task_id?: string }).mcp_task_id).toBe(mcp_task_id);
   }, 45_000);
 
   test("a job whose mcp_tasks row already has failure_reason is an idempotent no-op", async () => {

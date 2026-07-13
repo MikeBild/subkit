@@ -151,7 +151,7 @@ describe("applyTurnEvent — data parts + status", () => {
     expect(s1.status).toBe("awaiting_input");
     expect(s1.pendingElicitation?.id).toBe("elicit-1");
     expect(s1.pendingElicitation?.tool_name).toBe("ask_user_choice");
-    expect((s1.pendingElicitation?.input as { question: string }).question).toBe("Pick one");
+    expect((s1.pendingElicitation!.input as { question: string }).question).toBe("Pick one");
   });
 });
 

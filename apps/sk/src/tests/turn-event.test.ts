@@ -38,7 +38,7 @@ describe("sk turn-event reducer", () => {
     });
     expect(s.toolCalls.length).toBe(1);
     expect(s.toolCalls[0]?.status).toBe("done");
-    expect((s.toolCalls[0]?.result as { ok: boolean }).ok).toBe(true);
+    expect((s.toolCalls[0]!.result as { ok: boolean }).ok).toBe(true);
   });
 
   test("elicit_request flips the session status and stores the input payload", () => {

@@ -129,7 +129,7 @@ export function elideWithinTurnToolOutputs(
 
   for (const idx of elidable) {
     const msg = messages[idx];
-    if (!msg || msg.role !== "tool" || !Array.isArray(msg.content)) continue;
+    if (msg?.role !== "tool" || !Array.isArray(msg.content)) continue;
     let contentChanged = false;
     const nextContent = msg.content.map((part) => {
       if (part.type !== "tool-result") return part;

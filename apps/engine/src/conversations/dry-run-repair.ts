@@ -79,8 +79,7 @@ export async function proposeDryRunRepairs(opts: {
     if (!stepId || repairedStepIds.has(stepId) || controlFlowChildIds.has(stepId)) continue;
     const step = steps.find((s) => s.id === stepId);
     if (
-      !step ||
-      step.kind !== "transform" ||
+      step?.kind !== "transform" ||
       typeof step.expression !== "string" ||
       // Web-scraper languages carry no `expression`; everything else is a
       // JavaScript transform body.

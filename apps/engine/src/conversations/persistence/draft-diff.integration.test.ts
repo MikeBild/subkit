@@ -282,7 +282,7 @@ describe("RC2 — conversation_commit reports honestly", () => {
     expect(okBody.committed?.workflow_version_id).toBe(wfRow.current_version_id);
     expect(okBody.committed?.version).toBe(vRow?.version ?? -1);
     expect(okBody.committed?.steps_present).toBe(
-      ((vRow?.dag as { steps?: unknown[] })?.steps ?? []).length,
+      ((vRow!.dag as { steps?: unknown[] })?.steps ?? []).length,
     );
     expect(okBody.committed?.slug).toBe("wf-rc2");
     expect(okBody.committed?.updated_at).toBe(wfRow.updated_at.toISOString());

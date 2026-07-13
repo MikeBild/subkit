@@ -578,7 +578,7 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     }
     expect(decisions.length).toBe(1);
     expect(decisions[0]?.id).toBe("a1-abcdefab-0000-0000-0000-000000000000");
-    expect((decisions[0]?.output as { confirmed: boolean }).confirmed).toBe(true);
+    expect((decisions[0]!.output as { confirmed: boolean }).confirmed).toBe(true);
     expect(frame).not.toContain("confirm: save_workflow_draft");
     expect(frame).not.toContain("Waiting for input: confirmation required");
     expect(frame).toContain("Workflow saved");

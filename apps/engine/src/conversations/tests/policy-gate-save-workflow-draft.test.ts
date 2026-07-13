@@ -164,7 +164,7 @@ describe("save_workflow_draft — policy gate", () => {
     // on a re-issue, AND a commit_intent so the harness auto-persist
     // can fire on confirm without an LLM round-trip.
     const elicit = events.find((e) => e.type === "elicit_request");
-    if (!elicit || elicit.type !== "elicit_request") {
+    if (elicit?.type !== "elicit_request") {
       throw new Error("expected elicit_request event");
     }
     expect(elicit.tool_call_id).toBeDefined();

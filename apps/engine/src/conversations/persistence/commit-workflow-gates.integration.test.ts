@@ -243,7 +243,7 @@ describe("C.2 — preview-failure-class gate", () => {
         (r.metadata as { forced_over_runtime_data?: boolean }).forced_over_runtime_data === true,
     );
     expect(forced).toBeDefined();
-    expect((forced?.metadata as { preview_failure_class?: string }).preview_failure_class).toBe(
+    expect((forced!.metadata as { preview_failure_class?: string }).preview_failure_class).toBe(
       "runtime_data",
     );
   });

@@ -61,7 +61,7 @@ describe("pubsub listener", () => {
     expect(received.length).toBeGreaterThanOrEqual(1);
     expect(received[0]?.channel).toBe("execution.status");
     expect(received[0]?.type).toBe("execution.started");
-    expect((received[0]?.payload as { execution_id: string }).execution_id).toBe("exec-listener-1");
+    expect((received[0]!.payload as { execution_id: string }).execution_id).toBe("exec-listener-1");
 
     unsub();
   });

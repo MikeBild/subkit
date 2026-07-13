@@ -199,7 +199,7 @@ describe.skipIf(skip)("run_workflow (A: default holds write steps, does not disp
     const meta = auditRow?.metadata as Record<string, unknown>;
     expect(meta?.execute_writes).toBe(false);
     expect(Array.isArray(meta?.held_step_ids)).toBe(true);
-    expect((meta?.held_step_ids as string[]).includes("send_email")).toBe(true);
+    expect((meta!.held_step_ids as string[]).includes("send_email")).toBe(true);
   }, 60_000);
 });
 

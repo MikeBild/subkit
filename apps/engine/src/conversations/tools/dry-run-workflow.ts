@@ -457,8 +457,7 @@ export const dryRunWorkflowTool: ConversationTool = {
         // also rejects null previews generally (held output is null,
         // not undefined).
         if (
-          !summary ||
-          summary.status !== "succeeded" ||
+          summary?.status !== "succeeded" ||
           summary.held === true ||
           summary.output_preview == null
         ) {

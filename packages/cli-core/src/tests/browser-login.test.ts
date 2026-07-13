@@ -88,7 +88,7 @@ describe("browser-login", () => {
         quiet: false, // need output to capture port
         fetchImpl: async (_url, init) => {
           // Mock the engine token exchange
-          const body = JSON.parse(init?.body as string);
+          const body = JSON.parse(init!.body as string);
           expect(body.id_token).toBe("test-token");
           expect(body.issuer).toBe("https://test.example.com");
           return new Response(

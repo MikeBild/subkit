@@ -85,8 +85,8 @@ describe("recorder catalog — connector", () => {
     expect(row?.reason).toBe("auto_persist_on_confirmation");
     expect(row?.resource_type).toBe("connector");
     expect(row?.resource_id).toBe("11111111-1111-1111-1111-111111111111");
-    expect((row?.metadata as Record<string, unknown>).source).toBe("harness_auto_persist");
-    expect((row?.metadata as Record<string, unknown>).commit_intent_kind).toBe(
+    expect((row!.metadata as Record<string, unknown>).source).toBe("harness_auto_persist");
+    expect((row!.metadata as Record<string, unknown>).commit_intent_kind).toBe(
       "save_connector_draft",
     );
   });
@@ -107,8 +107,8 @@ describe("recorder catalog — connector", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.CONNECTOR_UPDATED);
     expect(row?.reason).toBe("manual_re_issue");
-    expect((row?.metadata as Record<string, unknown>).kind).toBe("credential_rotated");
-    expect((row?.metadata as Record<string, unknown>).tool).toBe("save_connector_draft");
+    expect((row!.metadata as Record<string, unknown>).kind).toBe("credential_rotated");
+    expect((row!.metadata as Record<string, unknown>).tool).toBe("save_connector_draft");
   });
 
   test("recordConnectorDeleted", async () => {
@@ -124,7 +124,7 @@ describe("recorder catalog — connector", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.CONNECTOR_DELETED);
     expect(row?.reason).toBe("operator_requested_delete");
-    expect((row?.metadata as Record<string, unknown>).slug).toBe("to-be-removed");
+    expect((row!.metadata as Record<string, unknown>).slug).toBe("to-be-removed");
   });
 
   test("recordConnectorInvoked", async () => {
@@ -148,8 +148,8 @@ describe("recorder catalog — connector", () => {
     expect(row?.action).toBe(AuditAction.CONNECTOR_INVOKED);
     expect(row?.result).toBe("success");
     expect(row?.reason).toBe("tool_invocation");
-    expect((row?.metadata as Record<string, unknown>).method).toBe("GET");
-    expect((row?.metadata as Record<string, unknown>).status_code).toBe(200);
+    expect((row!.metadata as Record<string, unknown>).method).toBe("GET");
+    expect((row!.metadata as Record<string, unknown>).status_code).toBe(200);
   });
 
   test("recordConnectorSavedOverride", async () => {
@@ -170,7 +170,7 @@ describe("recorder catalog — connector", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.CONNECTOR_SAVED_OVERRIDE);
     expect(row?.reason).toBe("force_save_override");
-    expect((row?.metadata as Record<string, unknown>).kind).toBe("force_save_override");
+    expect((row!.metadata as Record<string, unknown>).kind).toBe("force_save_override");
   });
 
   test("recordConnectorDraftCredentialRejected", async () => {
@@ -191,7 +191,7 @@ describe("recorder catalog — connector", () => {
     expect(row?.action).toBe(AuditAction.CONNECTOR_DRAFT_CREDENTIAL_REJECTED);
     expect(row?.result).toBe("denied");
     expect(row?.reason).toBe("credential_must_use_form");
-    expect((row?.metadata as Record<string, unknown>).matched_key_path).toBe(
+    expect((row!.metadata as Record<string, unknown>).matched_key_path).toBe(
       "config.headers.Authorization",
     );
     // Verify the matched value is NOT recorded — only the path is safe.
@@ -235,7 +235,7 @@ describe("recorder catalog — workflow", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.WORKFLOW_CREATED);
     expect(row?.reason).toBe("auto_persist_on_confirmation");
-    expect((row?.metadata as Record<string, unknown>).version).toBe(1);
+    expect((row!.metadata as Record<string, unknown>).version).toBe(1);
   });
 
   test("recordWorkflowUpdated", async () => {
@@ -255,7 +255,7 @@ describe("recorder catalog — workflow", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.WORKFLOW_UPDATED);
     expect(row?.reason).toBe("manual_re_issue");
-    expect((row?.metadata as Record<string, unknown>).kind).toBe("save_via_tool");
+    expect((row!.metadata as Record<string, unknown>).kind).toBe("save_via_tool");
   });
 
   test("recordWorkflowDeleted", async () => {
@@ -290,7 +290,7 @@ describe("recorder catalog — workflow", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.WORKFLOW_COMMITTED_OVERRIDE);
     expect(row?.reason).toBe("force_save_override");
-    expect((row?.metadata as Record<string, unknown>).kind).toBe("force_save_override");
+    expect((row!.metadata as Record<string, unknown>).kind).toBe("force_save_override");
   });
 });
 
@@ -310,7 +310,7 @@ describe("recorder catalog — credential", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.CREDENTIAL_CREATED);
     expect(row?.reason).toBe("auto_persist_on_confirmation");
-    expect((row?.metadata as Record<string, unknown>).mode).toBe("bearer");
+    expect((row!.metadata as Record<string, unknown>).mode).toBe("bearer");
   });
 
   test("recordCredentialRotated", async () => {
@@ -364,7 +364,7 @@ describe("recorder catalog — knowledge_source", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.KNOWLEDGE_SOURCE_CREATED);
     expect(row?.reason).toBe("discovery_cache_refresh");
-    expect((row?.metadata as Record<string, unknown>).endpoint_count).toBe(42);
+    expect((row!.metadata as Record<string, unknown>).endpoint_count).toBe(42);
   });
 
   test("recordKnowledgeSourceRefreshed", async () => {
@@ -384,7 +384,7 @@ describe("recorder catalog — knowledge_source", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.KNOWLEDGE_SOURCE_REFRESHED);
     expect(row?.reason).toBe("discovery_cache_refresh");
-    expect((row?.metadata as Record<string, unknown>).created).toBe(false);
+    expect((row!.metadata as Record<string, unknown>).created).toBe(false);
   });
 });
 
@@ -405,8 +405,8 @@ describe("recorder catalog — policy", () => {
     expect(row?.action).toBe(AuditAction.TOOL_POLICY_CONFIRMATION_REQUIRED);
     expect(row?.result).toBe("denied");
     expect(row?.reason).toBe("confirm_before_execution");
-    expect((row?.metadata as Record<string, unknown>).tool).toBe("delete_connector");
-    expect((row?.metadata as Record<string, unknown>).resolver_reason).toBe("dangerous_tool");
+    expect((row!.metadata as Record<string, unknown>).tool).toBe("delete_connector");
+    expect((row!.metadata as Record<string, unknown>).resolver_reason).toBe("dangerous_tool");
   });
 });
 

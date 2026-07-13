@@ -201,7 +201,7 @@ describe("conversations/audit-trail", () => {
     // Filter to the user-side one for the canonical assertion.
     const userApprovals = auditApproval.filter((a) => a.reason === null);
     expect(userApprovals.length).toBe(1);
-    expect((userApprovals[0]?.metadata as { conversation_id: string }).conversation_id).toBe(
+    expect((userApprovals[0]!.metadata as { conversation_id: string }).conversation_id).toBe(
       created.conversation.id,
     );
 

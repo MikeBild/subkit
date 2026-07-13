@@ -228,7 +228,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       this.environment,
       this.db,
     );
-    if (!resolved || resolved.value.mode !== "oauth2") return undefined;
+    if (resolved?.value.mode !== "oauth2") return undefined;
     const v = resolved.value;
     if (!v.access_token) return undefined;
     // Expiry lives on the credentials ROW column (`oauth2_expires_at`), which is
