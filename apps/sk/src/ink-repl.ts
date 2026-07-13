@@ -33,6 +33,7 @@ import {
 import {
   EngineClient,
   type OperatorHealthDigest,
+  type RequestCredentialFormEvent,
   type SetupValidationResponse,
   type StatusSummary,
 } from "./engine-client.ts";
@@ -167,7 +168,10 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
 
   const onPrompt = async (
     text: string,
-    promptOpts?: { permission_mode?: "auto" | "ask" | "plan" | "yolo" },
+    promptOpts?: {
+      permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      event?: RequestCredentialFormEvent;
+    },
   ): Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }> => {
     const turn_id = newDebugTurnId("ink");
     const baseCtx = (): DebugCorrelationFields => ({
@@ -249,6 +253,10 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
               ...(promptOpts?.permission_mode
                 ? { permission_mode: promptOpts.permission_mode }
                 : {}),
+              // Typed no-LLM turn event (secret-redirect confirmation).
+              // Append-route only: the create branch above cannot carry
+              // it — there the prose fallback in `message` covers it.
+              ...(promptOpts?.event ? { event: promptOpts.event } : {}),
             },
             baseCtx(),
           );

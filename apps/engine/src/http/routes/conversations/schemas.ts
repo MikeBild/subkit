@@ -147,6 +147,26 @@ export const AppendMessageBody = z
      * close marker.
      */
     client_suppress: z.boolean().optional(),
+    /**
+     * Typed client event driving a deterministic, no-LLM turn.
+     * Single-variant object for now — promote to a
+     * `z.discriminatedUnion("type", …)` when a second event type lands.
+     *
+     * `request_credential_form`: the sk composer detected a pasted
+     * secret and asks the engine to open the masked `ask_user_form`
+     * (password/sensitive field) directly instead of relaying prose for
+     * the model to re-derive. `credential_hint` is a short kind label
+     * (e.g. "digitalocean_pat") — NEVER the secret itself. Older
+     * clients that keep sending only the prose fallback stay on the
+     * LLM path unchanged; older engines strip the unknown key and fall
+     * back to the prose the same request carries as `message`.
+     */
+    event: z
+      .object({
+        type: z.literal("request_credential_form"),
+        credential_hint: z.string().max(120).optional(),
+      })
+      .optional(),
   })
   .openapi("AppendConversationMessageBody");
 

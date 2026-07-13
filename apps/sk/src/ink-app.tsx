@@ -444,13 +444,16 @@ export const InkApp: React.FC<InkAppProps> = ({
       // The previous submit detected a secret-shape and armed
       // `pendingSecretRedirect`. The `raw` we got is the redirect hint
       // text we put back into the buffer; the user pressing Enter again
-      // is consent to forward the masked nudge to the agent. We
-      // override `raw` with the fallback message so the engine never
-      // sees the original token. Esc-clear is handled in the key
-      // handler; that path cancels the redirect and never calls
-      // handleSubmit.
+      // is consent to forward the masked request to the agent. We
+      // override `raw` with the benign fallback message and carry the
+      // typed `request_credential_form` event onto the turn so the
+      // engine opens the masked form deterministically — the engine
+      // never sees the original token either way. Esc-clear is handled
+      // in the key handler; that path cancels the redirect and never
+      // calls handleSubmit.
       const redirected = consumeArmedRedirect();
-      if (redirected !== null) raw = redirected;
+      if (redirected !== null) raw = redirected.message;
+      const redirectEvent = redirected?.event;
       const trimmed = raw.trim();
       setInput(EMPTY_BUFFER);
       historyDraftRef.current = null;
@@ -570,6 +573,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         if (!alreadyEchoed) setSession(optimisticSession);
         const { events, conversationId } = await onPrompt(finalPrompt, {
           permission_mode: activeMode,
+          ...(redirectEvent ? { event: redirectEvent } : {}),
         });
         const finalState = await applyEventStream(
           { ...optimisticSession, conversationId },
