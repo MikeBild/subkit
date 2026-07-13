@@ -4,6 +4,109 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.6] – 2026-07-13
+
+### Fixed
+- Honest run results: `on_error: continue` failures surface as warnings instead of a
+  false-positive success or a false error.
+- MCP conversation approvals are reconciled after engine restarts — no more zombie
+  pending approvals.
+
+## [1.9.5] – 2026-07-09
+
+### Fixed
+- Wildcard-scope principals resolve to the authoring catalog on the MCP surface.
+
+## [1.9.4] – 2026-07-09
+
+### Changed
+- MCP advertises the full authoring catalog; removed `find_tool` and the
+  token-budget catalog trim.
+
+## [1.9.3] – 2026-07-09
+
+### Changed
+- Writes over MCP are gated via the client's native `destructiveHint` dialog
+  instead of the approval portal (re-cut of 1.9.0/1.9.2).
+
+### Fixed
+- Reground the `mcp-tool-contract` skill to the client-dialog write gate;
+  English-only skill content.
+
+## [1.8.2] – 2026-07-09
+
+### Fixed
+- Portal-only write approval on MCP plus `find_tool` catalog discovery.
+
+## [1.8.1] – 2026-07-09
+
+### Added
+- Human-in-the-loop write governance for MCP via the approval portal (1.8.0,
+  re-cut as 1.8.1).
+
+### Fixed
+- RBAC runs before tool-name canonicalization on the MCP surface.
+
+## [1.7.1] – 2026-07-07
+
+### Added
+- Cross-layer regression test for the install-answer output guard.
+
+## [1.7.0] – 2026-07-07
+
+### Added
+- Credential-setup portal for connector re-authentication.
+- Graceful drain on deploy — in-flight executions finish before shutdown.
+- Row-first workflow descriptions.
+
+## [1.6.0] – 2026-07-07
+
+### Changed
+- `tenant_read` inventory tools are RBAC-gated on the chat and MCP surfaces;
+  self-status answers are grounded.
+
+## [1.5.0] – 2026-07-07
+
+### Added
+- `sk chat install-space` with pending-space discovery for Google Chat.
+- Google Search Console connector template.
+
+## [1.4.3] – 2026-07-07
+
+### Fixed
+- Chat-surface guard exempts the sk installer instructions (1.4.1–1.4.3:
+  authoring-leak fix, engine-URL grounding, output-guard follow-ups).
+
+## [1.4.0] – 2026-07-06
+
+### Added
+- Grounded skills-vs-knowledge answers and guided domain setup in chat.
+
+## [1.3.6] – 2026-07-06
+
+### Fixed
+- Chat channel end-to-end polish (1.3.0–1.3.6): run workflows from prose, native
+  chat formatting, surface-gated install grounding, table rendering, honest
+  self-update failures with private-repo token support, sk served from the
+  engine `/install` endpoint.
+
+## [1.2.0] – 2026-07-05
+
+### Security
+- Secret input mode: elicitation answers and secret tool arguments never
+  transit the transcript or LLM context.
+
+## [1.1.1] – 2026-07-05
+
+### Fixed
+- Data-fidelity root causes in held writes and vendor payload shaping;
+  `conversation_commit` derives its reply from the persisted rows; bounded
+  per-turn memory in model-message assembly.
+
+### Changed
+- Generic stdlib surface names — vendor wire formats hidden behind shape
+  detection; dependency refresh (TypeScript 6, Biome 2.5, js-yaml 5).
+
 ## [1.0.0] – 2026-07-04
 
 First public release.

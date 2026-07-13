@@ -324,7 +324,7 @@ Per-vendor backoff escalates exponentially on 429/5xx (cap 30s, 4 attempts). Out
 The Layer-1 test emits a `console.warn` (it does **not** fail the suite) when a template's `verified_at` is `null` or older than 90 days. Sample output:
 
 ```
-[connector-templates] vendor-drift sweep stale on 44/55 templates.
+[connector-templates] vendor-drift sweep stale on 44/56 templates.
 Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1 bun scripts/template-vendor-sweep.ts) to refresh verified_at.
   - airtable (verified_at=null, never swept)
   - hubspot (verified_at=null, never swept)
@@ -5384,7 +5384,7 @@ curl -s http://localhost:3000/v1/health | jq
 
 ## 5. Where things live
 
-- `apps/engine/src/` — the server. Subsystem-per-directory (43 in total). Start with [AGENTS.md](../../AGENTS.md) for the map.
+- `apps/engine/src/` — the server. Subsystem-per-directory (45 in total). Start with [AGENTS.md](../../AGENTS.md) for the map.
 - `apps/sk/` — `sk` unified CLI. REPL for end-users; full admin surface for operators and admins.
 - `packages/shared/` — cross-process types.
 - `docs/` — eight concept docs. See [docs/README.md](../README.md) for the index.
@@ -5926,7 +5926,7 @@ arrives over chat or MCP.
 
 > **Status:** authoritative. See
 > [`apps/engine/src/tools/`](../../apps/engine/src/tools/) for the
-> implementation and `AGENTS.md` lines 142–185 for the subsystem map.
+> implementation and the subsystem map in `AGENTS.md` ("Architecture And Domain Safety").
 
 ## Why this exists
 
@@ -6424,7 +6424,7 @@ apps/engine/src/conversations/tools/
 - [`docs/concepts/glossary.md`](../concepts/glossary.md) — vocabulary (workflow, connector, skill).
 - [`docs/developers/input-surfaces.md`](./input-surfaces.md) — how chat/MCP/HTTP surfaces map to the conversation loop.
 - [`docs/admins/rbac-and-roles.md`](../admins/rbac-and-roles.md) — RBAC, audit, policy.
-- `AGENTS.md` lines 142–185 — subsystem map (the row for `tools` lives here).
+- `AGENTS.md`, section "Architecture And Domain Safety" — subsystem map (the row for `tools` lives here).
 
 ## Cutover state
 

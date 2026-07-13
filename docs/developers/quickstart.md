@@ -59,7 +59,7 @@ curl -s http://localhost:3000/v1/health | jq
 
 ## 5. Where things live
 
-- `apps/engine/src/` — the server. Subsystem-per-directory (43 in total). Start with [AGENTS.md](../../AGENTS.md) for the map.
+- `apps/engine/src/` — the server. Subsystem-per-directory (45 in total). Start with [AGENTS.md](../../AGENTS.md) for the map.
 - `apps/sk/` — `sk` unified CLI. REPL for end-users; full admin surface for operators and admins.
 - `packages/shared/` — cross-process types.
 - `docs/` — eight concept docs. See [docs/README.md](../README.md) for the index.
