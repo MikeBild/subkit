@@ -80,8 +80,8 @@ describe("journey: sk-cli admin golden path", () => {
     });
     const latest = rows[0];
     expect(latest?.resource_id).toBe(conversationId);
-    expect((latest?.metadata as { owner_id?: string }).owner_id).toBe(ctx.userId);
-    expect((latest?.metadata as { memory_included?: boolean }).memory_included).toBe(false);
+    expect((latest!.metadata as { owner_id?: string }).owner_id).toBe(ctx.userId);
+    expect((latest!.metadata as { memory_included?: boolean }).memory_included).toBe(false);
   });
 
   test("AC2: memory injection emits CONVERSATION_MEMORY_INJECTED", async () => {

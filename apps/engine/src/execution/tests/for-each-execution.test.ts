@@ -71,7 +71,7 @@ describe("for_each · per-step inline iteration", () => {
     expect(processStep).toBeDefined();
     expect(processStep?.status).toBe("succeeded");
     const scopeData =
-      (processStep?.output_preview as Array<Record<string, unknown>> | undefined) ?? [];
+      (processStep!.output_preview as Array<Record<string, unknown>> | undefined) ?? [];
     expect(scopeData).toHaveLength(2);
   });
 

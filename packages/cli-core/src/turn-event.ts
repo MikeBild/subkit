@@ -769,7 +769,7 @@ export interface ExecutionResultRender {
 export function lastExecutionResult(state: SkSessionState): ExecutionResultRender | null {
   for (let i = state.toolCalls.length - 1; i >= 0; i--) {
     const c = state.toolCalls[i];
-    if (!c || c.status !== "done" || !isExecutionTool(c.name)) continue;
+    if (c?.status !== "done" || !isExecutionTool(c.name)) continue;
     const envelope = c.result;
     if (envelope === undefined || envelope === null) continue;
     if (typeof envelope === "object") {

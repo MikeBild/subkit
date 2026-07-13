@@ -107,7 +107,7 @@ describe("buildModelMessages — audit-copy projection + allocation bound", () =
         m.content.includes("decision=approved"),
     );
     expect(decisionLines).toHaveLength(1);
-    expect((decisionLines[0]?.content as string).includes("looks right")).toBe(true);
+    expect((decisionLines[0]!.content as string).includes("looks right")).toBe(true);
     // Real tool results come from conversation_tool_calls (4 calls), not
     // from the audit copies.
     const toolResults = msgs.filter((m) => m.role === "tool");

@@ -107,7 +107,7 @@ describe("schedule binding survives a step-only edit", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe(sched.id);
     expect(rows[0]?.cron).toBe("0 19 * * *");
-    expect((rows[0]?.input as { recipient_email?: string })?.recipient_email).toBe("x@y.com");
+    expect((rows[0]!.input as { recipient_email?: string })?.recipient_email).toBe("x@y.com");
   });
 
   test("removing an inline schedule trigger still unbinds (intended)", async () => {

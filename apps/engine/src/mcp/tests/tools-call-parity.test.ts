@@ -70,7 +70,7 @@ describe("mcp tools — catalog characterization", () => {
     expect(typeof authenticate?.description).toBe("string");
     expect((authenticate?.description ?? "").length).toBeGreaterThan(0);
     expect(authenticate?.inputSchema).toBeDefined();
-    expect((authenticate?.inputSchema as { type?: string }).type).toBe("object");
+    expect((authenticate!.inputSchema as { type?: string }).type).toBe("object");
   });
 
   test("tools/list exposes wf.<slug> entries for seeded workflows", async () => {

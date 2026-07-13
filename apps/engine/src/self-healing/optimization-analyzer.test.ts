@@ -62,7 +62,7 @@ describe("optimization-analyzer", () => {
     const out = analyzeRuns(runs, baseCfg);
     const cand = out.find((c) => c.kind === "increase_wait_ms");
     expect(cand).toBeDefined();
-    expect((cand?.diff as { new_value?: number }).new_value).toBeGreaterThanOrEqual(200);
+    expect((cand!.diff as { new_value?: number }).new_value).toBeGreaterThanOrEqual(200);
   });
 
   test("emits prefer_llms_txt only when llms_txt_available", () => {

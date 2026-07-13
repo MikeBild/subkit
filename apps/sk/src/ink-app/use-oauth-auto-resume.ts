@@ -29,8 +29,8 @@ export function useOAuthAutoResume(
         }
       | null
       | undefined;
-    if (!input || input.kind !== "review_after_execution") return undefined;
-    if (!input.target || input.target.tool !== "authenticate_oauth") return undefined;
+    if (input?.kind !== "review_after_execution") return undefined;
+    if (input.target?.tool !== "authenticate_oauth") return undefined;
     const connectorId =
       typeof input.target.args?.connector_id === "string" ? input.target.args.connector_id : null;
     if (!connectorId) return undefined;

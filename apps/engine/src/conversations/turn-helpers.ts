@@ -43,7 +43,7 @@ export type FallbackSynthesisReason =
 
 function pickFreshestNextPrompt(events: ReadonlyArray<TurnEvent>): string | null {
   const latestEvent = [...events].reverse().find((ev) => ev.type === "tool_result");
-  if (!latestEvent || latestEvent.type !== "tool_result") return null;
+  if (latestEvent?.type !== "tool_result") return null;
   const out = latestEvent.output;
   if (!out || typeof out !== "object") return null;
   const o = out as Record<string, unknown>;

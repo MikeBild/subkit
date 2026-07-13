@@ -169,13 +169,13 @@ function computeNextAction(p: NextActionInputs): string {
     return "Resolve the pending approval to continue (approve or reject).";
   }
   if (p.activeKind === "connector" && !p.connectorSaved) {
-    if (!p.probe || p.probe.ok !== true) {
+    if (p.probe?.ok !== true) {
       return "Probe the connector draft before saving so auth and response shape are verified.";
     }
     return "Save the connector draft now that the probe succeeded.";
   }
   if (p.activeKind === "workflow" || (p.connectorSaved && p.hasWorkflow)) {
-    if (!p.preview || p.preview.ok !== true) {
+    if (p.preview?.ok !== true) {
       return "Preview a step or the whole workflow before committing.";
     }
     return "Commit the workflow — the last preview succeeded.";

@@ -113,7 +113,7 @@ interface FieldDescriptor {
 
 function describeFields(schema: z.ZodTypeAny): FieldDescriptor[] {
   const def = (schema as { _def?: { type?: string; shape?: Record<string, unknown> } })._def;
-  if (!def || def.type !== "object" || !def.shape) return [];
+  if (def?.type !== "object" || !def.shape) return [];
   const shape = def.shape as Record<string, unknown>;
   const out: FieldDescriptor[] = [];
   for (const [key, raw] of Object.entries(shape)) {

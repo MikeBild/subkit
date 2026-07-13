@@ -408,7 +408,7 @@ describe("checkForUpdate", () => {
     const cfg = makeConfig({ currentVersion: "1.0.0", authToken: "test-token-123" });
     let sawAuth: string | null = null;
     const fetchImpl = makeFetchImpl((_url, init) => {
-      sawAuth = new Headers(init?.headers as HeadersInit).get("authorization");
+      sawAuth = new Headers(init!.headers as HeadersInit).get("authorization");
       return new Response(JSON.stringify(makeGitHubResponse("v2.0.0")));
     });
     await checkForUpdate(cfg, true, fetchImpl);
@@ -419,7 +419,7 @@ describe("checkForUpdate", () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
     let sawAuth: string | null = "unset";
     const fetchImpl = makeFetchImpl((_url, init) => {
-      sawAuth = new Headers(init?.headers as HeadersInit).get("authorization");
+      sawAuth = new Headers(init!.headers as HeadersInit).get("authorization");
       return new Response(JSON.stringify(makeGitHubResponse("v2.0.0")));
     });
     await checkForUpdate(cfg, true, fetchImpl);

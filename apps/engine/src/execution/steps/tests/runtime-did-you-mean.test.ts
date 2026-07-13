@@ -55,7 +55,7 @@ describe("loop · loop_over_unresolved did_you_mean", () => {
     expect(result.status).toBe("succeeded");
     const w = result.warnings?.[0];
     expect(w?.code).toBe("loop_over_unresolved");
-    expect((w?.details as Record<string, unknown>).did_you_mean).toBeUndefined();
+    expect((w!.details as Record<string, unknown>).did_you_mean).toBeUndefined();
     // Hint message still references a concrete scope key.
     expect(w?.message).toContain("api_response");
   });

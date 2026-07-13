@@ -1272,7 +1272,7 @@ describe("conversation_commit — inline auto-commit reconciliation", () => {
     expect(body.committed?.workflow_version_id).toBe(wfRow?.current_version_id ?? "");
     expect(body.committed?.version).toBe(vRow?.version ?? -1);
     expect(body.committed?.steps_present).toBe(
-      ((vRow?.dag as { steps?: unknown[] })?.steps ?? []).length,
+      ((vRow!.dag as { steps?: unknown[] })?.steps ?? []).length,
     );
   });
 

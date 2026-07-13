@@ -22,7 +22,7 @@ function clientCapturing(captured: Captured[], responseBody: unknown = {}) {
       captured.push({
         method: init?.method ?? "GET",
         path: u.pathname + u.search,
-        auth: (init?.headers as Record<string, string> | undefined)?.authorization ?? null,
+        auth: (init!.headers as Record<string, string> | undefined)?.authorization ?? null,
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
       });
       return new Response(JSON.stringify(responseBody), {

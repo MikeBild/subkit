@@ -77,7 +77,7 @@ describe("fixture replay idempotency (SUBKIT_BUGS Bug 2)", () => {
     // `{ data: { data: {…} } }` and `$scope.render.data` drifted to
     // `.data.data`.
     expect(renderStep?.output_preview).toEqual(rawPreview);
-    expect((renderStep?.output_preview as Record<string, unknown>)?.data).toBeUndefined();
+    expect((renderStep!.output_preview as Record<string, unknown>)?.data).toBeUndefined();
   });
 
   test("a fixture payload larger than the 512-byte inline preview cap survives replay untruncated", async () => {

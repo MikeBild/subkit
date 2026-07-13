@@ -33,7 +33,7 @@ describe("connector-template catalog — structural", () => {
     // must not match the REST endpoint.
     const t = templates.find((x) => x.slug === "supabase-graphql");
     expect(t?.url_pattern).toBeTruthy();
-    const re = new RegExp(t?.url_pattern as string);
+    const re = new RegExp(t!.url_pattern as string);
     expect(re.test("https://abcdef.supabase.co/graphql/v1")).toBe(true);
     expect(re.test("https://abcdef.supabase.co/graphql/v1/")).toBe(true);
     expect(re.test("https://abcdef.supabase.co/rest/v1")).toBe(false);
@@ -120,11 +120,11 @@ describe("connector-template catalog — cross-reference invariants", () => {
     for (const [slug, url] of Object.entries(cases)) {
       const t = templates.find((x) => x.slug === slug);
       expect(t, `template ${slug} missing`).toBeDefined();
-      const re = new RegExp(t?.url_pattern as string);
+      const re = new RegExp(t!.url_pattern as string);
       expect(re.test(url), `${slug} should match ${url}`).toBe(true);
       // The literal-class form (the bug signature) must NOT match.
       expect(
-        re.test((t?.url_pattern as string).replace(/^\^/, "").replace(/\[\^\/\]\+/g, "[^/]+")),
+        re.test((t!.url_pattern as string).replace(/^\^/, "").replace(/\[\^\/\]\+/g, "[^/]+")),
       ).toBe(false);
     }
   });
