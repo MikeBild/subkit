@@ -36,6 +36,7 @@ import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
 import { runConnectorReauthScanForTenant } from "./connector-reauth-scan-runner.ts";
 import { parseCronExpression } from "./cron.ts";
+import { runElicitationExpiry } from "./elicitation-expiry-runner.ts";
 import { runEndpointContractScanForTenant } from "./endpoint-contract-scan-runner.ts";
 import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
@@ -83,6 +84,14 @@ const CHAT_DEDUP_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
  *  1-day retention window, and the sweep filters by `now() - interval ...`
  *  so a concurrent instance is a no-op. */
 const TOOL_APPROVALS_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
+
+/** Fixed cadence for the approval-backed elicitation expiry sweep. Five
+ *  minutes — the approvals it reconciles die on a 15-minute TTL, so a
+ *  stranded `awaiting_input` conversation is reactivated within roughly one
+ *  TTL plus one cadence. Multi-instance overlap is a no-op: the sweep's
+ *  writes ride CAS predicates (`status = 'pending'`,
+ *  `status = 'awaiting_input'`), so a second instance loses every race. */
+const ELICITATION_EXPIRY_CADENCE_MS = 5 * 60 * 1000;
 
 /** Cadence for the embedding backfill sweep — populates chunk + conversation
  *  topic embeddings out-of-band (ingest stays fast). Five minutes so new
@@ -328,6 +337,9 @@ export class SchedulerReconciler {
   /** Last instant the tool_approvals retention sweep ran. */
   private lastToolApprovalsCleanupAt: Date | null = null;
 
+  /** Last instant the approval-backed elicitation expiry sweep ran. */
+  private lastElicitationExpiryAt: Date | null = null;
+
   /** Last instant the embedding backfill sweep ran. In-process throttle to
    *  EMBEDDING_BACKFILL_CADENCE_MS; the sweep is idempotent so overlap is safe. */
   private lastEmbeddingBackfillAt: Date | null = null;
@@ -551,6 +563,21 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "tool_approvals_cleanup_failed",
         msg: "scheduler tool-approvals cleanup pass failed",
+        ...errorFields(err),
+      });
+    });
+    // Approval-backed elicitation expiry sweep. The tool_approvals sweep
+    // above only deletes approval rows; this one resolves the pending
+    // elicitations those dead approvals left behind and reactivates their
+    // stranded `awaiting_input` conversations. Per-row errors are caught
+    // inside the runner so a poisoned row never aborts the tick.
+    await retryTransient(() => this.reconcileElicitationExpiry(), {
+      label: "elicitation_expiry",
+    }).catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "elicitation_expiry_failed",
+        msg: "scheduler elicitation expiry pass failed",
         ...errorFields(err),
       });
     });
@@ -1099,6 +1126,21 @@ export class SchedulerReconciler {
     }
     this.lastToolApprovalsCleanupAt = now;
     await runToolApprovalsCleanup(now, this.opts.db);
+  }
+
+  /**
+   * Throttle the approval-backed elicitation expiry sweep. Same
+   * semantics as `reconcileToolApprovalsCleanup` — the sweep's writes
+   * ride CAS predicates (`status = 'pending'`, `status =
+   * 'awaiting_input'`) so a concurrent instance is a no-op.
+   */
+  async reconcileElicitationExpiry(now: Date = new Date()): Promise<void> {
+    if (this.lastElicitationExpiryAt !== null) {
+      const elapsed = now.getTime() - this.lastElicitationExpiryAt.getTime();
+      if (elapsed < ELICITATION_EXPIRY_CADENCE_MS) return;
+    }
+    this.lastElicitationExpiryAt = now;
+    await runElicitationExpiry(now, this.opts.db);
   }
 
   /**

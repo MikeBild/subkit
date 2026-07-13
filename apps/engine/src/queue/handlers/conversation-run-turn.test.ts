@@ -8,12 +8,13 @@
 //     no-op (pg-boss at-least-once),
 //   - turn_seq increments monotonically per conversation.
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { getConfig, loadConfig } from "../../config/loader.ts";
+import { createElicitation } from "../../conversations/elicitations.ts";
 import * as svc from "../../conversations/service.ts";
 import {
   auditLog,
@@ -446,6 +447,70 @@ describe("conversation.run-turn worker — cancel in the guard window", () => {
     expect(row?.result).toBeNull();
     expect(row?.failure_reason).toBeNull();
     expect((await store.getTask(mcp_task_id))?.status).toBe("cancelled");
+  }, 30_000);
+});
+
+describe("conversation.run-turn worker — respond_elicitation surface threading", () => {
+  test("the respond branch passes surface:'mcp' into respondElicitation", async () => {
+    // The resumed runLoop must know it runs on the MCP surface — the
+    // inner confirm gate collapses enumerated writes there instead of
+    // pausing on approvals no human can reach. Capture the params the
+    // worker hands to `respondElicitation` and pin the surface.
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "respond surface seed" },
+      queue.testDb.db,
+    );
+    const conversation_id = created.conversation.id;
+    const elicitation = await createElicitation(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        tool_call_id: null,
+        tool_name: "ask_user_text",
+        summary: "surface probe",
+        input: { question: "probe?" },
+        actor_id: userId,
+      },
+      queue.testDb.db,
+    );
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        kind: "respond_elicitation",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: null,
+      },
+      queue.testDb.db,
+    );
+
+    const captured: svc.RespondElicitationParams[] = [];
+    const spy = spyOn(svc, "respondElicitation").mockImplementation(async (p) => {
+      captured.push(p);
+      return {
+        conversation: created.conversation,
+        result: { events: [], status: "active" as const },
+      };
+    });
+    try {
+      await enqueueConversationRunTurn(queue.boss, {
+        tenant_id: tenantId,
+        conversation_id,
+        mcp_task_id,
+        actor_id: userId,
+        kind: "respond_elicitation",
+        elicitation_id: elicitation.id,
+      });
+      await waitForTerminal(mcp_task_id);
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.surface).toBe("mcp");
+    expect(captured[0]?.elicitation_id).toBe(elicitation.id);
+    expect(captured[0]?.conversation_id).toBe(conversation_id);
   }, 30_000);
 });
 

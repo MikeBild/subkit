@@ -876,7 +876,7 @@ export const runWorkflowTool: ConversationTool = {
                   ...(sampledOutput.raw_ref ? { output_raw_ref: sampledOutput.raw_ref } : {}),
                 }
               : {}),
-            error: result.error,
+            ...(result.error ? { error: result.error } : {}),
             diagnosis_available: diagnosisAvailable,
             requires_repair: requiresRepair,
             recommended_next_tool: diagnosisAvailable ? "diagnose_latest_execution" : null,

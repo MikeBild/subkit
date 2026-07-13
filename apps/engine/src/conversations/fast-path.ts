@@ -40,6 +40,7 @@ import {
   requestApproval,
 } from "../tools/approval.ts";
 import { policyDecide } from "../tools/policy.ts";
+import type { ToolSurface } from "../tools/types.ts";
 import { resolveWorkflowInputContract } from "../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
@@ -94,6 +95,15 @@ export interface FastPathParams {
    * `principal` cannot answer this — both channels authenticate identically.
    */
   answer_actor: AnswerActor;
+  /**
+   * Surface the turn runs on — mirrors `RunConversationTurnParams.surface`.
+   * Drives the confirm-gate surface for the `run <slug>` branch: an
+   * MCP-origin turn collapses the server pause inside `policyDecide`
+   * (the client's destructiveHint dialog is the human gate there);
+   * everything else gates as `chat`. Defaults to `chat` when absent —
+   * the fail-closed direction.
+   */
+  surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
 }
 
 /**
@@ -480,6 +490,12 @@ async function executeRunWorkflow(
 export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null> {
   const text = p.user_message.trim();
   if (text.length === 0) return null;
+  // The confirm-gate surface for this turn. `policyDecide`, `requestApproval`,
+  // and `consumeApproval` speak `ToolSurface` ("chat" | "mcp"): an MCP-origin
+  // turn threads "mcp" so `policyDecide` collapses the server pause (the
+  // client's destructiveHint dialog is the human gate on that path); every
+  // other caller — and an absent surface — gates as "chat".
+  const gateSurface: ToolSurface = p.surface === "mcp" ? "mcp" : "chat";
 
   // List intents — always emit a deterministic answer.
   const listKind = matchListIntent(text);
@@ -767,7 +783,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       const gate = policyDecide({
         tool: "run_workflow",
         category: "tenant_write",
-        surface: "chat",
+        surface: gateSurface,
         args: runArgs,
       });
       if (gate.kind === "needs_confirm") {
@@ -781,7 +797,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           principal: p.principal,
           approval_id: confirm_id,
           tool: "run_workflow",
-          surface: "chat",
+          surface: gateSurface,
           via: "fast_path",
           reason: gate.envelope.reason,
           // `executeRunWorkflow` runs the fast path in dev, always.
@@ -956,7 +972,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         principal: p.principal,
         approval_id: approvalId,
         tool: "run_workflow",
-        surface: "chat",
+        surface: gateSurface,
         via: "fast_path",
         execution_mode: "dev",
       });

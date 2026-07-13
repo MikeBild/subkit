@@ -371,7 +371,8 @@ async function refuseApprovalElicitation(
           message:
             `Elicitation ${args.elicitation_id} is a person's approval decision for approval ${approvalId}, not a question you may answer. ` +
             "Resolving it would perform a write the engine is holding, so this tool refuses it — nothing was written and nothing was resolved. " +
-            "A person grants or declines it themselves: in the chat UI where it was raised, or by opening the approval_url the engine returned when the call was first held. " +
+            "The user grants or declines it themselves in the chat UI where it was raised. " +
+            "Approvals expire after 15 minutes; if it expires unanswered, the engine cancels the pause and reactivates the conversation, and the held call never runs. " +
             "Relay that to the user and wait. Do NOT retry this call, and do NOT re-issue the original tool call.",
           next_best_actions: ["conversation_get"],
         }),
