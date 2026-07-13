@@ -129,6 +129,9 @@ export interface CreateDiscoveryRunParams {
     mime?: string;
   }>;
   actor_id: string | null;
+  /** Already-persisted `files` row for the raw uploaded archive; linked as
+   *  file_links(resource_type='discovery_run', role='archive') in the run tx. */
+  archive_file_id?: string;
 }
 
 export interface ListDiscoveryRunsParams {
