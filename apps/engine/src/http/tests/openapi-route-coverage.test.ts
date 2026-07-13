@@ -77,46 +77,23 @@ const EXCLUDED_ROUTES = new Set<string>([
   "GET /v1/diagnostics/logs/stream",
   "GET /v1/events/stream",
   "GET /v1/audit-log/export.ndjson",
+  // Content-type-polymorphic raw-byte body (json/csv/yaml/xml/plaintext +
+  // binary pdf/docx/xlsx/pptx dispatched in the handler) — an OpenAPI body
+  // schema would second-guess that routing (see ai/extract.ts's module
+  // header). The typed JSON surface is the documented POST /v1/ai/extract;
+  // the response component ExtractFileResponse is registered standalone.
+  "POST /v1/extract",
 ]);
 
-// Known drift, pinned as a ratchet — these routes ARE application API
-// surface and SHOULD carry a `createRoute()` registration, but today they
-// are wired via plain `app.get/post/...` and so are invisible to the spec
-// and to the generated CLI types. The pin is exact: a new undocumented
+// Ratchet for undocumented application API surface — routes wired via
+// plain `app.get/post/...` instead of `createRoute()`, invisible to the
+// spec and the generated CLI types. The pin is exact: a NEW undocumented
 // route fails this test (add the registration, don't grow this list), and
-// migrating one of these to `createRoute()` fails it too until the entry
-// is removed — the list only ratchets down.
+// documenting one fails it too until the entry is removed — the list only
+// ratchets down. It is empty today; keep it that way.
 // Mirrored (for the subset the CLI calls) in
 // packages/cli-core/src/engine-api/client-contract.test.ts.
-const KNOWN_UNDOCUMENTED_ROUTES = [
-  "DELETE /v1/rbac/grants/{param}",
-  "DELETE /v1/rbac/groups/{param}",
-  "DELETE /v1/rbac/groups/{param}/members/{param}",
-  "DELETE /v1/rbac/groups/{param}/roles/{param}",
-  "DELETE /v1/rbac/roles/{param}",
-  "DELETE /v1/rbac/roles/{param}/permissions/{param}",
-  "GET /v1/rbac/grants",
-  "GET /v1/rbac/groups",
-  "GET /v1/rbac/permissions",
-  "GET /v1/rbac/roles",
-  "GET /v1/rbac/roles/{param}",
-  "PATCH /v1/rbac/groups/{param}",
-  "PATCH /v1/rbac/roles/{param}",
-  "POST /v1/connectors/{param}/credentials/setup",
-  "POST /v1/conversations/{param}/messages/upload",
-  "POST /v1/discovery/runs",
-  "POST /v1/discovery/runs/from-archive",
-  "POST /v1/extract",
-  "POST /v1/knowledge-sources",
-  "POST /v1/rbac/can",
-  "POST /v1/rbac/grants",
-  "POST /v1/rbac/groups",
-  "POST /v1/rbac/groups/{param}/members/{param}",
-  "POST /v1/rbac/groups/{param}/roles/{param}",
-  "POST /v1/rbac/roles",
-  "POST /v1/rbac/roles/{param}/permissions",
-  "POST /v1/rbac/users/{param}/role",
-];
+const KNOWN_UNDOCUMENTED_ROUTES: string[] = [];
 
 describe("openapi route coverage", () => {
   test("route registry enumeration is not vacuous", () => {

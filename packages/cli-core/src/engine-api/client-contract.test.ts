@@ -224,6 +224,11 @@ const STREAM_ONLY_ENDPOINTS = new Set([
   "GET /v1/executions/{param}/stream",
   "GET /v1/audit-log/export.ndjson",
   "GET /v1/events/stream",
+  // Not streaming, but the same "structurally absent from the spec" bucket:
+  // content-type-polymorphic raw-byte body dispatched in the handler (see
+  // ai/extract.ts's module header). The typed JSON surface is the
+  // documented POST /v1/ai/extract.
+  "POST /v1/extract",
 ]);
 
 function loadOpenApiPairs(): Set<string> {
@@ -258,40 +263,13 @@ function extractCliEndpointPairs(): Set<string> {
   return pairs;
 }
 
-// Known drift, pinned as a ratchet: routes the CLI calls that ARE live on
-// the engine (verified against the Hono route registry) but bypass
-// @hono/zod-openapi and so are absent from the generated spec. Exact pin —
-// a new undocumented call fails this test, and documenting one of these
-// routes fails it too until the entry is removed, so the list only
-// ratchets down. The full engine-side set (including routes the CLI does
-// not call) lives in
+// Ratchet for CLI calls to live-but-undocumented engine routes (bypassing
+// @hono/zod-openapi, absent from the generated spec). Exact pin — a new
+// undocumented call fails this test, and documenting a route fails it too
+// until the entry is removed, so the list only ratchets down. It is empty
+// today; keep it that way. The engine-side set lives in
 // apps/engine/src/http/tests/openapi-route-coverage.test.ts.
-const KNOWN_UNDOCUMENTED_ENDPOINTS = [
-  "DELETE /v1/rbac/grants/{param}",
-  "DELETE /v1/rbac/groups/{param}",
-  "DELETE /v1/rbac/groups/{param}/members/{param}",
-  "DELETE /v1/rbac/groups/{param}/roles/{param}",
-  "DELETE /v1/rbac/roles/{param}",
-  "DELETE /v1/rbac/roles/{param}/permissions/{param}",
-  "GET /v1/rbac/grants",
-  "GET /v1/rbac/groups",
-  "GET /v1/rbac/permissions",
-  "GET /v1/rbac/roles",
-  "GET /v1/rbac/roles/{param}",
-  "PATCH /v1/rbac/groups/{param}",
-  "PATCH /v1/rbac/roles/{param}",
-  "POST /v1/discovery/runs",
-  "POST /v1/extract",
-  "POST /v1/knowledge-sources",
-  "POST /v1/rbac/can",
-  "POST /v1/rbac/grants",
-  "POST /v1/rbac/groups",
-  "POST /v1/rbac/groups/{param}/members/{param}",
-  "POST /v1/rbac/groups/{param}/roles/{param}",
-  "POST /v1/rbac/roles",
-  "POST /v1/rbac/roles/{param}/permissions",
-  "POST /v1/rbac/users/{param}/role",
-];
+const KNOWN_UNDOCUMENTED_ENDPOINTS: string[] = [];
 
 describe("sk CLI <-> engine OpenAPI contract", () => {
   test("the scanner still finds the sk CLI's engine calls", () => {
