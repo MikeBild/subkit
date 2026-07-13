@@ -159,6 +159,22 @@ export interface ConversationRunOutcome {
   pending_approval_id?: string;
 }
 
+/**
+ * Typed client event on POST /v1/conversations/{id}/messages — drives a
+ * deterministic no-LLM turn on the engine. Single-variant for now;
+ * mirrors `AppendConversationMessageBody.event` in the engine's Zod
+ * schema. `request_credential_form` asks the engine to open the masked
+ * `ask_user_form` (password/sensitive field) directly after the
+ * composer's input-side secret filter fired. `credential_hint` is a
+ * short kind label (e.g. "digitalocean_pat") — NEVER the secret itself.
+ * Older engines strip the unknown key and fall back to the prose the
+ * same request carries as `message`.
+ */
+export interface RequestCredentialFormEvent {
+  type: "request_credential_form";
+  credential_hint?: string;
+}
+
 export interface ConversationDetail {
   conversation: ConversationSummary;
   messages: unknown[];
@@ -351,6 +367,8 @@ export const conversationsMethods = {
       step_budget?: number;
       /** Client-side opt-out for the next-message preview frame. */
       client_suppress?: boolean;
+      /** Typed no-LLM turn event — see `RequestCredentialFormEvent`. */
+      event?: RequestCredentialFormEvent;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
@@ -399,6 +417,8 @@ export const conversationsMethods = {
       step_budget?: number;
       /** Client-side opt-out for the next-message preview frame. */
       client_suppress?: boolean;
+      /** Typed no-LLM turn event — see `RequestCredentialFormEvent`. */
+      event?: RequestCredentialFormEvent;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<Response> {

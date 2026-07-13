@@ -12,7 +12,7 @@
 
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { EngineClient } from "../engine-client.ts";
+import type { EngineClient, RequestCredentialFormEvent } from "../engine-client.ts";
 import {
   detectSecretShape,
   REQUEST_CREDENTIAL_FORM_FALLBACK,
@@ -120,13 +120,17 @@ export function usePasteBuffers(
 //
 // When the user pastes a token-shaped string, the composer suppresses
 // the send, replaces the input field with a redirect hint, and arms
-// this state. The next Enter sends a structured nudge
-// (REQUEST_CREDENTIAL_FORM_FALLBACK) to the engine instead of the raw
-// paste so the agent re-collects through `ask_user_form(type:
-// password, sensitive: true)`. Esc clears it without sending
-// anything. Only the kind name + 6-char prefix sample ever surface in
-// the UI; the matched secret is dropped on the floor and never leaves
-// this process.
+// this state. The next Enter sends the typed
+// `request_credential_form` event (with the detected kind as
+// `credential_hint`) to the engine instead of the raw paste — the
+// engine opens the masked `ask_user_form(type: password, sensitive:
+// true)` deterministically, no LLM turn. The benign
+// REQUEST_CREDENTIAL_FORM_FALLBACK prose rides along as the turn's
+// `message`, so an older engine (or a path that cannot carry events)
+// degrades to the old re-prompt behavior. Esc clears it without
+// sending anything. Only the kind name + 6-char prefix sample ever
+// surface in the UI; the matched secret is dropped on the floor and
+// never leaves this process.
 
 export interface SecretRedirectApi {
   pendingSecretRedirect: { kind: string; sample: string } | null;
@@ -134,11 +138,12 @@ export interface SecretRedirectApi {
    * Branch 1 — confirmation step. The previous submit detected a
    * secret-shape and armed the redirect; the raw the composer holds is
    * the hint text we put back into the buffer, and the user pressing
-   * Enter again is consent to forward the masked nudge to the agent.
-   * Returns the fallback message to submit in place of `raw` (so the
-   * engine never sees the original token), or `null` when not armed.
+   * Enter again is consent to forward the masked request to the agent.
+   * Returns the `message` to submit in place of `raw` (so the engine
+   * never sees the original token) plus the typed event the submit
+   * path threads onto the append call, or `null` when not armed.
    */
-  consumeArmedRedirect: () => string | null;
+  consumeArmedRedirect: () => { message: string; event: RequestCredentialFormEvent } | null;
   /**
    * Branch 2 — initial detection on a plain (non-slash) prompt.
    * Scans both the literal buffer AND the paste-expanded form so a
@@ -162,22 +167,28 @@ export function useSecretRedirect(
     sample: string;
   } | null>(null);
 
-  const consumeArmedRedirect = useCallback((): string | null => {
+  const consumeArmedRedirect = useCallback((): {
+    message: string;
+    event: RequestCredentialFormEvent;
+  } | null => {
     if (pendingSecretRedirect === null) return null;
     setPendingSecretRedirect(null);
-    // Fall through with the masked nudge instead of the literal
-    // hint. The agent's connector-creation skill already routes
-    // any credential request through `ask_user_form(type: password,
-    // sensitive: true)`, so a plain re-prompt is enough — see
-    // apps/engine/src/conversations/seed/skills/connector-creation-guidance.md.
-    // Engine-route decision: we kept the fallback path instead of
-    // adding a `request_credential_form` event type to the engine
-    // HTTP route. The engine has no schema for that event yet, and
-    // the agent's existing skill set already does the right thing
-    // when re-asked in plain language. Future PR can promote this
-    // to a typed event without changing the CLI.
+    // Engine-route contract: the append body carries the typed
+    // `request_credential_form` event (detected kind as
+    // `credential_hint`) — the engine short-circuits the turn and
+    // opens the masked `ask_user_form(type: password, sensitive:
+    // true)` deterministically, zero LLM calls. The benign
+    // REQUEST_CREDENTIAL_FORM_FALLBACK prose still rides as the
+    // `message` so an older engine (which strips the unknown `event`
+    // key) — or any path that cannot carry events, like a
+    // create-conversation first turn — degrades to the plain-language
+    // re-prompt the agent's skills already handle. Neither path ever
+    // sees the original token.
     showInfo("forwarding masked credential request to the agent");
-    return REQUEST_CREDENTIAL_FORM_FALLBACK;
+    return {
+      message: REQUEST_CREDENTIAL_FORM_FALLBACK,
+      event: { type: "request_credential_form", credential_hint: pendingSecretRedirect.kind },
+    };
   }, [pendingSecretRedirect, showInfo]);
 
   const interceptPlainPrompt = useCallback(

@@ -177,6 +177,10 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             ...(body.client_suppress !== undefined
               ? { next_suggestion_suppress: body.client_suppress }
               : {}),
+            // Typed client event → deterministic no-LLM short-circuit in
+            // runConversationTurn. HTTP surface only; the pg-boss / MCP
+            // async path never carries one.
+            ...(body.event ? { event: body.event } : {}),
             ...(onEvent ? { onEvent } : {}),
           },
           db,
