@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] – 2026-07-14
+
+### Added
+- `GET /v1/agent/briefing` — budgeted, domain-scoped grounding block for
+  external coding agents (Claude Code, Codex): active skills tagged
+  `domain:<slug>` as conventions, a knowledge index (full documents stay
+  behind `search_knowledge_v2`), a search-first grounding rule, and the
+  open-candidate counter. Deterministic budget trim: index entries drop
+  first, then skill bodies collapse to pointer lines, last skill first.
+- Domain convention: the tag `domain:<slug>` on skills and knowledge
+  sources scopes them to a business domain; a repo declares its domains
+  in `.sk/agent.json`.
+- `sk agent briefing` (SessionStart-hook mode reads the hook payload from
+  stdin and never fails the session) and `sk agent init` (writes
+  `.sk/agent.json`, wires the Claude Code SessionStart hook idempotently,
+  prints the Codex hook snippet and MCP registration commands).
+
+### Changed
+- MCP connect instructions now carry the search-first grounding rule;
+  `search_knowledge_v2` and `find_skill` are exempted from client-side
+  deferred tool loading (`anthropic/alwaysLoad`).
+
 ## [1.10.0] – 2026-07-13
 
 ### Added
