@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] – 2026-07-13
+
+### Added
+- The full HTTP API is now documented: all previously spec-invisible
+  routes (the `/v1/rbac/*` family, discovery runs, knowledge-source and
+  conversation uploads, the credential-setup form) carry OpenAPI
+  registrations, and the undocumented-route ratchet tests are pinned
+  empty so new drift fails CI.
+- Typed `request_credential_form` conversation event: when the sk
+  composer intercepts a pasted secret, the engine now opens the masked
+  credential form deterministically (no model call); the prose fallback
+  still works for older CLIs.
+- Cross-tenant executor isolation is proven end-to-end over MCP: a
+  principal that passes RBAC still cannot reach another tenant's
+  connector (tenant-scoped SELECT defense).
+
+### Changed
+- Discovery archives and knowledge uploads persist their bytes into the
+  canonical `files` table (deduplicated, scanned, linked and audited)
+  instead of writing past it; `knowledge_sources.file_id` is populated
+  for file-backed sources.
+- The `http/routes` coverage floor is enforced (was deferred at 0), and
+  the coverage runner no longer dies on large test output.
+
 ## [1.9.6] – 2026-07-13
 
 ### Fixed
