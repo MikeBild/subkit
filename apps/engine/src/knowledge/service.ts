@@ -15,6 +15,7 @@ import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
 import { embeddingsAvailable } from "../embeddings/local-provider.ts";
 import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
+import type { PersistInlineUploadResult } from "../files/persist-inline-upload.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { log } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
@@ -24,6 +25,7 @@ import {
   KNOWLEDGE_TENANT_MAX_BYTES,
   KnowledgeBudgetExceededError,
 } from "./budgets.ts";
+import { linkKnowledgeFile, persistKnowledgeFile } from "./file-persist.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
 import type {
   AnalyzeKnowledgeSourceParams,
@@ -134,6 +136,13 @@ export async function createKnowledgeSource(
 
   const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
 
+  // Persist the upload bytes before the transaction (object-store put +
+  // scan must not run inside it). Known risk: the files row commits
+  // independently, so a failed create below leaves an orphaned files row
+  // for the cleanup cron to reap.
+  const sourceType = p.source_type_override ?? "file_upload";
+  const persisted = sourceType === "url" ? null : await persistKnowledgeFile(db, p);
+
   return await (db as Db).transaction(async (tx) => {
     // Check tenant-level budget INSIDE transaction to prevent race conditions
     // where concurrent inserts both pass the check.
@@ -161,9 +170,10 @@ export async function createKnowledgeSource(
         scope: p.input.scope ?? "global",
         workflow_id: p.input.workflow_id ?? null,
         status: "active",
-        source_type: p.source_type_override ?? "file_upload",
+        source_type: sourceType,
         source_uri: p.source_uri_override ?? p.upload.filename,
         mime_type: p.upload.mime ?? null,
+        file_id: persisted ? persisted.row.id : null,
         version,
         bytes_total: totalBytes,
         chunk_count: accepted.length,
@@ -173,6 +183,18 @@ export async function createKnowledgeSource(
       .returning();
 
     assertInsertRow(row, "knowledge_sources");
+
+    if (persisted) {
+      await linkKnowledgeFile(tx, {
+        tenant_id: p.tenant_id,
+        actor_id: p.actor_id,
+        knowledge_source_id: row.id,
+        slug,
+        filename: p.upload.filename,
+        mime: p.upload.mime ?? null,
+        persisted,
+      });
+    }
 
     // Insert chunks. Embeddings are populated out-of-band by
     // backfillEmbeddings so the inline HTTP create never blocks on model
@@ -595,6 +617,29 @@ export async function ingestKnowledgeSource(
   const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
   const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
 
+  // Re-persist the refreshed bytes so file_id tracks the current content.
+  // URL sources stay file-less (source_uri is their canonical reference).
+  // Same orphan risk as the create path: the files row commits outside
+  // the transaction below.
+  const sourceRows = await db
+    .select({ source_type: knowledgeSources.source_type, slug: knowledgeSources.slug })
+    .from(knowledgeSources)
+    .where(
+      and(
+        eq(knowledgeSources.tenant_id, p.tenant_id),
+        eq(knowledgeSources.id, p.knowledge_source_id),
+        isNull(knowledgeSources.deleted_at),
+      ),
+    )
+    .limit(1);
+  const sourceRow = sourceRows[0];
+  let persisted: PersistInlineUploadResult | null = null;
+  let sourceSlug = p.upload.filename;
+  if (sourceRow && sourceRow.source_type !== "url") {
+    persisted = await persistKnowledgeFile(db, p);
+    sourceSlug = sourceRow.slug;
+  }
+
   await (db as Db).transaction(async (tx) => {
     // Delete old chunks
     await tx
@@ -627,12 +672,25 @@ export async function ingestKnowledgeSource(
         chunk_count: accepted.length,
         source_uri: p.upload.filename,
         mime_type: p.upload.mime ?? null,
+        ...(persisted ? { file_id: persisted.row.id } : {}),
         last_refreshed_at: new Date(),
         status: "active",
         last_error: null,
         updated_at: new Date(),
       })
       .where(eq(knowledgeSources.id, p.knowledge_source_id));
+
+    if (persisted) {
+      await linkKnowledgeFile(tx, {
+        tenant_id: p.tenant_id,
+        actor_id: p.actor_id,
+        knowledge_source_id: p.knowledge_source_id,
+        slug: sourceSlug,
+        filename: p.upload.filename,
+        mime: p.upload.mime ?? null,
+        persisted,
+      });
+    }
 
     await auditAwait(
       {

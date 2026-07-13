@@ -1,36 +1,26 @@
-// C20: Verify the discovery analyze-archive route behaviour.
+// C20: Verify the discovery from-archive persistence contract.
 //
-// CONTRACT STATUS: CURRENT BEHAVIOUR LOCKED (gap documented)
+// The route `POST /v1/discovery/runs/from-archive` persists the RAW
+// archive bytes through the shared inline-upload pipeline
+// (`persistInlineUpload` → canonical `files` row, binary-safe object
+// storage) and threads the resulting file id into `createDiscoveryRun`,
+// which links it to the run via
+// `file_links(resource_type='discovery_run', role='archive')` inside the
+// run-creation transaction. The extracted text path into
+// `discovery_files` is unchanged.
 //
-// Plan §C20 stated: "Decision: upload the archive via `/v1/files/inline`
-// first … then trigger discovery with the `fid`. Same end-to-end behaviour
-// for the CLI; cleaner storage model."
-//
-// FINDING: The engine route `POST /v1/discovery/runs/from-archive` does NOT
-// currently route through `/v1/files/inline`. It accepts a direct multipart
-// upload, reads the archive buffer in-process, extracts it via
-// `extractCodebaseArchive`, and passes the file array to
-// `createDiscoveryRun`. No `files` row and no `file_links` row are created
-// for the archive itself; only `discovery_runs` + `discovery_files` rows are
-// written.
-//
-// This test locks the CURRENT behaviour so a future rewrite can flip it in
-// lockstep. Once C20 is wired:
-//   1. The archive must first be uploaded via POST /v1/files/inline.
-//   2. The discovery route must accept a `fid` param.
-//   3. `files` + `file_links(resource_type='discovery_run')` rows must exist.
-//
-// TODO(files): C20 — route through /v1/files/inline + fid. See
-//   apps/engine/src/http/routes/discovery.ts POST /v1/discovery/runs/from-archive.
+// This test exercises the service layer directly: persist a file, create
+// a run with `archive_file_id`, and assert the `files` + `file_links`
+// rows exist alongside the run.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { tenants } from "../../db/schema/identity.ts";
-import { discoveryRuns, files } from "../../db/schema/index.ts";
+import { discoveryRuns, fileLinks, files } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -69,11 +59,24 @@ afterAll(async () => {
   if (!skip && ctx?.cleanup) await ctx.cleanup();
 }, 30_000);
 
-describe.skipIf(skip)("C20 — analyze-archive route locks current multipart behaviour", () => {
-  test("from-archive: multipart input creates a discovery_runs row (no files row — current behaviour)", async () => {
-    // Import createDiscoveryRun directly to test the service layer
-    // without standing up a full HTTP server.
+describe.skipIf(skip)("C20 — from-archive persists the raw archive via files + file_links", () => {
+  test("from-archive: archive_file_id yields a files row + discovery_run file_link", async () => {
+    // Exercise the service layer directly — the same sequence the HTTP
+    // handler runs — without standing up a full HTTP server.
     const { createDiscoveryRun } = await import("../service.ts");
+    const { persistInlineUpload } = await import("../../files/persist-inline-upload.ts");
+
+    // Raw archive bytes are binary (contain null bytes) — they must land
+    // in the object store, never a TEXT column.
+    const archiveBytes = Buffer.from("PK\x03\x04\x00\x01\x02-raw-archive-bytes", "binary");
+    const persisted = await persistInlineUpload(ctx.db, {
+      tenant_id: tenantId,
+      actor_id: null,
+      filename: "codebase.zip",
+      content_type: "application/zip",
+      bytes: archiveBytes,
+    });
+    expect(persisted.row.tenant_id).toBe(tenantId);
 
     const parsedFiles = [
       { filename: "src/index.ts", buffer: Buffer.from("export const x = 1;") },
@@ -85,6 +88,7 @@ describe.skipIf(skip)("C20 — analyze-archive route locks current multipart beh
         tenant_id: tenantId,
         files: parsedFiles,
         actor_id: null,
+        archive_file_id: persisted.row.id,
       },
       ctx.db,
     );
@@ -99,11 +103,22 @@ describe.skipIf(skip)("C20 — analyze-archive route locks current multipart beh
 
     expect(runRows).toHaveLength(1);
 
-    // Current behaviour: NO `files` row is created for the archive.
-    // TODO(files): after C20 wiring, assert files row + file_links row exist.
+    // The raw archive lands in the canonical `files` table.
     const fileRows = await ctx.db.select().from(files).where(eq(files.tenant_id, tenantId));
 
-    expect(fileRows).toHaveLength(0); // gap: no files row for archive
+    expect(fileRows).toHaveLength(1);
+    expect(fileRows[0]!.id).toBe(persisted.row.id);
+
+    // ... and is linked to the run as its archive.
+    const linkRows = await ctx.db
+      .select()
+      .from(fileLinks)
+      .where(and(eq(fileLinks.resource_type, "discovery_run"), eq(fileLinks.resource_id, run.id)));
+
+    expect(linkRows).toHaveLength(1);
+    expect(linkRows[0]!.tenant_id).toBe(tenantId);
+    expect(linkRows[0]!.file_id).toBe(persisted.row.id);
+    expect(linkRows[0]!.role).toBe("archive");
   });
 
   test("from-archive: tenant isolation — run not visible from wrong tenant", async () => {

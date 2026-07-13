@@ -6,12 +6,24 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
+import {
+  AuditAction,
+  actorType,
+  auditAwait,
+  bucketSize,
+  FileCreatedMetadataSchema,
+  FileLinkAddedMetadataSchema,
+  FileScanCompletedMetadataSchema,
+  readRequestSource,
+} from "../../audit/index.ts";
 import * as svc from "../../discovery/index.ts";
 import {
   DiscoveryArtifactSchema,
   DiscoveryRunSchema,
   extractCodebaseArchive,
 } from "../../discovery/index.ts";
+import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
+import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -44,6 +56,121 @@ const DiscoveryRunListResponse = z
 const DiscoveryArtifactListResponse = z
   .object({ items: z.array(DiscoveryArtifactSchema) })
   .openapi("DiscoveryArtifactListResponse");
+
+// Bare `{ error }` body used by the multipart upload routes — the
+// pre-OpenAPI contract, documented as-is (deliberately not ErrorSchema).
+const DiscoveryUploadErrorSchema = z.object({ error: z.string() }).openapi("DiscoveryUploadError");
+
+// from-archive 400s additionally carry the extraction skip histogram on
+// the "no analysable files" branch.
+const DiscoveryArchiveUploadErrorSchema = z
+  .object({
+    error: z.string(),
+    skipped_reasons: z.record(z.string(), z.number()).optional(),
+  })
+  .openapi("DiscoveryArchiveUploadError");
+
+const DiscoveryRunWithArchiveStatsSchema = DiscoveryRunSchema.extend({
+  archive_stats: z.object({
+    extracted_count: z.number().int(),
+    skipped_count: z.number().int(),
+    skipped_reasons: z.record(z.string(), z.number()),
+    total_bytes: z.number().int(),
+    truncated: z.boolean(),
+  }),
+}).openapi("DiscoveryRunWithArchiveStats");
+
+// Multipart request bodies are documented with plain OpenAPI schema
+// objects (not Zod): @hono/zod-openapi only registers a body validator
+// for Zod schemas, so the handlers keep reading `c.req.formData()` and
+// enforcing their own limits — the wire contract is documented without
+// changing runtime behaviour.
+const createRunRoute = createRoute({
+  method: "post",
+  path: "/v1/discovery/runs",
+  tags: ["discovery"],
+  summary: "Create a discovery run from uploaded files",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "multipart/form-data": {
+          schema: {
+            type: "object",
+            required: ["files"],
+            properties: {
+              files: {
+                type: "array",
+                items: { type: "string", format: "binary" },
+                description:
+                  "Files to analyze — repeat the field per file. Max 50 files, 100 MB total.",
+              },
+              label: { type: "string", description: "Optional human-readable run label." },
+            },
+          },
+        },
+      },
+    },
+  },
+  responses: {
+    202: {
+      description: "Accepted — run created, analysis pending",
+      content: { "application/json": { schema: DiscoveryRunSchema } },
+    },
+    400: {
+      description: "Bad request",
+      content: { "application/json": { schema: DiscoveryUploadErrorSchema } },
+    },
+    413: {
+      description: "Upload exceeds the size cap",
+      content: { "application/json": { schema: DiscoveryUploadErrorSchema } },
+    },
+  },
+});
+
+const createRunFromArchiveRoute = createRoute({
+  method: "post",
+  path: "/v1/discovery/runs/from-archive",
+  tags: ["discovery"],
+  summary: "Create a discovery run from a codebase archive",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      required: true,
+      content: {
+        "multipart/form-data": {
+          schema: {
+            type: "object",
+            required: ["archive"],
+            properties: {
+              archive: {
+                type: "string",
+                format: "binary",
+                description: "Zip archive of a codebase. Max 100 MB.",
+              },
+              label: { type: "string", description: "Optional human-readable run label." },
+            },
+          },
+        },
+      },
+    },
+  },
+  responses: {
+    202: {
+      description: "Accepted — run created, analysis pending",
+      content: { "application/json": { schema: DiscoveryRunWithArchiveStatsSchema } },
+    },
+    400: {
+      description: "Bad request",
+      content: { "application/json": { schema: DiscoveryArchiveUploadErrorSchema } },
+    },
+    413: {
+      description: "Archive exceeds the size cap",
+      content: { "application/json": { schema: DiscoveryUploadErrorSchema } },
+    },
+  },
+});
 
 const listRunsRoute = createRoute({
   method: "get",
@@ -268,7 +395,7 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   // Multipart upload route for creating discovery runs
-  app.post("/v1/discovery/runs", async (c) => {
+  app.openapi(createRunRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
 
@@ -320,7 +447,11 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
   // Codebase-archive upload. Accepts a zip and extracts its contents
   // into a discovery run. Filters out binaries, generated dirs, and
   // lockfiles so the LLM only sees semantically interesting files.
-  app.post("/v1/discovery/runs/from-archive", async (c) => {
+  // The raw archive bytes are additionally persisted into the canonical
+  // `files` store (binary-safe) and linked to the run — the extracted
+  // text is what the analyzer reads, the original upload stays
+  // retrievable.
+  app.openapi(createRunFromArchiveRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
 
@@ -359,12 +490,105 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
+    // Persist the RAW archive bytes into the canonical `files` store —
+    // binary-safe (object store, never a TEXT column). A `scanning` /
+    // `timeout` scanner verdict does not fail run creation: the row stays
+    // `status='scanning'` and the cleanup cron owns stuck rows, mirroring
+    // the conversation-attachments inline branch.
+    const {
+      row: archiveFile,
+      dedup,
+      scan,
+    } = await persistInlineUpload(db, {
+      tenant_id: principal.tenant_id,
+      actor_id: principal.id,
+      filename: archive.name,
+      content_type: archive.type ? archive.type : null,
+      bytes: archiveBuffer,
+    });
+    if (dedup) {
+      // Keep the per-tenant `dedup_hits` stat symmetric across every
+      // entry point that lands bytes (mirrors /v1/files/inline).
+      await recordFilesDedupSeen(db, principal.tenant_id);
+    }
+
     const run = await svc.createDiscoveryRun(
       {
         tenant_id: principal.tenant_id,
         files: extracted.files,
         actor_id: principal.id,
+        archive_file_id: archiveFile.id,
         ...(typeof label === "string" ? { label } : {}),
+      },
+      db,
+    );
+
+    // Audit the create + scan + link as separate rows — same vocabulary
+    // as the canonical /v1/files/inline route; `FILE_SCAN_COMPLETED`
+    // fires only on fresh inserts (dedup hits never re-scan).
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: actorType(principal),
+        actor_id: principal.id,
+        action: AuditAction.FILE_CREATED,
+        resource_type: "file",
+        resource_id: archiveFile.id,
+        result: "success",
+        metadata: FileCreatedMetadataSchema.parse({
+          file_id: archiveFile.id,
+          filename: archive.name.slice(0, 255),
+          content_type: archive.type ? archive.type : null,
+          size_bytes_bucket: bucketSize(archiveBuffer.byteLength),
+          sha256_prefix: archiveFile.sha256 ? archiveFile.sha256.slice(0, 16) : undefined,
+          dedup,
+          request_source: readRequestSource(c),
+          source: "discovery_from_archive",
+        }),
+      },
+      db,
+    );
+    if (scan) {
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: actorType(principal),
+          actor_id: principal.id,
+          action: AuditAction.FILE_SCAN_COMPLETED,
+          resource_type: "file",
+          resource_id: archiveFile.id,
+          // `timeout` is an operational failure (scanner backend slow /
+          // wedged), not a security verdict — log it as `error`.
+          result:
+            scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
+          metadata: FileScanCompletedMetadataSchema.parse({
+            file_id: archiveFile.id,
+            verdict: scan.verdict,
+            engine: scan.engine,
+            signature: scan.signature,
+            request_source: readRequestSource(c),
+          }),
+        },
+        db,
+      );
+    }
+    await auditAwait(
+      {
+        tenant_id: principal.tenant_id,
+        actor_type: actorType(principal),
+        actor_id: principal.id,
+        action: AuditAction.FILE_LINK_ADDED,
+        resource_type: "file",
+        resource_id: archiveFile.id,
+        result: "success",
+        metadata: FileLinkAddedMetadataSchema.parse({
+          file_id: archiveFile.id,
+          resource_type: "discovery_run",
+          resource_id: run.id,
+          role: "archive",
+          request_source: readRequestSource(c),
+          source: "discovery_from_archive",
+        }),
       },
       db,
     );
