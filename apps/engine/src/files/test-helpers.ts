@@ -22,6 +22,7 @@
 // can splice it into `$file` refs the same way production clients do.
 
 import { createHash, randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import { toFileId } from "../api/files-schemas.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
@@ -88,6 +89,43 @@ export async function attachInlineForTest(
 ): Promise<AttachInlineForTestResult> {
   const bytes = typeof p.content === "string" ? new TextEncoder().encode(p.content) : p.content;
   const sha256 = createHash("sha256").update(bytes).digest("hex");
+
+  // Same (tenant_id, sha256) dedup as the production pipeline — a second
+  // attach of identical bytes reuses the existing row instead of
+  // violating files_tenant_sha256_uq (knowledge/discovery persistence
+  // also creates files rows now, so identical fixture bytes collide).
+  const existing = await p.db
+    .select()
+    .from(files)
+    .where(and(eq(files.tenant_id, p.tenant_id), eq(files.sha256, sha256)))
+    .limit(1);
+  if (existing[0]) {
+    const slugExisting = p.slug ?? slugify(p.filename);
+    await p.db
+      .insert(fileLinks)
+      .values({
+        tenant_id: p.tenant_id,
+        file_id: existing[0].id,
+        resource_type: "conversation",
+        resource_id: p.conversation_id,
+        slug: slugExisting,
+        role: "attachment",
+      })
+      .onConflictDoNothing();
+    // local://<key> carries the key verbatim; s3://<bucket>/<key> nests
+    // it one segment deeper.
+    const uri = existing[0].storage_uri;
+    const storage_key = uri.startsWith("s3://")
+      ? uri.replace(/^s3:\/\/[^/]+\//, "")
+      : uri.replace(/^local:\/\//, "");
+    return {
+      file_id: toFileId(existing[0].id),
+      file_uuid: existing[0].id,
+      storage_key,
+      slug: slugExisting,
+    };
+  }
+
   const file_uuid = randomUUID();
   const key = buildObjectKey(p.tenant_id, file_uuid);
   const storage_uri = composeStorageUri(key);
