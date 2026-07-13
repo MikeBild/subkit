@@ -2,7 +2,12 @@
 //   POST /v1/conversations/{id}/messages         — append + drive turn (+ optional SSE)
 //   POST /v1/conversations/{id}/messages/upload  — multipart with file attachments
 
-import { createRoute, type OpenAPIHono, type RouteConfigToTypedResponse } from "@hono/zod-openapi";
+import {
+  createRoute,
+  type OpenAPIHono,
+  type RouteConfigToTypedResponse,
+  z,
+} from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import type { TurnEvent } from "../../../conversations/index.ts";
@@ -42,6 +47,65 @@ const appendRoute = createRoute({
     200: { description: "OK", content: { "application/json": { schema: RunOutcomeSchema } } },
     409: { description: "Pending input", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+// The upload handler returns bare `{ error }` bodies — documented as-is,
+// deliberately not the typed ErrorSchema envelope.
+const UploadErrorSchema = z.object({ error: z.string() });
+
+// The upload response is the standard run outcome plus the ids of the
+// Knowledge Sources auto-ingested from the attached files.
+export const UploadRunOutcomeSchema = RunOutcomeSchema.extend({
+  ingested_knowledge_source_ids: z.array(z.string()),
+}).openapi("ConversationUploadRunOutcome");
+
+const uploadRoute = createRoute({
+  method: "post",
+  path: "/v1/conversations/{id}/messages/upload",
+  tags: ["conversations"],
+  summary: "Append a user message with file attachments and drive another turn",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: {
+      required: true,
+      content: {
+        "multipart/form-data": {
+          // Documentation-only OpenAPI schema (not Zod): the handler parses
+          // the form itself via c.req.formData(), so no form validator is
+          // attached and the handler's bare error bodies stay the contract.
+          schema: {
+            type: "object",
+            required: ["message"],
+            properties: {
+              message: { type: "string", description: "The user's message" },
+              files: {
+                type: "array",
+                items: { type: "string", format: "binary" },
+                description:
+                  "Attached files (1-10); each is auto-ingested as a Knowledge Source scoped to the conversation's target workflow (or global)",
+              },
+              memory: { type: "string", description: "Optional SUBKIT.md content" },
+            },
+          },
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: UploadRunOutcomeSchema } },
+    },
+    400: {
+      description: "Bad request",
+      content: { "application/json": { schema: UploadErrorSchema } },
+    },
+    404: {
+      description: "Not found",
+      content: { "application/json": { schema: UploadErrorSchema } },
+    },
   },
 });
 
@@ -183,21 +247,15 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     }
   });
 
-  // ---- File attachment route -------------------------------------------------
-  // POST /v1/conversations/:id/messages/upload
-  //
-  // Accepts multipart/form-data with:
-  //   - message (text): the user's message
-  //   - files[] (binary, 1-10): attached files
-  //   - memory (text, optional): SUBKIT.md content
-  //
-  // Each file is auto-ingested as a Knowledge Source scoped to the
+  // Each uploaded file is auto-ingested as a Knowledge Source scoped to the
   // conversation's target workflow (or global). The user message + any
   // file references are then passed to the standard appendUserMessage flow.
-  app.post("/v1/conversations/:id/messages/upload", async (c) => {
+  // Permission gating lives in conversations/index.ts (conversation:write
+  // OR knowledge:write), same as before the openapi migration.
+  app.openapi(uploadRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-    const id = c.req.param("id");
+    const { id } = c.req.valid("param");
 
     const formData = await c.req.formData();
     const message = formData.get("message");

@@ -179,6 +179,58 @@ const createInlineRoute = createRoute({
   },
 });
 
+// Bare `{ error, hint }` envelope the multipart handler has always
+// returned — documented as-is (deliberately NOT ErrorSchema) so the
+// wire contract stays byte-identical for existing SDK consumers.
+const KnowledgeSourceUploadError = z
+  .object({ error: z.string(), hint: z.string().optional() })
+  .openapi("KnowledgeSourceUploadError");
+
+// Multipart form shape. `file` is the raw document; `metadata` is a
+// JSON-encoded string matching CreateKnowledgeSourceSchema. The handler
+// parses `c.req.formData()` itself — the schema exists for the OpenAPI
+// document, not for validation.
+const KnowledgeSourceUploadForm = z
+  .object({
+    file: z.any().openapi({
+      type: "string",
+      format: "binary",
+      description: "Document to ingest (markdown, text, JSON, ...)",
+    }),
+    metadata: z.string().optional().openapi({
+      description: "JSON-encoded knowledge-source fields (name, scope, tags, ...)",
+    }),
+  })
+  .openapi("KnowledgeSourceUploadForm");
+
+const createUploadRoute = createRoute({
+  method: "post",
+  path: "/v1/knowledge-sources",
+  tags: ["knowledge"],
+  summary: "Create a knowledge source from a multipart file upload",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      content: { "multipart/form-data": { schema: KnowledgeSourceUploadForm } },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      description: "Created",
+      content: { "application/json": { schema: KnowledgeSourceSchema } },
+    },
+    400: {
+      description: "Missing file field or invalid metadata JSON",
+      content: { "application/json": { schema: KnowledgeSourceUploadError } },
+    },
+    413: {
+      description: "File exceeds maximum size",
+      content: { "application/json": { schema: KnowledgeSourceUploadError } },
+    },
+  },
+});
+
 const searchRoute = createRoute({
   method: "get",
   path: "/v1/knowledge-sources/search",
@@ -386,8 +438,10 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     },
   );
 
-  // Legacy multipart upload route (non-OpenAPI). File uploads only.
-  app.post("/v1/knowledge-sources", async (c) => {
+  // Multipart upload route. The OpenAPI spec documents the form shape;
+  // the handler keeps its own formData() parsing (multipart fields are
+  // not Zod-validated — `metadata` is a JSON string decoded below).
+  app.openapi(createUploadRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
     const formData = await c.req.formData();
