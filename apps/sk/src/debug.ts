@@ -113,7 +113,11 @@ export type DebugRecordKind =
   // disk, EPERM). The REPL keeps running; the event is dropped.
   // Pairs with `bootstrap.cache_write_failed` so silent disk
   // failures stay grep-able.
-  | "session.append_failed";
+  | "session.append_failed"
+  // agent.briefing_hook_failed — `sk agent briefing --hook` swallowed an
+  // error (a SessionStart hook must never fail the coding-agent session);
+  // this record keeps the breakage observable via ~/.sk/debug.log.
+  | "agent.briefing_hook_failed";
 
 export interface DebugCorrelationFields {
   mode?: DebugMode;
