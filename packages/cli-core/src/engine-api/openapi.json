@@ -9047,6 +9047,61 @@
           }
         }
       },
+      "AgentBriefingResponse": {
+        "type": "object",
+        "properties": {
+          "markdown": {
+            "type": "string"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "budget_tokens": {
+            "type": "integer"
+          },
+          "used_tokens": {
+            "type": "integer"
+          },
+          "skills_full": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skills_title_only": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "knowledge_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "knowledge_sources_omitted": {
+            "type": "integer"
+          },
+          "proposed_candidates": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "markdown",
+          "domains",
+          "budget_tokens",
+          "used_tokens",
+          "skills_full",
+          "skills_title_only",
+          "knowledge_sources",
+          "knowledge_sources_omitted",
+          "proposed_candidates"
+        ]
+      },
       "DiscoveryRunListResponse": {
         "type": "object",
         "properties": {
@@ -22145,6 +22200,66 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent/briefing": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Domain-scoped session briefing for external coding agents",
+        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, and the search-first grounding rule. Intended for SessionStart hooks.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Comma-separated domain slugs",
+              "example": "blog-de"
+            },
+            "required": true,
+            "description": "Comma-separated domain slugs",
+            "name": "domains",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 500,
+              "maximum": 16000
+            },
+            "required": false,
+            "name": "budget_tokens",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBriefingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
             "content": {
               "application/json": {
                 "schema": {

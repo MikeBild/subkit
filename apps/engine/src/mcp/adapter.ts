@@ -24,7 +24,11 @@ import { logger as mcpStubLogger } from "../logging/logger.ts";
 import { dispatchTool } from "../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../tools/index.ts";
 import type { ToolDescriptor, ToolEnvelope, ToolInvocation } from "../tools/types.ts";
-import { buildConversationToolMeta, buildToolAnnotations } from "./capabilities/tool-meta.ts";
+import {
+  alwaysLoadTool,
+  buildConversationToolMeta,
+  buildToolAnnotations,
+} from "./capabilities/tool-meta.ts";
 import { zodToJsonSchema7 } from "./json-schema.ts";
 
 // Zod schema → MCP JSON schema, via the shared boundary helper so the
@@ -104,7 +108,11 @@ function descriptorToMcpTool(d: ToolDescriptor): Tool {
   if (d.disabled) {
     subkitMeta.disabled = { reason: d.disabled.reason };
   }
-  (tool as Tool & { _meta?: Record<string, unknown> })._meta = { subkit: subkitMeta };
+  (tool as Tool & { _meta?: Record<string, unknown> })._meta = {
+    subkit: subkitMeta,
+    // Vendor-standard defer-loading exemption (Claude Code tool search).
+    ...(alwaysLoadTool(d.name) ? { "anthropic/alwaysLoad": true } : {}),
+  };
   return tool;
 }
 

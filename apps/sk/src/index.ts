@@ -15,6 +15,7 @@ import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { type CommandDef, defineCommand, runCommand, type SubCommandsDef, showUsage } from "citty";
 import pc from "picocolors";
+import { agentCommand } from "./commands/agent.ts";
 import { apiKeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
 import { authCommand } from "./commands/auth.ts";
@@ -601,6 +602,7 @@ const mainCommand = defineCommand({
     files: filesCommand,
     attach: attachCommand,
     auth: authCommand,
+    agent: agentCommand,
     // operator commands
     workflows: workflowsCommand,
     connectors: connectorsCommand,
@@ -831,6 +833,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   files: { command: filesCommand, requires: "file:read" },
   attach: { command: attachCommand, requires: "file:write" },
   auth: { command: authCommand, requires: "connector:write" },
+  agent: { command: agentCommand, requires: "skill:read" },
   // operator
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },
