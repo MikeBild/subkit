@@ -181,6 +181,11 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
           // `approval_not_granted`.
           answer_actor: MODEL_RELAYED_ANSWER,
           output: elicitation.output,
+          // The resumed runLoop runs on the MCP surface — without this the
+          // inner confirm gate and prompt variants would treat the resumed
+          // turn as a default (chat-capable) one and pause enumerated
+          // collapsible writes on approvals no human can reach.
+          surface: "mcp",
           turn_abort_ctrl: turnAbortCtrl,
           ...(data.reason ? { reason: data.reason } : {}),
           ...(data.permission_mode ? { permission_mode: data.permission_mode } : {}),

@@ -133,6 +133,12 @@ export type StepWarningCode =
   // response carries both data and errors. The step succeeds; errors surface
   // here so the operator sees them without the step failing.
   | "graphql_partial_errors"
+  // Emitted by the engine when a step fails but declared
+  // on_error:"continue". The run continues and status stays succeeded;
+  // the failure surfaces here instead of on RunResult.error. This is
+  // author-declared tolerance — consumers must NOT treat it as
+  // requires_repair.
+  | "step_failed_continued"
   // Emitted by the engine when a hold-writes preview held a write step (or
   // skipped a step behind a held write) and NOTHING was persisted. The run
   // still succeeds; this MANDATORY warning tells the caller the returned

@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [mcp, contract]
-version: 6
+version: 7
 ---
 
 # sk MCP callable contract
@@ -72,6 +72,7 @@ When a jsonata transform references an identifier that isn't in scope, sk return
 
 - `code: "unresolved_identifier"` means the expression used a bare name that does not match any step id, any `$`-binding, or the `input` alias.
 - Fix by renaming: a `request` step with `id: "fetch"` binds its response under `fetch`, not `data`. Or use `$input.foo` for workflow inputs.
+- `code: "step_failed_continued"` means the step failed but the workflow author declared `on_error: "continue"` — the run is still a success. Report the tolerated failure to the operator; do not blindly retry or repair.
 
 `warnings[]` is non-fatal — `status` stays `succeeded`. Surface it to the operator but do not retry blindly.
 

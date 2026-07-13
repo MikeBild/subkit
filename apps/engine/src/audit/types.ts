@@ -380,6 +380,11 @@ export const AuditAction = {
   // forensic trace that the carrier was minted as `mcp_elicitation`
   // before becoming `portal`.
   ELICITATION_DEMOTED_TO_PORTAL: "elicitation.demoted_to_portal",
+  // A pending elicitation whose approval handle expired unanswered was
+  // resolved to `timeout` by the elicitation-expiry sweep and its
+  // conversation reactivated. Neither an approval nor a rejection — a
+  // distinct action keeps SIEM queries honest (no human decided).
+  ELICITATION_EXPIRED: "elicitation.expired",
 
   // Knowledge Sources
   KNOWLEDGE_SOURCE_CREATED: "knowledge_source.created",
@@ -462,6 +467,13 @@ export const AuditAction = {
   //   tenants without scraping debug logs.
   CONNECTOR_DRAFT_CREDENTIAL_REJECTED: "connector.draft.credential_rejected",
   TOOL_POLICY_CONFIRMATION_REQUIRED: "tool_policy.confirmation_required",
+  // - `tool_policy.confirm_collapsed_mcp` — the resolver decided
+  //   confirm_before_execution, but the turn was submitted over MCP and
+  //   the tool is in the enumerated collapsible-write set, so the
+  //   CLIENT's destructiveHint dialog on the outer conversation_* call
+  //   was the human gate and no server pause was minted. Records that
+  //   the gate was the client dialog, not a server approval.
+  TOOL_POLICY_CONFIRM_COLLAPSED_MCP: "tool_policy.confirm_collapsed_mcp",
   // - `tool_policy.changed` — operator overrode the per-tool default
   //   confirmation mode for a conversation (set/clear via the
   //   `/conversations/:id/tool-policies` route, the chat dispatcher's
