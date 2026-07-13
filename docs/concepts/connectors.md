@@ -282,7 +282,7 @@ Per-vendor backoff escalates exponentially on 429/5xx (cap 30s, 4 attempts). Out
 The Layer-1 test emits a `console.warn` (it does **not** fail the suite) when a template's `verified_at` is `null` or older than 90 days. Sample output:
 
 ```
-[connector-templates] vendor-drift sweep stale on 44/55 templates.
+[connector-templates] vendor-drift sweep stale on 44/56 templates.
 Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1 bun scripts/template-vendor-sweep.ts) to refresh verified_at.
   - airtable (verified_at=null, never swept)
   - hubspot (verified_at=null, never swept)

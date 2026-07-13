@@ -2,9 +2,8 @@
 // docs/developers/input-surfaces.md for the rationale; this file is the command
 // entry point only.
 //
-// Bare `sk` opens an interactive REPL against the active profile
-// (Step 4 of the rollout — currently a stub that points the user to
-// `-p`). `sk -p "..."` runs headless and prints via the chosen output
+// Bare `sk` opens the interactive Ink REPL against the active profile.
+// `sk -p "..."` runs headless and prints via the chosen output
 // format. `sk login`, `sk logout`, `sk tenants [use <id>]`, and
 // `sk status` live here as top-level commands so scripts never need
 // to enter the REPL.
