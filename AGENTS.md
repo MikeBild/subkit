@@ -145,10 +145,11 @@ layer, stop and move it.
 - **`packages/shared/`** — shared domain types & helpers. Pure, deterministic, no
   `apps/*` imports. See `packages/shared/AGENTS.md` for stricter rules.
 
-Subsystem map inside `apps/engine/src/` (45 directories + 5 loose root files):
+Subsystem map inside `apps/engine/src/` (46 directories + 5 loose root files):
 
 | Concern | Directory | Key docs |
 |---|---|---|
+| Coding-agent integration (domain session briefing) | `agent/` | `docs/developers/input-surfaces.md` |
 | OpenAPI types (source of truth) | `api/` | `docs/developers/input-surfaces.md` |
 | Immutable audit log | `audit/` | `docs/concepts/governance-and-audit.md` |
 | Auth providers (OIDC, API key, portal token) | `auth/` | `docs/admins/rbac-and-roles.md` |

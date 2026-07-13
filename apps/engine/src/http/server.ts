@@ -32,6 +32,7 @@ import { loggingMiddleware } from "./middleware/logging.ts";
 import { rateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { traceMiddleware } from "./middleware/trace.ts";
 import { type AppEnv, createOpenApiApp, OPENAPI_INFO, SECURITY_SCHEMES } from "./openapi.ts";
+import { registerAgentBriefingRoutes } from "./routes/agent-briefing.ts";
 import { registerAiExtractRoute } from "./routes/ai/extract.ts";
 import { registerAiGenerateRoute } from "./routes/ai/generate.ts";
 import { registerAiRepairRoute } from "./routes/ai/repair.ts";
@@ -297,6 +298,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSkillRoutes(app);
   registerKnowledgeSourceRoutes(app);
   registerSkillCandidateRoutes(app);
+  registerAgentBriefingRoutes(app);
   registerDiscoveryRoutes(app);
   registerConversationRoutes(app);
   registerConversationAttachmentRoutes(app);
