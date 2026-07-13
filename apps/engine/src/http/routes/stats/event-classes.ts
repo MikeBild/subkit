@@ -56,6 +56,7 @@ export const EVENT_CLASS_ACTIONS: Record<EventClass, string[]> = {
     AuditAction.POLICY_DENIED,
     AuditAction.POLICY_CHANGED,
     AuditAction.TOOL_POLICY_CONFIRMATION_REQUIRED,
+    AuditAction.TOOL_POLICY_CONFIRM_COLLAPSED_MCP,
     AuditAction.TOOL_POLICY_CHANGED,
     AuditAction.CONNECTOR_DRAFT_CREDENTIAL_REJECTED,
   ],

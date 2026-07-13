@@ -515,11 +515,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         });
         if (collectionResult.result.status !== "succeeded") {
           const onError = step.on_error ?? "fail";
-          lastError = collectionResult.result.error ?? {
+          const stepError = collectionResult.result.error ?? {
             code: "step_failed",
             message: "step failed",
           };
           if (onError === "fail") {
+            lastError = stepError;
             failedStepId = step.id;
             finalStatus = "failed";
             for (let j = topoIdx + 1; j < executionOrder.length; j++) {
@@ -539,6 +540,18 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             }
             break;
           }
+          // on_error:"continue" — author-declared tolerance. The run keeps
+          // its succeeded status, so the failure surfaces as a warning
+          // instead of on RunResult.error.
+          warningsAccum.push({
+            code: "step_failed_continued",
+            step_key: step.id,
+            message: `step "${step.id}" ${collectionResult.result.status} (${stepError.code}: ${stepError.message}) but declares on_error:"continue" — the run continued`,
+            details: {
+              step_status: collectionResult.result.status,
+              error_code: stepError.code,
+            },
+          });
         }
         continue;
       }
@@ -797,8 +810,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       });
       if (forEachStatus !== "succeeded") {
         const onError = step.on_error ?? "fail";
-        lastError = forEachError ?? { code: "step_failed", message: "step failed" };
+        const stepError = forEachError ?? { code: "step_failed", message: "step failed" };
         if (onError === "fail") {
+          lastError = stepError;
           failedStepId = step.id;
           if (forEachStatus === "aborted") finalStatus = "aborted";
           else if (forEachStatus === "timed_out") finalStatus = "timed_out";
@@ -822,6 +836,15 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           }
           break;
         }
+        // on_error:"continue" — author-declared tolerance. The run keeps
+        // its succeeded status, so the failure surfaces as a warning
+        // instead of on RunResult.error.
+        warningsAccum.push({
+          code: "step_failed_continued",
+          step_key: step.id,
+          message: `step "${step.id}" ${forEachStatus} (${stepError.code}: ${stepError.message}) but declares on_error:"continue" — the run continued`,
+          details: { step_status: forEachStatus, error_code: stepError.code },
+        });
       }
       continue;
     }
@@ -1017,14 +1040,38 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             if (bodyOutcome.result.held) {
               iterationHeldIds.add(bodyStep.id);
             }
-            if (
-              loopBodyFailure === null &&
-              (bodyOutcome.result.status === "failed" ||
-                bodyOutcome.result.status === "aborted" ||
-                bodyOutcome.result.status === "timed_out") &&
-              (bodyStep.on_error ?? "fail") === "fail"
-            ) {
-              loopBodyFailure = { step_id: bodyStep.id, result: bodyOutcome.result };
+            const bodyFailed =
+              bodyOutcome.result.status === "failed" ||
+              bodyOutcome.result.status === "aborted" ||
+              bodyOutcome.result.status === "timed_out";
+            if (bodyFailed && (bodyStep.on_error ?? "fail") === "fail") {
+              if (loopBodyFailure === null) {
+                loopBodyFailure = { step_id: bodyStep.id, result: bodyOutcome.result };
+              }
+            } else if (bodyFailed) {
+              // on_error:"continue" on the body step — the container stays
+              // green, so the tolerated failure surfaces as a warning
+              // instead of on RunResult.error. Once per body step, not
+              // once per iteration.
+              const bodyError = bodyOutcome.result.error ?? {
+                code: "step_failed",
+                message: "step failed",
+              };
+              if (
+                !warningsAccum.some(
+                  (w) => w.code === "step_failed_continued" && w.step_key === bodyStep.id,
+                )
+              ) {
+                warningsAccum.push({
+                  code: "step_failed_continued",
+                  step_key: bodyStep.id,
+                  message: `step "${bodyStep.id}" ${bodyOutcome.result.status} (${bodyError.code}: ${bodyError.message}) but declares on_error:"continue" — the run continued`,
+                  details: {
+                    step_status: bodyOutcome.result.status,
+                    error_code: bodyError.code,
+                  },
+                });
+              }
             }
           }
           iterationResults.push(bodyResults);
@@ -1281,8 +1328,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     });
     if (outcome.result.status !== "succeeded") {
       const onError = step.on_error ?? "fail";
-      lastError = outcome.result.error ?? { code: "step_failed", message: "step failed" };
+      const stepError = outcome.result.error ?? { code: "step_failed", message: "step failed" };
       if (onError === "fail") {
+        lastError = stepError;
         failedStepId = step.id;
         if (outcome.result.status === "aborted") finalStatus = "aborted";
         else if (outcome.result.status === "timed_out") finalStatus = "timed_out";
@@ -1309,7 +1357,15 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         }
         break;
       }
-      // continue mode: keep scope value, mark continue
+      // continue mode: keep scope value; the run keeps its succeeded
+      // status, so the failure surfaces as a warning instead of on
+      // RunResult.error (author-declared tolerance).
+      warningsAccum.push({
+        code: "step_failed_continued",
+        step_key: step.id,
+        message: `step "${step.id}" ${outcome.result.status} (${stepError.code}: ${stepError.message}) but declares on_error:"continue" — the run continued`,
+        details: { step_status: outcome.result.status, error_code: stepError.code },
+      });
     }
   }
 
@@ -1664,14 +1720,23 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
   });
   void previewOf; // re-export safety
 
+  // Persist the same error the RunResult envelope reports below:
+  // workflow-level validation/offload failures take precedence over the
+  // last step error, so a run that failed validation (with every step
+  // green) records the typed `validation_failed` code instead of null.
+  const failureDetail = validationError ?? lastError;
   await finalizeExecution(
     db,
     tenant_id,
     execution_id,
     finalStatus,
     offload.storage_uri,
-    finalStatus !== "succeeded" && lastError
-      ? { step_id: failedStepId, error_code: lastError.code, error_message: lastError.message }
+    finalStatus !== "succeeded" && failureDetail
+      ? {
+          step_id: failedStepId,
+          error_code: failureDetail.code,
+          error_message: failureDetail.message,
+        }
       : null,
   );
   // Closed-loop patch-candidate outcome tracking: every finalised

@@ -544,6 +544,117 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// MCP-origin confirm collapse — the enumerated write-tool partition.
+//
+// A conversation turn submitted over MCP runs in a queue worker with
+// `surface: "mcp"`. The inner confirm gate (`sdk-wrap/confirm-decision.ts`)
+// has no in-band human channel on that path: a server pause mints an
+// approval no human can reach (the approval URL is discarded and the model
+// is forbidden to resolve it), so the pause is a dead end — not a gate.
+// The human gate on this path is the MCP CLIENT's own `destructiveHint`
+// dialog on the outer `conversation_*` call, rendered BEFORE the turn
+// reaches the engine.
+//
+// The collapse additionally applies ONLY when the confirm was resolved by a
+// STATIC default rule (`tool_default` / `category_default`) — the gate in
+// `decideConfirm` enforces this. A confirm produced by `inline_credential`,
+// `computed_from_input`, `conversation_override`, or `permission_mode`
+// always pauses, collapsible set or not: those rules encode per-call danger
+// or an explicit operator ask the outer turn dialog cannot stand in for.
+//
+// Inclusion criterion for the collapsible set — BOTH halves must hold:
+// outer MCP client destructiveHint dialog + additive/reversible effect OR
+// internal hold/backstop. Concretely:
+//   - additive creations (`create_*`): a bad create is visible and
+//     deletable; nothing pre-existing is destroyed.
+//   - save_workflow_draft: `commitWorkflowAtomic` re-authorizes the commit
+//     against the durable prior-approval predicate — a second backstop
+//     behind the gate.
+//
+// run_workflow is deliberately NOT collapsible: every one of its confirm
+// resolutions comes from `computeModeFromInput` (a live write run with
+// `execute_writes:true`, or a prod run — its hook never returns null, so
+// its static defaults are unreachable), and those dangerous variants must
+// pause even over MCP. Safe dev hold-writes runs resolve `no_confirm` and
+// never reach the gate at all.
+//
+// Everything else keeps pausing DELIBERATELY: every delete_*/revoke_*,
+// credential/connector mutations (update_connector, authenticate_oauth,
+// import_connector_from_spec, save_connector_draft — its args can stage an
+// inline credential no human reviewed), user/role/api-key mutations, and
+// in-place updates of existing state. Fail-closed: a confirm-capable write
+// tool in NEITHER set pauses, and the invariant test
+// (`tests/mcp-origin-confirm-collapse.test.ts`) fails until the new tool
+// is classified here.
+// ---------------------------------------------------------------------------
+
+/**
+ * Confirm-capable write tools whose `confirm_before_execution` pause
+ * collapses on MCP-origin conversation turns. See the block comment above
+ * for the inclusion criterion; the complement is
+ * `MCP_TURN_KEEP_PAUSE_WRITE_TOOLS`.
+ */
+export const MCP_TURN_COLLAPSIBLE_WRITE_TOOLS: ReadonlySet<string> = new Set([
+  "create_knowledge_source",
+  "create_schedule",
+  "create_skill",
+  "save_workflow_draft",
+]);
+
+/**
+ * The documented complement: confirm-capable tools that KEEP pausing on
+ * MCP-origin turns — destructive, credential-bearing, or state-mutating
+ * writes where a dead-end pause is safer than an unreviewed execution.
+ * Exists so the invariant test can assert every confirm-capable tool in
+ * the palette is classified in exactly one of the two sets.
+ */
+export const MCP_TURN_KEEP_PAUSE_WRITE_TOOLS: ReadonlySet<string> = new Set([
+  // Deletions / revocations — irreversible from within the conversation.
+  "delete_connector",
+  "delete_knowledge_source",
+  "delete_schedule",
+  "delete_skill",
+  "delete_subscription",
+  "delete_workflow",
+  "revoke_api_key",
+  "revoke_portal_token",
+  // Credential / connector mutations.
+  "authenticate_oauth",
+  "import_connector_from_spec",
+  "save_connector_draft",
+  "update_connector",
+  // User / role / api-key mutations.
+  "create_api_key",
+  "edit_role",
+  // Governance approvals — a human decision by definition.
+  "approve_discovery_artifact",
+  "approve_patch_candidate",
+  "approve_skill_candidate",
+  // In-place updates of existing tenant state.
+  "update_knowledge_source",
+  "update_schedule",
+  "update_skill",
+  "update_subscription",
+  "update_workflow",
+  // Re-execution / reanalysis of existing resources.
+  "analyze_knowledge_source",
+  "rerun_execution",
+  // run_workflow: its ONLY confirm resolutions are computed_from_input
+  // (live write run / prod run) — per-call danger that must pause even
+  // over MCP. Safe dev hold-writes runs are no_confirm and never gate.
+  "run_workflow",
+  // Pinned no_confirm by default, but confirm-capable via per-conversation
+  // override — an operator who explicitly gated it gets the pause honoured.
+  "load_skill",
+  // Dynamic confirm-capable tools (computeModeFromInput can upgrade them):
+  // prod probes and connector writes go against live vendor systems.
+  "call_connector",
+  "dry_run_workflow",
+  "probe_connector",
+  "probe_connector_draft",
+]);
+
 /**
  * Which rule in the resolution stack produced the enforced mode. The
  * `tool_policy.confirmation_required` audit row records this verbatim, so

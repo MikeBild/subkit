@@ -21,6 +21,10 @@ beforeAll(async () => {
       jsonResponse(res, 404, { error: "not found" });
       return;
     }
+    if (req.url?.startsWith("/boom")) {
+      jsonResponse(res, 500, { error: "boom" });
+      return;
+    }
     if (req.url?.startsWith("/seraph")) {
       // Atlassian Seraph anonymous response: HTTP 200 + empty result set +
       // X-Seraph-LoginReason header. A dead credential must fail loudly here,
@@ -156,6 +160,54 @@ describe("onError modes", () => {
     });
     expect(result.steps[0]?.status).toBe("failed");
     expect(result.steps[1]?.status).toBe("succeeded");
+    // Result honesty: the tolerated failure must NOT ride RunResult.error
+    // (the run is a success) — it surfaces as a warning instead.
+    expect(result.error).toBeNull();
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "step_failed_continued", step_key: "broken" }),
+      ]),
+    );
+  });
+
+  test("a continued failure followed by a genuine on_error=fail failure reports the failing step's error", async () => {
+    // The tolerated failure must not leak onto RunResult.error — the
+    // genuine downstream failure owns it. The two steps fail with
+    // distinct codes (http_4xx vs http_5xx) so the assertion proves
+    // WHICH error the envelope carries.
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "continue-then-fail",
+      steps: [
+        {
+          kind: "request",
+          id: "tolerated",
+          method: "GET",
+          url: `${mock.baseUrl}/fail/x`,
+          on_error: "continue",
+          max_retries: 0,
+        },
+        {
+          kind: "request",
+          id: "hard_fail",
+          method: "GET",
+          url: `${mock.baseUrl}/boom/x`,
+          max_retries: 0,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("http_5xx");
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "step_failed_continued", step_key: "tolerated" }),
+      ]),
+    );
   });
 
   test("a write that fails inside a for_each body surfaces in execution final_status", async () => {
@@ -212,6 +264,12 @@ describe("onError modes", () => {
       input: null,
     });
     expect(result.status).toBe("succeeded");
+    expect(result.error).toBeNull();
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "step_failed_continued", step_key: "post_each" }),
+      ]),
+    );
   });
 
   test("a write that fails inside a legacy loop body surfaces in execution final_status", async () => {
@@ -275,5 +333,11 @@ describe("onError modes", () => {
       input: [1, 2],
     });
     expect(result.status).toBe("succeeded");
+    expect(result.error).toBeNull();
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "step_failed_continued", step_key: "write_it" }),
+      ]),
+    );
   });
 });

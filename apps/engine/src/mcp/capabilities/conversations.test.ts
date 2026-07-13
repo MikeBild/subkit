@@ -483,10 +483,18 @@ describe("conversation_respond_elicitation", () => {
       status: string;
       error_code: string;
       approval_id: string;
+      message: string;
     };
     expect(body.status).toBe("cannot_help");
     expect(body.error_code).toBe("approval_requires_human");
     expect(body.approval_id).toBe(approvalId);
+    // The refusal must not promise an approval_url — the engine discards that
+    // URL on this path. The only real channels are the chat UI and expiry.
+    expect(body.message).not.toContain("approval_url");
+    expect(body.message).toContain("chat UI");
+    expect(body.message).toContain(
+      "Approvals expire after 15 minutes; if it expires unanswered, the engine cancels the pause and reactivates the conversation, and the held call never runs.",
+    );
 
     // Nothing was resolved: the row is still pending, with no output staged —
     // the refusal happens BEFORE stageElicitationAnswer would touch it.

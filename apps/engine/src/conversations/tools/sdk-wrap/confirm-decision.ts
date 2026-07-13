@@ -17,6 +17,12 @@
 //                       within the freshness window; the single source of
 //                       truth shared with the commit-workflow backstop).
 //   - `category`      — the tool's registry category.
+//   - `tool`          — the wrapped tool's name; keys the enumerated
+//                       MCP-collapse set.
+//   - `surface`       — the surface the TURN runs on (`ToolContext.surface`),
+//                       threaded from the caller. Only `"mcp"` changes the
+//                       verdict, and only for enumerated tools.
+//   - `resolverRule`  — the `ToolModeRule` branch `decideToolMode` enforced.
 //
 // There is deliberately NO model-suppliable input. A boolean the model can
 // place in its own tool call is not an approval — it is a hole with a name.
@@ -30,10 +36,17 @@
 //   - tenant_read                              → never pause (reads auto-run).
 //   - mode ≠ confirm_before_execution          → never pause (policy says so).
 //   - fresh matching priorApproval present     → proceed (durable approval).
+//   - MCP surface + enumerated collapsible tool
+//     resolved by a STATIC default rule
+//     (tool_default / category_default)        → proceed (client dialog gate).
 //   - otherwise                                → PAUSE.
 
-import type { ToolPolicyMode } from "../../tool-policies.ts";
-import type { ToolCategory } from "../index.ts";
+import {
+  MCP_TURN_COLLAPSIBLE_WRITE_TOOLS,
+  type ToolModeRule,
+  type ToolPolicyMode,
+} from "../../tool-policies.ts";
+import type { ToolCategory, ToolContext } from "../index.ts";
 
 export interface DecideConfirmInput {
   /** Resolved execution mode from `resolveToolMode`. */
@@ -47,6 +60,12 @@ export interface DecideConfirmInput {
   priorApproval: boolean;
   /** The tool's registry category. */
   category: ToolCategory;
+  /** The wrapped tool's name — keys the enumerated MCP-collapse set. */
+  tool: string;
+  /** Surface the turn runs on, threaded from `ToolContext.surface`. */
+  surface?: ToolContext["surface"];
+  /** The `ToolModeRule` branch `decideToolMode` enforced for this call. */
+  resolverRule?: ToolModeRule;
 }
 
 export interface ConfirmDecision {
@@ -57,6 +76,7 @@ export interface ConfirmDecision {
     | "tenant_read_autoruns"
     | "mode_not_confirm_before_execution"
     | "prior_approval_present"
+    | "mcp_client_dialog_gate"
     | "confirm_required";
 }
 
@@ -82,6 +102,33 @@ export function decideConfirm(input: DecideConfirmInput): ConfirmDecision {
   // would accept it, so a pre-confirm here would be redundant.
   if (input.priorApproval) {
     return { pause: false, reason: "prior_approval_present" };
+  }
+  // MCP-origin turn + enumerated additive/reversible write: the CLIENT's
+  // destructiveHint dialog on the outer `conversation_*` call was the human
+  // gate — it blocked the whole turn before it reached the engine. A server
+  // pause on this path mints an approval no human can reach: the approval
+  // URL is discarded by the worker and the model is forbidden to resolve
+  // the elicitation itself, so the "gate" is a dead end, not a gate.
+  // The collapse applies ONLY when the confirm came from a STATIC default
+  // (`tool_default` / `category_default`) — the rules a client dialog can
+  // meaningfully stand in for. Every other resolver rule pauses:
+  //   - `inline_credential`: the MCP user never saw the staged secret —
+  //     the client dialog approved the turn, not the credential.
+  //   - `computed_from_input`: the tool's own policy inspected THIS call's
+  //     payload and demanded a confirm (e.g. run_workflow with
+  //     execute_writes:true, or a prod run) — a per-call danger the outer
+  //     turn dialog knows nothing about.
+  //   - `conversation_override` / `permission_mode`: an operator or client
+  //     explicitly asked for confirms — honour the ask.
+  // Only the enumerated additive/reversible tools collapse
+  // (`MCP_TURN_COLLAPSIBLE_WRITE_TOOLS`); destructive writes keep the
+  // pause deliberately, dead end and all — safer parked than executed.
+  if (
+    input.surface === "mcp" &&
+    (input.resolverRule === "tool_default" || input.resolverRule === "category_default") &&
+    MCP_TURN_COLLAPSIBLE_WRITE_TOOLS.has(input.tool)
+  ) {
+    return { pause: false, reason: "mcp_client_dialog_gate" };
   }
   // No durable approval and the policy demands confirmation: PAUSE. This is the
   // security-critical fall-through — never proceed here.

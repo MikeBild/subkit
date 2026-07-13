@@ -51,3 +51,47 @@ export async function recordToolPolicyConfirmationRequired(
     p.executor,
   );
 }
+
+export interface RecordToolPolicyConfirmCollapsedMcpParams extends RecorderBase {
+  conversation_id: string;
+  tool: string;
+  /** Enforced execution mode — always "confirm_before_execution" here. */
+  mode: string;
+  /** The `ToolModeRule` branch that produced the mode. */
+  resolver_reason: string | null;
+}
+
+/**
+ * Emitted by `conversations/tools/sdk-wrap/invoke.ts` when the resolver
+ * decided `confirm_before_execution` but the turn was submitted over MCP
+ * and the tool is in the enumerated collapsible-write set
+ * (`MCP_TURN_COLLAPSIBLE_WRITE_TOOLS`), so no server pause was minted —
+ * the MCP client's `destructiveHint` dialog on the outer `conversation_*`
+ * call was the human gate. Pairs with the `tool_policy.confirmation_required`
+ * row the same call already wrote, so an operator can tell a collapsed
+ * gate from an answered one.
+ */
+export async function recordToolPolicyConfirmCollapsedMcp(
+  p: RecordToolPolicyConfirmCollapsedMcpParams,
+): Promise<RecordedEntry> {
+  return auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: resolveActorType(p),
+      actor_id: p.actor_id,
+      action: AuditAction.TOOL_POLICY_CONFIRM_COLLAPSED_MCP,
+      resource_type: "conversation",
+      resource_id: p.conversation_id,
+      result: "success",
+      reason: "mcp_client_dialog_gate",
+      metadata: {
+        conversation_id: p.conversation_id,
+        tool: p.tool,
+        mode: p.mode,
+        resolver_reason: p.resolver_reason,
+        gate: "mcp_client_destructive_hint_dialog",
+      },
+    },
+    p.executor,
+  );
+}

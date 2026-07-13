@@ -18,7 +18,10 @@
 import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import { and, eq } from "drizzle-orm";
-import { recordToolPolicyConfirmationRequired } from "../../../audit/recorders/index.ts";
+import {
+  recordToolPolicyConfirmationRequired,
+  recordToolPolicyConfirmCollapsedMcp,
+} from "../../../audit/recorders/index.ts";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { log, logger } from "../../../logging/logger.ts";
@@ -779,6 +782,9 @@ export function wrapOne(
           resolvedMode,
           priorApproval,
           category: inner.category,
+          tool: inner.name,
+          resolverRule: policyDecision.rule,
+          ...(ctx.surface !== undefined ? { surface: ctx.surface } : {}),
         });
         const needsPreConfirmation = confirmDecision.pause;
         // Forensic log when the gate was evaluated for a
@@ -799,6 +805,32 @@ export function wrapOne(
             category: inner.category,
             skip_reason: confirmDecision.reason,
             ...(intentKindForCurrentTool ? { intent_kind: intentKindForCurrentTool } : {}),
+          });
+        }
+        // MCP-origin collapse audit — the pause was deliberately collapsed
+        // because the client's destructiveHint dialog on the outer
+        // conversation_* call was the human gate. Durable sibling of the
+        // tool_policy.confirmation_required row above (which keeps firing),
+        // so an operator can tell a collapsed gate from an answered one.
+        // Best-effort; never blocks dispatch on a failed insert.
+        if (confirmDecision.reason === "mcp_client_dialog_gate") {
+          await recordToolPolicyConfirmCollapsedMcp({
+            tenant_id: ctx.tenant_id,
+            actor_id: ctx.actor_id ?? null,
+            executor: db,
+            conversation_id: ctx.conversation_id,
+            tool: inner.name,
+            mode: resolvedMode,
+            resolver_reason: policyDecision.rule,
+          }).catch((err: unknown) => {
+            logger.warn({
+              module: "conversation_loop",
+              action: "tool_policy.audit_failed",
+              msg: "failed to record tool_policy.confirm_collapsed_mcp audit",
+              conversation_id: ctx.conversation_id,
+              tool: inner.name,
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
         }
 

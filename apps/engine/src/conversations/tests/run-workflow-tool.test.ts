@@ -1,4 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+// Side-effect import FIRST: initialize the conversation tool registry
+// before the direct run-workflow.ts import below. Entering the module
+// graph at run-workflow.ts trips the generated/writes/index.ts init
+// cycle (TDZ on `runWorkflowTool`) when this file runs as a bun test
+// subset; going through the registry index loads the same modules in a
+// cycle-safe order.
+import "../tools/index.ts";
 import { eq } from "drizzle-orm";
 import { auditLog, conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { runWorkflowTool } from "../tools/generated/writes/run-workflow.ts";
@@ -210,9 +217,116 @@ describe("run_workflow tool", () => {
     expect((result.data as { status: string }).status).toMatch(
       /^(succeeded|failed|partial_success)$/,
     );
+    // A succeeded run's payload carries NO "error" key at all — not even
+    // error:null — so a renderer never shows a phantom failure next to a
+    // green status.
+    expect(result.data).not.toHaveProperty("error");
     expect((result.data as { output: { date?: unknown } }).output).toMatchObject({
       date: "tomorrow +1",
     });
+  });
+
+  test("a tolerated on_error=continue failure stays succeeded and surfaces step_failed_continued", async () => {
+    const [workflow] = await ctx.testDb.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenant_id,
+        slug: "continue-tolerated",
+        name: "Continue Tolerated",
+        lifecycle: "active",
+      })
+      .returning();
+    if (!workflow) throw new Error("workflow insert failed");
+    const [version] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: workflow.id,
+        version: 1,
+        dag: {
+          name: "Continue Tolerated",
+          slug: "continue-tolerated",
+          steps: [
+            {
+              id: "boom",
+              kind: "transform",
+              expression: "throw new Error('tolerated failure');",
+              language: "javascript",
+              on_error: "continue",
+            },
+            {
+              id: "shape",
+              kind: "transform",
+              expression: "return { ok: true };",
+              language: "javascript",
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!version) throw new Error("workflow version insert failed");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(eq(workflows.id, workflow.id));
+
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        draft: {
+          workflow: { name: "new-workflow", steps: [] },
+          state: {
+            mode: "execution",
+            stage: "workflow_executed",
+            connector_mutation_seq: 0,
+            workflow_mutation_seq: 0,
+            checkpoints: {},
+            persisted_resources: [],
+            latest_execution: null,
+            latest_diagnosis: null,
+          },
+        },
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: conversation.draft as DraftDocument,
+        setDraft: async () => {},
+      }),
+      runWorkflowTool.inputSchema.parse({
+        workflow: workflow.id,
+        environment: "dev",
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    const data = result.data as {
+      status: string;
+      warnings?: Array<{ code: string; step_key?: string }>;
+      diagnosis_available?: boolean;
+      requires_repair?: boolean;
+    };
+    // The failure is author-tolerated: the run reports succeeded (NOT
+    // partial_success), carries no "error" key, and the tolerated
+    // failure rides warnings[] as step_failed_continued.
+    expect(data.status).toBe("succeeded");
+    expect(result.data).not.toHaveProperty("error");
+    expect(data.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "step_failed_continued", step_key: "boom" }),
+      ]),
+    );
+    // Author-declared tolerance never trips the repair gate, but the
+    // warning makes the diagnosis surface discoverable — pins the
+    // positive allowlists in run-workflow.ts (isPartialSuccess /
+    // requiresRepair exclude step_failed_continued).
+    expect(data.diagnosis_available).toBe(true);
+    expect(data.requires_repair).toBe(false);
   });
 
   test("returns status:failed when no workflow_id is resolvable", async () => {

@@ -469,9 +469,10 @@ export async function resolveElicitation(
     /** Persisted verbatim to `decision_reason`. Carries a machine code —
      *  a stable token, not free prose (e.g. `user_declined`,
      *  `user_cancelled`, `oauth_timeout`, `elicitation_transport_failed`,
-     *  `oauth_authorization_declined`). Consumers may switch on it. */
+     *  `oauth_authorization_declined`, `approval_expired`). Consumers may
+     *  switch on it. */
     reason?: string;
-    status?: "resolved" | "cancelled";
+    status?: "resolved" | "cancelled" | "timeout";
     /** Bridge round-trip outcome. Set ONLY by bridge callers on a
      *  `protocol_native` row; emitted as `elicitation_transport` audit
      *  metadata. Non-bridge callers omit it (no key written). */
@@ -567,7 +568,14 @@ export async function resolveElicitation(
       tenant_id: p.tenant_id,
       actor_type: p.decided_by ? "user" : "system",
       actor_id: p.decided_by,
-      action: status === "resolved" ? AuditAction.APPROVAL_APPROVED : AuditAction.APPROVAL_REJECTED,
+      // `timeout` is neither an approval nor a rejection — nobody decided.
+      // A distinct action keeps SIEM queries over APPROVAL_REJECTED honest.
+      action:
+        status === "resolved"
+          ? AuditAction.APPROVAL_APPROVED
+          : status === "timeout"
+            ? AuditAction.ELICITATION_EXPIRED
+            : AuditAction.APPROVAL_REJECTED,
       resource_type: "conversation_elicitation",
       resource_id: row.id,
       result: "success",
@@ -634,6 +642,78 @@ export async function resolveElicitationAndReactivate(
         .where(
           and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
         );
+    }
+  });
+  return resolution;
+}
+
+/**
+ * Expire an approval-backed elicitation whose approval handle died
+ * unanswered, and un-strand its conversation — ONE transaction.
+ *
+ * Deliberately a SIBLING of `resolveElicitationAndReactivate`, not an
+ * option on it: a resume path owns the conversation and flips it back to
+ * `active` unconditionally, while an expiry sweep owns nothing — it may
+ * only undo the `awaiting_input` the elicitation itself caused, and must
+ * never resurrect a conversation that has since committed or been
+ * abandoned. Hence the guarded flip below.
+ *
+ * Three writes:
+ *   1. Resolve the elicitation to `timeout` with `approval_expired` and
+ *      no decider — nobody answered, so no human is named. The CAS on
+ *      `status = 'pending'` inside `resolveElicitation` makes a race with
+ *      a concurrent `respondElicitation` safe: the loser observes
+ *      `already_resolved` and writes nothing else.
+ *   2. GUARDED conversation flip `awaiting_input → active`.
+ *   3. Back-fill the paused tool call's `output`. WHY: the CALL is
+ *      abandoned, not the session — the user continues via
+ *      `conversation_append`, and the persist-replay layer must pair
+ *      every tool_use with a tool_result, so the backfill tells the
+ *      model exactly what happened and what to do next. Mirrors the
+ *      stale-supersede backfill in `insertElicitation`.
+ */
+export async function expireElicitationAndReactivate(
+  p: { tenant_id: string; conversation_id: string; id: string },
+  db: Db,
+): Promise<ResolveElicitationResult> {
+  // Definite assignment — same reasoning as `resolveElicitationAndReactivate`.
+  let resolution!: ResolveElicitationResult;
+  await db.transaction(async (tx) => {
+    resolution = await resolveElicitation(
+      {
+        tenant_id: p.tenant_id,
+        id: p.id,
+        output: null,
+        decided_by: null,
+        reason: "approval_expired",
+        status: "timeout",
+      },
+      tx,
+    );
+    if (resolution.kind !== "resolved") return;
+    await tx
+      .update(conversations)
+      .set({ status: "active", updated_at: new Date() })
+      .where(
+        and(
+          eq(conversations.tenant_id, p.tenant_id),
+          eq(conversations.id, p.conversation_id),
+          eq(conversations.status, "awaiting_input"),
+        ),
+      );
+    const toolCallId = resolution.record.tool_call_id;
+    if (toolCallId) {
+      await tx
+        .update(conversationToolCalls)
+        .set({
+          output: {
+            ok: false,
+            abandoned: true,
+            reason: "approval_expired",
+            note: "the operator did not answer the confirmation within the approval window; nothing ran. Ask the user whether they still want this action, and re-issue the tool call if so.",
+          } as Record<string, unknown>,
+        })
+        .where(eq(conversationToolCalls.id, toolCallId));
     }
   });
   return resolution;
