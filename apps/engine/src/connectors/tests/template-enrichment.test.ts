@@ -88,7 +88,7 @@ describe("enrichConnectorFromTemplate — stripe (bearer, no oauth)", () => {
       },
       template,
     );
-    expect((result.config?.probe_endpoint as { method: string })?.method).toBe("HEAD");
+    expect((result.config!.probe_endpoint as { method: string })?.method).toBe("HEAD");
   });
 });
 

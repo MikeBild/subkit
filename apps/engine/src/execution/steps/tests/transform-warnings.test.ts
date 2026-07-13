@@ -84,7 +84,7 @@ describe("transform_dropped_fields (informational)", () => {
     });
     expect(w).toHaveLength(1);
     expect(w[0]?.code).toBe("transform_dropped_fields");
-    expect((w[0]?.details as { dropped_fields: string[] }).dropped_fields).toEqual(["resources"]);
+    expect((w[0]!.details as { dropped_fields: string[] }).dropped_fields).toEqual(["resources"]);
   });
 
   test("output keys are NOT a subset (renamed/added) → does NOT fire", () => {

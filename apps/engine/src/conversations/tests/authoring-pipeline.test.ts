@@ -181,7 +181,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
       // Goal + connector ids stashed on the draft as draft-only metadata.
       const draft = toolCtx._draft.value;
       expect(draft).not.toBeNull();
-      expect((draft?.workflow as { goal?: string }).goal).toBe(goal);
+      expect((draft!.workflow as { goal?: string }).goal).toBe(goal);
       expect(draft?.workflow.slug).toBe("top-repos-digest");
       expect(draft?.workflow.steps).toHaveLength(2);
 
@@ -232,7 +232,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
       // Even the findings-laden definition is stashed — the model repairs
       // from the findings instead of starting over.
       expect(toolCtx._draft.value?.workflow.slug).toBe("broken-loop");
-      expect((toolCtx._draft.value?.workflow as { goal?: string }).goal).toBe("loop the things");
+      expect((toolCtx._draft.value!.workflow as { goal?: string }).goal).toBe("loop the things");
       expect(fetchCalls).toBe(0);
     },
   );
@@ -473,7 +473,7 @@ describe("author_workflow — tool envelope", () => {
       expect(data.definition.slug).toBe("top-repos-digest");
       expect(data.persistence).toBe("draft_only");
       expect(data.recorded_eval).toBeDefined();
-      expect((toolCtx._draft.value?.workflow as { goal?: string }).goal).toBe(
+      expect((toolCtx._draft.value!.workflow as { goal?: string }).goal).toBe(
         "Show me the top repos with their names",
       );
       expect(fetchCalls).toBe(0);

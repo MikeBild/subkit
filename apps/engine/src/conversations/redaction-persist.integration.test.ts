@@ -260,7 +260,7 @@ describe("resolveElicitation — secret form answers persist redacted (#304)", (
       .select({ output: conversationElicitations.output })
       .from(conversationElicitations)
       .where(eq(conversationElicitations.id, elicitation.id));
-    expect((row?.output as { values: Record<string, string> }).values.name).toBe("acme");
+    expect((row!.output as { values: Record<string, string> }).values.name).toBe("acme");
   });
 });
 

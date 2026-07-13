@@ -121,7 +121,7 @@ export function nextRecommendedAction(input: PolicyInput): NextAction {
             : "The connector cannot reach the upstream without an endpoint.",
       };
     }
-    if (!probe || probe.ok !== true) {
+    if (probe?.ok !== true) {
       return {
         kind: "connector_probe",
         summary: "Run probe_connector_draft to verify auth and response shape.",
@@ -144,7 +144,7 @@ export function nextRecommendedAction(input: PolicyInput): NextAction {
         rationale: "A workflow draft exists but has no steps yet.",
       };
     }
-    if (!preview || preview.ok !== true) {
+    if (preview?.ok !== true) {
       return {
         kind: "workflow_preview",
         summary: "Run dry_run_step or dry_run_workflow before committing.",

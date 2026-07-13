@@ -132,7 +132,7 @@ describe("journey: sk-cli elicitation lifecycle", () => {
       .where(eq(conversationElicitations.id, elicitationId))
       .limit(1);
     expect(row?.reason).toBe("step 1 missing connector_id");
-    expect((row?.output as { confirmed?: boolean } | null)?.confirmed).toBe(false);
+    expect((row!.output as { confirmed?: boolean } | null)?.confirmed).toBe(false);
   });
 
   test("AC3: responding to an unknown elicitation returns 4xx/5xx", async () => {

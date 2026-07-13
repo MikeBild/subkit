@@ -241,7 +241,7 @@ describe("journey: sk fast-path — list enumerates completely with exact total 
     expect(listOutput?.total).toBe(25);
     expect(listOutput?.returned).toBe(25);
     expect(listOutput?.has_more).toBe(false);
-    expect((listOutput?.items as unknown[]).length).toBe(25);
+    expect((listOutput!.items as unknown[]).length).toBe(25);
     // Headline names the exact total — "25 workflows:" only when 25 shown.
     expect(assistantText.startsWith("25 workflows:")).toBe(true);
     // Complete enumeration — every seeded slug appears.

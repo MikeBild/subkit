@@ -167,7 +167,7 @@ describe("graphql retry · error_policy all", () => {
     expect(step?.status).toBe("succeeded");
     // Partial flag on request_meta.extras
     expect(
-      (step?.request_meta as { extras?: { partial?: boolean } } | undefined)?.extras?.partial,
+      (step!.request_meta as { extras?: { partial?: boolean } } | undefined)?.extras?.partial,
     ).toBe(true);
     // Warnings are rolled up on the run result, keyed by step_key.
     const warn = result.warnings?.find(
@@ -199,7 +199,7 @@ describe("graphql retry · error_policy all", () => {
     expect(result.status).toBe("failed");
     const step = result.steps?.find((s) => s.step_key === "gql");
     expect(step?.status).toBe("failed");
-    expect((step?.error as { code?: string } | null)?.code).toBe("graphql_error");
+    expect((step!.error as { code?: string } | null)?.code).toBe("graphql_error");
     expect(requestCount).toBe(1);
   });
 });

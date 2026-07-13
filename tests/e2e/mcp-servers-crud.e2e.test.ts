@@ -121,8 +121,8 @@ describe("MCP server registration journey", () => {
     // auth_config must never carry a secret.
     const auth = found?.auth_config as { kind: string } | undefined;
     expect(auth?.kind).toBe("none");
-    expect(Object.keys(found?.auth_config as object)).not.toContain("token");
-    expect(Object.keys(found?.auth_config as object)).not.toContain("token_ref");
+    expect(Object.keys(found!.auth_config as object)).not.toContain("token");
+    expect(Object.keys(found!.auth_config as object)).not.toContain("token_ref");
   }, 30_000);
 
   test("GET /v1/mcp-servers/:id returns the server by id", async () => {

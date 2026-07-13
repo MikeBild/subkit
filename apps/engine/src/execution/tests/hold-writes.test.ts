@@ -173,8 +173,8 @@ describe("hold-writes · HTTP", () => {
     // failed with placeholder_unresolved.
     const confirmStep = result.steps.find((s) => s.step_key === "confirm");
     expect(confirmStep?.status).toBe("skipped");
-    expect((confirmStep?.error as { code?: string })?.code).toBe("skipped_dependency_held");
-    expect((confirmStep?.error as { message?: string })?.message).toContain(
+    expect((confirmStep!.error as { code?: string })?.code).toBe("skipped_dependency_held");
+    expect((confirmStep!.error as { message?: string })?.message).toContain(
       'depends on held step "send"',
     );
 
@@ -341,7 +341,7 @@ describe("hold-writes · HTTP", () => {
     expect(hitsFor("/mutating-get")).toHaveLength(0);
     const heldStep = result.steps.find((s) => s.step_key === "mutating_get");
     expect(heldStep?.held).toBe(true);
-    expect((heldStep?.held_request as HeldRequest).method).toBe("GET");
+    expect((heldStep!.held_request as HeldRequest).method).toBe("GET");
   });
 
   test("loop bodies hold per iteration — each iteration materializes its own held_request", async () => {
@@ -438,8 +438,8 @@ describe("hold-writes · HTTP", () => {
       const sendStep = result.steps.find((s) => s.step_key === "send");
       expect(sendStep?.status).toBe("failed");
       expect(sendStep?.held).toBeUndefined();
-      expect((sendStep?.error as { code?: string })?.code).toBe("request_body_schema_violation");
-      expect((sendStep?.error as { message?: string })?.message).toContain("subject");
+      expect((sendStep!.error as { code?: string })?.code).toBe("request_body_schema_violation");
+      expect((sendStep!.error as { message?: string })?.message).toContain("subject");
     }
     expect(hitsFor("/send")).toHaveLength(0);
   });
@@ -483,7 +483,7 @@ describe("hold-writes · HTTP", () => {
     });
     expect(held.status).toBe("succeeded");
     expect(hitsFor("/parity-send")).toHaveLength(0);
-    const heldBody = (held.steps.find((s) => s.step_key === "send")?.held_request as HeldRequest)
+    const heldBody = (held.steps.find((s) => s.step_key === "send")!.held_request as HeldRequest)
       .body;
 
     const live = await runExecution({

@@ -227,7 +227,7 @@ describe("scanForDrift", () => {
     const schema = result.signals.filter((s) => s.signal.kind === "schema_diff");
     expect(schema.length).toBe(1);
     const sig = schema[0];
-    if (!sig || sig.signal.kind !== "schema_diff") throw new Error("expected schema_diff");
+    if (sig?.signal.kind !== "schema_diff") throw new Error("expected schema_diff");
     expect(sig.signal.added).toContain("meta");
     expect(sig.ctx.workflow_id).toBe(workflow_id);
     expect(sig.ctx.connector_id).toBe(connector_id);
@@ -276,7 +276,7 @@ describe("scanForDrift", () => {
     const validation = result.signals.filter((s) => s.signal.kind === "validation_failed");
     expect(validation.length).toBe(1);
     const sig = validation[0];
-    if (!sig || sig.signal.kind !== "validation_failed") throw new Error("expected validation");
+    if (sig?.signal.kind !== "validation_failed") throw new Error("expected validation");
     expect(sig.signal.expression).toBe("count > 0");
     expect(sig.ctx.workflow_id).toBe(workflow_id);
   });

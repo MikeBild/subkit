@@ -115,7 +115,7 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
 
     const elicit = events.find((e) => e.type === "elicit_request");
     expect(elicit).toBeDefined();
-    if (!elicit || elicit.type !== "elicit_request") throw new Error("expected elicit_request");
+    if (elicit?.type !== "elicit_request") throw new Error("expected elicit_request");
     const elicitation = await getElicitation(ctx.tenant_id, elicit.elicitation_id, ctx.testDb.db);
     expect(elicitation?.tool_name).toBe("ask_user_confirm");
     expect(elicitation?.status).toBe("pending");

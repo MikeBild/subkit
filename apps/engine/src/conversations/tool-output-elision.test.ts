@@ -45,9 +45,9 @@ function iteration(i: number, payload: unknown, tool = "inspect_workflow_draft")
 }
 
 function toolResultValue(msg: ModelMessage | undefined): unknown {
-  if (!msg || msg.role !== "tool" || !Array.isArray(msg.content)) return undefined;
+  if (msg?.role !== "tool" || !Array.isArray(msg.content)) return undefined;
   const part = msg.content[0];
-  if (!part || part.type !== "tool-result") return undefined;
+  if (part?.type !== "tool-result") return undefined;
   const output = part.output as { type: string; value: unknown };
   return output.value;
 }

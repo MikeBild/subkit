@@ -218,7 +218,7 @@ describe("itemvar backfill", () => {
     );
     expect(flagged).toBeDefined();
     expect(flagged?.result).toBe("error");
-    expect((flagged?.metadata as { reason?: string }).reason).toContain("OUTER loop");
+    expect((flagged!.metadata as { reason?: string }).reason).toContain("OUTER loop");
   });
 
   test("idempotent: second run is a marker no-op (no new versions)", async () => {

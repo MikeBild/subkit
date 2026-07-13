@@ -424,7 +424,7 @@ async function scanValidationDriftForTenant(
 
     if (execRows.length < 2) continue;
     const newest = execRows[0];
-    if (!newest || newest.status !== "failed") continue;
+    if (newest?.status !== "failed") continue;
     const priorSucceeded = execRows.slice(1).some((e) => e.status === "succeeded");
     if (!priorSucceeded) continue;
 

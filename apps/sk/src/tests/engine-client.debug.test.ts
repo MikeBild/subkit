@@ -98,10 +98,10 @@ describe("EngineClient debug tracing", () => {
       tenant: "tenant-1",
       query: { limit: 2 },
     });
-    expect((records[0]?.request_headers as Record<string, string>).authorization).toBe(
+    expect((records[0]!.request_headers as Record<string, string>).authorization).toBe(
       "***redacted***",
     );
-    expect((records[0]?.request_body as Record<string, string>).authorization).toBe(
+    expect((records[0]!.request_body as Record<string, string>).authorization).toBe(
       "***redacted***",
     );
     expect(records[1]).toMatchObject({
@@ -110,7 +110,7 @@ describe("EngineClient debug tracing", () => {
       status: 200,
       ok: true,
     });
-    expect((records[1]?.response_body as Record<string, string>).access_token).toBe(
+    expect((records[1]!.response_body as Record<string, string>).access_token).toBe(
       "***redacted***",
     );
   });

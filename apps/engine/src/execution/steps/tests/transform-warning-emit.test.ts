@@ -82,7 +82,7 @@ describe("runTransformStep · silent-data-loss warnings", () => {
     expect(result.status).toBe("succeeded");
     const w = (result.warnings ?? []).find((x) => x.code === "transform_dropped_fields");
     expect(w).toBeDefined();
-    expect((w?.details as { dropped_fields: string[] }).dropped_fields).toContain("resources");
+    expect((w!.details as { dropped_fields: string[] }).dropped_fields).toContain("resources");
   });
 
   test("no warning when the transform returns a full reshape", async () => {

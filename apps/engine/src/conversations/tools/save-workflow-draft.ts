@@ -152,9 +152,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
     const workflow_version_id =
       typeof data.workflow_version_id === "string" ? data.workflow_version_id : null;
     const version = typeof data.version === "number" ? data.version : null;
-    const previewOverride =
-      args.force_commit === true &&
-      (!fullDraft.latest_preview || fullDraft.latest_preview.ok !== true);
+    const previewOverride = args.force_commit === true && fullDraft.latest_preview?.ok !== true;
     // Idempotent re-commit: when commitWorkflowAtomic detected the def
     // was unchanged from the current version, nothing was written — do
     // not emit a `manual_re_issue` audit row for a no-op. Mirrors the

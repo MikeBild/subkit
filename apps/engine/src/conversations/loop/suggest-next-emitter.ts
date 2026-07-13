@@ -97,7 +97,7 @@ function capabilityGapSuggestion(events: ReadonlyArray<TurnEvent>): string | nul
         data?: { abstained?: unknown; missing_capability?: unknown; suggest_alternative?: unknown };
       } | null
     )?.data;
-    if (!data || data.abstained !== true) continue;
+    if (data?.abstained !== true) continue;
     if (typeof data.suggest_alternative === "string" && data.suggest_alternative.trim()) {
       return data.suggest_alternative.trim();
     }
