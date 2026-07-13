@@ -186,7 +186,7 @@ describe("chat: DM auto-registration", () => {
     );
     expect(installed).toBeTruthy();
     expect(installed?.actor_id).toBe(ctx.user_id);
-    expect((installed?.metadata as Record<string, unknown>).workspace_id).toBe(DM_SPACE);
+    expect((installed!.metadata as Record<string, unknown>).workspace_id).toBe(DM_SPACE);
     const linked = audits.find(
       (a) =>
         a.action === AuditAction.CHAT_IDENTITY_LINKED &&

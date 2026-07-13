@@ -377,10 +377,10 @@ describe("listWorkflowToolsForTenant — inputSchema property descriptions", () 
     // clients can render useful tooltips for the workflow's input fields.
     const props = item?.inputSchema.properties as Record<string, unknown> | undefined;
     expect(props).toBeDefined();
-    expect((props?.startDate as Record<string, unknown>)?.description).toBe(
+    expect((props!.startDate as Record<string, unknown>)?.description).toBe(
       "ISO 8601 start date for the report range",
     );
-    expect((props?.limit as Record<string, unknown>)?.description).toBe(
+    expect((props!.limit as Record<string, unknown>)?.description).toBe(
       "Maximum number of rows to return",
     );
   });
@@ -407,7 +407,7 @@ describe("listWorkflowToolsForTenant — inputSchema property descriptions", () 
     const props = item?.inputSchema.properties as Record<string, unknown> | undefined;
     expect(props).toBeDefined();
     // No description fabricated — the catalog must not inject an empty string.
-    expect((props?.id as Record<string, unknown>)?.description).toBeUndefined();
+    expect((props!.id as Record<string, unknown>)?.description).toBeUndefined();
   });
 });
 
@@ -442,7 +442,7 @@ describe("listWorkflowToolsForTenant — outputSchema", () => {
     expect(item?.outputSchema?.type).toBe("object");
     const outProps = item?.outputSchema?.properties as Record<string, unknown> | undefined;
     expect(outProps?.id).toBeDefined();
-    expect((outProps?.name as Record<string, unknown>)?.description).toBe("User display name");
+    expect((outProps!.name as Record<string, unknown>)?.description).toBe("User display name");
   });
 
   test("workflow without output_schema has no outputSchema on descriptor", async () => {

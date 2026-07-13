@@ -60,7 +60,7 @@ async function connectProxy(): Promise<Client> {
 
 function textContent(result: Awaited<ReturnType<Client["callTool"]>>): string {
   const first = result.content[0];
-  if (!first || first.type !== "text") throw new Error("expected text MCP content");
+  if (first?.type !== "text") throw new Error("expected text MCP content");
   return first.text;
 }
 

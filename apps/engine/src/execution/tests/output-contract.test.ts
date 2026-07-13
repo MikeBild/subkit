@@ -113,7 +113,7 @@ describe("live run — output_schema violation is a NON-blocking warning", () =>
     expect(warning).toBeDefined();
     expect(warning?.step_key).toBe("$output");
     expect(warning?.message).toContain("$output/total");
-    const violations = (warning?.details as { violations?: Array<{ path: string }> } | undefined)
+    const violations = (warning!.details as { violations?: Array<{ path: string }> } | undefined)
       ?.violations;
     expect(violations?.map((v) => v.path)).toContain("$output/items");
   });

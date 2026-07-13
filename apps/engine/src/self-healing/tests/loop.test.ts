@@ -93,7 +93,7 @@ describe("self-healing/loop — direct call", () => {
       .orderBy(desc(workflowVersions.version));
     expect(versions.length).toBe(2);
     expect(versions[0]?.version).toBe(2);
-    const newDag = (versions[0]?.dag as Record<string, unknown>) ?? {};
+    const newDag = (versions[0]!.dag as Record<string, unknown>) ?? {};
     expect(newDag.__self_healing).toBeTruthy();
 
     // 4. Audit rows for proposed + auto_applied.

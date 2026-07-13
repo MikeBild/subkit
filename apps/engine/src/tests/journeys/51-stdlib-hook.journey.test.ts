@@ -99,7 +99,7 @@ describe("journey: sk-stdlib before-request hook", () => {
     expect(rb.status).toBe("failed");
     const denied = rb.steps.find((s) => s.error && (s.error as { code?: string }).code);
     expect(denied).toBeDefined();
-    expect((denied?.error as { code: string }).code).toBe("policy.denied");
+    expect((denied!.error as { code: string }).code).toBe("policy.denied");
   });
 
   test("AC3: the created hook persists STDLIB_VERSION for drift detection", async () => {

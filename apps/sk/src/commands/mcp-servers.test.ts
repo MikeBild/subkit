@@ -356,7 +356,7 @@ describe("sk mcp-servers set-credential · rotation", () => {
       },
     });
     expect(lastPatchBody?.token).toBe(SECRET);
-    expect((lastPatchBody?.auth_config as { kind?: string })?.kind).toBe("bearer");
+    expect((lastPatchBody!.auth_config as { kind?: string })?.kind).toBe("bearer");
     expect(stdoutBuf).not.toContain(SECRET);
     expect(stderrBuf).toBe("");
   });

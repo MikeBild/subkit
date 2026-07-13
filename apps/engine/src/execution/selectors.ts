@@ -24,7 +24,7 @@ interface Compiled {
 const TOKEN_RE = /\.(\w+)|\[(\*|-?\d+(?::-?\d+)?|'[^']*'|"[^"]*")\]/g;
 
 export function compileSelector(expr: string): Compiled {
-  if (!expr || expr[0] !== "$") {
+  if (expr?.[0] !== "$") {
     throw new Error("selector must start with $");
   }
   const rest = expr.slice(1);

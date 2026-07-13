@@ -146,7 +146,7 @@ describe("dispatchDeleteConnector — dependency backstop", () => {
     const err = result as { error_code?: string; data?: { dependents?: unknown[] } };
     expect(err.error_code).toBe("connector_has_dependents");
     expect(Array.isArray(err.data?.dependents)).toBe(true);
-    expect((err.data?.dependents as unknown[]).length).toBeGreaterThan(0);
+    expect((err.data!.dependents as unknown[]).length).toBeGreaterThan(0);
   });
 
   test("with confirm_orphan:true → delete proceeds and connector row is gone", async () => {

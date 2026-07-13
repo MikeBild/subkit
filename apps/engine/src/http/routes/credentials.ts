@@ -127,7 +127,7 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       row.environment as "dev" | "prod",
       db,
     );
-    if (!fetched || fetched.value.mode !== "oauth2") {
+    if (fetched?.value.mode !== "oauth2") {
       throw new BadRequestError("credential is not in oauth2 mode");
     }
     if (!fetched.value.refresh_token) {

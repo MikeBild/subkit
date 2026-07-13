@@ -92,8 +92,8 @@ describe("inbound trigger bind/unbind helpers", () => {
     expect(audits.length).toBe(1);
     const row = audits[0];
     expect(row?.resource_type).toBe("webhook_inbound");
-    expect((row?.metadata as Record<string, unknown>)?.kind).toBe("create");
-    expect((row?.metadata as Record<string, unknown>)?.verifier).toBe("stripe");
+    expect((row!.metadata as Record<string, unknown>)?.kind).toBe("create");
+    expect((row!.metadata as Record<string, unknown>)?.verifier).toBe("stripe");
   });
 
   test("bindFromWorkflow updates the row when the trigger payload changes", async () => {

@@ -86,9 +86,9 @@ describe("47: Loop step — iterates items, injects $item and $loop_index", () =
     const loopOutput = body.output as Array<Record<string, number>>;
     expect(Array.isArray(loopOutput)).toBe(true);
     expect(loopOutput).toHaveLength(3);
-    expect((loopOutput[0]?.double_num as { data: number } | undefined)?.data).toBe(2);
-    expect((loopOutput[1]?.double_num as { data: number } | undefined)?.data).toBe(4);
-    expect((loopOutput[2]?.double_num as { data: number } | undefined)?.data).toBe(6);
+    expect((loopOutput[0]!.double_num as { data: number } | undefined)?.data).toBe(2);
+    expect((loopOutput[1]!.double_num as { data: number } | undefined)?.data).toBe(4);
+    expect((loopOutput[2]!.double_num as { data: number } | undefined)?.data).toBe(6);
   });
 
   test("AC3: $loop_index increments per iteration", async () => {

@@ -148,7 +148,7 @@ async function seedExpiredCredential(connId: string, accessToken: string) {
     ctx.db,
   );
   const fetched = await getCredentialForConnector(tenantId, connId, "dev", ctx.db);
-  if (!fetched || fetched.value.mode !== "oauth2") {
+  if (fetched?.value.mode !== "oauth2") {
     throw new Error("seed failed: credential not found or wrong mode");
   }
   return fetched;
@@ -232,7 +232,7 @@ describe("refreshIfStale — needs_reauth short-circuit", () => {
 
     const fetched = await getCredentialForConnector(tenantId, connectorIdFresh, "dev", ctx.db);
     expect(fetched).not.toBeNull();
-    if (!fetched || fetched.value.mode !== "oauth2") throw new Error("wrong mode");
+    if (fetched?.value.mode !== "oauth2") throw new Error("wrong mode");
 
     const result = await refreshIfStale(ctx.db, tenantId, fetched.row, fetched.value);
 

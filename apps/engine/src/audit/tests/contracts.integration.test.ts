@@ -317,7 +317,7 @@ describe("request-source attribution", () => {
       );
       const fetched = await getAuditRowById(testDb.db, tenantA, entry.id);
       expect(fetched).not.toBeNull();
-      expect((fetched?.metadata as { request_source?: string }).request_source).toBe(source);
+      expect((fetched!.metadata as { request_source?: string }).request_source).toBe(source);
     });
   }
 });

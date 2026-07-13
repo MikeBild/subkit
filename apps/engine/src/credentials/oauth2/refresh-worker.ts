@@ -368,6 +368,6 @@ async function handleRefreshJob(db: Db, data: RefreshOAuthJob): Promise<void> {
     row.environment as "dev" | "prod",
     db,
   );
-  if (!fetched || fetched.value.mode !== "oauth2") return;
+  if (fetched?.value.mode !== "oauth2") return;
   await refreshIfStale(db, data.tenant_id, fetched.row, fetched.value);
 }

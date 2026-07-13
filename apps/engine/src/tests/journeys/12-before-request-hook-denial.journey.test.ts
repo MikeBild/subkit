@@ -160,7 +160,7 @@ describe("journey: before-request hook denial", () => {
     // First failing step should surface the policy denial.
     const denied = rb.steps.find((s) => s.error && (s.error as { code?: string }).code);
     expect(denied).toBeDefined();
-    expect((denied?.error as { code: string }).code).toBe("policy.denied");
+    expect((denied!.error as { code: string }).code).toBe("policy.denied");
 
     // Audit row with action=policy.denied for this hook id.
     const auditRows = await ctx.db

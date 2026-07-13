@@ -97,7 +97,7 @@ describe("integration: attach flow (upload + link)", () => {
     // Upload call happened first, then the link call.
     expect(calls[0]?.url).toContain("/v1/files/inline");
     expect(calls[1]?.url).toContain("/links");
-    expect((calls[1]?.body as Record<string, unknown>)?.resource_type).toBe("conversation");
+    expect((calls[1]!.body as Record<string, unknown>)?.resource_type).toBe("conversation");
   });
 
   test("wrong tenant on link call → 403 EngineError", async () => {

@@ -976,7 +976,7 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
     const argsHashOf = async (confirmId: string): Promise<string | undefined> => {
       const rows = await approvalAuditRows(confirmId);
       const requested = rows.find((r) => r.action === AuditAction.APPROVAL_REQUESTED);
-      return (requested?.metadata as { args_hash?: string } | undefined)?.args_hash;
+      return (requested!.metadata as { args_hash?: string } | undefined)?.args_hash;
     };
     const objectHash = await argsHashOf(objectConfirmId as string);
     const stringHash = await argsHashOf(stringConfirmId as string);

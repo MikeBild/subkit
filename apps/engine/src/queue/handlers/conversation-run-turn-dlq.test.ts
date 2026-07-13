@@ -131,8 +131,8 @@ describe("conversation.run-turn.dlq consumer", () => {
     expect(audits).toHaveLength(1);
     expect(audits[0]?.result).toBe("error");
     expect(audits[0]?.reason).toBe("worker_expired");
-    expect((audits[0]?.metadata as { mcp_task_id?: string }).mcp_task_id).toBe(mcp_task_id);
-    expect((audits[0]?.metadata as { dead_lettered?: boolean }).dead_lettered).toBe(true);
+    expect((audits[0]!.metadata as { mcp_task_id?: string }).mcp_task_id).toBe(mcp_task_id);
+    expect((audits[0]!.metadata as { dead_lettered?: boolean }).dead_lettered).toBe(true);
   }, 30_000);
 
   test("B1: a dead-lettered job whose mcp_tasks row is already terminal is an idempotent no-op", async () => {

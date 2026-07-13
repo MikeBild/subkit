@@ -50,7 +50,7 @@ describe("repairToolCall — missing-tool draft-run rewrite", () => {
 
     expect(result).not.toBeNull();
     expect(result?.toolName).toBe("dry_run_workflow");
-    const parsed = JSON.parse(result?.input as string);
+    const parsed = JSON.parse(result!.input as string);
     expect(parsed).toEqual({ input: { deck: "q3", pages: 12 } });
     expect(repairFired).toBe(true);
   });
@@ -76,7 +76,7 @@ describe("repairToolCall — missing-tool draft-run rewrite", () => {
 
     expect(result).not.toBeNull();
     expect(result?.toolName).toBe("dry_run_workflow");
-    const parsed = JSON.parse(result?.input as string);
+    const parsed = JSON.parse(result!.input as string);
     expect(parsed).toEqual({ input: { workflow: "draft", input: { foo: 1 } } });
     expect(repairFired).toBe(true);
   });
@@ -102,7 +102,7 @@ describe("repairToolCall — missing-tool draft-run rewrite", () => {
     });
 
     expect(result?.toolName).toBe("run_workflow");
-    const parsed = JSON.parse(result?.input as string);
+    const parsed = JSON.parse(result!.input as string);
     expect(parsed.workflow).toBe("acme-report");
     expect(repairFired).toBe(true);
   });
@@ -150,7 +150,7 @@ describe("repairToolCall — missing-tool draft-run rewrite", () => {
     });
 
     expect(result?.toolName).toBe("find_workflow");
-    expect(JSON.parse(result?.input as string).query).toBe("berlin weather tomorrow");
+    expect(JSON.parse(result!.input as string).query).toBe("berlin weather tomorrow");
     expect(repairFired).toBe(true);
   });
 
@@ -170,7 +170,7 @@ describe("repairToolCall — missing-tool draft-run rewrite", () => {
     });
 
     expect(result?.toolName).toBe("find_workflow");
-    expect(JSON.parse(result?.input as string).query).toBe("berlin weather by date");
+    expect(JSON.parse(result!.input as string).query).toBe("berlin weather by date");
   });
 
   test("bare run_workflow with NO slug + only find_workflow → null (nothing to search on)", async () => {

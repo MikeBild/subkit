@@ -44,7 +44,7 @@ function sectionsOf(card: unknown): GoogleSection[] {
 
 function buttonsOf(section: GoogleSection | undefined): GoogleButton[] {
   const widget = section?.widgets.find((w) => "buttonList" in w);
-  return (widget?.buttonList as { buttons: GoogleButton[] }).buttons;
+  return (widget!.buttonList as { buttons: GoogleButton[] }).buttons;
 }
 
 function param(button: GoogleButton, key: string): string {

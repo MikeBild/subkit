@@ -19,7 +19,7 @@ import { getMockProvider } from "./mock-provider.ts";
 function findConversationId(prompt: LanguageModelV4CallOptions["prompt"]): string | null {
   for (let i = prompt.length - 1; i >= 0; i--) {
     const m = prompt[i];
-    if (!m || m.role !== "user") continue;
+    if (m?.role !== "user") continue;
     for (const part of m.content) {
       if (part.type === "text") {
         const match = /\[conv:([^\]]+)\]/.exec(part.text);
@@ -33,7 +33,7 @@ function findConversationId(prompt: LanguageModelV4CallOptions["prompt"]): strin
 function findLastUserText(prompt: LanguageModelV4CallOptions["prompt"]): string {
   for (let i = prompt.length - 1; i >= 0; i--) {
     const m = prompt[i];
-    if (!m || m.role !== "user") continue;
+    if (m?.role !== "user") continue;
     const pieces: string[] = [];
     for (const part of m.content) {
       if (part.type === "text") pieces.push(part.text);
