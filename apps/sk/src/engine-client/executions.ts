@@ -119,7 +119,7 @@ export const executionsMethods = {
     return this.request("GET", `/v1/executions/${encodeURIComponent(id)}/cost`);
   },
   abortExecution(this: EngineClient, id: string): Promise<void> {
-    return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/abort`);
+    return this.request("POST", `/v1/executions/${encodeURIComponent(id)}/cancel`);
   },
   streamExecution(this: EngineClient, id: string): Promise<Response> {
     return this.stream(`/v1/executions/${encodeURIComponent(id)}/stream`);

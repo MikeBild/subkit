@@ -62,10 +62,10 @@ export const knowledgeMethods = {
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
   ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/discovery", undefined, query);
+    return this.request("GET", "/v1/discovery/runs", undefined, query);
   },
   getDiscoveryRun(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/discovery/${encodeURIComponent(id)}`);
+    return this.request("GET", `/v1/discovery/runs/${encodeURIComponent(id)}`);
   },
   listDiscoveryArtifacts(
     this: EngineClient,
@@ -74,20 +74,20 @@ export const knowledgeMethods = {
   ): Promise<{ items: Record<string, unknown>[] }> {
     return this.request(
       "GET",
-      `/v1/discovery/${encodeURIComponent(runId)}/artifacts`,
+      `/v1/discovery/runs/${encodeURIComponent(runId)}/artifacts`,
       undefined,
       query,
     );
   },
   approveDiscoveryArtifact(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/discovery/${encodeURIComponent(id)}/approve`);
+    return this.request("POST", `/v1/discovery/artifacts/${encodeURIComponent(id)}/approve`);
   },
   rejectDiscoveryArtifact(
     this: EngineClient,
     id: string,
     body: { reason?: string } = {},
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/discovery/${encodeURIComponent(id)}/reject`, body);
+    return this.request("POST", `/v1/discovery/artifacts/${encodeURIComponent(id)}/reject`, body);
   },
   createDiscoveryRun(
     this: EngineClient,
@@ -103,7 +103,7 @@ export const knowledgeMethods = {
       );
     }
     if (label) form.append("label", label);
-    return this.requestForm("POST", "/v1/discovery", form);
+    return this.requestForm("POST", "/v1/discovery/runs", form);
   },
 
   // -------------------- AI --------------------
