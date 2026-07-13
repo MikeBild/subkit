@@ -7,7 +7,7 @@ arrives over chat or MCP.
 
 > **Status:** authoritative. See
 > [`apps/engine/src/tools/`](../../apps/engine/src/tools/) for the
-> implementation and `AGENTS.md` lines 142–185 for the subsystem map.
+> implementation and the subsystem map in `AGENTS.md` ("Architecture And Domain Safety").
 
 ## Why this exists
 
@@ -505,7 +505,7 @@ apps/engine/src/conversations/tools/
 - [`docs/concepts/glossary.md`](../concepts/glossary.md) — vocabulary (workflow, connector, skill).
 - [`docs/developers/input-surfaces.md`](./input-surfaces.md) — how chat/MCP/HTTP surfaces map to the conversation loop.
 - [`docs/admins/rbac-and-roles.md`](../admins/rbac-and-roles.md) — RBAC, audit, policy.
-- `AGENTS.md` lines 142–185 — subsystem map (the row for `tools` lives here).
+- `AGENTS.md`, section "Architecture And Domain Safety" — subsystem map (the row for `tools` lives here).
 
 ## Cutover state
 
