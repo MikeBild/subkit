@@ -6678,6 +6678,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agent/briefing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Domain-scoped session briefing for external coding agents
+         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, and the search-first grounding rule. Intended for SessionStart hooks.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Comma-separated domain slugs */
+                    domains: string;
+                    budget_tokens?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AgentBriefingResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/discovery/runs": {
         parameters: {
             query?: never;
@@ -14959,6 +15011,17 @@ export interface components {
         };
         RejectSkillCandidateBody: {
             reason?: string;
+        };
+        AgentBriefingResponse: {
+            markdown: string;
+            domains: string[];
+            budget_tokens: number;
+            used_tokens: number;
+            skills_full: string[];
+            skills_title_only: string[];
+            knowledge_sources: string[];
+            knowledge_sources_omitted: number;
+            proposed_candidates: number;
         };
         DiscoveryRunListResponse: {
             items: components["schemas"]["DiscoveryRun"][];
