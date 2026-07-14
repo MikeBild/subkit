@@ -165,7 +165,12 @@ export const skillCandidates = pgTable(
     evidence: jsonb("evidence").notNull(), // structured evidence summary
     confidence: skillCandidateConfidenceEnum("confidence").notNull(),
     status: skillCandidateStatusEnum("status").notNull().default("proposed"),
-    promoted_skill_id: uuid("promoted_skill_id").references(() => skills.id),
+    // set null on skill delete: the candidate's approved status is history
+    // that must survive the promoted skill's removal (a plain reference
+    // made DELETE /v1/skills/{id} 500 on any promoted skill).
+    promoted_skill_id: uuid("promoted_skill_id").references(() => skills.id, {
+      onDelete: "set null",
+    }),
     fingerprint: text("fingerprint").notNull(), // deterministic dedup key
     version: integer("version").notNull().default(1),
     // Carried onto the promoted skill on approve. Session learnings use
