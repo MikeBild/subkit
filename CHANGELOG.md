@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] – 2026-07-14
+
+### Added
+- Coding-agent session capture: `POST /v1/agent/sessions` accepts a
+  session transcript and distills durable, human-taught learnings into
+  `session_learning` skill candidates (new `skill:propose` permission;
+  analysis runs on the `agent-session.analyze` queue). Nothing goes live
+  without human review.
+- `save_learning` tool (conversation + MCP): explicitly capture a rule
+  the user taught mid-session as a proposed candidate. Additive and
+  confirmation-free; proposing never implies the authority to approve.
+- `sk learnings review` / `sk learnings list`: interactive curation of
+  proposed learnings — approve (optionally after editing) promotes to an
+  ACTIVE, domain-tagged skill that the next session briefing carries;
+  reject retires the learning for good.
+- `sk agent capture` and SessionEnd hook wiring in `sk agent init`:
+  finished Claude Code sessions in domain-declared repos are captured
+  automatically (Codex uses the printed Stop-hook snippet).
+
+### Changed
+- Skill candidates carry `tags`; approval copies them onto the promoted
+  skill. Session learnings are fingerprint-identified (normalized title +
+  domains): re-taught rules accrue evidence instead of duplicating, and
+  distinct learnings coexist in the review queue.
+
 ## [1.11.0] – 2026-07-14
 
 ### Added
