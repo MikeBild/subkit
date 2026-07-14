@@ -63,6 +63,7 @@ function toView(row: typeof skillCandidates.$inferSelect, evidenceCount = 0): Sk
     promoted_skill_id: row.promoted_skill_id,
     fingerprint: row.fingerprint,
     version: row.version,
+    tags: row.tags ?? [],
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -385,8 +386,12 @@ export async function upsertFromSignal(
     // by another endpoint/kind appearing. So we skip supersede entirely when
     // the signal is endpoint-scoped, and the `isNull(endpoint_key)` guard stops
     // a non-endpoint signal from superseding an endpoint-scoped candidate.
+    //
+    // Session learnings are fingerprint-identified the same way: every
+    // distilled learning is its own proposal and distinct learnings must
+    // COEXIST in the review queue — a new one never retires the others.
     let supersededCount = 0;
-    if (!signal.endpoint_key) {
+    if (!signal.endpoint_key && signal.pattern_kind !== "session_learning") {
       const tenantSupersedeScope = [
         eq(skillCandidates.tenant_id, tenant_id),
         eq(skillCandidates.status, "proposed"),
@@ -450,6 +455,7 @@ export async function upsertFromSignal(
         evidence: signal.evidence,
         confidence: signal.confidence,
         fingerprint: signal.fingerprint,
+        tags: signal.tags ?? [],
       })
       .returning();
 
@@ -592,6 +598,7 @@ export async function approveSkillCandidate(
           body: p.overrides?.body ?? row.body,
           status: p.overrides?.status ?? "draft",
           source: "candidate",
+          ...(row.tags && row.tags.length > 0 ? { tags: row.tags } : {}),
           examples: (blob.examples as string[]) ?? [],
           best_practices: (blob.best_practices as string[]) ?? [],
           pitfalls: (blob.pitfalls as string[]) ?? [],

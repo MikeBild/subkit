@@ -25,4 +25,17 @@ export const agentMethods = {
       ...(params.budget_tokens !== undefined ? { budget_tokens: params.budget_tokens } : {}),
     });
   },
+
+  captureAgentSession(
+    this: EngineClient,
+    body: {
+      agent: string;
+      session_id?: string;
+      repo?: string;
+      domains: string[];
+      transcript: string;
+    },
+  ): Promise<{ queued: boolean; transcript_chars: number }> {
+    return this.request("POST", "/v1/agent/sessions", body);
+  },
 };

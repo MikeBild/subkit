@@ -137,6 +137,11 @@ export const skillCandidatePatternEnum = pgEnum("skill_candidate_pattern", [
   // (one live candidate per workflow) never collides with the run-derived
   // success detector's own supersede pass.
   "authoring_capability",
+  // Learning captured from an external coding-agent session (Claude Code,
+  // Codex): distilled from a SessionEnd transcript or proposed explicitly
+  // via the `save_learning` tool. Always lands as `proposed` — the human
+  // curation gate is the whole point of the capture loop.
+  "session_learning",
 ]);
 
 export const skillCandidates = pgTable(
@@ -163,6 +168,10 @@ export const skillCandidates = pgTable(
     promoted_skill_id: uuid("promoted_skill_id").references(() => skills.id),
     fingerprint: text("fingerprint").notNull(), // deterministic dedup key
     version: integer("version").notNull().default(1),
+    // Carried onto the promoted skill on approve. Session learnings use
+    // `domain:<slug>` tags so the promoted skill lands in the same domain
+    // briefing that grounded the originating session.
+    tags: text("tags").array().notNull().default([]),
     ...timestamps,
   },
   (t) => [
