@@ -128,6 +128,7 @@ deployment — index first, then fetch just the pages they need.
 | [self-host.md](developers/self-host.md) | Zero-to-running from the Docker image, plus production topology, installation, and the operator config reference. |
 | [input-surfaces.md](developers/input-surfaces.md) | Every way users and systems reach sk: CLI, REST, MCP, chat, webhooks, schedules. |
 | [tool-palette.md](developers/tool-palette.md) | The unified tool palette and dispatcher: registry, naming, policy gates. |
+| [coding-agent-integration.md](developers/coding-agent-integration.md) | sk as the knowledge/skill source for Claude Code and Codex: session briefing, learning capture, human review, SKILL.md sync. |
 | [evidence-process.md](developers/evidence-process.md) | The evidence-first development loop and two-tier test discipline. |
 
 ---
