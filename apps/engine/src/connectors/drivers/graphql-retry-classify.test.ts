@@ -2,7 +2,7 @@
 // Pure function — no database, no network.
 
 import { describe, expect, test } from "bun:test";
-import { isGraphqlRetryable } from "./graphql-retry-classify.ts";
+import { classifyGraphqlSchemaError, isGraphqlRetryable } from "./graphql-retry-classify.ts";
 
 describe("isGraphqlRetryable · HTTP status", () => {
   test("429 is retryable", () => {
@@ -175,5 +175,140 @@ describe("isGraphqlRetryable · message substring (last resort)", () => {
 
   test("missing errors key → not retryable", () => {
     expect(isGraphqlRetryable(200, { data: { ok: true } })).toBe(false);
+  });
+});
+
+describe("classifyGraphqlSchemaError · no signal", () => {
+  test("missing errors key → not schema-shaped", () => {
+    expect(classifyGraphqlSchemaError({ data: { ok: true } })).toEqual({
+      schema_shaped: false,
+      root_field: null,
+    });
+  });
+
+  test("empty errors array → not schema-shaped", () => {
+    expect(classifyGraphqlSchemaError({ errors: [] })).toEqual({
+      schema_shaped: false,
+      root_field: null,
+    });
+  });
+
+  test("errors with unrelated code → not schema-shaped", () => {
+    expect(
+      classifyGraphqlSchemaError({
+        errors: [{ message: "boom", extensions: { code: "UNAUTHENTICATED" } }],
+      }),
+    ).toEqual({ schema_shaped: false, root_field: null });
+  });
+});
+
+describe("classifyGraphqlSchemaError · structured extensions.code", () => {
+  test("GRAPHQL_VALIDATION_FAILED code → schema-shaped, root field from qualified message", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [
+        {
+          message: "Cannot query field Query.chargers",
+          extensions: { code: "GRAPHQL_VALIDATION_FAILED" },
+        },
+      ],
+    });
+    expect(verdict.schema_shaped).toBe(true);
+    expect(verdict.root_field).toBe("chargers");
+  });
+
+  test("errorType FieldUndefined (graphql-java) → schema-shaped", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [{ message: "no such field", errorType: "FieldUndefined" }],
+    });
+    expect(verdict.schema_shaped).toBe(true);
+  });
+
+  test("extensions.classification NOT_IMPLEMENTED → schema-shaped", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [{ message: "unsupported", extensions: { classification: "NOT_IMPLEMENTED" } }],
+    });
+    expect(verdict.schema_shaped).toBe(true);
+  });
+});
+
+describe("classifyGraphqlSchemaError · message-phrase fallback (no structured fields)", () => {
+  test("'cannot query field' phrase with single-quoted field name extracts root_field", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [{ message: "Cannot query field 'chargers' on type Query" }],
+    });
+    expect(verdict.schema_shaped).toBe(true);
+    expect(verdict.root_field).toBe("chargers");
+  });
+
+  test("Hasura 'not found in type' phrase → schema-shaped", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [{ message: "field 'widgets' not found in type: 'query_root'" }],
+    });
+    expect(verdict.schema_shaped).toBe(true);
+    expect(verdict.root_field).toBe("widgets");
+  });
+
+  test("double-quoted 'cannot query field' phrase extracts root_field", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [{ message: 'Cannot query field "widgets" on type "Query".' }],
+    });
+    expect(verdict.schema_shaped).toBe(true);
+    expect(verdict.root_field).toBe("widgets");
+  });
+
+  test("phrase without any extractable field name → schema-shaped with null root_field", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [{ message: "not_implemented: this operation has no resolver" }],
+    });
+    expect(verdict.schema_shaped).toBe(true);
+    expect(verdict.root_field).toBeNull();
+  });
+
+  test("prose message with no schema phrase → not schema-shaped", () => {
+    expect(
+      classifyGraphqlSchemaError({ errors: [{ message: "internal server hiccup, try later" }] }),
+    ).toEqual({ schema_shaped: false, root_field: null });
+  });
+});
+
+describe("classifyGraphqlSchemaError · transient beats schema", () => {
+  test("a throttled entry is never classified as schema drift even with a schema-sounding message", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [
+        {
+          message: "cannot query field while throttled",
+          extensions: { code: "THROTTLING" },
+        },
+      ],
+    });
+    expect(verdict).toEqual({ schema_shaped: false, root_field: null });
+  });
+
+  test("mixed batch: transient entry skipped, schema entry still classified", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [
+        { message: "rate limited", extensions: { code: "THROTTLING" } },
+        { message: "Cannot query field 'ghost' on type Query", extensions: {} },
+      ],
+    });
+    expect(verdict.schema_shaped).toBe(true);
+    expect(verdict.root_field).toBe("ghost");
+  });
+
+  test("non-object entries in the errors array are skipped without throwing", () => {
+    expect(classifyGraphqlSchemaError({ errors: [null, "not-an-object", 42] })).toEqual({
+      schema_shaped: false,
+      root_field: null,
+    });
+  });
+
+  test("first matching root_field wins when multiple schema entries are present", () => {
+    const verdict = classifyGraphqlSchemaError({
+      errors: [
+        { message: "Cannot query field 'first' on type Query" },
+        { message: "Cannot query field 'second' on type Query" },
+      ],
+    });
+    expect(verdict.root_field).toBe("first");
   });
 });

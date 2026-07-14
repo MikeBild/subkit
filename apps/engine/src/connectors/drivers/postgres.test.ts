@@ -1,0 +1,248 @@
+// Real-Postgres driver tests. The `pg` driver is a thin wrapper over the
+// `pg` client library, so mocking Postgres would just re-describe the
+// mock — these tests run against the compose Postgres instance instead
+// (mirrors the `REQUIRES_PG=0` skip pattern used across the repo for
+// environments without Docker/Postgres).
+//
+// Coverage focus: pool lifecycle (open/reuse/close/evict), probe success +
+// the two SQLSTATE-driven error classifications (28P01 bad password,
+// 3D000 missing database), parameterised query + row-count reporting,
+// multi-statement transactions (commit, rollback-on-error, the
+// `onStatement` guard hook), and the server-side cursor streaming path.
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import type { ConnectorView } from "../types.ts";
+import {
+  closeAllPools,
+  closePoolForConnector,
+  getPoolForConnector,
+  pgQueryCursor,
+  pgQueryWithCount,
+  pgTransaction,
+  probePgConnector,
+} from "./postgres.ts";
+
+const skip = process.env.REQUIRES_PG === "0";
+
+let ctx: TestDb;
+let counter = 0;
+
+/** Build a minimal fixture ConnectorView pointing at the scratch database.
+ *  Each call mints a fresh `id` so pool-cache tests never collide across
+ *  test cases (the pool map is keyed by `id:environment`). */
+function makeConnector(overrides: Partial<ConnectorView> = {}): ConnectorView {
+  counter += 1;
+  return {
+    id: `pg-driver-test-${counter}`,
+    tenant_id: "tenant-pg-driver-test",
+    slug: `pg-driver-test-${counter}`,
+    display_name: "pg driver test",
+    driver: "postgres",
+    environment: "dev",
+    auth_type: "none",
+    base_url: null,
+    dsn: ctx.url,
+    config: {},
+    template_slug: null,
+    template_snapshot: null,
+    ...overrides,
+  } as unknown as ConnectorView;
+}
+
+beforeAll(async () => {
+  if (skip) return;
+  ctx = await createTestDb("pg-driver-unit");
+  await ctx.pool.query("CREATE TABLE scratch_items (id serial primary key, name text not null)");
+}, 60_000);
+
+afterEach(async () => {
+  if (skip) return;
+  await ctx.pool.query("TRUNCATE scratch_items RESTART IDENTITY");
+});
+
+afterAll(async () => {
+  if (skip) return;
+  await closeAllPools();
+  await ctx.cleanup();
+}, 30_000);
+
+describe.skipIf(skip)("postgres driver — pool lifecycle", () => {
+  test("getPoolForConnector throws when dsn is missing", () => {
+    const c = makeConnector({ dsn: null });
+    expect(() => getPoolForConnector(c)).toThrow(/no dsn/);
+  });
+
+  test("getPoolForConnector returns the same pool for repeated calls on the same connector", () => {
+    const c = makeConnector();
+    const p1 = getPoolForConnector(c);
+    const p2 = getPoolForConnector(c);
+    expect(p1).toBe(p2);
+  });
+
+  test("closePoolForConnector is idempotent when no pool has been opened yet", async () => {
+    const c = makeConnector();
+    await expect(closePoolForConnector(c)).resolves.toBeUndefined();
+  });
+
+  test("closePoolForConnector evicts the cached pool; the next call opens a fresh one", async () => {
+    const c = makeConnector();
+    const p1 = getPoolForConnector(c);
+    await closePoolForConnector(c);
+    const p2 = getPoolForConnector(c);
+    expect(p2).not.toBe(p1);
+    await closePoolForConnector(c);
+  });
+});
+
+describe.skipIf(skip)("probePgConnector", () => {
+  test("ok:true against the reachable scratch database", async () => {
+    const probe = await probePgConnector(makeConnector());
+    expect(probe.ok).toBe(true);
+    expect(probe.latency_ms).toBeGreaterThanOrEqual(0);
+    expect(probe.error_code).toBeUndefined();
+  });
+
+  test("ok:false credential_missing when the connector has no dsn", async () => {
+    const probe = await probePgConnector(makeConnector({ dsn: null }));
+    expect(probe.ok).toBe(false);
+    expect(probe.error_code).toBe("credential_missing");
+    expect(probe.detail).toContain("no dsn");
+    expect(probe.latency_ms).toBe(0);
+  });
+
+  test("ok:false credential_invalid on a bad password (SQLSTATE 28P01)", async () => {
+    const bad = new URL(ctx.url);
+    bad.password = "definitely-wrong-password";
+    const probe = await probePgConnector(makeConnector({ dsn: bad.toString() }));
+    expect(probe.ok).toBe(false);
+    expect(probe.error_code).toBe("credential_invalid");
+  });
+
+  test("ok:false remote_resource_not_found when the database doesn't exist (SQLSTATE 3D000)", async () => {
+    const bad = new URL(ctx.url);
+    bad.pathname = "/no_such_database_at_all_xyz";
+    const probe = await probePgConnector(makeConnector({ dsn: bad.toString() }));
+    expect(probe.ok).toBe(false);
+    expect(probe.error_code).toBe("remote_resource_not_found");
+  });
+});
+
+describe.skipIf(skip)("pgQueryWithCount", () => {
+  test("SELECT returns rows and a matching row_count", async () => {
+    const res = await pgQueryWithCount<{ n: number }>({
+      connector: makeConnector(),
+      sql: "SELECT 1 as n",
+    });
+    expect(res.rows).toEqual([{ n: 1 }]);
+    expect(res.row_count).toBe(1);
+  });
+
+  test("parameterised INSERT without RETURNING reports row_count but no rows", async () => {
+    const res = await pgQueryWithCount({
+      connector: makeConnector(),
+      sql: "INSERT INTO scratch_items (name) VALUES ($1), ($2)",
+      params: ["a", "b"],
+    });
+    expect(res.rows).toEqual([]);
+    expect(res.row_count).toBe(2);
+  });
+
+  test("params default to an empty array when omitted", async () => {
+    const res = await pgQueryWithCount<{ n: number }>({
+      connector: makeConnector(),
+      sql: "SELECT 2 as n",
+    });
+    expect(res.rows[0]?.n).toBe(2);
+  });
+});
+
+describe.skipIf(skip)("pgTransaction", () => {
+  test("commits multiple statements atomically and reports per-statement + total counts", async () => {
+    const result = await pgTransaction<{ id: number; name: string }>({
+      connector: makeConnector(),
+      statements: [
+        { query: "INSERT INTO scratch_items (name) VALUES ($1) RETURNING id, name", params: ["x"] },
+        { query: "INSERT INTO scratch_items (name) VALUES ($1) RETURNING id, name", params: ["y"] },
+      ],
+    });
+    expect(result.rows_per_statement.length).toBe(2);
+    expect(result.rows_per_statement[0]?.[0]?.name).toBe("x");
+    expect(result.rows_per_statement[1]?.[0]?.name).toBe("y");
+    expect(result.row_count_per_statement).toEqual([1, 1]);
+    expect(result.total_row_count).toBe(2);
+    const check = await ctx.pool.query("SELECT count(*)::int as n FROM scratch_items");
+    expect(check.rows[0].n).toBe(2);
+  });
+
+  test("rolls back every statement when a later one fails", async () => {
+    await expect(
+      pgTransaction({
+        connector: makeConnector(),
+        statements: [
+          { query: "INSERT INTO scratch_items (name) VALUES ($1)", params: ["ok"] },
+          { query: "INSERT INTO scratch_items (name) VALUES ($1, $2)", params: ["bad", "extra"] },
+        ],
+      }),
+    ).rejects.toThrow();
+    const check = await ctx.pool.query("SELECT count(*)::int as n FROM scratch_items");
+    expect(check.rows[0].n).toBe(0);
+  });
+
+  test("onStatement observes rows/rowCount per index in order; a thrown guard rolls back", async () => {
+    const seenIndexes: number[] = [];
+    await expect(
+      pgTransaction({
+        connector: makeConnector(),
+        statements: [
+          { query: "INSERT INTO scratch_items (name) VALUES ($1)", params: ["a"] },
+          { query: "INSERT INTO scratch_items (name) VALUES ($1)", params: ["b"] },
+        ],
+        onStatement: (index, _rows, rowCount) => {
+          seenIndexes.push(index);
+          expect(rowCount).toBe(1);
+          if (index === 1) throw new Error("guard rejected second statement");
+        },
+      }),
+    ).rejects.toThrow("guard rejected second statement");
+    expect(seenIndexes).toEqual([0, 1]);
+    const check = await ctx.pool.query("SELECT count(*)::int as n FROM scratch_items");
+    expect(check.rows[0].n).toBe(0);
+  });
+});
+
+describe.skipIf(skip)("pgQueryCursor", () => {
+  test("streams rows across multiple fetch batches and preserves order", async () => {
+    for (let i = 0; i < 25; i++) {
+      await ctx.pool.query("INSERT INTO scratch_items (name) VALUES ($1)", [`row-${i}`]);
+    }
+    const rows = await pgQueryCursor<{ id: number; name: string }>({
+      connector: makeConnector(),
+      sql: "SELECT id, name FROM scratch_items ORDER BY id",
+      fetch_size: 10,
+    });
+    expect(rows.length).toBe(25);
+    expect(rows[0]?.name).toBe("row-0");
+    expect(rows[24]?.name).toBe("row-24");
+  });
+
+  test("empty result set returns an empty array", async () => {
+    const rows = await pgQueryCursor({
+      connector: makeConnector(),
+      sql: "SELECT * FROM scratch_items WHERE name = $1",
+      params: ["does-not-exist"],
+      fetch_size: 10,
+    });
+    expect(rows).toEqual([]);
+  });
+
+  test("a malformed query rolls back and rejects", async () => {
+    await expect(
+      pgQueryCursor({
+        connector: makeConnector(),
+        sql: "SELECT * FROM no_such_table_xyz",
+        fetch_size: 10,
+      }),
+    ).rejects.toThrow();
+  });
+});
