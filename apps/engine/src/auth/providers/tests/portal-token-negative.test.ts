@@ -9,12 +9,12 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { _drainAuditWritesForTests } from "../../../audit/audit.ts";
 import type { Db } from "../../../db/client.ts";
 import { auditLog, portalTokens, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { generatePortalToken } from "../../../identity/portal-token.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
+import { waitFor } from "../../../test-helpers/determinism/wait.ts";
 import { createPortalTokenProvider } from "../portal-token.ts";
 
 let testDb: TestDb;
@@ -102,14 +102,21 @@ describe("portal-token provider — negative paths", () => {
     const principal = await provider.resolve(bearerReq(tampered));
     expect(principal).toBeNull();
 
-    await _drainAuditWritesForTests();
-    const rows = await db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, issued.id)));
-    expect(rows.some((r) => r.action === "policy.denied" && r.reason === "hash_mismatch")).toBe(
-      true,
+    // Poll for THIS test's audit row instead of draining the process-global
+    // pending-writes set: under a full-suite run the drain awaits foreign
+    // writes too, and one hung neighbor (poisoned pool) stalls it for the
+    // whole test timeout.
+    const denied = await waitFor(
+      async () => {
+        const rows = await db
+          .select()
+          .from(auditLog)
+          .where(and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, issued.id)));
+        return rows.find((r) => r.action === "policy.denied" && r.reason === "hash_mismatch");
+      },
+      { label: "policy.denied hash_mismatch audit entry", sleepMs: 25 },
     );
+    expect(denied.action).toBe("policy.denied");
   });
 
   test("revoked portal token returns null", async () => {
