@@ -4,7 +4,7 @@ name: sk Platform Reference — Knowledge Sources & Skills
 description: How Skills and Knowledge Sources differ, when to use which, how the engine processes and searches knowledge, and how to model a whole business domain with a connector plus skills plus knowledge sources.
 tags: [sk-platform-reference, skills, knowledge-sources, domain-modeling, concepts]
 scope: global
-version: 1
+version: 2
 ---
 
 # Knowledge Sources & Skills
@@ -92,6 +92,25 @@ The shape is domain-agnostic. The same three primitives model an expense policy,
 tax law, a product catalog, or music theory — a `music-theory-authoring` Skill
 for the conventions plus `harmonic-functions`, `chord-voicings`, and a glossary
 as Knowledge Sources.
+
+## Coding-agent sessions: briefing in, learnings back
+
+Domains connect Skills and Knowledge Sources to external coding agents
+(Claude Code, Codex). A domain is the tag `domain:<slug>` on both primitives;
+a repo declares which domains it works in via `.sk/agent.json` (written by
+`sk agent init`).
+
+- **In:** every new session gets a budgeted briefing (`GET /v1/agent/briefing`)
+  carrying the domain's active Skills verbatim and an INDEX of its Knowledge
+  Sources — details stay behind `search_knowledge_v2` so sessions look up
+  instead of preloading. `sk skills sync` additionally materializes the Skills
+  as SKILL.md files for offline use.
+- **Back:** session transcripts (`POST /v1/agent/sessions`, wired by the
+  SessionEnd hook) and explicit `save_learning` calls produce
+  `session_learning` Skill Candidates. They coexist in the review queue,
+  dedup by normalized title + domains, and become active domain-tagged Skills
+  only through `sk learnings review` — the same human gate every other
+  candidate passes.
 
 ## Creating each
 

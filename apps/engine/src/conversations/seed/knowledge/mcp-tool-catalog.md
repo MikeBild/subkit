@@ -254,6 +254,12 @@ Proposed (not auto-applied) improvements.
 - Skill candidates / suggestions: `list_skill_candidates`, `get_skill_candidate`,
   `list_skill_suggestions` **[authoring]**; `approve_skill_candidate` **[admin]**.
 - Capability gaps: `list_capability_gaps` **[authoring]**.
+- Session learnings: `save_learning` **[authoring]** — explicitly capture a durable
+  rule the user taught in the current session as a PROPOSED `session_learning`
+  skill candidate (`{ title, body, domains?, pitfalls? }`; domains land as
+  `domain:<slug>` tags). Additive and confirmation-free: it only feeds the human
+  review queue (`sk learnings review`), never live knowledge. Re-saving the same
+  title in the same domains updates the existing proposal instead of duplicating.
 - Discovery: `list_discovery_artifacts`, `get_discovery_artifact` **[authoring]**;
   `approve_discovery_artifact` **[admin]**.
 
