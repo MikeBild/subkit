@@ -49,12 +49,43 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
     return;
   }
 
-  const stamped = await setMcpTaskFailureIfNotTerminal(
-    data.tenant_id,
-    data.mcp_task_id,
-    WORKER_EXPIRED_FAILURE_REASON,
-    db,
-  );
+  // Failure stamp + audit row commit as ONE unit: the audit is the
+  // operator-visible evidence of the expiry, and an observer who can see
+  // `failure_reason` must also find the audit row (a two-commit sequence
+  // left a window where the state change was visible without evidence).
+  const stamped = await db.transaction(async (tx) => {
+    const didStamp = await setMcpTaskFailureIfNotTerminal(
+      data.tenant_id,
+      data.mcp_task_id,
+      WORKER_EXPIRED_FAILURE_REASON,
+      tx,
+    );
+    if (!didStamp) return false;
+
+    // The conversation_id is needed for the audit resource_id; fall back
+    // to a re-read only when the envelope somehow omits it.
+    let conversationId = data.conversation_id;
+    if (!conversationId) {
+      const row = await getMcpTask(data.tenant_id, data.mcp_task_id, tx);
+      conversationId = row?.conversation_id ?? "";
+    }
+
+    await auditAwait(
+      {
+        tenant_id: data.tenant_id,
+        actor_type: data.actor_id ? "user" : "system",
+        actor_id: data.actor_id ?? null,
+        action: AuditAction.CONVERSATION_TURN_FAILED,
+        resource_type: "conversation",
+        resource_id: conversationId,
+        result: "error",
+        reason: WORKER_EXPIRED_FAILURE_REASON,
+        metadata: { mcp_task_id: data.mcp_task_id, kind: data.kind, dead_lettered: true },
+      },
+      tx,
+    );
+    return true;
+  });
   if (!stamped) {
     // The row is already terminal — the worker finished before the
     // process died, or this DLQ job is a redelivery. Idempotent no-op.
@@ -65,29 +96,6 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
     });
     return;
   }
-
-  // The conversation_id is needed for the audit resource_id; fall back
-  // to a re-read only when the envelope somehow omits it.
-  let conversationId = data.conversation_id;
-  if (!conversationId) {
-    const row = await getMcpTask(data.tenant_id, data.mcp_task_id, db);
-    conversationId = row?.conversation_id ?? "";
-  }
-
-  await auditAwait(
-    {
-      tenant_id: data.tenant_id,
-      actor_type: data.actor_id ? "user" : "system",
-      actor_id: data.actor_id ?? null,
-      action: AuditAction.CONVERSATION_TURN_FAILED,
-      resource_type: "conversation",
-      resource_id: conversationId,
-      result: "error",
-      reason: WORKER_EXPIRED_FAILURE_REASON,
-      metadata: { mcp_task_id: data.mcp_task_id, kind: data.kind, dead_lettered: true },
-    },
-    db,
-  );
 
   log.queue.job.completed({
     msg: "conversation.run-turn.dlq job — mcp_tasks row marked failed (worker_expired)",
