@@ -6730,6 +6730,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agent/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Capture a coding-agent session transcript for learning distillation
+         * @description Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` skill candidates that wait for human review — nothing goes live from this endpoint.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AgentSessionCaptureBody"];
+                };
+            };
+            responses: {
+                /** @description Accepted — analysis queued */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AgentSessionCaptureResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/discovery/runs": {
         parameters: {
             query?: never;
@@ -14977,7 +15029,7 @@ export interface components {
             endpoint_key: string | null;
             workflow_id: string | null;
             /** @enum {string} */
-            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability";
+            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning";
             title: string;
             body: string;
             /** @default [] */
@@ -14996,6 +15048,8 @@ export interface components {
             promoted_skill_id: string | null;
             fingerprint: string;
             version: number;
+            /** @default [] */
+            tags: string[];
             created_at: string;
             updated_at: string;
         };
@@ -15022,6 +15076,22 @@ export interface components {
             knowledge_sources: string[];
             knowledge_sources_omitted: number;
             proposed_candidates: number;
+        };
+        AgentSessionCaptureResponse: {
+            queued: boolean;
+            transcript_chars: number;
+        };
+        AgentSessionCaptureBody: {
+            /**
+             * @description Producing agent, e.g. claude-code, codex
+             * @example claude-code
+             */
+            agent: string;
+            session_id?: string;
+            repo?: string;
+            /** @default [] */
+            domains: string[];
+            transcript: string;
         };
         DiscoveryRunListResponse: {
             items: components["schemas"]["DiscoveryRun"][];

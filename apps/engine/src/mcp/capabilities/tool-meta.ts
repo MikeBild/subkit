@@ -63,6 +63,9 @@ const ADDITIVE_WRITES: ReadonlySet<string> = new Set([
   "conversation_start",
   "conversation_append",
   "conversation_respond_elicitation",
+  // Creates an inert `proposed` skill candidate — the human approve gate
+  // is downstream, so gating the proposal itself buys no safety.
+  "save_learning",
 ]);
 
 /**

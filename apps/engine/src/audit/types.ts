@@ -415,6 +415,9 @@ export const AuditAction = {
   SKILL_CANDIDATE_REJECTED: "skill_candidate.rejected",
   SKILL_CANDIDATE_SUPERSEDED: "skill_candidate.superseded",
 
+  // Coding-agent session capture (transcripts → learning candidates)
+  AGENT_SESSION_CAPTURED: "agent_session.captured",
+
   SYSTEM_STARTUP: "system.startup",
 
   // Authentication failures — SOC 2 CC6.1, GDPR Art. 32

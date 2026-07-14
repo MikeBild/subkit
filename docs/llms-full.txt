@@ -825,6 +825,8 @@ flowchart LR
     Drift --> Patch["Patch Candidate<br/>(operator-reviewed)"]
     Run --> Pattern["Recurring pattern"]
     Pattern --> SkillC["Skill Candidate<br/>(operator-promoted)"]
+    Session["Coding-agent session"] --> Learning["Session learning<br/>(operator-reviewed)"]
+    Learning --> SkillC
     Patch --> Author["Better authoring"]
     SkillC --> Author
     Author --> Run
@@ -836,7 +838,14 @@ confidence scores and links to the supporting executions. Self-healing drift
 detection keeps workflows healthy as connected systems change, proposing the
 smallest safe fix as a Patch Candidate.
 
-Same shape both times: the engine surfaces proposals, humans decide. The engine
+External coding-agent sessions (Claude Code, Codex) feed the same queue: a
+SessionEnd hook posts the transcript to `POST /v1/agent/sessions` for
+distillation, and the agent can save an explicitly taught rule mid-session via
+the `save_learning` tool. Both paths produce `session_learning` Skill
+Candidates reviewed with `sk learnings review`; an approved learning becomes an
+active, domain-tagged Skill that the next session briefing carries.
+
+Same shape every time: the engine surfaces proposals, humans decide. The engine
 gets smarter over time — but only with human approval at each step.
 
 ---
@@ -4846,7 +4855,7 @@ every API call.
 
 | command | requires | description | subcommands |
 | ------- | -------- | ----------- | ----------- |
-| `sk agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `init` |
+| `sk agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init` |
 | `sk apikeys` | `api_key:read` | Manage API keys | `create`, `list`, `revoke`, `rotate` |
 | `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
 | `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show`, `tail` |
@@ -4869,6 +4878,7 @@ every API call.
 | `sk invites` | `identity:read` | Manage user-provisioning invites | `list`, `revoke` |
 | `sk join` | — | Redeem an invite to provision your personal API key (no login required) | — |
 | `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `list`, `patch`, `search` |
+| `sk learnings` | `skill:read` | Review learnings captured from coding-agent sessions | `list`, `review` |
 | `sk login` | — | Authenticate against a subkit engine | — |
 | `sk logout` | — | Drop the active profile | — |
 | `sk logs` | `audit:read` | Tail the engine's runtime log ring. --follow streams via SSE; --since accepts 5m / 2h / 1d / ISO-8601. | — |

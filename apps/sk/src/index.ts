@@ -37,6 +37,7 @@ import { installCommand } from "./commands/install.ts";
 import { invitesCommand } from "./commands/invites.ts";
 import { joinCommand } from "./commands/join.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
+import { learningsCommand } from "./commands/learnings.ts";
 import { logsCommand } from "./commands/logs.ts";
 import { mcpServersCommand } from "./commands/mcp-servers.ts";
 import { notificationsCommand } from "./commands/notifications.ts";
@@ -603,6 +604,7 @@ const mainCommand = defineCommand({
     attach: attachCommand,
     auth: authCommand,
     agent: agentCommand,
+    learnings: learningsCommand,
     // operator commands
     workflows: workflowsCommand,
     connectors: connectorsCommand,
@@ -834,6 +836,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   attach: { command: attachCommand, requires: "file:write" },
   auth: { command: authCommand, requires: "connector:write" },
   agent: { command: agentCommand, requires: "skill:read" },
+  learnings: { command: learningsCommand, requires: "skill:read" },
   // operator
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },

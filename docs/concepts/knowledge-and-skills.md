@@ -123,6 +123,8 @@ flowchart LR
     Drift --> Patch["Patch Candidate<br/>(operator-reviewed)"]
     Run --> Pattern["Recurring pattern"]
     Pattern --> SkillC["Skill Candidate<br/>(operator-promoted)"]
+    Session["Coding-agent session"] --> Learning["Session learning<br/>(operator-reviewed)"]
+    Learning --> SkillC
     Patch --> Author["Better authoring"]
     SkillC --> Author
     Author --> Run
@@ -134,7 +136,14 @@ confidence scores and links to the supporting executions. Self-healing drift
 detection keeps workflows healthy as connected systems change, proposing the
 smallest safe fix as a Patch Candidate.
 
-Same shape both times: the engine surfaces proposals, humans decide. The engine
+External coding-agent sessions (Claude Code, Codex) feed the same queue: a
+SessionEnd hook posts the transcript to `POST /v1/agent/sessions` for
+distillation, and the agent can save an explicitly taught rule mid-session via
+the `save_learning` tool. Both paths produce `session_learning` Skill
+Candidates reviewed with `sk learnings review`; an approved learning becomes an
+active, domain-tagged Skill that the next session briefing carries.
+
+Same shape every time: the engine surfaces proposals, humans decide. The engine
 gets smarter over time — but only with human approval at each step.
 
 ---

@@ -327,6 +327,13 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   load_skill: {
     defaultMode: "no_confirm",
   },
+  // save_learning creates an INERT `proposed` skill candidate (human
+  // review gate before anything goes live). Confirming the proposal
+  // itself would gate the capture loop for no safety gain — the
+  // approve step IS the confirmation.
+  save_learning: {
+    defaultMode: "no_confirm",
+  },
   run_workflow: {
     defaultMode: "confirm_before_execution",
     computeModeFromInput: (input) => {
@@ -647,6 +654,7 @@ export const MCP_TURN_KEEP_PAUSE_WRITE_TOOLS: ReadonlySet<string> = new Set([
   // Pinned no_confirm by default, but confirm-capable via per-conversation
   // override — an operator who explicitly gated it gets the pause honoured.
   "load_skill",
+  "save_learning",
   // Dynamic confirm-capable tools (computeModeFromInput can upgrade them):
   // prod probes and connector writes go against live vendor systems.
   "call_connector",
