@@ -182,6 +182,12 @@
     },
     {
       "audience": "developers",
+      "path": "docs/developers/coding-agent-integration.md",
+      "title": "Coding-Agent Integration (Claude Code & Codex)",
+      "summary": "sk can act as the central knowledge and skill source for your coding agents."
+    },
+    {
+      "audience": "developers",
       "path": "docs/developers/evidence-process.md",
       "title": "Evidence process — verifying a behavioral / LLM-path change",
       "summary": "Outcome: changes to LLM-driven paths ship proven, not guessed."

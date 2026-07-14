@@ -1,10 +1,10 @@
 ---
 slug: sk-ref-cli
 name: sk Platform Reference — sk CLI
-description: Exhaustive reference for the sk command-line client — every top-level command, headless mode, profiles, the sk mcp stdio proxy, settings, and bootstrap flows.
+description: Exhaustive reference for the sk command-line client — every top-level command, headless mode, profiles, the sk mcp stdio proxy, settings, bootstrap flows, and the coding-agent integration commands (agent, learnings, skills sync).
 tags: [sk-platform-reference, cli, sk-cli, headless, profiles, mcp, settings, bootstrap]
 scope: global
-version: 1
+version: 2
 ---
 
 # sk CLI Overview
@@ -176,6 +176,16 @@ Conversation sessions are cached locally in `~/.sk/sessions/` so `-c`/`-r` and a
 - `sk patch-candidates` (`workflow:read`) — manage workflow patch candidates: `approve`, `get`, `list`, `reject`.
 - `sk skill-candidates` (`skill:read`) — manage proposed skill candidates: `approve`, `get`, `list`, `reject`.
 - `sk review` (`workflow:read`) — aggregated approval digest: pending patch candidates, proposed skill candidates, and recent failed executions.
+
+# Coding-Agent Integration: sk agent, sk learnings, sk skills sync
+
+These commands connect external coding agents (Claude Code, Codex) to the engine's domain knowledge. A repo declares its domains in `.sk/agent.json` (`{"domains": ["<slug>"]}`); domains are the tag convention `domain:<slug>` on Skills and Knowledge Sources.
+
+- `sk agent init --domains <a,b>` (`skill:read`) — writes `.sk/agent.json`, idempotently wires the Claude Code hooks in `~/.claude/settings.json` (SessionStart → briefing injection incl. re-injection after compaction; SessionEnd → transcript capture), and prints the Codex hook snippets plus the MCP registration commands for both agents.
+- `sk agent briefing` — prints the domain-scoped session briefing (active domain skills, knowledge index, search-first grounding rule) fetched from `GET /v1/agent/briefing`. `--hook` is the SessionStart-hook mode: reads the hook JSON from stdin, resolves `.sk/agent.json` from the session cwd, and NEVER fails the session — errors degrade to empty output + exit 0 and land in `~/.sk/debug.log`. `--domains` and `--budget` override the repo declaration.
+- `sk agent capture` — posts a session transcript to `POST /v1/agent/sessions` for learning distillation. `--hook` is the SessionEnd/Stop-hook mode (transcript path from the hook payload, silent-fail); manual use takes `--transcript <path>` plus optional `--agent`, `--session-id`, `--domains`. Captures only in repos with declared domains. Distillation extracts ONLY durable, human-taught rules; results are `session_learning` skill candidates — never live knowledge.
+- `sk learnings` (`skill:read`; approve/reject enforce `skill:write` server-side) — the human curation gate: `list` shows proposed session learnings, `review` walks them interactively (approve → ACTIVE domain-tagged skill that the next briefing carries; edit-then-approve; reject retires the learning's fingerprint for good; skip).
+- `sk skills sync` — materializes the repo's active domain skills as Agent-Skills-standard `SKILL.md` directories into `.claude/skills/` and `.agents/skills/`. Only directories carrying the sk managed-marker are created, updated, or pruned; hand-authored skills are never touched. Idempotent; re-run after approving learnings.
 
 # Files, Extract, Attach
 
