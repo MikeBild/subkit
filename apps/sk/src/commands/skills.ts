@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import * as prompts from "@clack/prompts";
 import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
@@ -5,6 +7,94 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { planSync, SKILL_TARGET_DIRS, type SyncSkill } from "../lib/skill-sync.ts";
+import { AGENT_FILE_RELPATH, findAgentFile } from "./agent.ts";
+
+const syncCommand = defineCommand({
+  meta: {
+    name: "sync",
+    description: "Materialize domain skills as SKILL.md for Claude Code and Codex",
+  },
+  args: {
+    domains: {
+      type: "string",
+      description: "Comma-separated domain slugs (default: .sk/agent.json of the repo)",
+    },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    try {
+      const fromFile = args.domains ? null : findAgentFile(process.cwd());
+      const domains = args.domains
+        ? args.domains
+            .split(",")
+            .map((d) => d.trim())
+            .filter(Boolean)
+        : (fromFile?.config.domains ?? []);
+      if (domains.length === 0) {
+        process.stdout.write(
+          `sk skills sync: no domains — pass --domains or declare ${AGENT_FILE_RELPATH} (sk agent init)\n`,
+        );
+        process.exitCode = 2;
+        return;
+      }
+      // Root = the directory that declares the domains; a bare --domains
+      // call syncs into the current directory.
+      const root = fromFile ? dirname(dirname(fromFile.path)) : process.cwd();
+      const wantedTags = new Set(domains.map((d) => `domain:${d}`));
+
+      const { engine_url, api_key, active_tenant_id } = resolveProfile();
+      const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+      const { items } = await client.listSkills({ status: "active", limit: 500 });
+      const skills = (items as unknown as SyncSkill[]).filter((s) =>
+        (s.tags ?? []).some((t) => wantedTags.has(t)),
+      );
+
+      const summary: Record<string, { written: string[]; pruned: string[]; unchanged: number }> =
+        {};
+      for (const target of SKILL_TARGET_DIRS) {
+        const base = join(root, target);
+        const existing = new Map<string, string>();
+        if (existsSync(base)) {
+          for (const entry of readdirSync(base, { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue;
+            const mdPath = join(base, entry.name, "SKILL.md");
+            if (existsSync(mdPath)) existing.set(entry.name, readFileSync(mdPath, "utf8"));
+          }
+        }
+        const plan = planSync(skills, existing);
+        for (const [dir, content] of plan.writes) {
+          mkdirSync(join(base, dir), { recursive: true });
+          writeFileSync(join(base, dir, "SKILL.md"), content);
+        }
+        for (const dir of plan.prunes) {
+          rmSync(join(base, dir), { recursive: true, force: true });
+        }
+        summary[target] = {
+          written: [...plan.writes.keys()].sort(),
+          pruned: plan.prunes,
+          unchanged: plan.unchanged.length,
+        };
+      }
+
+      if (args.json) {
+        printJson({ root, domains, skills: skills.length, targets: summary });
+        return;
+      }
+      process.stdout.write(
+        `${pc.green("✓")} ${skills.length} skill(s) for ${domains.join(", ")} → ${root}\n`,
+      );
+      for (const [target, s] of Object.entries(summary)) {
+        process.stdout.write(
+          `  ${target}: ${s.written.length} written, ${s.unchanged} unchanged, ${s.pruned.length} pruned` +
+            `${s.written.length > 0 ? ` (${s.written.join(", ")})` : ""}\n`,
+        );
+      }
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List skills" },
@@ -201,5 +291,6 @@ export const skillsCommand = defineCommand({
     history: historyCommand,
     restore: restoreCommand,
     delete: deleteCommand,
+    sync: syncCommand,
   },
 });

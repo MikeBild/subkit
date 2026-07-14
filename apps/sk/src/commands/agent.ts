@@ -397,7 +397,9 @@ const initCommand = defineCommand({
       );
       out(`  codex mcp add sk --url ${engine_url}/mcp --bearer-token-env-var SK_API_KEY`);
       out("");
-      out("Next: verify with `sk agent briefing` in this repo.");
+      out(
+        "Next: verify with `sk agent briefing`; optionally `sk skills sync` materializes the domain skills as SKILL.md.",
+      );
     } catch (err) {
       reportCommandError(err, { json: false });
     }

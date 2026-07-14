@@ -7,7 +7,7 @@ import { proposeLearning } from "../../agent/sessions.ts";
 import type { Db } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { getSkill } from "../../skills/service.ts";
+import { deleteSkill, getSkill } from "../../skills/service.ts";
 import {
   approveSkillCandidate,
   getSkillCandidate,
@@ -91,6 +91,22 @@ describe.skipIf(skip)("session_learning capture loop", () => {
     expect(rejected).toBe(true);
     const again = await propose("Verworfene Regel");
     expect(again.action).toBe("skipped");
+  });
+
+  test("deleting a promoted skill nulls the candidate reference instead of failing", async () => {
+    // Regression: promoted_skill_id had no onDelete rule — DELETE on any
+    // promoted skill hit the FK and 500'd on prod.
+    const proposal = await propose("Löschbare Regel");
+    const approved = await approveSkillCandidate(
+      { tenant_id: tenantId, candidate_id: proposal.candidate_id ?? "", actor_id: null },
+      db,
+    );
+    if (!approved) throw new Error("approve failed");
+    const deleted = await deleteSkill(tenantId, approved.skill_id, null, db);
+    expect(deleted).toBe(true);
+    const candidate = await getSkillCandidate(tenantId, proposal.candidate_id ?? "", db);
+    expect(candidate?.status).toBe("approved");
+    expect(candidate?.promoted_skill_id).toBeNull();
   });
 
   test("approve promotes to a skill carrying the domain tags", async () => {
