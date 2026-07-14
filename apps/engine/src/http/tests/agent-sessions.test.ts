@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
 import type { AgentSessionAnalyzeJob } from "../../queue/handlers/agent-session-analyze.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -86,14 +87,21 @@ describe("POST /v1/agent/sessions — happy path", () => {
     expect(job?.domains).toEqual(["blog-de"]);
     expect(job?.transcript).toContain("Gedankenstrich");
 
-    const entries = await ctx.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.tenant_id, ctx.tenantId))
-      .orderBy(desc(auditLog.ts))
-      .limit(10);
-    const captured = entries.find((e) => e.action === "agent_session.captured");
-    expect(captured).toBeDefined();
-    expect((captured?.metadata as { agent?: string })?.agent).toBe("claude-code");
+    // The route audits fire-and-forget (repo convention for enqueue
+    // endpoints), so the entry can land AFTER the 202 — poll briefly
+    // instead of racing the async write.
+    const captured = await waitFor(
+      async () => {
+        const entries = await ctx.db
+          .select()
+          .from(auditLog)
+          .where(eq(auditLog.tenant_id, ctx.tenantId))
+          .orderBy(desc(auditLog.ts))
+          .limit(10);
+        return entries.find((e) => e.action === "agent_session.captured");
+      },
+      { label: "agent_session.captured audit entry", sleepMs: 25 },
+    );
+    expect((captured.metadata as { agent?: string })?.agent).toBe("claude-code");
   });
 });
