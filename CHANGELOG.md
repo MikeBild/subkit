@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.1] – 2026-07-14
+
+### Fixed
+- `GET /v1/skill-candidates` accepts every `pattern_kind` filter value —
+  a hand-copied subset enum silently rejected `session_learning` and
+  `authoring_capability`, breaking `sk learnings list`.
+
 ## [1.12.0] – 2026-07-14
 
 ### Added
