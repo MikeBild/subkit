@@ -75,6 +75,11 @@
   { "name": "skill:activate", "description": "Activate a skill", "resource_type": "skill" },
   { "name": "skill:archive", "description": "Archive a skill", "resource_type": "skill" },
   { "name": "skill:delete", "description": "Delete a skill", "resource_type": "skill" },
+  {
+    "name": "skill:propose",
+    "description": "Propose a skill candidate (learning) for human review",
+    "resource_type": "skill"
+  },
 
   {
     "name": "execution:read",

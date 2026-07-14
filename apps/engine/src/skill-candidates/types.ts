@@ -18,6 +18,9 @@ export const SkillCandidatePatternSchema = z.enum([
   // pattern_kind keeps the workflow-keyed supersede isolated from the
   // run-derived success detector (see db/schema/skills.ts).
   "authoring_capability",
+  // Learning captured from an external coding-agent session (transcript
+  // distillation or explicit `save_learning`). Always `proposed`.
+  "session_learning",
 ]);
 
 export type SkillCandidateStatus = z.infer<typeof SkillCandidateStatusSchema>;
@@ -47,6 +50,7 @@ export const SkillCandidateSchema = z
     promoted_skill_id: z.string().nullable(),
     fingerprint: z.string(),
     version: z.number().int(),
+    tags: z.array(z.string()).default([]),
     created_at: z.string(),
     updated_at: z.string(),
   })
@@ -84,6 +88,8 @@ export interface PatternSignal {
   doc_refs: string[];
   fingerprint: string;
   confidence: SkillCandidateConfidence;
+  /** Carried onto the promoted skill (e.g. `domain:<slug>` for session learnings). */
+  tags?: string[];
   evidence: Array<{
     execution_id?: string;
     patch_candidate_id?: string;

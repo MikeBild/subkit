@@ -2,6 +2,10 @@
 
 export * from "./boss.ts";
 export { createBoss, disposeBoss, getBoss, startBoss, stopBoss } from "./boss.ts";
+export {
+  AGENT_SESSION_ANALYZE_QUEUE,
+  type AgentSessionAnalyzeJob,
+} from "./handlers/agent-session-analyze.ts";
 export { registerAllHandlers } from "./handlers/index.ts";
 export * from "./queues.ts";
 export {
