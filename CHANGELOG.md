@@ -4,7 +4,15 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.13.2] – 2026-07-14
+## [1.13.3] – 2026-07-14
+
+### Fixed
+- CI stability: audit-log test assertions poll for their own rows instead
+  of draining the process-global pending-writes set (a hung neighboring
+  suite could stall the drain for the whole test timeout). Supersedes the
+  unreleased 1.13.1/1.13.2 tags and ships their content.
+
+## [1.13.2] – 2026-07-14 (tag never released — gate failure, superseded by 1.13.3)
 
 ### Fixed
 - Test-only audit drain awaits a snapshot of in-flight writes instead of
