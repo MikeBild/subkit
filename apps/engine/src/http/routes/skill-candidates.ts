@@ -9,6 +9,7 @@ import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../skill-candidates/index.ts";
 import {
   type ApproveSkillCandidateParams,
+  SkillCandidatePatternSchema,
   SkillCandidateSchema,
 } from "../../skill-candidates/index.ts";
 import { NotFoundError } from "../errors.ts";
@@ -33,7 +34,9 @@ const listRoute = createRoute({
         scope: z.enum(["global", "connector", "workflow"]).optional(),
         connector_id: z.string().uuid().optional(),
         workflow_id: z.string().uuid().optional(),
-        pattern_kind: z.enum(["repair_pattern", "failure_pattern", "success_pattern"]).optional(),
+        // The canonical pattern enum — a hand-copied subset here silently
+        // 400s filters for newer kinds (session_learning fell through).
+        pattern_kind: SkillCandidatePatternSchema.optional(),
         confidence: z.enum(["low", "medium", "high"]).optional(),
         limit: z.coerce.number().int().positive().max(500).optional(),
         offset: z.coerce.number().int().min(0).optional(),

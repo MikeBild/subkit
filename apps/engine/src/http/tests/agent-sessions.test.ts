@@ -104,4 +104,16 @@ describe("POST /v1/agent/sessions — happy path", () => {
     );
     expect((captured.metadata as { agent?: string })?.agent).toBe("claude-code");
   });
+
+  test("the candidate list accepts the session_learning filter (curation path)", async () => {
+    // Regression: the list route once pinned a hand-copied pattern_kind
+    // subset and 400'd `session_learning` — breaking `sk learnings list`.
+    const res = await fetch(
+      `${ctx.baseUrl}/v1/skill-candidates?status=proposed&pattern_kind=session_learning`,
+      { headers: { authorization: `Bearer ${ctx.apiKey}` } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: unknown[] };
+    expect(Array.isArray(body.items)).toBe(true);
+  });
 });

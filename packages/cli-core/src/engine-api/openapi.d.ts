@@ -6497,7 +6497,7 @@ export interface paths {
                     scope?: "global" | "connector" | "workflow";
                     connector_id?: string;
                     workflow_id?: string;
-                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern";
+                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning";
                     confidence?: "low" | "medium" | "high";
                     limit?: number;
                     offset?: number | null;
