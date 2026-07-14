@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] – 2026-07-14
+
+### Added
+- `sk skills sync` materializes active, domain-tagged skills as
+  Agent-Skills-standard `SKILL.md` directories into `.claude/skills/`
+  and `.agents/skills/` of the repo declaring the domains. Only
+  sk-managed directories (marker comment) are created, updated, or
+  pruned — hand-authored skills are never touched.
+
+### Fixed
+- Deleting a promoted skill no longer fails on the candidate's foreign
+  key: `skill_candidates.promoted_skill_id` is set null on skill delete
+  and the candidate keeps its approved status as history.
+
 ## [1.12.1] – 2026-07-14
 
 ### Fixed
