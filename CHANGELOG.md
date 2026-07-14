@@ -4,7 +4,15 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.13.1] – 2026-07-14
+## [1.13.2] – 2026-07-14
+
+### Fixed
+- Test-only audit drain awaits a snapshot of in-flight writes instead of
+  looping until the process-global set is empty — a background writer could
+  livelock the drain and time the calling test out on CI. (v1.13.1's release
+  gate tripped over exactly this; 1.13.2 ships its content.)
+
+## [1.13.1] – 2026-07-14 (tag never released — gate failure, superseded by 1.13.2)
 
 ### Added
 - Coding-agent integration guide (`docs/developers/coding-agent-integration.md`)
