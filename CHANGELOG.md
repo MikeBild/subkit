@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] – 2026-07-14
+
+### Added
+- Coding-agent integration guide (`docs/developers/coding-agent-integration.md`)
+  — the full briefing → lookup → capture → review → sync loop for Claude Code
+  and Codex, beginner-first; served via `/llms.txt` and `/llms-full.txt`.
+
+### Changed
+- The embedded platform-reference knowledge seeds (`sk-ref-cli`,
+  `sk-ref-rest-api`, `sk-ref-mcp-tools`, knowledge-and-skills) and the
+  default skills (`sk-cli-reference`, `domain-setup-onboarding`) now cover
+  the coding-agent surface, so in-product grounding answers match the
+  shipped commands and routes.
+
+### Fixed
+- The dead-letter reconciliation now stamps `mcp_tasks.failure_reason` and
+  writes the `conversation.turn_failed` audit entry in one transaction —
+  no more observation window where the state change is visible without its
+  audit evidence.
+
 ## [1.13.0] – 2026-07-14
 
 ### Added
