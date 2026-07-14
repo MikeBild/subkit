@@ -6,9 +6,13 @@
 //                       hook JSON from stdin, resolves `.sk/agent.json` from
 //                       the session cwd, and NEVER fails the session — any
 //                       error degrades to empty output and exit 0.
+//   sk agent capture    POST a finished session's transcript to the engine
+//                       for learning distillation (SessionEnd/Stop hook or
+//                       manual). Learnings land as PROPOSED candidates only.
 //   sk agent init       Declare the repo's domains (`.sk/agent.json`), wire
-//                       the Claude Code SessionStart hook, and print the
-//                       Codex hook snippet + MCP registration commands.
+//                       the Claude Code SessionStart + SessionEnd hooks, and
+//                       print the Codex hook snippet + MCP registration
+//                       commands.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -23,7 +27,11 @@ import { EngineClient } from "../engine-client.ts";
 
 export const AGENT_FILE_RELPATH = join(".sk", "agent.json");
 const HOOK_COMMAND = "sk agent briefing --hook";
+const CAPTURE_HOOK_COMMAND = "sk agent capture --hook";
 const HOOK_TIMEOUT_SECONDS = 30;
+const CAPTURE_HOOK_TIMEOUT_SECONDS = 60;
+/** Client-side transcript cap, mirrors the engine's TRANSCRIPT_MAX_CHARS. */
+const TRANSCRIPT_MAX_CHARS = 1_000_000;
 
 interface AgentFile {
   domains: string[];
@@ -57,16 +65,27 @@ export function findAgentFile(startDir: string): { path: string; config: AgentFi
   }
 }
 
-/** SessionStart hook payload (Claude Code and Codex share the shape we need). */
-function readHookCwd(): string | null {
+interface HookPayload {
+  cwd: string | null;
+  session_id: string | null;
+  transcript_path: string | null;
+}
+
+/** Hook payload from stdin (Claude Code and Codex share the fields we need). */
+function readHookPayload(): HookPayload {
+  const empty: HookPayload = { cwd: null, session_id: null, transcript_path: null };
   try {
     const raw = readFileSync(0, "utf8");
-    if (!raw.trim()) return null;
-    const payload: unknown = JSON.parse(raw);
-    const cwd = (payload as { cwd?: unknown }).cwd;
-    return typeof cwd === "string" && cwd.length > 0 ? cwd : null;
+    if (!raw.trim()) return empty;
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+    return {
+      cwd: str(payload.cwd),
+      session_id: str(payload.session_id),
+      transcript_path: str(payload.transcript_path),
+    };
   } catch {
-    return null;
+    return empty;
   }
 }
 
@@ -90,7 +109,7 @@ const briefingCommand = defineCommand({
   },
   async run({ args }) {
     try {
-      const startDir = (args.hook ? readHookCwd() : null) ?? process.cwd();
+      const startDir = (args.hook ? readHookPayload().cwd : null) ?? process.cwd();
       const fromFile = args.domains ? null : findAgentFile(startDir);
       const domains = args.domains
         ? args.domains
@@ -133,6 +152,94 @@ const briefingCommand = defineCommand({
 });
 
 // ---------------------------------------------------------------------------
+// capture
+// ---------------------------------------------------------------------------
+
+const captureCommand = defineCommand({
+  meta: {
+    name: "capture",
+    description: "Send a session transcript to the engine for learning distillation",
+  },
+  args: {
+    transcript: { type: "string", description: "Path to the transcript file (JSONL or text)" },
+    domains: {
+      type: "string",
+      description: "Comma-separated domain slugs (default: .sk/agent.json of the repo)",
+    },
+    agent: { type: "string", description: "Producing agent name", default: "claude-code" },
+    "session-id": { type: "string", description: "Session id for evidence attribution" },
+    hook: {
+      type: "boolean",
+      description: "SessionEnd/Stop-hook mode: read hook JSON from stdin, never fail",
+      default: false,
+    },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    try {
+      const payload = args.hook ? readHookPayload() : null;
+      const startDir = payload?.cwd ?? process.cwd();
+      const fromFile = args.domains ? null : findAgentFile(startDir);
+      const domains = args.domains
+        ? args.domains
+            .split(",")
+            .map((d) => d.trim())
+            .filter(Boolean)
+        : (fromFile?.config.domains ?? []);
+      // Capture only where domains are declared — every other repo's
+      // sessions are none of the engine's business (noise + privacy).
+      if (domains.length === 0) {
+        if (!args.hook) {
+          process.stdout.write(
+            `sk agent capture: no domains — pass --domains or declare ${AGENT_FILE_RELPATH}\n`,
+          );
+          process.exitCode = 2;
+        }
+        return;
+      }
+      const transcriptPath = args.transcript ?? payload?.transcript_path;
+      if (!transcriptPath) {
+        if (!args.hook) {
+          process.stdout.write("sk agent capture: --transcript <path> is required\n");
+          process.exitCode = 2;
+        }
+        return;
+      }
+      let transcript = readFileSync(transcriptPath, "utf8");
+      if (transcript.trim().length === 0) return;
+      // Corrections skew late — keep the tail when over the cap.
+      if (transcript.length > TRANSCRIPT_MAX_CHARS) {
+        transcript = transcript.slice(transcript.length - TRANSCRIPT_MAX_CHARS);
+      }
+      const { engine_url, api_key, active_tenant_id } = resolveProfile();
+      const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+      const sessionId = args["session-id"] ?? payload?.session_id;
+      const result = await client.captureAgentSession({
+        agent: args.agent,
+        ...(sessionId ? { session_id: sessionId } : {}),
+        repo: startDir,
+        domains,
+        transcript,
+      });
+      if (args.hook) return;
+      if (args.json) {
+        printJson(result);
+        return;
+      }
+      process.stdout.write(
+        `${pc.green("✓")} queued (${result.transcript_chars} chars) — review with \`sk learnings review\`\n`,
+      );
+    } catch (err) {
+      if (args.hook) {
+        debugLog("agent.capture_hook_failed", { error: String(err) });
+        return;
+      }
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
 // init
 // ---------------------------------------------------------------------------
 
@@ -141,44 +248,60 @@ interface ClaudeHookEntry {
   hooks?: Array<{ type?: string; command?: string; timeout?: number }>;
 }
 
+function eventWired(hooks: Record<string, unknown>, event: string, command: string): boolean {
+  const entries = Array.isArray(hooks[event]) ? (hooks[event] as ClaudeHookEntry[]) : [];
+  return entries.some((entry) =>
+    entry.hooks?.some((h) => typeof h.command === "string" && h.command.includes(command)),
+  );
+}
+
+function appendHookEntry(
+  hooks: Record<string, unknown>,
+  event: string,
+  entry: ClaudeHookEntry,
+): Record<string, unknown> {
+  const entries = Array.isArray(hooks[event]) ? (hooks[event] as ClaudeHookEntry[]) : [];
+  return { ...hooks, [event]: [...entries, entry] };
+}
+
 /**
- * Idempotently add the SessionStart briefing hook to a Claude Code
- * settings.json blob. Returns the updated blob, or null when already wired.
+ * Idempotently wire the SessionStart briefing hook AND the SessionEnd
+ * capture hook into a Claude Code settings.json blob. Returns the
+ * updated blob, or null when both are already wired.
  */
 export function wireClaudeSessionStartHook(
   settings: Record<string, unknown>,
 ): Record<string, unknown> | null {
-  const hooks = (settings.hooks ?? {}) as Record<string, unknown>;
-  const sessionStart = Array.isArray(hooks.SessionStart)
-    ? (hooks.SessionStart as ClaudeHookEntry[])
-    : [];
-  const wired = sessionStart.some((entry) =>
-    entry.hooks?.some((h) => typeof h.command === "string" && h.command.includes(HOOK_COMMAND)),
-  );
-  if (wired) return null;
-  return {
-    ...settings,
-    hooks: {
-      ...hooks,
-      SessionStart: [
-        ...sessionStart,
-        {
-          // `compact` re-injects the briefing after context compaction.
-          matcher: "startup|resume|compact",
-          hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT_SECONDS }],
-        },
+  let hooks = (settings.hooks ?? {}) as Record<string, unknown>;
+  let changed = false;
+  if (!eventWired(hooks, "SessionStart", HOOK_COMMAND)) {
+    hooks = appendHookEntry(hooks, "SessionStart", {
+      // `compact` re-injects the briefing after context compaction.
+      matcher: "startup|resume|compact",
+      hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT_SECONDS }],
+    });
+    changed = true;
+  }
+  if (!eventWired(hooks, "SessionEnd", CAPTURE_HOOK_COMMAND)) {
+    hooks = appendHookEntry(hooks, "SessionEnd", {
+      hooks: [
+        { type: "command", command: CAPTURE_HOOK_COMMAND, timeout: CAPTURE_HOOK_TIMEOUT_SECONDS },
       ],
-    },
-  };
+    });
+    changed = true;
+  }
+  if (!changed) return null;
+  return { ...settings, hooks };
 }
 
 function codexHookSnippet(): string {
   return [
-    "# ~/.codex/config.toml — enable hooks, then add the SessionStart hook:",
+    "# ~/.codex/config.toml — enable hooks, then add the hooks below:",
     "[features]",
     "hooks = true",
     "",
-    "# ~/.codex/hooks.json",
+    "# ~/.codex/hooks.json — Codex has no SessionEnd; Stop fires per turn and",
+    "# the capture endpoint dedups by learning fingerprint, so repeats are cheap.",
     JSON.stringify(
       {
         hooks: {
@@ -186,6 +309,17 @@ function codexHookSnippet(): string {
             {
               matcher: "startup|resume|compact",
               hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT_SECONDS }],
+            },
+          ],
+          Stop: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: `${CAPTURE_HOOK_COMMAND} --agent codex`,
+                  timeout: CAPTURE_HOOK_TIMEOUT_SECONDS,
+                },
+              ],
             },
           ],
         },
@@ -246,9 +380,9 @@ const initCommand = defineCommand({
         if (updated) {
           mkdirSync(dirname(settingsPath), { recursive: true });
           writeFileSync(settingsPath, `${JSON.stringify(updated, null, 2)}\n`);
-          out(`${pc.green("✓")} wired SessionStart hook in ${settingsPath}`);
+          out(`${pc.green("✓")} wired SessionStart + SessionEnd hooks in ${settingsPath}`);
         } else {
-          out(`${pc.dim("•")} Claude Code SessionStart hook already wired`);
+          out(`${pc.dim("•")} Claude Code hooks already wired`);
         }
       }
 
@@ -277,6 +411,7 @@ export const agentCommand = defineCommand({
   },
   subCommands: {
     briefing: briefingCommand,
+    capture: captureCommand,
     init: initCommand,
   },
 });

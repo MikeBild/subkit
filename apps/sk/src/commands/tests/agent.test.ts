@@ -35,16 +35,20 @@ describe("findAgentFile", () => {
 });
 
 describe("wireClaudeSessionStartHook", () => {
-  test("adds the SessionStart entry to empty settings", () => {
+  test("adds SessionStart briefing and SessionEnd capture entries to empty settings", () => {
     const updated = wireClaudeSessionStartHook({});
     if (!updated) throw new Error("expected settings update");
-    const sessionStart = (updated.hooks as Record<string, unknown>).SessionStart as Array<{
+    const hooks = updated.hooks as Record<string, unknown>;
+    const sessionStart = hooks.SessionStart as Array<{
       matcher: string;
       hooks: Array<{ command: string }>;
     }>;
     expect(sessionStart).toHaveLength(1);
     expect(sessionStart[0]?.matcher).toBe("startup|resume|compact");
     expect(sessionStart[0]?.hooks[0]?.command).toContain("sk agent briefing --hook");
+    const sessionEnd = hooks.SessionEnd as Array<{ hooks: Array<{ command: string }> }>;
+    expect(sessionEnd).toHaveLength(1);
+    expect(sessionEnd[0]?.hooks[0]?.command).toContain("sk agent capture --hook");
   });
 
   test("is idempotent — returns null when already wired", () => {

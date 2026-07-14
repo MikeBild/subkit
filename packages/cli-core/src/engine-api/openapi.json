@@ -8912,7 +8912,8 @@
               "failure_pattern",
               "success_pattern",
               "chained_workflow_pattern",
-              "authoring_capability"
+              "authoring_capability",
+              "session_learning"
             ]
           },
           "title": {
@@ -8978,6 +8979,13 @@
           },
           "version": {
             "type": "integer"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
           },
           "created_at": {
             "type": "string"
@@ -9100,6 +9108,61 @@
           "knowledge_sources",
           "knowledge_sources_omitted",
           "proposed_candidates"
+        ]
+      },
+      "AgentSessionCaptureResponse": {
+        "type": "object",
+        "properties": {
+          "queued": {
+            "type": "boolean"
+          },
+          "transcript_chars": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued",
+          "transcript_chars"
+        ]
+      },
+      "AgentSessionCaptureBody": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "Producing agent, e.g. claude-code, codex",
+            "example": "claude-code"
+          },
+          "session_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]*$"
+            },
+            "maxItems": 10,
+            "default": []
+          },
+          "transcript": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000000
+          }
+        },
+        "required": [
+          "agent",
+          "transcript"
         ]
       },
       "DiscoveryRunListResponse": {
@@ -22254,6 +22317,51 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AgentBriefingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent/sessions": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Capture a coding-agent session transcript for learning distillation",
+        "description": "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` skill candidates that wait for human review — nothing goes live from this endpoint.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSessionCaptureBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted — analysis queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionCaptureResponse"
                 }
               }
             }

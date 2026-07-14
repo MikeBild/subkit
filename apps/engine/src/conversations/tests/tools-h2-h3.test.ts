@@ -42,6 +42,7 @@ describe("conversation tools — registration", () => {
     "save_connector_draft",
     "search_docs",
     "search_knowledge",
+    "save_learning",
     "start_connector_from_description",
     "start_connector_from_template",
     "start_workflow_from_recipe",

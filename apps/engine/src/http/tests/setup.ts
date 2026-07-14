@@ -62,7 +62,16 @@ export interface HttpTestServer {
   cleanup: () => Promise<void>;
 }
 
-export async function createHttpTestServer(label: string): Promise<HttpTestServer> {
+export interface CreateHttpTestServerOptions {
+  /** Extra `createApp` options merged over the scaffold defaults —
+   *  e.g. an `agentSessionEnqueue` stub for routes that enqueue jobs. */
+  appOptions?: Partial<Parameters<typeof createApp>[0]>;
+}
+
+export async function createHttpTestServer(
+  label: string,
+  opts?: CreateHttpTestServerOptions,
+): Promise<HttpTestServer> {
   await ensureConfigLoaded();
   const testDb = await createTestDb(`http-${label}`);
 
@@ -119,6 +128,7 @@ export async function createHttpTestServer(label: string): Promise<HttpTestServe
     db: testDb.db,
     registry,
     rateLimit: { max: 10_000, windowMs: 60_000 },
+    ...(opts?.appOptions ?? {}),
   });
 
   // Bind a free port. Passing port=0 asks the kernel to pick.

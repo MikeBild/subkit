@@ -78,11 +78,16 @@ const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
   "get_execution",
 ]);
 
-/** `tenant_write` tools exempt from the readOnly hide because they are
- *  workflow *runs*, not config mutations — consistent with the `wf_` palette,
- *  which surfaces in product mode regardless of `readOnly`. Mirrors the
- *  search-first floor in `mcp/mode-resolver.ts` (MCP_CORE_TOOL_NAMES). */
-const READONLY_EXEMPT_RUNS: ReadonlySet<string> = new Set(["run_workflow"]);
+/** `tenant_write` tools exempt from the readOnly hide:
+ *  - `run_workflow` is a workflow *run*, not a config mutation — consistent
+ *    with the `wf_` palette, which surfaces in product mode regardless of
+ *    `readOnly`. Mirrors the search-first floor in `mcp/mode-resolver.ts`
+ *    (MCP_CORE_TOOL_NAMES).
+ *  - `save_learning` creates an INERT `proposed` skill candidate behind the
+ *    human approve gate; it is the coding-agent capture loop's explicit
+ *    channel and must stay directly callable on MCP (authoring principals
+ *    see no other tenant_write). RBAC (`skill:propose`) still gates it. */
+const READONLY_EXEMPT_RUNS: ReadonlySet<string> = new Set(["run_workflow", "save_learning"]);
 
 function visibilityFor(
   category: ToolCategory,
@@ -185,6 +190,12 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   // permission check is the authorization boundary.
   create_knowledge_source: {
     permission: "knowledge:write",
+  },
+  // save_learning creates a NEW proposed skill candidate (no pre-existing
+  // id to scope to). Deliberately `skill:propose`, NOT `skill:write` —
+  // proposing must never imply the authority to approve.
+  save_learning: {
+    permission: "skill:propose",
   },
   update_knowledge_source: {
     permission: "knowledge:write",
