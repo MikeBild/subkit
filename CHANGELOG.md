@@ -4,6 +4,35 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] – 2026-07-15
+
+### Added
+- The skill-candidates list endpoint returns `total` — the true
+  matching-row count for the applied filters, independent of the page
+  cap. The sk REPL's "Review N proposed learnings" starter now shows the
+  honest backlog (previously it plateaued at 100 and downloaded up to
+  100 full candidate payloads on every boot just to render a number).
+
+### Fixed
+- The post-ingest embedding kick is truly source-scoped: it no longer
+  sweeps the tenant's entire un-embedded connector-doc and
+  conversation-topic backlog (unbounded, with an N+1 query per
+  conversation) on every knowledge create/ingest, and it short-circuits
+  when the local embedding model is unavailable. The capped 5-minute
+  scheduler sweep keeps owning the tenant-wide backlog.
+- Knowledge tag curation: only namespace-PREFIXED tags (`domain:x`) are
+  structural; a topical tag containing a colon mid-string can be cleaned
+  by re-analysis again, and an explicit tags edit remains the one way to
+  re-home a source out of a domain (now documented).
+
+### Changed
+- Internal hardening from the post-release review: the read-only MCP
+  exemption is a declared per-tool property instead of a hand-curated
+  name set, `/learnings` and the starter action share one prompt source,
+  the REPL start-screen signals ride one boot-snapshot channel (the
+  tenant-switch re-seed is structurally shared), and the first-paint
+  contract plus the immediate-embedding behavior are pinned by tests.
+
 ## [1.14.1] – 2026-07-15
 
 ### Fixed
