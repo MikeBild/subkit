@@ -76,7 +76,7 @@ export const skillsMethods = {
   listSkillCandidates(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
+  ): Promise<{ items: Record<string, unknown>[]; total: number }> {
     return this.request("GET", "/v1/skill-candidates", undefined, query);
   },
   getSkillCandidate(this: EngineClient, id: string): Promise<Record<string, unknown>> {

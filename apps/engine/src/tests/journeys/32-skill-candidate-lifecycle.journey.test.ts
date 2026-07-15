@@ -132,6 +132,7 @@ describe("journey: skill candidate lifecycle", () => {
         workflow_id: string | null;
         evidence_count: number;
       }>;
+      total: number;
     };
     // There is exactly one proposed repair_pattern candidate.
     const repairCandidates = body.items.filter((c) => c.pattern_kind === "repair_pattern");
@@ -142,6 +143,14 @@ describe("journey: skill candidate lifecycle", () => {
     // No workflow_id on a connector-scoped signal.
     expect(candidate.workflow_id).toBeNull();
     candidateId = candidate.id;
+    expect(body.total).toBe(body.items.length);
+
+    // `total` is the true matching count, independent of the page cap.
+    const capped = await journeyFetch(ctx, "/v1/skill-candidates?status=proposed&limit=1");
+    expect(capped.status).toBe(200);
+    const cappedBody = (await capped.json()) as { items: unknown[]; total: number };
+    expect(cappedBody.items.length).toBeLessThanOrEqual(1);
+    expect(cappedBody.total).toBe(body.items.length);
   });
 
   test("AC3: get candidate shows evidence_count === 3 (exactly the seeded patches)", async () => {

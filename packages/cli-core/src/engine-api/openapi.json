@@ -8870,10 +8870,15 @@
             "items": {
               "$ref": "#/components/schemas/SkillCandidate"
             }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
-          "items"
+          "items",
+          "total"
         ]
       },
       "SkillCandidate": {
