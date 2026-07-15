@@ -8,10 +8,13 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
-import { harvestCitations } from "../../../conversations/citations.ts";
 import * as svc from "../../../conversations/index.ts";
-import { serializeEvent, withoutApprovalHandle } from "../../../conversations/index.ts";
-import type { TurnEvent } from "../../../conversations/types.ts";
+import {
+  harvestCitationsFromPersisted,
+  serializeEvent,
+  type TurnEvent,
+  withoutApprovalHandle,
+} from "../../../conversations/index.ts";
 import { monthlyUsage, resolveModelRoute } from "../../../llm/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -124,7 +127,7 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
       let turnLastAssistantId: string | null = null;
       const flushTurnCitations = async () => {
         if (turnLastAssistantId) {
-          const citations = harvestCitations(turnToolResults);
+          const citations = harvestCitationsFromPersisted(turnToolResults);
           if (citations.length > 0) {
             await stream.writeSSE(
               serializeEvent({

@@ -896,11 +896,16 @@ export async function runAuthoringPipeline(
   const nextDraft = withWorkflowDraft(currentDraft, merged, "workflow_authored_one_shot");
   // Stamp the grounding this draft was built on (a hash of the discovered
   // endpoint projection, not the data) so `/context` can flag it stale at
-  // resume when the connector schema has since changed. The draft already
-  // carries `connector_ids` (extra above), which the snapshot recompute
-  // reuses. Fail-open: a null fingerprint just means no advisory.
+  // resume when the connector schema has since changed. The connector set is
+  // stored alongside on AuthoringState — NOT on the workflow draft, whose
+  // normalize allowlist strips unknown fields — so the snapshot recompute can
+  // re-read the discovery index for exactly these connectors. Fail-open: a
+  // null fingerprint just means no advisory.
   const groundingFp = groundingFingerprint(groundingIndex);
-  if (groundingFp && nextDraft.state) nextDraft.state.grounding_fingerprint = groundingFp;
+  if (groundingFp && nextDraft.state) {
+    nextDraft.state.grounding_fingerprint = groundingFp;
+    nextDraft.state.grounding_connector_ids = connectors.map((c) => c.id);
+  }
   await ctx.setDraft(nextDraft);
 
   const findingCount = recordedEval.expressions.filter((f) => f.status !== "ok").length;

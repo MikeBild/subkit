@@ -15,6 +15,10 @@ export {
 } from "./abort.ts";
 export * from "./answer-actor.ts";
 export * from "./attachments.ts";
+// Re-exported so http/routes/conversations/stream.ts can re-derive the
+// terminal citations frame on replay through the subsystem entry point
+// (route_layering invariant) rather than reaching into ./citations.ts.
+export { type Citation, harvestCitations, harvestCitationsFromPersisted } from "./citations.ts";
 export {
   DirectInvokeError,
   type DirectInvokeOutcome,

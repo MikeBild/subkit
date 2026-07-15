@@ -13,7 +13,11 @@
 
 import type { Executor } from "../db/client.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
-import { authoringIntentFingerprint, type ConfirmIntent } from "./intent-fingerprint.ts";
+import {
+  authoringIntentFingerprint,
+  type ConfirmIntent,
+  intentHasDistinguishingAction,
+} from "./intent-fingerprint.ts";
 import { interpretConfirmDecision } from "./tools/ask-user/interpret-confirm.ts";
 
 /** Extract the confirm intent projection from a stored elicitation input. */
@@ -44,10 +48,16 @@ export async function recordDeniedIntentIfDeclined(p: {
     if (p.elicitation.tool_name !== "ask_user_confirm") return;
     if (interpretConfirmDecision(p.output) !== "declined") return;
     const confirm = confirmIntentFromInput(p.elicitation.input);
-    if (!confirm) return;
+    // Only remember declines of a concrete action; a bare question has no
+    // stable identity and would collide with unrelated questions. Skipping it
+    // here also avoids a draft-snapshot write on every plain confirmation.
+    if (!confirm || !intentHasDistinguishingAction(confirm)) return;
     const draft = await loadDraft(p.tenant_id, p.conversation_id, p.db);
     const fingerprint = authoringIntentFingerprint(confirm, draft);
     if (!fingerprint || !draft.state) return;
+    // Idempotent: skip the write when the identical decline is already
+    // stamped (a re-resolved elicitation must not append a redundant snapshot).
+    if (draft.state.last_denied_intent?.fingerprint === fingerprint) return;
     draft.state.last_denied_intent = { fingerprint, timestamp: new Date().toISOString() };
     await appendSnapshot(p.tenant_id, p.conversation_id, draft, p.db);
   } catch {

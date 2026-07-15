@@ -69,7 +69,9 @@ export async function computeGroundingStatus(
   const storedFp = draft?.state?.grounding_fingerprint;
   if (!storedFp) return null;
 
-  const connectorIds = (draft?.workflow as { connector_ids?: unknown } | undefined)?.connector_ids;
+  // The connector set the fingerprint was computed over rides on
+  // AuthoringState (the workflow draft's normalize allowlist would drop it).
+  const connectorIds = draft?.state?.grounding_connector_ids;
   if (!Array.isArray(connectorIds) || connectorIds.length === 0) {
     return { state: "unknown", advisory: null };
   }
