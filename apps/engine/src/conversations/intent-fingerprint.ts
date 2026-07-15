@@ -1,13 +1,12 @@
 // Shared draft-intent fingerprints — the identity primitive for the
-// grounding-staleness advisory (D) and sticky-no (E). Both need "a stable
-// fingerprint of an authoring draft/intent"; neither needs the parked
-// effect-summary package — they key on fingerprints that already exist
-// (`workflowDefinitionFingerprint`, and the discovered-endpoint grounding
-// projection the pipeline already builds).
+// grounding-staleness advisory and the declined-intent guard. Both need "a
+// stable fingerprint of an authoring draft/intent"; both key on fingerprints
+// that already exist (`workflowDefinitionFingerprint`, and the
+// discovered-endpoint grounding projection the pipeline already builds).
 //
 // Pure + deterministic (the determinism gate covers this file). Every
 // helper is FAIL-OPEN: it returns `null` on any error, and callers treat
-// `null` as "no fingerprint" — the advisory stays silent, the sticky-no
+// `null` as "no fingerprint" — the advisory stays silent, the declined-intent
 // guard falls through to a normal prompt. A fingerprint never fabricates a
 // block.
 
@@ -72,8 +71,9 @@ export interface ConfirmIntent {
 }
 
 /**
- * Fingerprint of an authoring INTENT — the identity sticky-no keys on to
- * recognise "the same proposal". Combines the confirm kind + commit-intent
+ * Fingerprint of an authoring INTENT — the identity the declined-intent
+ * guard keys on to recognise "the same proposal". Combines the confirm
+ * kind + commit-intent
  * with the draft's own identity (the workflow definition fingerprint when a
  * workflow draft is present). Two confirms with the same fingerprint are
  * the same ask; an edited draft yields a different one. Returns `null` on

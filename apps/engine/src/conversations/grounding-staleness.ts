@@ -1,4 +1,4 @@
-// Grounding-staleness check for the `/context` advisory (feature D).
+// Grounding-staleness check for the `/context` advisory.
 //
 // A workflow draft records the fingerprint of the grounding it was built on
 // (`AuthoringState.grounding_fingerprint`). At resume we recompute the

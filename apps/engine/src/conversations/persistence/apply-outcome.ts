@@ -20,6 +20,7 @@
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import type { AnswerActor } from "../answer-actor.ts";
+import { recordDeniedIntentIfDeclined } from "../declined-intent.ts";
 import {
   type AutoPersistDispatch,
   maybeAutoPersistFromElicitation,
@@ -67,6 +68,16 @@ export async function applyElicitationOutcome(
     conversation_id: p.conversation_id,
     elicitation_output: p.output,
     elicitation: { tool_name: p.elicitation.tool_name },
+    db: p.db,
+  });
+  // Declined-intent guard: stamp a declined confirm's intent fingerprint on
+  // the draft so an identical re-proposal short-circuits. Fail-open — runs
+  // before auto-persist, which never fires on a decline anyway.
+  await recordDeniedIntentIfDeclined({
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    elicitation: { tool_name: p.elicitation.tool_name, input: p.elicitation.input },
+    output: p.output,
     db: p.db,
   });
   return maybeAutoPersistFromElicitation({
