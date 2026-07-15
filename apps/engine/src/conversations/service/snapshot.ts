@@ -3,6 +3,7 @@
 
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
+import { getConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
 import { getConversation } from "./get.ts";
 
 export interface ContextSnapshot {
@@ -114,6 +115,16 @@ export interface ContextSnapshot {
   workflow_version: {
     workflow_id: string;
     current_version: number | null;
+  } | null;
+  /** What the LAST assembled turn dropped to fit the model context —
+   *  the in-band answer to "why doesn't the agent remember X?". Null
+   *  when no turn ran since engine start (in-process cache — see
+   *  llm/core/conversation-budget-report.ts). */
+  last_context_budget: {
+    cap_tokens: number;
+    total_tokens: number;
+    dropped_sections: string[];
+    assembled_at: string;
   } | null;
 }
 
@@ -272,5 +283,6 @@ export async function getContextSnapshot(
     latest_probe: latestProbe,
     latest_preview: latestPreview,
     workflow_version: workflowVersion,
+    last_context_budget: getConversationBudgetReport(tenant_id, conversation_id),
   };
 }

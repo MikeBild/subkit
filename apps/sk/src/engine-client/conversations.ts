@@ -305,6 +305,14 @@ export interface ConversationContextSnapshot {
     workflow_id: string;
     current_version: number | null;
   } | null;
+  /** What the LAST assembled turn dropped to fit the model context —
+   *  null when no turn ran since engine start. */
+  last_context_budget: {
+    cap_tokens: number;
+    total_tokens: number;
+    dropped_sections: string[];
+    assembled_at: string;
+  } | null;
 }
 
 export const conversationsMethods = {

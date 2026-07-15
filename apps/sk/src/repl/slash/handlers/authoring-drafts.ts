@@ -744,6 +744,16 @@ export async function dispatchAuthoringDraftSlash(
           `workflow version: ${snapshot.workflow_version.workflow_id}${v !== null ? ` · v${v}` : ""}`,
         );
       }
+      if (snapshot.last_context_budget) {
+        const b = snapshot.last_context_budget;
+        lines.push("");
+        lines.push(`context budget (last turn): ${b.total_tokens}/${b.cap_tokens} tokens`);
+        lines.push(
+          b.dropped_sections.length > 0
+            ? `  trimmed to fit: ${b.dropped_sections.join(", ")}`
+            : "  nothing was trimmed",
+        );
+      }
       return panify(ctx, "conversation context", lines);
     }
     case "approvals": {
