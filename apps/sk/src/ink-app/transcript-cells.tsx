@@ -265,7 +265,7 @@ export const MessageRow: React.FC<{
    * split words across the column origin (session 86de186b).
    */
   columns?: number;
-  /** Source refs for an assistant answer → dim "Quellen: …" footer.
+  /** Source refs for an assistant answer → dim "Sources: …" footer.
    *  Absent/empty on citation-less turns (no footer, byte-identical). */
   citations?: Citation[] | undefined;
 }> = memo(({ role, content, parts, columns, citations }) => {

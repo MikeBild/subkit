@@ -2025,7 +2025,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     !cancelled && signals.lastAssistantText ? harvestCitations(events) : [];
 
   // Prove-after made visible: emit the terminal citations frame so the
-  // client renders a "Quellen: …" footer under the answer. Pushed here —
+  // client renders a "Sources: …" footer under the answer. Pushed here —
   // after the terminal message, before the SSE `outcome` frame drops
   // `events[]` — exactly once, only when the turn cited a source. Anchors
   // to the last assistant message; the client falls back to the same.

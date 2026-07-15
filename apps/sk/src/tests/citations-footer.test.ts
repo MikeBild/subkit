@@ -9,12 +9,12 @@ describe("formatCitationsFooter", () => {
       { source_type: "knowledge_chunk", id: "2", source_name: "GitHub API" },
       { source_type: "knowledge_chunk", id: "3", source_name: "Weather Runbook" },
     ];
-    expect(formatCitationsFooter(cites)).toBe("Quellen: Weather Runbook, GitHub API");
+    expect(formatCitationsFooter(cites)).toBe("Sources: Weather Runbook, GitHub API");
   });
 
   test("falls back to id when a source has no name", () => {
     expect(formatCitationsFooter([{ source_type: "connector_doc", id: "doc-42" }])).toBe(
-      "Quellen: doc-42",
+      "Sources: doc-42",
     );
   });
 
