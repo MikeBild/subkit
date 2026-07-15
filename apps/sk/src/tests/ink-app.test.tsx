@@ -1217,6 +1217,12 @@ describe("ink-app: journey 12 — modal panes", () => {
             latest_probe: null,
             latest_preview: null,
             workflow_version: { workflow_id: "wf-1", current_version: 3 },
+            last_context_budget: {
+              cap_tokens: 100000,
+              total_tokens: 42000,
+              dropped_sections: ["recorded_endpoint_samples"],
+              assembled_at: "2026-01-01T00:00:00.000Z",
+            },
           },
         });
         return null;

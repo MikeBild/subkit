@@ -33,7 +33,6 @@
 // types from this barrel.
 
 import { getConnector } from "../../connectors/service.ts";
-import { generateMainAgentSystemPrompt } from "../../conversations/agent/context.ts";
 import { type Executor, getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { idHashesCapped } from "../../observability/id-hashes.ts";
@@ -49,14 +48,13 @@ import { LlmContextTooLarge } from "../errors.ts";
 import { renderRuntimeContextBlock } from "../runtime-context.ts";
 import type {
   AssembleContextParams,
-  AuthoringPromptHint,
   EnhancedPrompt,
   IncludedChunk,
   IncludedKnowledgeChunk,
-  LlmFlow,
   UserTurn,
 } from "../types.ts";
 import { type CacheBlocks, splitPromptIntoBlocks } from "./cache-blocks.ts";
+import { basePromptFor, type ConversationSurface } from "./context-assembler/base-prompts.ts";
 import {
   applyRuntimeTemplate,
   formatChunk,
@@ -90,10 +88,13 @@ import {
   trimCandidatesToBudget,
   trimRecipeBodiesToBudget,
 } from "./context-assembler/loaders.ts";
+import { recordConversationBudgetReport } from "./conversation-budget-report.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "./tenant-summary.ts";
 
-export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
-
+export {
+  basePromptFor,
+  type ConversationSurface,
+} from "./context-assembler/base-prompts.ts";
 export {
   applyRuntimeTemplate,
   countSkillTokens,
@@ -104,112 +105,9 @@ export {
 } from "./context-assembler/formatters.ts";
 export { detectIntentSkills } from "./context-assembler/skill-picker.ts";
 
-// Live-data assembly only. The structural prompt body (persona,
-// behaviour skills, authoring-focus blocks) is owned by the agent
-// registry — see `apps/engine/src/conversations/agent/context.ts`.
-//
-// `basePromptFor` and `BASE_SYSTEM_PROMPTS` remain the entry point
-// for one-shot flows (`generate`, `extract`, `repair`, `summarize`,
-// `discover`) that don't go through the conversation agent. The
-// `converse` flow asks the MAIN agent registry for its system prompt
-// instead — `assembleEnhancedPrompt` calls
-// `generateMainAgentSystemPrompt` and uses the result verbatim.
-
-// `suggest_next` is excluded because it has its own minimal prompt
-// assembler (`llm/core/suggestion-prompt.ts`) that intentionally does
-// NOT load skills / knowledge / docs — adding it here would invite a
-// future refactor that re-routes it through `assembleEnhancedPrompt`
-// and re-introduces the 1M-token empty-turn bug class.
-const BASE_SYSTEM_PROMPTS: Record<Exclude<LlmFlow, "converse" | "suggest_next">, string> = {
-  generate: [
-    "You are the subkit workflow engine's generate flow.",
-    "Turn the user's description into a typed WorkflowDef draft.",
-    "A WorkflowDef has a `name`, optional `slug` / `description`, and an ordered `steps[]` array.",
-    "Each step has `kind` (one of: request, transform, call, wait, branch, parallel, loop) and a unique `id`.",
-    "Prefer `request` steps with `connector_id` + `path` when a connector is in scope.",
-    "Always ground your draft in the provided Skills and connector docs. Never invent endpoints or parameters.",
-    "Emit exactly one JSON object matching the WorkflowDef schema. No surrounding prose.",
-  ].join(" "),
-  extract: [
-    "You are the subkit workflow engine's extract flow.",
-    "Read the user's sample and emit a canonical JSON representation of the structured fields it contains.",
-    "Respect the optional target hint when provided; otherwise infer the tightest schema that fits the sample.",
-    "Return one JSON object with a `schema` field describing field names and types, and a `data` field with the extracted values.",
-  ].join(" "),
-  repair: [
-    "You are the subkit workflow engine's repair flow.",
-    "A step has failed and you are given the diff between the captured response and the last known schema.",
-    "Propose the smallest possible patch that will make the step compatible with the new response shape.",
-    "Classify the patch as `safe` (schema-only), `risky` (semantic), or `blocked` (requires human review).",
-    "Return one JSON object with `patch`, `classification`, and `notes`.",
-  ].join(" "),
-  discover: [
-    "You are the subkit workflow engine's discovery flow.",
-    "Analyze the given file content to identify three kinds of artifacts:",
-    "1. Connectors: API integrations (from OpenAPI specs, code with API calls, config files with connection strings).",
-    "2. Skills: operational rules, compliance requirements, best practices (from SOP documents, compliance docs).",
-    "3. Knowledge Sources: reference material that should be indexed for retrieval (from runbooks, glossaries).",
-    "For each artifact, provide: kind, title, description, structured draft data, evidence excerpts, and a confidence score (0-100).",
-    "Be precise. Only propose artifacts you have strong evidence for. Never invent URLs, endpoints, or credentials.",
-    "Return a JSON object with an `artifacts` array.",
-  ].join(" "),
-  summarize: [
-    "You are the subkit workflow engine's summarize flow.",
-    "Compress the user's input into a short operator-facing summary.",
-    "Keep the result factual, compact, and plain text.",
-    "Do not add markdown headings, bullet lists, or JSON unless the user explicitly asks for them.",
-  ].join(" "),
-  judge: [
-    "You are the subkit workflow engine's preview judge — a strict, deterministic evaluator.",
-    "You are given the user's goal verbatim, a compact summary of the workflow definition, and the recorded step outputs from a green preview.",
-    "Decide whether the previewed OUTPUT satisfies the goal. Judge content, not style: minor format differences are fine, but an empty value where the goal requires data is never a pass.",
-    "Return exactly one JSON object: { verdict, reason, missing }.",
-  ].join(" "),
-  critic_authoring: [
-    "You are the subkit workflow engine's authoring critic.",
-    "A draft has already passed static checks (JSONata syntax, scope references, JSON-schema validity).",
-    "Your only job is to flag SEMANTIC drift and STRUCTURAL-QUALITY problems that static checks cannot catch:",
-    "steps in an order that produces nonsense (e.g. transform before the request it reads);",
-    "`output_transform` that names fields the upstream step does not produce;",
-    "idempotency assumptions that won't hold (retrying a POST without an idempotency key, etc.);",
-    "AVOIDABLE SEQUENTIAL WORK — a `loop` whose body is independent READ requests (GET / query / SELECT): it runs serially and pays N× wall-clock; flag it and suggest a `for_each` step, which fans out reads concurrently;",
-    "SILENT DATA LOSS — a transform with a catch-all that returns ''/null/[] for unmatched input, or an `output_transform`/projection that drops fields the goal needs; flag the dropped data;",
-    "INCOMPLETE TRAVERSAL — fetching only the top level of a paginated or TREE resource (e.g. one `/children` call where nested nodes have `has_children`) when the goal implies all items/descendants; flag the missing pagination or depth.",
-    "Report problems. Do NOT propose code or patches.",
-    "If everything looks reasonable, return passed:true with an empty repairs array.",
-    "Cap repairs at 5 short, imperative sentences. Each item must be actionable in a single edit.",
-    "rationale is a one-paragraph explanation of the call; keep it under 800 characters.",
-  ].join(" "),
-};
-
-/**
- * Return the system prompt body for a one-shot flow. The `converse`
- * flow does NOT pass through this — it asks the agent registry for
- * its prompt directly. We keep the function exported with a `converse`
- * branch only so legacy callers (tests, eval fixtures) that ask for
- * the converse base get a small helpful fallback rather than throwing.
- */
-export async function basePromptFor(
-  flow: LlmFlow,
-  surface?: ConversationSurface,
-  authoringHint?: AuthoringPromptHint,
-): Promise<string> {
-  if (flow === "converse") {
-    const result = await generateMainAgentSystemPrompt({
-      ...(surface ? { surface } : {}),
-      ...(authoringHint ? { authoring_hint: authoringHint } : {}),
-    });
-    return result.content;
-  }
-  if (flow === "suggest_next") {
-    // `suggest_next` is intentionally outside this assembler's purview
-    // — see the BASE_SYSTEM_PROMPTS comment above. Callers must use
-    // `llm/core/suggestion-prompt.ts` directly. Throwing here keeps a
-    // future drift towards the heavy assembler from compiling.
-    throw new Error("basePromptFor: suggest_next must use suggestion-prompt.ts");
-  }
-  return BASE_SYSTEM_PROMPTS[flow];
-}
+// One-shot base prompts + `basePromptFor` live in
+// `context-assembler/base-prompts.ts` (extracted verbatim; re-exported
+// above so external callers keep importing from this barrel).
 
 function buildQuery(turns: UserTurn[]): string {
   const tail = turns.slice(-3).map((t) => t.content);
@@ -658,6 +556,13 @@ export async function assembleEnhancedPrompt(
   };
 
   const trimmed: string[] = [];
+  // Reference lines left behind when authoring-evidence blocks are trimmed
+  // (see the branches below). Kept tiny — a handful of tokens each — and
+  // themselves droppable as the very last resort before the overflow throw.
+  const CONNECTOR_SCHEMA_TRIM_REF =
+    "# Connector operations (from the connector's schema)\n[trimmed to fit the context budget — call discover_connector_endpoints to reload the real operation index; do not guess operation or argument names]";
+  const PROBE_SAMPLES_TRIM_REF =
+    "# Recorded endpoint samples\n[trimmed to fit the context budget — probe_connector / call_connector re-record real response shapes; suggest_jsonata_paths serves the field vocabulary. Do not guess field names]";
   // Skill-body summary used as a fallback when we'd otherwise pop a
   // whole skill. Keeps the skill name + scope visible to the model
   // (so it can call `load_skill` to re-fetch the full body) while
@@ -692,20 +597,24 @@ export async function assembleEnhancedPrompt(
     } else if (failures.length > 0) {
       failures = [];
       trimmed.push("failures");
-    } else if (connectorSchemaBlock) {
+    } else if (connectorSchemaBlock && connectorSchemaBlock !== CONNECTOR_SCHEMA_TRIM_REF) {
       // OPT-E connector-operations summary drops FIRST among the authoring
       // aids: it is the most cheaply re-derivable (one
       // discover_connector_endpoints call re-warms the exact same index), so
-      // it is the first thing to shed under budget pressure.
-      connectorSchemaBlock = null;
+      // it is the first thing to shed under budget pressure. A one-line
+      // reference survives (trimSkill pattern): the model keeps the SIGNAL
+      // that a real operation index exists and which tool reloads it,
+      // instead of extrapolating endpoint shapes from memory.
+      connectorSchemaBlock = CONNECTOR_SCHEMA_TRIM_REF;
       trimmed.push("connector_schema_summary");
-    } else if (probeShapeExamplesBlock) {
+    } else if (probeShapeExamplesBlock && probeShapeExamplesBlock !== PROBE_SAMPLES_TRIM_REF) {
       // Recorded endpoint samples drop EARLY — well before any skill
       // section. They are a grounding aid the model can re-derive on
       // demand (call_connector / probe_connector re-record on the next
       // call; suggest_jsonata_paths serves the same vocabulary), so
       // they are the cheapest authoring section to shed under pressure.
-      probeShapeExamplesBlock = null;
+      // Same reference-line treatment as the operation index above.
+      probeShapeExamplesBlock = PROBE_SAMPLES_TRIM_REF;
       trimmed.push("recorded_endpoint_samples");
     } else if (chunks.length > 0) {
       chunks.pop();
@@ -796,6 +705,12 @@ export async function assembleEnhancedPrompt(
     } else if (globalSkills.length > 0) {
       globalSkills.length = 0;
       trimmed.push("global_skill_index");
+    } else if (connectorSchemaBlock || probeShapeExamplesBlock) {
+      // Beyond-tight budget: even the evidence reference lines go —
+      // they must never be the reason the base prompt cannot fit.
+      connectorSchemaBlock = null;
+      probeShapeExamplesBlock = null;
+      trimmed.push("authoring_evidence_refs");
     } else {
       logger.error({
         module: "llm",
@@ -971,6 +886,18 @@ export async function assembleContext(
     dropped_sections: budget_report.dropped_sections,
     section_tokens: prompt.token_counts,
   });
+
+  // Remember the report per conversation so the `/context` snapshot can
+  // show the operator what the LAST turn dropped (in-process cache — see
+  // conversation-budget-report.ts for the honesty/restart contract).
+  if (params.conversation_id) {
+    recordConversationBudgetReport(params.tenant_id, params.conversation_id, {
+      cap_tokens: budget_report.cap_tokens,
+      total_tokens: budget_report.total_tokens,
+      dropped_sections: budget_report.dropped_sections,
+      assembled_at: new Date().toISOString(),
+    });
+  }
 
   // Closing edge of the Run → Drift → Patch → Skill loop (docs/concepts/workflows.md):
   // record which loop-originated skills actually influenced this authoring

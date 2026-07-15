@@ -383,6 +383,16 @@ export const ContextSnapshotSchema = z
         current_version: z.number().nullable(),
       })
       .nullable(),
+    // What the LAST assembled turn dropped to fit the model context —
+    // null when no turn ran since engine start (in-process cache).
+    last_context_budget: z
+      .object({
+        cap_tokens: z.number().int().nonnegative(),
+        total_tokens: z.number().int().nonnegative(),
+        dropped_sections: z.array(z.string()),
+        assembled_at: z.string(),
+      })
+      .nullable(),
   })
   .openapi("ContextSnapshot");
 

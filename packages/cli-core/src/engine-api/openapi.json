@@ -10659,6 +10659,35 @@
               "workflow_id",
               "current_version"
             ]
+          },
+          "last_context_budget": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "cap_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "dropped_sections": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "assembled_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cap_tokens",
+              "total_tokens",
+              "dropped_sections",
+              "assembled_at"
+            ]
           }
         },
         "required": [
@@ -10683,7 +10712,8 @@
           "attachments",
           "latest_probe",
           "latest_preview",
-          "workflow_version"
+          "workflow_version",
+          "last_context_budget"
         ]
       },
       "CompactConversationResponse": {
