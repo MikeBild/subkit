@@ -36,7 +36,7 @@ import {
 } from "../repl/paste-store.ts";
 import type { CommandQueue } from "../repl/queue.ts";
 import type { PaneSpec } from "../repl/slash/handler.ts";
-import { REVIEW_LEARNINGS_STARTER_PROMPT } from "../repl/task-actions.ts";
+import { findTaskActionById } from "../repl/task-actions.ts";
 import { findSlashCommand, type PersonaProbe, renderHelp } from "../slash.ts";
 import type { NotifyPrefs, PushNotifyOverride } from "./types.ts";
 
@@ -313,10 +313,12 @@ export async function dispatchSlashSubmit(
     return true;
   }
   if (cmd.name === "learnings") {
-    // Thin prompt dispatch — same starter prompt the review-learnings
-    // TaskAction submits, so slash and starter action can't diverge. The
-    // registry's `requires: "skill:read"` gate above already ran.
-    submitPrompt(REVIEW_LEARNINGS_STARTER_PROMPT);
+    // Thin prompt dispatch — the prompt is read off the review-learnings
+    // TaskAction itself, so slash, starter action, and number key share
+    // one source. The registry's `requires: "skill:read"` gate above
+    // already ran.
+    const action = findTaskActionById("review-learnings");
+    if (action?.invoke.kind === "prompt") submitPrompt(action.invoke.prompt);
     return true;
   }
   if (onSlash) {
