@@ -187,6 +187,26 @@ export const NextSuggestionEventSchema = z
   })
   .openapi("NextSuggestionEvent");
 
+/** A source ref attached to an answer (the "prove-after" grounding half).
+ *  `RunOutcomeSchema.events` is `z.array(z.any())`, so these named
+ *  component schemas are what document + type the citations frame. */
+export const CitationSchema = z
+  .object({
+    source_type: z.enum(["knowledge_chunk", "connector_doc"]),
+    id: z.string(),
+    source_name: z.string().optional(),
+    excerpt: z.string().optional(),
+  })
+  .openapi("Citation");
+
+export const CitationsEventSchema = z
+  .object({
+    type: z.literal("citations"),
+    citations: z.array(CitationSchema),
+    parent_message_id: z.string().optional(),
+  })
+  .openapi("CitationsEvent");
+
 /**
  * Body for the lightweight feedback route the client posts after the
  * user accepts, dismisses, or types over a suggestion. Stored as a
@@ -391,6 +411,15 @@ export const ContextSnapshotSchema = z
         total_tokens: z.number().int().nonnegative(),
         dropped_sections: z.array(z.string()),
         assembled_at: z.string(),
+      })
+      .nullable(),
+    // Whether the draft's grounding (the connector schema/knowledge it was
+    // built on) is still current, checked at resume. Advisory only — never
+    // blocks. `null` when the draft carries no grounding checkpoint.
+    grounding_status: z
+      .object({
+        state: z.enum(["fresh", "stale", "unknown"]),
+        advisory: z.string().nullable(),
       })
       .nullable(),
   })

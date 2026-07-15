@@ -126,6 +126,14 @@ export interface ContextSnapshot {
     dropped_sections: string[];
     assembled_at: string;
   } | null;
+  /** Whether the draft's grounding is still current, checked at resume.
+   *  Advisory only — never blocks. `null` when the draft carries no
+   *  grounding checkpoint. Real fresh/stale/unknown logic lands with the
+   *  grounding-staleness feature; populated `null` until then. */
+  grounding_status: {
+    state: "fresh" | "stale" | "unknown";
+    advisory: string | null;
+  } | null;
 }
 
 /**
@@ -284,5 +292,8 @@ export async function getContextSnapshot(
     latest_preview: latestPreview,
     workflow_version: workflowVersion,
     last_context_budget: getConversationBudgetReport(tenant_id, conversation_id),
+    // Real fresh/stale computation lands with the grounding-staleness
+    // feature (C6); null here keeps the boundary behaviorally identical.
+    grounding_status: null,
   };
 }

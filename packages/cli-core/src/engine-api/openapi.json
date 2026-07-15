@@ -10688,6 +10688,28 @@
               "dropped_sections",
               "assembled_at"
             ]
+          },
+          "grounding_status": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "fresh",
+                  "stale",
+                  "unknown"
+                ]
+              },
+              "advisory": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "state",
+              "advisory"
+            ]
           }
         },
         "required": [
@@ -10713,7 +10735,8 @@
           "latest_probe",
           "latest_preview",
           "workflow_version",
-          "last_context_budget"
+          "last_context_budget",
+          "grounding_status"
         ]
       },
       "CompactConversationResponse": {
