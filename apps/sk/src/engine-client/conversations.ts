@@ -313,6 +313,12 @@ export interface ConversationContextSnapshot {
     dropped_sections: string[];
     assembled_at: string;
   } | null;
+  /** Whether the draft's grounding is still current (advisory; never
+   *  blocks). null when the draft carries no grounding checkpoint. */
+  grounding_status: {
+    state: "fresh" | "stale" | "unknown";
+    advisory: string | null;
+  } | null;
 }
 
 export const conversationsMethods = {

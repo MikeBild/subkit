@@ -114,6 +114,7 @@ describe("authoring slash panes", () => {
       latest_preview: null,
       workflow_version: null,
       last_context_budget: null,
+      grounding_status: null,
     };
     const client = {
       getConversationContextSnapshot: async () => snapshot,
