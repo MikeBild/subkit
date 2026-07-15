@@ -111,6 +111,12 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // only AFTER the heavy react/ink dynamic imports — the network waits
   // and the module loads pay for each other.
   const statusPromise = client.statusSummary().catch(() => null);
+  // Started here so it resolves alongside the awaited boot snapshots: the
+  // welcome banner sits in Ink's <Static> block which flushes ONCE, so the
+  // pending-learnings starter must carry a real count on FIRST paint — an
+  // async-only update never reaches the flushed banner (same trap the
+  // whats-new headline documents in ink-app.tsx).
+  const learningsPromise = fetchPendingLearningsCount(client);
   let currentPersona = await resolvePersona(client, opts.profile);
   const setupPromise: Promise<SetupValidationResponse | null> = canReadSetup(currentPersona)
     ? client.setupValidation().catch(() => null)
@@ -141,6 +147,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   const statusListeners = new Set<(snap: StatusSummary | null) => void>();
   let setupSnapshot: SetupValidationResponse | null = await setupPromise;
   const setupListeners = new Set<(snap: SetupValidationResponse | null) => void>();
+  pendingLearningsCount = await learningsPromise;
   const digestListeners = new Set<(snap: OperatorHealthDigest | null) => void>();
   const learningsListeners = new Set<(count: number) => void>();
   const refreshStatus = async (): Promise<void> => {
@@ -880,12 +887,6 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     operatorDigestSnapshot = digest;
     if (digest) pendingDigestContext = digestAsContext(digest);
     for (const listener of digestListeners) listener(digest);
-  });
-  // Same background contract for the proposed-learnings count: fired
-  // alongside the digest fetch, never awaited on the boot path.
-  void fetchPendingLearningsCount(client).then((count) => {
-    pendingLearningsCount = count;
-    for (const listener of learningsListeners) listener(count);
   });
 
   // Small root wrapper that subscribes to status + persona updates and
