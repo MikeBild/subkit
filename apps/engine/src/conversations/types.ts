@@ -306,6 +306,11 @@ export interface AuthoringState {
    *  current fingerprint at resume and flags the draft stale when they
    *  differ. Absent / null when no grounded draft was generated. */
   grounding_fingerprint?: string | null;
+  /** The last authoring intent the user DECLINED, keyed by its intent
+   *  fingerprint. An identical re-proposal in the same conversation
+   *  references this instead of re-eliciting. Absent / null when nothing
+   *  was declined this conversation. */
+  last_denied_intent?: { fingerprint: string; timestamp: string } | null;
 }
 
 /**

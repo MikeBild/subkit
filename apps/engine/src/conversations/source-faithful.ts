@@ -1,6 +1,6 @@
-// source_faithful — anti-drift check (Track A / A4).
+// source_faithful — anti-drift check.
 //
-// The "prove-after" half of the grounding contract (A2) attaches a
+// The "prove-after" half of the grounding contract attaches a
 // citation envelope to every answer that grounded itself in a source.
 // This module closes the remaining gap: the prose must stay FAITHFUL to
 // the sources it cited. A citation envelope proves an answer *touched* a
@@ -42,7 +42,7 @@ import type { Citation } from "./citations.ts";
 export interface SourceFaithfulParams {
   /** The assistant's final visible prose. */
   text: string;
-  /** The A2 citation envelope harvested from this turn. */
+  /** The citation envelope harvested from this turn. */
   citations: ReadonlyArray<Citation>;
   tenant_id: string;
   db: Executor;
@@ -104,7 +104,7 @@ function normalise(s: string): string {
  * normalised form is a substring of any cited excerpt's normalised form.
  * Returns the quoted spans that appear in NO cited excerpt.
  *
- * Excerpts are clipped (A2 caps them at 200 chars), so a quote can be
+ * Excerpts are clipped (capped at 200 chars), so a quote can be
  * legitimately grounded yet fall outside the excerpt window — to avoid a
  * false drift signal, a span LONGER than the longest excerpt is treated
  * as unverifiable here (deferred to the judge), not failed.

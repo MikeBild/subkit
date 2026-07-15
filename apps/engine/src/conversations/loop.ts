@@ -2018,8 +2018,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // turn is intentionally NOT done here — it would require
   // restructuring the runOnce / fallback flow and is left as a
   // follow-up.
-  // Harvest the A2 citation envelope once, up front: the source_faithful
-  // anti-drift check (A4) reads it, and the prove-after audit mirror below
+  // Harvest the citation envelope once, up front: the source_faithful
+  // anti-drift check reads it, and the prove-after audit mirror below
   // re-uses the same array. Empty when the turn cited no source.
   const citations: Citation[] =
     !cancelled && signals.lastAssistantText ? harvestCitations(events) : [];
@@ -2130,8 +2130,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           stepRouterSignals.priorCriticFail = true;
         }
 
-        // A4 — source_faithful anti-drift. Runs ONLY for a chat terminal
-        // that carries a citation envelope (A2): the deterministic checks
+        // Source-faithful anti-drift. Runs ONLY for a chat terminal
+        // that carries a citation envelope: the deterministic checks
         // verify every cited id resolves and every verbatim quote is in a
         // cited excerpt; only free-text paraphrase faithfulness escalates
         // to the format-aware judge. A failure is folded into the SAME
