@@ -746,6 +746,42 @@ export const ToolPolicyChangedMetadataSchema = z.object({
 });
 export type ToolPolicyChangedMetadata = z.infer<typeof ToolPolicyChangedMetadataSchema>;
 
+/** `policy.denied` metadata — TOOL-DISPATCHER emitter only. `policy.denied`
+ *  has several emitters (HTTP middleware, workflows/rbac, fast-path reads)
+ *  with their own shapes; this schema pins the shared tool dispatcher's
+ *  RBAC gate (`emitPolicyDenied`), the one that correlates with the
+ *  approval lifecycle: `args_hash` is the SAME fingerprint
+ *  `APPROVAL_REQUESTED` and `tool_approvals` carry (sha256 over
+ *  confirm-marker-stripped, stably-stringified args — a hash only, never
+ *  raw values), so "was this exact intent denied before?" is a metadata
+ *  join. First-call denials hash raw invocation args (RBAC deliberately
+ *  runs before canonicalization); confirmed replays hash the canonical
+ *  `claim.args` and therefore match their approval row's hash. */
+export const ToolDispatchPolicyDeniedMetadataSchema = z.object({
+  /** Tool name as invoked. */
+  tool: z.string().min(1),
+  /** Canonical tool name (alias-resolved). */
+  canonical_tool: z.string().min(1),
+  /** Dispatch surface the denial happened on. */
+  via: z.string().min(1),
+  /** Canonical request_source — see `RequestSourceSchema` for the full list. */
+  request_source: RequestSourceSchema,
+  /** RBAC permission that was required and denied. */
+  permission: z.string().min(1),
+  /** sha256 fingerprint of the denied call's args (see docblock). */
+  args_hash: z.string().regex(/^[0-9a-f]{64}$/),
+  /** Present when the denial burned a claimed approval (confirmed replay). */
+  approval_id: z.string().uuid().optional(),
+  /** RBAC resource, when the tool resolved one (replay denials only —
+   *  on first-call denials the resource is the audit row's own
+   *  resource_type/resource_id). */
+  rbac_resource_type: z.string().min(1).optional(),
+  rbac_resource_id: z.string().min(1).optional(),
+});
+export type ToolDispatchPolicyDeniedMetadata = z.infer<
+  typeof ToolDispatchPolicyDeniedMetadataSchema
+>;
+
 /** `diagnostics.logs_tailed` metadata. Emitted on every read of
  *  `/v1/diagnostics/logs` and `/v1/diagnostics/logs/stream`. Pinning
  *  the shape lets compliance tools query "who tailed the engine ring,
