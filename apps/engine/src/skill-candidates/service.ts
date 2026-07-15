@@ -100,6 +100,17 @@ async function getEvidenceCounts(
 // Read
 // ---------------------------------------------------------------------------
 
+function listFilterConds(p: ListSkillCandidatesParams) {
+  const tenantConds = [eq(skillCandidates.tenant_id, p.tenant_id)];
+  if (p.status) tenantConds.push(eq(skillCandidates.status, p.status));
+  if (p.scope) tenantConds.push(eq(skillCandidates.scope, p.scope));
+  if (p.connector_id) tenantConds.push(eq(skillCandidates.connector_id, p.connector_id));
+  if (p.workflow_id) tenantConds.push(eq(skillCandidates.workflow_id, p.workflow_id));
+  if (p.pattern_kind) tenantConds.push(eq(skillCandidates.pattern_kind, p.pattern_kind));
+  if (p.confidence) tenantConds.push(eq(skillCandidates.confidence, p.confidence));
+  return tenantConds;
+}
+
 export async function listSkillCandidates(
   p: ListSkillCandidatesParams,
   exec?: Executor,
@@ -108,18 +119,10 @@ export async function listSkillCandidates(
   const limit = Math.min(Math.max(1, p.limit ?? 50), 500);
   const offset = Math.max(0, p.offset ?? 0);
 
-  const tenantConds = [eq(skillCandidates.tenant_id, p.tenant_id)];
-  if (p.status) tenantConds.push(eq(skillCandidates.status, p.status));
-  if (p.scope) tenantConds.push(eq(skillCandidates.scope, p.scope));
-  if (p.connector_id) tenantConds.push(eq(skillCandidates.connector_id, p.connector_id));
-  if (p.workflow_id) tenantConds.push(eq(skillCandidates.workflow_id, p.workflow_id));
-  if (p.pattern_kind) tenantConds.push(eq(skillCandidates.pattern_kind, p.pattern_kind));
-  if (p.confidence) tenantConds.push(eq(skillCandidates.confidence, p.confidence));
-
   const rows = await db
     .select()
     .from(skillCandidates)
-    .where(and(...tenantConds))
+    .where(and(...listFilterConds(p)))
     .orderBy(desc(skillCandidates.created_at))
     .limit(limit)
     .offset(offset);
@@ -129,6 +132,20 @@ export async function listSkillCandidates(
     db,
   );
   return rows.map((r) => toView(r, counts.get(r.id) ?? 0));
+}
+
+/** True matching-row count for the same filters, independent of limit/offset —
+ *  list consumers that render a count must not derive it from a capped page. */
+export async function countSkillCandidates(
+  p: ListSkillCandidatesParams,
+  exec?: Executor,
+): Promise<number> {
+  const db = exec ?? getDb();
+  const [row] = await db
+    .select({ cnt: count() })
+    .from(skillCandidates)
+    .where(and(...listFilterConds(p)));
+  return Number(row?.cnt ?? 0);
 }
 
 /**

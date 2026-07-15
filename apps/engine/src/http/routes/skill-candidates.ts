@@ -18,7 +18,12 @@ import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const SkillCandidateListResponse = z
-  .object({ items: z.array(SkillCandidateSchema) })
+  .object({
+    items: z.array(SkillCandidateSchema),
+    // True matching-row count for the applied filters (ignores limit/offset)
+    // — clients rendering counts must not derive them from a capped page.
+    total: z.number().int().min(0),
+  })
   .openapi("SkillCandidateListResponse");
 
 const listRoute = createRoute({
@@ -143,21 +148,22 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const items = await svc.listSkillCandidates(
-      {
-        tenant_id: principal.tenant_id,
-        ...(q.status ? { status: q.status } : {}),
-        ...(q.scope ? { scope: q.scope } : {}),
-        ...(q.connector_id ? { connector_id: q.connector_id } : {}),
-        ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
-        ...(q.pattern_kind ? { pattern_kind: q.pattern_kind } : {}),
-        ...(q.confidence ? { confidence: q.confidence } : {}),
-        ...(q.limit !== undefined ? { limit: q.limit } : {}),
-        ...(q.offset !== undefined ? { offset: q.offset } : {}),
-      },
-      db,
-    );
-    return c.json({ items }, 200);
+    const params = {
+      tenant_id: principal.tenant_id,
+      ...(q.status ? { status: q.status } : {}),
+      ...(q.scope ? { scope: q.scope } : {}),
+      ...(q.connector_id ? { connector_id: q.connector_id } : {}),
+      ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
+      ...(q.pattern_kind ? { pattern_kind: q.pattern_kind } : {}),
+      ...(q.confidence ? { confidence: q.confidence } : {}),
+      ...(q.limit !== undefined ? { limit: q.limit } : {}),
+      ...(q.offset !== undefined ? { offset: q.offset } : {}),
+    };
+    const [items, total] = await Promise.all([
+      svc.listSkillCandidates(params, db),
+      svc.countSkillCandidates(params, db),
+    ]);
+    return c.json({ items, total }, 200);
   });
 
   app.openapi(getRoute, async (c) => {

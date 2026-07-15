@@ -11,26 +11,7 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
-
-interface LearningCandidate {
-  id: string;
-  title: string;
-  body: string;
-  pitfalls?: string[];
-  tags?: string[];
-  confidence: string;
-  evidence_count: number;
-  created_at: string;
-}
-
-async function fetchProposed(client: EngineClient): Promise<LearningCandidate[]> {
-  const { items } = await client.listSkillCandidates({
-    status: "proposed",
-    pattern_kind: "session_learning",
-    limit: 100,
-  });
-  return items as unknown as LearningCandidate[];
-}
+import { fetchProposedLearnings } from "../lib/pending-learnings.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List proposed session learnings" },
@@ -41,7 +22,7 @@ const listCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      const items = await fetchProposed(client);
+      const items = await fetchProposedLearnings(client);
       if (args.json) {
         printJson(items);
         return;
@@ -66,7 +47,7 @@ const reviewCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      const items = await fetchProposed(client);
+      const items = await fetchProposedLearnings(client);
       if (items.length === 0) {
         process.stdout.write("No proposed learnings — the review queue is empty.\n");
         return;
