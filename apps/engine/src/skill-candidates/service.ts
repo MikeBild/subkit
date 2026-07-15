@@ -397,16 +397,35 @@ export async function createCandidateFromAuthoring(
   // Retire stale revisions: content-hash identity means every revision is
   // a FRESH candidate — without this, five iterations on one skill body
   // leave five near-duplicate `proposed` rows inflating the review queue
-  // and the authoring-context candidate slots. A newly-proposed revision
-  // supersedes older PROPOSED candidates with the same normalized title in
-  // the same scope entity (rejected/approved rows are history and stay).
-  if (result.action === "proposed" && result.candidate_id) {
+  // and the authoring-context candidate slots. The winning proposal
+  // (fresh OR an identical re-proposal/revival) supersedes older PROPOSED
+  // candidates with the same normalized title in the same scope entity;
+  // rejected/approved rows are history and stay. `updated_at` older-than
+  // ordering plus the status guard on the UPDATE keep a concurrent
+  // approve (or a racing newer proposal) from being flipped.
+  if (result.action !== "skipped" && result.candidate_id) {
+    const [winner] = await p.db
+      .select({ updated_at: skillCandidates.updated_at })
+      .from(skillCandidates)
+      .where(
+        and(
+          eq(skillCandidates.tenant_id, p.tenant_id),
+          eq(skillCandidates.id, result.candidate_id),
+        ),
+      )
+      .limit(1);
+    if (!winner) return result;
     const staleConds = [
       eq(skillCandidates.pattern_kind, "session_learning"),
       eq(skillCandidates.status, "proposed"),
       eq(skillCandidates.scope, p.scope),
-      sql`lower(regexp_replace(${skillCandidates.title}, '\s+', ' ', 'g')) = ${normalizedTitle}`,
+      // SQL mirror of the JS normalization above (lowercase, collapse
+      // whitespace, trim). NOTE the double backslash: a single `\s` in a
+      // tagged template cooks to a bare `s` and would replace the letter
+      // "s", not whitespace.
+      sql`btrim(lower(regexp_replace(${skillCandidates.title}, '\\s+', ' ', 'g'))) = ${normalizedTitle}`,
       sql`${skillCandidates.id} <> ${result.candidate_id}`,
+      sql`(${skillCandidates.updated_at}, ${skillCandidates.id}) < (${winner.updated_at}, ${result.candidate_id})`,
     ];
     if (p.connector_id) staleConds.push(eq(skillCandidates.connector_id, p.connector_id));
     if (p.workflow_id) staleConds.push(eq(skillCandidates.workflow_id, p.workflow_id));
@@ -415,10 +434,20 @@ export async function createCandidateFromAuthoring(
       .from(skillCandidates)
       .where(and(eq(skillCandidates.tenant_id, p.tenant_id), ...staleConds));
     for (const s of stale) {
-      await p.db
+      const flipped = await p.db
         .update(skillCandidates)
         .set({ status: "superseded", updated_at: new Date() })
-        .where(eq(skillCandidates.id, s.id));
+        .where(
+          and(
+            eq(skillCandidates.tenant_id, p.tenant_id),
+            eq(skillCandidates.id, s.id),
+            // Re-checked at write time: a reviewer may have approved the
+            // row between our SELECT and this UPDATE.
+            eq(skillCandidates.status, "proposed"),
+          ),
+        )
+        .returning({ id: skillCandidates.id });
+      if (flipped.length === 0) continue;
       await auditAwait(
         {
           tenant_id: p.tenant_id,
@@ -465,7 +494,45 @@ export async function upsertFromSignal(
 
     if (existing[0]) {
       const row = existing[0];
-      // If rejected or superseded, don't re-propose
+      // Superseded session-learnings are retired REVISIONS, not human
+      // decisions: only the authoring retirement pass supersedes this
+      // kind (cross-fingerprint supersede skips it below). An identical
+      // re-proposal is the operator reverting to that content — revive
+      // it into the queue instead of the dead-end skip, whose "already
+      // reviewed" framing would be a lie (no human ever reviewed it).
+      if (row.status === "superseded" && signal.pattern_kind === "session_learning") {
+        await tx
+          .update(skillCandidates)
+          .set({
+            status: "proposed",
+            confidence: signal.confidence,
+            version: row.version + 1,
+            updated_at: new Date(),
+          })
+          .where(eq(skillCandidates.id, row.id));
+        await auditAwait(
+          {
+            tenant_id,
+            actor_type: "system",
+            action: AuditAction.SKILL_CANDIDATE_UPDATED,
+            resource_type: "skill_candidate",
+            resource_id: row.id,
+            result: "success",
+            metadata: {
+              pattern_kind: signal.pattern_kind,
+              confidence: signal.confidence,
+              version: row.version + 1,
+              scope: signal.scope,
+              connector_id: signal.connector_id ?? null,
+              reason: "revived_from_superseded",
+            },
+          },
+          tx,
+        );
+        return { action: "updated" as const, candidate_id: row.id };
+      }
+      // If rejected (a human decision) — or superseded for detector
+      // kinds (the pattern genuinely evolved) — don't re-propose.
       if (row.status === "rejected" || row.status === "superseded") {
         log.skill.candidate.dedup({
           candidate_id: row.id,
