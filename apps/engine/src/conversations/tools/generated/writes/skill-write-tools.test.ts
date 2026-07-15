@@ -29,6 +29,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { proposeLearning } from "../../../../agent/sessions.ts";
 import { AuditAction } from "../../../../audit/types.ts";
 import { auditLog, skillCandidates, skills, tenants } from "../../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../../db/tests/setup.ts";
@@ -251,6 +252,56 @@ describe("skill write tools — integration (a–d)", () => {
       const byId = new Map(afterRevert.map((r) => [r.id, r.status]));
       expect(byId.get(firstData.candidate_id)).toBe("proposed");
       expect(byId.get(revisedData.candidate_id)).toBe("superseded");
+    });
+
+    test("a re-taught learning revives with the NEW body after a cross-title supersede", async () => {
+      // Cross-family case: save_learning fingerprints are title-only, so
+      // its revival MUST write the signal's content — resurrecting the
+      // stale body while reporting "updated" would silently drop what
+      // the user just re-taught.
+      const learned = await proposeLearning({
+        tenant_id: tenantAId,
+        title: "Retry With Backoff",
+        body: "body A",
+        domains: [],
+        confidence: "high",
+        evidence_summary: "test",
+        db: testDb.db,
+      });
+      expect(learned.action).toBe("proposed");
+
+      // An authored proposal under the same title retires the learning.
+      const ctx = makeCtx(tenantAId);
+      const authored = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Retry With Backoff",
+        body: "body B",
+      });
+      expect(authored.ok).toBe(true);
+
+      // Re-teaching with a NEW body revives the learning row carrying C.
+      const retaught = await proposeLearning({
+        tenant_id: tenantAId,
+        title: "Retry With Backoff",
+        body: "body C",
+        domains: [],
+        confidence: "high",
+        evidence_summary: "test",
+        db: testDb.db,
+      });
+      expect(retaught.action).toBe("updated");
+      expect(retaught.candidate_id).toBe(learned.candidate_id);
+      const rows = await testDb.db
+        .select({ status: skillCandidates.status, body: skillCandidates.body })
+        .from(skillCandidates)
+        .where(
+          and(
+            eq(skillCandidates.tenant_id, tenantAId),
+            eq(skillCandidates.id, String(learned.candidate_id)),
+          ),
+        );
+      expect(rows[0]?.status).toBe("proposed");
+      expect(rows[0]?.body).toBe("body C");
     });
 
     test("scope/entity mismatch fails at PROPOSAL time, not at the reviewer's approve step", async () => {
