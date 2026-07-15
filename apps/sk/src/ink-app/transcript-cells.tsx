@@ -8,10 +8,16 @@
 // engine traffic, no input handling.
 
 import { useTheme } from "@chat-ui/index.ts";
-import type { RenderableMessagePart, SkSessionState, ToolCallState } from "@cli-core/index.ts";
+import type {
+  Citation,
+  RenderableMessagePart,
+  SkSessionState,
+  ToolCallState,
+} from "@cli-core/index.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo, useEffect, useState } from "react";
+import { formatCitationsFooter } from "../lib/citations-footer.ts";
 import {
   classifyEngineError,
   humanizeValidationError,
@@ -259,8 +265,12 @@ export const MessageRow: React.FC<{
    * split words across the column origin (session 86de186b).
    */
   columns?: number;
-}> = memo(({ role, content, parts, columns }) => {
+  /** Source refs for an assistant answer → dim "Quellen: …" footer.
+   *  Absent/empty on citation-less turns (no footer, byte-identical). */
+  citations?: Citation[] | undefined;
+}> = memo(({ role, content, parts, columns, citations }) => {
   const theme = useTheme();
+  const footer = formatCitationsFooter(citations);
   // Speaker label + glyph. Two columns: a 2-char glyph slot, then a
   // fixed-width label so wrapping body text aligns under itself, not
   // under the label — `›  you` for the operator, `•  sk` for the
@@ -298,6 +308,7 @@ export const MessageRow: React.FC<{
               }
             : {})}
         />
+        {role === "assistant" && footer ? <Text color={theme.role.system}>{footer}</Text> : null}
       </Box>
     </Box>
   );

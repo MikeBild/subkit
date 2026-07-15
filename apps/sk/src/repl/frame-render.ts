@@ -14,6 +14,7 @@
 import { hyperlink } from "@chat-ui/index.ts";
 import { lastAssistantText, type SkSessionState, type TurnEvent } from "@cli-core/index.ts";
 import { OAuthApprovalInputSchema } from "@shared/elicitation-constants.ts";
+import { formatCitationsFooter, terminalAssistantCitations } from "../lib/citations-footer.ts";
 import { BrowserUrlSchema, defaultOpenBrowser } from "../lib/open-browser.ts";
 
 /** Output sink for one rendered terminal line (no trailing newline). */
@@ -122,7 +123,11 @@ export const renderFrame = (ev: TurnEvent, line: RenderLineSink): void => {
 // path that produced the silent-hang transcript.
 export const finishTurnRender = (session: SkSessionState, line: RenderLineSink): void => {
   const text = lastAssistantText(session).trim();
-  if (text) line(`\nassistant> ${text}`);
+  if (text) {
+    line(`\nassistant> ${text}`);
+    const footer = formatCitationsFooter(terminalAssistantCitations(session.messages));
+    if (footer) line(footer);
+  }
   if (session.usage) {
     line(
       `   (usage: ${session.usage.turn_tokens} tokens this turn; ` +
