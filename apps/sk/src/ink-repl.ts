@@ -41,7 +41,7 @@ import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { enableBracketedPaste } from "./repl/bracketed-paste.ts";
 import { humanizeRequestError } from "./repl/error-humanize.ts";
-import { type ResolvedPersona, resolvePersona } from "./repl/resolved-persona.ts";
+import { fallbackPersona, type ResolvedPersona, resolvePersona } from "./repl/resolved-persona.ts";
 import { handleSlash, type PaneSpec } from "./repl/slash/handler.ts";
 import { runRepl } from "./repl.ts";
 import { saveSessionMetadata } from "./sessions.ts";
@@ -728,32 +728,11 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     } catch {
       healthOk = false;
     }
+    let nextPersona: ResolvedPersona;
     try {
-      currentPersona = await resolvePersona(newClient, newProfile);
+      nextPersona = await resolvePersona(newClient, newProfile);
     } catch {
-      // Fall back to a minimal persona keyed off the profile so the
-      // footer at least shows the right engine + profile name.
-      currentPersona = {
-        label: newProfile.persona_hint ?? "user",
-        probe: { allows: () => false },
-        allowed: new Set(),
-        tenant: newProfile.active_tenant_id ?? null,
-        email: null,
-        fetchedAt: Date.now(),
-        source: "fallback",
-        prefs: {
-          permissionMode: "ask",
-          theme: "auto",
-          personality: "balanced",
-          titleFormat: "session-id",
-          statuslineFormat: "compact",
-          pushNotifyEnabled: false,
-          pushNotifyThresholdSec: 30,
-          quietHoursStart: "",
-          quietHoursEnd: "",
-          portalTokenTtlMin: 15,
-        },
-      };
+      nextPersona = fallbackPersona(newProfile);
     }
     // Re-seed the digest for the NEW tenant. Clearing first guarantees
     // tenant-A's failures/context can never render (chrome) or fold into
@@ -763,12 +742,19 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     pendingDigestContext = null;
     const [nextStatus, nextSetup, nextDigest, nextLearnings] = await Promise.all([
       newClient.statusSummary().catch(() => null),
-      canReadSetup(currentPersona)
+      canReadSetup(nextPersona)
         ? newClient.setupValidation().catch(() => null)
         : Promise.resolve(null),
       fetchOperatorDigest(newClient),
       fetchPendingLearningsCount(newClient),
     ]);
+    // A second /profile may have superseded this switch while it awaited —
+    // commit NOTHING then (same staleness rule as the boot digest fetch):
+    // the winning switch owns every snapshot, persona, and listener publish.
+    if (currentClient !== newClient) {
+      return `switch to "${name}" superseded by a newer /profile switch`;
+    }
+    currentPersona = nextPersona;
     statusSnapshot = nextStatus;
     setupSnapshot = nextSetup;
     bootSnapshot = { digest: nextDigest, pendingLearnings: nextLearnings };

@@ -22,16 +22,18 @@ export function dedupeTags(tags: readonly string[]): string[] {
 }
 
 /** Namespaced tags — a NAMESPACE prefix (letters/digits/underscore,
- *  hyphens inside, Unicode included so `domäne:blog` counts), a colon,
- *  and content directly after it (`domain:<slug>`, any `<ns>:x`) — are
- *  structural routing keys: the agent briefing and tag-filtered search
- *  select on them, so the `<ns>:` shape is reserved for routing. Prose
- *  and punctuation colons do not count: a space before the colon
- *  (`note about: chords`), a space after it (`note: x`), or a
- *  non-identifier prefix (`q&a:faq`, `c++:tips`, `.net:core`) all mark
- *  plain topical tags that re-analysis may replace. */
+ *  hyphens strictly inside, Unicode included so `domäne:blog` counts), a
+ *  colon, and content directly after it (`domain:<slug>`, any `<ns>:x`)
+ *  — are structural routing keys: the agent briefing and tag-filtered
+ *  search select on them, so the `<ns>:` shape is reserved for routing.
+ *  Prose and punctuation colons do not count: a space before the colon
+ *  (`note about: chords`), a space after it (`note: x`), a trailing
+ *  hyphen (`blog-:x`), or a non-name prefix (`q&a:faq`, `c++:tips`,
+ *  `.net:core`) all mark plain topical tags that re-analysis may
+ *  replace. Input is NFC-normalized first so a decomposed `domäne:blog`
+ *  (combining diaeresis) classifies the same as the composed form. */
 export function isStructuralTag(tag: string): boolean {
-  return /^[\p{L}\p{N}_][\p{L}\p{N}_-]*:\S/u.test(tag.trim());
+  return /^[\p{L}\p{N}_]([\p{L}\p{N}_-]*[\p{L}\p{N}_])?:\S/u.test(tag.trim().normalize("NFC"));
 }
 
 /** Tag merge for MACHINE-regenerated tags (analysis): structural tags

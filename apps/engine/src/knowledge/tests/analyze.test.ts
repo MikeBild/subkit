@@ -142,10 +142,11 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     }
   });
 
-  test("prose colons are topical, non-ASCII namespaces structural — and analysis mints no routing keys", async () => {
-    // `isStructuralTag`: whitespace-free prefix + colon + content directly
-    // after. Prose colons ("note: x", "note about: chords") must not pin a
-    // tag forever; a non-ASCII namespace (`domäne:blog`) stays structural.
+  test("only name-shaped namespace prefixes are structural — and analysis mints no routing keys", async () => {
+    // `isStructuralTag`: NAME-shaped prefix (letters/digits/underscore,
+    // hyphens inside, Unicode) + colon + content directly after. Prose or
+    // punctuation colons ("note: x", "note about: chords", "q&a:faq") must
+    // not pin a tag forever; `domäne:blog` stays structural.
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
