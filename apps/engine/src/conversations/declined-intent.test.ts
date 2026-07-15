@@ -8,14 +8,27 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations } from "../db/schema/index.ts";
+import { getMockProvider } from "../llm/mock-provider.ts";
 import { createEmptyState, normalizeState } from "./authoring-state/normalize.ts";
+import {
+  createEmptyDraftDocument,
+  withLatestPreview,
+  withWorkflowDraft,
+  withWorkflowInspection,
+  withWorkflowValidation,
+} from "./authoring-state.ts";
 import { recordDeniedIntentIfDeclined } from "./declined-intent.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { authoringIntentFingerprint } from "./intent-fingerprint.ts";
-import { type ConversationTestCtx, createConversationTestCtx } from "./tests/setup.ts";
+import {
+  appendMessageWithTurn,
+  type ConversationTestCtx,
+  createConversationTestCtx,
+  respondElicitationForTest,
+} from "./tests/setup.ts";
 import { askUserConfirmTool } from "./tools/ask-user/confirm.ts";
 import type { ToolContext } from "./tools/index.ts";
-import type { DraftDocument } from "./types.ts";
+import type { DraftDocument, TurnEvent } from "./types.ts";
 
 const WORKFLOW = { name: "wf", steps: [{ id: "s1", kind: "request" }] };
 
@@ -190,5 +203,169 @@ describe("declined-intent · decline write round-trip (DB)", () => {
     });
     const reloaded = await loadDraft(ctx.tenant_id, conversation_id, ctx.testDb.db);
     expect(reloaded.state?.last_denied_intent ?? null).toBeNull();
+  });
+});
+
+// The suites above each cover one seam in isolation: the short-circuit against
+// a hand-built draft, and the decline-write against a bare draft via a direct
+// function call. Neither drives the two REAL turns end-to-end through the
+// production call chain (respondElicitation -> applyElicitationOutcome ->
+// recordDeniedIntentIfDeclined -> a second runConversationTurn reading the
+// persisted draft through askUserConfirmTool). This closes that gap.
+describe("declined-intent · wired through two real turns", () => {
+  let ctx: ConversationTestCtx;
+  beforeAll(async () => {
+    ctx = await createConversationTestCtx("declined_intent_wired");
+  });
+  afterAll(async () => {
+    await ctx.cleanup();
+  });
+
+  const PROPOSAL = {
+    question: "Commit this workflow?",
+    kind: "save_workflow_draft" as const,
+    summary: "commit workflow",
+    commit_intent: { kind: "save_workflow_draft" as const, payload: {}, description: "commit" },
+  };
+
+  async function seedReadyConversation(): Promise<string> {
+    let draft = withWorkflowDraft(createEmptyDraftDocument(), {
+      name: "declined-intent-workflow",
+      slug: "declined-intent-workflow",
+      steps: [
+        {
+          id: "shape",
+          kind: "transform",
+          language: "javascript",
+          expression: "return input.input;",
+        },
+      ],
+    });
+    draft = withWorkflowInspection(draft);
+    draft = withWorkflowValidation(draft, true, "Workflow draft valid.");
+    draft = withLatestPreview(draft, { ok: true, step_id: "shape", summary: "Preview ok." });
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        owner_id: ctx.user_id,
+        draft: draft as unknown as Record<string, unknown>,
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+    return conversation.id;
+  }
+
+  function findToolResult(events: TurnEvent[], tool: string): Record<string, unknown> | undefined {
+    const ev = events.find((e) => e.type === "tool_result" && e.tool === tool);
+    return ev && ev.type === "tool_result" ? (ev.output as Record<string, unknown>) : undefined;
+  }
+
+  test("declining ask_user_confirm, then an identical re-proposal in a later turn, answers already_declined without re-pausing", async () => {
+    const conversationId = await seedReadyConversation();
+
+    getMockProvider().setConversePlan(conversationId, [
+      { tool: "ask_user_confirm", args: PROPOSAL },
+    ]);
+    const turn1 = await appendMessageWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: conversationId,
+        actor_id: ctx.user_id,
+        message: "please commit this workflow",
+      },
+      ctx.testDb.db,
+    );
+    expect(turn1.result.status).toBe("awaiting_input");
+    const pendingId = turn1.result.pending_elicitation_id;
+    expect(pendingId).toBeTruthy();
+
+    const declined = await respondElicitationForTest(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: conversationId,
+        elicitation_id: pendingId!,
+        actor_id: ctx.user_id,
+        output: { confirmed: false },
+      },
+      ctx.testDb.db,
+    );
+    // The decline resumes the turn — not another pause on the same proposal.
+    expect(declined.result.status).not.toBe("awaiting_input");
+
+    // Second, BYTE-IDENTICAL proposal in the same conversation.
+    getMockProvider().setConversePlan(conversationId, [
+      { tool: "ask_user_confirm", args: PROPOSAL },
+    ]);
+    const turn2 = await appendMessageWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: conversationId,
+        actor_id: ctx.user_id,
+        message: "please commit this workflow again",
+      },
+      ctx.testDb.db,
+    );
+
+    // The guard answered synchronously — no new pause on the repeat ask.
+    expect(turn2.result.status).not.toBe("awaiting_input");
+    const output = findToolResult(turn2.result.events, "ask_user_confirm");
+    expect(output).toBeDefined();
+    expect(output?.confirmed).toBe(false);
+    expect(output?.already_declined).toBe(true);
+  });
+
+  test("an EDITED proposal (different commit_intent) after a decline still pauses normally", async () => {
+    const conversationId = await seedReadyConversation();
+
+    getMockProvider().setConversePlan(conversationId, [
+      { tool: "ask_user_confirm", args: PROPOSAL },
+    ]);
+    const turn1 = await appendMessageWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: conversationId,
+        actor_id: ctx.user_id,
+        message: "please commit this workflow",
+      },
+      ctx.testDb.db,
+    );
+    const pendingId = turn1.result.pending_elicitation_id;
+    expect(pendingId).toBeTruthy();
+
+    await respondElicitationForTest(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: conversationId,
+        elicitation_id: pendingId!,
+        actor_id: ctx.user_id,
+        output: { confirmed: false },
+      },
+      ctx.testDb.db,
+    );
+
+    // A DIFFERENT commit_intent description → a different fingerprint —
+    // must fall through to a normal pause, not the declined short-circuit.
+    getMockProvider().setConversePlan(conversationId, [
+      {
+        tool: "ask_user_confirm",
+        args: {
+          ...PROPOSAL,
+          commit_intent: { ...PROPOSAL.commit_intent, description: "commit (edited)" },
+        },
+      },
+    ]);
+    const turn2 = await appendMessageWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: conversationId,
+        actor_id: ctx.user_id,
+        message: "commit the edited version instead",
+      },
+      ctx.testDb.db,
+    );
+    expect(turn2.result.status).toBe("awaiting_input");
+    expect(turn2.result.pending_elicitation_id).toBeTruthy();
   });
 });

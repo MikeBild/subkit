@@ -4,7 +4,7 @@
 
 import type { Citation } from "@cli-core/index.ts";
 
-/** "Quellen: Weather Runbook, GitHub API" — deduped display names, id
+/** "Sources: Weather Runbook, GitHub API" — deduped display names, id
  *  fallback when a source has no name. Returns null when there is nothing
  *  to show, so callers render no footer on citation-less answers. */
 export function formatCitationsFooter(citations: readonly Citation[] | undefined): string | null {
@@ -17,7 +17,7 @@ export function formatCitationsFooter(citations: readonly Citation[] | undefined
     seen.add(label);
     names.push(label);
   }
-  return names.length > 0 ? `Quellen: ${names.join(", ")}` : null;
+  return names.length > 0 ? `Sources: ${names.join(", ")}` : null;
 }
 
 /** The last assistant message's citations, if any — the terminal answer's

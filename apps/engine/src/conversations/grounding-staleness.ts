@@ -21,7 +21,7 @@ export interface GroundingStatus {
 }
 
 const STALE_ADVISORY =
-  "Dieser Entwurf beruht auf einem Connector-Schema, das sich seit dem letzten Prüfpunkt geändert hat — vor dem Speichern neu prüfen.";
+  "This draft was built on a connector schema that has changed since the last checkpoint — re-check before saving.";
 
 /** Recompute the current grounding fingerprint for a set of connectors,
  *  using the SAME projection the authoring pipeline grounded on. Returns

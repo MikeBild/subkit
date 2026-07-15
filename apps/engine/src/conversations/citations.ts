@@ -66,8 +66,14 @@ export function harvestCitations(events: ReadonlyArray<TurnEvent>): Citation[] {
   const seen = new Set<string>();
   for (const ev of events) {
     if (ev.type !== "tool_result") continue;
-    const output = ev.output as { data?: { hits?: unknown } } | null;
-    const hits = output?.data?.hits;
+    // `ev.output` is already the unwrapped `ToolResult.data` payload by the
+    // time a tool_result event exists — `normalizeToolResultPayload`
+    // (conversations/tools/result-payload.ts) strips the `{ok, data}`
+    // envelope before persisting/streaming a successful call, and every
+    // grounding tool's `execute()` returns `{ ok: true, data: { hits } }`.
+    // Reading `output.data.hits` here would never match a live event.
+    const output = ev.output as { hits?: unknown } | null;
+    const hits = output?.hits;
     if (!Array.isArray(hits)) continue;
 
     if (ev.tool === "search_knowledge" || ev.tool === "search_knowledge_v2") {
