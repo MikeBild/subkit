@@ -497,52 +497,11 @@ export async function upsertFromSignal(
       // no-op, but the title-only learning fingerprints (proposeLearning)
       // can carry a re-taught body — resurrecting the stale one while
       // reporting "updated" would silently drop what the user just said.
-      if (row.status === "superseded" && signal.pattern_kind === "session_learning") {
-        await tx
-          .update(skillCandidates)
-          .set({
-            status: "proposed",
-            title: signal.title,
-            body: signal.body,
-            examples: {
-              examples: signal.examples,
-              best_practices: signal.best_practices,
-              pitfalls: signal.pitfalls,
-              doc_refs: signal.doc_refs,
-            },
-            ...(signal.tags && signal.tags.length > 0 ? { tags: signal.tags } : {}),
-            confidence: signal.confidence,
-            version: row.version + 1,
-            // DB clock on purpose: the retirement pass orders rows by
-            // updated_at, and mixing the app clock with defaultNow()
-            // inserts would let NTP skew break that ordering.
-            updated_at: sql`now()`,
-          })
-          .where(eq(skillCandidates.id, row.id));
-        await auditAwait(
-          {
-            tenant_id,
-            actor_type: "system",
-            action: AuditAction.SKILL_CANDIDATE_UPDATED,
-            resource_type: "skill_candidate",
-            resource_id: row.id,
-            result: "success",
-            metadata: {
-              pattern_kind: signal.pattern_kind,
-              confidence: signal.confidence,
-              version: row.version + 1,
-              scope: signal.scope,
-              connector_id: signal.connector_id ?? null,
-              reason: "revived_from_superseded",
-            },
-          },
-          tx,
-        );
-        return { action: "updated" as const, candidate_id: row.id };
-      }
+      const reviveSessionLearning =
+        row.status === "superseded" && signal.pattern_kind === "session_learning";
       // If rejected (a human decision) — or superseded for detector
       // kinds (the pattern genuinely evolved) — don't re-propose.
-      if (row.status === "rejected" || row.status === "superseded") {
+      if (!reviveSessionLearning && (row.status === "rejected" || row.status === "superseded")) {
         log.skill.candidate.dedup({
           candidate_id: row.id,
           tenant_id,
@@ -561,14 +520,37 @@ export async function upsertFromSignal(
         });
         return { action: "skipped" as const, candidate_id: row.id };
       }
-      // Update existing proposed candidate (bump version, update confidence)
+      // Update the existing candidate (bump version, update confidence).
+      // Session learnings ALSO refresh their content and — when the row
+      // was superseded by a newer authoring revision — revive: their
+      // fingerprints can be title-only (proposeLearning), so keeping the
+      // old body while reporting "updated" would silently drop what the
+      // user just re-taught. Detector kinds keep their original text
+      // (their bodies are regenerated templates; first write wins).
+      // `updated_at` is stamped with the DB clock everywhere the
+      // retirement pass orders by it — mixing the app clock with
+      // defaultNow() inserts would let NTP skew break that ordering.
       await tx
         .update(skillCandidates)
         .set({
           confidence: signal.confidence,
           version: row.version + 1,
           evidence: signal.evidence,
-          updated_at: new Date(),
+          updated_at: sql`now()`,
+          ...(signal.pattern_kind === "session_learning"
+            ? {
+                status: "proposed" as const,
+                title: signal.title,
+                body: signal.body,
+                examples: {
+                  examples: signal.examples,
+                  best_practices: signal.best_practices,
+                  pitfalls: signal.pitfalls,
+                  doc_refs: signal.doc_refs,
+                },
+                ...(signal.tags && signal.tags.length > 0 ? { tags: signal.tags } : {}),
+              }
+            : {}),
         })
         .where(eq(skillCandidates.id, row.id));
 
@@ -609,6 +591,7 @@ export async function upsertFromSignal(
             version: row.version + 1,
             scope: signal.scope,
             connector_id: signal.connector_id ?? null,
+            ...(reviveSessionLearning ? { reason: "revived_from_superseded" } : {}),
           },
         },
         tx,
