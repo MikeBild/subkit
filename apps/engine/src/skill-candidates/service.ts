@@ -337,6 +337,9 @@ export async function createCandidateFromAuthoring(
   // connector_id). The tool schema pins scope↔id consistency; these
   // throws keep the invariant for any future caller — a violation at
   // proposal time fails the AUTHOR, never the reviewer's approve step.
+  if (p.connector_id && p.workflow_id) {
+    throw new Error("proposal cannot set both connector_id and workflow_id");
+  }
   let entity: string;
   if (p.scope === "connector") {
     if (!p.connector_id) throw new Error("connector-scoped proposal requires connector_id");
@@ -368,7 +371,7 @@ export async function createCandidateFromAuthoring(
   const fingerprint = createHash("sha256")
     .update(`authoring_skill:${p.scope}:${entity}:${normalizedTitle}:${contentHash}`)
     .digest("hex");
-  return await upsertFromSignal(
+  const result = await upsertFromSignal(
     p.tenant_id,
     {
       pattern_kind: "session_learning",
@@ -390,6 +393,52 @@ export async function createCandidateFromAuthoring(
     },
     p.db,
   );
+
+  // Retire stale revisions: content-hash identity means every revision is
+  // a FRESH candidate — without this, five iterations on one skill body
+  // leave five near-duplicate `proposed` rows inflating the review queue
+  // and the authoring-context candidate slots. A newly-proposed revision
+  // supersedes older PROPOSED candidates with the same normalized title in
+  // the same scope entity (rejected/approved rows are history and stay).
+  if (result.action === "proposed" && result.candidate_id) {
+    const staleConds = [
+      eq(skillCandidates.pattern_kind, "session_learning"),
+      eq(skillCandidates.status, "proposed"),
+      eq(skillCandidates.scope, p.scope),
+      sql`lower(regexp_replace(${skillCandidates.title}, '\s+', ' ', 'g')) = ${normalizedTitle}`,
+      sql`${skillCandidates.id} <> ${result.candidate_id}`,
+    ];
+    if (p.connector_id) staleConds.push(eq(skillCandidates.connector_id, p.connector_id));
+    if (p.workflow_id) staleConds.push(eq(skillCandidates.workflow_id, p.workflow_id));
+    const stale = await p.db
+      .select({ id: skillCandidates.id })
+      .from(skillCandidates)
+      .where(and(eq(skillCandidates.tenant_id, p.tenant_id), ...staleConds));
+    for (const s of stale) {
+      await p.db
+        .update(skillCandidates)
+        .set({ status: "superseded", updated_at: new Date() })
+        .where(eq(skillCandidates.id, s.id));
+      await auditAwait(
+        {
+          tenant_id: p.tenant_id,
+          actor_type: "system",
+          action: AuditAction.SKILL_CANDIDATE_SUPERSEDED,
+          resource_type: "skill_candidate",
+          resource_id: s.id,
+          result: "success",
+          metadata: {
+            superseded_by_fingerprint: fingerprint,
+            scope: p.scope,
+            connector_id: p.connector_id ?? null,
+            reason: "authoring_revision",
+          },
+        },
+        p.db,
+      );
+    }
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
