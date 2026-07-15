@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] – 2026-07-15
+
+### Added
+- Approve a captured learning without leaving the coding session:
+  `approve_skill_candidate` is directly callable over MCP — the client's
+  native destructive-write dialog is the explicit operator approval, and
+  RBAC `skill:write` remains the hard gate.
+- The sk REPL start screen surfaces the curation queue (a numbered
+  "Review N proposed learnings" starter when proposals exist) and
+  `/learnings` opens the same chat-first review.
+
+### Fixed
+- Knowledge analysis preserves namespaced tags (`domain:*` etc.) —
+  re-analysis no longer drops a source out of its domain briefing and
+  tag-filtered search.
+- Freshly created or updated knowledge sources are embedded immediately
+  (source-scoped, off the request path) instead of waiting for the
+  5-minute sweep; measured A/B: semantically findable after ~6s versus
+  not at all within 3 minutes on the previous release.
+
 ## [1.13.3] – 2026-07-14
 
 ### Fixed
