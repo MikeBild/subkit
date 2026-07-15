@@ -473,6 +473,10 @@ export function normalizeState(
     // it only makes the breaker degrade to advisory one block sooner,
     // never a deadlock).
     judge_breaker: normalizeJudgeBreaker(state.judge_breaker),
+    // Grounding fingerprint the draft was built on — must survive resume
+    // or the /context staleness check has nothing to compare against.
+    grounding_fingerprint:
+      typeof state.grounding_fingerprint === "string" ? state.grounding_fingerprint : null,
   };
   if (isRecord(state.checkpoints)) {
     for (const key of CHECKPOINT_KEYS) {

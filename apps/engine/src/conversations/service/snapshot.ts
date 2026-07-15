@@ -4,6 +4,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { getConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
+import { computeGroundingStatus } from "../grounding-staleness.ts";
 import { getConversation } from "./get.ts";
 
 export interface ContextSnapshot {
@@ -292,8 +293,6 @@ export async function getContextSnapshot(
     latest_preview: latestPreview,
     workflow_version: workflowVersion,
     last_context_budget: getConversationBudgetReport(tenant_id, conversation_id),
-    // Real fresh/stale computation lands with the grounding-staleness
-    // feature (C6); null here keeps the boundary behaviorally identical.
-    grounding_status: null,
+    grounding_status: await computeGroundingStatus(tenant_id, detail.draft, exec),
   };
 }
