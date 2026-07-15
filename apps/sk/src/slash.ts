@@ -76,6 +76,8 @@ export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
  *     in-session (`ink-app.tsx:2062`)
  *   - /paste, /queue, /view — input/transcript-side
  *     intercepts (`ink-app.tsx:1660,1684,1725,1746`)
+ *   - /learnings — submits the review-learnings starter prompt as a
+ *     conversation turn (submit-pipeline.ts)
  *
  * The contract test asserts every `routing: "engine"` slash
  * either has a `case` in `handler.ts`, lands in a per-category
@@ -88,6 +90,7 @@ export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
   "paste",
   "queue",
   "view",
+  "learnings",
 ] as const);
 
 /** Every slash command can declare a Zod schema
@@ -334,6 +337,15 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   {
     name: "skills",
     help: "List active skills in scope (includes pending suggestions)",
+    category: "context",
+    requires: "skill:read",
+  },
+  {
+    // Thin prompt dispatch: the Ink host intercepts this and submits the
+    // review-learnings starter prompt (repl/task-actions.ts) as a turn, so
+    // the curation flow runs on the engine's conversation path.
+    name: "learnings",
+    help: "Review proposed session learnings (approve or reject each in chat)",
     category: "context",
     requires: "skill:read",
   },

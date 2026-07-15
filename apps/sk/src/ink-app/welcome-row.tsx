@@ -102,6 +102,9 @@ export interface WelcomeRowProps {
   statusSnapshot: StatusSummary | null | undefined;
   setupSnapshot: SetupValidationResponse | null | undefined;
   digestSnapshot: OperatorHealthDigest | null | undefined;
+  /** Proposed session-learning count; > 0 (with skill:read) injects the
+   *  review-learnings starter action. Absent = 0 = today's behavior. */
+  pendingLearningsCount?: number | undefined;
   tip: string;
   whatsNew: string | null;
 }
@@ -116,6 +119,7 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
   statusSnapshot,
   setupSnapshot,
   digestSnapshot,
+  pendingLearningsCount = 0,
   tip,
   whatsNew,
 }) => {
@@ -148,10 +152,11 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
     hasDigest && digestSnapshot ? <NeedsAttentionPanel digest={digestSnapshot} /> : null;
 
   // Render + dispatch lists derive injection (and the RBAC gate) from the same
-  // (probe, digest) inputs inside the shared helpers, so they can't drift.
+  // (probe, digest, pendingLearnings) inputs inside the shared helpers, so
+  // they can't drift.
   const starterActions = useMemo(
-    () => buildStarterActions(persona.label, persona.probe, digestSnapshot),
-    [persona.label, persona.probe, digestSnapshot],
+    () => buildStarterActions(persona.label, persona.probe, digestSnapshot, pendingLearningsCount),
+    [persona.label, persona.probe, digestSnapshot, pendingLearningsCount],
   );
 
   // Setup-validation banner. Rendered as a one-line orange/red row

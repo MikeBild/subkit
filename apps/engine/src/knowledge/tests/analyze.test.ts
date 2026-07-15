@@ -97,6 +97,46 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     }
   });
 
+  test("preserves namespaced tags (domain:*) and replaces only topical tags", async () => {
+    // Regression: analysis used to REPLACE the whole tag set, silently
+    // dropping `domain:<slug>` — the source vanished from its domain
+    // briefing and tag-filtered search until the operator re-tagged it.
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: {
+          name: "Domain Tagged Doc",
+          scope: "global",
+          tags: ["domain:harmoniqs", "alte-notiz"],
+        },
+        upload: {
+          buffer: Buffer.from("# Harmonielehre\n\nQuintenzirkel und Stufenakkorde."),
+          filename: "harmonie.md",
+          mime: "text/markdown",
+        },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    expect(source.tags).toEqual(["domain:harmoniqs", "alte-notiz"]);
+
+    const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
+      makeInvokeResult({
+        description: "Grundlagen der Harmonielehre.",
+        tags: ["musiktheorie", "akkorde"],
+      }),
+    );
+    try {
+      const enriched = await analyzeKnowledgeSource(
+        { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
+        ctx.testDb.db,
+      );
+      expect(enriched!.tags).toEqual(["domain:harmoniqs", "musiktheorie", "akkorde"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("does NOT overwrite an existing description unless force is set", async () => {
     const source = await createKnowledgeSource(
       {
