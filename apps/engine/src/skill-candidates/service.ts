@@ -404,17 +404,6 @@ export async function createCandidateFromAuthoring(
   // ordering plus the status guard on the UPDATE keep a concurrent
   // approve (or a racing newer proposal) from being flipped.
   if (result.action !== "skipped" && result.candidate_id) {
-    const [winner] = await p.db
-      .select({ updated_at: skillCandidates.updated_at })
-      .from(skillCandidates)
-      .where(
-        and(
-          eq(skillCandidates.tenant_id, p.tenant_id),
-          eq(skillCandidates.id, result.candidate_id),
-        ),
-      )
-      .limit(1);
-    if (!winner) return result;
     const staleConds = [
       eq(skillCandidates.pattern_kind, "session_learning"),
       eq(skillCandidates.status, "proposed"),
@@ -425,7 +414,11 @@ export async function createCandidateFromAuthoring(
       // "s", not whitespace.
       sql`btrim(lower(regexp_replace(${skillCandidates.title}, '\\s+', ' ', 'g'))) = ${normalizedTitle}`,
       sql`${skillCandidates.id} <> ${result.candidate_id}`,
-      sql`(${skillCandidates.updated_at}, ${skillCandidates.id}) < (${winner.updated_at}, ${result.candidate_id})`,
+      // Strictly-older-than-the-winner ordering, computed entirely on the
+      // Postgres side (microsecond precision, one clock): a JS round-trip
+      // of the winner's timestamp would truncate to milliseconds and mix
+      // app/DB clocks, letting NTP skew break the ordering.
+      sql`(${skillCandidates.updated_at}, ${skillCandidates.id}) < (SELECT sc.updated_at, sc.id FROM skill_candidates sc WHERE sc.id = ${result.candidate_id})`,
     ];
     if (p.connector_id) staleConds.push(eq(skillCandidates.connector_id, p.connector_id));
     if (p.workflow_id) staleConds.push(eq(skillCandidates.workflow_id, p.workflow_id));
@@ -436,7 +429,7 @@ export async function createCandidateFromAuthoring(
     for (const s of stale) {
       const flipped = await p.db
         .update(skillCandidates)
-        .set({ status: "superseded", updated_at: new Date() })
+        .set({ status: "superseded", updated_at: sql`now()` })
         .where(
           and(
             eq(skillCandidates.tenant_id, p.tenant_id),
@@ -496,18 +489,34 @@ export async function upsertFromSignal(
       const row = existing[0];
       // Superseded session-learnings are retired REVISIONS, not human
       // decisions: only the authoring retirement pass supersedes this
-      // kind (cross-fingerprint supersede skips it below). An identical
-      // re-proposal is the operator reverting to that content — revive
-      // it into the queue instead of the dead-end skip, whose "already
-      // reviewed" framing would be a lie (no human ever reviewed it).
+      // kind (cross-fingerprint supersede skips it below). A same-
+      // fingerprint re-proposal revives the row into the queue instead of
+      // the dead-end skip, whose "already reviewed" framing would be a
+      // lie (no human ever reviewed it). The revival writes the SIGNAL's
+      // content: for content-hashed authoring fingerprints that is a
+      // no-op, but the title-only learning fingerprints (proposeLearning)
+      // can carry a re-taught body — resurrecting the stale one while
+      // reporting "updated" would silently drop what the user just said.
       if (row.status === "superseded" && signal.pattern_kind === "session_learning") {
         await tx
           .update(skillCandidates)
           .set({
             status: "proposed",
+            title: signal.title,
+            body: signal.body,
+            examples: {
+              examples: signal.examples,
+              best_practices: signal.best_practices,
+              pitfalls: signal.pitfalls,
+              doc_refs: signal.doc_refs,
+            },
+            ...(signal.tags && signal.tags.length > 0 ? { tags: signal.tags } : {}),
             confidence: signal.confidence,
             version: row.version + 1,
-            updated_at: new Date(),
+            // DB clock on purpose: the retirement pass orders rows by
+            // updated_at, and mixing the app clock with defaultNow()
+            // inserts would let NTP skew break that ordering.
+            updated_at: sql`now()`,
           })
           .where(eq(skillCandidates.id, row.id));
         await auditAwait(
