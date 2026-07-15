@@ -5,14 +5,24 @@
 // tools already return, so the loop can mirror them into the audit log —
 // "this answer ← these sources" — without the model re-stating them in prose.
 //
-// v1 covers knowledge-source hits (search_knowledge / search_knowledge_v2),
-// the clearest and highest-value grounding source: each hit already carries
-// a chunk id, its source name, and a snippet — exactly a citation. Execution
-// and connector-call refs are a natural extension (same shape) once their
-// output envelopes are harvested.
+// Covers knowledge-source hits (search_knowledge / search_knowledge_v2 →
+// knowledge_chunk) and connector-documentation hits (fetch_connector_docs /
+// search_docs → connector_doc): each hit already carries an id, its source
+// name, and a snippet — exactly a citation. Execution and connector-call
+// refs are a natural extension (same shape) once their envelopes are
+// harvested.
 
 import { truncateForLlm } from "./tools/truncate.ts";
 import type { TurnEvent } from "./types.ts";
+
+// Both grounding surfaces snippet via Postgres `ts_headline`, whose default
+// StartSel/StopSel wrap matched terms in `<b>…</b>`. Strip that markup so the
+// excerpt is faithful source text — the deterministic anti-drift check
+// (source-faithful.ts) substring-matches quotes against it, and highlight
+// tags around a term would make a verbatim quote read as ungrounded.
+function stripSnippetMarkup(snippet: string): string {
+  return snippet.replace(/<\/?b>/g, "");
+}
 
 export interface Citation {
   /** `knowledge_chunk` = a Knowledge-Source hit; `connector_doc` = a
@@ -87,7 +97,7 @@ export function harvestCitations(events: ReadonlyArray<TurnEvent>): Citation[] {
           source_type: "knowledge_chunk",
           id: h.id,
           ...(h.source_name ? { source_name: h.source_name } : {}),
-          ...(h.snippet ? { excerpt: h.snippet.slice(0, 200) } : {}),
+          ...(h.snippet ? { excerpt: stripSnippetMarkup(h.snippet).slice(0, 200) } : {}),
         });
       }
     } else if (ev.tool === "fetch_connector_docs" || ev.tool === "search_docs") {
@@ -100,7 +110,7 @@ export function harvestCitations(events: ReadonlyArray<TurnEvent>): Citation[] {
           source_type: "connector_doc",
           id: h.id,
           ...(h.title ? { source_name: h.title } : {}),
-          ...(h.snippet ? { excerpt: h.snippet.slice(0, 200) } : {}),
+          ...(h.snippet ? { excerpt: stripSnippetMarkup(h.snippet).slice(0, 200) } : {}),
         });
       }
     }
@@ -117,11 +127,15 @@ export function harvestCitations(events: ReadonlyArray<TurnEvent>): Citation[] {
  * model-visible view with the same truncation the loop applied, so a
  * replayed transcript's footer matches the live one. (No grounding tool is
  * truncation-exempt — only `get_raw_result` is, and it is never harvested.)
+ *
+ * `store: false` — this is a read path; it must reproduce the truncation
+ * SHAPE without minting raw-refs into the shared store (which would pollute
+ * it and could evict a live session's entry).
  */
 export function harvestCitationsFromPersisted(events: ReadonlyArray<TurnEvent>): Citation[] {
   const modelVisible = events.map((ev) => {
     if (ev.type !== "tool_result") return ev;
-    const t = truncateForLlm(ev.output);
+    const t = truncateForLlm(ev.output, undefined, { store: false });
     return t.truncated ? ({ ...ev, output: t.data } as TurnEvent) : ev;
   });
   return harvestCitations(modelVisible);
