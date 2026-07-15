@@ -15019,6 +15019,7 @@ export interface components {
         };
         SkillCandidateListResponse: {
             items: components["schemas"]["SkillCandidate"][];
+            total: number;
         };
         SkillCandidate: {
             id: string;
