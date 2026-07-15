@@ -15451,6 +15451,12 @@ export interface components {
                 workflow_id: string;
                 current_version: number | null;
             } | null;
+            last_context_budget: {
+                cap_tokens: number;
+                total_tokens: number;
+                dropped_sections: string[];
+                assembled_at: string;
+            } | null;
         };
         CompactConversationResponse: {
             conversation: components["schemas"]["Conversation"];
