@@ -10,7 +10,12 @@ import { eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
 import * as invokeModule from "../../llm/core/invoke.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
-import { analyzeKnowledgeSource, createKnowledgeSource, getKnowledgeSource } from "../service.ts";
+import {
+  analyzeKnowledgeSource,
+  createKnowledgeSource,
+  getKnowledgeSource,
+  updateKnowledgeSource,
+} from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip.
@@ -135,6 +140,70 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  test("a mid-string colon is topical, not structural — re-analysis replaces it", async () => {
+    // `isStructuralTag` matches an identifier PREFIX directly followed by
+    // `:`; a colon later in the tag must not pin the tag forever.
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: {
+          name: "Colon Tagged Doc",
+          scope: "global",
+          tags: ["domain:harmoniqs", "note about: chords"],
+        },
+        upload: {
+          buffer: Buffer.from("# Akkorde\n\nStufenakkorde in Dur."),
+          filename: "akkorde.md",
+          mime: "text/markdown",
+        },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
+      makeInvokeResult({ description: "Akkordlehre.", tags: ["akkorde"] }),
+    );
+    try {
+      const enriched = await analyzeKnowledgeSource(
+        { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
+        ctx.testDb.db,
+      );
+      expect(enriched!.tags).toEqual(["domain:harmoniqs", "akkorde"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("an explicit tags PATCH replaces wholesale — the one way to re-home a source", async () => {
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: {
+          name: "Re-homed Doc",
+          scope: "global",
+          tags: ["domain:harmoniqs", "musiktheorie"],
+        },
+        upload: {
+          buffer: Buffer.from("# Umzug\n\nDiese Quelle wechselt die Domäne."),
+          filename: "umzug.md",
+          mime: "text/markdown",
+        },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const patched = await updateKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        id: source.id,
+        patch: { tags: ["domain:blog-de", "musiktheorie"] },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    expect(patched!.tags).toEqual(["domain:blog-de", "musiktheorie"]);
   });
 
   test("does NOT overwrite an existing description unless force is set", async () => {

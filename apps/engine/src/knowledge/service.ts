@@ -71,6 +71,29 @@ function dedupeTags(tags: readonly string[]): string[] {
   return out;
 }
 
+/** Namespaced tags — an identifier PREFIX followed directly by a colon
+ *  (`domain:<slug>`, any `<ns>:`) — are structural routing keys: the agent
+ *  briefing and tag-filtered search select on them, so the `<ns>:` shape is
+ *  reserved for routing. Case-insensitive so an existing `Domain:x` cannot
+ *  silently turn topical; a colon later in the tag (`note: x`) does not
+ *  count. */
+export function isStructuralTag(tag: string): boolean {
+  return /^[a-z0-9][a-z0-9_-]*:/i.test(tag.trim());
+}
+
+/** Tag merge for MACHINE-regenerated tags (analysis): structural tags
+ *  already on the source always survive — wiping them made every analyzed
+ *  source silently drop out of its domain — and analysis replaces only the
+ *  plain topical remainder. An explicit operator PATCH
+ *  (`updateKnowledgeSource`) deliberately bypasses this and replaces tags
+ *  wholesale: that is the one way to re-home a source out of a domain. */
+export function mergeStructuralTags(
+  existing: readonly string[],
+  generated: readonly string[],
+): string[] {
+  return dedupeTags([...existing.filter(isStructuralTag), ...generated]);
+}
+
 /**
  * Fire-and-forget, source-scoped embedding backfill kicked right after a
  * create/ingest commits. Freshly (re)ingested chunks carry NULL embeddings
@@ -518,12 +541,7 @@ export async function analyzeKnowledgeSource(
     return toView(source);
   }
 
-  // Namespaced tags (`domain:<slug>`, any `<ns>:` prefix) are structural
-  // routing keys — the agent briefing and tag-filtered search select on
-  // them. Analysis regenerates only the plain topical tags; wiping the
-  // namespace made every analyzed source silently drop out of its domain.
-  const structuralTags = (source.tags ?? []).filter((t) => t.includes(":"));
-  const nextTags = dedupeTags([...structuralTags, ...analysis.tags]);
+  const nextTags = mergeStructuralTags(source.tags ?? [], analysis.tags);
   const overwriteDescription = source.description === null || p.force === true;
 
   return await (db as Db).transaction(async (tx) => {
