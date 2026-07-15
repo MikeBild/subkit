@@ -27,12 +27,24 @@ const cache = new TtlCache<ConversationBudgetReport>({
 const key = (tenant_id: string, conversation_id: string): string =>
   `${tenant_id}:${conversation_id}`;
 
+/** The trimmer's raw list carries one entry per popped ITEM ("docs" ×10
+ *  when ten chunks were shed) — right for metrics, noise for a human.
+ *  Collapse repeats into "name ×N" for the operator-facing snapshot. */
+function compressDroppedSections(sections: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const s of sections) counts.set(s, (counts.get(s) ?? 0) + 1);
+  return [...counts.entries()].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name));
+}
+
 export function recordConversationBudgetReport(
   tenant_id: string,
   conversation_id: string,
   report: ConversationBudgetReport,
 ): void {
-  cache.set(key(tenant_id, conversation_id), report);
+  cache.set(key(tenant_id, conversation_id), {
+    ...report,
+    dropped_sections: compressDroppedSections(report.dropped_sections),
+  });
 }
 
 export function getConversationBudgetReport(

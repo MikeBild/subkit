@@ -317,17 +317,56 @@ export interface CreateCandidateFromAuthoringParams {
  * (`approveSkillCandidate` / `sk learnings review`). `pattern_kind`
  * "session_learning" is deliberate: that is the kind the review queue and
  * the REPL welcome-row count select on, so operator proposals land in the
- * queue the operator already works. Identity is the normalized title
- * within the scope entity — re-proposing the same skill accrues evidence
- * on the existing candidate instead of duplicating queue entries.
+ * queue the operator already works.
+ *
+ * Identity = scope entity + normalized title + CONTENT hash. Content is
+ * part of the identity on purpose: `upsertFromSignal`'s update branch
+ * persists only confidence/version/evidence (detector semantics), so a
+ * title-only identity would report "updated" while silently keeping the
+ * OLD body — and a rejected title would block every future revision.
+ * With content in the fingerprint, an identical re-proposal dedups
+ * (evidence accrues) while a revised proposal files a FRESH candidate the
+ * reviewer sees next to the stale one.
  */
 export async function createCandidateFromAuthoring(
   p: CreateCandidateFromAuthoringParams,
 ): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
   const normalizedTitle = p.title.toLowerCase().replace(/\s+/g, " ").trim();
-  const entity = p.connector_id ?? p.workflow_id ?? "global";
+  // Entity follows the DECLARED scope (a bare fallback chain would let a
+  // workflow-scoped proposal collide across workflows via a stray
+  // connector_id). The tool schema pins scope↔id consistency; these
+  // throws keep the invariant for any future caller — a violation at
+  // proposal time fails the AUTHOR, never the reviewer's approve step.
+  let entity: string;
+  if (p.scope === "connector") {
+    if (!p.connector_id) throw new Error("connector-scoped proposal requires connector_id");
+    entity = p.connector_id;
+  } else if (p.scope === "workflow") {
+    if (!p.workflow_id) throw new Error("workflow-scoped proposal requires workflow_id");
+    entity = p.workflow_id;
+  } else {
+    if (p.connector_id || p.workflow_id) {
+      throw new Error("global proposal must not set connector_id or workflow_id");
+    }
+    entity = "global";
+  }
+  // Literal key order is fixed here, values are strings/arrays — plain
+  // JSON.stringify is deterministic for this shape.
+  const contentHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        body: p.body,
+        examples: p.examples ?? [],
+        best_practices: p.best_practices ?? [],
+        pitfalls: p.pitfalls ?? [],
+        doc_refs: p.doc_refs ?? [],
+        tags: p.tags ?? [],
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
   const fingerprint = createHash("sha256")
-    .update(`authoring_skill:${p.scope}:${entity}:${normalizedTitle}`)
+    .update(`authoring_skill:${p.scope}:${entity}:${normalizedTitle}:${contentHash}`)
     .digest("hex");
   return await upsertFromSignal(
     p.tenant_id,
