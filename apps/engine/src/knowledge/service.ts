@@ -80,25 +80,25 @@ function dedupeTags(tags: readonly string[]): string[] {
  * the request path non-blocking (the deliberate create-path property), stays
  * bounded to one source, and is a no-op when the local model is unavailable.
  */
-export function kickSourceEmbeddingBackfill(
+export async function kickSourceEmbeddingBackfill(
   tenant_id: string,
   knowledge_source_id: string,
   db: Executor,
-): void {
-  void backfillEmbeddings({ tenant_id, knowledge_source_id }, db)
-    .then((result) => {
-      if (result.knowledge.embedded > 0) invalidateKnowledgeCache(tenant_id);
-    })
-    .catch((err) => {
-      logger.warn({
-        module: "knowledge",
-        action: "embedding.backfill_kick_failed",
-        msg: "post-ingest embedding backfill failed — the scheduler sweep will retry",
-        tenant_id,
-        knowledge_source_id,
-        ...errorFields(err),
-      });
+): Promise<void> {
+  try {
+    if (!(await embeddingsAvailable())) return;
+    const result = await backfillEmbeddings({ tenant_id, knowledge_source_id }, db);
+    if (result.knowledge.embedded > 0) invalidateKnowledgeCache(tenant_id);
+  } catch (err) {
+    logger.warn({
+      module: "knowledge",
+      action: "embedding.backfill_kick_failed",
+      msg: "post-ingest embedding backfill failed — the scheduler sweep will retry",
+      tenant_id,
+      knowledge_source_id,
+      ...errorFields(err),
     });
+  }
 }
 
 function toView(row: typeof knowledgeSources.$inferSelect): KnowledgeSourceView {
@@ -269,7 +269,7 @@ export async function createKnowledgeSource(
     invalidateKnowledgeCache(p.tenant_id);
     return toView(row);
   });
-  kickSourceEmbeddingBackfill(p.tenant_id, created.id, db);
+  void kickSourceEmbeddingBackfill(p.tenant_id, created.id, db);
   return created;
 }
 
@@ -760,7 +760,7 @@ export async function ingestKnowledgeSource(
   });
 
   invalidateKnowledgeCache(p.tenant_id);
-  kickSourceEmbeddingBackfill(p.tenant_id, p.knowledge_source_id, db);
+  void kickSourceEmbeddingBackfill(p.tenant_id, p.knowledge_source_id, db);
 
   return {
     knowledge_source_id: p.knowledge_source_id,
