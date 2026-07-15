@@ -889,7 +889,13 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // chrome and `pendingDigestContext` seeds the NEXT turn's memory —
   // an operator faster than the digest simply gets an unseeded first
   // turn, which matches the digest's best-effort contract.
+  const bootProfileVersion = profileVersion;
   void fetchOperatorDigest(client).then((digest) => {
+    // A /profile switch may have completed while this fetch (bound to the
+    // BOOT profile's client) was in flight — dropping the stale result is
+    // what actually enforces the "tenant-A data never renders or seeds a
+    // turn for tenant-B" invariant; the switch path re-fetched its own.
+    if (profileVersion !== bootProfileVersion) return;
     bootSnapshot = { ...bootSnapshot, digest };
     if (digest) pendingDigestContext = digestAsContext(digest);
     for (const listener of bootSnapshotListeners) listener(bootSnapshot);
