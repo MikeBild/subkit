@@ -4,6 +4,7 @@
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
+import type { Citation } from "./citations.ts";
 
 export type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
 /**
@@ -731,6 +732,22 @@ export type TurnEvent =
       suggestion: string | null;
       reason: SuggestNextReason;
       kind: SuggestNextKind | null;
+    }
+  /**
+   * Terminal citations frame — the "prove-after" grounding half made
+   * visible. Emitted exactly once per turn AFTER the assistant's terminal
+   * `message` and its `next_suggestion`, and BEFORE the SSE `outcome`
+   * envelope (which drops `events[]`), only when the turn produced
+   * citations. Carries the same refs already harvested for the audit log;
+   * the client renders a dim "Quellen: …" footer under the anchored
+   * assistant message. Absent entirely on citation-less turns.
+   */
+  | {
+      type: "citations";
+      citations: Citation[];
+      /** Assistant message the footer anchors under; falls back to the
+       *  last assistant message client-side when unset. */
+      parent_message_id?: string;
     };
 
 export interface ConversationResumeSummary {
