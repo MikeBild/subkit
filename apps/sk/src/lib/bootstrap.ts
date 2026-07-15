@@ -299,21 +299,24 @@ function materialize(
   };
 }
 
+/** CLI-side pref defaults, used whenever the engine cannot supply prefs
+ *  (older engines without /v1/sk/bootstrap, unreachable engine during a
+ *  profile switch) so the REPL still has an opinion. */
+export const DEFAULT_SK_PREFS: SkBootstrapWireResponse["prefs"] = {
+  permissionMode: "ask",
+  theme: "auto",
+  personality: "balanced",
+  titleFormat: "session-id",
+  statuslineFormat: "compact",
+  pushNotifyEnabled: false,
+  pushNotifyThresholdSec: 30,
+  quietHoursStart: "",
+  quietHoursEnd: "",
+  portalTokenTtlMin: 15,
+};
+
 function fromLegacy(snap: ResolvedPersonaSnapshot, fetchedAt: number): SkBootstrapSnapshot {
-  // Older engines without /v1/sk/bootstrap have no prefs. Use the
-  // CLI-side defaults so the REPL still has an opinion.
-  const defaultPrefs: SkBootstrapWireResponse["prefs"] = {
-    permissionMode: "ask",
-    theme: "auto",
-    personality: "balanced",
-    titleFormat: "session-id",
-    statuslineFormat: "compact",
-    pushNotifyEnabled: false,
-    pushNotifyThresholdSec: 30,
-    quietHoursStart: "",
-    quietHoursEnd: "",
-    portalTokenTtlMin: 15,
-  };
+  const defaultPrefs = DEFAULT_SK_PREFS;
   return {
     label: snap.label,
     allowed: snap.allowed,
