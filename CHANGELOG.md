@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] – 2026-07-15
+
+### Changed
+- Chat/MCP `create_skill` now files a PROPOSED skill candidate for human
+  review instead of silently activating a skill — it lands in the same
+  queue as session learnings (`sk learnings review`, the REPL
+  welcome-row starter, or an in-session `approve_skill_candidate`).
+  Identical re-proposals dedup; revised content files a fresh candidate.
+  The admin/REST create stays direct. This closes the one remaining
+  bypass of the never-auto-promote invariant.
+
+### Fixed
+- `SK.md` memory merge is byte-accurate and keeps the closest project
+  file: under over-cap it previously discarded exactly the
+  highest-priority (cwd-closest) section first and measured UTF-16 code
+  units against a byte cap. Far sections now collapse to a one-line
+  marker; section headers carry the source path plus a content hash.
+- Long conversations no longer lose authoring evidence without a trace:
+  when the context trimmer sheds the connector-operations index or
+  recorded endpoint samples, a one-line reference naming the reload tool
+  stays in the prompt (so the model re-fetches instead of guessing), and
+  `/context` shows what the last turn trimmed (`tokens used/cap` + the
+  dropped sections).
+
+### Added
+- `policy.denied` audit rows from the tool dispatcher carry `args_hash`
+  — the same fingerprint the approval lifecycle uses — so a denied
+  intent joins forensically with any approval for the identical call
+  (hash only, never raw values).
+
 ## [1.15.0] – 2026-07-15
 
 ### Added
