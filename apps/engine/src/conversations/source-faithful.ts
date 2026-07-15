@@ -127,14 +127,13 @@ export function findUngroundedQuotes(text: string, citations: ReadonlyArray<Cita
 }
 
 /**
- * Deterministic resolution check. Every cited knowledge_chunk id must
- * resolve to a row owned by this tenant. Returns the cited ids that do
- * NOT resolve. Tenant-scoped query (audit-invariant: tenant_id predicate
- * is present and visible).
- *
- * Non-knowledge_chunk citation kinds (execution / connector_call) are a
- * future extension of the envelope; until they are harvested they are
- * never present, so the id list passed here is uniform.
+ * Deterministic resolution check. Every cited id must resolve to a row
+ * owned by this tenant — knowledge_chunk ids against the knowledge chunks,
+ * connector_doc ids against the connector-document chunks (each split out by
+ * source_type and queried separately). Returns the cited ids that do NOT
+ * resolve. Both queries are tenant-scoped (audit-invariant: tenant_id
+ * predicate is present and visible), so a fabricated id of either kind is
+ * caught by the anti-drift gate.
  */
 const CITATION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

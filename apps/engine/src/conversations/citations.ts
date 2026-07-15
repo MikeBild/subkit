@@ -11,6 +11,7 @@
 // and connector-call refs are a natural extension (same shape) once their
 // output envelopes are harvested.
 
+import { truncateForLlm } from "./tools/truncate.ts";
 import type { TurnEvent } from "./types.ts";
 
 export interface Citation {
@@ -105,4 +106,23 @@ export function harvestCitations(events: ReadonlyArray<TurnEvent>): Citation[] {
     }
   }
   return out;
+}
+
+/**
+ * Replay-safe harvest. The live loop harvests from the MODEL-VISIBLE
+ * (truncated) tool output, but the persisted `tool_result` output is the
+ * FULL payload — so re-deriving citations on replay from the raw persisted
+ * output would name MORE sources than the live footer for a grounding call
+ * that returned more hits than the model was shown. Reproduce the exact
+ * model-visible view with the same truncation the loop applied, so a
+ * replayed transcript's footer matches the live one. (No grounding tool is
+ * truncation-exempt — only `get_raw_result` is, and it is never harvested.)
+ */
+export function harvestCitationsFromPersisted(events: ReadonlyArray<TurnEvent>): Citation[] {
+  const modelVisible = events.map((ev) => {
+    if (ev.type !== "tool_result") return ev;
+    const t = truncateForLlm(ev.output);
+    return t.truncated ? ({ ...ev, output: t.data } as TurnEvent) : ev;
+  });
+  return harvestCitations(modelVisible);
 }

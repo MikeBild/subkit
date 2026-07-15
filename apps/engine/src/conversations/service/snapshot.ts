@@ -127,10 +127,10 @@ export interface ContextSnapshot {
     dropped_sections: string[];
     assembled_at: string;
   } | null;
-  /** Whether the draft's grounding is still current, checked at resume.
-   *  Advisory only — never blocks. `null` when the draft carries no
-   *  grounding checkpoint. Real fresh/stale/unknown logic lands with the
-   *  grounding-staleness feature; populated `null` until then. */
+  /** Whether the draft's grounding is still current, checked at resume by
+   *  recomputing the fingerprint for the draft's connectors. Advisory only —
+   *  never blocks; any recompute error resolves to `unknown`, never a false
+   *  `stale`. `null` when the draft carries no grounding fingerprint. */
   grounding_status: {
     state: "fresh" | "stale" | "unknown";
     advisory: string | null;
