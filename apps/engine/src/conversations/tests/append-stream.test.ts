@@ -8,9 +8,11 @@
 // auto-persist suite.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors } from "../../db/schema/index.ts";
+import { connectors, conversations } from "../../db/schema/index.ts";
+import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
-import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { createEmptyDraftDocument } from "../authoring-state.ts";
 
 let http: HttpTestServer;
 let connectorId: string;
@@ -232,5 +234,135 @@ describe("http/conversations POST SSE", () => {
     expect(eventTypes).not.toContain("conversation_started");
     expect(eventTypes[eventTypes.length - 1]).toBe("outcome");
     expect(eventTypes).toContain("completed");
+  });
+});
+
+// Regression coverage for two bugs an e2e citations-footer run surfaced:
+//   1. `harvestCitations` (conversations/citations.ts) read
+//      `tool_result.output.data.hits`, but `normalizeToolResultPayload`
+//      (conversations/tools/result-payload.ts) unwraps a successful
+//      `ToolResult` down to just `.data` before any event is built — a
+//      real tool_result's `output` is `{ hits: [...] }`, never
+//      `{ ok, data: { hits } }`. `harvestCitations` never matched a live
+//      event.
+//   2. Even with (1) fixed, `GET /:id/stream` (a REPLAY built from
+//      persisted messages/tool_calls — see stream.ts) never re-derived
+//      the `citations` frame, because it is not persisted anywhere; a
+//      client that only sees the replay (any non-SSE turn, e.g. `sk -p`)
+//      never received it.
+describe("http/conversations citations replay", () => {
+  async function seedKnowledgeChunk(
+    http: HttpTestServer,
+    opts: { sourceName: string; token: string },
+  ): Promise<void> {
+    const [source] = await http.db
+      .insert(knowledgeSources)
+      .values({
+        tenant_id: http.tenantId,
+        name: opts.sourceName,
+        slug: "citations-replay-source",
+        source_type: "inline",
+        source_uri: "citations-replay.md",
+        version: "v1",
+        status: "active",
+        scope: "global",
+      })
+      .returning();
+    if (!source) throw new Error("seed knowledge source failed");
+    await http.db.insert(knowledgeChunks).values({
+      tenant_id: http.tenantId,
+      knowledge_source_id: source.id,
+      ordinal: 0,
+      title: opts.sourceName,
+      content: `The magic deployment marker is ${opts.token}. It identifies this source.`,
+      byte_size: 80,
+      fingerprint: "fp-citations-replay",
+    });
+  }
+
+  async function seedConversation(http: HttpTestServer): Promise<string> {
+    const draft = {
+      ...createEmptyDraftDocument(),
+      session: { permission_mode: "auto" as const },
+    };
+    const [conversation] = await http.db
+      .insert(conversations)
+      .values({
+        tenant_id: http.tenantId,
+        status: "active",
+        owner_id: http.userId,
+        draft: draft as unknown as Record<string, unknown>,
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+    return conversation.id;
+  }
+
+  test("a buffered (JSON) append that grounds via search_knowledge replays a citations frame naming the source", async () => {
+    const token = "zphreplaymarker9001";
+    const sourceName = "Citations Replay Runbook";
+    await seedKnowledgeChunk(http, { sourceName, token });
+    const conversationId = await seedConversation(http);
+
+    getMockProvider().setConversePlan(conversationId, [
+      { tool: "search_knowledge", args: { query: token } },
+    ]);
+
+    // Buffered JSON append — no `Accept: text/event-stream`, exactly the
+    // path `sk -p` (headless.ts) and the plain readline REPL use.
+    const appendRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${http.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ message: `What do you know about ${token}?` }),
+    });
+    expect(appendRes.status).toBe(200);
+    expect(appendRes.headers.get("content-type") ?? "").toMatch(/application\/json/);
+
+    // Replay — the same GET the CLI opens after a buffered append to
+    // reconstruct its transcript.
+    const streamRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/stream`, {
+      headers: { authorization: `Bearer ${http.apiKey}`, accept: "text/event-stream" },
+    });
+    expect(streamRes.status).toBe(200);
+    const frames = await readSse(streamRes);
+    const citationsFrame = frames.find((f) => f.event === "citations");
+    expect(citationsFrame).toBeDefined();
+    const parsed = JSON.parse(citationsFrame!.data) as {
+      citations: Array<{ source_type: string; id: string; source_name?: string }>;
+      parent_message_id?: string;
+    };
+    expect(parsed.citations.length).toBeGreaterThan(0);
+    expect(parsed.citations[0]?.source_type).toBe("knowledge_chunk");
+    expect(parsed.citations[0]?.source_name).toBe(sourceName);
+
+    // The citations frame must anchor to the LAST assistant message the
+    // replay emits, not an earlier one — a multi-step turn's tool call
+    // typically anchors to an earlier (pre-text) assistant message.
+    const assistantMessageIds = frames
+      .filter(
+        (f) =>
+          f.event === "message" && (JSON.parse(f.data) as { role: string }).role === "assistant",
+      )
+      .map((f) => (JSON.parse(f.data) as { id: string }).id);
+    expect(assistantMessageIds.length).toBeGreaterThan(0);
+    expect(parsed.parent_message_id).toBe(assistantMessageIds[assistantMessageIds.length - 1]);
+  });
+
+  test("a buffered append with no grounding tool call replays no citations frame", async () => {
+    const conversationId = await seedConversation(http);
+
+    const appendRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${http.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ message: "just say hi, no lookups needed" }),
+    });
+    expect(appendRes.status).toBe(200);
+
+    const streamRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/stream`, {
+      headers: { authorization: `Bearer ${http.apiKey}`, accept: "text/event-stream" },
+    });
+    expect(streamRes.status).toBe(200);
+    const frames = await readSse(streamRes);
+    expect(frames.find((f) => f.event === "citations")).toBeUndefined();
   });
 });

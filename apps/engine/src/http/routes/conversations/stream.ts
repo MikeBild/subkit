@@ -8,8 +8,10 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
+import { harvestCitations } from "../../../conversations/citations.ts";
 import * as svc from "../../../conversations/index.ts";
 import { serializeEvent, withoutApprovalHandle } from "../../../conversations/index.ts";
+import type { TurnEvent } from "../../../conversations/types.ts";
 import { monthlyUsage, resolveModelRoute } from "../../../llm/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -109,7 +111,36 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
         );
       };
 
+      // Re-derive the terminal `citations` frame per historical turn (it is
+      // never persisted — the live loop only streams it, see
+      // conversations/loop.ts). A turn spans from one "user" message up to
+      // (but not including) the next; the tool_result events emitted for
+      // its children are the same envelope `harvestCitations` reads live.
+      // Anchored to the LAST assistant message seen in the turn — matching
+      // `signals.lastAssistantMessageId` in the live loop — even though the
+      // grounding tool call itself may be a child of an EARLIER assistant
+      // message in a multi-step turn.
+      let turnToolResults: TurnEvent[] = [];
+      let turnLastAssistantId: string | null = null;
+      const flushTurnCitations = async () => {
+        if (turnLastAssistantId) {
+          const citations = harvestCitations(turnToolResults);
+          if (citations.length > 0) {
+            await stream.writeSSE(
+              serializeEvent({
+                type: "citations",
+                citations,
+                parent_message_id: turnLastAssistantId,
+              }),
+            );
+          }
+        }
+        turnToolResults = [];
+        turnLastAssistantId = null;
+      };
+
       for (const msg of detail.messages) {
+        if (msg.role === "user") await flushTurnCitations();
         await stream.writeSSE(
           serializeEvent({
             type: "message",
@@ -119,11 +150,23 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
             parent_message_id: msg.id,
           }),
         );
+        if (msg.role === "assistant") turnLastAssistantId = msg.id;
         const childCallsForMsg = childCalls.get(msg.id) ?? [];
-        for (const call of childCallsForMsg) await emitCall(call);
+        for (const call of childCallsForMsg) {
+          await emitCall(call);
+          if (call.output !== null && call.output !== undefined) {
+            turnToolResults.push({
+              type: "tool_result",
+              call_id: call.id,
+              tool: call.tool,
+              output: call.output,
+            });
+          }
+        }
         const childElicitsForMsg = childElicits.get(msg.id) ?? [];
         for (const elicit of childElicitsForMsg) await emitElicit(elicit);
       }
+      await flushTurnCitations();
       // Legacy rows without parent_message_id — emit at the end so
       // clients that consume parent_message_id place them under the
       // last assistant message of their time window.

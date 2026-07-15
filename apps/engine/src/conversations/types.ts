@@ -749,7 +749,7 @@ export type TurnEvent =
    * `message` and its `next_suggestion`, and BEFORE the SSE `outcome`
    * envelope (which drops `events[]`), only when the turn produced
    * citations. Carries the same refs already harvested for the audit log;
-   * the client renders a dim "Quellen: …" footer under the anchored
+   * the client renders a dim "Sources: …" footer under the anchored
    * assistant message. Absent entirely on citation-less turns.
    */
   | {

@@ -1,4 +1,13 @@
 // Citation harvesting — deterministic.
+//
+// `tool_result.output` fixtures here use the FLAT shape a real turn
+// actually produces: `normalizeToolResultPayload`
+// (conversations/tools/result-payload.ts) unwraps a successful
+// `ToolResult` down to its `.data` before the event is built, so `output`
+// is `{ hits: [...] }`, never `{ ok: true, data: { hits: [...] } }`. An
+// e2e run through the mock LLM provider caught the drift when the earlier
+// fixtures here (wrapped in `{ok, data}`) kept this suite green while the
+// live event never carried a harvestable shape at all.
 
 import { describe, expect, test } from "bun:test";
 import { harvestCitations } from "../citations.ts";
@@ -11,19 +20,13 @@ describe("harvestCitations", () => {
   test("extracts knowledge hits as citations, deduped by id", () => {
     const events: TurnEvent[] = [
       toolResult("search_knowledge", {
-        ok: true,
-        data: {
-          hits: [
-            { id: "k1", source_name: "Payments Guide", snippet: "take a payment" },
-            { id: "k2", source_name: "Repo Guide", snippet: "list repositories" },
-          ],
-        },
+        hits: [
+          { id: "k1", source_name: "Payments Guide", snippet: "take a payment" },
+          { id: "k2", source_name: "Repo Guide", snippet: "list repositories" },
+        ],
       }),
       // search_knowledge_v2 re-surfaces k1 — must dedup.
-      toolResult("search_knowledge_v2", {
-        ok: true,
-        data: { hits: [{ id: "k1", source_name: "Payments Guide" }] },
-      }),
+      toolResult("search_knowledge_v2", { hits: [{ id: "k1", source_name: "Payments Guide" }] }),
     ];
     const citations = harvestCitations(events);
     expect(citations.map((c) => c.id)).toEqual(["k1", "k2"]);
@@ -37,8 +40,8 @@ describe("harvestCitations", () => {
 
   test("ignores non-grounding tools and malformed output", () => {
     const events: TurnEvent[] = [
-      toolResult("list_workflows", { ok: true, data: { workflows: [{ id: "w1" }] } }),
-      toolResult("search_knowledge", { ok: true, data: {} }),
+      toolResult("list_workflows", { workflows: [{ id: "w1" }] }),
+      toolResult("search_knowledge", {}),
       toolResult("search_knowledge", null),
       { type: "text_delta", text: "hi" } as TurnEvent,
     ];
@@ -52,19 +55,13 @@ describe("harvestCitations", () => {
   test("extracts connector-doc hits (title→source_name, snippet→excerpt), deduped", () => {
     const events: TurnEvent[] = [
       toolResult("fetch_connector_docs", {
-        ok: true,
-        data: {
-          hits: [
-            { id: "d1", title: "Stripe · Charges", snippet: "POST /v1/charges" },
-            { id: "d2", title: "Stripe · Refunds", snippet: "POST /v1/refunds" },
-          ],
-        },
+        hits: [
+          { id: "d1", title: "Stripe · Charges", snippet: "POST /v1/charges" },
+          { id: "d2", title: "Stripe · Refunds", snippet: "POST /v1/refunds" },
+        ],
       }),
       // search_docs re-surfaces d1 — must dedup.
-      toolResult("search_docs", {
-        ok: true,
-        data: { hits: [{ id: "d1", title: "Stripe · Charges" }] },
-      }),
+      toolResult("search_docs", { hits: [{ id: "d1", title: "Stripe · Charges" }] }),
     ];
     const citations = harvestCitations(events);
     expect(citations.map((c) => c.id)).toEqual(["d1", "d2"]);
@@ -78,8 +75,8 @@ describe("harvestCitations", () => {
 
   test("mixes knowledge and connector-doc citations from one turn", () => {
     const events: TurnEvent[] = [
-      toolResult("search_knowledge", { ok: true, data: { hits: [{ id: "k1" }] } }),
-      toolResult("fetch_connector_docs", { ok: true, data: { hits: [{ id: "d1" }] } }),
+      toolResult("search_knowledge", { hits: [{ id: "k1" }] }),
+      toolResult("fetch_connector_docs", { hits: [{ id: "d1" }] }),
     ];
     const kinds = harvestCitations(events).map((c) => c.source_type);
     expect(kinds).toEqual(["knowledge_chunk", "connector_doc"]);

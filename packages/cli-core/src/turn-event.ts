@@ -238,7 +238,7 @@ export interface MessageState {
   /** Persisted message ID — needed so child tool calls can match by parent_message_id. */
   id?: string;
   /** Source refs for this answer — set by the terminal `citations` frame;
-   *  rendered as a dim "Quellen: …" footer. Absent on citation-less turns. */
+   *  rendered as a dim "Sources: …" footer. Absent on citation-less turns. */
   citations?: Citation[];
 }
 
