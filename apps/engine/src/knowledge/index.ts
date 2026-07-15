@@ -4,4 +4,5 @@
 
 export * from "./budgets.ts";
 export * from "./service.ts";
+export * from "./tags.ts";
 export * from "./types.ts";
