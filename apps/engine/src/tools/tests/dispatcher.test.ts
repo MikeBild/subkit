@@ -44,10 +44,23 @@ const PRINCIPAL: ResolvedPrincipal = {
 // The dispatcher hits auditAwait() on confirm paths; we pass a stub `db`
 // that satisfies the type without exercising real Postgres. The audit
 // helper logs on failure rather than throwing.
-// biome-ignore lint/suspicious/noExplicitAny: stub for tests
+// The zero-row update chain matters: the needs_confirm path calls
+// `mintApprovalGrantUrl` whenever the AMBIENT config/env carries a
+// public_base_url — under bun's parallel test files another suite's
+// beforeAll/afterAll window (mcp-oauth audience tests) can set one
+// concurrently, so this stub must survive that path instead of exploding
+// with "db.update is not a function" depending on scheduling.
+// biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
+const UPDATE_STUB: any = {
+  set: () => UPDATE_STUB,
+  where: () => UPDATE_STUB,
+  returning: () => Promise.resolve([]),
+};
+// biome-ignore lint/suspicious/noExplicitAny: drizzle Db shape
 const DB_STUB: any = {
   transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
+  update: () => UPDATE_STUB,
 };
 
 // Deterministic replacement for crypto.randomUUID() — same seed, same
