@@ -120,3 +120,49 @@ describe("triage-digest-failures TaskAction", () => {
     expect(visible).toContain("triage-digest-failures");
   });
 });
+
+describe("review-learnings TaskAction", () => {
+  test("action exists in the TASK_ACTIONS catalog with the review category", () => {
+    const action = findTaskActionById("review-learnings");
+    expect(action).toBeDefined();
+    expect(action?.category).toBe("review");
+    expect(action?.detail).toBe("curation");
+  });
+
+  test("invoke.kind is 'prompt' and the prompt pins the curation contract", () => {
+    const action = findTaskActionById("review-learnings");
+    expect(action?.invoke.kind).toBe("prompt");
+    if (action?.invoke.kind === "prompt") {
+      // The prompt must route through the skill-candidate tools and forbid
+      // unilateral approval — Skills are human-approved only.
+      expect(action.invoke.prompt).toContain("list_skill_candidates");
+      expect(action.invoke.prompt).toContain("approve_skill_candidate");
+      expect(action.invoke.prompt).toContain("explicitly confirm");
+      expect(action.invoke.prompt).toContain("Never approve or reject");
+    }
+  });
+
+  test("action requires skill:read", () => {
+    const action = findTaskActionById("review-learnings");
+    expect(action?.requires).toBe("skill:read");
+  });
+
+  test("action is findable by its aliases", () => {
+    expect(resolveTaskActionSuggestion("learnings")?.id).toBe("review-learnings");
+    expect(resolveTaskActionSuggestion("review learnings")?.id).toBe("review-learnings");
+  });
+
+  test("action is hidden from a persona lacking skill:read", () => {
+    const noSkillRead: PersonaProbe = { allows: (permission) => permission !== "skill:read" };
+    const visible = taskActionsForPersona(noSkillRead).map((action) => action.id);
+    expect(visible).not.toContain("review-learnings");
+  });
+
+  test("action is visible to a persona with skill:read", () => {
+    const withSkillRead: PersonaProbe = {
+      allows: (permission) => new Set(["skill:read"]).has(permission),
+    };
+    const visible = taskActionsForPersona(withSkillRead).map((action) => action.id);
+    expect(visible).toContain("review-learnings");
+  });
+});

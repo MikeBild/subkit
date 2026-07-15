@@ -86,8 +86,18 @@ const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
  *  - `save_learning` creates an INERT `proposed` skill candidate behind the
  *    human approve gate; it is the coding-agent capture loop's explicit
  *    channel and must stay directly callable on MCP (authoring principals
- *    see no other tenant_write). RBAC (`skill:propose`) still gates it. */
-const READONLY_EXEMPT_RUNS: ReadonlySet<string> = new Set(["run_workflow", "save_learning"]);
+ *    see no other tenant_write). RBAC (`skill:propose`) still gates it.
+ *  - `approve_skill_candidate` closes the capture loop IN the coding
+ *    session: the client's native destructiveHint dialog is the explicit
+ *    operator approval (the same gate every MCP write uses since the
+ *    portal removal), and RBAC `skill:write` stays the hard boundary.
+ *    Without the exemption the loop's last mile forces a surface switch
+ *    to `sk learnings review` for every single approval. */
+const READONLY_EXEMPT_RUNS: ReadonlySet<string> = new Set([
+  "run_workflow",
+  "save_learning",
+  "approve_skill_candidate",
+]);
 
 function visibilityFor(
   category: ToolCategory,

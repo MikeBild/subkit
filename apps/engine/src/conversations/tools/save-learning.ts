@@ -61,7 +61,7 @@ export const saveLearningTool: ConversationTool = {
         note:
           result.action === "skipped"
             ? "An identical learning was already reviewed (approved or rejected) — nothing new was queued."
-            : "Queued for human review — it becomes active only after approval.",
+            : "Queued for human review. Approve it right here (call approve_skill_candidate when the user asks — their client shows the confirmation dialog) or via `sk learnings review`.",
       },
     };
   },
