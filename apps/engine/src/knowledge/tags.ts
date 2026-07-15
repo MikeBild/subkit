@@ -21,16 +21,17 @@ export function dedupeTags(tags: readonly string[]): string[] {
   return out;
 }
 
-/** Namespaced tags — a whitespace-free NAMESPACE prefix, a colon, and
- *  content directly after it (`domain:<slug>`, any `<ns>:x`) — are
+/** Namespaced tags — a NAMESPACE prefix (letters/digits/underscore,
+ *  hyphens inside, Unicode included so `domäne:blog` counts), a colon,
+ *  and content directly after it (`domain:<slug>`, any `<ns>:x`) — are
  *  structural routing keys: the agent briefing and tag-filtered search
  *  select on them, so the `<ns>:` shape is reserved for routing. Prose
- *  colons do not count: a space before the colon (`note about: chords`)
- *  or after it (`note: x`) marks a topical tag. The namespace is any
- *  non-space run (not just ASCII identifiers) so existing tags like
- *  `domäne:blog` keep their structural status. */
+ *  and punctuation colons do not count: a space before the colon
+ *  (`note about: chords`), a space after it (`note: x`), or a
+ *  non-identifier prefix (`q&a:faq`, `c++:tips`, `.net:core`) all mark
+ *  plain topical tags that re-analysis may replace. */
 export function isStructuralTag(tag: string): boolean {
-  return /^[^\s:]+:\S/.test(tag.trim());
+  return /^[\p{L}\p{N}_][\p{L}\p{N}_-]*:\S/u.test(tag.trim());
 }
 
 /** Tag merge for MACHINE-regenerated tags (analysis): structural tags
