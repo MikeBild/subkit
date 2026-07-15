@@ -66,6 +66,7 @@ export { readSse, type SseFrame } from "./sse.ts";
 export {
   type ActivityState,
   applyTurnEvent,
+  type Citation,
   type DataPartState,
   type ExecutionResultRender,
   errorFrameToEvents,

@@ -94,6 +94,13 @@ export interface TurnSignals {
    */
   assistantMessageId?: string | null;
   /**
+   * Id of the most recently emitted terminal assistant message. Unlike
+   * `assistantMessageId` (reset to null after each step's message emit),
+   * this persists so the post-loop citations frame can anchor its footer
+   * to the answer it belongs under.
+   */
+  lastAssistantMessageId?: string | null;
+  /**
    * Per-step buffer of child rows created by tool wrappers since the
    * last `onStepFinish`. Normal writes already stamp
    * `parent_message_id`; the loop keeps this buffer so its end-of-step
