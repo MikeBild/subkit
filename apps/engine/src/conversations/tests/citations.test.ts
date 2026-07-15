@@ -48,4 +48,40 @@ describe("harvestCitations", () => {
   test("no grounding tool → empty (a direct answer the prove-before gate must catch)", () => {
     expect(harvestCitations([{ type: "text_delta", text: "hi" } as TurnEvent])).toEqual([]);
   });
+
+  test("extracts connector-doc hits (title→source_name, snippet→excerpt), deduped", () => {
+    const events: TurnEvent[] = [
+      toolResult("fetch_connector_docs", {
+        ok: true,
+        data: {
+          hits: [
+            { id: "d1", title: "Stripe · Charges", snippet: "POST /v1/charges" },
+            { id: "d2", title: "Stripe · Refunds", snippet: "POST /v1/refunds" },
+          ],
+        },
+      }),
+      // search_docs re-surfaces d1 — must dedup.
+      toolResult("search_docs", {
+        ok: true,
+        data: { hits: [{ id: "d1", title: "Stripe · Charges" }] },
+      }),
+    ];
+    const citations = harvestCitations(events);
+    expect(citations.map((c) => c.id)).toEqual(["d1", "d2"]);
+    expect(citations[0]).toEqual({
+      source_type: "connector_doc",
+      id: "d1",
+      source_name: "Stripe · Charges",
+      excerpt: "POST /v1/charges",
+    });
+  });
+
+  test("mixes knowledge and connector-doc citations from one turn", () => {
+    const events: TurnEvent[] = [
+      toolResult("search_knowledge", { ok: true, data: { hits: [{ id: "k1" }] } }),
+      toolResult("fetch_connector_docs", { ok: true, data: { hits: [{ id: "d1" }] } }),
+    ];
+    const kinds = harvestCitations(events).map((c) => c.source_type);
+    expect(kinds).toEqual(["knowledge_chunk", "connector_doc"]);
+  });
 });
