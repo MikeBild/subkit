@@ -734,6 +734,12 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     } catch {
       nextPersona = fallbackPersona(newProfile);
     }
+    // Bail EARLY too: a newer switch may already have won while health +
+    // persona awaited above — the clear below must not wipe its committed
+    // digest context ("commits NOTHING when superseded" includes the clear).
+    if (currentClient !== newClient) {
+      return `switch to "${name}" superseded by a newer /profile switch`;
+    }
     // Re-seed the digest for the NEW tenant. Clearing first guarantees
     // tenant-A's failures/context can never render (chrome) or fold into
     // tenant-B's first turn (memory) if the refetch fails. Best-effort,
