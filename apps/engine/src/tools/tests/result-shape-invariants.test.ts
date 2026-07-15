@@ -63,10 +63,21 @@ const PRINCIPAL: ResolvedPrincipal = {
   // biome-ignore lint/suspicious/noExplicitAny: test stub
 } as any;
 
-// biome-ignore lint/suspicious/noExplicitAny: test stub
+// Zero-row update chain: the needs_confirm path may call
+// `mintApprovalGrantUrl` when the ambient config/env carries a
+// public_base_url (parallel test files can set one concurrently) — the
+// stub must survive that path, not explode on db.update.
+// biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
+const UPDATE_STUB: any = {
+  set: () => UPDATE_STUB,
+  where: () => UPDATE_STUB,
+  returning: () => Promise.resolve([]),
+};
+// biome-ignore lint/suspicious/noExplicitAny: drizzle Db shape
 const DB_STUB: any = {
   transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
+  update: () => UPDATE_STUB,
 };
 
 function descriptorWithExecute(
