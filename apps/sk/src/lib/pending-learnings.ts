@@ -32,16 +32,28 @@ export interface LearningCandidate {
  *  emit `total` yet, the first page is the queue (old behavior). */
 export async function fetchProposedLearnings(client: EngineClient): Promise<LearningCandidate[]> {
   const out: LearningCandidate[] = [];
+  const seen = new Set<string>();
+  let fetched = 0;
   for (;;) {
     const res = await client.listSkillCandidates({
       ...PROPOSED_LEARNINGS_QUERY,
       limit: REVIEW_PAGE_SIZE,
-      offset: out.length,
+      offset: fetched,
     });
     const items = res.items as unknown as LearningCandidate[];
-    out.push(...items);
-    const total = typeof res.total === "number" ? res.total : out.length;
-    if (items.length === 0 || out.length >= total) return out;
+    fetched += items.length;
+    // Offset pagination over a mutable DESC list can re-serve a boundary
+    // row when a new proposal lands between page fetches — reviewing the
+    // same candidate twice would abort the interactive queue on the
+    // second approve. Dedupe by id; a shifted-away row simply surfaces on
+    // the next run.
+    for (const item of items) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      out.push(item);
+    }
+    const total = typeof res.total === "number" ? res.total : fetched;
+    if (items.length === 0 || fetched >= total) return out;
   }
 }
 
