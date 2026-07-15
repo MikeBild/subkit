@@ -100,6 +100,8 @@ The state is persisted in the conversation draft summary:
 
 The current stage, active target, and checkpoint freshness are part of the runtime contract, not prompt advice. The same grounding rule applies to explanatory follow-ups: when a user asks why something was named or configured a certain way, the assistant answers from recorded state, audit history, ingested docs, or a fresh grounding call — or says plainly that the reason is not recorded. It does not speculate.
 
+When an answer is grounded in a knowledge source, `sk` shows a dim `Quellen: …` footer beneath it — the source names the answer was built on, so a reader can verify the claim rather than trust the prose. The footer appears only when the turn actually cited a source (the same refs written to the audit log); a source-less answer shows nothing. It carries no new interaction — it is a display of the grounding that already happened.
+
 ### New draft versus saved workflow
 
 A conversation can stay bound to a saved workflow after rename, commit, and execution so follow-up runs and repairs stay grounded. That binding is intentional but not sticky against explicit new-workflow intent.

@@ -1683,6 +1683,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             signals.pendingChildToolCallIds = [];
             signals.pendingChildElicitationIds = [];
             signals.assistantMessageId = null;
+            signals.lastAssistantMessageId = assistantMessageId;
             if (hasText) {
               signals.lastAssistantText = guarded.text;
             }
@@ -2022,6 +2023,21 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // re-uses the same array. Empty when the turn cited no source.
   const citations: Citation[] =
     !cancelled && signals.lastAssistantText ? harvestCitations(events) : [];
+
+  // Prove-after made visible: emit the terminal citations frame so the
+  // client renders a "Quellen: …" footer under the answer. Pushed here —
+  // after the terminal message, before the SSE `outcome` frame drops
+  // `events[]` — exactly once, only when the turn cited a source. Anchors
+  // to the last assistant message; the client falls back to the same.
+  if (citations.length > 0) {
+    events.push({
+      type: "citations",
+      citations,
+      ...(signals.lastAssistantMessageId
+        ? { parent_message_id: signals.lastAssistantMessageId }
+        : {}),
+    });
+  }
 
   let criticVerdict: CriticVerdict | undefined;
   if (!cancelled && (signals.committed || signals.lastAssistantText)) {
