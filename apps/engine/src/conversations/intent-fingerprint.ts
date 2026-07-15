@@ -71,6 +71,19 @@ export interface ConfirmIntent {
 }
 
 /**
+ * True when a confirm carries a concrete action — a `commit_intent` (the
+ * write the harness would apply) or an explicit `target`. Only these have a
+ * stable identity worth remembering: the declined-intent guard keys on it.
+ * A bare confirmation is just a question whose identity would be only
+ * `kind` + draft, which two unrelated questions share — guarding those would
+ * block a DIFFERENT question after one was declined. Recorder and guard both
+ * gate on this so they never disagree on what counts as "the same ask".
+ */
+export function intentHasDistinguishingAction(confirm: ConfirmIntent): boolean {
+  return confirm.commit_intent !== undefined || confirm.target !== undefined;
+}
+
+/**
  * Fingerprint of an authoring INTENT — the identity the declined-intent
  * guard keys on to recognise "the same proposal". Combines the confirm
  * kind + commit-intent

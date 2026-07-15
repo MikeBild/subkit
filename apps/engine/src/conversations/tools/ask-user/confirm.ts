@@ -6,7 +6,10 @@
 // PR 2 migrates commit + external-write callers to emit this tool.
 
 import { z } from "@hono/zod-openapi";
-import { authoringIntentFingerprint } from "../../intent-fingerprint.ts";
+import {
+  authoringIntentFingerprint,
+  intentHasDistinguishingAction,
+} from "../../intent-fingerprint.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { type CommitIntent, commitIntentSchema, describePatchOps } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
@@ -80,19 +83,31 @@ export const askUserConfirmTool: ConversationTool = {
     const args = inputSchema.parse(rawArgs);
     const effectiveCommitIntent = defaultCommitIntent(args);
     // Declined-intent guard: if the operator already declined this exact
-    // proposal in THIS conversation, answer with the prior decline instead
-    // of re-prompting — even in `auto` mode, because an explicit "no" on an
-    // identical intent outranks session-level implicit approval. Keyed by
-    // the intent fingerprint (kind + commit_intent + target + draft
-    // identity), so an edited draft yields a new fingerprint and prompts
-    // normally. Fail-open: a null fingerprint falls through to the prompt.
+    // action in THIS conversation, answer with the prior decline instead of
+    // re-prompting — even in `auto` mode, because an explicit "no" on an
+    // identical action outranks session-level implicit approval. Keyed by the
+    // intent fingerprint (kind + commit_intent + target + draft identity), so
+    // an edited draft yields a new fingerprint and prompts normally. Only
+    // proposals carrying a concrete action (commit_intent / target) are
+    // guarded — a bare question has no stable identity to remember. Fail-open:
+    // a null fingerprint falls through to the prompt.
+    const confirmIntent = {
+      kind: args.kind,
+      commit_intent: effectiveCommitIntent,
+      target: args.target,
+    };
     const denied = ctx.getDraft().state?.last_denied_intent;
-    if (denied?.fingerprint) {
-      const candidateFp = authoringIntentFingerprint(
-        { kind: args.kind, commit_intent: effectiveCommitIntent, target: args.target },
-        ctx.getDraft(),
-      );
+    if (denied?.fingerprint && intentHasDistinguishingAction(confirmIntent)) {
+      const candidateFp = authoringIntentFingerprint(confirmIntent, ctx.getDraft());
       if (candidateFp && candidateFp === denied.fingerprint) {
+        // One-shot: clear the stamp so a deliberate later retry of the same
+        // action can still reach a prompt (and be approved). Without this the
+        // identical action could never be approved again in the conversation.
+        const draft = ctx.getDraft();
+        if (draft.state) {
+          draft.state.last_denied_intent = null;
+          await ctx.setDraft(draft);
+        }
         return {
           ok: true,
           data: {

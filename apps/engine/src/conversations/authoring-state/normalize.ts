@@ -483,10 +483,14 @@ export function normalizeState(
     // it only makes the breaker degrade to advisory one block sooner,
     // never a deadlock).
     judge_breaker: normalizeJudgeBreaker(state.judge_breaker),
-    // Grounding fingerprint the draft was built on — must survive resume
-    // or the /context staleness check has nothing to compare against.
+    // Grounding fingerprint + the connector set it was computed over — must
+    // survive resume or the /context staleness check has nothing to compare
+    // against and no connectors to recompute for.
     grounding_fingerprint:
       typeof state.grounding_fingerprint === "string" ? state.grounding_fingerprint : null,
+    grounding_connector_ids: Array.isArray(state.grounding_connector_ids)
+      ? state.grounding_connector_ids.filter((id): id is string => typeof id === "string")
+      : null,
     // Last declined intent — must survive resume so the guard still
     // recognises the rejected proposal after a session reload.
     last_denied_intent: normalizeLastDeniedIntent(state.last_denied_intent),
