@@ -214,6 +214,18 @@ describe("skill write tools — integration (a–d)", () => {
           ),
         );
       expect(rows[0]?.body).toBe("v2");
+      // …and the stale v1 candidate was superseded, not left cluttering
+      // the review queue (revision retirement).
+      const staleRows = await testDb.db
+        .select({ status: skillCandidates.status })
+        .from(skillCandidates)
+        .where(
+          and(
+            eq(skillCandidates.tenant_id, tenantAId),
+            eq(skillCandidates.id, firstData.candidate_id),
+          ),
+        );
+      expect(staleRows[0]?.status).toBe("superseded");
     });
 
     test("scope/entity mismatch fails at PROPOSAL time, not at the reviewer's approve step", async () => {
