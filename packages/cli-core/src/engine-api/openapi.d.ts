@@ -15457,6 +15457,11 @@ export interface components {
                 dropped_sections: string[];
                 assembled_at: string;
             } | null;
+            grounding_status: {
+                /** @enum {string} */
+                state: "fresh" | "stale" | "unknown";
+                advisory: string | null;
+            } | null;
         };
         CompactConversationResponse: {
             conversation: components["schemas"]["Conversation"];

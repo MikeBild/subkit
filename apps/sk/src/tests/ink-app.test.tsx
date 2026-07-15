@@ -1223,6 +1223,7 @@ describe("ink-app: journey 12 — modal panes", () => {
               dropped_sections: ["recorded_endpoint_samples"],
               assembled_at: "2026-01-01T00:00:00.000Z",
             },
+            grounding_status: null,
           },
         });
         return null;
