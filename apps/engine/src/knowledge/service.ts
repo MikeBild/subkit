@@ -13,11 +13,12 @@ import { type Db, type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
+import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { embeddingsAvailable } from "../embeddings/local-provider.ts";
 import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
 import type { PersistInlineUploadResult } from "../files/persist-inline-upload.ts";
 import { invoke } from "../llm/core/invoke.ts";
-import { log } from "../logging/logger.ts";
+import { errorFields, log, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
 import {
@@ -68,6 +69,36 @@ function dedupeTags(tags: readonly string[]): string[] {
     if (out.length >= 20) break;
   }
   return out;
+}
+
+/**
+ * Fire-and-forget, source-scoped embedding backfill kicked right after a
+ * create/ingest commits. Freshly (re)ingested chunks carry NULL embeddings
+ * and the scheduler sweep only lands every 5 minutes (capped) — until then a
+ * source ranks on FTS alone, which for non-English content made it
+ * practically invisible right after every update. The targeted kick keeps
+ * the request path non-blocking (the deliberate create-path property), stays
+ * bounded to one source, and is a no-op when the local model is unavailable.
+ */
+export function kickSourceEmbeddingBackfill(
+  tenant_id: string,
+  knowledge_source_id: string,
+  db: Executor,
+): void {
+  void backfillEmbeddings({ tenant_id, knowledge_source_id }, db)
+    .then((result) => {
+      if (result.knowledge.embedded > 0) invalidateKnowledgeCache(tenant_id);
+    })
+    .catch((err) => {
+      logger.warn({
+        module: "knowledge",
+        action: "embedding.backfill_kick_failed",
+        msg: "post-ingest embedding backfill failed — the scheduler sweep will retry",
+        tenant_id,
+        knowledge_source_id,
+        ...errorFields(err),
+      });
+    });
 }
 
 function toView(row: typeof knowledgeSources.$inferSelect): KnowledgeSourceView {
@@ -143,7 +174,7 @@ export async function createKnowledgeSource(
   const sourceType = p.source_type_override ?? "file_upload";
   const persisted = sourceType === "url" ? null : await persistKnowledgeFile(db, p);
 
-  return await (db as Db).transaction(async (tx) => {
+  const created = await (db as Db).transaction(async (tx) => {
     // Check tenant-level budget INSIDE transaction to prevent race conditions
     // where concurrent inserts both pass the check.
     const tenantUsage = await tx
@@ -238,6 +269,8 @@ export async function createKnowledgeSource(
     invalidateKnowledgeCache(p.tenant_id);
     return toView(row);
   });
+  kickSourceEmbeddingBackfill(p.tenant_id, created.id, db);
+  return created;
 }
 
 export async function listKnowledgeSources(
@@ -485,7 +518,12 @@ export async function analyzeKnowledgeSource(
     return toView(source);
   }
 
-  const nextTags = dedupeTags(analysis.tags);
+  // Namespaced tags (`domain:<slug>`, any `<ns>:` prefix) are structural
+  // routing keys — the agent briefing and tag-filtered search select on
+  // them. Analysis regenerates only the plain topical tags; wiping the
+  // namespace made every analyzed source silently drop out of its domain.
+  const structuralTags = (source.tags ?? []).filter((t) => t.includes(":"));
+  const nextTags = dedupeTags([...structuralTags, ...analysis.tags]);
   const overwriteDescription = source.description === null || p.force === true;
 
   return await (db as Db).transaction(async (tx) => {
@@ -722,6 +760,7 @@ export async function ingestKnowledgeSource(
   });
 
   invalidateKnowledgeCache(p.tenant_id);
+  kickSourceEmbeddingBackfill(p.tenant_id, p.knowledge_source_id, db);
 
   return {
     knowledge_source_id: p.knowledge_source_id,
