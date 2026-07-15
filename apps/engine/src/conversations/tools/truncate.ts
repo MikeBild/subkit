@@ -397,14 +397,24 @@ function shrinkToCap(data: unknown, cap: number, rawRef: string): ShrinkResult {
  * each `output_preview` against the smaller MAX_STEP_PREVIEW_CHARS
  * budget before the outer envelope is itself passed through this same
  * function with the default cap.
+ *
+ * `opts.store` (default true) controls whether the full payload is minted
+ * into the shared raw-ref store for later `get_raw_result`. Read-only
+ * callers that only need the truncated SHAPE (e.g. re-deriving a display
+ * view on replay) pass `store: false` so the read path never mutates the
+ * process-global store — the returned `.data` is byte-identical either way.
  */
-export function truncateForLlm(output: unknown, cap: number = MAX_JSON_CHARS): TruncatedOutput {
+export function truncateForLlm(
+  output: unknown,
+  cap: number = MAX_JSON_CHARS,
+  opts?: { store?: boolean },
+): TruncatedOutput {
   const originalLen = approxJsonLength(output);
   if (originalLen <= cap) {
     return { truncated: false, data: output };
   }
   const refId = `raw_${crypto.randomUUID().slice(0, 8)}`;
-  storeRaw(refId, output);
+  if (opts?.store !== false) storeRaw(refId, output);
   const pass1 = truncateNode(output);
   const { data: shortened, branchesOmitted, charsOmitted } = shrinkToCap(pass1, cap, refId);
   const shortenedLen = approxJsonLength(shortened);

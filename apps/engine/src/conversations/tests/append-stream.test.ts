@@ -8,7 +8,12 @@
 // auto-persist suite.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors, conversations } from "../../db/schema/index.ts";
+import {
+  connectors,
+  conversationMessages,
+  conversations,
+  conversationToolCalls,
+} from "../../db/schema/index.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
@@ -357,6 +362,45 @@ describe("http/conversations citations replay", () => {
       body: JSON.stringify({ message: "just say hi, no lookups needed" }),
     });
     expect(appendRes.status).toBe(200);
+
+    const streamRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/stream`, {
+      headers: { authorization: `Bearer ${http.apiKey}`, accept: "text/event-stream" },
+    });
+    expect(streamRes.status).toBe(200);
+    const frames = await readSse(streamRes);
+    expect(frames.find((f) => f.event === "citations")).toBeUndefined();
+  });
+
+  test("a tool-only turn (grounded but no assistant prose) replays NO citations frame", async () => {
+    // Mirror the live gate: a turn that fired search_knowledge but was
+    // cancelled before producing final text emits no footer live, so replay
+    // must not manufacture one from the persisted hit.
+    const conversationId = await seedConversation(http);
+    await http.db.insert(conversationMessages).values({
+      tenant_id: http.tenantId,
+      conversation_id: conversationId,
+      role: "user",
+      content: { text: "look it up" },
+    });
+    const [assistant] = await http.db
+      .insert(conversationMessages)
+      .values({
+        tenant_id: http.tenantId,
+        conversation_id: conversationId,
+        role: "assistant",
+        // Tool-only anchor: no prose (the turn never produced a final answer).
+        content: { parts: [] },
+      })
+      .returning();
+    if (!assistant) throw new Error("assistant message insert failed");
+    await http.db.insert(conversationToolCalls).values({
+      tenant_id: http.tenantId,
+      conversation_id: conversationId,
+      parent_message_id: assistant.id,
+      tool: "search_knowledge",
+      input: { query: "anything" },
+      output: { hits: [{ id: "chunk-x", source_name: "Some Source" }] },
+    });
 
     const streamRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/stream`, {
       headers: { authorization: `Bearer ${http.apiKey}`, accept: "text/event-stream" },
