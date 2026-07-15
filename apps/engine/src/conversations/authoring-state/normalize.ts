@@ -436,6 +436,16 @@ function normalizeJudgeBreaker(value: unknown): JudgeBreakerState | null {
   };
 }
 
+function normalizeLastDeniedIntent(
+  value: unknown,
+): { fingerprint: string; timestamp: string } | null {
+  if (!isRecord(value) || typeof value.fingerprint !== "string") return null;
+  return {
+    fingerprint: value.fingerprint,
+    timestamp: typeof value.timestamp === "string" ? value.timestamp : nowIso(),
+  };
+}
+
 export function normalizeState(
   raw: unknown,
   legacyMode: AuthoringMode | undefined,
@@ -477,6 +487,9 @@ export function normalizeState(
     // or the /context staleness check has nothing to compare against.
     grounding_fingerprint:
       typeof state.grounding_fingerprint === "string" ? state.grounding_fingerprint : null,
+    // Last declined intent — must survive resume so the guard still
+    // recognises the rejected proposal after a session reload.
+    last_denied_intent: normalizeLastDeniedIntent(state.last_denied_intent),
   };
   if (isRecord(state.checkpoints)) {
     for (const key of CHECKPOINT_KEYS) {

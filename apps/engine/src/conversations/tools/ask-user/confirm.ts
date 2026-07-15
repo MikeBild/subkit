@@ -6,6 +6,7 @@
 // PR 2 migrates commit + external-write callers to emit this tool.
 
 import { z } from "@hono/zod-openapi";
+import { authoringIntentFingerprint } from "../../intent-fingerprint.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { type CommitIntent, commitIntentSchema, describePatchOps } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
@@ -78,6 +79,31 @@ export const askUserConfirmTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const effectiveCommitIntent = defaultCommitIntent(args);
+    // Declined-intent guard: if the operator already declined this exact
+    // proposal in THIS conversation, answer with the prior decline instead
+    // of re-prompting — even in `auto` mode, because an explicit "no" on an
+    // identical intent outranks session-level implicit approval. Keyed by
+    // the intent fingerprint (kind + commit_intent + target + draft
+    // identity), so an edited draft yields a new fingerprint and prompts
+    // normally. Fail-open: a null fingerprint falls through to the prompt.
+    const denied = ctx.getDraft().state?.last_denied_intent;
+    if (denied?.fingerprint) {
+      const candidateFp = authoringIntentFingerprint(
+        { kind: args.kind, commit_intent: effectiveCommitIntent, target: args.target },
+        ctx.getDraft(),
+      );
+      if (candidateFp && candidateFp === denied.fingerprint) {
+        return {
+          ok: true,
+          data: {
+            confirmed: false,
+            already_declined: true,
+            reason:
+              "The operator already declined this exact action earlier in this conversation. Not re-prompting. Propose a different approach or move on.",
+          },
+        };
+      }
+    }
     // Auto-resolve when the client is in `permission_mode=auto`. The
     // mode itself IS the governance signal — save_workflow_draft, external
     // writes, run_workflow, save_connector_draft were all visible in
