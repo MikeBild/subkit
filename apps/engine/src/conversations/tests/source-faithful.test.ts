@@ -166,6 +166,28 @@ describe.skipIf(skip)("checkSourceFaithful", () => {
     expect(v.detail).toContain("unresolved");
   });
 
+  test("a fabricated connector_doc id is flagged unresolved (the provenance-hole guard)", async () => {
+    // Before connector_doc citations got their own resolve query, a
+    // connector_doc id was DROPPED from the filter → silently exempt →
+    // a fabricated one passed the gate. It must now fail like a bogus
+    // knowledge_chunk id does.
+    const v = await checkSourceFaithful({
+      text: "Per the connector docs, charges use POST /v1/charges.",
+      citations: [
+        cite({
+          id: "88888888-8888-8888-8888-888888888888",
+          source_type: "connector_doc",
+          excerpt: "anything",
+        }),
+      ],
+      tenant_id: tenantId,
+      db: testDb.db,
+    });
+    expect(v.verdict).toBe("fail");
+    expect(v.checks.ids_resolve).toBe(false);
+    expect(v.detail).toContain("unresolved");
+  });
+
   test("a malformed (non-UUID) cited id never resolves → fail without a DB cast error", async () => {
     const v = await checkSourceFaithful({
       text: "Per the policy, payments need an Idempotency-Key header.",

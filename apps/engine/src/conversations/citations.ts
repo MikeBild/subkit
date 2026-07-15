@@ -37,32 +37,65 @@ function isKnowledgeHit(v: unknown): v is KnowledgeHit {
   return typeof v === "object" && v !== null && typeof (v as { id?: unknown }).id === "string";
 }
 
+/** Connector-doc `SearchHit` (docs-ingestion) — id is the doc-chunk id,
+ *  `title`/`snippet` map to source_name/excerpt. A different envelope from
+ *  KnowledgeHit, so it gets its own guard + mapping. */
+interface DocHit {
+  id: string;
+  title?: string | null;
+  snippet?: string;
+}
+
+function isDocHit(v: unknown): v is DocHit {
+  return typeof v === "object" && v !== null && typeof (v as { id?: unknown }).id === "string";
+}
+
 /**
  * Harvest citations from a turn's events. Dedupes by (source_type, id).
  * Returns `[]` when the turn used no grounding tool — i.e. a direct answer
  * with no source, which the prove-before gate is responsible for catching.
+ *
+ * Covers Knowledge-Source hits (`search_knowledge*` → knowledge_chunk) and
+ * connector-documentation hits (`fetch_connector_docs`/`search_docs` →
+ * connector_doc). Every harvested kind MUST have a matching resolve branch
+ * in `source-faithful.ts` — a harvested-but-unresolvable id would let a
+ * fabricated citation pass the anti-drift gate.
  */
 export function harvestCitations(events: ReadonlyArray<TurnEvent>): Citation[] {
   const out: Citation[] = [];
   const seen = new Set<string>();
   for (const ev of events) {
     if (ev.type !== "tool_result") continue;
-    // Only knowledge retrieval tools carry citation-shaped hits.
-    if (ev.tool !== "search_knowledge" && ev.tool !== "search_knowledge_v2") continue;
     const output = ev.output as { data?: { hits?: unknown } } | null;
     const hits = output?.data?.hits;
     if (!Array.isArray(hits)) continue;
-    for (const h of hits) {
-      if (!isKnowledgeHit(h)) continue;
-      const key = `knowledge_chunk:${h.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({
-        source_type: "knowledge_chunk",
-        id: h.id,
-        ...(h.source_name ? { source_name: h.source_name } : {}),
-        ...(h.snippet ? { excerpt: h.snippet.slice(0, 200) } : {}),
-      });
+
+    if (ev.tool === "search_knowledge" || ev.tool === "search_knowledge_v2") {
+      for (const h of hits) {
+        if (!isKnowledgeHit(h)) continue;
+        const key = `knowledge_chunk:${h.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          source_type: "knowledge_chunk",
+          id: h.id,
+          ...(h.source_name ? { source_name: h.source_name } : {}),
+          ...(h.snippet ? { excerpt: h.snippet.slice(0, 200) } : {}),
+        });
+      }
+    } else if (ev.tool === "fetch_connector_docs" || ev.tool === "search_docs") {
+      for (const h of hits) {
+        if (!isDocHit(h)) continue;
+        const key = `connector_doc:${h.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          source_type: "connector_doc",
+          id: h.id,
+          ...(h.title ? { source_name: h.title } : {}),
+          ...(h.snippet ? { excerpt: h.snippet.slice(0, 200) } : {}),
+        });
+      }
     }
   }
   return out;

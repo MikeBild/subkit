@@ -33,6 +33,7 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
+import { connectorDocumentChunks } from "../db/schema/connector_docs.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
@@ -135,27 +136,66 @@ export function findUngroundedQuotes(text: string, citations: ReadonlyArray<Cita
  * future extension of the envelope; until they are harvested they are
  * never present, so the id list passed here is uniform.
  */
+const CITATION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Split cited ids into (malformed — never resolvable, and would make the
+ *  inArray uuid cast throw) and (queryable UUIDs). */
+function splitCitationIds(ids: string[]): { malformed: string[]; queryable: string[] } {
+  const unique = Array.from(new Set(ids));
+  return {
+    malformed: unique.filter((id) => !CITATION_UUID.test(id)),
+    queryable: unique.filter((id) => CITATION_UUID.test(id)),
+  };
+}
+
 async function findUnresolvedIds(
   citations: ReadonlyArray<Citation>,
   tenant_id: string,
   db: Executor,
 ): Promise<string[]> {
-  // knowledge_chunk ids are UUIDs; a non-UUID id can never resolve and
-  // would make the inArray query throw (uuid cast), so it is unresolved
-  // by definition without touching the DB.
-  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const cited = citations.filter((c) => c.source_type === "knowledge_chunk").map((c) => c.id);
-  const unique = Array.from(new Set(cited));
-  const malformed = unique.filter((id) => !UUID.test(id));
-  const queryable = unique.filter((id) => UUID.test(id));
-  if (queryable.length === 0) return malformed;
-  const rows = await db
-    .select({ id: knowledgeChunks.id })
-    .from(knowledgeChunks)
-    .where(and(eq(knowledgeChunks.tenant_id, tenant_id), inArray(knowledgeChunks.id, queryable)));
-  const resolved = new Set(rows.map((r) => r.id));
-  const unresolved = queryable.filter((id) => !resolved.has(id));
-  return [...malformed, ...unresolved];
+  // EVERY harvested source_type MUST resolve against a real, tenant-scoped
+  // table — a harvested-but-unqueried kind would let a fabricated citation
+  // id pass the anti-drift gate unverified (a provenance hole).
+  const kc = splitCitationIds(
+    citations.filter((c) => c.source_type === "knowledge_chunk").map((c) => c.id),
+  );
+  const dc = splitCitationIds(
+    citations.filter((c) => c.source_type === "connector_doc").map((c) => c.id),
+  );
+
+  const [knowledgeRows, docRows] = await Promise.all([
+    kc.queryable.length === 0
+      ? Promise.resolve([] as { id: string }[])
+      : db
+          .select({ id: knowledgeChunks.id })
+          .from(knowledgeChunks)
+          .where(
+            and(
+              eq(knowledgeChunks.tenant_id, tenant_id),
+              inArray(knowledgeChunks.id, kc.queryable),
+            ),
+          ),
+    dc.queryable.length === 0
+      ? Promise.resolve([] as { id: string }[])
+      : db
+          .select({ id: connectorDocumentChunks.id })
+          .from(connectorDocumentChunks)
+          .where(
+            and(
+              eq(connectorDocumentChunks.tenant_id, tenant_id),
+              inArray(connectorDocumentChunks.id, dc.queryable),
+            ),
+          ),
+  ]);
+
+  const knowledgeResolved = new Set(knowledgeRows.map((r) => r.id));
+  const docResolved = new Set(docRows.map((r) => r.id));
+  return [
+    ...kc.malformed,
+    ...kc.queryable.filter((id) => !knowledgeResolved.has(id)),
+    ...dc.malformed,
+    ...dc.queryable.filter((id) => !docResolved.has(id)),
+  ];
 }
 
 const FaithfulnessJudgeSummary = {
