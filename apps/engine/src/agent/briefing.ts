@@ -124,7 +124,7 @@ function assemble(input: AssembleInput, state: AssembleState): string {
   if (input.proposedCandidates > 0) {
     lines.push(
       "",
-      `Curation reminder: ${input.proposedCandidates} proposed skill candidate(s) await human review.`,
+      `Curation reminder: ${input.proposedCandidates} proposed skill candidate(s) await human review — \`sk learnings review\`, or ask here to approve one.`,
     );
   }
 

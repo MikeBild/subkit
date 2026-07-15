@@ -69,7 +69,11 @@ describe("tools/registry — providers (active)", () => {
     // save_learning is an inert `proposed` candidate behind the human
     // approve gate — the capture loop's explicit channel stays callable.
     // Every other tenant_write stays hidden under readOnly.
-    expect(writes.map((d) => d.name).sort()).toEqual(["run_workflow", "save_learning"]);
+    expect(writes.map((d) => d.name).sort()).toEqual([
+      "approve_skill_candidate",
+      "run_workflow",
+      "save_learning",
+    ]);
   });
 
   test("buildRegistry throws when two providers register the same name", () => {

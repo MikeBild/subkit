@@ -63,7 +63,8 @@ before searching, and a search can be narrowed to sources carrying a given tag.
 | Rule | Detail |
 |---|---|
 | Description | Generated only when none was supplied. |
-| Tags | A deduped set; re-analysis replaces them wholesale. |
+| Tags | Topical tags are a deduped set that re-analysis replaces wholesale; **namespaced tags** (anything with a `:`, e.g. `domain:blog-de`) are structural routing keys and always survive re-analysis. |
+| Embeddings | Freshly ingested or updated chunks are embedded right away (source-scoped, off the request path); semantic ranking works within seconds of an update, no manual step needed. |
 | Failure mode | Best-effort — if it fails (e.g. model budget exhausted) the upload still succeeds, just without enrichment. |
 | Re-run | `sk knowledge-sources analyze <id>`, or the `analyze_knowledge_source` tool in chat. |
 | Bulk paths | Crawled pages and scheduled refreshes stay mechanical — not auto-analyzed. |

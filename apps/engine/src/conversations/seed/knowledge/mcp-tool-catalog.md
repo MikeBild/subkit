@@ -252,7 +252,10 @@ Proposed (not auto-applied) improvements.
 - Skills: `list_skills`, `list_all_skills`, `find_skill`, `get_skill`
   **[authoring]**; `create_skill`, `update_skill`, `delete_skill` **[admin]**.
 - Skill candidates / suggestions: `list_skill_candidates`, `get_skill_candidate`,
-  `list_skill_suggestions` **[authoring]**; `approve_skill_candidate` **[admin]**.
+  `list_skill_suggestions`, `approve_skill_candidate` **[authoring]** — approval is
+  directly callable so the coding-agent capture loop closes in-session; the
+  client's native destructive-write dialog is the explicit operator approval and
+  RBAC `skill:write` stays the hard gate.
 - Capability gaps: `list_capability_gaps` **[authoring]**.
 - Session learnings: `save_learning` **[authoring]** — explicitly capture a durable
   rule the user taught in the current session as a PROPOSED `session_learning`
