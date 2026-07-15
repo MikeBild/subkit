@@ -91,13 +91,10 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // memory so replying "yes" grounds the LLM in the same digest, then
   // cleared so later turns aren't re-seeded.
   let pendingDigestContext: string | null = null;
-  // Live operator boot snapshot for the in-context chrome: the health
-  // digest plus the proposed session-learning count. ONE channel (one
-  // value, one listener set, one /profile re-seed) on purpose — every
-  // start-screen signal shares the same lifecycle, and a signal wired
-  // through its own parallel channel would have to re-implement the
-  // tenant-switch re-seed that keeps tenant-A data from leaking into
-  // tenant-B. Fetched best-effort; a failure renders as "no digest" / 0.
+  // Live operator boot snapshot (health digest + proposed-learning count).
+  // ONE channel on purpose — every start-screen signal shares this
+  // lifecycle, so the tenant-switch re-seed that keeps tenant-A data out
+  // of tenant-B is implemented once, not per signal. Best-effort fetches.
   let bootSnapshot: OperatorBootSnapshot = { digest: null, pendingLearnings: 0 };
 
   const client = new EngineClient({
@@ -891,10 +888,8 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // turn, which matches the digest's best-effort contract.
   const bootProfileVersion = profileVersion;
   void fetchOperatorDigest(client).then((digest) => {
-    // A /profile switch may have completed while this fetch (bound to the
-    // BOOT profile's client) was in flight — dropping the stale result is
-    // what actually enforces the "tenant-A data never renders or seeds a
-    // turn for tenant-B" invariant; the switch path re-fetched its own.
+    // Drop the result if a /profile switch completed mid-flight — this
+    // fetch is bound to the BOOT client; the switch re-fetched its own.
     if (profileVersion !== bootProfileVersion) return;
     bootSnapshot = { ...bootSnapshot, digest };
     if (digest) pendingDigestContext = digestAsContext(digest);
