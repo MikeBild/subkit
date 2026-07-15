@@ -3,6 +3,7 @@
 // Candidates are NEVER auto-promoted. Every mutation goes through an
 // explicit human gate (conversation approval or REST API).
 
+import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -286,6 +287,70 @@ export async function getSkillCandidateEvidence(
     summary: r.summary,
     captured_at: r.captured_at.toISOString(),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Operator-initiated proposal (conversational `create_skill`)
+// ---------------------------------------------------------------------------
+
+export interface CreateCandidateFromAuthoringParams {
+  tenant_id: string;
+  title: string;
+  body: string;
+  scope: "global" | "connector" | "workflow";
+  connector_id?: string;
+  workflow_id?: string;
+  examples?: string[];
+  best_practices?: string[];
+  pitfalls?: string[];
+  doc_refs?: string[];
+  tags?: string[];
+  /** Where the proposal came from — recorded as candidate evidence. */
+  evidence_summary: string;
+  db: Db;
+}
+
+/**
+ * Skill proposal from conversational authoring (the `create_skill` chat
+ * tool). NEVER creates an active skill — the file-header invariant holds:
+ * promotion happens only through the explicit human gate
+ * (`approveSkillCandidate` / `sk learnings review`). `pattern_kind`
+ * "session_learning" is deliberate: that is the kind the review queue and
+ * the REPL welcome-row count select on, so operator proposals land in the
+ * queue the operator already works. Identity is the normalized title
+ * within the scope entity — re-proposing the same skill accrues evidence
+ * on the existing candidate instead of duplicating queue entries.
+ */
+export async function createCandidateFromAuthoring(
+  p: CreateCandidateFromAuthoringParams,
+): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
+  const normalizedTitle = p.title.toLowerCase().replace(/\s+/g, " ").trim();
+  const entity = p.connector_id ?? p.workflow_id ?? "global";
+  const fingerprint = createHash("sha256")
+    .update(`authoring_skill:${p.scope}:${entity}:${normalizedTitle}`)
+    .digest("hex");
+  return await upsertFromSignal(
+    p.tenant_id,
+    {
+      pattern_kind: "session_learning",
+      scope: p.scope,
+      ...(p.connector_id ? { connector_id: p.connector_id } : {}),
+      ...(p.workflow_id ? { workflow_id: p.workflow_id } : {}),
+      title: p.title,
+      body: p.body,
+      examples: p.examples ?? [],
+      best_practices: p.best_practices ?? [],
+      pitfalls: p.pitfalls ?? [],
+      doc_refs: p.doc_refs ?? [],
+      fingerprint,
+      // Human-sanctioned by definition — the model calls create_skill in
+      // direct response to an explicit user ask, not from inference.
+      confidence: "high",
+      ...(p.tags && p.tags.length > 0 ? { tags: p.tags } : {}),
+      evidence: [{ evidence_type: "conversation", summary: p.evidence_summary.slice(0, 2_000) }],
+    },
+    p.db,
+  );
 }
 
 // ---------------------------------------------------------------------------

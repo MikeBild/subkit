@@ -250,7 +250,8 @@ Proposed (not auto-applied) improvements.
   `preview_patch_candidate`, `dry_run_patch_candidate` **[authoring]**;
   `approve_patch_candidate` **[admin]**.
 - Skills: `list_skills`, `list_all_skills`, `find_skill`, `get_skill`
-  **[authoring]**; `create_skill`, `update_skill`, `delete_skill` **[admin]**.
+  **[authoring]**; `create_skill` (files a PROPOSED candidate for human review —
+  never an active skill), `update_skill`, `delete_skill` **[admin]**.
 - Skill candidates / suggestions: `list_skill_candidates`, `get_skill_candidate`,
   `list_skill_suggestions`, `approve_skill_candidate` **[authoring]** — approval is
   directly callable so the coding-agent capture loop closes in-session; the

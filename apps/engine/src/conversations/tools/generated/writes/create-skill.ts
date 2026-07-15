@@ -1,53 +1,81 @@
-// create_skill — create a new tenant Skill.
+// create_skill — propose a new tenant Skill as a review candidate.
 //
-// Mirrors `create_knowledge_source` / `delete_skill`: call the engine-client
-// `skills.create` facet, emit a surface audit, and return the uniform
-// { ok, data } envelope. The args arrive already parsed — see the note on
-// `ConversationTool.execute`.
+// The conversational path NEVER creates an active skill: skills shape every
+// future session, so activation is an explicit human decision (the
+// AGENTS.md never-auto-promote invariant). This tool files a `proposed`
+// skill candidate in the same review queue as session learnings —
+// `sk learnings review`, the REPL welcome-row starter, or an in-session
+// `approve_skill_candidate` close the loop. The admin/REST `createSkill`
+// (skills/service.ts) is unaffected and stays the direct operator path.
 //
-// The dispatcher now owns MCP RBAC (RBAC_OVERRIDES); the in-execute check
-// below stays because the chat surface invokes execute() directly and does
-// not route through the dispatcher's descriptor.rbac yet.
+// The input is deliberately the candidate-expressible SUBSET of
+// CreateSkillSchema: fields a candidate cannot carry (gates_tools,
+// activates_when, schemas, side_effects, …) are rejected by the schema
+// instead of being silently dropped — the reviewer adds them on approve.
 
-import type { z } from "@hono/zod-openapi";
-import { CreateSkillSchema } from "../../../../skills/types.ts";
+import { z } from "@hono/zod-openapi";
+import { createCandidateFromAuthoring } from "../../../../skill-candidates/service.ts";
 import type { ConversationTool, ToolResult } from "../../index.ts";
 
-const CreateSkillInput = CreateSkillSchema.openapi("CreateSkillToolInput");
+const CreateSkillInput = z
+  .object({
+    scope: z.enum(["global", "connector", "workflow"]),
+    connector_id: z.string().uuid().optional(),
+    workflow_id: z.string().uuid().optional(),
+    title: z.string().min(1),
+    body: z.string().min(1),
+    examples: z.array(z.string()).optional(),
+    best_practices: z.array(z.string()).optional(),
+    pitfalls: z.array(z.string()).optional(),
+    doc_refs: z.array(z.string()).optional(),
+    tags: z.array(z.string().min(1)).optional(),
+  })
+  .openapi("CreateSkillToolInput");
 
 export const createSkillTool: ConversationTool = {
   name: "create_skill",
-  description: "Create a new tenant skill and record an audit entry.",
+  description:
+    "Propose a new tenant skill as a PROPOSED candidate for human review. It does NOT " +
+    "become an active skill until an operator approves it (approve_skill_candidate in " +
+    "this session, or `sk learnings review`). Re-proposing the same title updates the " +
+    "existing candidate instead of duplicating it.",
   inputSchema: CreateSkillInput,
   category: "tenant_write",
   permission: { action: "skill:write", resourceType: "skill" },
-  async execute(ctx, args: z.infer<typeof CreateSkillInput>): Promise<ToolResult> {
+  async execute(ctx, rawArgs): Promise<ToolResult> {
+    const args = CreateSkillInput.parse(rawArgs);
     try {
-      const skill = await ctx.engineClient.skills.create(args);
-
-      const audit_log_id = await ctx.engineClient.audit_write({
-        resource_type: "skill",
-        resource_id: skill.id,
-        action: "conversation.create_skill",
-        result: "success",
-        metadata: {
-          conversation_id: ctx.conversation_id,
-          before: null,
-          after: skill,
-        },
+      const result = await createCandidateFromAuthoring({
+        tenant_id: ctx.tenant_id,
+        title: args.title,
+        body: args.body,
+        scope: args.scope,
+        ...(args.connector_id ? { connector_id: args.connector_id } : {}),
+        ...(args.workflow_id ? { workflow_id: args.workflow_id } : {}),
+        ...(args.examples ? { examples: args.examples } : {}),
+        ...(args.best_practices ? { best_practices: args.best_practices } : {}),
+        ...(args.pitfalls ? { pitfalls: args.pitfalls } : {}),
+        ...(args.doc_refs ? { doc_refs: args.doc_refs } : {}),
+        ...(args.tags ? { tags: args.tags } : {}),
+        evidence_summary: `explicit create_skill (conversation=${ctx.conversation_id})`,
+        db: ctx.db,
       });
-
       return {
         ok: true,
         data: {
-          created: true,
-          skill,
-          audit_log_id,
+          created: false,
+          action: result.action,
+          candidate_id: result.candidate_id,
+          note:
+            result.action === "skipped"
+              ? "An identical proposal was already reviewed (approved or rejected) — nothing new was queued."
+              : "Queued as a skill candidate for human review — it is NOT active yet. Approve it right here (call approve_skill_candidate when the user asks) or via `sk learnings review`.",
+          next_best_actions: ["approve_skill_candidate", "list_skill_candidates"],
         },
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { ok: false, data: { error: "create_failed", message: msg } };
+      return { ok: false, data: { error: "propose_failed", message: msg } };
     }
   },
 };
