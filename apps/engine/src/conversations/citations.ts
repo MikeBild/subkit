@@ -14,10 +14,14 @@
 import type { TurnEvent } from "./types.ts";
 
 export interface Citation {
-  source_type: "knowledge_chunk";
-  /** The chunk id — resolvable via the knowledge source. */
+  /** `knowledge_chunk` = a Knowledge-Source hit; `connector_doc` = a
+   *  connector-documentation hit (added when connector-doc harvesting
+   *  lands). The union is declared final up front so downstream types,
+   *  the Zod schema, and the cli-core mirror never re-widen. */
+  source_type: "knowledge_chunk" | "connector_doc";
+  /** The chunk id — resolvable via the knowledge source or connector docs. */
   id: string;
-  /** Human-readable source name (knowledge source display name). */
+  /** Human-readable source name (display name of the source). */
   source_name?: string;
   /** A short excerpt of the cited text. */
   excerpt?: string;
