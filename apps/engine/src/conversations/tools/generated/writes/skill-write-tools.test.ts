@@ -169,7 +169,12 @@ describe("skill write tools — integration (a–d)", () => {
       expect(skillCreatedAudit.length).toBe(0);
     });
 
-    test("re-proposing the same title updates the existing candidate instead of duplicating", async () => {
+    test("identical re-proposal dedups; a REVISED body files a fresh candidate", async () => {
+      // Content is part of the identity on purpose: upsertFromSignal's
+      // update branch persists only confidence/version/evidence, so a
+      // title-only identity would report "updated" while silently
+      // keeping the OLD body — and a rejected title would block every
+      // future revision.
       const ctx = makeCtx(tenantAId);
       const first = await createSkillTool.execute(ctx, {
         scope: "global",
@@ -177,16 +182,51 @@ describe("skill write tools — integration (a–d)", () => {
         body: "v1",
       });
       expect(first.ok).toBe(true);
-      const second = await createSkillTool.execute(ctx, {
+      const firstData = first.data as { candidate_id: string };
+
+      const identical = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Dedup Skill",
+        body: "v1",
+      });
+      expect(identical.ok).toBe(true);
+      const identicalData = identical.data as { candidate_id: string; action: string };
+      expect(identicalData.action).toBe("updated");
+      expect(identicalData.candidate_id).toBe(firstData.candidate_id);
+
+      const revised = await createSkillTool.execute(ctx, {
         scope: "global",
         title: "Dedup Skill",
         body: "v2",
       });
-      expect(second.ok).toBe(true);
-      const firstData = first.data as { candidate_id: string };
-      const secondData = second.data as { candidate_id: string; action: string };
-      expect(secondData.action).toBe("updated");
-      expect(secondData.candidate_id).toBe(firstData.candidate_id);
+      expect(revised.ok).toBe(true);
+      const revisedData = revised.data as { candidate_id: string; action: string };
+      expect(revisedData.action).toBe("proposed");
+      expect(revisedData.candidate_id).not.toBe(firstData.candidate_id);
+      // The revision's own body is what the reviewer will approve.
+      const rows = await testDb.db
+        .select({ body: skillCandidates.body })
+        .from(skillCandidates)
+        .where(
+          and(
+            eq(skillCandidates.tenant_id, tenantAId),
+            eq(skillCandidates.id, revisedData.candidate_id),
+          ),
+        );
+      expect(rows[0]?.body).toBe("v2");
+    });
+
+    test("scope/entity mismatch fails at PROPOSAL time, not at the reviewer's approve step", async () => {
+      const ctx = makeCtx(tenantAId);
+      // connector scope without connector_id — the schema mirror of
+      // skills/service.ts validateScope rejects it before any row exists.
+      expect(
+        createSkillTool.execute(ctx, {
+          scope: "connector",
+          title: "Unbound Connector Skill",
+          body: "never approvable",
+        }),
+      ).rejects.toThrow();
     });
   });
 
