@@ -142,16 +142,17 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     }
   });
 
-  test("a mid-string colon is topical, not structural — re-analysis replaces it", async () => {
-    // `isStructuralTag` matches an identifier PREFIX directly followed by
-    // `:`; a colon later in the tag must not pin the tag forever.
+  test("prose colons are topical, non-ASCII namespaces structural — and analysis mints no routing keys", async () => {
+    // `isStructuralTag`: whitespace-free prefix + colon + content directly
+    // after. Prose colons ("note: x", "note about: chords") must not pin a
+    // tag forever; a non-ASCII namespace (`domäne:blog`) stays structural.
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
         input: {
           name: "Colon Tagged Doc",
           scope: "global",
-          tags: ["domain:harmoniqs", "note about: chords"],
+          tags: ["domain:harmoniqs", "domäne:blog", "note: x", "note about: chords"],
         },
         upload: {
           buffer: Buffer.from("# Akkorde\n\nStufenakkorde in Dur."),
@@ -163,14 +164,19 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
       ctx.testDb.db,
     );
     const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
-      makeInvokeResult({ description: "Akkordlehre.", tags: ["akkorde"] }),
+      makeInvokeResult({
+        description: "Akkordlehre.",
+        // `domain:evil` is structural-shaped model output — analysis must
+        // never mint a routing key, only replace topical tags.
+        tags: ["akkorde", "domain:evil"],
+      }),
     );
     try {
       const enriched = await analyzeKnowledgeSource(
         { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
         ctx.testDb.db,
       );
-      expect(enriched!.tags).toEqual(["domain:harmoniqs", "akkorde"]);
+      expect(enriched!.tags).toEqual(["domain:harmoniqs", "domäne:blog", "akkorde"]);
     } finally {
       spy.mockRestore();
     }

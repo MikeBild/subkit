@@ -4,10 +4,6 @@
 // on the request path. A bare `tenant_id` (no `knowledge_source_id`) keeps
 // running all three passes exactly as before.
 //
-// Also covers kickSourceEmbeddingBackfill's `embeddingsAvailable()` guard:
-// when the model is unavailable it must perform zero backfill scans and
-// never throw.
-//
 // Deterministic regardless of whether the local WASM model loads in this
 // process (it may load in dev; CI does not download it). Either way, each
 // pass's embed call breaks out after its FIRST batch once every vector in
@@ -16,7 +12,7 @@
 // `embedded`, which the eval-only opt-in suite at the bottom covers.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { connectorDocumentChunks, connectorDocuments } from "../../db/schema/connector_docs.ts";
 import { conversationMessages, conversations } from "../../db/schema/conversations.ts";
 import { connectors, tenants } from "../../db/schema/index.ts";
@@ -24,7 +20,6 @@ import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sou
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createKnowledgeSource, kickSourceEmbeddingBackfill } from "../../knowledge/service.ts";
 import { backfillEmbeddings } from "../backfill.ts";
-import { embeddingsAvailable } from "../local-provider.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 const skipEmbeddingE2E = skip || process.env.RUN_EMBEDDING_E2E !== "1";
@@ -157,38 +152,17 @@ describe.skipIf(skip)("embeddings/backfillEmbeddings scoping", () => {
     expect(result.conversations.scanned).toBeGreaterThanOrEqual(1);
   });
 
-  // kickSourceEmbeddingBackfill's guard depends on embeddingsAvailable(),
-  // which memoizes the model-load result at module scope in
-  // local-provider.ts (extractorPromise) — there is no injectable factory
-  // seam for it like pool.ts's `__setMcpPoolFactoriesForTests`. The repo's
-  // documented convention (see mcp/client/pool-evict.test.ts,
-  // pool-invoke-401.test.ts) is to NEVER use bun `mock.module` here: it
-  // patches a module's exports process-wide and leaks into every other test
-  // file sharing the worker. Forcing the branch would either leak into
-  // sibling suites or be a silent no-op depending on load order — the exact
-  // flaky test the task brief warns against. Instead this test only asserts
-  // when THIS run's real embeddingsAvailable() already resolved false (the
-  // common case in CI, which never downloads the WASM model); the available
-  // branch is covered end-to-end by the opt-in suite below.
-  test("kickSourceEmbeddingBackfill performs zero scans when the model is unavailable", async () => {
-    if (await embeddingsAvailable()) {
-      // Model loaded in this process (e.g. a dev machine with the WASM
-      // assets already warmed) — the unavailable branch can't be observed
-      // deterministically here. Skip without failing.
-      return;
-    }
-    const { tenantId, knowledgeSourceId } = await seedAllThreeTargets(testDb, "kick-unavailable");
-
-    await kickSourceEmbeddingBackfill(tenantId, knowledgeSourceId, testDb.db);
-
-    const stillUnembedded = await testDb.db
-      .select({ id: knowledgeChunks.id })
-      .from(knowledgeChunks)
-      .where(isNull(knowledgeChunks.embedding));
-    // The guard short-circuited before any scan — the seeded chunk is
-    // still un-embedded.
-    expect(stillUnembedded.some((r) => r.id)).toBe(true);
-  });
+  // NOT tested: kickSourceEmbeddingBackfill's embeddingsAvailable() guard
+  // ("model unavailable → zero scans"). The guard's observable — that no
+  // SELECT ran — leaves no DB trace, and with the model unavailable the
+  // un-guarded path converges to the same end state (scan one batch, embed
+  // nothing, chunk stays NULL), so any state assertion here passes with or
+  // without the guard — a vacuous pin. Forcing the branch would need a
+  // module seam: embeddingsAvailable() memoizes the model load at module
+  // scope (local-provider.ts extractorPromise), and the repo convention
+  // (see mcp/client/pool-evict.test.ts) forbids bun `mock.module` because
+  // it leaks process-wide. The scoping contract is pinned above; the
+  // model-available path end-to-end by the opt-in suite below.
 });
 
 let e2eTestDb: TestDb;

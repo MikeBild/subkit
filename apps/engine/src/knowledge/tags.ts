@@ -21,25 +21,32 @@ export function dedupeTags(tags: readonly string[]): string[] {
   return out;
 }
 
-/** Namespaced tags — an identifier PREFIX followed directly by a colon
- *  (`domain:<slug>`, any `<ns>:`) — are structural routing keys: the agent
- *  briefing and tag-filtered search select on them, so the `<ns>:` shape is
- *  reserved for routing. Case-insensitive so an existing `Domain:x` cannot
- *  silently turn topical; a colon later in the tag (`note: x`) does not
- *  count. */
+/** Namespaced tags — a whitespace-free NAMESPACE prefix, a colon, and
+ *  content directly after it (`domain:<slug>`, any `<ns>:x`) — are
+ *  structural routing keys: the agent briefing and tag-filtered search
+ *  select on them, so the `<ns>:` shape is reserved for routing. Prose
+ *  colons do not count: a space before the colon (`note about: chords`)
+ *  or after it (`note: x`) marks a topical tag. The namespace is any
+ *  non-space run (not just ASCII identifiers) so existing tags like
+ *  `domäne:blog` keep their structural status. */
 export function isStructuralTag(tag: string): boolean {
-  return /^[a-z0-9][a-z0-9_-]*:/i.test(tag.trim());
+  return /^[^\s:]+:\S/.test(tag.trim());
 }
 
 /** Tag merge for MACHINE-regenerated tags (analysis): structural tags
  *  already on the source always survive — wiping them made every analyzed
  *  source silently drop out of its domain — and analysis replaces only the
- *  plain topical remainder. An explicit operator PATCH
+ *  plain topical remainder. Structural-shaped tags coming OUT of the model
+ *  are dropped: analysis must never mint a new routing key (which would
+ *  then be pinned forever by this very merge). An explicit operator PATCH
  *  (`updateKnowledgeSource`) deliberately bypasses this and replaces tags
  *  wholesale: that is the one way to re-home a source out of a domain. */
 export function mergeStructuralTags(
   existing: readonly string[],
   generated: readonly string[],
 ): string[] {
-  return dedupeTags([...existing.filter(isStructuralTag), ...generated]);
+  return dedupeTags([
+    ...existing.filter(isStructuralTag),
+    ...generated.filter((t) => !isStructuralTag(t)),
+  ]);
 }
