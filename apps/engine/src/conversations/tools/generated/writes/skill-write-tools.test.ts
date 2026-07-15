@@ -1,8 +1,9 @@
 // Integration + unit tests for the skill MCP write tools.
 //
 // Coverage:
-//  (a) create_skill  — skill row created, domain audit (skill.created),
-//                      surface audit (conversation.create_skill), returned audit_log_id.
+//  (a) create_skill  — files a PROPOSED session_learning candidate (review
+//                      queue), skill_candidate.proposed audit, NO skill row,
+//                      NO skill.created audit; identical re-proposal dedups.
 //  (b) update_skill  — patch applied; missing id → not_found.
 //  (c) delete_skill  — deleted; missing id → not_found.
 //  (d) tenant isolation — a skill from another tenant is not updatable/deletable.
@@ -29,9 +30,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../../../audit/types.ts";
-import { auditLog, tenants } from "../../../../db/schema/index.ts";
+import { auditLog, skillCandidates, skills, tenants } from "../../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../../db/tests/setup.ts";
 import { EngineClient } from "../../../../engine-client/index.ts";
+import { createSkill } from "../../../../skills/service.ts";
 import { dispatchTool } from "../../../../tools/dispatcher.ts";
 import { conversationToolProvider } from "../../../../tools/providers/conversation.ts";
 import { buildRegistry } from "../../../../tools/registry.ts";
@@ -97,13 +99,14 @@ describe("skill write tools — integration (a–d)", () => {
 
   // ─── (a) create_skill ───────────────────────────────────────────────────────
 
-  describe("(a) create_skill — happy path", () => {
-    test("skill row created + domain audit (skill.created) + surface audit (conversation.create_skill) + audit_log_id returned", async () => {
+  describe("(a) create_skill — proposes a candidate, never an active skill", () => {
+    test("files a proposed session_learning candidate + skill_candidate.proposed audit; NO skill row", async () => {
       const ctx = makeCtx(tenantAId);
       const result = await createSkillTool.execute(ctx, {
         scope: "global",
         title: "Test Skill Alpha",
         body: "Guide body for testing create_skill",
+        tags: ["domain:testing"],
       });
 
       expect(result.ok).toBe(true);
@@ -111,43 +114,79 @@ describe("skill write tools — integration (a–d)", () => {
 
       const data = result.data as {
         created: boolean;
-        skill: { id: string; title: string; tenant_id: string };
-        audit_log_id: string;
+        action: string;
+        candidate_id: string;
+        next_best_actions: string[];
       };
-      expect(data.created).toBe(true);
-      expect(data.skill.title).toBe("Test Skill Alpha");
-      expect(data.skill.tenant_id).toBe(tenantAId);
-      expect(typeof data.skill.id).toBe("string");
-      expect(typeof data.audit_log_id).toBe("string");
+      // Honest envelope: nothing tenant-visible was activated.
+      expect(data.created).toBe(false);
+      expect(data.action).toBe("proposed");
+      expect(typeof data.candidate_id).toBe("string");
+      expect(data.next_best_actions).toContain("approve_skill_candidate");
 
-      // Domain audit: skill.created emitted inside skillsSvc.createSkill.
-      const domainRows = await testDb.db
-        .select({ action: auditLog.action, resource_id: auditLog.resource_id })
+      // The candidate landed in the review queue (same kind the
+      // `sk learnings review` queue and welcome-row count select on).
+      const candidateRows = await testDb.db
+        .select({
+          status: skillCandidates.status,
+          pattern_kind: skillCandidates.pattern_kind,
+          title: skillCandidates.title,
+        })
+        .from(skillCandidates)
+        .where(
+          and(eq(skillCandidates.tenant_id, tenantAId), eq(skillCandidates.id, data.candidate_id)),
+        );
+      expect(candidateRows.length).toBe(1);
+      expect(candidateRows[0]?.status).toBe("proposed");
+      expect(candidateRows[0]?.pattern_kind).toBe("session_learning");
+      expect(candidateRows[0]?.title).toBe("Test Skill Alpha");
+
+      // Candidate lifecycle audit exists …
+      const candidateAudit = await testDb.db
+        .select({ action: auditLog.action })
         .from(auditLog)
         .where(
           and(
             eq(auditLog.tenant_id, tenantAId),
-            eq(auditLog.action, AuditAction.SKILL_CREATED),
-            eq(auditLog.resource_id, data.skill.id),
+            eq(auditLog.action, AuditAction.SKILL_CANDIDATE_PROPOSED),
+            eq(auditLog.resource_id, data.candidate_id),
           ),
         );
-      expect(domainRows.length).toBe(1);
+      expect(candidateAudit.length).toBe(1);
 
-      // Surface audit: conversation.create_skill emitted by the tool itself.
-      const surfaceRows = await testDb.db
-        .select({ id: auditLog.id, action: auditLog.action, resource_id: auditLog.resource_id })
+      // … and NO active skill and NO skill.created audit were produced.
+      const skillRows = await testDb.db
+        .select({ id: skills.id })
+        .from(skills)
+        .where(and(eq(skills.tenant_id, tenantAId), eq(skills.title, "Test Skill Alpha")));
+      expect(skillRows.length).toBe(0);
+      const skillCreatedAudit = await testDb.db
+        .select({ id: auditLog.id })
         .from(auditLog)
         .where(
-          and(
-            eq(auditLog.tenant_id, tenantAId),
-            eq(auditLog.action, "conversation.create_skill"),
-            eq(auditLog.resource_id, data.skill.id),
-          ),
+          and(eq(auditLog.tenant_id, tenantAId), eq(auditLog.action, AuditAction.SKILL_CREATED)),
         );
-      expect(surfaceRows.length).toBe(1);
+      expect(skillCreatedAudit.length).toBe(0);
+    });
 
-      // The returned audit_log_id must be the surface audit row's id.
-      expect(surfaceRows[0]?.id).toBe(data.audit_log_id);
+    test("re-proposing the same title updates the existing candidate instead of duplicating", async () => {
+      const ctx = makeCtx(tenantAId);
+      const first = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Dedup Skill",
+        body: "v1",
+      });
+      expect(first.ok).toBe(true);
+      const second = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Dedup Skill",
+        body: "v2",
+      });
+      expect(second.ok).toBe(true);
+      const firstData = first.data as { candidate_id: string };
+      const secondData = second.data as { candidate_id: string; action: string };
+      expect(secondData.action).toBe("updated");
+      expect(secondData.candidate_id).toBe(firstData.candidate_id);
     });
   });
 
@@ -157,13 +196,15 @@ describe("skill write tools — integration (a–d)", () => {
     test("happy path: title patch applied, audit_log_id returned", async () => {
       const ctx = makeCtx(tenantAId);
 
-      const created = await createSkillTool.execute(ctx, {
-        scope: "global",
-        title: "Before Update",
-        body: "Original body content",
-      });
-      expect(created.ok).toBe(true);
-      const { skill: seedSkill } = created.data as { skill: { id: string } };
+      // Seed via the admin/REST service — the conversational tool only
+      // proposes candidates now.
+      const seedSkill = await createSkill(
+        {
+          tenant_id: tenantAId,
+          input: { scope: "global", title: "Before Update", body: "Original body content" },
+        },
+        testDb.db,
+      );
 
       const result = await updateSkillTool.execute(ctx, {
         id: seedSkill.id,
@@ -201,13 +242,13 @@ describe("skill write tools — integration (a–d)", () => {
     test("happy path: skill deleted, id + audit_log_id returned", async () => {
       const ctx = makeCtx(tenantAId);
 
-      const created = await createSkillTool.execute(ctx, {
-        scope: "global",
-        title: "To Be Deleted",
-        body: "Ephemeral",
-      });
-      expect(created.ok).toBe(true);
-      const { skill: toDelete } = created.data as { skill: { id: string } };
+      const toDelete = await createSkill(
+        {
+          tenant_id: tenantAId,
+          input: { scope: "global", title: "To Be Deleted", body: "Ephemeral" },
+        },
+        testDb.db,
+      );
 
       const result = await deleteSkillTool.execute(ctx, { id: toDelete.id });
       expect(result.ok).toBe(true);
@@ -232,15 +273,14 @@ describe("skill write tools — integration (a–d)", () => {
 
   describe("(d) tenant isolation", () => {
     test("update_skill using another tenant's skill id → not_found (no cross-tenant update)", async () => {
-      // Seed a skill in tenant B.
-      const ctxB = makeCtx(tenantBId);
-      const created = await createSkillTool.execute(ctxB, {
-        scope: "global",
-        title: "Tenant B Only Skill",
-        body: "Belongs to tenant B",
-      });
-      expect(created.ok).toBe(true);
-      const { skill: bSkill } = created.data as { skill: { id: string } };
+      // Seed a skill in tenant B via the admin/REST service.
+      const bSkill = await createSkill(
+        {
+          tenant_id: tenantBId,
+          input: { scope: "global", title: "Tenant B Only Skill", body: "Belongs to tenant B" },
+        },
+        testDb.db,
+      );
 
       // Tenant A tries to update tenant B's skill — must get not_found, not a
       // cross-tenant mutation (engineClient filters by tenant_id).
@@ -255,14 +295,17 @@ describe("skill write tools — integration (a–d)", () => {
     });
 
     test("delete_skill using another tenant's skill id → not_found (no cross-tenant deletion)", async () => {
-      const ctxB = makeCtx(tenantBId);
-      const created = await createSkillTool.execute(ctxB, {
-        scope: "global",
-        title: "Tenant B Skill for Delete Guard",
-        body: "Belongs to tenant B",
-      });
-      expect(created.ok).toBe(true);
-      const { skill: bSkill } = created.data as { skill: { id: string } };
+      const bSkill = await createSkill(
+        {
+          tenant_id: tenantBId,
+          input: {
+            scope: "global",
+            title: "Tenant B Skill for Delete Guard",
+            body: "Belongs to tenant B",
+          },
+        },
+        testDb.db,
+      );
 
       const ctxA = makeCtx(tenantAId);
       const result = await deleteSkillTool.execute(ctxA, { id: bSkill.id });
