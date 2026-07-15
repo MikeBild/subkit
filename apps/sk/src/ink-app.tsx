@@ -110,6 +110,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   setupSnapshot,
   connectionSnapshot,
   digestSnapshot,
+  pendingLearningsCount = 0,
   permissionMode = "ask",
   historyPath,
   onPrompt,
@@ -197,10 +198,12 @@ export const InkApp: React.FC<InkAppProps> = ({
   );
 
   // Render + dispatch lists derive injection (and the RBAC gate) from the same
-  // (probe, digest) inputs inside the shared helpers, so they can't drift.
+  // (probe, digest, pendingLearnings) inputs inside the shared helpers, so
+  // they can't drift.
   const starterTaskActions = useMemo(
-    () => buildStarterTaskActions(persona.label, persona.probe, digestSnapshot),
-    [persona.label, persona.probe, digestSnapshot],
+    () =>
+      buildStarterTaskActions(persona.label, persona.probe, digestSnapshot, pendingLearningsCount),
+    [persona.label, persona.probe, digestSnapshot, pendingLearningsCount],
   );
   const availableTaskActions = useMemo(
     () =>
@@ -494,6 +497,11 @@ export const InkApp: React.FC<InkAppProps> = ({
           respondElicitation: submitElicitationResponse,
           runYoloSlash,
           runBuiltin: handleBuiltinSlash,
+          // Same re-entry pattern as drainQueueOrHold's `resubmit`: the
+          // prompt is not slash-shaped, so it takes the plain-prompt path.
+          submitPrompt: (prompt) => {
+            void handleSubmit(prompt);
+          },
         })
       ) {
         return;
@@ -758,6 +766,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       statusSnapshot={statusSnapshot}
       setupSnapshot={setupSnapshot}
       digestSnapshot={digestSnapshot}
+      pendingLearningsCount={pendingLearningsCount}
       tip={tip.current}
       whatsNew={whatsNew}
     />

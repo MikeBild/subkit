@@ -41,6 +41,7 @@ const PRODUCT_TOOLS = [
 
 const AUTHORING_TOOLS = [
   "analyze_scrape_target",
+  "approve_skill_candidate",
   "authenticate",
   "call_connector",
   "cannot_help",

@@ -57,6 +57,12 @@ export interface InkAppProps {
    *  to inject the "guided triage" starter action. `null` when the tenant
    *  is all-clear or the engine is unreachable. */
   digestSnapshot?: OperatorHealthDigest | null;
+  /** Count of proposed session-learning skill candidates awaiting review,
+   *  fetched best-effort at REPL open (and on tenant switch). When > 0 and
+   *  the persona holds `skill:read`, the welcome row injects a
+   *  "Review N proposed learning(s)" starter action. Defaults to 0 so an
+   *  absent prop keeps today's behavior. */
+  pendingLearningsCount?: number;
   /** Active permission mode for the status line badge. */
   permissionMode?: PermissionMode;
   /**

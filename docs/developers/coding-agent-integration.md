@@ -122,6 +122,10 @@ sk learnings list             # what is waiting
 sk learnings review           # interactive: approve / edit / reject / skip
 ```
 
+You can also approve without leaving the coding session: tell the agent to
+approve the candidate and confirm your client's native dialog — that click is
+the explicit operator approval (requires `skill:write`).
+
 Approving promotes the learning to an **active skill carrying the domain
 tags** — the very next session briefing in that domain includes it. Rejecting
 retires the learning's fingerprint for good. Editing before approve lets you
