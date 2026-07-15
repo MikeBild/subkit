@@ -215,7 +215,10 @@ describe("skill write tools — integration (a–d)", () => {
         );
       expect(rows[0]?.body).toBe("v2");
       // …and the stale v1 candidate was superseded, not left cluttering
-      // the review queue (revision retirement).
+      // the review queue (revision retirement). Note: the title contains
+      // BOTH a lowercase "s" run and normal spaces — regression cover for
+      // the tagged-template \\s+ cooking bug (a single backslash made the
+      // SQL replace the LETTER "s", silently no-oping retirement).
       const staleRows = await testDb.db
         .select({ status: skillCandidates.status })
         .from(skillCandidates)
@@ -226,6 +229,28 @@ describe("skill write tools — integration (a–d)", () => {
           ),
         );
       expect(staleRows[0]?.status).toBe("superseded");
+
+      // Revert: re-proposing v1 verbatim REVIVES the superseded candidate
+      // (no human reviewed it — a "skipped: already reviewed" would lie)
+      // and retires v2 in turn.
+      const reverted = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Dedup Skill",
+        body: "v1",
+      });
+      expect(reverted.ok).toBe(true);
+      const revertedData = reverted.data as { candidate_id: string; action: string };
+      expect(revertedData.action).toBe("updated");
+      expect(revertedData.candidate_id).toBe(firstData.candidate_id);
+      const afterRevert = await testDb.db
+        .select({ id: skillCandidates.id, status: skillCandidates.status })
+        .from(skillCandidates)
+        .where(
+          and(eq(skillCandidates.tenant_id, tenantAId), eq(skillCandidates.title, "Dedup Skill")),
+        );
+      const byId = new Map(afterRevert.map((r) => [r.id, r.status]));
+      expect(byId.get(firstData.candidate_id)).toBe("proposed");
+      expect(byId.get(revisedData.candidate_id)).toBe("superseded");
     });
 
     test("scope/entity mismatch fails at PROPOSAL time, not at the reviewer's approve step", async () => {
