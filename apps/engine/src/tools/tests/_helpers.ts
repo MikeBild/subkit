@@ -59,11 +59,24 @@ export function makeStubDb(): { db: Db; capture: StubDbCapture } {
     limit: () => Promise.resolve([]),
     orderBy: () => Promise.resolve([]),
   };
+  // Update chain that matches zero rows. The needs_confirm path may call
+  // `mintApprovalGrantUrl` (portal-token minting) when the ambient config
+  // carries a `public_base_url` — under bun's parallel test FILES another
+  // suite's beforeAll/afterAll window (e.g. mcp-oauth audience tests) can
+  // set one concurrently, so the stub must carry the chain instead of
+  // exploding with "db.update is not a function" depending on scheduling.
+  // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
+  const emptyUpdate: any = {
+    set: () => emptyUpdate,
+    where: () => emptyUpdate,
+    returning: () => Promise.resolve([]),
+  };
   // biome-ignore lint/suspicious/noExplicitAny: drizzle Db shape
   const db: any = {
     // biome-ignore lint/suspicious/noExplicitAny: transaction wrapper
     transaction: async (fn: any) => fn(db),
     select: () => emptySelect,
+    update: () => emptyUpdate,
     insert: () => ({
       // biome-ignore lint/suspicious/noExplicitAny: drizzle insert chain
       values: (row: any) => {
