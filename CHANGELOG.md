@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] – 2026-07-15
+
+### Fixed
+- The "Review N proposed learnings" starter reliably appears on the sk
+  REPL's first paint — the count is now resolved with the other boot
+  snapshots instead of racing Ink's once-flushed welcome banner.
+
 ## [1.14.0] – 2026-07-15
 
 ### Added
