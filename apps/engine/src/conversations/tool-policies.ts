@@ -334,6 +334,12 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   save_learning: {
     defaultMode: "no_confirm",
   },
+  // create_skill files an INERT `proposed` candidate too (it stopped
+  // creating active skills) — same rationale as save_learning: the
+  // approve step IS the confirmation.
+  create_skill: {
+    defaultMode: "no_confirm",
+  },
   run_workflow: {
     defaultMode: "confirm_before_execution",
     computeModeFromInput: (input) => {
@@ -605,7 +611,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
 export const MCP_TURN_COLLAPSIBLE_WRITE_TOOLS: ReadonlySet<string> = new Set([
   "create_knowledge_source",
   "create_schedule",
-  "create_skill",
   "save_workflow_draft",
 ]);
 
@@ -655,6 +660,7 @@ export const MCP_TURN_KEEP_PAUSE_WRITE_TOOLS: ReadonlySet<string> = new Set([
   // override — an operator who explicitly gated it gets the pause honoured.
   "load_skill",
   "save_learning",
+  "create_skill",
   // Dynamic confirm-capable tools (computeModeFromInput can upgrade them):
   // prod probes and connector writes go against live vendor systems.
   "call_connector",
