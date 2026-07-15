@@ -49,6 +49,7 @@ import {
   approvalAuditResource,
   type ClaimedApproval,
   consumeApproval,
+  hashToolArgs,
   recordApprovalApproved,
   recordApprovalUnfulfilled,
   requestApproval,
@@ -211,6 +212,7 @@ async function emitPolicyDenied(
   reason: string,
   resource: { type: string; id: string } | null,
   approval: ApprovalAuditResource | null,
+  args: Record<string, unknown>,
 ): Promise<void> {
   await auditAwait(
     {
@@ -228,6 +230,16 @@ async function emitPolicyDenied(
         via: surface,
         request_source: surface,
         permission,
+        // Same fingerprint the APPROVAL_REQUESTED row and tool_approvals
+        // carry — a denied intent joins forensically with any approval
+        // lifecycle for the identical call. Hash only, never raw values.
+        // NOTE on canonicalization: RBAC runs BEFORE canonicalizeArgs (a
+        // deliberate pipeline order — authorization precedes input
+        // validation), so a FIRST-CALL denial hashes the raw invocation
+        // args (no approval row exists to correlate with anyway), while a
+        // confirmed-REPLAY denial hashes `claim.args`, which are already
+        // canonical and therefore match the approval's args_hash.
+        args_hash: hashToolArgs(args),
         ...(approval ? { approval_id: approval.approval_id } : {}),
         ...(approval && resource
           ? { rbac_resource_type: resource.type, rbac_resource_id: resource.id }
@@ -397,6 +409,7 @@ export async function dispatchTool(
           reason,
           resource ?? null,
           claimed ? approvalAuditResource(claimed) : null,
+          execArgs,
         );
         let level: ConnectorAccessLevel | undefined;
         if (resource?.type === "connector") {

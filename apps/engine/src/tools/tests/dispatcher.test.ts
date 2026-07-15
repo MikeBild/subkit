@@ -10,14 +10,14 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { AuditAction } from "../../audit/types.ts";
+import { AuditAction, ToolDispatchPolicyDeniedMetadataSchema } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { runWorkflowTool } from "../../conversations/tools/generated/writes/run-workflow.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { grantApproval, requestApproval } from "../approval.ts";
+import { grantApproval, hashToolArgs, requestApproval } from "../approval.ts";
 import { dispatchTool } from "../dispatcher.ts";
 import { conversationToolProvider, staticToolProvider } from "../index.ts";
 import {
@@ -493,6 +493,7 @@ describe("tools/dispatcher — RBAC denial path", () => {
       action?: string | undefined;
       resource_type?: string | undefined;
       resource_id?: string | undefined;
+      metadata?: Record<string, unknown> | undefined;
     }> = [];
     // biome-ignore lint/suspicious/noExplicitAny: stub for tests
     const emptySelectChain: any = {
@@ -512,11 +513,13 @@ describe("tools/dispatcher — RBAC denial path", () => {
           action?: string | undefined;
           resource_type?: string | undefined;
           resource_id?: string | undefined;
+          metadata?: Record<string, unknown> | undefined;
         }) => {
           captured.push({
             action: row?.action,
             resource_type: row?.resource_type,
             resource_id: row?.resource_id,
+            metadata: row?.metadata,
           });
           return { onConflictDoNothing: async () => undefined };
         },
@@ -570,6 +573,11 @@ describe("tools/dispatcher — RBAC denial path", () => {
     expect(policyDenied.length).toBe(1);
     expect(policyDenied[0]?.resource_type).toBe("test");
     expect(policyDenied[0]?.resource_id).toBe("abc");
+    // The denial carries the approval-lifecycle args fingerprint (hash
+    // only, never raw values) and conforms to the pinned emitter schema.
+    const metadata = policyDenied[0]?.metadata ?? {};
+    expect(metadata.args_hash).toBe(hashToolArgs({ id: "abc" }));
+    expect(ToolDispatchPolicyDeniedMetadataSchema.parse(metadata)).toBeTruthy();
   });
 
   test("RBAC runs BEFORE policy gate — denied tenant_write does NOT emit APPROVAL_REQUESTED", async () => {
