@@ -754,6 +754,10 @@ export async function dispatchAuthoringDraftSlash(
             : "  nothing was trimmed",
         );
       }
+      if (snapshot.grounding_status?.state === "stale" && snapshot.grounding_status.advisory) {
+        lines.push("");
+        lines.push(`⚠ grounding: ${snapshot.grounding_status.advisory}`);
+      }
       return panify(ctx, "conversation context", lines);
     }
     case "approvals": {

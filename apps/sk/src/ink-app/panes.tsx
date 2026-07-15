@@ -285,6 +285,15 @@ const ContextPane: React.FC<{
         </Text>
       </Box>
     ) : null}
+    {pane.snapshot.grounding_status?.state === "stale" &&
+    pane.snapshot.grounding_status.advisory ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="yellow" bold>
+          grounding
+        </Text>
+        <Text color="yellow">⚠ {pane.snapshot.grounding_status.advisory}</Text>
+      </Box>
+    ) : null}
   </Pane>
 ));
 ContextPane.displayName = "ContextPane";
