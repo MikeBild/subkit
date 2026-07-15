@@ -13,6 +13,11 @@ export const approveSkillCandidateTool: ConversationTool = {
     "Approve a skill candidate and promote it to a tenant skill. Writes audit. Idempotent — already-approved candidates return ok=false.",
   inputSchema: IdInput,
   category: "tenant_write",
+  // Closes the capture loop IN the coding session: the client's native
+  // destructiveHint dialog is the explicit operator approval and RBAC
+  // `skill:write` stays the hard boundary. Without this, the loop's last
+  // mile forces a surface switch to `sk learnings review` per approval.
+  visible_when_readonly: true,
   async execute(ctx, args: z.infer<typeof IdInput>) {
     const out = await approveSkillCandidate(
       { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor_id: ctx.actor_id },

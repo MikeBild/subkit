@@ -78,27 +78,6 @@ const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
   "get_execution",
 ]);
 
-/** `tenant_write` tools exempt from the readOnly hide:
- *  - `run_workflow` is a workflow *run*, not a config mutation — consistent
- *    with the `wf_` palette, which surfaces in product mode regardless of
- *    `readOnly`. Mirrors the search-first floor in `mcp/mode-resolver.ts`
- *    (MCP_CORE_TOOL_NAMES).
- *  - `save_learning` creates an INERT `proposed` skill candidate behind the
- *    human approve gate; it is the coding-agent capture loop's explicit
- *    channel and must stay directly callable on MCP (authoring principals
- *    see no other tenant_write). RBAC (`skill:propose`) still gates it.
- *  - `approve_skill_candidate` closes the capture loop IN the coding
- *    session: the client's native destructiveHint dialog is the explicit
- *    operator approval (the same gate every MCP write uses since the
- *    portal removal), and RBAC `skill:write` stays the hard boundary.
- *    Without the exemption the loop's last mile forces a surface switch
- *    to `sk learnings review` for every single approval. */
-const READONLY_EXEMPT_RUNS: ReadonlySet<string> = new Set([
-  "run_workflow",
-  "save_learning",
-  "approve_skill_candidate",
-]);
-
 function visibilityFor(
   category: ToolCategory,
   surface: ToolSurface,
@@ -399,9 +378,11 @@ function isVisibleForFilter(t: ConversationTool, filter: ToolListFilter): boolea
     }
   }
 
-  // readOnly hides every tenant_write regardless of mode — except workflow
-  // runs, which behave like the always-on wf_ palette (RBAC still gates them).
-  if (filter.readOnly && t.category === "tenant_write" && !READONLY_EXEMPT_RUNS.has(t.name)) {
+  // readOnly hides every tenant_write regardless of mode — except tools
+  // that declare `visible_when_readonly` on their definition (a run rather
+  // than a config mutation, or a self-gated capture-loop write; the WHY
+  // lives at each definition site). RBAC still gates them.
+  if (filter.readOnly && t.category === "tenant_write" && !t.visible_when_readonly) {
     return false;
   }
 
