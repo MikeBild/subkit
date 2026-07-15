@@ -123,7 +123,9 @@ export async function listSkillCandidates(
     .select()
     .from(skillCandidates)
     .where(and(...listFilterConds(p)))
-    .orderBy(desc(skillCandidates.created_at))
+    // id tiebreaker: created_at alone is not unique (batch captures), and
+    // an unstable order across offset pages duplicates/skips boundary rows.
+    .orderBy(desc(skillCandidates.created_at), desc(skillCandidates.id))
     .limit(limit)
     .offset(offset);
 

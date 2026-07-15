@@ -772,9 +772,9 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     statusSnapshot = nextStatus;
     setupSnapshot = nextSetup;
     bootSnapshot = { digest: nextDigest, pendingLearnings: nextLearnings };
-    if (bootSnapshot.digest) {
-      pendingDigestContext = digestAsContext(bootSnapshot.digest);
-    }
+    // Unconditional (null included): a stale boot-fetch write that landed
+    // during the awaits above must not survive into the new tenant.
+    pendingDigestContext = nextDigest ? digestAsContext(nextDigest) : null;
     profileVersion += 1;
     for (const listener of personaListeners) {
       listener({ persona: currentPersona, profile: newProfile, version: profileVersion });
@@ -886,11 +886,12 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // chrome and `pendingDigestContext` seeds the NEXT turn's memory —
   // an operator faster than the digest simply gets an unseeded first
   // turn, which matches the digest's best-effort contract.
-  const bootProfileVersion = profileVersion;
   void fetchOperatorDigest(client).then((digest) => {
-    // Drop the result if a /profile switch completed mid-flight — this
-    // fetch is bound to the BOOT client; the switch re-fetched its own.
-    if (profileVersion !== bootProfileVersion) return;
+    // Drop the result once a /profile switch has STARTED — currentClient
+    // is reassigned synchronously before the switch's first await, so
+    // this closes the mid-switch window too (a profileVersion check would
+    // not: the version bumps only after the switch's awaits complete).
+    if (currentClient !== client) return;
     bootSnapshot = { ...bootSnapshot, digest };
     if (digest) pendingDigestContext = digestAsContext(digest);
     for (const listener of bootSnapshotListeners) listener(bootSnapshot);

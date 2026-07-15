@@ -152,7 +152,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
         input: {
           name: "Colon Tagged Doc",
           scope: "global",
-          tags: ["domain:harmoniqs", "domäne:blog", "note: x", "note about: chords"],
+          tags: ["domain:harmoniqs", "domäne:blog", "note: x", "note about: chords", "q&a:faq"],
         },
         upload: {
           buffer: Buffer.from("# Akkorde\n\nStufenakkorde in Dur."),
