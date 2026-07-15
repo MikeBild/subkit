@@ -10,7 +10,7 @@
 // live event never carried a harvestable shape at all.
 
 import { describe, expect, test } from "bun:test";
-import { harvestCitations } from "../citations.ts";
+import { harvestCitations, harvestCitationsFromPersisted } from "../citations.ts";
 import type { TurnEvent } from "../types.ts";
 
 const toolResult = (tool: string, output: unknown): TurnEvent =>
@@ -80,5 +80,49 @@ describe("harvestCitations", () => {
     ];
     const kinds = harvestCitations(events).map((c) => c.source_type);
     expect(kinds).toEqual(["knowledge_chunk", "connector_doc"]);
+  });
+
+  test("strips ts_headline <b> highlight markup from excerpts (both kinds)", () => {
+    // Postgres ts_headline wraps matched terms in <b>…</b>; the excerpt must
+    // be faithful source text so the anti-drift quote check can match a
+    // verbatim quote against it.
+    const events: TurnEvent[] = [
+      toolResult("search_knowledge", {
+        hits: [{ id: "k1", source_name: "S", snippet: "to <b>create</b> a <b>customer</b>" }],
+      }),
+      toolResult("search_docs", {
+        hits: [{ id: "d1", title: "T", snippet: "POST <b>/customers</b>" }],
+      }),
+    ];
+    const cites = harvestCitations(events);
+    expect(cites[0]?.excerpt).toBe("to create a customer");
+    expect(cites[1]?.excerpt).toBe("POST /customers");
+  });
+});
+
+describe("harvestCitationsFromPersisted", () => {
+  test("matches the live harvest for normal-size grounding output", () => {
+    const events: TurnEvent[] = [
+      toolResult("search_knowledge", {
+        hits: [{ id: "k1", source_name: "S", snippet: "hello" }],
+      }),
+    ];
+    expect(harvestCitationsFromPersisted(events)).toEqual(harvestCitations(events));
+  });
+
+  test("reproduces the model-visible array cap on a large payload (no over-count)", () => {
+    // 40 hits push the persisted output past the char cap; the model-visible
+    // truncation caps the array (to well under 40) yet keeps the hits inline,
+    // so the replay footer names the same capped set the model saw — not all
+    // 40 sources.
+    const hits = Array.from({ length: 40 }, (_, i) => ({
+      id: `k${i}`,
+      source_name: `Source ${i}`,
+      snippet: "x".repeat(200),
+    }));
+    const events: TurnEvent[] = [toolResult("search_knowledge", { hits })];
+    const cites = harvestCitationsFromPersisted(events);
+    expect(cites.length).toBeGreaterThan(0);
+    expect(cites.length).toBeLessThan(40);
   });
 });

@@ -11,6 +11,7 @@ import { streamSSE } from "hono/streaming";
 import * as svc from "../../../conversations/index.ts";
 import {
   harvestCitationsFromPersisted,
+  messageHasText,
   serializeEvent,
   type TurnEvent,
   withoutApprovalHandle,
@@ -153,7 +154,11 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
             parent_message_id: msg.id,
           }),
         );
-        if (msg.role === "assistant") turnLastAssistantId = msg.id;
+        // Anchor citations only to a text-bearing assistant message, mirroring
+        // the live loop's `lastAssistantText` gate: a turn that ended tool-only
+        // or was cancelled before producing prose emits no footer live, so it
+        // must emit none on replay either.
+        if (msg.role === "assistant" && messageHasText(msg.content)) turnLastAssistantId = msg.id;
         const childCallsForMsg = childCalls.get(msg.id) ?? [];
         for (const call of childCallsForMsg) {
           await emitCall(call);
