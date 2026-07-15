@@ -30,6 +30,30 @@ const CreateSkillInput = z
     doc_refs: z.array(z.string()).optional(),
     tags: z.array(z.string().min(1)).optional(),
   })
+  // Mirror of skills/service.ts validateScope — enforced at PROPOSAL time
+  // so a scope/entity mismatch fails in the author's face, not later in
+  // the reviewer's approve step (which would leave a permanently
+  // un-approvable candidate in the queue).
+  .superRefine((input, ctx) => {
+    if (input.scope === "connector" && !input.connector_id) {
+      ctx.addIssue({ code: "custom", message: "connector skill requires connector_id" });
+    }
+    if (input.scope === "workflow" && !input.workflow_id) {
+      ctx.addIssue({ code: "custom", message: "workflow skill requires workflow_id" });
+    }
+    if (input.scope === "global" && (input.connector_id || input.workflow_id)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "global skill must not set connector_id or workflow_id",
+      });
+    }
+    if (input.connector_id && input.workflow_id) {
+      ctx.addIssue({
+        code: "custom",
+        message: "skill cannot set both connector_id and workflow_id",
+      });
+    }
+  })
   .openapi("CreateSkillToolInput");
 
 export const createSkillTool: ConversationTool = {
@@ -37,8 +61,8 @@ export const createSkillTool: ConversationTool = {
   description:
     "Propose a new tenant skill as a PROPOSED candidate for human review. It does NOT " +
     "become an active skill until an operator approves it (approve_skill_candidate in " +
-    "this session, or `sk learnings review`). Re-proposing the same title updates the " +
-    "existing candidate instead of duplicating it.",
+    "this session, or `sk learnings review`). Re-proposing IDENTICAL content dedups " +
+    "onto the existing candidate; revised content files a fresh candidate next to it.",
   inputSchema: CreateSkillInput,
   category: "tenant_write",
   permission: { action: "skill:write", resourceType: "skill" },
