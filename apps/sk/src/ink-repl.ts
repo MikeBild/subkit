@@ -57,6 +57,12 @@ export interface InkReplOptions {
 import { digestAsContext, fetchOperatorDigest } from "./lib/operator-digest.ts";
 import { fetchPendingLearningsCount } from "./lib/pending-learnings.ts";
 
+/** Start-screen chrome signals that share one boot/re-seed lifecycle. */
+interface OperatorBootSnapshot {
+  digest: OperatorHealthDigest | null;
+  pendingLearnings: number;
+}
+
 export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // Fall back to the readline REPL when stdout is not a TTY — Ink
   // cannot render sensibly into a pipe and `bun test` drives us
@@ -85,14 +91,14 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // memory so replying "yes" grounds the LLM in the same digest, then
   // cleared so later turns aren't re-seeded.
   let pendingDigestContext: string | null = null;
-  // Live operator-digest snapshot for the in-context chrome. Refreshed on
-  // every /profile switch so the panel and first-turn memory always describe
-  // the ACTIVE tenant — never tenant-A's failures leaking into tenant-B.
-  let operatorDigestSnapshot: OperatorHealthDigest | null = null;
-  // Proposed session-learning count for the review-learnings starter action.
-  // Same lifecycle as the digest: fetched in the background at boot,
-  // re-seeded on every /profile switch, best-effort (0 on any failure).
-  let pendingLearningsCount = 0;
+  // Live operator boot snapshot for the in-context chrome: the health
+  // digest plus the proposed session-learning count. ONE channel (one
+  // value, one listener set, one /profile re-seed) on purpose — every
+  // start-screen signal shares the same lifecycle, and a signal wired
+  // through its own parallel channel would have to re-implement the
+  // tenant-switch re-seed that keeps tenant-A data from leaking into
+  // tenant-B. Fetched best-effort; a failure renders as "no digest" / 0.
+  let bootSnapshot: OperatorBootSnapshot = { digest: null, pendingLearnings: 0 };
 
   const client = new EngineClient({
     engine_url: opts.profile.engine_url,
@@ -147,9 +153,8 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   const statusListeners = new Set<(snap: StatusSummary | null) => void>();
   let setupSnapshot: SetupValidationResponse | null = await setupPromise;
   const setupListeners = new Set<(snap: SetupValidationResponse | null) => void>();
-  pendingLearningsCount = await learningsPromise;
-  const digestListeners = new Set<(snap: OperatorHealthDigest | null) => void>();
-  const learningsListeners = new Set<(count: number) => void>();
+  bootSnapshot = { ...bootSnapshot, pendingLearnings: await learningsPromise };
+  const bootSnapshotListeners = new Set<(snap: OperatorBootSnapshot) => void>();
   const refreshStatus = async (): Promise<void> => {
     try {
       statusSnapshot = await currentClient.statusSummary();
@@ -759,17 +764,19 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     // like the boot-time call — and fetched CONCURRENTLY with status +
     // setup so the switch pays one round-trip, not three.
     pendingDigestContext = null;
-    [statusSnapshot, setupSnapshot, operatorDigestSnapshot, pendingLearningsCount] =
-      await Promise.all([
-        newClient.statusSummary().catch(() => null),
-        canReadSetup(currentPersona)
-          ? newClient.setupValidation().catch(() => null)
-          : Promise.resolve(null),
-        fetchOperatorDigest(newClient),
-        fetchPendingLearningsCount(newClient),
-      ]);
-    if (operatorDigestSnapshot) {
-      pendingDigestContext = digestAsContext(operatorDigestSnapshot);
+    const [nextStatus, nextSetup, nextDigest, nextLearnings] = await Promise.all([
+      newClient.statusSummary().catch(() => null),
+      canReadSetup(currentPersona)
+        ? newClient.setupValidation().catch(() => null)
+        : Promise.resolve(null),
+      fetchOperatorDigest(newClient),
+      fetchPendingLearningsCount(newClient),
+    ]);
+    statusSnapshot = nextStatus;
+    setupSnapshot = nextSetup;
+    bootSnapshot = { digest: nextDigest, pendingLearnings: nextLearnings };
+    if (bootSnapshot.digest) {
+      pendingDigestContext = digestAsContext(bootSnapshot.digest);
     }
     profileVersion += 1;
     for (const listener of personaListeners) {
@@ -777,8 +784,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     }
     for (const listener of statusListeners) listener(statusSnapshot);
     for (const listener of setupListeners) listener(setupSnapshot);
-    for (const listener of digestListeners) listener(operatorDigestSnapshot);
-    for (const listener of learningsListeners) listener(pendingLearningsCount);
+    for (const listener of bootSnapshotListeners) listener(bootSnapshot);
 
     return healthOk
       ? `switched to "${name}" (${newProfile.engine_url})`
@@ -884,9 +890,9 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   // an operator faster than the digest simply gets an unseeded first
   // turn, which matches the digest's best-effort contract.
   void fetchOperatorDigest(client).then((digest) => {
-    operatorDigestSnapshot = digest;
+    bootSnapshot = { ...bootSnapshot, digest };
     if (digest) pendingDigestContext = digestAsContext(digest);
-    for (const listener of digestListeners) listener(digest);
+    for (const listener of bootSnapshotListeners) listener(bootSnapshot);
   });
 
   // Small root wrapper that subscribes to status + persona updates and
@@ -898,8 +904,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     const [snap, setSnap] = React.useState<StatusSummary | null>(statusSnapshot);
     const [setup, setSetup] = React.useState<SetupValidationResponse | null>(setupSnapshot);
     const [conn, setConn] = React.useState<ConnectionSnapshot>(connectionSnapshot);
-    const [digest, setDigest] = React.useState<OperatorHealthDigest | null>(operatorDigestSnapshot);
-    const [learnings, setLearnings] = React.useState<number>(pendingLearningsCount);
+    const [boot, setBoot] = React.useState<OperatorBootSnapshot>(bootSnapshot);
     const [active, setActive] = React.useState<{
       persona: ResolvedPersona;
       profile: ResolvedProfile;
@@ -915,26 +920,22 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         setActive(next);
         setSnap(statusSnapshot);
         setSetup(setupSnapshot);
-        setDigest(operatorDigestSnapshot);
-        setLearnings(pendingLearningsCount);
+        setBoot(bootSnapshot);
       };
       const sul = (next: SetupValidationResponse | null): void => setSetup(next);
       const cl = (next: ConnectionSnapshot): void => setConn(next);
-      const dl = (next: OperatorHealthDigest | null): void => setDigest(next);
-      const ll = (next: number): void => setLearnings(next);
+      const bl = (next: OperatorBootSnapshot): void => setBoot(next);
       statusListeners.add(sl);
       setupListeners.add(sul);
       personaListeners.add(pl);
       connectionListeners.add(cl);
-      digestListeners.add(dl);
-      learningsListeners.add(ll);
+      bootSnapshotListeners.add(bl);
       return () => {
         statusListeners.delete(sl);
         setupListeners.delete(sul);
         personaListeners.delete(pl);
         connectionListeners.delete(cl);
-        digestListeners.delete(dl);
-        learningsListeners.delete(ll);
+        bootSnapshotListeners.delete(bl);
       };
     }, []);
     return React.createElement(InkApp, {
@@ -958,8 +959,8 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       statusSnapshot: snap,
       setupSnapshot: setup,
       connectionSnapshot: conn,
-      digestSnapshot: digest,
-      pendingLearningsCount: learnings,
+      digestSnapshot: boot.digest,
+      pendingLearningsCount: boot.pendingLearnings,
       onPrompt,
       onElicitResponse,
       onSlash,
