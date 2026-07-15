@@ -301,6 +301,11 @@ export interface AuthoringState {
   /** Preview-judge circuit-breaker — see `JudgeBreakerState`. Absent /
    *  null when the judge has never blocked this draft. */
   judge_breaker?: JudgeBreakerState | null;
+  /** Fingerprint of the grounding this draft was built on (a hash of the
+   *  discovered connector-endpoint projection). `/context` recomputes the
+   *  current fingerprint at resume and flags the draft stale when they
+   *  differ. Absent / null when no grounded draft was generated. */
+  grounding_fingerprint?: string | null;
 }
 
 /**
