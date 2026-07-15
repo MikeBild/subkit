@@ -530,7 +530,7 @@ export async function upsertFromSignal(
       // `updated_at` is stamped with the DB clock everywhere the
       // retirement pass orders by it — mixing the app clock with
       // defaultNow() inserts would let NTP skew break that ordering.
-      await tx
+      const updatedRows = await tx
         .update(skillCandidates)
         .set({
           confidence: signal.confidence,
@@ -552,7 +552,22 @@ export async function upsertFromSignal(
               }
             : {}),
         })
-        .where(eq(skillCandidates.id, row.id));
+        // CAS on the status we READ: a reviewer may approve/reject between
+        // our unlocked SELECT and this UPDATE — the human decision must
+        // win, never be silently reverted to 'proposed' (the
+        // approval-zombie class). Same write-time re-check pattern as the
+        // retirement pass's supersede flip.
+        .where(and(eq(skillCandidates.id, row.id), eq(skillCandidates.status, row.status)))
+        .returning({ id: skillCandidates.id });
+      if (updatedRows.length === 0) {
+        log.skill.candidate.dedup({
+          candidate_id: row.id,
+          tenant_id,
+          pattern_kind: signal.pattern_kind,
+          reason: "concurrent_status_change",
+        });
+        return { action: "skipped" as const, candidate_id: row.id };
+      }
 
       // Add new evidence entries (cap at MAX_EVIDENCE_PER_CANDIDATE)
       // tenant-filter:exempt — skill_candidate_evidence has no tenant_id column (FK-cascade to skill_candidates.id); `row` was loaded above with eq(skillCandidates.tenant_id, tenant_id)
