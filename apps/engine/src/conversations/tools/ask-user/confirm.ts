@@ -6,8 +6,10 @@
 // PR 2 migrates commit + external-write callers to emit this tool.
 
 import { z } from "@hono/zod-openapi";
+import { scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import {
   authoringIntentFingerprint,
+  type ConfirmIntent,
   intentHasDistinguishingAction,
 } from "../../intent-fingerprint.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
@@ -91,11 +93,17 @@ export const askUserConfirmTool: ConversationTool = {
     // proposals carrying a concrete action (commit_intent / target) are
     // guarded — a bare question has no stable identity to remember. Fail-open:
     // a null fingerprint falls through to the prompt.
-    const confirmIntent = {
+    // Fingerprint the SCRUBBED projection: the recorder hashes the persisted
+    // elicitation input, which `pauseForUserInput` scrubs for secrets before
+    // it is stored. Scrubbing here too keeps the guard's live fingerprint
+    // byte-identical to the recorded one — otherwise a confirm carrying a
+    // secret-shaped string would hash differently on the two sides and the
+    // guard would silently never match.
+    const confirmIntent = scrubStringsDeep({
       kind: args.kind,
       commit_intent: effectiveCommitIntent,
       target: args.target,
-    };
+    }) as ConfirmIntent;
     const denied = ctx.getDraft().state?.last_denied_intent;
     if (denied?.fingerprint && intentHasDistinguishingAction(confirmIntent)) {
       const candidateFp = authoringIntentFingerprint(confirmIntent, ctx.getDraft());

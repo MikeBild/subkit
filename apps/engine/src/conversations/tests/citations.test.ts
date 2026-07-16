@@ -82,6 +82,20 @@ describe("harvestCitations", () => {
     expect(kinds).toEqual(["knowledge_chunk", "connector_doc"]);
   });
 
+  test("connector_doc falls back to the doc path when the chunk title is null", () => {
+    const events: TurnEvent[] = [
+      toolResult("fetch_connector_docs", {
+        hits: [{ id: "d1", title: null, path: "/v1/customers" }],
+      }),
+      toolResult("search_docs", { hits: [{ id: "d2", title: "Payments API" }] }),
+    ];
+    const cites = harvestCitations(events);
+    // title null → path names the source (not the raw chunk id).
+    expect(cites[0]?.source_name).toBe("/v1/customers");
+    // title present → title wins.
+    expect(cites[1]?.source_name).toBe("Payments API");
+  });
+
   test("strips ts_headline <b> highlight markup from excerpts (both kinds)", () => {
     // Postgres ts_headline wraps matched terms in <b>…</b>; the excerpt must
     // be faithful source text so the anti-drift quote check can match a

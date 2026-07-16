@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations } from "../db/schema/index.ts";
 import { getMockProvider } from "../llm/mock-provider.ts";
+import { scrubStringsDeep } from "../logging/scrub-secrets.ts";
 import { createEmptyState, normalizeState } from "./authoring-state/normalize.ts";
 import {
   createEmptyDraftDocument,
@@ -102,6 +103,28 @@ describe("declined-intent · confirm short-circuit", () => {
     // A second identical proposal no longer short-circuits — it falls through
     // to the real pause path (which the fake ctx cannot service, so it throws).
     await expect(askUserConfirmTool.execute(ctx, CONFIRM_ARGS)).rejects.toThrow();
+  });
+
+  test("guard still matches when the confirm carries a secret-shaped string (both sides scrub)", async () => {
+    // The recorder fingerprints the SCRUBBED persisted input; the guard must
+    // fingerprint the scrubbed live args too, or a secret-carrying confirm
+    // would hash differently on the two sides and never match.
+    const secretArgs = {
+      question: "Send to the webhook?",
+      kind: "external_write" as const,
+      target: { url: "https://hooks.example/x", token: "ghp_0123456789abcdefghij0123456789abcdef" },
+    };
+    // Mimic the recorder: stamp the fingerprint of the SCRUBBED projection.
+    const scrubbed = scrubStringsDeep({
+      kind: secretArgs.kind,
+      commit_intent: undefined,
+      target: secretArgs.target,
+    }) as { kind?: string; commit_intent?: unknown; target?: unknown };
+    const storedFp = authoringIntentFingerprint(scrubbed, { workflow: WORKFLOW });
+    expect(storedFp).not.toBeNull();
+    const { ctx } = confirmCtx(draftWithDenial(storedFp));
+    const result = await askUserConfirmTool.execute(ctx, secretArgs);
+    expect((result.data as { already_declined?: boolean }).already_declined).toBe(true);
   });
 
   test("a bare confirm (no commit_intent, no target) is never guarded", async () => {
