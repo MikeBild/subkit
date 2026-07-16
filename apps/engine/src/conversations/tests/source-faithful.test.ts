@@ -1,4 +1,4 @@
-// source_faithful anti-drift check (Track A / A4).
+// source_faithful anti-drift check.
 //
 // Two layers under test:
 //   - Pure deterministic helpers (no DB, no LLM): quote extraction and
