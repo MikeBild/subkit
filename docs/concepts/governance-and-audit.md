@@ -90,6 +90,20 @@ The following properties hold by construction — they are not optional configur
 
 ---
 
+## Answer Provenance and Honest Refusal
+
+Governance is not only about who may act — it is also about whether an answer can be trusted and whether a refusal is respected. Three properties hold on the conversational surface.
+
+**Provenance you can check.** When an answer is grounded in a knowledge source or connector documentation, sk surfaces a `Sources: <name>` footer naming the sources the answer was built on, and mirrors the same references into the audit log as a `conversation.answer_cited` row. Only citations that resolve to a real, tenant-owned source are ever surfaced or logged — a fabricated or since-deleted provenance handle is dropped before the footer and the audit see it. The footer appears identically on the live surface and on replayed transcripts.
+
+**An answer that quotes must quote faithfully.** Before a grounded chat answer stands, a deterministic anti-drift check confirms that every cited id resolves for the tenant and that every verbatim quoted span appears in a cited excerpt. A failure — an unresolvable citation or a quote grounded in none of the cited sources — is treated like a low-confidence result: the turn surfaces an `ask_user_text` the operator must answer before the conversation continues, rather than letting drifted prose stand as the final answer. The check runs on the citations the model actually cited, so an answer that cited only fabricated sources still fails and abstains.
+
+**A no that is respected.** When an operator declines a concrete action (one that persists or writes externally), sk records the fingerprint of the declined intent. An identical re-proposal in the same conversation is answered with the prior decline instead of re-prompting — and in `auto` mode the decline stays sticky, so a previously-refused action is never silently auto-approved. A bare question is never treated as sticky, and an edited draft is a new proposal that prompts normally; a deliberate later retry in an attended mode reaches a fresh prompt.
+
+**Grounding staleness is visible.** A workflow draft records a fingerprint of the connector schema it was grounded on. At `/context`, sk recomputes it and flags a draft whose connector schema has changed since — a "re-check before saving" advisory. It never blocks, and any ambiguity (a missing or expired discovery index) resolves to silence rather than a false warning.
+
+---
+
 ## Secret Hygiene at the Conversational Surface
 
 The conversational surface introduces additional pressure on secret handling: an LLM may attempt to type a credential into a tool argument, an operator may paste a token into the chat input, or a debug log may capture a verbose elicitation payload. sk applies multiple defences so any one of these doesn't propagate into a persistent surface.
