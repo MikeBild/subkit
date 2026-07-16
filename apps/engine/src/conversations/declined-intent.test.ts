@@ -93,6 +93,43 @@ describe("declined-intent · confirm short-circuit", () => {
     expect((result.data as { already_declined?: boolean }).already_declined).toBe(true);
   });
 
+  test("in auto mode the guard stays sticky — no one-shot clear, no auto-approve override", async () => {
+    // A target-only external_write (no commit_intent) is the exact shape that
+    // would otherwise auto-resolve; declining it must keep sticking in auto so
+    // a second identical re-proposal can never silently auto-approve.
+    const targetArgs = {
+      question: "Send to the webhook?",
+      kind: "external_write" as const,
+      target: { url: "https://hooks.example/x" },
+    };
+    const targetFp = authoringIntentFingerprint(
+      { kind: targetArgs.kind, commit_intent: undefined, target: targetArgs.target },
+      { workflow: WORKFLOW },
+    );
+    const { ctx, current } = confirmCtx(draftWithDenial(targetFp), "auto");
+    const first = await askUserConfirmTool.execute(ctx, targetArgs);
+    expect((first.data as { already_declined?: boolean }).already_declined).toBe(true);
+    // The stamp is NOT cleared in auto mode.
+    expect(current().state?.last_denied_intent?.fingerprint).toBe(targetFp!);
+    // A second identical re-proposal STILL short-circuits (never auto-approved).
+    const second = await askUserConfirmTool.execute(ctx, targetArgs);
+    expect((second.data as { already_declined?: boolean }).already_declined).toBe(true);
+    expect((second.data as { confirmed: boolean }).confirmed).toBe(false);
+  });
+
+  test("a persist failure during the one-shot clear does not crash the guard", async () => {
+    const ctx = {
+      getDraft: () => draftWithDenial(SAVE_FP),
+      setDraft: async () => {
+        throw new Error("db unavailable");
+      },
+      permission_mode: "ask",
+    } as unknown as ToolContext;
+    const result = await askUserConfirmTool.execute(ctx, CONFIRM_ARGS);
+    // Fail-open: the guard still returns the decline instead of throwing.
+    expect((result.data as { already_declined?: boolean }).already_declined).toBe(true);
+  });
+
   test("the guard is one-shot: firing clears the stamp so a genuine retry can prompt", async () => {
     const { ctx, current } = confirmCtx(draftWithDenial(SAVE_FP));
     // First identical re-proposal short-circuits...
