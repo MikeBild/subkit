@@ -9,10 +9,10 @@ import { isStructuralTag, mergeStructuralTags } from "../tags.ts";
 describe("knowledge/isStructuralTag", () => {
   const structural = [
     "domain:blog-de",
-    "domäne:blog",
-    // Decomposed form (a + combining diaeresis) — macOS terminals and
+    "café:paris",
+    // Decomposed form (e + combining acute) — macOS terminals and
     // filenames commonly emit NFD; canonical equivalence must hold.
-    "domäne:blog",
+    "café:paris",
     "_internal:x",
     "a:b",
     "3:4",
@@ -49,9 +49,9 @@ describe("knowledge/mergeStructuralTags", () => {
   test("preserves existing structural, replaces topical, mints no routing keys", () => {
     expect(
       mergeStructuralTags(
-        ["domain:harmoniqs", "domäne:blog", "note: x", "blog-:notes"],
+        ["domain:harmoniqs", "café:paris", "note: x", "blog-:notes"],
         ["akkorde", "domain:evil"],
       ),
-    ).toEqual(["domain:harmoniqs", "domäne:blog", "akkorde"]);
+    ).toEqual(["domain:harmoniqs", "café:paris", "akkorde"]);
   });
 });

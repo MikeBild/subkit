@@ -112,23 +112,23 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
         input: {
           name: "Domain Tagged Doc",
           scope: "global",
-          tags: ["domain:harmoniqs", "alte-notiz"],
+          tags: ["domain:harmoniqs", "old-note"],
         },
         upload: {
-          buffer: Buffer.from("# Harmonielehre\n\nQuintenzirkel und Stufenakkorde."),
-          filename: "harmonie.md",
+          buffer: Buffer.from("# Harmony\n\nCircle of fifths and scale chords."),
+          filename: "harmony.md",
           mime: "text/markdown",
         },
         actor_id: null,
       },
       ctx.testDb.db,
     );
-    expect(source.tags).toEqual(["domain:harmoniqs", "alte-notiz"]);
+    expect(source.tags).toEqual(["domain:harmoniqs", "old-note"]);
 
     const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
       makeInvokeResult({
-        description: "Grundlagen der Harmonielehre.",
-        tags: ["musiktheorie", "akkorde"],
+        description: "Fundamentals of harmony.",
+        tags: ["music-theory", "chords"],
       }),
     );
     try {
@@ -136,7 +136,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
         { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
         ctx.testDb.db,
       );
-      expect(enriched!.tags).toEqual(["domain:harmoniqs", "musiktheorie", "akkorde"]);
+      expect(enriched!.tags).toEqual(["domain:harmoniqs", "music-theory", "chords"]);
     } finally {
       spy.mockRestore();
     }
@@ -146,18 +146,18 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     // `isStructuralTag`: NAME-shaped prefix (letters/digits/underscore,
     // hyphens inside, Unicode) + colon + content directly after. Prose or
     // punctuation colons ("note: x", "note about: chords", "q&a:faq") must
-    // not pin a tag forever; `domäne:blog` stays structural.
+    // not pin a tag forever; `café:paris` stays structural.
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
         input: {
           name: "Colon Tagged Doc",
           scope: "global",
-          tags: ["domain:harmoniqs", "domäne:blog", "note: x", "note about: chords", "q&a:faq"],
+          tags: ["domain:harmoniqs", "café:paris", "note: x", "note about: chords", "q&a:faq"],
         },
         upload: {
-          buffer: Buffer.from("# Akkorde\n\nStufenakkorde in Dur."),
-          filename: "akkorde.md",
+          buffer: Buffer.from("# Chords\n\nScale chords in a major key."),
+          filename: "chords.md",
           mime: "text/markdown",
         },
         actor_id: null,
@@ -166,10 +166,10 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     );
     const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
       makeInvokeResult({
-        description: "Akkordlehre.",
+        description: "Chord theory.",
         // `domain:evil` is structural-shaped model output — analysis must
         // never mint a routing key, only replace topical tags.
-        tags: ["akkorde", "domain:evil"],
+        tags: ["chords", "domain:evil"],
       }),
     );
     try {
@@ -177,7 +177,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
         { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
         ctx.testDb.db,
       );
-      expect(enriched!.tags).toEqual(["domain:harmoniqs", "domäne:blog", "akkorde"]);
+      expect(enriched!.tags).toEqual(["domain:harmoniqs", "café:paris", "chords"]);
     } finally {
       spy.mockRestore();
     }
@@ -190,11 +190,11 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
         input: {
           name: "Re-homed Doc",
           scope: "global",
-          tags: ["domain:harmoniqs", "musiktheorie"],
+          tags: ["domain:harmoniqs", "music-theory"],
         },
         upload: {
-          buffer: Buffer.from("# Umzug\n\nDiese Quelle wechselt die Domäne."),
-          filename: "umzug.md",
+          buffer: Buffer.from("# Relocation\n\nThis source changes domain."),
+          filename: "relocation.md",
           mime: "text/markdown",
         },
         actor_id: null,
@@ -205,12 +205,12 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
       {
         tenant_id: ctx.tenantId,
         id: source.id,
-        patch: { tags: ["domain:blog-de", "musiktheorie"] },
+        patch: { tags: ["domain:blog-de", "music-theory"] },
         actor_id: null,
       },
       ctx.testDb.db,
     );
-    expect(patched!.tags).toEqual(["domain:blog-de", "musiktheorie"]);
+    expect(patched!.tags).toEqual(["domain:blog-de", "music-theory"]);
   });
 
   test("does NOT overwrite an existing description unless force is set", async () => {
