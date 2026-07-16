@@ -108,13 +108,25 @@ export const askUserConfirmTool: ConversationTool = {
     if (denied?.fingerprint && intentHasDistinguishingAction(confirmIntent)) {
       const candidateFp = authoringIntentFingerprint(confirmIntent, ctx.getDraft());
       if (candidateFp && candidateFp === denied.fingerprint) {
-        // One-shot: clear the stamp so a deliberate later retry of the same
-        // action can still reach a prompt (and be approved). Without this the
-        // identical action could never be approved again in the conversation.
-        const draft = ctx.getDraft();
-        if (draft.state) {
-          draft.state.last_denied_intent = null;
-          await ctx.setDraft(draft);
+        // One-shot escape — but ONLY in an attended mode, where a human is
+        // present to deliberately retry: clear the stamp so the NEXT identical
+        // proposal reaches a prompt. In `auto` mode there is no human
+        // re-driving, so the earlier explicit "no" must stay sticky and is
+        // never cleared — otherwise a second identical re-proposal would fall
+        // through to the auto-resolve branch and silently auto-approve the very
+        // action the operator declined. Clearing is best-effort (fail-open):
+        // a failed write just leaves the stamp in place, the safe direction.
+        if (ctx.permission_mode !== "auto") {
+          const draft = ctx.getDraft();
+          if (draft.state) {
+            draft.state.last_denied_intent = null;
+            try {
+              await ctx.setDraft(draft);
+            } catch {
+              // Keep the stamp — a persist failure must not surface as a
+              // tool crash, and a still-set stamp only re-suppresses once more.
+            }
+          }
         }
         return {
           ok: true,

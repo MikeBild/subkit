@@ -752,11 +752,13 @@ export type TurnEvent =
   /**
    * Terminal citations frame — the "prove-after" grounding half made
    * visible. Emitted exactly once per turn AFTER the assistant's terminal
-   * `message` and its `next_suggestion`, and BEFORE the SSE `outcome`
-   * envelope (which drops `events[]`), only when the turn produced
-   * citations. Carries the same refs already harvested for the audit log;
-   * the client renders a dim "Sources: …" footer under the anchored
-   * assistant message. Absent entirely on citation-less turns.
+   * `message`, and before the `next_suggestion` / `completed` frames and the
+   * SSE `outcome` envelope (which drops `events[]`), only when the turn
+   * produced citations that resolve to a real source. The client anchors the
+   * footer by `parent_message_id`, so this wire order is not load-bearing.
+   * Carries the same refs already harvested for the audit log; the client
+   * renders a dim "Sources: …" footer under the anchored assistant message.
+   * Absent entirely on citation-less turns.
    */
   | {
       type: "citations";
