@@ -49,11 +49,13 @@ function isKnowledgeHit(v: unknown): v is KnowledgeHit {
 }
 
 /** Connector-doc `SearchHit` (docs-ingestion) — id is the doc-chunk id,
- *  `title`/`snippet` map to source_name/excerpt. A different envelope from
- *  KnowledgeHit, so it gets its own guard + mapping. */
+ *  `title` (often null) falls back to `path` for the source name, `snippet`
+ *  maps to excerpt. A different envelope from KnowledgeHit, so it gets its
+ *  own guard + mapping. */
 interface DocHit {
   id: string;
   title?: string | null;
+  path?: string | null;
   snippet?: string;
 }
 
@@ -106,10 +108,13 @@ export function harvestCitations(events: ReadonlyArray<TurnEvent>): Citation[] {
         const key = `connector_doc:${h.id}`;
         if (seen.has(key)) continue;
         seen.add(key);
+        // Chunk `title` is usually null; fall back to the doc `path` so the
+        // footer names something human-readable instead of a raw chunk id.
+        const docName = h.title || h.path || undefined;
         out.push({
           source_type: "connector_doc",
           id: h.id,
-          ...(h.title ? { source_name: h.title } : {}),
+          ...(docName ? { source_name: docName } : {}),
           ...(h.snippet ? { excerpt: stripSnippetMarkup(h.snippet).slice(0, 200) } : {}),
         });
       }

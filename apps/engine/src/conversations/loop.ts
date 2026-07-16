@@ -1951,6 +1951,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         parent_message_id: fallbackMessageId,
       });
       signals.lastAssistantText = synthetic;
+      // Anchor the citations footer to the synthesized answer the operator
+      // actually reads, not the earlier tool-making message — and so the
+      // replay path (which anchors to this text-bearing message) agrees.
+      signals.lastAssistantMessageId = fallbackMessageId;
       // Distinguish three turn shapes for ops triage:
       //   - `next_prompt_from_tool` — benign, the freshest tool returned
       //     an actionable next-step the model would have echoed anyway.
