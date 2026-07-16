@@ -22,7 +22,7 @@
 //
 // Anything beyond those two — free-text paraphrase faithfulness that no
 // structural predicate can decide — escalates to the format-aware judge
-// (the F4' pattern in preview-judge.ts), and ONLY then. The judge is the
+// (preview-judge.ts), and ONLY then. The judge is the
 // escalation, never the first line: deterministic checks are cheaper,
 // faster, and not themselves a hallucination risk.
 //

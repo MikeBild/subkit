@@ -120,14 +120,21 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
       // conversations/loop.ts). A turn spans from one "user" message up to
       // (but not including) the next; the tool_result events emitted for
       // its children are the same envelope `harvestCitations` reads live.
-      // Anchored to the LAST assistant message seen in the turn — matching
-      // `signals.lastAssistantMessageId` in the live loop — even though the
-      // grounding tool call itself may be a child of an EARLIER assistant
-      // message in a multi-step turn.
+      //
+      // Mirror the live loop EXACTLY: it anchors to `lastAssistantMessageId`
+      // (the LAST assistant message of the turn, text-bearing or not) and
+      // gates emission on `lastAssistantText` (whether the turn produced ANY
+      // assistant prose). So here: anchor to the last assistant message, and
+      // emit only if some assistant message in the turn carried text — a
+      // turn that ended tool-only or produced no prose shows no footer live,
+      // and must show none on replay. (The one irreducible gap is a turn
+      // cancelled AFTER producing prose: live suppresses via `!cancelled`,
+      // but cancellation is not persisted, so replay cannot see it.)
       let turnToolResults: TurnEvent[] = [];
       let turnLastAssistantId: string | null = null;
+      let turnHadText = false;
       const flushTurnCitations = async () => {
-        if (turnLastAssistantId) {
+        if (turnLastAssistantId && turnHadText) {
           const citations = harvestCitationsFromPersisted(turnToolResults);
           if (citations.length > 0) {
             await stream.writeSSE(
@@ -141,6 +148,7 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
         }
         turnToolResults = [];
         turnLastAssistantId = null;
+        turnHadText = false;
       };
 
       for (const msg of detail.messages) {
@@ -154,11 +162,10 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
             parent_message_id: msg.id,
           }),
         );
-        // Anchor citations only to a text-bearing assistant message, mirroring
-        // the live loop's `lastAssistantText` gate: a turn that ended tool-only
-        // or was cancelled before producing prose emits no footer live, so it
-        // must emit none on replay either.
-        if (msg.role === "assistant" && messageHasText(msg.content)) turnLastAssistantId = msg.id;
+        if (msg.role === "assistant") {
+          turnLastAssistantId = msg.id;
+          if (messageHasText(msg.content)) turnHadText = true;
+        }
         const childCallsForMsg = childCalls.get(msg.id) ?? [];
         for (const call of childCallsForMsg) {
           await emitCall(call);
