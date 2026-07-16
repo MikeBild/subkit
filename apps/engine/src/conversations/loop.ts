@@ -113,7 +113,7 @@ import {
   loadActivationCatalog,
   reaffirmLoadedForTurn,
 } from "./skill-autoload.ts";
-import { checkSourceFaithful } from "./source-faithful.ts";
+import { checkSourceFaithful, keepResolvableCitations } from "./source-faithful.ts";
 import { nextSuggestion } from "./streaming.ts";
 import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
 import {
@@ -2025,14 +2025,28 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // Harvest the citation envelope once, up front: the source_faithful
   // anti-drift check reads it, and the prove-after audit mirror below
   // re-uses the same array. Empty when the turn cited no source.
-  const citations: Citation[] =
+  let citations: Citation[] =
     !cancelled && signals.lastAssistantText ? harvestCitations(events) : [];
+  // Drop any citation that does NOT resolve to a real, tenant-owned source
+  // BEFORE the footer or the audit surface it — the prove-after half must
+  // never advertise a fabricated or since-deleted provenance handle. This is
+  // the same resolve the anti-drift gate runs, applied up front so the footer
+  // and audit only ever carry verified refs (and for non-chat turns, which
+  // skip the gate entirely). Fail-open: a resolve error keeps the harvested
+  // set rather than crashing the terminal path.
+  if (citations.length > 0) {
+    try {
+      citations = await keepResolvableCitations(citations, p.tenant_id, p.db);
+    } catch {
+      // Keep the harvested set on a transient resolve error.
+    }
+  }
 
   // Prove-after made visible: emit the terminal citations frame so the
   // client renders a "Sources: …" footer under the answer. Pushed here —
   // after the terminal message, before the SSE `outcome` frame drops
-  // `events[]` — exactly once, only when the turn cited a source. Anchors
-  // to the last assistant message; the client falls back to the same.
+  // `events[]` — exactly once, only when the turn cited a resolvable source.
+  // Anchors to the last assistant message; the client falls back to the same.
   if (citations.length > 0) {
     events.push({
       type: "citations",

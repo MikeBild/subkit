@@ -27,6 +27,9 @@ export {
 } from "./direct-invoke.ts";
 export * from "./parts.ts";
 export * from "./service.ts";
+// Re-exported so the replay path can drop since-unresolvable citations before
+// the footer, mirroring the live loop's governance filter.
+export { keepResolvableCitations } from "./source-faithful.ts";
 export * from "./streaming.ts";
 export * from "./tool-policies.ts";
 // Re-exported so http/routes/conversations/* reach it through the subsystem

@@ -20,6 +20,7 @@ import {
   checkSourceFaithful,
   extractQuotedSpans,
   findUngroundedQuotes,
+  keepResolvableCitations,
 } from "../source-faithful.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -118,6 +119,34 @@ afterAll(async () => {
   if (!skip && testDb?.cleanup) await testDb.cleanup();
   resetMockProvider();
 }, 30_000);
+
+describe.skipIf(skip)("keepResolvableCitations", () => {
+  test("drops citations whose id does not resolve, keeps the ones that do", async () => {
+    const fabricated = "00000000-0000-0000-0000-000000000000";
+    const kept = await keepResolvableCitations(
+      [
+        cite({ id: resolvableChunkId, source_name: "Compliance Policy" }),
+        cite({ id: fabricated, source_name: "Ghost Source" }),
+      ],
+      tenantId,
+      testDb.db,
+    );
+    expect(kept.map((c) => c.id)).toEqual([resolvableChunkId]);
+  });
+
+  test("a wrong-tenant chunk id does not resolve (tenant isolation)", async () => {
+    const kept = await keepResolvableCitations(
+      [cite({ id: resolvableChunkId })],
+      "11111111-1111-1111-1111-111111111111",
+      testDb.db,
+    );
+    expect(kept).toEqual([]);
+  });
+
+  test("empty in → empty out (no query)", async () => {
+    expect(await keepResolvableCitations([], tenantId, testDb.db)).toEqual([]);
+  });
+});
 
 describe.skipIf(skip)("checkSourceFaithful", () => {
   test("no envelope → no-op pass (the prove-before gate's job, not this one)", async () => {

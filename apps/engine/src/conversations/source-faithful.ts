@@ -197,6 +197,23 @@ async function findUnresolvedIds(
   ];
 }
 
+/**
+ * Keep only the citations that RESOLVE to a real, tenant-owned source. The
+ * prove-after footer and the `answer_cited` audit must never surface a
+ * fabricated or since-deleted provenance handle, so unresolvable citations
+ * are dropped BEFORE either is emitted — the same resolve the anti-drift gate
+ * runs, applied up front. Returns the resolvable subset (possibly empty).
+ */
+export async function keepResolvableCitations(
+  citations: ReadonlyArray<Citation>,
+  tenant_id: string,
+  db: Executor,
+): Promise<Citation[]> {
+  if (citations.length === 0) return [];
+  const unresolved = new Set(await findUnresolvedIds(citations, tenant_id, db));
+  return citations.filter((c) => !unresolved.has(c.id));
+}
+
 const FaithfulnessJudgeSummary = {
   PASS: "faithful",
   DRIFT: "drift",

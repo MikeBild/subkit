@@ -11,6 +11,7 @@ import { streamSSE } from "hono/streaming";
 import * as svc from "../../../conversations/index.ts";
 import {
   harvestCitationsFromPersisted,
+  keepResolvableCitations,
   messageHasText,
   serializeEvent,
   type TurnEvent,
@@ -135,7 +136,17 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
       let turnHadText = false;
       const flushTurnCitations = async () => {
         if (turnLastAssistantId && turnHadText) {
-          const citations = harvestCitationsFromPersisted(turnToolResults);
+          let citations = harvestCitationsFromPersisted(turnToolResults);
+          // Drop citations whose source no longer resolves (deleted since the
+          // turn), mirroring the live loop — the footer must never advertise a
+          // provenance handle that isn't real. Fail-open on a resolve error.
+          if (citations.length > 0) {
+            try {
+              citations = await keepResolvableCitations(citations, principal.tenant_id, db);
+            } catch {
+              // Keep the harvested set on a transient resolve error.
+            }
+          }
           if (citations.length > 0) {
             await stream.writeSSE(
               serializeEvent({
