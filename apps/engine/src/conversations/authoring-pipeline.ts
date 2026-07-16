@@ -899,12 +899,17 @@ export async function runAuthoringPipeline(
   // resume when the connector schema has since changed. The connector set is
   // stored alongside on AuthoringState — NOT on the workflow draft, whose
   // normalize allowlist strips unknown fields — so the snapshot recompute can
-  // re-read the discovery index for exactly these connectors. Fail-open: a
-  // null fingerprint just means no advisory.
+  // re-read the discovery index for exactly these connectors. Only the
+  // connectors that actually CONTRIBUTED endpoints to the fingerprint are
+  // stored: a connector that had no index here must not later read as `stale`
+  // simply because it GAINED one. Fail-open: a null fingerprint means no
+  // advisory.
   const groundingFp = groundingFingerprint(groundingIndex);
   if (groundingFp && nextDraft.state) {
     nextDraft.state.grounding_fingerprint = groundingFp;
-    nextDraft.state.grounding_connector_ids = connectors.map((c) => c.id);
+    nextDraft.state.grounding_connector_ids = connectors
+      .filter((c) => (discoveredById.get(c.id)?.endpoints.length ?? 0) > 0)
+      .map((c) => c.id);
   }
   await ctx.setDraft(nextDraft);
 
