@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] – 2026-07-16
+
+### Added
+- Answers grounded in a knowledge source or connector documentation now show a
+  dim `Sources: <name>` footer in `sk`, naming the sources the answer was built
+  on so a reader can verify the claim rather than trust the prose. A source-less
+  answer shows nothing; the same references are mirrored to the audit log. The
+  footer appears on the live REPL and on replayed transcripts (headless
+  `sk -p`, the plain REPL) alike.
+- `/context` shows a grounding-staleness advisory: when a workflow draft was
+  built on a connector schema that has since changed, it flags "re-check before
+  saving". Advisory only — it never blocks, and any ambiguity (a missing or
+  expired discovery index, a recompute error) resolves to silence rather than a
+  false warning.
+
+### Changed
+- A declined confirmation now sticks within the conversation: after you decline
+  a concrete action, an identical re-proposal is answered with the prior decline
+  instead of re-prompting — even in auto mode. The guard is one-shot, so a
+  deliberate retry can still reach a prompt; an edited draft prompts normally;
+  and a plain question (no concrete action) is never suppressed.
+
+### Fixed
+- Source citations now actually fire. The harvester read the wrong tool-result
+  shape, so the `Sources:` footer and the `conversation.answer_cited` audit
+  mirror never appeared in production. As a result the source-faithful
+  anti-drift check — which verifies that quoted spans appear in a cited source
+  — now runs on grounded chat answers as designed; `ts_headline` highlight
+  markup is stripped from excerpts so a verbatim quote is not misread as
+  ungrounded.
+
 ## [1.16.0] – 2026-07-15
 
 ### Changed
