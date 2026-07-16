@@ -203,8 +203,9 @@ const FaithfulnessJudgeSummary = {
 } as const;
 
 /**
- * Free-text faithfulness judge — the F4' escalation. Reached ONLY after
- * both deterministic checks pass and there is prose to judge. Asks the
+ * Free-text faithfulness judge — the escalation past the deterministic
+ * checks. Reached ONLY after both deterministic checks pass and there is
+ * prose to judge. Asks the
  * tenant model whether the answer makes any factual claim NOT supported
  * by the cited excerpts. Never throws: an infra blip is `undefined`
  * (treated as a pass by the caller — the judge is an escalation, not a
