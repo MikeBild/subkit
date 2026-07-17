@@ -31,6 +31,7 @@
 
 - [Authors](authors/README.md): Build and run workflows by chatting with sk — describe the outcome in plain language, approve what the AI proposes, and ship a governed, versioned workflow.
 - [AI-Assisted Authoring](authors/authoring-workflows.md): Describe the outcome.
+- [Use sk from a coding agent (Claude Code, Codex, …)](authors/coding-agents.md): Outcome: every new session starts knowing your domain's rules, looks your runbooks up instead of inventing them, and what you teach it in one session is waiting — after your review — in the next one.
 - [Custom Skills](authors/custom-skills.md): Outcome: sk encodes your conventions once, then applies them on every Conversation, discovery, and repair — so authored workflows ship faster, pass review sooner, and stay policy-uniform across tenants.
 - [Knowledge Sources](authors/knowledge-sources.md): Outcome: workflows follow your runbooks and compliance docs, not generic knowledge.
 - [Model a Domain](authors/model-a-domain.md): Outcome: the AI authors inside your domain — proposing against your conventions and grounding specifics in your documents — so workflows in that domain ship correct on the first pass instead of being corrected in review.
@@ -45,7 +46,7 @@
 - [Evidence process — verifying a behavioral / LLM-path change](developers/evidence-process.md): Outcome: changes to LLM-driven paths ship proven, not guessed.
 - [Input Surfaces](developers/input-surfaces.md): Meet your team where they already work — without re-implementing access control per channel.
 - [Quickstart — Developer](developers/quickstart.md): Ship to sk with confidence: a green quality gate on every change keeps regressions out of production.
-- [Quickstart — Zero to Running](developers/self-host.md): sk runs inside your own infrastructure — your data stays yours.
+- [Self-Host sk — Zero to Running](developers/self-host.md): sk runs inside your own infrastructure — your data stays yours.
 - [Tool palette and dispatch](developers/tool-palette.md): Outcome: every LLM action against sk is a named, governed tool — one registry, one policy gate, one audit trail.
 
 ## Admins

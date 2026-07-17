@@ -122,6 +122,12 @@
     },
     {
       "audience": "authors",
+      "path": "docs/authors/coding-agents.md",
+      "title": "Use sk from a coding agent (Claude Code, Codex, …)",
+      "summary": "Outcome: every new session starts knowing your domain's rules, looks your runbooks up instead of inventing them, and what you teach it in one session is waiting — after your review — in the next one."
+    },
+    {
+      "audience": "authors",
       "path": "docs/authors/custom-skills.md",
       "title": "Custom Skills",
       "summary": "Outcome: sk encodes your conventions once, then applies them on every Conversation, discovery, and repair — so authored workflows ship faster, pass review sooner, and stay policy-uniform across tenants."
@@ -207,7 +213,7 @@
     {
       "audience": "developers",
       "path": "docs/developers/self-host.md",
-      "title": "Quickstart — Zero to Running",
+      "title": "Self-Host sk — Zero to Running",
       "summary": "sk runs inside your own infrastructure — your data stays yours."
     },
     {

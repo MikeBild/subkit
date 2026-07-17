@@ -38,6 +38,7 @@ the control flow of an approved workflow is fixed; runtime does not re-decide it
 | You want to | Start here |
 |-------------|-----------|
 | Brand new to sk — go from nothing to a running engine + first connector, workflow, and knowledge article | [Self-host quickstart](docs/developers/self-host.md) |
+| Ground a **coding agent** (Claude Code, Codex, Cursor, …) in your team’s knowledge | [Use sk from a coding agent](docs/authors/coding-agents.md) |
 | Run the engine for a team | [Operator quickstart](docs/operators/quickstart.md) |
 | Use `sk`, chat, or MCP | [Author quickstart](docs/authors/quickstart.md) |
 | Contribute to sk | [Developer quickstart](docs/developers/quickstart.md) |

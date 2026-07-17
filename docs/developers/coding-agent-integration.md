@@ -1,5 +1,9 @@
 # Coding-Agent Integration (Claude Code & Codex)
 
+> **Just want it working?** [Use sk from a coding agent](../authors/coding-agents.md)
+> is the step-by-step path (install → connect → import your knowledge → ask a
+> grounded question). This page is the mechanics underneath it.
+
 sk can act as the central knowledge and skill source for your coding agents.
 Every new Claude Code or Codex session starts grounded in your business
 domains, and what a session teaches flows back — reviewed by a human — so the
@@ -163,6 +167,11 @@ approving learnings to refresh the files.
 
 ## Related
 
+- [Use sk from a coding agent](../authors/coding-agents.md) — the end-to-end setup
+  path this page's mechanics sit under.
+- [Knowledge Sources](../authors/knowledge-sources.md) — how to get the
+  knowledge this briefing indexes IN: `sk knowledge-sources import ./wiki
+  --tags "domain:<slug>"`, tagging, and refresh.
 - [Knowledge & Skills concepts](../concepts/knowledge-and-skills.md) — how
   the compounding loop fits the wider platform.
 - [Model a Domain](../authors/model-a-domain.md) — building the
