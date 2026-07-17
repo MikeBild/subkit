@@ -1,6 +1,9 @@
 // Knowledge Sources budgets — per-source and per-tenant limits.
 // Reuses the guard pattern from docs-ingestion/budgets.ts.
 
+import { and, eq, isNull, sql } from "drizzle-orm";
+import type { Executor } from "../db/client.ts";
+import { knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { envIntOr } from "../utils/env-config.ts";
 
 /** Maximum bytes for a single knowledge source upload. */
@@ -20,5 +23,37 @@ export class KnowledgeBudgetExceededError extends Error {
     this.name = "KnowledgeBudgetExceededError";
     this.bytes_used = bytes_used;
     this.bytes_limit = bytes_limit;
+  }
+}
+
+/**
+ * Tenant-budget guard shared by the create AND re-ingest write paths —
+ * run INSIDE the write transaction so concurrent writes cannot both pass.
+ * `exclude_source_id` makes a re-ingest count everything except the source
+ * being replaced (its old size is about to be overwritten).
+ */
+export async function assertTenantKnowledgeBudget(
+  tx: Executor,
+  tenant_id: string,
+  add_bytes: number,
+  exclude_source_id?: string,
+): Promise<void> {
+  const rows = await tx
+    .select({ total: sql<number>`coalesce(sum(${knowledgeSources.bytes_total}), 0)` })
+    .from(knowledgeSources)
+    .where(
+      and(
+        eq(knowledgeSources.tenant_id, tenant_id),
+        isNull(knowledgeSources.deleted_at),
+        ...(exclude_source_id ? [sql`${knowledgeSources.id} <> ${exclude_source_id}`] : []),
+      ),
+    );
+  const currentBytes = Number(rows[0]?.total ?? 0);
+  if (currentBytes + add_bytes > KNOWLEDGE_TENANT_MAX_BYTES) {
+    throw new KnowledgeBudgetExceededError(
+      `Tenant knowledge budget exceeded (${currentBytes} + ${add_bytes} > ${KNOWLEDGE_TENANT_MAX_BYTES})`,
+      currentBytes + add_bytes,
+      KNOWLEDGE_TENANT_MAX_BYTES,
+    );
   }
 }

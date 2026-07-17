@@ -280,6 +280,15 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
     },
   },
+  read_knowledge: {
+    // Full-content read — strictly more sensitive than the gated
+    // list/get above; must never ship weaker than them on the MCP path.
+    permission: "knowledge:read",
+    resource: (args) => {
+      const id = (args as { knowledge_source_id?: unknown }).knowledge_source_id;
+      return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
+    },
+  },
   list_users: {
     permission: "identity:read",
   },

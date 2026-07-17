@@ -35,6 +35,7 @@ import {
 import {
   getKnowledgeSourceTool,
   listKnowledgeSourcesTool,
+  readKnowledgeTool,
 } from "../generated/knowledge-sources.ts";
 import { getSkillTool, listAllSkillsTool } from "../generated/skills.ts";
 import { getStatusSummaryTool } from "../generated/status.ts";
@@ -62,6 +63,12 @@ const GATED: PermCase[] = [
     action: "knowledge:read",
     resourceType: "knowledge",
     resourceIdArg: "id",
+  },
+  {
+    tool: readKnowledgeTool,
+    action: "knowledge:read",
+    resourceType: "knowledge",
+    resourceIdArg: "knowledge_source_id",
   },
   { tool: listUsersTool, action: "identity:read", resourceType: "user" },
   { tool: getUserTool, action: "identity:read", resourceType: "user", resourceIdArg: "id" },
@@ -162,6 +169,12 @@ describe("gated read tools deny an unauthorized principal on MCP + write POLICY_
     // `invalid_args` before RBAC ever runs — a real denial, but not the one
     // this suite asserts.
     { name: "get_execution", args: { id: "00000000-0000-4000-8000-0000000000ff" } },
+    // Full-content knowledge read — the most sensitive knowledge surface;
+    // must deny BEFORE the executor could stream chunk content.
+    {
+      name: "read_knowledge",
+      args: { knowledge_source_id: "00000000-0000-4000-8000-0000000000aa" },
+    },
     { name: "list_connectors", args: {} },
     { name: "list_schedules", args: {} },
   ];

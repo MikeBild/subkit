@@ -69,6 +69,33 @@ before searching, and a search can be narrowed to sources carrying a given tag.
 | Re-run | `sk knowledge-sources analyze <id>`, or the `analyze_knowledge_source` tool in chat. |
 | Bulk paths | Crawled pages and scheduled refreshes stay mechanical — not auto-analyzed. |
 
+## Importing a whole directory (knowledge bundles)
+
+A team wiki rarely lives in one file. `import` turns a directory of markdown
+files — an Obsidian vault, an agent-maintained wiki, a Notion export, or an
+[OKF](https://okf.md/) bundle — into **one** knowledge source with one
+searchable passage per file:
+
+```bash
+sk knowledge-sources import ./team-wiki --tags "runbooks"
+```
+
+In the REPL the same import is `/knowledge import ./team-wiki` — ask a question
+right after and the answer grounds on your wiki.
+
+| Behavior | Detail |
+|---|---|
+| Upsert by slug | Re-running the import is idempotent: unchanged content reports `unchanged`, changed content re-ingests in place. Perfect for a CI job that keeps sk in sync with a git wiki. |
+| Frontmatter | Read tolerantly, never rejected. `type: Runbook` becomes a structural `type:runbook` tag (filterable in search); a `tags:` list merges into the source's topical tags. Files without frontmatter import fine. |
+| Reserved files | `index.md` and `log.md` (navigation/history in OKF bundles) are skipped at any depth. |
+| Reading it back | `read_knowledge` (chat/MCP tool) pages through the full content — e.g. *"read me the deploy runbook"* after a search hit; `GET /v1/knowledge-sources/{id}/chunks` is the raw HTTP form. Nothing is locked in. |
+
+Pairing with a knowledge-engineering system that exports OKF bundles: schedule
+a workflow that pulls the exported bundle and posts it to
+`POST /v1/knowledge-sources/bundle` — curated knowledge lands in sk as governed
+grounding: every read is RBAC-gated (`knowledge:read`), and every import that
+writes anything is audited (an unchanged re-import is a deliberate no-op).
+
 ## Refresh strategies and scope
 
 Knowledge Sources have configurable refresh strategies, so the AI always works

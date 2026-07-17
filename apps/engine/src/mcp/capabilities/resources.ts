@@ -86,6 +86,7 @@ import { can } from "../../rbac/evaluator.ts";
 import * as skillCandidateSvc from "../../skill-candidates/service.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import * as workflowSvc from "../../workflows/service.ts";
+import { renderKnowledgeResourceText } from "./knowledge-resource.ts";
 import { paginate } from "./pagination.ts";
 
 // MCP resources §Error Handling pins resource-not-found to JSON-RPC -32002.
@@ -380,7 +381,7 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         name: ks.name,
         title: ks.name,
         description: `Knowledge (${ks.scope})${ks.tags.length > 0 ? ` [${ks.tags.join(", ")}]` : ""}: ${ks.description ?? ks.source_uri}`,
-        mimeType: "application/json",
+        mimeType: "text/markdown",
       });
     }
 
@@ -728,26 +729,10 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         err.code = -32001;
         throw err;
       }
+      // Full content, byte-capped — see knowledge-resource.ts.
+      const text = await renderKnowledgeResourceText(ks, principal.tenant_id, db);
       return {
-        contents: [
-          {
-            uri,
-            mimeType: "application/json",
-            text: JSON.stringify(
-              {
-                id: ks.id,
-                name: ks.name,
-                scope: ks.scope,
-                source_type: ks.source_type,
-                bytes_total: ks.bytes_total,
-                chunk_count: ks.chunk_count,
-                status: ks.status,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
+        contents: [{ uri, mimeType: "text/markdown", text }],
       };
     }
 

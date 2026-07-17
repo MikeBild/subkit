@@ -93,6 +93,7 @@ describe("conversation tools — registration", () => {
     "list_knowledge_sources",
     "get_knowledge_source",
     "search_knowledge_v2",
+    "read_knowledge",
     "list_audit",
     "get_audit_entry",
     "get_llm_usage",

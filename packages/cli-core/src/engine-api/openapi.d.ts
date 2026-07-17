@@ -6258,6 +6258,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/knowledge-sources/{id}/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a knowledge source's full chunk content (paginated) */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Narrow to chunks with this bundle-relative path (e.g. /runbooks/deploy.md). */
+                    path?: string;
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeChunkListResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/knowledge-sources/{id}": {
         parameters: {
             query?: never;
@@ -6457,6 +6509,73 @@ export interface paths {
                     };
                 };
                 /** @description Content exceeds maximum size */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge-sources/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import a knowledge bundle (directory of markdown files, upsert by slug) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateKnowledgeSourceBundleBody"];
+                };
+            };
+            responses: {
+                /** @description Upserted (created, updated, or unchanged) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeBundleUpsertResponse"];
+                    };
+                };
+                /** @description Slug already belongs to a non-bundle knowledge source */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Bundle exceeds maximum size */
                 413: {
                     headers: {
                         [name: string]: unknown;
@@ -14963,6 +15082,18 @@ export interface components {
                 fetched_at: string | null;
             }[];
         };
+        KnowledgeChunkListResponse: {
+            knowledge_source_id: string;
+            name: string;
+            chunk_count: number;
+            items: {
+                ordinal: number;
+                title: string | null;
+                path: string | null;
+                content: string;
+                byte_size: number;
+            }[];
+        };
         UpdateKnowledgeSourceBody: {
             name?: string;
             description?: string;
@@ -15003,6 +15134,21 @@ export interface components {
             /** @enum {string} */
             refresh_strategy?: "manual" | "scheduled";
             refresh_cron?: string;
+        };
+        KnowledgeBundleUpsertResponse: {
+            knowledge_source: components["schemas"]["KnowledgeSource"];
+            /** @enum {string} */
+            outcome: "created" | "updated" | "unchanged";
+            ingested_count: number;
+            skipped_count: number;
+            skipped_files: string[];
+        };
+        CreateKnowledgeSourceBundleBody: components["schemas"]["CreateKnowledgeSourceBody"] & {
+            files: components["schemas"]["KnowledgeBundleFile"][];
+        };
+        KnowledgeBundleFile: {
+            path: string;
+            content: string;
         };
         KnowledgeSourceUploadError: {
             error: string;

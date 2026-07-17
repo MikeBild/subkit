@@ -35,7 +35,7 @@ every API call.
 | `sk install` | `connector:write` | Guided setup for enterprise integrations | `github`, `google-workspace`, `hubspot`, `jira`, `salesforce`, `slack`, `teams` |
 | `sk invites` | `identity:read` | Manage user-provisioning invites | `list`, `revoke` |
 | `sk join` | — | Redeem an invite to provision your personal API key (no login required) | — |
-| `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `list`, `patch`, `search` |
+| `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `import`, `list`, `patch`, `search` |
 | `sk learnings` | `skill:read` | Review learnings captured from coding-agent sessions | `list`, `review` |
 | `sk login` | — | Authenticate against a subkit engine | — |
 | `sk logout` | — | Drop the active profile | — |
