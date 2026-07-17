@@ -4,6 +4,38 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] – 2026-07-17
+
+### Added
+- [Use sk from a coding agent](docs/authors/coding-agents.md) — one page from
+  install to a grounded session, for Claude Code, Codex, Cursor, Claude Desktop,
+  claude.ai, and ChatGPT: connect the client, import your wiki with the
+  `domain:` tag, verify the briefing, and close the review loop. It states per
+  client which channels actually work (Claude Code and Codex get the briefing
+  hook; the rest are MCP-only, and get the grounding rule as a rules-file
+  snippet instead). The docs index and the root README now route coding-agent
+  users straight to it instead of through the contributor lane.
+
+### Fixed
+- `sk --help` hid most of the CLI. `persona_hint` was only ever set for
+  portal-token logins, so every profile from a normal `sk login` fell back to
+  the lowest tier and the whole authoring surface — `sk agent`,
+  `sk knowledge-sources`, `sk skills`, `sk learnings`, and the operator
+  commands — was undiscoverable, even for admins. `sk login` now records the
+  persona from the key's actual role, and an unknown or unset persona shows
+  every command rather than hiding them (help is UX-only; the engine
+  permission-checks every call regardless).
+- `read_knowledge` never reached the chat surface: it was documented as a chat
+  tool but missing from the fail-closed read-only allow-list, so Slack / Teams /
+  Google Chat could search knowledge but not read a source back. The chat
+  palette test now asserts the knowledge-read tools are present, not just that
+  nothing leaks.
+- Aligned the MCP setup instructions that disagreed across pages (server name,
+  `SK_API_KEY` vs `SUBKIT_API_KEY`, transport string), documented where the API
+  key actually comes from, and corrected the self-host guide's claim that the
+  `sk mcp` stdio proxy exposes the full tool catalog — it carries only the
+  `sk_conversation_*` tools.
+
 ## [1.18.0] – 2026-07-17
 
 ### Added
