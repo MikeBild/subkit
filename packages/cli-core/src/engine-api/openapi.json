@@ -8678,6 +8678,58 @@
           "hits"
         ]
       },
+      "KnowledgeChunkListResponse": {
+        "type": "object",
+        "properties": {
+          "knowledge_source_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "chunk_count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ordinal": {
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "path": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "content": {
+                  "type": "string"
+                },
+                "byte_size": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "ordinal",
+                "title",
+                "path",
+                "content",
+                "byte_size"
+              ]
+            }
+          }
+        },
+        "required": [
+          "knowledge_source_id",
+          "name",
+          "chunk_count",
+          "items"
+        ]
+      },
       "UpdateKnowledgeSourceBody": {
         "type": "object",
         "properties": {
@@ -8832,6 +8884,81 @@
         },
         "required": [
           "name"
+        ]
+      },
+      "KnowledgeBundleUpsertResponse": {
+        "type": "object",
+        "properties": {
+          "knowledge_source": {
+            "$ref": "#/components/schemas/KnowledgeSource"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "created",
+              "updated",
+              "unchanged"
+            ]
+          },
+          "ingested_count": {
+            "type": "integer"
+          },
+          "skipped_count": {
+            "type": "integer"
+          },
+          "skipped_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "knowledge_source",
+          "outcome",
+          "ingested_count",
+          "skipped_count",
+          "skipped_files"
+        ]
+      },
+      "CreateKnowledgeSourceBundleBody": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateKnowledgeSourceBody"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/KnowledgeBundleFile"
+                },
+                "minItems": 1,
+                "maxItems": 500
+              }
+            },
+            "required": [
+              "files"
+            ]
+          }
+        ]
+      },
+      "KnowledgeBundleFile": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
         ]
       },
       "KnowledgeSourceUploadError": {
@@ -21789,6 +21916,83 @@
         }
       }
     },
+    "/v1/knowledge-sources/{id}/chunks": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Read a knowledge source's full chunk content (paginated)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Narrow to chunks with this bundle-relative path (e.g. /runbooks/deploy.md)."
+            },
+            "required": false,
+            "description": "Narrow to chunks with this bundle-relative path (e.g. /runbooks/deploy.md).",
+            "name": "path",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeChunkListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/knowledge-sources/{id}": {
       "get": {
         "tags": [
@@ -22028,6 +22232,70 @@
           },
           "413": {
             "description": "Content exceeds maximum size",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/bundle": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Import a knowledge bundle (directory of markdown files, upsert by slug)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeSourceBundleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upserted (created, updated, or unchanged)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBundleUpsertResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slug already belongs to a non-bundle knowledge source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Bundle exceeds maximum size",
             "content": {
               "application/json": {
                 "schema": {

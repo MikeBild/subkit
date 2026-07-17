@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { RawChunk } from "../docs-ingestion/types.ts";
 
 // ----- enums -----------------------------------------------------------------
 
@@ -88,6 +89,33 @@ export const CreateKnowledgeSourceInlineSchema = CreateKnowledgeSourceSchema.ext
 
 export type CreateKnowledgeSourceInlineInput = z.infer<typeof CreateKnowledgeSourceInlineSchema>;
 
+/**
+ * Knowledge bundle — a directory of markdown files posted as one JSON body
+ * (`sk knowledge-sources import`, REPL `/knowledge import`). One Knowledge
+ * Source per bundle, one chunk per file; frontmatter is read tolerantly
+ * (OKF-compatible by construction — see `bundle.ts`). Upsert by slug: an
+ * unchanged bundle is a no-op, a changed one re-ingests in place.
+ */
+export const BundleFileSchema = z
+  .object({
+    path: z.string().min(1).max(512),
+    content: z.string(),
+  })
+  .openapi("KnowledgeBundleFile");
+
+export const CreateKnowledgeSourceBundleSchema = CreateKnowledgeSourceSchema.extend({
+  files: z.array(BundleFileSchema).min(1).max(500),
+})
+  // Enforced at the Zod boundary so a missing workflow_id is a 422
+  // validation error (the service throw would otherwise surface as 500).
+  .refine((body) => body.scope !== "workflow" || body.workflow_id !== undefined, {
+    message: "workflow_id is required when scope is 'workflow'",
+    path: ["workflow_id"],
+  })
+  .openapi("CreateKnowledgeSourceBundleBody");
+
+export type CreateKnowledgeSourceBundleInput = z.infer<typeof CreateKnowledgeSourceBundleSchema>;
+
 export const UpdateKnowledgeSourceSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
@@ -145,8 +173,12 @@ export interface CreateKnowledgeSourceParams {
    *  rather than a file upload, the route stamps these on the row so
    *  later refreshes know where the content originated. Defaults to
    *  `"file_upload"` + `upload.filename` for back-compat. */
-  source_type_override?: "file_upload" | "inline" | "url" | "seed";
+  source_type_override?: "file_upload" | "inline" | "url" | "seed" | "bundle";
   source_uri_override?: string;
+  /** Pre-parsed chunks (bundle imports): skips `parseFileToChunks` and feeds
+   *  the existing fingerprint/dedup/insert pipeline directly — one chunk per
+   *  bundle file, `path` = bundle-relative path. */
+  parsed_chunks?: RawChunk[];
 }
 
 export interface ListKnowledgeSourcesParams {
@@ -193,4 +225,44 @@ export interface IngestKnowledgeSourceParams {
     mime?: string;
   };
   actor_id: string | null;
+  /** See `CreateKnowledgeSourceParams.parsed_chunks`. */
+  parsed_chunks?: RawChunk[];
+}
+
+// ----- bundle upsert ---------------------------------------------------------
+
+export interface UpsertKnowledgeBundleParams {
+  tenant_id: string;
+  actor_id: string | null;
+  input: CreateKnowledgeSourceInput;
+  files: { path: string; content: string }[];
+}
+
+export interface KnowledgeBundleUpsertResult {
+  knowledge_source: KnowledgeSourceView;
+  outcome: "created" | "updated" | "unchanged";
+  /** Chunks now stored for the source (post dedup/split). */
+  ingested_count: number;
+  /** Reserved (`index.md`/`log.md`) and duplicate-path files skipped by the parser. */
+  skipped_count: number;
+  skipped_files: string[];
+}
+
+// ----- chunk read ------------------------------------------------------------
+
+export interface KnowledgeChunkView {
+  ordinal: number;
+  title: string | null;
+  path: string | null;
+  content: string;
+  byte_size: number;
+}
+
+export interface ListKnowledgeChunksParams {
+  tenant_id: string;
+  knowledge_source_id: string;
+  /** Narrow to chunks whose `path` equals this bundle-relative path. */
+  path?: string;
+  limit?: number;
+  offset?: number;
 }

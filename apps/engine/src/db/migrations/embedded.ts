@@ -37,6 +37,7 @@ import sql0016TranquilDragonMan from "./0016_tranquil_dragon_man.sql" with { typ
 import sql0017AbandonedSasquatch from "./0017_abandoned_sasquatch.sql" with { type: "text" };
 import sql0018WorkableMarrow from "./0018_workable_marrow.sql" with { type: "text" };
 import sql0019CloudyJazinda from "./0019_cloudy_jazinda.sql" with { type: "text" };
+import sql0020MightyMagdalene from "./0020_mighty_magdalene.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -81,6 +82,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0017_abandoned_sasquatch": sql0017AbandonedSasquatch,
   "0018_workable_marrow": sql0018WorkableMarrow,
   "0019_cloudy_jazinda": sql0019CloudyJazinda,
+  "0020_mighty_magdalene": sql0020MightyMagdalene,
 };
 
 const journal = journalMeta as unknown as Journal;

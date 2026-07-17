@@ -3,6 +3,8 @@
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
 export * from "./budgets.ts";
+export * from "./bundle.ts";
+export * from "./bundle-service.ts";
 export * from "./service.ts";
 export * from "./tags.ts";
 export * from "./types.ts";

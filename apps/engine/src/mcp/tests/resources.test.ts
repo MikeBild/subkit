@@ -33,11 +33,11 @@ async function listAllResourceUris(client: Client): Promise<string[]> {
 
 beforeAll(async () => {
   suite = await startMcpTestSuite("resources");
-});
+}, 60_000);
 
 afterAll(async () => {
-  await suite.cleanup();
-});
+  await suite?.cleanup();
+}, 60_000);
 
 describe("mcp resources", () => {
   test("list + read connector resource", async () => {
@@ -209,6 +209,95 @@ describe("mcp resources", () => {
     const adminClient = await suite.connect();
     const adminUris = await listAllResourceUris(adminClient);
     expect(adminUris).toContain("subkit://operator/health-digest");
+  });
+
+  test("knowledge:// read returns full markdown content, not a metadata stub", async () => {
+    const { upsertKnowledgeBundle } = await import("../../knowledge/bundle-service.ts");
+    const { knowledge_source } = await upsertKnowledgeBundle(
+      {
+        tenant_id: suite.http.tenantId,
+        actor_id: null,
+        input: { name: "Resource Wiki", slug: "resource-wiki" },
+        files: [
+          {
+            path: "runbooks/deploy.md",
+            content: "---\ntype: Runbook\n---\n# Deploy\n\nRun the deploy script.",
+          },
+          { path: "index.md", content: "# Nav" },
+        ],
+      },
+      suite.http.db,
+    );
+
+    const client = await suite.connect();
+    const read = await client.readResource({ uri: `knowledge://${knowledge_source.id}` });
+    expect(read.contents.length).toBe(1);
+    const content = read.contents[0] as { mimeType?: string; text?: string };
+    expect(content.mimeType).toBe("text/markdown");
+    // Metadata rides along as a leading comment; the actual knowledge follows.
+    expect(content.text).toContain(`id: ${knowledge_source.id}`);
+    expect(content.text).toContain("Run the deploy script.");
+    expect(content.text).toContain("/runbooks/deploy.md");
+    expect(content.text).not.toContain("truncated at");
+  });
+
+  test("knowledge:// read pages past 200 chunks without truncation (loop advances)", async () => {
+    const { upsertKnowledgeBundle } = await import("../../knowledge/bundle-service.ts");
+    // 250 small files → 250 chunks (> the 200-per-page limit) but well
+    // under the 1 MiB cap, so the pagination loop must advance offset
+    // and terminate with the FULL content.
+    const files = Array.from({ length: 250 }, (_, i) => ({
+      path: `notes/n${String(i).padStart(3, "0")}.md`,
+      content: `note ${i}: compact unique body ${i}.`,
+    }));
+    const { knowledge_source } = await upsertKnowledgeBundle(
+      {
+        tenant_id: suite.http.tenantId,
+        actor_id: null,
+        input: { name: "Many Notes Wiki", slug: "many-notes-wiki" },
+        files,
+      },
+      suite.http.db,
+    );
+
+    const client = await suite.connect();
+    const read = await client.readResource({ uri: `knowledge://${knowledge_source.id}` });
+    const content = read.contents[0] as { text?: string };
+    expect(content.text).toContain("note 0:");
+    expect(content.text).toContain("note 249:");
+    expect(content.text).not.toContain("truncated at");
+  });
+
+  test("knowledge:// read caps at 1 MiB with a truncation notice", async () => {
+    const { upsertKnowledgeBundle } = await import("../../knowledge/bundle-service.ts");
+    // ~1.5 MiB across three files — must exceed the 1 MiB read cap.
+    // Every paragraph is position-unique so neither the whole-file dedup
+    // nor the per-chunk fingerprint dedup collapses the volume.
+    const big = (label: string) =>
+      Array.from(
+        { length: 8_000 },
+        (_, i) => `${label} paragraph ${i}: the quick brown fox jumps over lazy dog number ${i}.`,
+      ).join("\n\n");
+    const { knowledge_source } = await upsertKnowledgeBundle(
+      {
+        tenant_id: suite.http.tenantId,
+        actor_id: null,
+        input: { name: "Big Wiki", slug: "big-wiki" },
+        files: [
+          { path: "a.md", content: big("alpha") },
+          { path: "b.md", content: big("beta") },
+          { path: "c.md", content: big("gamma") },
+        ],
+      },
+      suite.http.db,
+    );
+
+    const client = await suite.connect();
+    const read = await client.readResource({ uri: `knowledge://${knowledge_source.id}` });
+    const content = read.contents[0] as { text?: string };
+    expect(Buffer.byteLength(content.text!, "utf8")).toBeLessThanOrEqual(1024 * 1024 + 256);
+    expect(content.text).toContain("truncated at");
+    expect(content.text).toContain("read_knowledge");
   });
 
   // B1 — MCP 2025-11-25 compliance: resource-not-found MUST be JSON-RPC
