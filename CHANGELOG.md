@@ -35,6 +35,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   key actually comes from, and corrected the self-host guide's claim that the
   `sk mcp` stdio proxy exposes the full tool catalog — it carries only the
   `sk_conversation_*` tools.
+- The MCP OAuth cleanup sweep no longer fails intermittently
+  (`mcp_oauth_cleanup.refresh_tokens_failed`): deleting an expired refresh
+  token that a still-live access token references hit an `ON DELETE NO ACTION`
+  foreign key. The link is now `ON DELETE SET NULL` (migration covers both the
+  historical and the fresh-install constraint name), so the sweep proceeds and
+  the surviving access token simply loses its refresh link.
 
 ## [1.18.0] – 2026-07-17
 
