@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.1] – 2026-07-17
+
+### Changed
+- GitHub release pages now carry the release's own `CHANGELOG.md` section as
+  their body, so "what shipped in this tag?" is answered on the release page
+  itself — an empty body made a released commit look unreleased. A tag without
+  a matching changelog section falls back to a link to `CHANGELOG.md`; the
+  notes step never fails a release. The v1.18.0 and v1.19.0 release pages were
+  backfilled the same way.
+
 ## [1.19.0] – 2026-07-17
 
 ### Added
