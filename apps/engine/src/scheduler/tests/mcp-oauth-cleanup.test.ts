@@ -226,6 +226,58 @@ describe("runMcpOAuthCleanup — expired / revoked refresh tokens", () => {
       .where(eq(mcpOauthRefreshTokens.id, row.id));
     expect(remaining).toHaveLength(1);
   });
+
+  test("deletes an expired refresh token still referenced by a live access token, nulling the link (prod FK regression)", async () => {
+    // Reproduces the intermittent prod incident (mcp_oauth_cleanup.refresh_tokens_failed):
+    // sweep 2 deletes a refresh token that is >7d expired while a child access
+    // token (future expiry) still points at it via refresh_token_id. With the FK
+    // at ON DELETE NO ACTION the delete threw an FK violation; ON DELETE SET NULL
+    // lets the sweep proceed and nulls the surviving access token's link.
+    const [rt] = await srv.db
+      .insert(mcpOauthRefreshTokens)
+      .values({
+        tenant_id: srv.tenantId,
+        client_id: "test-client-rt-fk",
+        user_id: srv.userId,
+        prefix: "fk_rt_prefix1",
+        token_sha256: "fk_refresh_token_sha256_nnn444",
+        scope: "mcp:read",
+        expires_at: expiredTokenAt,
+      })
+      .returning();
+    if (!rt) throw new Error("seed refresh token failed");
+
+    const [at] = await srv.db
+      .insert(mcpOauthAccessTokens)
+      .values({
+        tenant_id: srv.tenantId,
+        client_id: "test-client-rt-fk",
+        user_id: srv.userId,
+        prefix: "fk_at_prefix1",
+        token_sha256: "fk_access_token_sha256_nnn444",
+        scope: "mcp:read",
+        expires_at: freshExpiry, // live — NOT removed by sweep 1
+        refresh_token_id: rt.id,
+      })
+      .returning();
+    if (!at) throw new Error("seed access token failed");
+
+    // Must not throw (was: FK violation -> refresh_tokens_failed).
+    await runMcpOAuthCleanup(new Date(), srv.db); // allow-wall-clock
+
+    const rtRemaining = await srv.db
+      .select()
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.id, rt.id));
+    expect(rtRemaining).toHaveLength(0);
+
+    const atRemaining = await srv.db
+      .select()
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.id, at.id));
+    expect(atRemaining).toHaveLength(1);
+    expect(atRemaining[0]!.refresh_token_id).toBeNull();
+  });
 });
 
 describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
