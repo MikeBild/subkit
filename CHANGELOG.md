@@ -4,6 +4,43 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] – 2026-07-17
+
+### Added
+- Import a whole markdown directory as one knowledge source: `sk
+  knowledge-sources import ./team-wiki` for CI, `/knowledge import ./team-wiki`
+  in the REPL. An Obsidian vault, an agent-maintained wiki, an
+  [OKF](https://okf.md/) bundle, or a Notion export becomes one searchable
+  source with a passage per file, so chat, MCP clients, and workflows ground on
+  your own runbooks. Import is an upsert by slug — unchanged content is a no-op,
+  changed content re-ingests in place — so a nightly job keeps sk in sync with a
+  git wiki without churn.
+- Frontmatter is read tolerantly and never rejected: `type: Runbook` becomes a
+  filterable `type:runbook` tag, a `tags:` list joins the topical set, files
+  without frontmatter import fine, and the reserved `index.md`/`log.md` are
+  skipped at any depth so an agent appending to its log never rotates the
+  source version.
+- Knowledge reads back in full, not just as snippets: the `read_knowledge` tool
+  (chat + MCP, gated on `knowledge:read`) pages through a source's whole
+  content and takes a `path` to read one file of a bundle;
+  `GET /v1/knowledge-sources/{id}/chunks` is the raw HTTP form. Nothing is
+  locked in — an agent or script can pull every byte back out.
+
+### Changed
+- The `knowledge://` MCP resource now serves the actual markdown content
+  (byte-capped, with a truncation notice) instead of a metadata stub, so an MCP
+  client can read a source it can already see.
+- The tenant knowledge byte budget now gates re-ingests as it has always gated
+  creates: a source that grows past the cap on refresh is refused rather than
+  silently admitted.
+
+### Fixed
+- Frontmatter from an untrusted vault can no longer mint `domain:*` routing
+  keys — only the bounded `type:` mapping and operator-supplied `--tags` may —
+  so importing a third-party wiki cannot steer another domain's grounding.
+- The boot seed sweep no longer overwrites a source a tenant deliberately put on
+  a seed slug; the tenant's own knowledge wins and the sweep leaves it alone.
+
 ## [1.17.0] – 2026-07-16
 
 ### Added
