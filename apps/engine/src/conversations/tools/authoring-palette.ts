@@ -290,6 +290,11 @@ export const CHAT_READONLY_TOOLS: ReadonlySet<string> = new Set([
   "search_docs",
   "list_knowledge_sources",
   "get_knowledge_source",
+  // The follow-up to a search hit ("read me the deploy runbook"): pages
+  // through a source's full content, `path`-addressable for one file of an
+  // imported bundle. Read-only, `knowledge:read`-gated, byte-bounded per
+  // call — the same posture as the search above it.
+  "read_knowledge",
   // workflows (read)
   "list_workflows",
   "get_workflow",

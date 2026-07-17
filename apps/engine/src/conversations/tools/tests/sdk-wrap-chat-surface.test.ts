@@ -105,6 +105,20 @@ describe("wrapTools chat-surface palette switch", () => {
     }
     expect(names.has("run_workflow")).toBe(true);
     expect(names.has("find_workflow")).toBe(true);
+
+    // The knowledge-read path must actually REACH chat, not just avoid
+    // leaking. The allow-list is fail-closed, so a read tool that nobody
+    // adds to it is silently unavailable on Slack/Teams/Google Chat while
+    // the docs advertise it — `read_knowledge` shipped that way once.
+    // Presence assertions, not just absence ones, are what catch that.
+    for (const expected of [
+      "search_knowledge",
+      "read_knowledge",
+      "list_knowledge_sources",
+      "get_knowledge_source",
+    ]) {
+      expect(names.has(expected), `${expected} must be reachable on chat`).toBe(true);
+    }
   });
 
   it("absent surface keeps today's authoring palette (web/CLI/MCP regression guard)", async () => {

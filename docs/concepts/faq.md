@@ -59,7 +59,9 @@ in your documents. The worked walkthrough is [Model a Domain](../authors/model-a
 ## Where do I create each?
 
 - **Knowledge Source** — self-serve: in a Conversation, upload or paste a
-  document and ask to add it; or `sk knowledge-sources create --file …`.
+  document and ask to add it; `sk knowledge-sources create --file …` for one
+  file, or `sk knowledge-sources import ./team-wiki` for a whole markdown
+  directory (an Obsidian vault, an agent wiki, an OKF bundle).
 - **Skill** — operator-owned: author one in a Conversation, `sk skills create
   --file …`, or promote a detected **Skill Candidate**
   (`sk skill-candidates approve <id>`).

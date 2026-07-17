@@ -93,7 +93,7 @@ category — channel-scoped, not role-scoped.
 | Group | Tools |
 |---|---|
 | Conversational meta | `ask_user_confirm` · `ask_user_choice` · `ask_user_multi` · `ask_user_text` · `ask_user_form` · `cannot_help` · `list_skills` · `load_skill` · `list_attachments` · `preview_attachment` · `get_raw_result` |
-| Knowledge + docs (read) | `search_knowledge` · `search_docs` · `list_knowledge_sources` · `get_knowledge_source` |
+| Knowledge + docs (read) | `search_knowledge` · `read_knowledge` · `search_docs` · `list_knowledge_sources` · `get_knowledge_source` |
 | Workflows (read) | `list_workflows` · `get_workflow` · `find_workflow` |
 | Executions (read) | `list_executions` · `get_execution` · `inspect_execution` · `inspect_execution_step` |
 | Connector metadata (read) | `list_connectors` · `get_connector` · `find_connector` |

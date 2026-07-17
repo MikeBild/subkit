@@ -83,6 +83,11 @@ sk knowledge-sources import ./team-wiki --tags "runbooks"
 In the REPL the same import is `/knowledge import ./team-wiki` — ask a question
 right after and the answer grounds on your wiki.
 
+> **Importing for a coding agent?** Tag the source with the domain, or a Claude
+> Code / Codex session will never see it: `sk knowledge-sources import ./team-wiki
+> --tags "domain:<slug>"`. The session briefing indexes exactly the sources
+> carrying its `domain:` tag — see [Use sk from a coding agent](./coding-agents.md).
+
 | Behavior | Detail |
 |---|---|
 | Upsert by slug | Re-running the import is idempotent: unchanged content reports `unchanged`, changed content re-ingests in place. Perfect for a CI job that keeps sk in sync with a git wiki. |
@@ -118,6 +123,7 @@ hardware that warrants larger corpora. The full tunable table lives in
 
 ## Further reading
 
+- [Use sk from a coding agent](./coding-agents.md) — grounding a coding agent in these sources: the `domain:` tag, the briefing, and the review loop.
 - [Knowledge & Skills](../concepts/knowledge-and-skills.md) — the conceptual model and context-assembly order.
 - [Model a Domain](./model-a-domain.md) — a Knowledge Source and a Skill configured side by side for one domain, worked end to end.
 - [Custom Skills](./custom-skills.md) — the dense, prescriptive counterpart to Knowledge Sources.

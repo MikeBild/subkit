@@ -15,25 +15,34 @@ lane.
 ```mermaid
 flowchart LR
     Start(["Start here"])
+    Start --> Coding["Coding agents<br/>Claude Code · Codex · Cursor · …"]
     Start --> Authors["Authors<br/>build workflows by chat"]
     Start --> Operators["Operators<br/>run it day-to-day"]
     Start --> Admins["Admins<br/>govern access"]
     Start --> Developers["Developers<br/>contribute / self-host"]
-    Concepts["Concepts<br/>the model"] -.-> Authors
+    Concepts["Concepts<br/>the model"] -.-> Coding
+    Concepts -.-> Authors
     Concepts -.-> Operators
     Concepts -.-> Admins
     Concepts -.-> Developers
+    Coding --> C1["authors/coding-agents.md"]
     Authors --> A1["authors/quickstart.md"]
     Operators --> O1["operators/quickstart.md"]
     Admins --> D1["admins/quickstart.md"]
     Developers --> V1["developers/quickstart.md"]
 ```
 
+**I use a coding agent** — Claude Code, Codex, Cursor, Claude Desktop,
+claude.ai, or ChatGPT — and want it grounded in my team's knowledge →
+[Use sk from a coding agent](authors/coding-agents.md). Install, connect, import
+your wiki, ask a grounded question — the whole path on one page.
+
 ## Section overviews
 
 Each audience folder has a landing page that indexes its docs:
 
 - [Concepts](concepts/README.md) — the domain model: surfaces, the governance gate, connectors, workflows, knowledge, and audit.
+- [Coding agents](authors/coding-agents.md) — connect Claude Code, Codex, Cursor, Claude Desktop, claude.ai, or ChatGPT to your knowledge, end to end.
 - [Operators](operators/README.md) — run sk day-to-day: credentials, scheduling, observability, self-healing, notifications.
 - [Authors](authors/README.md) — build workflows by conversation: the REPL, the approval loop, recipes, skills, knowledge.
 - [Developers](developers/README.md) — contribute and self-host: repo setup, input surfaces, the tool palette, the evidence process.
@@ -50,7 +59,9 @@ flowchart LR
     LLM -.tenant context.-> Engine
 ```
 
-New here? Start with the [Architecture overview](concepts/overview.md).
+Want the model before the mechanics? Read the
+[Architecture overview](concepts/overview.md) — otherwise pick your lane above
+and start there.
 
 ## Pipe these docs into an LLM
 
@@ -86,6 +97,7 @@ deployment — index first, then fetch just the pages they need.
 | Doc | For |
 |---|---|
 | [quickstart.md](authors/quickstart.md) | You use sk through the CLI, chat, or an MCP client. Authenticated, first conversation open. 5 minutes. |
+| [coding-agents.md](authors/coding-agents.md) | You use Claude Code, Codex, Cursor, Claude Desktop, claude.ai, or ChatGPT: connect it, import your wiki with a domain tag, and get grounded sessions + a review loop. 10 minutes. |
 | [repl-tour.md](authors/repl-tour.md) | Author connectors and workflows by conversation in the `sk` REPL — the approve-to-commit loop, slash commands, headless `-p`. |
 | [authoring-workflows.md](authors/authoring-workflows.md) | The AI authoring loop, the human approval gate, probe/preview, and stage-aware prompting. |
 | [recipes.md](authors/recipes.md) | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
@@ -134,6 +146,8 @@ deployment — index first, then fetch just the pages they need.
 ---
 
 ## Who Should Read What
+
+**Claude Code / Codex users** — start at [authors/coding-agents.md](authors/coding-agents.md); it is the whole path on one page, and links onward to [knowledge-sources.md](authors/knowledge-sources.md) and the [loop's mechanics](developers/coding-agent-integration.md).
 
 **Authors** — start at [authors/quickstart.md](authors/quickstart.md), then [authoring-workflows.md](authors/authoring-workflows.md) for what Conversations can do.
 
