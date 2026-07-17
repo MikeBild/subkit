@@ -8,10 +8,12 @@ language, approve what the AI proposes, and ship a governed, versioned workflow.
 ```mermaid
 flowchart TD
     Q[quickstart.md<br/>authenticate · first conversation] --> R[repl-tour.md<br/>the sk REPL · approve-to-commit]
+    Q --> CC[coding-agents.md<br/>ground Claude Code / Codex]
     R --> A[authoring-workflows.md<br/>the AI authoring loop]
     A --> RC[recipes.md<br/>reusable recipes]
     A --> CS[custom-skills.md<br/>encode your conventions]
     A --> KS[knowledge-sources.md<br/>ground proposals in your docs]
+    CC --> KS
     CS --> MD[model-a-domain.md<br/>connector + skills + knowledge]
     KS --> MD
     R --> SL[slash-commands.md<br/>REPL command reference]
@@ -21,6 +23,7 @@ flowchart TD
 | Doc | What it covers |
 |---|---|
 | [quickstart.md](quickstart.md) | Get authenticated and open your first authoring conversation in about 5 minutes. |
+| [coding-agents.md](coding-agents.md) | Ground Claude Code / Codex in your team's knowledge: connect, import your wiki with a domain tag, grounded sessions, review loop. |
 | [repl-tour.md](repl-tour.md) | Author connectors and workflows by conversation in the `sk` REPL — the approve-to-commit loop, slash commands, headless `-p`. |
 | [authoring-workflows.md](authoring-workflows.md) | The AI authoring loop, the human approval gate, probe/preview, and stage-aware prompting. |
 | [recipes.md](recipes.md) | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |

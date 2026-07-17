@@ -1,4 +1,4 @@
-# Quickstart — Zero to Running
+# Self-Host sk — Zero to Running
 
 **sk runs inside your own infrastructure — your data stays yours.** One container,
 one stateful dependency (PostgreSQL), no SaaS lock-in and nothing leaving your
@@ -215,37 +215,54 @@ Settings → MCP Servers) — Codex auto-detects the transport from `url`, and
 `bearer_token_env_var` names an env var so the key stays out of the file:
 
 ```toml
-[mcp_servers.subkit]
+[mcp_servers.sk]
 url = "http://localhost:3000/mcp"
-bearer_token_env_var = "SUBKIT_API_KEY"
+bearer_token_env_var = "SK_API_KEY"
 ```
 ```bash
-export SUBKIT_API_KEY=wf_live_…   # the key from `engine --issue-admin-key`
+export SK_API_KEY=wf_live_…   # the key from `engine --issue-admin-key`
 ```
 
 Inline-header JSON shape (Claude Desktop / Cursor):
 
 ```json
-{ "mcpServers": { "subkit": {
+{ "mcpServers": { "sk": {
   "url": "http://localhost:3000/mcp",
   "transport": "streamable-http",
   "headers": { "Authorization": "Bearer wf_live_…" }
 } } }
 ```
 
-**B. stdio (local).** After `sk login` on your machine, let the client spawn the
-bundled proxy (reads `~/.sk/config.json`):
+For **Claude Code**, register from the shell instead — and see
+[Use sk from a coding agent](../authors/coding-agents.md) for the full loop
+(briefing hook + knowledge import), which this step does not cover:
 
-```json
-{ "mcpServers": { "subkit": { "command": "sk", "args": ["mcp"] } } }
+```bash
+claude mcp add --transport http --scope user sk http://localhost:3000/mcp \
+  --header "Authorization: Bearer ${SK_API_KEY}"
 ```
 
-Once connected, the client sees your tenant's tools — author and run workflows
-through the authoring triad (`author_workflow` to build a grounded draft,
-`dry_run_workflow` to test it, `edit_workflow_patch` to refine it, and
+Once connected over HTTP, the client sees your tenant's tools — author and run
+workflows through the authoring triad (`author_workflow` to build a grounded
+draft, `dry_run_workflow` to test it, `edit_workflow_patch` to refine it, and
 `save_workflow_draft` to commit), inspect connectors (`test_connector`,
-`list_recipes`), and more. Destructive calls require a confirm first. Verify the
-endpoint by hand:
+`list_recipes`), ground answers (`search_knowledge_v2`, `read_knowledge`), and
+more. Destructive calls require a confirm first.
+
+**B. stdio (local, conversation-only).** After `sk login`, a client can spawn
+the bundled proxy, which reads `~/.sk/config.json` so no key handling is needed:
+
+```json
+{ "mcpServers": { "sk-cli": { "command": "sk", "args": ["mcp"] } } }
+```
+
+This proxy is deliberately narrow: it exposes only `sk_ping` and
+`sk_conversation_create` / `_append` / `_get` / `_list`, for driving the
+conversation surface from an IDE plugin. It does **not** carry the tool
+catalog above — if you want knowledge lookup, workflow authoring, or connector
+tools, use the HTTP path.
+
+Verify the HTTP endpoint by hand:
 
 ```bash
 curl -s http://localhost:3000/mcp \
