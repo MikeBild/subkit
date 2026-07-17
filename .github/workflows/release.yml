@@ -427,10 +427,39 @@ jobs:
           upload-release-assets: false
           upload-artifact: false
 
+      # The release body is the tag's own CHANGELOG.md section, so the
+      # GitHub release page answers "what shipped?" without a click —
+      # an empty body made a released commit look unreleased. Fetched
+      # via the contents API at the tag ref (this job deliberately has
+      # no checkout: a checkout would silently change the SBOM scan
+      # input from artifacts-only to the whole source tree). Best-effort
+      # by construction: a missing section falls back to a pointer at
+      # CHANGELOG.md and never fails the release.
+      - name: Extract release notes from CHANGELOG
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          gh api "repos/${GITHUB_REPOSITORY}/contents/CHANGELOG.md?ref=${TAG}" \
+            --jq .content | base64 -d > changelog-at-tag.md || true
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { hit=1; next }
+            hit && /^## \[/ { exit }
+            hit { print }
+          ' changelog-at-tag.md 2>/dev/null | sed -e '/./,$!d' > release-notes.md || true
+          if [ ! -s release-notes.md ]; then
+            echo "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md) for this release." > release-notes.md
+          fi
+          echo "--- release body ---"
+          cat release-notes.md
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
+          body_path: release-notes.md
           files: |
             artifacts/*/sk_*
             artifacts/*/engine_*
