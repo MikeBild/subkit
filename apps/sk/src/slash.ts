@@ -350,8 +350,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     requires: "skill:read",
   },
   {
+    // `/knowledge` lists/inspects (handlers/inspect.ts); `/knowledge
+    // import <dir>` walks a local markdown directory and posts it to the
+    // audited bundle endpoint, which enforces knowledge:write server-side
+    // (handlers/knowledge.ts).
     name: "knowledge",
-    help: "List knowledge sources in scope",
+    help: "List knowledge sources, or import a markdown directory — /knowledge import <dir> [name]",
     category: "context",
     requires: "knowledge:read",
   },

@@ -96,7 +96,13 @@ export const knowledgeSources = pgTable(
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("knowledge_sources_tenant_slug_key").on(t.tenant_id, t.slug),
+    // Partial: soft-deleted rows keep their slug without blocking a
+    // re-create/re-import under the same slug (delete → import used to 500
+    // on the full unique index while every lookup already filtered
+    // `deleted_at IS NULL`).
+    uniqueIndex("knowledge_sources_tenant_slug_key")
+      .on(t.tenant_id, t.slug)
+      .where(sql`deleted_at IS NULL`),
     index("knowledge_sources_tenant_idx").on(t.tenant_id),
     index("knowledge_sources_tenant_scope_idx").on(t.tenant_id, t.scope),
     index("knowledge_sources_tenant_workflow_idx").on(t.tenant_id, t.workflow_id),

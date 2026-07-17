@@ -136,6 +136,23 @@ export async function applyKnowledgeSeeds(
       inserted++;
       continue;
     }
+    // A non-seed source occupying a seed slug (a user deleted the seed and
+    // imported their own bundle under the same slug — possible since the
+    // tenant+slug unique index went partial) must NEVER be overwritten by
+    // the boot sweep: re-ingesting seed content over user knowledge would
+    // silently destroy it. Same guard the bundle upsert applies (409).
+    if (existing.source_type !== "seed") {
+      logger.warn({
+        module: "knowledge.seed",
+        action: "seed.slug_occupied",
+        msg: "seed slug is occupied by a non-seed source; leaving it untouched",
+        tenant_id,
+        slug: s.slug,
+        occupying_source_type: existing.source_type,
+      });
+      unchanged++;
+      continue;
+    }
     if (existing.version === version) {
       unchanged++;
       continue;

@@ -57,6 +57,36 @@ export const knowledgeMethods = {
     return this.requestForm("POST", "/v1/knowledge-sources", form);
   },
 
+  /** Upsert a knowledge bundle (directory of markdown files) by slug —
+   *  `POST /v1/knowledge-sources/bundle`. Idempotent: unchanged content
+   *  returns `outcome: "unchanged"`. */
+  importKnowledgeBundle(
+    this: EngineClient,
+    body: {
+      name: string;
+      slug?: string;
+      description?: string;
+      tags?: string[];
+      scope?: string;
+      workflow_id?: string;
+      files: { path: string; content: string }[];
+    },
+  ): Promise<Record<string, unknown>> {
+    return this.request("POST", "/v1/knowledge-sources/bundle", body);
+  },
+  listKnowledgeChunks(
+    this: EngineClient,
+    id: string,
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      "GET",
+      `/v1/knowledge-sources/${encodeURIComponent(id)}/chunks`,
+      undefined,
+      query,
+    );
+  },
+
   // -------------------- Discovery --------------------
   listDiscoveryRuns(
     this: EngineClient,

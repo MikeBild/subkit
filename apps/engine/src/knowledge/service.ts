@@ -22,8 +22,8 @@ import { errorFields, log, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
 import {
+  assertTenantKnowledgeBudget,
   KNOWLEDGE_SOURCE_MAX_BYTES,
-  KNOWLEDGE_TENANT_MAX_BYTES,
   KnowledgeBudgetExceededError,
 } from "./budgets.ts";
 import { linkKnowledgeFile, persistKnowledgeFile } from "./file-persist.ts";
@@ -144,10 +144,16 @@ export async function createKnowledgeSource(
   const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
   const format = detectFormat(p.upload.filename, p.upload.mime);
 
-  // Parse → chunk → fingerprint → dedup (before transaction — pure CPU work)
-  const rawChunks = parseFileToChunks(content, p.upload.filename, format);
+  // Parse → chunk → fingerprint → dedup (before transaction — pure CPU work).
+  // Bundle imports arrive pre-parsed (one chunk per file, path attached),
+  // skip the file parser, AND skip dedup: bundle files are per-path entities
+  // addressed by `read_knowledge {path}` — near-dup/exact dedup across paths
+  // would silently make an imported file unreadable.
+  const rawChunks = p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format);
   const fingerprinted = fingerprintChunks(rawChunks);
-  const { accepted, skipped } = dedupChunks(fingerprinted);
+  const { accepted, skipped } = p.parsed_chunks
+    ? { accepted: fingerprinted, skipped: 0 }
+    : dedupChunks(fingerprinted);
 
   const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
 
@@ -159,20 +165,7 @@ export async function createKnowledgeSource(
   const persisted = sourceType === "url" ? null : await persistKnowledgeFile(db, p);
 
   const created = await (db as Db).transaction(async (tx) => {
-    // Check tenant-level budget INSIDE transaction to prevent race conditions
-    // where concurrent inserts both pass the check.
-    const tenantUsage = await tx
-      .select({ total: sql<number>`coalesce(sum(${knowledgeSources.bytes_total}), 0)` })
-      .from(knowledgeSources)
-      .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), isNull(knowledgeSources.deleted_at)));
-    const currentBytes = Number(tenantUsage[0]?.total ?? 0);
-    if (currentBytes + totalBytes > KNOWLEDGE_TENANT_MAX_BYTES) {
-      throw new KnowledgeBudgetExceededError(
-        `Tenant knowledge budget exceeded (${currentBytes} + ${totalBytes} > ${KNOWLEDGE_TENANT_MAX_BYTES})`,
-        currentBytes + totalBytes,
-        KNOWLEDGE_TENANT_MAX_BYTES,
-      );
-    }
+    await assertTenantKnowledgeBudget(tx, p.tenant_id, totalBytes);
 
     const [row] = await tx
       .insert(knowledgeSources)
@@ -626,10 +619,14 @@ export async function ingestKnowledgeSource(
       format,
       byte_size: byteSize,
     },
-    fn: () => parseFileToChunks(content, p.upload.filename, format),
+    fn: () => p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format),
   });
   const fingerprinted = fingerprintChunks(rawChunks);
-  const { accepted, skipped } = dedupChunks(fingerprinted);
+  // Bundles skip dedup — see the create path: per-path entities must all
+  // stay readable via `read_knowledge {path}`.
+  const { accepted, skipped } = p.parsed_chunks
+    ? { accepted: fingerprinted, skipped: 0 }
+    : dedupChunks(fingerprinted);
 
   const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
   const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
@@ -658,6 +655,11 @@ export async function ingestKnowledgeSource(
   }
 
   await (db as Db).transaction(async (tx) => {
+    // Same tenant-budget guard as the create path — a re-ingest that grows
+    // a source (nightly bundle re-import) must not silently sail past the
+    // cap. Counts everything except the source being replaced.
+    await assertTenantKnowledgeBudget(tx, p.tenant_id, totalBytes, p.knowledge_source_id);
+
     // Delete old chunks
     await tx
       .delete(knowledgeChunks)
@@ -719,6 +721,7 @@ export async function ingestKnowledgeSource(
         resource_id: p.knowledge_source_id,
         result: "success",
         metadata: {
+          ...(sourceRow ? { slug: sourceRow.slug } : {}),
           chunk_count: accepted.length,
           skipped_count: skipped,
           bytes_total: totalBytes,

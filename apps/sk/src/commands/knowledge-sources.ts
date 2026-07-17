@@ -6,6 +6,7 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { collectBundleFiles, defaultBundleName } from "../lib/bundle-import.ts";
 import { sanitizePathInput } from "../lib/path-input.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { KnowledgeSourceIntent, KnowledgeSourceSummary, PlanStep } from "../render/types.ts";
@@ -212,6 +213,67 @@ const createCommand = defineCommand({
   },
 });
 
+const importCommand = defineCommand({
+  meta: {
+    name: "import",
+    description:
+      "Import a directory of markdown files as one knowledge source (upsert by slug; OKF-compatible frontmatter is read tolerantly)",
+  },
+  args: {
+    dir: { type: "positional", required: true, description: "Directory to import" },
+    name: { type: "string", description: "Source name (defaults to root index.md H1 or dirname)" },
+    slug: { type: "string", description: "Stable slug (defaults to slugified name)" },
+    description: { type: "string", description: "Source description" },
+    tags: { type: "string", description: "Comma-separated extra tags (frontmatter tags merge in)" },
+    scope: { type: "string", description: "Scope: global | workflow" },
+    "workflow-id": { type: "string", description: "Workflow id (required when scope=workflow)" },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    const jsonMode = Boolean(args.json);
+    try {
+      const dir = sanitizePathInput(args.dir);
+      const bundle = collectBundleFiles(dir);
+      const name = args.name ?? defaultBundleName(dir, bundle.files);
+      const result = await client.importKnowledgeBundle({
+        name,
+        ...(args.slug ? { slug: args.slug } : {}),
+        ...(args.description ? { description: args.description } : {}),
+        ...(args.tags
+          ? {
+              tags: args.tags
+                .split(",")
+                .map((t) => t.trim())
+                .filter((t) => t.length > 0),
+            }
+          : {}),
+        ...(args.scope ? { scope: args.scope } : {}),
+        ...(args["workflow-id"] ? { workflow_id: args["workflow-id"] } : {}),
+        files: bundle.files,
+      });
+      if (jsonMode) {
+        printJson(result);
+        return;
+      }
+      const outcome = String(result.outcome ?? "unknown");
+      const ks = (result.knowledge_source ?? {}) as Record<string, unknown>;
+      process.stdout.write(
+        `${pc.green(outcome)}: ${String(ks.name ?? name)} (${String(ks.slug ?? "")}) — ` +
+          `${bundle.files.length} files, ${String(result.ingested_count ?? 0)} chunks ingested, ` +
+          `${String(result.skipped_count ?? 0)} skipped` +
+          (bundle.skipped_non_markdown > 0
+            ? `, ${bundle.skipped_non_markdown} non-markdown files left out`
+            : "") +
+          "\n",
+      );
+    } catch (err) {
+      reportCommandError(err, { json: jsonMode });
+    }
+  },
+});
+
 const patchCommand = defineCommand({
   meta: { name: "patch", description: "Update a knowledge source" },
   args: {
@@ -293,6 +355,7 @@ export const knowledgeSourcesCommand = defineCommand({
     get: getCommand,
     search: searchCommand,
     create: createCommand,
+    import: importCommand,
     patch: patchCommand,
     analyze: analyzeCommand,
     delete: deleteCommand,

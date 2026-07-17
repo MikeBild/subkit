@@ -29,6 +29,7 @@ import {
 } from "../db/schema/index.ts";
 import { listExecutions } from "../execution/list.ts";
 import * as identitySvc from "../identity/service.ts";
+import { listKnowledgeChunks } from "../knowledge/bundle-service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
 import type { CreateKnowledgeSourceInput, UpdateKnowledgeSourceInput } from "../knowledge/types.ts";
 import {
@@ -267,6 +268,17 @@ export class EngineClient {
           ...(opts?.workflow_id ? { workflow_id: opts.workflow_id } : {}),
           ...(opts?.tags ? { tags: opts.tags } : {}),
           ...(opts?.limit ? { limit: opts.limit } : {}),
+        },
+        this.db,
+      ),
+    chunks: (id: string, opts?: { path?: string; limit?: number; offset?: number }) =>
+      listKnowledgeChunks(
+        {
+          tenant_id: this.tenant_id,
+          knowledge_source_id: id,
+          ...(opts?.path !== undefined ? { path: opts.path } : {}),
+          ...(opts?.limit !== undefined ? { limit: opts.limit } : {}),
+          ...(opts?.offset !== undefined ? { offset: opts.offset } : {}),
         },
         this.db,
       ),

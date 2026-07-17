@@ -45,6 +45,7 @@ import { dispatchAuthRedirectSlash } from "./handlers/auth-redirects.ts";
 import { dispatchAuthoringDraftSlash } from "./handlers/authoring-drafts.ts";
 import { dispatchChatSpaceSlash } from "./handlers/chat-spaces.ts";
 import { dispatchInspectSlash } from "./handlers/inspect.ts";
+import { dispatchKnowledgeSlash } from "./handlers/knowledge.ts";
 import { dispatchOnboardingSlash } from "./handlers/onboarding.ts";
 import { dispatchSessionSlash } from "./handlers/session-lifecycle.ts";
 
@@ -505,9 +506,10 @@ export async function handleSlash(
       return panify(ctx, "setup", formatSetupLines(setup), formatSetupSummary(setup));
     }
     case "install-space":
-      // Pending-space list/install flow lives in handlers/chat-spaces.ts
-      // to keep this file under the size cap.
+      // Pending-space list/install flow lives in handlers/chat-spaces.ts.
       return (await dispatchChatSpaceSlash(rawArgs, ctx)) ?? null;
+    case "knowledge":
+      return (await dispatchKnowledgeSlash(rawArgs, ctx)) ?? null;
     // The `/onboard` wizard wiring (template catalog fetch + probe /
     // save callbacks) lives in handlers/onboarding.ts. The case labels
     // stay here so the dispatcher contract test keeps seeing one
@@ -973,7 +975,6 @@ export async function handleSlash(
       return lines.join("\n");
     }
     // /login, /logout, /tenant moved to handlers/auth-redirects.ts
-    // /knowledge moved to handlers/inspect.ts
     default: {
       // Per-category dispatchers extracted into
       // `apps/sk/src/repl/slash/handlers/`. The main switch above

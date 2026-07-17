@@ -141,6 +141,13 @@
       "when": 1784030157010,
       "tag": "0019_cloudy_jazinda",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784202105482,
+      "tag": "0020_mighty_magdalene",
+      "breakpoints": true
     }
   ]
 }

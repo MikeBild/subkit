@@ -53,7 +53,7 @@ so this column is the UX gate, not the security boundary.
 | `/context` | — | `conversation:read` | Inspect the conversation context currently in scope |
 | `/files` | — | `file:read` | Browse files linked to this conversation and insert an @file mention |
 | `/init` | — | `conversation:write` | Generate a starter SK.md |
-| `/knowledge` | — | `knowledge:read` | List knowledge sources in scope |
+| `/knowledge` | — | `knowledge:read` | List knowledge sources, or import a markdown directory — /knowledge import <dir> [name] |
 | `/learnings` | — | `skill:read` | Review proposed session learnings (approve or reject each in chat) |
 | `/memory` | — | — | Open SK.md in $EDITOR |
 | `/mention` | — | — | Open the inline @-mention fuzzy picker (file / connector / workflow) |
