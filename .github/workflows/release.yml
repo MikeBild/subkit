@@ -383,9 +383,13 @@ jobs:
           # Write to a temp file then move so the pipeline never reads and writes
           # SHA256SUMS at once (atomic; silences shellcheck SC2094).
           find . -type f ! -name SHA256SUMS | sort | while read -r f; do
-            sha256sum "$f" | sed 's|  \./[^/]*/||'
+            digest=$(sha256sum "$f" | cut -d ' ' -f 1)
+            printf '%s  %s\n' "$digest" "$(basename "$f")"
           done > SHA256SUMS.tmp
           mv SHA256SUMS.tmp SHA256SUMS
+          expected=$(find . -type f \( -name 'sk_*' -o -name 'engine_*' \) | wc -l | tr -d ' ')
+          actual=$(grep -Ec '^[0-9a-f]{64}  (sk|engine)_' SHA256SUMS || true)
+          test "$actual" -eq "$expected"
           cat SHA256SUMS
 
       # Sign the SHA256SUMS file with the project's
@@ -512,4 +516,3 @@ jobs:
             ghcr.io/mikebild/subkit:latest
             docker.io/mikebild/subkit:${{ steps.meta.outputs.version }}
             docker.io/mikebild/subkit:latest
-
