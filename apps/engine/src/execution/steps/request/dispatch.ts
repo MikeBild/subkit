@@ -293,6 +293,10 @@ interface DoOnePageParams {
   /** Names the connector in failure hints ("Connector 'jira' returned 410…"). */
   connector_slug?: string | null;
   retry_policy: RetryPolicy;
+  /** Explicit workflow contract statuses. Non-2xx responses listed here are
+   *  returned to the step instead of being converted into RequestError before
+   *  the request-level expected_statuses gate can inspect them. */
+  accepted_statuses?: ReadonlySet<number>;
   /** When set on a non-idempotent method, an `Idempotency-Key` header is
    *  injected per attempt as `${base}:${attempt}` so each retry is a fresh
    *  key. The latest emitted key is returned via `last_idempotency_key`. */
@@ -420,6 +424,9 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         p.multipartBody,
         p.capture_binary,
       );
+      if (res.status >= 400 && p.accepted_statuses?.has(res.status)) {
+        return res;
+      }
       if (res.status >= 200 && res.status < 400) {
         // A 2xx/3xx can still be an *unauthenticated* response when the
         // upstream serves auth failures as 200 (Atlassian Seraph emits
@@ -1743,6 +1750,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           connector_id: p.step.connector_id ?? null,
           connector_slug: activeConnector?.slug ?? null,
           retry_policy,
+          ...(effectiveExpectedStatuses
+            ? { accepted_statuses: new Set(effectiveExpectedStatuses) }
+            : {}),
           last_idempotency_key: lastIdempotencyKey,
           tenant_id: p.ctx.tenant_id,
           capture_binary: true,
@@ -2063,6 +2073,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           connector_id: p.step.connector_id ?? null,
           connector_slug: activeConnector?.slug ?? null,
           retry_policy,
+          ...(effectiveExpectedStatuses
+            ? { accepted_statuses: new Set(effectiveExpectedStatuses) }
+            : {}),
           last_idempotency_key: lastIdempotencyKey,
           tenant_id: p.ctx.tenant_id,
           ...(idempotencyBase ? { idempotency_key_base: idempotencyBase } : {}),
