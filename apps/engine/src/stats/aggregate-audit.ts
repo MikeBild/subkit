@@ -5,8 +5,9 @@
 //
 // Outcome reads `audit_log.result` — the column with the CHECK
 // constraint IN ('success','denied','error') — NOT `metadata->>'outcome'`.
-// Latency reads `metadata->>'latency_ms'`. The fine-grained status class
-// reads `metadata->>'status_code'`:
+// Latency reads canonical `metadata->>'latency_ms'` and accepts the legacy
+// egress alias `duration_ms`. The fine-grained status class reads canonical
+// `status_code` and accepts the legacy alias `status`:
 //   4xx_auth          = 401, 403
 //   4xx_rate_limited  = 429
 //   4xx_other         = remaining 400-499
@@ -31,7 +32,8 @@ export type StatusClass =
   | "4xx_auth"
   | "4xx_rate_limited"
   | "5xx"
-  | "network_error";
+  | "network_error"
+  | "no_status";
 
 export type AuditGroupDim =
   | "connector_id"
@@ -105,13 +107,29 @@ export interface AuditStatsResult {
 
 const MAX_ENDPOINT_TEMPLATES = 200;
 
-const LATENCY = sql`((metadata->>'latency_ms')::float8)`;
-const STATUS_CODE = sql`nullif(metadata->>'status_code', '')::int`;
+const LATENCY = sql`coalesce(
+  nullif(metadata->>'latency_ms', '')::float8,
+  nullif(metadata->>'duration_ms', '')::float8
+)`;
+const HAS_LATENCY = sql`(metadata ? 'latency_ms' or metadata ? 'duration_ms')`;
+const STATUS_CODE = sql`coalesce(
+  nullif(metadata->>'status_code', '')::int,
+  nullif(metadata->>'status', '')::int
+)`;
 
 /** Normalised endpoint path template: numeric + UUID segments → `:id`. */
 const ENDPOINT_TEMPLATE = sql`
   regexp_replace(
-    regexp_replace(coalesce(metadata->>'path', ''), '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', ':id', 'g'),
+    regexp_replace(
+      split_part(
+        regexp_replace(coalesce(metadata->>'path', metadata->>'url', ''), '^https?://[^/]+', ''),
+        '?',
+        1
+      ),
+      '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}',
+      ':id',
+      'g'
+    ),
     '/[0-9]+', '/:id', 'g'
   )
 `;
@@ -119,27 +137,27 @@ const ENDPOINT_TEMPLATE = sql`
 /** SQL `CASE` mapping a row to its fine-grained status class. */
 const STATUS_CLASS_CASE = sql`
   case
-    when (metadata->>'status_code') is null and result = 'error' then 'network_error'
+    when ${STATUS_CODE} is null and result = 'error' then 'network_error'
     when ${STATUS_CODE} between 200 and 299 then '2xx'
     when ${STATUS_CODE} between 300 and 399 then '3xx'
     when ${STATUS_CODE} in (401, 403) then '4xx_auth'
     when ${STATUS_CODE} = 429 then '4xx_rate_limited'
     when ${STATUS_CODE} between 400 and 499 then '4xx_other'
     when ${STATUS_CODE} between 500 and 599 then '5xx'
-    else 'network_error'
+    else 'no_status'
   end
 `;
 
 function dimColumn(dim: AuditGroupDim): SQL {
   switch (dim) {
     case "connector_id":
-      return sql`(metadata->>'connector_id')`;
+      return sql`coalesce(metadata->>'connector_id', resource_id::text)`;
     case "connector_slug":
       return sql`(metadata->>'connector_slug')`;
     case "driver":
       return sql`(metadata->>'driver')`;
     case "method":
-      return sql`(metadata->>'method')`;
+      return sql`coalesce(metadata->>'method', metadata->>'operation')`;
     case "outcome":
       return sql`result`;
     case "status_class":
@@ -153,12 +171,12 @@ function dimColumn(dim: AuditGroupDim): SQL {
 
 function latencySelect(): SQL {
   return sql`
-    coalesce(sum(${LATENCY}) filter (where metadata ? 'latency_ms'), 0)::float8 as lat_total,
-    coalesce(avg(${LATENCY}) filter (where metadata ? 'latency_ms'), 0)::float8 as lat_avg,
-    coalesce(percentile_cont(0.5) within group (order by ${LATENCY}) filter (where metadata ? 'latency_ms'), 0)::float8 as lat_p50,
-    coalesce(percentile_cont(0.95) within group (order by ${LATENCY}) filter (where metadata ? 'latency_ms'), 0)::float8 as lat_p95,
-    coalesce(percentile_cont(0.99) within group (order by ${LATENCY}) filter (where metadata ? 'latency_ms'), 0)::float8 as lat_p99,
-    coalesce(max(${LATENCY}) filter (where metadata ? 'latency_ms'), 0)::float8 as lat_max
+    coalesce(sum(${LATENCY}) filter (where ${HAS_LATENCY}), 0)::float8 as lat_total,
+    coalesce(avg(${LATENCY}) filter (where ${HAS_LATENCY}), 0)::float8 as lat_avg,
+    coalesce(percentile_cont(0.5) within group (order by ${LATENCY}) filter (where ${HAS_LATENCY}), 0)::float8 as lat_p50,
+    coalesce(percentile_cont(0.95) within group (order by ${LATENCY}) filter (where ${HAS_LATENCY}), 0)::float8 as lat_p95,
+    coalesce(percentile_cont(0.99) within group (order by ${LATENCY}) filter (where ${HAS_LATENCY}), 0)::float8 as lat_p99,
+    coalesce(max(${LATENCY}) filter (where ${HAS_LATENCY}), 0)::float8 as lat_max
   `;
 }
 
