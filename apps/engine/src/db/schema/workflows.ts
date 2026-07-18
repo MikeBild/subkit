@@ -11,7 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { tenantId, timestamps } from "./_common.ts";
+import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
 export const autohealPolicyEnum = pgEnum("autoheal_policy", [
@@ -148,6 +148,9 @@ export const workflowsSchedules = pgTable(
     cron: text("cron").notNull(),
     timezone: text("timezone").default("UTC").notNull(),
     paused: boolean("paused").default(false).notNull(),
+    // Unattended automation is production by default. Dev remains explicit
+    // for rapid `every:N` authoring loops and test schedules.
+    execution_mode: executionModeEnum("execution_mode").default("prod").notNull(),
     input: jsonb("input"),
     // Reconciler dedup: timestamp of the most recent enqueue triggered
     // for this schedule. The reconciler refuses to enqueue again until

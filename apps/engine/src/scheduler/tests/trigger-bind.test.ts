@@ -49,6 +49,7 @@ describe("scheduler trigger bind/unbind helpers", () => {
     expect(first.status).toBe("created");
     expect(first.row.cron).toBe("0 9 * * *");
     expect(first.row.timezone).toBe("Europe/Berlin");
+    expect(first.row.execution_mode).toBe("prod");
 
     const second = await bindFromWorkflow(ctx.engine.testDb.db, {
       tenant_id: ctx.engine.tenantId,
@@ -100,6 +101,16 @@ describe("scheduler trigger bind/unbind helpers", () => {
     });
     expect(updated.status).toBe("updated");
     expect(updated.row.timezone).toBe("America/New_York");
+  });
+
+  test("bindFromWorkflow preserves an explicit dev execution mode", async () => {
+    const bound = await bindFromWorkflow(ctx.engine.testDb.db, {
+      tenant_id: ctx.engine.tenantId,
+      workflow_id: workflowId,
+      trigger: { ...triggerDaily, execution_mode: "dev" },
+      actor_id: null,
+    });
+    expect(bound.row.execution_mode).toBe("dev");
   });
 
   test("bindFromWorkflow emits SCHEDULE_TRIGGER_BOUND audit row", async () => {

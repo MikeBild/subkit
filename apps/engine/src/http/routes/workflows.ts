@@ -288,6 +288,7 @@ const ScheduleEntry = z
     workflow_name: z.string().nullable(),
     cron: z.string(),
     timezone: z.string(),
+    execution_mode: z.enum(["dev", "prod"]),
     paused: z.boolean(),
     created_at: z.string(),
   })
@@ -327,6 +328,9 @@ const ScheduleCreateBody = z
     /** 5-field cron or the `every:<seconds>` dev shorthand. */
     cron: z.string().min(1),
     timezone: z.string().optional(),
+    /** Connector environment for unattended runs; production is the safe
+     *  operational default for a durable schedule. */
+    execution_mode: z.enum(["dev", "prod"]).optional(),
     paused: z.boolean().optional(),
     /** Input payload passed to every scheduled run. */
     input: z.unknown().optional(),
@@ -337,6 +341,7 @@ const ScheduleUpdateBody = z
   .object({
     cron: z.string().min(1).optional(),
     timezone: z.string().optional(),
+    execution_mode: z.enum(["dev", "prod"]).optional(),
     paused: z.boolean().optional(),
     input: z.unknown().optional(),
   })
@@ -572,6 +577,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
           workflow_name: nameById.get(r.workflow_id)?.name ?? null,
           cron: r.cron,
           timezone: r.timezone,
+          execution_mode: r.execution_mode,
           paused: r.paused,
           created_at: r.created_at.toISOString(),
         })),
@@ -597,6 +603,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       workflow_name: wf?.name ?? null,
       cron: row.cron,
       timezone: row.timezone,
+      execution_mode: row.execution_mode,
       paused: row.paused,
       created_at: row.created_at.toISOString(),
     };
@@ -622,6 +629,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
         workflow_id: body.workflow_id,
         cron: body.cron,
         ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+        ...(body.execution_mode !== undefined ? { execution_mode: body.execution_mode } : {}),
         ...(body.paused !== undefined ? { paused: body.paused } : {}),
         ...(body.input !== undefined ? { input: body.input } : {}),
       });
@@ -642,6 +650,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
           workflow_id: row.workflow_id,
           cron: row.cron,
           timezone: row.timezone,
+          execution_mode: row.execution_mode,
           paused: row.paused,
         },
       },
@@ -660,6 +669,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       row = await updateSchedule(db, principal.tenant_id, id, {
         ...(body.cron !== undefined ? { cron: body.cron } : {}),
         ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+        ...(body.execution_mode !== undefined ? { execution_mode: body.execution_mode } : {}),
         ...(body.paused !== undefined ? { paused: body.paused } : {}),
         ...(body.input !== undefined ? { input: body.input } : {}),
       });
@@ -682,6 +692,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
           patch: {
             ...(body.cron !== undefined ? { cron: body.cron } : {}),
             ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+            ...(body.execution_mode !== undefined ? { execution_mode: body.execution_mode } : {}),
             ...(body.paused !== undefined ? { paused: body.paused } : {}),
             ...(body.input !== undefined ? { input: true } : {}),
           },
