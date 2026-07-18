@@ -127,6 +127,36 @@ describe("request step", () => {
     expect(Array.isArray(digest?.header_keys)).toBe(true);
   });
 
+  test("returns an explicitly expected 409 response to downstream steps", async () => {
+    mock.setHandler((_, res) =>
+      jsonResponse(res, 409, { code: "already_ingested", source_id: "source-1" }),
+    );
+
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "expected-conflict",
+      steps: [
+        {
+          kind: "request",
+          id: "ingest",
+          method: "POST",
+          url: `${mock.baseUrl}/ingest`,
+          expected_statuses: [202, 409],
+          max_retries: 0,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.steps[0]?.status).toBe("succeeded");
+    expect(result.output).toEqual({ code: "already_ingested", source_id: "source-1" });
+  });
+
   test("setup failure (placeholder_unresolved) records request_meta.unresolved_placeholders", async () => {
     // The other failure mode: the step never reached the wire because
     // a placeholder couldn't be resolved. Even though no HTTP call was
