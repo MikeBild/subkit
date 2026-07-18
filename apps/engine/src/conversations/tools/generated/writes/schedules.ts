@@ -32,6 +32,7 @@ function scheduleView(row: ScheduleRow): Record<string, unknown> {
     workflow_id: row.workflow_id,
     cron: row.cron,
     timezone: row.timezone,
+    execution_mode: row.execution_mode,
     paused: row.paused,
     input: row.input,
     created_at: row.created_at,
@@ -55,6 +56,7 @@ const CreateInput = z
     workflow_id: z.string().uuid(),
     cron: CronString,
     timezone: z.string().optional(),
+    execution_mode: z.enum(["dev", "prod"]).optional(),
     input: z.unknown().optional(),
     paused: z.boolean().optional(),
   })
@@ -74,6 +76,7 @@ export const createScheduleTool: ConversationTool = {
         workflow_id: args.workflow_id,
         cron: args.cron,
         ...(args.timezone !== undefined ? { timezone: args.timezone } : {}),
+        ...(args.execution_mode !== undefined ? { execution_mode: args.execution_mode } : {}),
         ...(args.input !== undefined ? { input: args.input } : {}),
         ...(args.paused !== undefined ? { paused: args.paused } : {}),
       });
@@ -86,6 +89,7 @@ export const createScheduleTool: ConversationTool = {
           workflow_id: row.workflow_id,
           cron: row.cron,
           timezone: row.timezone,
+          execution_mode: row.execution_mode,
           paused: row.paused,
         },
       });
@@ -136,6 +140,7 @@ const UpdateInput = z
     id: z.string().uuid(),
     cron: CronString.optional(),
     timezone: z.string().optional(),
+    execution_mode: z.enum(["dev", "prod"]).optional(),
     paused: z.boolean().optional(),
     input: z.unknown().optional(),
   })
@@ -153,6 +158,7 @@ export const updateScheduleTool: ConversationTool = {
       const patch: Record<string, unknown> = {};
       if (args.cron !== undefined) patch.cron = args.cron;
       if (args.timezone !== undefined) patch.timezone = args.timezone;
+      if (args.execution_mode !== undefined) patch.execution_mode = args.execution_mode;
       if (args.paused !== undefined) patch.paused = args.paused;
       if (args.input !== undefined) patch.input = args.input;
       const row = await updateSchedule(ctx.db, ctx.tenant_id, args.id, patch);

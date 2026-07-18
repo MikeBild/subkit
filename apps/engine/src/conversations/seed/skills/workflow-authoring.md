@@ -284,7 +284,8 @@ into ONE nested query — prefer it over N+1 REST descents when available
 ## Recurring cadence is part of the workflow definition
 
 If the user's goal phrases a cadence — examples below — the workflow
-**MUST** carry a `trigger: { kind: "schedule", cron, tz }` field. The
+**MUST** carry a `trigger: { kind: "schedule", cron, tz, execution_mode }` field. The
+execution mode defaults to `prod`; use `dev` explicitly only for an authoring loop. The
 schedule binding is part of the workflow definition, not a separate
 call. `author_workflow` generates the trigger from the goal phrasing (and
 `edit_workflow_patch` can set or change it later); on commit `applyTriggerBindings`

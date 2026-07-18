@@ -3444,6 +3444,13 @@
             "minLength": 1,
             "default": "UTC"
           },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
           "business_days_only": {
             "type": "boolean"
           },
@@ -3502,6 +3509,13 @@
           "timezone": {
             "type": "string"
           },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
           "paused": {
             "type": "boolean"
           },
@@ -3516,6 +3530,7 @@
           "workflow_name",
           "cron",
           "timezone",
+          "execution_mode",
           "paused",
           "created_at"
         ]
@@ -3533,6 +3548,13 @@
           },
           "timezone": {
             "type": "string"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
           },
           "paused": {
             "type": "boolean"
@@ -3555,6 +3577,13 @@
           },
           "timezone": {
             "type": "string"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
           },
           "paused": {
             "type": "boolean"

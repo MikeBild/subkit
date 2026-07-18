@@ -33,6 +33,7 @@ export interface ScheduleRow {
   cron: string;
   timezone: string;
   paused: boolean;
+  execution_mode: "dev" | "prod";
   input: unknown;
   created_at: Date;
   updated_at: Date;
@@ -43,6 +44,7 @@ export interface CreateScheduleInput {
   workflow_id: string;
   cron: string;
   timezone?: string;
+  execution_mode?: "dev" | "prod";
   input?: unknown;
   paused?: boolean;
 }
@@ -90,6 +92,7 @@ export async function createSchedule(db: Db, input: CreateScheduleInput): Promis
         cron: input.cron,
         timezone: input.timezone ?? "UTC",
         paused: input.paused ?? false,
+        execution_mode: input.execution_mode ?? "prod",
         input: (input.input ?? null) as never,
         updated_at: new Date(),
       })
@@ -105,6 +108,7 @@ export async function createSchedule(db: Db, input: CreateScheduleInput): Promis
       cron: input.cron,
       timezone: input.timezone ?? "UTC",
       paused: input.paused ?? false,
+      execution_mode: input.execution_mode ?? "prod",
       input: (input.input ?? null) as never,
     })
     .returning();
@@ -146,6 +150,7 @@ export async function getSchedule(
 export interface UpdateScheduleInput {
   cron?: string;
   timezone?: string;
+  execution_mode?: "dev" | "prod";
   paused?: boolean;
   input?: unknown;
 }
@@ -168,6 +173,7 @@ export async function updateSchedule(
   const set: Record<string, unknown> = { updated_at: new Date() };
   if (patch.cron !== undefined) set.cron = patch.cron;
   if (patch.timezone !== undefined) set.timezone = patch.timezone;
+  if (patch.execution_mode !== undefined) set.execution_mode = patch.execution_mode;
   if (patch.paused !== undefined) set.paused = patch.paused;
   if (patch.input !== undefined) set.input = patch.input;
   const rows = await db
@@ -231,6 +237,7 @@ export async function bindFromWorkflow(
     skip_dates: input.trigger.skip_dates ?? [],
   };
   const tz = input.trigger.tz;
+  const executionMode = input.trigger.execution_mode ?? "prod";
 
   const existingRows = await db
     .select()
@@ -247,8 +254,9 @@ export async function bindFromWorkflow(
   if (prior) {
     const sameCron = prior.cron === input.trigger.cron;
     const sameTz = prior.timezone === tz;
+    const sameExecutionMode = prior.execution_mode === executionMode;
     const sameInput = canonicalJson(prior.input ?? {}) === canonicalJson(inputPayload);
-    if (sameCron && sameTz && sameInput) {
+    if (sameCron && sameTz && sameExecutionMode && sameInput) {
       return { status: "noop", row: prior };
     }
     const updated = await db
@@ -256,6 +264,7 @@ export async function bindFromWorkflow(
       .set({
         cron: input.trigger.cron,
         timezone: tz,
+        execution_mode: executionMode,
         input: inputPayload as never,
         updated_at: new Date(),
       })
@@ -275,6 +284,7 @@ export async function bindFromWorkflow(
           workflow_id: input.workflow_id,
           cron: input.trigger.cron,
           tz,
+          execution_mode: executionMode,
           business_days_only: input.trigger.business_days_only ?? false,
           skip_date_count: (input.trigger.skip_dates ?? []).length,
           kind: "update",
@@ -293,6 +303,7 @@ export async function bindFromWorkflow(
       cron: input.trigger.cron,
       timezone: tz,
       paused: false,
+      execution_mode: executionMode,
       input: inputPayload as never,
     })
     .returning();
@@ -310,6 +321,7 @@ export async function bindFromWorkflow(
         workflow_id: input.workflow_id,
         cron: input.trigger.cron,
         tz,
+        execution_mode: executionMode,
         business_days_only: input.trigger.business_days_only ?? false,
         skip_date_count: (input.trigger.skip_dates ?? []).length,
         kind: "create",

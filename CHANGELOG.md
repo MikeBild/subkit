@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.2] – 2026-07-18
+
+### Added
+- Workflow schedules now persist an explicit `execution_mode` and expose it
+  consistently through workflow triggers, REST/OpenAPI, CLI, conversation
+  tools, audits and documentation. Durable automation defaults to `prod`;
+  short authoring loops can opt into `dev`.
+
+### Fixed
+- Scheduler-created executions now carry their schedule's execution mode into
+  the queue worker. Production schedules therefore resolve production
+  connectors directly instead of recording `execution_mode=dev` and emitting
+  a misleading environment-fallback warning while still reaching PROD.
+
 ## [1.20.1] – 2026-07-18
 
 ### Fixed

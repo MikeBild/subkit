@@ -7,7 +7,10 @@
 // - `tenantId` helper: non-null uuid column. FK set at the callsite where
 //   the import order allows it.
 
-import { customType, timestamp, uuid } from "drizzle-orm/pg-core";
+import { customType, pgEnum, timestamp, uuid } from "drizzle-orm/pg-core";
+
+/** Shared by executions and unattended workflow schedules. */
+export const executionModeEnum = pgEnum("execution_mode", ["dev", "prod"]);
 
 export const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
   dataType() {

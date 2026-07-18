@@ -50,19 +50,30 @@ describe("schedules HTTP write surface", () => {
       body: JSON.stringify({ workflow_id: wf.id, cron: "0 8 * * *", timezone: "Europe/Berlin" }),
     });
     expect(created.status).toBe(201);
-    const row = (await created.json()) as { id: string; cron: string; workflow_slug: string };
+    const row = (await created.json()) as {
+      id: string;
+      cron: string;
+      workflow_slug: string;
+      execution_mode: string;
+    };
     expect(row.cron).toBe("0 8 * * *");
     expect(row.workflow_slug).toContain("sched-upsert");
+    expect(row.execution_mode).toBe("prod");
 
     const again = await fetch(`${ctx.baseUrl}/v1/schedules`, {
       method: "POST",
       headers: headers(),
-      body: JSON.stringify({ workflow_id: wf.id, cron: "30 9 * * *" }),
+      body: JSON.stringify({
+        workflow_id: wf.id,
+        cron: "30 9 * * *",
+        execution_mode: "dev",
+      }),
     });
     expect(again.status).toBe(201);
-    const row2 = (await again.json()) as { id: string; cron: string };
+    const row2 = (await again.json()) as { id: string; cron: string; execution_mode: string };
     expect(row2.id).toBe(row.id); // upsert, not a second fire time
     expect(row2.cron).toBe("30 9 * * *");
+    expect(row2.execution_mode).toBe("dev");
 
     const rows = await ctx.db
       .select()
@@ -103,11 +114,16 @@ describe("schedules HTTP write surface", () => {
     const updated = await fetch(`${ctx.baseUrl}/v1/schedules/${row.id}`, {
       method: "PUT",
       headers: headers(),
-      body: JSON.stringify({ cron: "0 20 * * *", paused: true }),
+      body: JSON.stringify({ cron: "0 20 * * *", execution_mode: "dev", paused: true }),
     });
     expect(updated.status).toBe(200);
-    const view = (await updated.json()) as { cron: string; paused: boolean };
+    const view = (await updated.json()) as {
+      cron: string;
+      execution_mode: string;
+      paused: boolean;
+    };
     expect(view.cron).toBe("0 20 * * *");
+    expect(view.execution_mode).toBe("dev");
     expect(view.paused).toBe(true);
 
     const missing = await fetch(

@@ -89,6 +89,29 @@ describe("WorkflowDef.trigger", () => {
     });
   });
 
+  test("schedule trigger accepts an explicit connector execution mode", () => {
+    const parsed = WorkflowDefSchema.parse({
+      ...baseDef,
+      trigger: {
+        kind: "schedule",
+        cron: "0 * * * *",
+        tz: "UTC",
+        execution_mode: "prod",
+      },
+    });
+    expect(parsed.trigger).toMatchObject({ execution_mode: "prod" });
+  });
+
+  test("schedule trigger rejects an unknown connector execution mode", () => {
+    expect(() =>
+      ScheduleTriggerSchema.parse({
+        kind: "schedule",
+        cron: "0 * * * *",
+        execution_mode: "staging",
+      }),
+    ).toThrow();
+  });
+
   test("rejects unknown trigger kind", () => {
     expect(() =>
       WorkflowDefSchema.parse({
