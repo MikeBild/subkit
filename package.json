@@ -100,7 +100,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.220.0",
     "@opentelemetry/sdk-node": "^0.220.0",
     "@opentelemetry/sdk-trace-node": "^2.9.0",
-    "@slack/web-api": "~7.18.0",
+    "@slack/web-api": "~8.0.0",
     "ai": "^7",
     "aws4": "^1.13.2",
     "boxen": "^8.0.1",
