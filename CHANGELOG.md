@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.1] – 2026-07-18
+
+### Fixed
+- Connector statistics now read both canonical audit metadata and the aliases
+  emitted by the shared egress wrapper. Successful HTTP and GraphQL calls are
+  classified by their real status instead of appearing as `network_error`;
+  connector, method, endpoint and latency grouping also works for existing
+  audit rows. Successful non-HTTP calls such as S3 use the explicit `no_status`
+  class. New rows carry the canonical fields and the legacy aliases during the
+  compatibility window.
+
 ## [1.20.0] – 2026-07-18
 
 ### Added

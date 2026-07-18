@@ -180,4 +180,86 @@ describe("aggregateAudit — endpoint-axis cardinality cap", () => {
     expect(result.totals.calls.total).toBe(0);
     expect(result.truncated_endpoints).toBeFalsy();
   });
+
+  test("aggregates legacy egress aliases without classifying successful calls as network errors", async () => {
+    const [legacyTenant] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "stats-agg-audit-legacy", display_name: "Stats Audit Legacy" })
+      .returning();
+    if (!legacyTenant) throw new Error("seed legacy tenant failed");
+    const connectorId = nextUuid();
+    await testDb.db.insert(auditLog).values({
+      id: nextUuid(),
+      ts: new Date(REF_MS - 30 * 60 * 1000),
+      tenant_id: legacyTenant.id,
+      actor_type: "system",
+      actor_id: null,
+      action: "connector.invoked",
+      resource_type: "connector",
+      resource_id: connectorId,
+      result: "success",
+      metadata: {
+        connector_slug: "legacy-egress",
+        driver: "http",
+        operation: "GET",
+        url: "https://api.example.com/v1/items/123e4567-e89b-12d3-a456-426614174000?limit=10",
+        status: 200,
+        duration_ms: 42,
+      },
+    });
+
+    const grouped = await aggregateAudit(testDb.db, {
+      tenantId: legacyTenant.id,
+      bucket: "hour",
+      from: FROM,
+      to: TO,
+      tz: "UTC",
+      actions: ["connector.invoked"],
+      groupBy: ["connector_id", "method"],
+    });
+    expect(grouped.groups[0]?.key).toEqual({ connector_id: connectorId, method: "GET" });
+    expect(grouped.totals.calls.by_status_class).toEqual({ "2xx": 1 });
+    expect(grouped.totals.latency_ms.total).toBe(42);
+
+    const endpoints = await aggregateAudit(testDb.db, {
+      tenantId: legacyTenant.id,
+      bucket: "hour",
+      from: FROM,
+      to: TO,
+      tz: "UTC",
+      actions: ["connector.invoked"],
+      groupBy: [],
+      includeEndpoint: true,
+    });
+    expect(endpoints.groups[0]?.key.endpoint_path_template).toBe("/v1/items/:id");
+
+    await testDb.db.insert(auditLog).values({
+      id: nextUuid(),
+      ts: new Date(REF_MS - 29 * 60 * 1000),
+      tenant_id: legacyTenant.id,
+      actor_type: "system",
+      actor_id: null,
+      action: "connector.invoked",
+      resource_type: "connector",
+      resource_id: nextUuid(),
+      result: "success",
+      metadata: {
+        connector_slug: "s3-egress",
+        driver: "s3",
+        operation: "PUT",
+        duration_ms: 7,
+      },
+    });
+    const withNonHttp = await aggregateAudit(testDb.db, {
+      tenantId: legacyTenant.id,
+      bucket: "hour",
+      from: FROM,
+      to: TO,
+      tz: "UTC",
+      actions: ["connector.invoked"],
+      groupBy: [],
+    });
+    expect(withNonHttp.totals.calls.by_status_class).toEqual({ "2xx": 1, no_status: 1 });
+    expect(withNonHttp.totals.latency_ms.total).toBe(49);
+  });
 });

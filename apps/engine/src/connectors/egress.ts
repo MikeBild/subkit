@@ -185,6 +185,7 @@ export async function withEgressAudit<T>(
   const start = Date.now();
   const url = input.url ?? null;
   const url_host = url ? safeHost(url) : null;
+  const path = url ? safePath(url) : null;
   const url_redacted = url ? scrubUrl(url) : null;
 
   const emitCredentialAccess = async (credential_id: string) => {
@@ -222,6 +223,7 @@ export async function withEgressAudit<T>(
     // `extract` reports that via `ok: false`; the audit outcome must
     // reflect it, not the bare "fn() did not throw".
     const logicalFailure = outcome.ok === false;
+    const latencyMs = Date.now() - start;
     await auditWriter({
       tenant_id: input.tenant_id,
       actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
@@ -232,14 +234,16 @@ export async function withEgressAudit<T>(
       result: logicalFailure ? "error" : "success",
       ...(logicalFailure ? { reason: outcome.reason ?? "connector returned a logical error" } : {}),
       metadata: {
+        connector_id: input.connector_id,
         connector_slug: input.connector_slug,
         driver: input.driver,
         source: input.source ?? "execution",
-        ...(input.operation ? { operation: input.operation } : {}),
+        ...(input.operation ? { method: input.operation, operation: input.operation } : {}),
+        ...(path ? { path } : {}),
         ...(url_host ? { url_host } : {}),
         ...(url_redacted ? { url: url_redacted } : {}),
         ...(outcome.status !== undefined && outcome.status !== null
-          ? { status: outcome.status }
+          ? { status_code: outcome.status, status: outcome.status }
           : {}),
         ...(outcome.bytes_in !== undefined && outcome.bytes_in !== null
           ? { bytes_in: outcome.bytes_in }
@@ -247,7 +251,8 @@ export async function withEgressAudit<T>(
         ...(outcome.created_resource_id
           ? { created_resource_id: outcome.created_resource_id }
           : {}),
-        duration_ms: Date.now() - start,
+        latency_ms: latencyMs,
+        duration_ms: latencyMs,
         ...(input.credential_id || lateCredentialId
           ? { credential_id: input.credential_id ?? lateCredentialId }
           : {}),
@@ -258,6 +263,7 @@ export async function withEgressAudit<T>(
     });
     return result;
   } catch (err) {
+    const latencyMs = Date.now() - start;
     await auditWriter({
       tenant_id: input.tenant_id,
       actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
@@ -268,13 +274,16 @@ export async function withEgressAudit<T>(
       result: "error",
       reason: err instanceof Error ? err.message : String(err),
       metadata: {
+        connector_id: input.connector_id,
         connector_slug: input.connector_slug,
         driver: input.driver,
         source: input.source ?? "execution",
-        ...(input.operation ? { operation: input.operation } : {}),
+        ...(input.operation ? { method: input.operation, operation: input.operation } : {}),
+        ...(path ? { path } : {}),
         ...(url_host ? { url_host } : {}),
         ...(url_redacted ? { url: url_redacted } : {}),
-        duration_ms: Date.now() - start,
+        latency_ms: latencyMs,
+        duration_ms: latencyMs,
         ...(input.credential_id ? { credential_id: input.credential_id } : {}),
         ...(input.execution_id ? { execution_id: input.execution_id } : {}),
         ...(input.workflow_id ? { workflow_id: input.workflow_id } : {}),
@@ -294,6 +303,14 @@ function readCredentialId(value: unknown): string | null {
 function safeHost(url: URL | string): string | null {
   try {
     return (typeof url === "string" ? new URL(url) : url).host;
+  } catch {
+    return null;
+  }
+}
+
+function safePath(url: URL | string): string | null {
+  try {
+    return (typeof url === "string" ? new URL(url) : url).pathname;
   } catch {
     return null;
   }
