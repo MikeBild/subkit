@@ -257,7 +257,7 @@ const connectorsCommand = defineCommand({
     outcome: { type: "string", description: "Filter by outcome (success,denied,error)" },
     "status-class": {
       type: "string",
-      description: "2xx,3xx,4xx_other,4xx_auth,4xx_rate_limited,5xx,network_error",
+      description: "2xx,3xx,4xx_other,4xx_auth,4xx_rate_limited,5xx,network_error,no_status",
     },
     "include-endpoint": { type: "boolean", description: "Add normalized endpoint-path axis" },
   },

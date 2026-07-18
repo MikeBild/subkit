@@ -101,6 +101,38 @@ describe("withEgressAudit", () => {
     expect(result).toEqual({ status: 200, body: "ok" });
   });
 
+  test("emits the canonical product-statistics metadata alongside legacy aliases", async () => {
+    const entries: Array<Record<string, unknown>> = [];
+    await withEgressAudit(
+      {
+        tenant_id: "tenant-x",
+        actor_id: "actor-y",
+        connector_id: "cn-1",
+        connector_slug: "cn-test",
+        driver: "http",
+        credential_id: null,
+        operation: "GET",
+        url: "https://api.example.com/v1/items/42?token=secret",
+      },
+      async () => ({ status: 204 }),
+      (result) => ({ status: result.status }),
+      async (entry) => {
+        entries.push(entry as Record<string, unknown>);
+      },
+    );
+
+    const invoked = entries.find((entry) => entry.action === "connector.invoked");
+    expect(invoked).toBeDefined();
+    const metadata = invoked?.metadata as Record<string, unknown>;
+    expect(metadata.connector_id).toBe("cn-1");
+    expect(metadata.method).toBe("GET");
+    expect(metadata.path).toBe("/v1/items/42");
+    expect(metadata.status_code).toBe(204);
+    expect(metadata.latency_ms).toBeNumber();
+    expect(metadata.status).toBe(204);
+    expect(metadata.duration_ms).toBeNumber();
+  });
+
   test("re-throws inner errors without swallowing", async () => {
     const boom = new Error("upstream 503");
     let caught: unknown = null;

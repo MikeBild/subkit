@@ -163,6 +163,14 @@ questions over time-bucketed history. It aggregates at read time from `execution
 | `GET /v1/stats/events` | `audit_log` (per `?class=`) | webhook / chat / schedule / self-healing / discovery / policy / external-write event volume |
 | `GET /v1/stats/llm` | `llm_usage` | token usage + cache-hit rate + latency by model / flow |
 
+Connector status classes use the upstream transport status when one exists.
+`network_error` means that a connector call failed before receiving such a
+status; a successful call without an HTTP-like status is classified as
+`no_status`, not as a network error.
+The aggregator accepts historical egress aliases while new audit rows carry
+the canonical `connector_id`, `method`, `path`, `status_code`, and `latency_ms`
+fields.
+
 **Bucket grammar.** `bucket` (`minute|hour|day|month|year`), required `from`, optional
 `to` (default now) and `tz` (default UTC). Hard window caps reject scans that would
 explode (`minute ≤ 24h`, `hour ≤ 31d`, `day ≤ 366d`, …) with
