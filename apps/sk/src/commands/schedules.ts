@@ -16,7 +16,7 @@ function makeClient(): EngineClient {
   return new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
 }
 
-const SCHEDULE_COLUMNS = ["workflow_slug", "cron", "timezone", "paused", "id"];
+const SCHEDULE_COLUMNS = ["workflow_slug", "cron", "timezone", "execution_mode", "paused", "id"];
 
 function emitSchedule(json: boolean, row: ScheduleEntry): void {
   emitOne(json, row as unknown as Record<string, unknown>);
@@ -58,17 +58,28 @@ const createCommand = defineCommand({
       required: true,
     },
     timezone: { type: "string", description: "IANA timezone (default UTC)" },
+    executionMode: {
+      type: "string",
+      description: "Connector environment: dev or prod (default prod)",
+      default: "prod",
+    },
     paused: { type: "boolean", description: "Create in paused state", default: false },
     input: { type: "string", description: "JSON input payload passed to every run" },
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
     try {
+      if (args.executionMode !== "dev" && args.executionMode !== "prod") {
+        throw new Error("--execution-mode must be dev or prod");
+      }
       const body: Parameters<EngineClient["createSchedule"]>[0] = {
         workflow_id: args.workflow,
         cron: args.cron,
       };
       if (args.timezone) body.timezone = args.timezone;
+      if (args.executionMode === "dev" || args.executionMode === "prod") {
+        body.execution_mode = args.executionMode;
+      }
       if (args.paused) body.paused = true;
       if (args.input) body.input = JSON.parse(args.input);
       const row = await makeClient().createSchedule(body);
@@ -80,19 +91,33 @@ const createCommand = defineCommand({
 });
 
 const updateCommand = defineCommand({
-  meta: { name: "update", description: "Update a schedule's cron, timezone, or input" },
+  meta: {
+    name: "update",
+    description: "Update a schedule's cron, timezone, environment, or input",
+  },
   args: {
     id: { type: "positional", description: "Schedule id", required: true },
     cron: { type: "string", description: "New cron expression" },
     timezone: { type: "string", description: "New IANA timezone" },
+    executionMode: { type: "string", description: "New connector environment: dev or prod" },
     input: { type: "string", description: "New JSON input payload" },
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
     try {
+      if (
+        args.executionMode !== undefined &&
+        args.executionMode !== "dev" &&
+        args.executionMode !== "prod"
+      ) {
+        throw new Error("--execution-mode must be dev or prod");
+      }
       const patch: Parameters<EngineClient["updateSchedule"]>[1] = {};
       if (args.cron) patch.cron = args.cron;
       if (args.timezone) patch.timezone = args.timezone;
+      if (args.executionMode === "dev" || args.executionMode === "prod") {
+        patch.execution_mode = args.executionMode;
+      }
       if (args.input) patch.input = JSON.parse(args.input);
       const row = await makeClient().updateSchedule(String(args.id), patch);
       emitSchedule(!!args.json, row);

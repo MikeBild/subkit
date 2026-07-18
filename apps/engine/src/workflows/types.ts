@@ -949,6 +949,9 @@ export const ScheduleTriggerSchema = z
      *  passes this to pg-boss so cron expressions land at the local
      *  wall-clock time the operator authored. */
     tz: z.string().min(1).default("UTC"),
+    /** Connector environment used by unattended runs. Scheduled automation
+     *  defaults to prod; authors must opt into dev explicitly. */
+    execution_mode: z.enum(["dev", "prod"]).optional(),
     /** When true the scheduler skips firings that fall on weekends.
      *  Holiday calendars are NOT inferred — declare them explicitly
      *  via `skip_dates`. */

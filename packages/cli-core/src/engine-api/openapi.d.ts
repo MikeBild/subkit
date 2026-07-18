@@ -13685,6 +13685,8 @@ export interface components {
             cron: string;
             /** @default UTC */
             tz: string;
+            /** @enum {string} */
+            execution_mode?: "dev" | "prod";
             business_days_only?: boolean;
             skip_dates?: string[];
         };
@@ -13699,6 +13701,8 @@ export interface components {
             workflow_name: string | null;
             cron: string;
             timezone: string;
+            /** @enum {string} */
+            execution_mode: "dev" | "prod";
             paused: boolean;
             created_at: string;
         };
@@ -13707,12 +13711,16 @@ export interface components {
             workflow_id: string;
             cron: string;
             timezone?: string;
+            /** @enum {string} */
+            execution_mode?: "dev" | "prod";
             paused?: boolean;
             input?: unknown;
         };
         ScheduleUpdateBody: {
             cron?: string;
             timezone?: string;
+            /** @enum {string} */
+            execution_mode?: "dev" | "prod";
             paused?: boolean;
             input?: unknown;
         };

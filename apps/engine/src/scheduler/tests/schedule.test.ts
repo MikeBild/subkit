@@ -68,6 +68,7 @@ describe("scheduler reconciler", () => {
       // allow-wall-clock: this test exercises real-time polling or freshness windows.
       const deadline = Date.now() + 5_000;
       let rowCount = 0;
+      let terminalExecutionMode: "dev" | "prod" | undefined;
       // allow-wall-clock: this test exercises real-time polling or freshness windows.
       while (Date.now() < deadline) {
         const rows = await ctx.engine.testDb.db
@@ -78,10 +79,14 @@ describe("scheduler reconciler", () => {
         const terminal = rows.find((r) =>
           ["succeeded", "failed", "aborted", "timed_out"].includes(r.status),
         );
-        if (terminal) break;
+        if (terminal) {
+          terminalExecutionMode = terminal.execution_mode;
+          break;
+        }
         await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: cron-tick reconciler cadence
       }
       expect(rowCount).toBeGreaterThanOrEqual(1);
+      expect(terminalExecutionMode).toBe("prod");
     } finally {
       await reconciler.stop();
     }

@@ -11,6 +11,7 @@ export interface ScheduleEntry {
   workflow_name: string | null;
   cron: string;
   timezone: string;
+  execution_mode: "dev" | "prod";
   paused: boolean;
   created_at: string;
 }
@@ -90,6 +91,7 @@ export const workflowsMethods = {
       workflow_id: string;
       cron: string;
       timezone?: string;
+      execution_mode?: "dev" | "prod";
       paused?: boolean;
       input?: unknown;
     },
@@ -100,7 +102,13 @@ export const workflowsMethods = {
   updateSchedule(
     this: EngineClient,
     id: string,
-    patch: { cron?: string; timezone?: string; paused?: boolean; input?: unknown },
+    patch: {
+      cron?: string;
+      timezone?: string;
+      execution_mode?: "dev" | "prod";
+      paused?: boolean;
+      input?: unknown;
+    },
   ): Promise<ScheduleEntry> {
     return this.request("PUT", `/v1/schedules/${encodeURIComponent(id)}`, patch);
   },
