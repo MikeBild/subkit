@@ -7,7 +7,7 @@
 // propose-never-auto-apply boundary stays intact.
 
 import { and, eq } from "drizzle-orm";
-import { audit } from "../audit/audit.ts";
+import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { executionFixtures, patchCandidates } from "../db/schema/index.ts";
@@ -172,7 +172,7 @@ export async function dryRunPatchCandidate(
 
   // Read-only from the candidate's perspective, but it executes a
   // tenant-supplied projection — leave an audit trace.
-  audit(
+  await auditAwait(
     {
       tenant_id: params.tenant_id,
       actor_type: params.actor_id ? "user" : "system",
