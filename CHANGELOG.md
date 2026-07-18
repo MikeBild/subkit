@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] – 2026-07-18
+
+### Added
+- Canonical W3C Trace Context continuation at the HTTP edge and OpenTelemetry
+  service/deployment resource fields on structured logs.
+
+### Changed
+- HTTP tracing now follows W3C Trace Context semantics: all-zero IDs are
+  rejected, every request creates a fresh server span, sampled flags propagate,
+  and new HTTP traces use full 128-bit trace IDs. Structured records include
+  `trace_id`, `span_id`, `service.name`, `service.version`, and
+  `deployment.environment.name`.
+- `observability.deployment_environment` configures the general
+  `deployment.environment.name` telemetry resource field. Existing
+  tenant-scoped `/v1/stats/*`, HTTP connectors, workflows and S3 connectors
+  remain the reusable building blocks for external reporting pipelines.
+
 ## [1.19.1] – 2026-07-17
 
 ### Changed

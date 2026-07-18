@@ -556,6 +556,15 @@ const ObservabilitySection = z
       .prefault({})
       .describe("OpenTelemetry OTLP exporter"),
     analytics: AnalyticsSection,
+    deployment_environment: z
+      .string()
+      .min(1)
+      .max(64)
+      .default("development")
+      .describe(
+        "Deployment identity used for the OpenTelemetry deployment.environment.name resource attribute.",
+      )
+      .meta(global()),
     // Phase 1 (logging) per-field string cap, now config-driven. The
     // logger hot-reloads this via reconfigureObservability() on any
     // observability.* write; it falls back to 2048 when the loader is not

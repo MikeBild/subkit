@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { traceMiddleware } from "../middleware/trace.ts";
+import { parseTraceparent, traceMiddleware } from "../middleware/trace.ts";
 import type { AppEnv } from "../openapi.ts";
 
 function appWithTrace() {
@@ -16,6 +16,23 @@ function appWithTrace() {
 }
 
 describe("traceMiddleware", () => {
+  test("continues an inbound W3C trace with a fresh server span", async () => {
+    const app = appWithTrace();
+    const inbound = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const res = await app.request("/echo", { headers: { traceparent: inbound } });
+    const body = (await res.json()) as { trace_id: string };
+    expect(body.trace_id).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+    const outbound = res.headers.get("traceparent") ?? "";
+    expect(outbound).toMatch(/^00-4bf92f3577b34da6a3ce929d0e0e4736-[0-9a-f]{16}-01$/);
+    expect(outbound).not.toBe(inbound);
+    expect(outbound.split("-")[2]).not.toBe("00f067aa0ba902b7");
+  });
+
+  test("rejects W3C all-zero trace and parent ids", () => {
+    expect(parseTraceparent("00-00000000000000000000000000000000-00f067aa0ba902b7-01")).toBeNull();
+    expect(parseTraceparent("00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01")).toBeNull();
+  });
+
   test("uses an inbound x-sk-trace-id when shape is valid", async () => {
     const app = appWithTrace();
     const res = await app.request("/echo", {
@@ -50,6 +67,7 @@ describe("traceMiddleware", () => {
     const app = appWithTrace();
     const res = await app.request("/echo");
     const body = (await res.json()) as { trace_id: string };
-    expect(body.trace_id.length).toBeGreaterThanOrEqual(8);
+    expect(body.trace_id).toMatch(/^[0-9a-f]{32}$/);
+    expect(res.headers.get("traceparent")).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-00$/);
   });
 });
