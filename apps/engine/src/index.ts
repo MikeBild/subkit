@@ -142,9 +142,12 @@ async function runServer(): Promise<void> {
   await bootPhase("config_load", () => loadConfig());
   const cfg = getConfig();
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
-  reconfigureObservability({ field_truncation_chars: cfg.observability.field_truncation_chars });
+  reconfigureObservability({
+    field_truncation_chars: cfg.observability.field_truncation_chars,
+    service_name: cfg.observability.otlp.service_name,
+    deployment_environment: cfg.observability.deployment_environment,
+  });
   recordBootConsumer("logger");
-
   // Storage sanity: when the local-disk backend is selected without an
   // explicit `storage.files.dir`, `LocalDiskObjectStore` falls back to
   // `os.tmpdir()/sk-files`. That works for tests + smoke runs but
@@ -748,9 +751,12 @@ async function loadConfigAndReconfigureLogger(): Promise<void> {
   const cfg = getConfig();
   const { reconfigureLogger, reconfigureObservability } = await import("./logging/logger.ts");
   reconfigureLogger({ level: cfg.log.level, format: cfg.log.format });
-  reconfigureObservability({ field_truncation_chars: cfg.observability.field_truncation_chars });
+  reconfigureObservability({
+    field_truncation_chars: cfg.observability.field_truncation_chars,
+    service_name: cfg.observability.otlp.service_name,
+    deployment_environment: cfg.observability.deployment_environment,
+  });
 }
-
 async function runMigrateOnce(): Promise<void> {
   await loadConfigAndReconfigureLogger();
   const db = getDb();

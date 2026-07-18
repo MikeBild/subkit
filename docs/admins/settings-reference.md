@@ -146,6 +146,7 @@ Observability
 | `observability.analytics.enabled` | boolean | `false` | global | no | no | Enable product-analytics emission. Off by default — no external calls are made unless this is true and an endpoint is configured. |
 | `observability.analytics.endpoint` | string | `""` | global | no | no | Self-hostable analytics ingest endpoint. Empty disables emission even when enabled=true. |
 | `observability.analytics.project` | string | `""` | global | no | no | Project or workspace identifier on the analytics platform. |
+| `observability.deployment_environment` | string | `"development"` | global | no | no | Deployment identity used for the OpenTelemetry deployment.environment.name resource attribute. |
 | `observability.field_truncation_chars` | number | `2048` | global | no | no | Per-field cap (in characters / UTF-16 code units, not bytes) applied to structured log fields after redaction. |
 | `observability.langfuse.host` | string | `""` | global | no | no |  |
 | `observability.langfuse.public_key` | string | `""` | global | no | no |  |

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { _resetLoggerForTests, errorFields, logger, reconfigureLogger } from "./logger.ts";
+import { withContext } from "./context.ts";
+import {
+  _resetLoggerForTests,
+  errorFields,
+  logger,
+  reconfigureLogger,
+  reconfigureObservability,
+} from "./logger.ts";
 import { redact } from "./redact.ts";
 
 describe("redact", () => {
@@ -160,5 +167,26 @@ describe("ndjson field-length cap", () => {
     );
     const deep = (rec.nested as Record<string, unknown>).deep as string;
     expect(deep).toContain("…[truncated 952 chars]");
+  });
+
+  test("stamps OTel resource identity and W3C trace/span context", () => {
+    reconfigureObservability({
+      service_name: "subkit",
+      deployment_environment: "production",
+    });
+    const rec = captureNdjson(() =>
+      withContext(
+        {
+          trace_id: "4bf92f3577b34da6a3ce929d0e0e4736",
+          span_id: "00f067aa0ba902b7",
+        },
+        () => logger.info({ module: "http", action: "contract.test" }),
+      ),
+    );
+    expect(rec["service.name"]).toBe("subkit");
+    expect(rec["service.version"]).toBeString();
+    expect(rec["deployment.environment.name"]).toBe("production");
+    expect(rec.trace_id).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+    expect(rec.span_id).toBe("00f067aa0ba902b7");
   });
 });
