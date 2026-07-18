@@ -820,6 +820,8 @@ export async function setConfigKey(
         const { reconfigureObservability } = await import("../logging/logger.ts");
         reconfigureObservability({
           field_truncation_chars: fullParse.data.observability.field_truncation_chars,
+          service_name: fullParse.data.observability.otlp.service_name,
+          deployment_environment: fullParse.data.observability.deployment_environment,
         });
       } catch {
         /* logger module not loaded */

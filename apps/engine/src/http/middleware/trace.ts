@@ -3,7 +3,7 @@
 // withContext({trace_id, request_source}).
 
 import type { MiddlewareHandler } from "hono";
-import { newTraceId, withContext } from "../../logging/context.ts";
+import { withContext } from "../../logging/context.ts";
 import type { AppEnv } from "../openapi.ts";
 
 function detectSource(path: string): AppEnv["Variables"]["request_source"] {
@@ -43,6 +43,9 @@ export function parseTraceparent(value: string | undefined): ParsedTraceparent |
   if (!value) return null;
   const m = TRACEPARENT_RE.exec(value.trim());
   if (!m) return null;
+  // W3C Trace Context forbids the all-zero trace-id and parent-id. Treat
+  // either as malformed and start a fresh trace instead of propagating it.
+  if (/^0{32}$/.test(m[2] ?? "") || /^0{16}$/.test(m[3] ?? "")) return null;
   return {
     trace_id: (m[2] ?? "").toLowerCase(),
     parent_id: (m[3] ?? "").toLowerCase(),
@@ -66,42 +69,28 @@ function inboundTraceId(c: { req: { header: (n: string) => string | undefined } 
 export function traceMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const inboundTraceparent = parseTraceparent(c.req.header("traceparent"));
-    const trace_id = inboundTraceId(c) ?? newTraceId();
+    const trace_id = inboundTraceId(c) ?? randomTraceId();
+    const span_id = randomSpanId();
     const source = detectSource(new URL(c.req.url).pathname);
     c.set("trace_id", trace_id);
+    c.set("span_id", span_id);
     c.set("request_source", source);
     c.set("request_started_at", Date.now());
     c.header("x-trace-id", trace_id);
-    // Always echo a `traceparent` on the response so distributed-tracing
-    // collectors get the W3C context regardless of which inbound shape
-    // the caller used. When no inbound traceparent was provided, we
-    // synthesise one from the local trace_id (16 hex) padded out to a
-    // 32-hex trace and a fresh 16-hex span id; sampled flag stays 0.
-    if (inboundTraceparent) {
-      c.header("traceparent", inboundTraceparent.raw);
-    } else {
-      c.header("traceparent", buildSyntheticTraceparent(trace_id));
-    }
+    // A server MUST create a new span; the inbound parent-id identifies the
+    // caller and must not be echoed as if it were this server span.
+    c.header(
+      "traceparent",
+      `00-${inboundTraceparent?.trace_id ?? padTraceId(trace_id)}-${span_id}-${inboundTraceparent?.flags ?? "00"}`,
+    );
 
-    await withContext({ trace_id, request_source: source }, async () => {
+    await withContext({ trace_id, span_id, request_source: source }, async () => {
       await next();
     });
   };
 }
 
-/**
- * Synthesise a valid W3C traceparent from a local trace_id when no
- * inbound header was supplied. Padding pattern: hash-pad the trace_id
- * deterministically into 32 hex; pick a fresh 16-hex span. Flags 00
- * (not sampled) — the engine's own collector decides sampling
- * downstream.
- */
-function buildSyntheticTraceparent(trace_id: string): string {
-  const traceHex = padTraceId(trace_id);
-  const spanHex = randomSpanId();
-  return `00-${traceHex}-${spanHex}-00`;
-}
-
+/** Map a valid legacy x-trace-id to the W3C 128-bit trace-id field. */
 function padTraceId(input: string): string {
   // Map any input to 32 lowercase hex chars deterministically. Pure-ASCII
   // hex inputs (UUID-shaped) get their hyphens stripped; others fall
@@ -122,7 +111,20 @@ function padTraceId(input: string): string {
 }
 
 function randomSpanId(): string {
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return randomHex(8);
+}
+
+function randomTraceId(): string {
+  return randomHex(16);
+}
+
+function randomHex(byteLength: number): string {
+  // The all-zero value is invalid in W3C Trace Context. The loop almost
+  // always executes once but makes the invariant explicit and testable.
+  for (;;) {
+    const bytes = new Uint8Array(byteLength);
+    crypto.getRandomValues(bytes);
+    const value = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    if (!/^0+$/.test(value)) return value;
+  }
 }

@@ -1,4 +1,5 @@
 import { LOG_LEVEL_WEIGHT, type LogLevelName } from "@cli-core/log-levels.ts";
+import { VERSION } from "@cli-core/version.ts";
 import pc from "picocolors";
 import { logRing } from "../observability/log-ring.ts";
 import { getContext } from "./context.ts";
@@ -49,6 +50,8 @@ export function _resetLoggerForTests(): void {
   MODE = defaultMode();
   THRESHOLD = LEVEL_WEIGHT.info;
   MAX_FIELD_LEN = DEFAULT_MAX_FIELD_LEN;
+  SERVICE_NAME = "subkit";
+  DEPLOYMENT_ENVIRONMENT = process.env.NODE_ENV ?? "development";
 }
 
 function formatTimestampPretty(d: Date): string {
@@ -91,6 +94,7 @@ function emitPretty(level: LogLevel, fields: LogFields): void {
   const lvl = colorLevel(level, level.toUpperCase().padEnd(5));
   const ctxBits: string[] = [];
   if (ctx.trace_id) ctxBits.push(`trace=${ctx.trace_id}`);
+  if (ctx.span_id) ctxBits.push(`span=${ctx.span_id}`);
   if (ctx.tenant_id) ctxBits.push(`tenant=${ctx.tenant_id}`);
   if (ctx.execution_id) ctxBits.push(`exec=${ctx.execution_id}`);
   if (ctx.workflow_id) ctxBits.push(`workflow=${ctx.workflow_id}`);
@@ -125,12 +129,22 @@ function emitPretty(level: LogLevel, fields: LogFields): void {
 // code units, matching `String.length`/`slice`), not bytes.
 const DEFAULT_MAX_FIELD_LEN = 2048;
 let MAX_FIELD_LEN = DEFAULT_MAX_FIELD_LEN;
+let SERVICE_NAME = "subkit";
+let DEPLOYMENT_ENVIRONMENT = process.env.NODE_ENV ?? "development";
 
 /** Hot-swap the per-field log cap from `observability.field_truncation_chars`.
  *  Falls back to the 2048 boot default when the value is absent or invalid. */
-export function reconfigureObservability(opts: { field_truncation_chars?: number }): void {
+export function reconfigureObservability(opts: {
+  field_truncation_chars?: number;
+  service_name?: string;
+  deployment_environment?: string;
+}): void {
   const n = opts.field_truncation_chars;
   MAX_FIELD_LEN = typeof n === "number" && Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_FIELD_LEN;
+  if (opts.service_name?.trim()) SERVICE_NAME = opts.service_name.trim();
+  if (opts.deployment_environment?.trim()) {
+    DEPLOYMENT_ENVIRONMENT = opts.deployment_environment.trim();
+  }
 }
 
 function truncateLongStrings(value: unknown): unknown {
@@ -160,6 +174,9 @@ function emitNdjson(level: LogLevel, fields: LogFields): void {
     level,
     ...ctx,
     ...redactedFields,
+    "service.name": SERVICE_NAME,
+    "service.version": VERSION,
+    "deployment.environment.name": DEPLOYMENT_ENVIRONMENT,
   };
   process.stdout.write(`${JSON.stringify(record)}\n`);
 }
@@ -186,7 +203,13 @@ function recordToRing(level: LogLevel, fields: LogFields): void {
   const entry = {
     ts: Date.now(),
     level,
-    fields: { ...ctx, ...redactedRest },
+    fields: {
+      ...ctx,
+      ...redactedRest,
+      "service.name": SERVICE_NAME,
+      "service.version": VERSION,
+      "deployment.environment.name": DEPLOYMENT_ENVIRONMENT,
+    },
     ...(typeof m === "string" ? { module: m } : {}),
     ...(typeof a === "string" ? { action: a } : {}),
     ...(typeof msg === "string" ? { msg } : {}),

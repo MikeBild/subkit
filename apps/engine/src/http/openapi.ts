@@ -10,6 +10,8 @@ import type { RequestSource, ServiceMetadata } from "../observability/service-me
 export type AppEnv = {
   Variables: {
     trace_id: string;
+    /** W3C server span id created for this request. */
+    span_id: string;
     /** Canonical request-source label. The trace middleware sets this
      *  for every request (api / mcp / webhook / chat by default); the
      *  type widens to the full canonical enum so non-HTTP entry points
