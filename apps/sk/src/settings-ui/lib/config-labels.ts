@@ -133,6 +133,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "observability.langfuse.secret_key": "Langfuse secret key",
   "observability.otlp.endpoint": "OTLP endpoint",
   "observability.otlp.service_name": "OTLP service name",
+  "observability.deployment_environment": "Deployment environment",
   "observability.analytics.enabled": "Product analytics enabled",
   "observability.analytics.endpoint": "Analytics endpoint",
   "observability.analytics.api_key": "Analytics API key",
