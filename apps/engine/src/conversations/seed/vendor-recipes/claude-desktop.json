@@ -1,6 +1,6 @@
 {
   "client": "claude-desktop",
-  "verified_at": "2026-04-20",
+  "verified_at": "2026-07-19",
   "transports": ["streamable-http", "stdio"],
   "config_path_hints": [
     "macOS: ~/Library/Application Support/Claude/claude_desktop_config.json",
