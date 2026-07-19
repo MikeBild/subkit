@@ -17,7 +17,10 @@ jobs:
     # Dependabot titles are conventional already; its auto-generated PR
     # bodies blow the body-max-line-length rule with changelog tables.
     # A skipped job still satisfies the required check, so protection holds.
-    if: github.actor != 'dependabot[bot]'
+    # Keyed on the PR author, not github.actor: a maintainer pushing a
+    # follow-up commit to a dependabot branch changes the actor but the
+    # dependabot-authored commits still carry the oversized bodies.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
