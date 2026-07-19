@@ -33,6 +33,7 @@ import {
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
 import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { flush, waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
 import {
@@ -324,7 +325,7 @@ describe("conversation.run-turn worker — failure path", () => {
     expect(parkedData.mcp_task_id).toBe(mcp_task_id);
     const startAfter = (send.options as { startAfter?: Date }).startAfter;
     expect(startAfter).toBeInstanceOf(Date);
-    expect(startAfter!.getTime()).toBeGreaterThan(Date.now());
+    expect(startAfter!.getTime()).toBeGreaterThan(getTestNow());
 
     // The task is NOT terminal: no failure, no result — still `working`.
     const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);

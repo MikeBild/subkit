@@ -18,6 +18,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, like } from "drizzle-orm";
 import { connectors, executionSteps } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { runExecution } from "../engine.ts";
 import {
   createEngineCtx,
@@ -112,7 +113,7 @@ async function countIterationRows(execution_id: string): Promise<number> {
 describe("for_each · circuit-breaker preflight", () => {
   test("open breaker fails the container ONCE — no iterations scheduled, no upstream hits", async () => {
     upstreamHits = 0;
-    await setCircuit("open", new Date());
+    await setCircuit("open", new Date(getTestNow()));
     const workflow_id = await createFanOutWorkflow("foreach-circuit-open");
     const result = await runExecution({
       db: ctx.testDb.db,
@@ -151,7 +152,7 @@ describe("for_each · circuit-breaker preflight", () => {
   test("stale-open breaker (reset elapsed) — preflight lets the half-open probe through", async () => {
     upstreamHits = 0;
     // opened_at far enough in the past that circuit_reset_ms (300s) elapsed.
-    await setCircuit("open", new Date(Date.now() - 600_000));
+    await setCircuit("open", new Date(getTestNow() - 600_000));
     const workflow_id = await createFanOutWorkflow("foreach-circuit-stale");
     const result = await runExecution({
       db: ctx.testDb.db,
