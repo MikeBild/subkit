@@ -18,8 +18,10 @@
 
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
 import { compileSelector } from "../execution/selectors.ts";
+import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
+import { suggestClosest } from "./levenshtein.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "./types-web-scraper.ts";
 
@@ -201,6 +203,22 @@ export function validateWorkflowDef(
           message: "request step must specify url or connector_id",
         });
       }
+      // Commit-time placeholder resolvability (audit M4). The runtime
+      // FAILS FAST with `placeholder_unresolved` when the request's
+      // addressing surfaces — path/url, the s3 key/prefix, the graphql
+      // query/variables — still carry tokens the resolver cannot
+      // substitute (see execution/steps/request/dispatch.ts). Production
+      // logged 67 runs of `unresolved placeholder(s) in path/url: ${item}`
+      // in 2 seconds: the bare `${item}` (no field path) is a grammar
+      // error the resolver can never resolve, yet it slipped past both the
+      // unsupported-placeholder linter (known kind → skipped) and the
+      // item-containment check (`item.` + field required). Parse the same
+      // grammar the resolver uses and reject at the same gate that already
+      // rejects unparseable JSONata: malformed placeholders always, and
+      // `${scope.<step>…}` naming an unknown step in strict mode (lenient
+      // authoring may reference steps not written yet — the strict gate at
+      // preview/commit still catches them).
+      errors.push(...collectAddressingPlaceholderErrors(step, ids, allowForwardRefs));
     }
     if (
       step.kind === "transform" &&
@@ -459,6 +477,82 @@ export function validateWorkflowDef(
 function stepReferencesCanonicalItem(step: StepDef): boolean {
   const haystack = JSON.stringify(step);
   return haystack.includes("${item") || /\$item\b/.test(haystack);
+}
+
+/**
+ * Placeholder resolvability for a request step's ADDRESSING surfaces —
+ * exactly the fields the runtime refuses to dispatch with an unresolved
+ * token (`placeholder_unresolved` in dispatch.ts): `path`, `url`,
+ * `s3.key`, `s3.prefix`, `graphql.query` and string leaves of
+ * `graphql.variables`. Headers / query / body are deliberately NOT
+ * scanned: the runtime ships unresolved tokens there literally (partial
+ * resolution is the resolver's contract), so rejecting them here would
+ * be stricter than the engine itself.
+ *
+ * Two error classes:
+ *   - grammar errors from `parsePlaceholders` (`${item}` without a path,
+ *     `${scope.x}` without a pointer, unknown kinds, unclosed braces) —
+ *     always fatal, no execution scope can ever resolve them;
+ *   - `${scope.<step>…}` naming a step id that isn't in the workflow —
+ *     fatal in strict mode only (`allowForwardRefs` authoring surfaces
+ *     legitimately reference steps that don't exist yet).
+ */
+function collectAddressingPlaceholderErrors(
+  step: Extract<StepDef, { kind: "request" }>,
+  ids: ReadonlySet<string>,
+  allowForwardRefs: boolean,
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const surfaces: Array<{ field: string; text: string }> = [];
+  const addSurface = (field: string, text: unknown): void => {
+    if (typeof text === "string" && text.length > 0) surfaces.push({ field, text });
+  };
+  addSurface("path", step.path);
+  addSurface("url", step.url);
+  addSurface("s3.key", step.s3?.key);
+  addSurface("s3.prefix", step.s3?.prefix);
+  if (step.graphql && typeof step.graphql === "object") {
+    addSurface("graphql.query", step.graphql.query);
+    const walkVariables = (value: unknown, at: string): void => {
+      if (typeof value === "string") {
+        addSurface(at, value);
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach((v, i) => {
+          walkVariables(v, `${at}.${i}`);
+        });
+        return;
+      }
+      if (value && typeof value === "object") {
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+          walkVariables(v, `${at}.${k}`);
+        }
+      }
+    };
+    if (step.graphql.variables) walkVariables(step.graphql.variables, "graphql.variables");
+  }
+  for (const { field, text } of surfaces) {
+    const parsed = parsePlaceholders(text);
+    for (const e of parsed.errors) {
+      errors.push({
+        path: `steps.${step.id}.${field}`,
+        message: `unresolvable placeholder \`${text.slice(e.span.start, e.span.end)}\`: ${e.message} — the runtime would fail this step with placeholder_unresolved`,
+      });
+    }
+    if (allowForwardRefs) continue;
+    for (const token of parsed.tokens) {
+      if (token.kind !== "scope") continue;
+      const stepId = token.stepId ?? "";
+      if (ids.has(stepId)) continue;
+      const near = suggestClosest(stepId, [...ids], 3);
+      errors.push({
+        path: `steps.${step.id}.${field}`,
+        message: `placeholder \`${token.raw}\` references unknown step "${stepId}"${near.length > 0 ? ` — did you mean: ${near.join(", ")}` : ""}`,
+      });
+    }
+  }
+  return errors;
 }
 
 function stepReferencesIdentifier(step: StepDef, identifier: string): boolean {

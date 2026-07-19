@@ -278,6 +278,99 @@ describe("runMcpOAuthCleanup — expired / revoked refresh tokens", () => {
     expect(atRemaining).toHaveLength(1);
     expect(atRemaining[0]!.refresh_token_id).toBeNull();
   });
+
+  test("sweeps a chain-revoked rotation pair with chained access tokens in one pass", async () => {
+    // Chain-revocation shape (audit K3 fixture): reuse detection revokes every
+    // member of a rotation chain at once, so 7 days later rt1 AND rt2 become
+    // eligible in the SAME delete statement — rt1 still points at rt2 via the
+    // NO ACTION self-FK rotated_to_id (legal only because NO ACTION is checked
+    // at statement end), and each refresh token has a child access token
+    // hanging off refresh_token_id. The sweep must clear the whole chain in
+    // one pass: both refresh tokens gone, the expired access token gone, the
+    // live access token surviving with its link nulled by ON DELETE SET NULL.
+    const [rt2] = await srv.db
+      .insert(mcpOauthRefreshTokens)
+      .values({
+        tenant_id: srv.tenantId,
+        client_id: "test-client-chain",
+        user_id: srv.userId,
+        prefix: "chain_rt2_prefx1",
+        token_sha256: "chain_refresh_token_sha256_ppp222",
+        scope: "mcp:read",
+        expires_at: freshExpiry, // not yet expired — eligible via revoked_at only
+        revoked_at: revokedTokenAt,
+      })
+      .returning();
+    if (!rt2) throw new Error("seed rt2 failed");
+
+    const [rt1] = await srv.db
+      .insert(mcpOauthRefreshTokens)
+      .values({
+        tenant_id: srv.tenantId,
+        client_id: "test-client-chain",
+        user_id: srv.userId,
+        prefix: "chain_rt1_prefx1",
+        token_sha256: "chain_refresh_token_sha256_ppp111",
+        scope: "mcp:read",
+        rotated_to_id: rt2.id,
+        expires_at: expiredTokenAt,
+        revoked_at: revokedTokenAt,
+      })
+      .returning();
+    if (!rt1) throw new Error("seed rt1 failed");
+
+    const [at1] = await srv.db
+      .insert(mcpOauthAccessTokens)
+      .values({
+        tenant_id: srv.tenantId,
+        client_id: "test-client-chain",
+        user_id: srv.userId,
+        prefix: "chain_at1_prefx1",
+        token_sha256: "chain_access_token_sha256_ppp111",
+        scope: "mcp:read",
+        expires_at: expiredTokenAt, // dead — removed by sweep 1
+        refresh_token_id: rt1.id,
+      })
+      .returning();
+    if (!at1) throw new Error("seed at1 failed");
+
+    const [at2] = await srv.db
+      .insert(mcpOauthAccessTokens)
+      .values({
+        tenant_id: srv.tenantId,
+        client_id: "test-client-chain",
+        user_id: srv.userId,
+        prefix: "chain_at2_prefx1",
+        token_sha256: "chain_access_token_sha256_ppp222",
+        scope: "mcp:read",
+        expires_at: freshExpiry, // live — survives sweep 1
+        refresh_token_id: rt2.id,
+      })
+      .returning();
+    if (!at2) throw new Error("seed at2 failed");
+
+    // Must not throw on either FK (self-FK rotated_to_id or child access tokens).
+    await runMcpOAuthCleanup(new Date(), srv.db); // allow-wall-clock
+
+    const rtRemaining = await srv.db
+      .select()
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.client_id, "test-client-chain"));
+    expect(rtRemaining).toHaveLength(0);
+
+    const at1Remaining = await srv.db
+      .select()
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.id, at1.id));
+    expect(at1Remaining).toHaveLength(0);
+
+    const at2Remaining = await srv.db
+      .select()
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.id, at2.id));
+    expect(at2Remaining).toHaveLength(1);
+    expect(at2Remaining[0]!.refresh_token_id).toBeNull();
+  });
 });
 
 describe("runMcpOAuthCleanup — stale unused DCR clients", () => {

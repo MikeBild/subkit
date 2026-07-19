@@ -430,3 +430,34 @@ describe("C.3 — already_persisted idempotency", () => {
     expect(auditAfterSecond).toHaveLength(1);
   });
 });
+
+// ── M4 — unbound-schedule prominent warning ──────────────────────────────────
+
+describe("M4 — unbound-schedule warning on the commit envelope", () => {
+  test("cadence phrasing with no schedule trigger surfaces schedule_warning + next_prompt banner", async () => {
+    const conversationId = await freshConversation();
+    await seedApprovedConfirm(conversationId);
+
+    const result = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, readyDraft("daily-digest-m4", "Daily digest at 9:00")),
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as { schedule_warning?: string; next_prompt?: string };
+    expect(data.schedule_warning).toBeDefined();
+    expect(data.schedule_warning).toContain("NO schedule trigger");
+    expect(data.next_prompt).toContain("WARNING");
+  });
+
+  test("no cadence phrasing → no schedule_warning on the envelope", async () => {
+    const conversationId = await freshConversation();
+    await seedApprovedConfirm(conversationId);
+
+    const result = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, readyDraft("plain-echo-m4", "Echo transformer")),
+    });
+    expect(result.ok).toBe(true);
+    const data = result.data as { schedule_warning?: string; next_prompt?: string };
+    expect(data.schedule_warning).toBeUndefined();
+    expect(data.next_prompt ?? "").not.toContain("WARNING");
+  });
+});

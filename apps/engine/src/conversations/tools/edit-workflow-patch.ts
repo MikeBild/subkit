@@ -151,6 +151,42 @@ export async function applyWorkflowPatchToDraft(
       }
     }
 
+    // Unsupported-placeholder pre-flight BEFORE the structural validator:
+    // validateWorkflowDef also parses placeholder grammar on addressing
+    // surfaces (audit M4) and would otherwise report e.g. `${user.email}`
+    // as a generic `patch_invalid`, shadowing the specific error code +
+    // did-you-mean the model's recovery hints key on. Runs on the RAW
+    // patched object; guarded because the draft may not even have a
+    // steps array yet — the structural validator below reports that case.
+    if (Array.isArray((patched as WorkflowDef).steps)) {
+      const placeholderErrors = validateUnsupportedPlaceholders(patched as WorkflowDef);
+      if (placeholderErrors.length > 0) {
+        const summary = placeholderErrors
+          .map(
+            (e) =>
+              `step \`${e.step_id}\`.${e.field}: \`${e.raw}\` (${e.code}) → use \`${e.did_you_mean}\``,
+          )
+          .join("; ");
+        recordAuthoringGateBlock({
+          code: "workflow_unsupported_placeholder",
+          tool: "edit_workflow_patch",
+        });
+        return {
+          ok: false,
+          data: buildGateError(currentDraft, {
+            error_code: "workflow_unsupported_placeholder",
+            message: `patch would leave placeholder forms the runtime will not substitute: ${summary}`,
+            recommended_mode: "workflow",
+            next_best_actions: ["inspect_workflow_draft"],
+            extra: {
+              unsupported_placeholders: placeholderErrors,
+              patch_count: patches.length,
+            },
+          }),
+        };
+      }
+    }
+
     const validation = validateWorkflowDef(patched, { allowForwardRefs: true });
     if (!validation.ok) {
       return {
@@ -192,36 +228,6 @@ export async function applyWorkflowPatchToDraft(
             next_best_actions: ["inspect_workflow_draft"],
             extra: {
               cycles: cycleReport.cycles,
-              patch_count: patches.length,
-            },
-          }),
-        };
-      }
-    }
-
-    // Unsupported-placeholder pre-flight on the patched draft.
-    {
-      const placeholderErrors = validateUnsupportedPlaceholders(patched as WorkflowDef);
-      if (placeholderErrors.length > 0) {
-        const summary = placeholderErrors
-          .map(
-            (e) =>
-              `step \`${e.step_id}\`.${e.field}: \`${e.raw}\` (${e.code}) → use \`${e.did_you_mean}\``,
-          )
-          .join("; ");
-        recordAuthoringGateBlock({
-          code: "workflow_unsupported_placeholder",
-          tool: "edit_workflow_patch",
-        });
-        return {
-          ok: false,
-          data: buildGateError(currentDraft, {
-            error_code: "workflow_unsupported_placeholder",
-            message: `patch would leave placeholder forms the runtime will not substitute: ${summary}`,
-            recommended_mode: "workflow",
-            next_best_actions: ["inspect_workflow_draft"],
-            extra: {
-              unsupported_placeholders: placeholderErrors,
               patch_count: patches.length,
             },
           }),
