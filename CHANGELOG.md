@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.4] – 2026-07-19
+
+First shipped tag carrying the 1.20.3 changes: the v1.20.3 release build
+failed its CI gate (systemd-inherited `JOURNAL_STREAM` on the runners flipped
+the new sd-daemon prefix on during tests) and was never published.
+
+### Fixed
+- `edit_workflow_patch` reports `workflow_unsupported_placeholder` (with its
+  did-you-mean rewrite) again for unknown placeholder namespaces on
+  addressing surfaces — the commit-time resolvability gate had shadowed it
+  behind a generic `patch_invalid`.
+- The google-search-console connector template ingests from the Search
+  Console v1 discovery document; Google retired the legacy `webmasters/v3`
+  discovery URL.
+- Test runs strip an ambient `JOURNAL_STREAM` via a bun test preload, so the
+  sd-daemon prefix default stays deterministic on systemd-run CI runners.
+- Vendor recipes (claude-desktop, codex) re-verified; the codex config path
+  hint now points at `~/.codex/config.toml`.
+- commitlint skips dependabot PRs by PR author instead of push actor, so a
+  maintainer commit on a dependabot branch no longer lints dependabot's
+  changelog-table bodies.
+
 ## [1.20.3] – 2026-07-19
 
 ### Added
