@@ -849,6 +849,28 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         } catch {
           /* metrics are best-effort */
         }
+        // HARD gate for writes (audit H2): the warn above proved insufficient
+        // — 769 silent dev→prod fallbacks shipped writes into the wrong
+        // environment before anyone grepped for it. A write-classified step
+        // (non-GET/HEAD/OPTIONS method, GraphQL mutation, non-SELECT SQL, S3
+        // put — the same `classifyRequestStepSideEffects` seam hold-writes
+        // uses) must NOT dispatch through a different-environment binding.
+        // Reads keep the warn-only fallback: it stays load-bearing for
+        // single-env tenants, and a cross-env read is recoverable.
+        if (classifyRequestStepSideEffects(p.step) === "write") {
+          clearTimeout(timer);
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "connector_environment_mismatch",
+              message:
+                `write step requested environment "${p.ctx.execution_mode}" but connector "${connector.slug}" only resolves to "${connector.environment}" — ` +
+                `create a ${p.ctx.execution_mode} binding for this connector (or mark the step side_effects:"read" if it does not mutate)`,
+            },
+          };
+        }
       }
       if (connector.driver === "graphql" || p.step.graphql) {
         clearTimeout(timer);
@@ -1416,20 +1438,17 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       // Circuit breaker enforcement (HTTP driver only)
       if (connector.circuit_state === "open") {
         const openedAt = connector.circuit_opened_at;
-        if (openedAt !== null) {
-          const elapsed = Date.now() - openedAt.getTime();
-          if (elapsed < connector.circuit_reset_ms) {
-            clearTimeout(timer);
-            return {
-              status: "failed",
-              retry_count: 0,
-              duration_ms: Date.now() - start,
-              error: {
-                code: "circuit_open",
-                message: "connector circuit breaker is open — requests blocked until reset",
-              },
-            };
-          }
+        if (openedAt !== null && Date.now() - openedAt.getTime() < connector.circuit_reset_ms) {
+          clearTimeout(timer);
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "circuit_open",
+              message: "connector circuit breaker is open — requests blocked until reset",
+            },
+          };
         }
         // Reset period elapsed — transition to half-open
         await persistCircuitState(p.ctx.db, connector, { circuit_state: "half-open" });
