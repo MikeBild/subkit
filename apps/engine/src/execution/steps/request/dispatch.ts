@@ -45,7 +45,7 @@ import {
   flagConnectorContractFailure,
 } from "../../../connectors/health-state.ts";
 import { clearConnectorReauth, flagConnectorAuthFailure } from "../../../connectors/reauth.ts";
-import { getConnectorForEnvironment } from "../../../connectors/service.ts";
+import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../../../connectors/service.ts";
 import type { Db } from "../../../db/client.ts";
 import { connectorEndpointSchemas, connectors } from "../../../db/schema/index.ts";
 import type { ResolvedFile } from "../../../files/resolver.ts";
@@ -1435,10 +1435,11 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           },
         };
       }
-      // Circuit breaker enforcement (HTTP driver only)
+      // Circuit breaker enforcement (HTTP driver only). The blocked/probe
+      // decision lives in the shared `isCircuitOpenBlocking` predicate so
+      // the engine's for_each preflight fails fast on the SAME condition.
       if (connector.circuit_state === "open") {
-        const openedAt = connector.circuit_opened_at;
-        if (openedAt !== null && Date.now() - openedAt.getTime() < connector.circuit_reset_ms) {
+        if (isCircuitOpenBlocking(connector)) {
           clearTimeout(timer);
           return {
             status: "failed",

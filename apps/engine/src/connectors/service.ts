@@ -366,6 +366,25 @@ export async function listConnectorCredentials(
 }
 
 /**
+ * Pure circuit-breaker gate: true while the connector's breaker is open AND
+ * the reset window has not yet elapsed. This is the single predicate behind
+ * the dispatch-time `circuit_open` short-circuit — a `true` here means a
+ * request against this connector fails fast without touching the upstream.
+ * A stale open breaker (reset window elapsed, or no opened_at stamp) returns
+ * false so the caller lets a probe through to transition to half-open.
+ * Fan-out callers (`for_each` in the engine) use it to fail ONCE at the
+ * container instead of scheduling N doomed iterations.
+ */
+export function isCircuitOpenBlocking(
+  connector: Pick<ConnectorView, "circuit_state" | "circuit_opened_at" | "circuit_reset_ms">,
+  now_ms: number = Date.now(),
+): boolean {
+  if (connector.circuit_state !== "open") return false;
+  if (connector.circuit_opened_at === null) return false;
+  return now_ms - connector.circuit_opened_at.getTime() < connector.circuit_reset_ms;
+}
+
+/**
  * Resolve a connector for a target execution environment. The workflow
  * DAG pins a specific connector row by id (usually the `dev` row). When
  * an execution runs under a different `execution_mode`, we look up a
