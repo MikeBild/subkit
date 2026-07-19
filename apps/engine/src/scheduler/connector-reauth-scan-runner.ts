@@ -12,14 +12,28 @@
 // throw, unknown_upstream_error) is left alone — a transient DNS or TCP
 // failure, a missing config, or an upstream outage must not be misread
 // as a credential rejection.
+//
+// The probe sweep alone is blind to already-known failures: the candidate
+// filter excludes flagged (needs_reauth) and circuit-open connectors, so a
+// connector that keeps 401-ing scheduled workflows at runtime never appears
+// in the probe counters. A second phase therefore sweeps runtime evidence
+// (execution_steps auth_failed errors) and escalates persistent streaks on
+// schedule-bound workflows to `level:"error"` — see
+// scanScheduledWorkflowAuthFailureStreaks below.
 
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { probeConnector } from "../connectors/drivers/index.ts";
 import { flagConnectorAuthFailure } from "../connectors/reauth.ts";
 import type { AuthType, ConnectorView, DriverName } from "../connectors/types.ts";
 import type { Db } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
+
+// Consecutive scheduler-run auth failures on one workflow before the scan
+// escalates to a `level:"error"` line. 3 = at least a full day of failures
+// on a twice-daily schedule while still reacting within hours on `every:N`
+// schedules.
+const AUTH_FAILED_STREAK_THRESHOLD = 3;
 
 /**
  * Execute one proactive connector re-auth scan for a single tenant.
@@ -60,12 +74,32 @@ export async function runConnectorReauthScanForTenant(
       ),
     );
 
+  // Connectors the candidate filter above excludes BECAUSE they are already
+  // known-broken (flagged needs_reauth, or circuit open from repeated runtime
+  // failures). Counted separately so the completed summary can't read as
+  // "everything healthy" while a flagged connector keeps 401-ing scheduled
+  // workflows — that exact misread happened with `auth_failed: 0` alongside
+  // 13 runtime 401s on a flagged connector.
+  const [knownBroken] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.tenant_id, tenant_id),
+        isNull(connectors.deleted_at),
+        ne(connectors.auth_type, "none"),
+        or(eq(connectors.needs_reauth, true), eq(connectors.circuit_state, "open")),
+      ),
+    );
+  const known_auth_failed = knownBroken?.n ?? 0;
+
   logger.info({
     module: "scheduler",
     action: "connector_reauth_scan.started",
     msg: "proactive connector re-auth scan started",
     tenant_id,
     candidate_count: candidates.length,
+    known_auth_failed,
   });
 
   let probed = 0;
@@ -156,6 +190,14 @@ export async function runConnectorReauthScanForTenant(
     }
   }
 
+  // Second phase: runtime evidence. The probe loop above only covers
+  // connectors the candidate filter admits — a connector already flagged
+  // (or circuit-open) is skipped by design, so its ongoing 401s at runtime
+  // never show up in this scan. Sweep the scheduled-execution history for
+  // auth_failed streaks so a schedule-bound workflow that keeps dying on a
+  // dead credential produces a recurring error-level line.
+  const streaks = await scanScheduledWorkflowAuthFailureStreaks(tenant_id, db);
+
   const duration_ms = Date.now() - now.getTime();
   logger.info({
     module: "scheduler",
@@ -164,6 +206,86 @@ export async function runConnectorReauthScanForTenant(
     tenant_id,
     probed,
     auth_failed,
+    known_auth_failed,
+    workflow_auth_failure_streaks: streaks,
     duration_ms,
   });
+}
+
+/**
+ * Detect schedule-bound workflows whose last AUTH_FAILED_STREAK_THRESHOLD
+ * scheduler-sourced runs ALL failed on an auth-rejected connector response
+ * (execution_steps.error.health = 'auth_failed' — stamped by the request
+ * dispatcher's health classifier on 401/403/Seraph responses).
+ *
+ * Emits one `level:"error"` line per streak, naming workflow + connector,
+ * on EVERY scan while the condition persists — deliberately recurring, so
+ * journald-priority alerting keeps firing until a human re-authenticates
+ * the connector or pauses the schedule. Returns the streak count for the
+ * completed-summary line.
+ */
+async function scanScheduledWorkflowAuthFailureStreaks(tenant_id: string, db: Db): Promise<number> {
+  // tenant-filter:bound — every CTE below is scoped to this tenant_id.
+  // `recent` ranks each workflow's terminal scheduler runs newest-first;
+  // `auth_failed` keeps the ranked runs that died on an auth rejection
+  // (one row per run via DISTINCT ON); the outer HAVING demands ALL of the
+  // last N runs be present — i.e. the failures are consecutive. The
+  // connector identity is read from the newest run's failing step meta.
+  const rows = await db.execute<{
+    workflow_id: string;
+    workflow_slug: string;
+    connector_id: string | null;
+    connector_slug: string | null;
+  }>(sql`
+    WITH recent AS (
+      SELECT e.id, e.workflow_id,
+             row_number() OVER (PARTITION BY e.workflow_id ORDER BY e.started_at DESC) AS rn
+        FROM executions e
+       WHERE e.tenant_id = ${tenant_id}
+         AND e.request_source = 'scheduler'
+         AND e.workflow_id IS NOT NULL
+         AND e.started_at IS NOT NULL
+         AND e.status IN ('succeeded', 'failed', 'timed_out', 'aborted')
+    ),
+    auth_failed AS (
+      SELECT DISTINCT ON (r.workflow_id, r.rn)
+             r.workflow_id, r.rn,
+             s.request_meta->'connector'->>'connector_id' AS connector_id,
+             s.request_meta->'connector'->>'connector_slug' AS connector_slug
+        FROM recent r
+        JOIN execution_steps s
+          ON s.execution_id = r.id AND s.tenant_id = ${tenant_id}
+       WHERE r.rn <= ${AUTH_FAILED_STREAK_THRESHOLD}
+         AND s.status = 'failed'
+         AND s.error->>'health' = 'auth_failed'
+    )
+    SELECT a.workflow_id,
+           w.slug AS workflow_slug,
+           (array_agg(a.connector_id ORDER BY a.rn))[1] AS connector_id,
+           (array_agg(a.connector_slug ORDER BY a.rn))[1] AS connector_slug
+      FROM auth_failed a
+      JOIN workflows w
+        ON w.id = a.workflow_id AND w.tenant_id = ${tenant_id} AND w.deleted_at IS NULL
+     WHERE EXISTS (SELECT 1 FROM workflows_schedules ws
+                    WHERE ws.workflow_id = a.workflow_id
+                      AND ws.tenant_id = ${tenant_id}
+                      AND ws.paused = false)
+     GROUP BY a.workflow_id, w.slug
+    HAVING count(*) >= ${AUTH_FAILED_STREAK_THRESHOLD}
+  `);
+
+  for (const r of rows.rows) {
+    logger.error({
+      module: "scheduler",
+      action: "connector_reauth_scan.workflow_auth_failed",
+      msg: `schedule-bound workflow '${r.workflow_slug}' failed its last ${AUTH_FAILED_STREAK_THRESHOLD} scheduled runs on connector auth (401/403) — re-authenticate connector '${r.connector_slug ?? "unknown"}'`,
+      tenant_id,
+      workflow_id: r.workflow_id,
+      workflow_slug: r.workflow_slug,
+      connector_id: r.connector_id,
+      connector_slug: r.connector_slug,
+      consecutive_failures: AUTH_FAILED_STREAK_THRESHOLD,
+    });
+  }
+  return rows.rows.length;
 }
