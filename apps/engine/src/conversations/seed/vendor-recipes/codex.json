@@ -1,11 +1,8 @@
 {
   "client": "codex",
-  "verified_at": "2026-04-20",
+  "verified_at": "2026-07-19",
   "transports": ["streamable-http", "stdio"],
-  "config_path_hints": [
-    "Codex Settings → MCP Servers (UI)",
-    "$XDG_CONFIG_HOME/codex/config.toml (advanced)"
-  ],
+  "config_path_hints": ["Codex Settings → MCP Servers (UI)", "~/.codex/config.toml (advanced)"],
   "config_template_streamable_http": {
     "mcpServers": {
       "subkit": {
