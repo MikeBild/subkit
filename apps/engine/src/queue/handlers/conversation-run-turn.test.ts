@@ -33,6 +33,7 @@ import {
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
 import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { flush, waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
 import {
@@ -274,6 +275,77 @@ describe("conversation.run-turn worker — failure path", () => {
     expect(audits[0]?.result).toBe("error");
     expect(audits[0]?.reason).toContain("overloaded");
     expect((audits[0]!.metadata as { mcp_task_id?: string }).mcp_task_id).toBe(mcp_task_id);
+  }, 45_000);
+
+  test("a provider quota error parks the turn instead of failing it — no failure_reason, job re-enqueued with startAfter", async () => {
+    // Both models refuse with a quota error (the fallback is quota-limited
+    // too). The worker must NOT stamp failure_reason / emit a failure audit
+    // row — the turn is re-enqueued with `provider_limit_parks:1` and a
+    // `startAfter` in the future, so the task keeps deriving `working`
+    // until the provider window resets.
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("quota me");
+    getMockProvider().setFailure("runturn-primary", "quota_exhausted");
+    getMockProvider().setFailure("runturn-fallback", "quota_exhausted");
+
+    const sends: Array<{ data: unknown; options: unknown }> = [];
+    const originalSend = queue.boss.send.bind(queue.boss);
+    const spy = spyOn(queue.boss, "send").mockImplementation((async (
+      name: string,
+      data: object,
+      options?: object,
+    ) => {
+      // Record park re-enqueues but do NOT deliver them — the parked job
+      // would otherwise sit in pg-boss with a 15-minute startAfter anyway.
+      if ((data as { provider_limit_parks?: number }).provider_limit_parks) {
+        sends.push({ data, options });
+        return null;
+      }
+      return await originalSend(name, data, options);
+    }) as typeof queue.boss.send);
+    try {
+      await enqueueConversationRunTurn(queue.boss, {
+        tenant_id: tenantId,
+        conversation_id,
+        mcp_task_id,
+        actor_id: userId,
+        kind: "start",
+      });
+      await waitFor(async () => sends.length > 0, {
+        tries: 120,
+        sleepMs: 250,
+        label: "provider-limit park re-enqueue",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    const send = sends[0]!;
+    const parkedData = send.data as { provider_limit_parks?: number; mcp_task_id?: string };
+    expect(parkedData.provider_limit_parks).toBe(1);
+    expect(parkedData.mcp_task_id).toBe(mcp_task_id);
+    const startAfter = (send.options as { startAfter?: Date }).startAfter;
+    expect(startAfter).toBeInstanceOf(Date);
+    expect(startAfter!.getTime()).toBeGreaterThan(getTestNow());
+
+    // The task is NOT terminal: no failure, no result — still `working`.
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.failure_reason).toBeNull();
+    expect(row?.result).toBeNull();
+    const store = new ConversationTaskStore({ db: queue.testDb.db, tenant_id: tenantId });
+    expect((await store.getTask(mcp_task_id))?.status).toBe("working");
+
+    // No CONVERSATION_TURN_FAILED audit row was emitted for the park.
+    const audits = await queue.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "conversation.turn_failed"),
+          eq(auditLog.resource_id, conversation_id),
+        ),
+      );
+    expect(audits).toHaveLength(0);
   }, 45_000);
 
   test("a job whose mcp_tasks row already has failure_reason is an idempotent no-op", async () => {

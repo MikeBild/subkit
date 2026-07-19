@@ -17,6 +17,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
@@ -482,11 +483,53 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         // wiring as steps/transform.ts.
         { now_ms: ctx.started_at.getTime(), seed: `${execution_id}:${step.id}` },
       );
-      if (collectionResult.kind === "failure") {
-        // Collection resolution failed — record the failure as the step
-        // outcome, write the step row, and apply the on_error semantics.
+      // Circuit-breaker preflight (audit H1): when the target connector's
+      // breaker is already open, every iteration would fail fast with
+      // `circuit_open` anyway — but each one still schedules, inserts its
+      // own step row and reports its own failure (observed: a 5×-422 open
+      // breaker turned one fan-out into 464 doomed step failures in 3.5
+      // minutes). Fail ONCE at the container instead of scheduling N
+      // branches. Half-open probing is untouched: past the reset window the
+      // predicate stands down and the first iteration performs the probe.
+      let fanOutCircuitFailure: StepResult | null = null;
+      if (collectionResult.kind === "collection" && step.kind === "request" && step.connector_id) {
+        const target = await getConnectorForEnvironment(
+          tenant_id,
+          step.connector_id,
+          execution_mode,
+          db,
+        );
+        if (target && isCircuitOpenBlocking(target)) {
+          logger.warn({
+            module: "execution",
+            action: "for_each.circuit_open_preflight",
+            msg: "for_each target connector circuit breaker is open — failing the container without scheduling iterations",
+            tenant_id,
+            execution_id,
+            step_id: step.id,
+            connector_id: target.id,
+            connector_slug: target.slug,
+            iterations_not_scheduled: collectionResult.items.length,
+          });
+          fanOutCircuitFailure = {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - forEachStart,
+            error: {
+              code: "circuit_open",
+              message: `connector circuit breaker is open — ${collectionResult.items.length} for_each iteration(s) not scheduled`,
+            },
+          };
+        }
+      }
+      if (collectionResult.kind === "failure" || fanOutCircuitFailure !== null) {
+        // Collection resolution failed (or the fan-out preflight tripped) —
+        // record the failure as the step outcome, write the step row, and
+        // apply the on_error semantics.
+        const failedResult =
+          fanOutCircuitFailure ?? (collectionResult as { result: StepResult }).result;
         const failureOutcome: import("./step-runner.ts").RunStepOutcome = {
-          result: collectionResult.result,
+          result: failedResult,
           scope_value: undefined,
         };
         scope[step.id] = envelopeFor(failureOutcome);
@@ -494,12 +537,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         await finalizeStepRow(
           db,
           step_row_id,
-          collectionResult.result.status as import("./types.ts").StepStatus,
+          failedResult.status as import("./types.ts").StepStatus,
           {
-            status: collectionResult.result.status,
-            duration_ms: collectionResult.result.duration_ms ?? 0,
-            retry_count: collectionResult.result.retry_count ?? 0,
-            error: collectionResult.result.error ?? null,
+            status: failedResult.status,
+            duration_ms: failedResult.duration_ms ?? 0,
+            retry_count: failedResult.retry_count ?? 0,
+            error: failedResult.error ?? null,
           },
           { output_preview: null, result_preview: null, result_storage_uri: null },
         );
@@ -507,15 +550,15 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           step_key: step.id,
           step_index: i,
           kind: step.kind,
-          status: collectionResult.result.status,
-          duration_ms: collectionResult.result.duration_ms ?? null,
-          retry_count: collectionResult.result.retry_count ?? 0,
-          error: collectionResult.result.error ?? null,
+          status: failedResult.status,
+          duration_ms: failedResult.duration_ms ?? null,
+          retry_count: failedResult.retry_count ?? 0,
+          error: failedResult.error ?? null,
           request_meta: null,
         });
-        if (collectionResult.result.status !== "succeeded") {
+        if (failedResult.status !== "succeeded") {
           const onError = step.on_error ?? "fail";
-          const stepError = collectionResult.result.error ?? {
+          const stepError = failedResult.error ?? {
             code: "step_failed",
             message: "step failed",
           };
@@ -546,9 +589,9 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           warningsAccum.push({
             code: "step_failed_continued",
             step_key: step.id,
-            message: `step "${step.id}" ${collectionResult.result.status} (${stepError.code}: ${stepError.message}) but declares on_error:"continue" — the run continued`,
+            message: `step "${step.id}" ${failedResult.status} (${stepError.code}: ${stepError.message}) but declares on_error:"continue" — the run continued`,
             details: {
-              step_status: collectionResult.result.status,
+              step_status: failedResult.status,
               error_code: stepError.code,
             },
           });

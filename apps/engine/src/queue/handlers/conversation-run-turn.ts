@@ -42,6 +42,7 @@ import {
 } from "../../mcp/tasks/store.ts";
 import { withJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_QUEUE, type ConversationRunTurnJob } from "../queues.ts";
+import { planProviderLimitPark } from "./provider-limit-park.ts";
 
 export interface RegisterConversationRunTurnOptions {
   boss: PgBoss;
@@ -83,7 +84,7 @@ function toEnvelope(outcome: svc.ConversationTurnOutcome): ConversationTurnEnvel
   };
 }
 
-async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void> {
+async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss): Promise<void> {
   const data = job.data;
   log.queue.job.dequeued({
     msg: "conversation.run-turn job dequeued",
@@ -279,6 +280,48 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
       });
       return;
     }
+    // A provider quota / rate-limit error is a RETRYABLE condition, not a
+    // semantic turn failure: the model call was refused, nothing ran, and
+    // the limit resolves by itself ("You will regain access on … UTC").
+    // With `retryLimit:0` the throw below would fail the task terminally
+    // and LOSE the turn over a billing window. Park instead: re-enqueue a
+    // fresh job with `startAfter` at the provider's stated reset time (or a
+    // per-kind backoff), bounded by PROVIDER_LIMIT_PARK_MAX so the task
+    // cannot ping-pong forever. The mcp_tasks row stays non-terminal, so
+    // `tasks/get` keeps deriving `working` until the parked turn runs.
+    const parkPlan = planProviderLimitPark(err, data.provider_limit_parks ?? 0, Date.now());
+    if (parkPlan) {
+      try {
+        await boss.send(
+          CONVERSATION_RUN_TURN_QUEUE,
+          { ...data, provider_limit_parks: parkPlan.parks },
+          { startAfter: parkPlan.start_after },
+        );
+        log.queue.job.completed({
+          msg: "conversation.run-turn hit a provider usage limit — parked for retry",
+          queue: CONVERSATION_RUN_TURN_QUEUE,
+          job_id: job.id,
+          tenant_id: data.tenant_id,
+          error: err instanceof Error ? err.message : String(err),
+          provider_limit_kind: parkPlan.kind,
+          provider_limit_parks: parkPlan.parks,
+          park_source: parkPlan.source,
+          start_after: parkPlan.start_after.toISOString(),
+          duration_ms: Date.now() - started,
+        });
+        return;
+      } catch (sendErr) {
+        // The park re-enqueue itself failed — fall through to the terminal
+        // failure path so the task can never be silently lost in limbo.
+        log.queue.job.failed({
+          msg: "conversation.run-turn park re-enqueue failed — falling back to terminal failure",
+          queue: CONVERSATION_RUN_TURN_QUEUE,
+          job_id: job.id,
+          error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+          duration_ms: Date.now() - started,
+        });
+      }
+    }
     const failureReason = err instanceof Error ? err.message : String(err);
     await setMcpTaskFailure(data.tenant_id, data.mcp_task_id, failureReason, db);
     await auditAwait(
@@ -321,7 +364,7 @@ export async function registerConversationRunTurnHandler(
       for (const job of jobs) {
         // Bridge the enqueuing tenant across the queue boundary so every
         // downstream conversation.* log inherits the originating context.
-        await withJobContext(job.data, () => handleOne(job, db));
+        await withJobContext(job.data, () => handleOne(job, db, boss));
       }
     },
   );

@@ -13,12 +13,24 @@
 //     the candidate selection); a second scan must NOT emit a second event.
 //   - Tenant isolation: the scan is scoped to a single tenant; a connector
 //     belonging to another tenant must not be affected.
+//   - Runtime streak escalation: 3 consecutive auth_failed scheduler runs on
+//     a schedule-bound workflow emit a level:"error" line naming workflow +
+//     connector; shorter/broken streaks and paused schedules stay silent.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
-import { connectors, events, tenants } from "../../db/schema/index.ts";
+import {
+  connectors,
+  events,
+  executionSteps,
+  executions,
+  tenants,
+  workflows,
+  workflowsSchedules,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { logRing } from "../../observability/log-ring.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { runConnectorReauthScanForTenant } from "../connector-reauth-scan-runner.ts";
 
@@ -235,6 +247,149 @@ describe("runConnectorReauthScanForTenant — already-flagged connector skipped"
     // No new event.
     const eventsAfter = await queryAuthFailedEventsForTenant(tenantId);
     expect(eventsAfter.length).toBe(countBefore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runtime auth_failed streak escalation (second scan phase)
+// ---------------------------------------------------------------------------
+
+/**
+ * Seed a schedule-bound workflow plus `failures` consecutive failed
+ * scheduler executions, each with a failed request step whose error carries
+ * `health: "auth_failed"` — the shape the request dispatcher persists on a
+ * 401/403 (see execution/steps/request/dispatch.ts healthHintMeta).
+ * `finalStatus` overrides the NEWEST execution (e.g. "succeeded" to prove a
+ * recovered workflow breaks the streak).
+ */
+async function seedAuthFailedStreak(opts: {
+  slug: string;
+  failures: number;
+  connectorSlug?: string;
+  finalStatus?: "succeeded" | "failed";
+  paused?: boolean;
+}): Promise<{ workflowId: string }> {
+  const [w] = await db.db
+    .insert(workflows)
+    .values({
+      tenant_id: tenantId,
+      slug: opts.slug,
+      name: opts.slug,
+      lifecycle: "active",
+    })
+    .returning();
+  const workflowId = w!.id;
+  await db.db.insert(workflowsSchedules).values({
+    tenant_id: tenantId,
+    workflow_id: workflowId,
+    cron: "0 8,20 * * *",
+    paused: opts.paused ?? false,
+  });
+
+  const connectorSlug = opts.connectorSlug ?? "streak-connector";
+  for (let i = 0; i < opts.failures; i += 1) {
+    const isNewest = i === opts.failures - 1;
+    const status = isNewest ? (opts.finalStatus ?? "failed") : "failed";
+    const startedAt = new Date(NOW.getTime() - (opts.failures - i) * 12 * 3600_000);
+    const [e] = await db.db
+      .insert(executions)
+      .values({
+        tenant_id: tenantId,
+        workflow_id: workflowId,
+        status,
+        request_source: "scheduler",
+        execution_mode: "prod",
+        started_at: startedAt,
+        finished_at: new Date(startedAt.getTime() + 1000),
+      })
+      .returning();
+    if (status === "failed") {
+      await db.db.insert(executionSteps).values({
+        tenant_id: tenantId,
+        execution_id: e!.id,
+        step_key: "scrape",
+        kind: "request",
+        status: "failed",
+        error: { code: "http_4xx", message: "http 401", health: "auth_failed" },
+        request_meta: {
+          connector: {
+            connector_id: "00000000-0000-0000-0000-00000000c0fe",
+            connector_slug: connectorSlug,
+          },
+        },
+        started_at: startedAt,
+      });
+    }
+  }
+  return { workflowId };
+}
+
+function tailStreakErrors() {
+  return logRing.tail({
+    module: "scheduler",
+    action: "connector_reauth_scan.workflow_auth_failed",
+    min_level: "error",
+  });
+}
+
+describe("runConnectorReauthScanForTenant — scheduled auth_failed streak", () => {
+  test("3 consecutive auth_failed scheduler runs emit one error naming workflow + connector", async () => {
+    const { workflowId } = await seedAuthFailedStreak({
+      slug: "streak-3-failed",
+      failures: 3,
+      connectorSlug: "streak-browserless",
+    });
+
+    logRing.clear();
+    await runConnectorReauthScanForTenant(tenantId, NOW, db.db);
+
+    const entries = tailStreakErrors().filter((e) => e.fields.workflow_id === workflowId);
+    expect(entries.length).toBe(1);
+    expect(entries[0]!.level).toBe("error");
+    expect(entries[0]!.fields.workflow_slug).toBe("streak-3-failed");
+    expect(entries[0]!.fields.connector_slug).toBe("streak-browserless");
+    expect(entries[0]!.fields.consecutive_failures).toBe(3);
+  });
+
+  test("only 2 consecutive failures stay below the threshold — no error", async () => {
+    const { workflowId } = await seedAuthFailedStreak({
+      slug: "streak-2-failed",
+      failures: 2,
+    });
+
+    logRing.clear();
+    await runConnectorReauthScanForTenant(tenantId, NOW, db.db);
+
+    const entries = tailStreakErrors().filter((e) => e.fields.workflow_id === workflowId);
+    expect(entries.length).toBe(0);
+  });
+
+  test("a succeeded newest run breaks the streak — no error", async () => {
+    const { workflowId } = await seedAuthFailedStreak({
+      slug: "streak-recovered",
+      failures: 4,
+      finalStatus: "succeeded",
+    });
+
+    logRing.clear();
+    await runConnectorReauthScanForTenant(tenantId, NOW, db.db);
+
+    const entries = tailStreakErrors().filter((e) => e.fields.workflow_id === workflowId);
+    expect(entries.length).toBe(0);
+  });
+
+  test("a paused schedule does not alert", async () => {
+    const { workflowId } = await seedAuthFailedStreak({
+      slug: "streak-paused",
+      failures: 3,
+      paused: true,
+    });
+
+    logRing.clear();
+    await runConnectorReauthScanForTenant(tenantId, NOW, db.db);
+
+    const entries = tailStreakErrors().filter((e) => e.fields.workflow_id === workflowId);
+    expect(entries.length).toBe(0);
   });
 });
 

@@ -53,9 +53,29 @@ import { validateMcpStreamableHttpRequest } from "./guards.ts";
 // long as requests keep touching it.
 export const SESSION_IDLE_TTL_MS = 30 * 60_000;
 export const SESSION_SWEEP_INTERVAL_MS = 60_000;
-// Hard ceiling on concurrent leases, so a client that re-initializes on every
-// call cannot outrun the sweeper. Oldest-idle lease is evicted first.
+// Soft ceiling on concurrent leases, so a client that re-initializes on every
+// call cannot outrun the sweeper. Oldest-idle lease is evicted first. When
+// every lease is busy the map may run over this cap — but only up to
+// `MAX_LIVE_SESSIONS_HARD`.
 export const MAX_LIVE_SESSIONS = 100;
+// Hard ceiling. The soft cap admits over itself when every lease has in-flight
+// work (severing live streams is worse than a bigger map) — but observed
+// production runs latched 80× "admitting over cap" in a row, so "every lease
+// is busy" is not a state that self-corrects fast enough to leave admission
+// unbounded. At the hard ceiling a fresh `initialize` is refused with a 503
+// instead of admitted; existing sessions keep working.
+export const MAX_LIVE_SESSIONS_HARD = 120;
+// Lease timeout for busy leases. `inFlight > 0` normally means "live stream —
+// never evict", but a retain that never comes back (a transport whose
+// `onClosed` never fired, a stream the runtime lost track of) would pin its
+// lease forever and, at scale, wedge the map at the cap with no victims. A
+// lease that has seen NO request start or finish for this long is stuck, not
+// busy — `retain`/`release` re-date `lastSeenAt` on every unit of work, so a
+// genuinely active session never ages this far. Kept well above the idle TTL
+// so a long-lived standalone GET notification channel on a quiet but connected
+// client is not severed prematurely (the existing sweeper tests pin survival
+// at 10× the idle TTL).
+export const SESSION_STUCK_TTL_MS = 12 * SESSION_IDLE_TTL_MS;
 // A retain is bounded, like the lease it accounts against. An SSE body the
 // runtime never attaches to a socket is never pulled and never cancelled, so
 // its `onClosed` never fires and its retain pins `inFlight` at 1 forever — the
@@ -102,15 +122,23 @@ function ownerKey(p: ResolvedPrincipal): string {
 
 export interface SessionLeaseManager {
   sessions: Map<string, Session>;
-  evict(sessionId: string, reason: "idle_ttl" | "capacity"): void;
-  /** One sweep pass: evict every session idle past `SESSION_IDLE_TTL_MS`.
+  evict(sessionId: string, reason: "idle_ttl" | "capacity" | "stuck"): void;
+  /** One sweep pass: evict every session idle past `SESSION_IDLE_TTL_MS`
+   *  and every busy lease stuck past `SESSION_STUCK_TTL_MS`.
    *  Exposed separately from `startSweeper` so tests can drive a pass
    *  deterministically (fake clock + direct call) instead of waiting on the
    *  real `SESSION_SWEEP_INTERVAL_MS` timer. */
   tick(): void;
   startSweeper(): void;
   stopSweeper(): void;
-  evictOverflow(): void;
+  /** Make room for one more lease. Returns false when the map is at
+   *  `MAX_LIVE_SESSIONS_HARD` and no lease is evictable — the caller must
+   *  refuse the admission instead of registering over the hard ceiling. */
+  evictOverflow(): boolean;
+  /** Read-only admission probe for the request path: true when a fresh lease
+   *  could be admitted right now (below the hard ceiling, or an evictable
+   *  lease exists for `evictOverflow` to reclaim). */
+  hasAdmissionRoom(): boolean;
   /** Mark one unit of work as started on this session. Must be paired with
    *  exactly one `release`. */
   retain(session: Session): void;
@@ -228,7 +256,7 @@ export function createSessionLeaseManager(): SessionLeaseManager {
   // (`capabilities/tools.ts`, `capabilities/resources.ts`) and detaches their
   // `globalEmitter` listeners. Closing is fire-and-forget: the map entry is gone
   // either way, and a client that returns finds a 404 and re-initializes.
-  function evict(sessionId: string, reason: "idle_ttl" | "capacity"): void {
+  function evict(sessionId: string, reason: "idle_ttl" | "capacity" | "stuck"): void {
     const session = sessions.get(sessionId);
     if (!session) return;
     sessions.delete(sessionId);
@@ -271,10 +299,17 @@ export function createSessionLeaseManager(): SessionLeaseManager {
   // Idleness is "no work, and none for a full TTL". A session serving an open
   // SSE stream is doing work no matter how old its `lastSeenAt` is: eviction
   // closes the server, which closes the transport, which kills that stream.
+  // EXCEPT past the stuck TTL: a busy lease that no request has started or
+  // finished on for `SESSION_STUCK_TTL_MS` is a retain that never came back,
+  // and leaving it immortal is how the map wedges at the cap with no victims.
   function tick(): void {
     const cutoff = now() - SESSION_IDLE_TTL_MS;
+    const stuckCutoff = now() - SESSION_STUCK_TTL_MS;
     for (const [sessionId, session] of sessions) {
-      if (session.inFlight > 0) continue;
+      if (session.inFlight > 0) {
+        if (session.lastSeenAt <= stuckCutoff) evict(sessionId, "stuck");
+        continue;
+      }
       if (session.lastSeenAt <= cutoff) evict(sessionId, "idle_ttl");
     }
     if (sessions.size === 0) stopSweeper();
@@ -289,41 +324,86 @@ export function createSessionLeaseManager(): SessionLeaseManager {
     (sweeper as unknown as { unref?: () => void }).unref?.();
   }
 
+  // A lease is evictable when it holds no in-flight work, or when its work
+  // has been in flight with no request activity for the full stuck TTL —
+  // shared by `evictOverflow` (actual eviction) and `hasAdmissionRoom` (the
+  // request path's read-only probe).
+  function isEvictable(session: Session, stuckCutoff: number): boolean {
+    return session.inFlight === 0 || session.lastSeenAt <= stuckCutoff;
+  }
+
   // Make room for one more lease. Oldest-idle first: a session nobody has
-  // touched is the cheapest one to lose. Sessions with in-flight work are never
-  // victims — a lease holding an open notification stream is the most valuable
-  // one in the map, not the least, and killing it strands a live client.
-  function evictOverflow(): void {
+  // touched is the cheapest one to lose. Sessions with in-flight work are only
+  // victims once they age past the stuck TTL — a lease holding an open
+  // notification stream is the most valuable one in the map, not the least,
+  // and killing it strands a live client.
+  function evictOverflow(): boolean {
     while (sessions.size >= MAX_LIVE_SESSIONS) {
+      const stuckCutoff = now() - SESSION_STUCK_TTL_MS;
       let oldestId: string | undefined;
       let oldestSeenAt = Number.POSITIVE_INFINITY;
+      let oldestBusy = false;
       for (const [sessionId, session] of sessions) {
-        if (session.inFlight > 0) continue;
+        if (!isEvictable(session, stuckCutoff)) continue;
         if (session.lastSeenAt < oldestSeenAt) {
           oldestSeenAt = session.lastSeenAt;
           oldestId = sessionId;
+          oldestBusy = session.inFlight > 0;
         }
       }
       if (!oldestId) {
-        // Every lease is busy. Admit over the cap rather than sever live work;
-        // the sweeper reclaims them as their streams close.
+        // Every lease is busy (and none is stuck yet). Between the soft and
+        // hard caps, admit over the cap rather than sever live work; the
+        // sweeper reclaims leases as their streams close. AT the hard cap,
+        // refuse — unbounded admission is how 80 consecutive over-cap warns
+        // happened in production.
+        if (sessions.size >= MAX_LIVE_SESSIONS_HARD) {
+          logger.warn({
+            module: "mcp",
+            action: "mcp.session.hard_cap_reached",
+            msg: "mcp session hard cap reached and every lease has in-flight work — refusing new session",
+            sessions_open: sessions.size,
+            hard_cap: MAX_LIVE_SESSIONS_HARD,
+          });
+          return false;
+        }
         logger.warn({
           module: "mcp",
           action: "mcp.session.overflow_no_victim",
           msg: "mcp session cap reached but every lease has in-flight work — admitting over cap",
           sessions_open: sessions.size,
         });
-        return;
+        return true;
       }
-      evict(oldestId, "capacity");
+      evict(oldestId, oldestBusy ? "stuck" : "capacity");
     }
+    return true;
   }
 
-  return { sessions, evict, tick, startSweeper, stopSweeper, evictOverflow, retain, release };
+  function hasAdmissionRoom(): boolean {
+    if (sessions.size < MAX_LIVE_SESSIONS_HARD) return true;
+    const stuckCutoff = now() - SESSION_STUCK_TTL_MS;
+    for (const session of sessions.values()) {
+      if (isEvictable(session, stuckCutoff)) return true;
+    }
+    return false;
+  }
+
+  return {
+    sessions,
+    evict,
+    tick,
+    startSweeper,
+    stopSweeper,
+    evictOverflow,
+    hasAdmissionRoom,
+    retain,
+    release,
+  };
 }
 
 export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
-  const { sessions, startSweeper, stopSweeper, evictOverflow, retain, release } =
+  const { sessions, startSweeper, stopSweeper, evictOverflow, hasAdmissionRoom, retain, release } =
     createSessionLeaseManager();
 
   // Hono doesn't know about non-200 responses from raw handlers, but
@@ -420,6 +500,37 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
     let registered = false;
 
     if (!session) {
+      // Hard-cap admission gate, BEFORE any server/transport is built. When
+      // the map sits at `MAX_LIVE_SESSIONS_HARD` and every lease is busy,
+      // `evictOverflow` can free nothing — admitting anyway is the unbounded
+      // growth the hard cap exists to stop. 503 + Retry-After is the honest
+      // answer: existing sessions keep working, and the client retries once
+      // the sweeper (idle or stuck TTL) has reclaimed a lease.
+      if (!hasAdmissionRoom()) {
+        logger.warn({
+          module: "mcp",
+          action: "mcp.session.hard_cap_rejected",
+          msg: "mcp session hard cap reached — rejecting new session with 503",
+          sessions_open: sessions.size,
+          hard_cap: MAX_LIVE_SESSIONS_HARD,
+          principal_id: principal.id,
+          tenant_id: principal.tenant_id,
+        });
+        return new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: {
+              code: -32000,
+              message: "Server is at its MCP session capacity — retry shortly",
+            },
+            id: null,
+          }),
+          {
+            status: 503,
+            headers: { "content-type": "application/json", "retry-after": "60" },
+          },
+        );
+      }
       freshSession = true;
       // Spin up a new stateful transport. Per-session server so handlers
       // close over the current principal.
@@ -450,8 +561,25 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
             });
             return;
           }
+          // The admission gate above ran before `createMcpServer`, but other
+          // requests can interleave across those awaits — re-check here so a
+          // race cannot register past the hard cap. Leaving `registered`
+          // false makes the request's `finally` close the orphaned server;
+          // the client's next request 404s and its re-initialize hits the
+          // 503 gate.
+          if (!evictOverflow()) {
+            logger.warn({
+              module: "mcp",
+              action: "mcp.session.hard_cap_rejected",
+              msg: "mcp session hard cap reached at initialize — refusing to register the lease",
+              session_id: sid,
+              sessions_open: sessions.size,
+              hard_cap: MAX_LIVE_SESSIONS_HARD,
+              principal_id: principal.id,
+            });
+            return;
+          }
           registered = true;
-          evictOverflow();
           sessions.set(sid, lease);
           startSweeper();
           logger.info({
