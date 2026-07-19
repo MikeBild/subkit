@@ -6663,7 +6663,7 @@
     },
     "default_skill": "google-search-console-basics",
     "ingestion_source": "openapi",
-    "ingestion_url": "https://www.googleapis.com/discovery/v1/apis/webmasters/v3/rest",
+    "ingestion_url": "https://searchconsole.googleapis.com/$discovery/rest?version=v1",
     "icon": "google-workspace.svg",
     "description": "Google Search Console API",
     "category": "analytics",
