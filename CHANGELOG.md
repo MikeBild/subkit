@@ -4,6 +4,33 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.3] – 2026-07-19
+
+### Added
+- Log lines now carry sd-daemon priority prefixes (`<3>` error, `<4>` warn)
+  when running under systemd, so `journalctl -p err` surfaces application
+  errors instead of filing everything at info.
+- The connector re-auth scan detects runtime 401 streaks on schedule-bound
+  workflows (3 consecutive auth-failed runs) and logs an error naming the
+  workflow and connector, instead of reporting `auth_failed: 0` while a
+  workflow keeps failing.
+- Workflow commit gates reject unresolvable `${...}` placeholders, storage
+  bindings that don't resolve, and cadence phrasing without a bound schedule
+  trigger — failures that previously only surfaced at runtime.
+
+### Fixed
+- Fan-outs against a connector with an open circuit breaker now fail once at
+  the parent step instead of scheduling every branch into a doomed
+  `circuit_open` failure (observed: 464 step failures in 3.5 minutes).
+- Write steps fail hard when the requested connector environment falls back
+  (dev → prod) instead of silently mutating production; reads keep warning.
+- MCP session admission is bounded by a hard cap above the soft cap, and
+  stuck leases time out and become evictable, so sessions can no longer grow
+  past the cap indefinitely.
+- Provider quota exhaustion (HTTP 429 / usage-limit messages) parks
+  conversation turns until the reported reset time instead of failing them
+  permanently on no-retry queues.
+
 ## [1.20.2] – 2026-07-18
 
 ### Added
