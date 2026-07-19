@@ -27,8 +27,40 @@ function defaultMode(): RenderMode {
   return tty ? "pretty" : "ndjson";
 }
 
+// sd-daemon(3) priority prefixes. journald records every plain stdout
+// line at its default priority 6 ("info"), so without these markers a
+// `"level":"error"` JSON record is invisible to `journalctl -p err` and
+// to any priority-based alerting on the unit. Prefixing the line with
+// `<N>` makes journald adopt N as the entry's PRIORITY field; the JSON
+// payload after the marker is untouched, so downstream parsers that
+// strip the prefix (or never see it — journald consumes it) are
+// unaffected.
+const SD_DAEMON_PREFIX: Record<LogLevelName, string> = {
+  trace: "<7>", // SD_DEBUG
+  debug: "<7>", // SD_DEBUG
+  info: "<6>", // SD_INFO
+  warn: "<4>", // SD_WARNING
+  error: "<3>", // SD_ERR
+  fatal: "<2>", // SD_CRIT
+};
+
+// Prefixing is only correct when stdout actually feeds journald — a
+// docker json-file collector or a dev terminal would see the `<3>`
+// marker as garbage in front of the JSON. systemd exports
+// JOURNAL_STREAM to the unit exactly when stdout/stderr is connected
+// to the journal (sd_journal_stream_fd(3)), so that is the auto-detect
+// signal. SK_LOG_SD_DAEMON=1/0 force-overrides for setups where the
+// auto-detect is wrong (e.g. journald behind a shell pipe).
+function defaultSdDaemonPrefix(): boolean {
+  const flag = (process.env.SK_LOG_SD_DAEMON ?? "").toLowerCase();
+  if (flag === "1" || flag === "true") return true;
+  if (flag === "0" || flag === "false") return false;
+  return Boolean(process.env.JOURNAL_STREAM);
+}
+
 let MODE: RenderMode = defaultMode();
 let THRESHOLD: number = LEVEL_WEIGHT.info;
+let SD_DAEMON: boolean = defaultSdDaemonPrefix();
 
 export function reconfigureLogger(opts: {
   level?: LogLevel;
@@ -49,6 +81,7 @@ export function reconfigureLogger(opts: {
 export function _resetLoggerForTests(): void {
   MODE = defaultMode();
   THRESHOLD = LEVEL_WEIGHT.info;
+  SD_DAEMON = defaultSdDaemonPrefix();
   MAX_FIELD_LEN = DEFAULT_MAX_FIELD_LEN;
   SERVICE_NAME = "subkit";
   DEPLOYMENT_ENVIRONMENT = process.env.NODE_ENV ?? "development";
@@ -178,7 +211,10 @@ function emitNdjson(level: LogLevel, fields: LogFields): void {
     "service.version": VERSION,
     "deployment.environment.name": DEPLOYMENT_ENVIRONMENT,
   };
-  process.stdout.write(`${JSON.stringify(record)}\n`);
+  // Under systemd the sd-daemon marker maps the record's level onto the
+  // journald PRIORITY field; everywhere else the line stays bare JSON.
+  const prefix = SD_DAEMON ? SD_DAEMON_PREFIX[level] : "";
+  process.stdout.write(`${prefix}${JSON.stringify(record)}\n`);
 }
 
 function shouldLog(level: LogLevel): boolean {
