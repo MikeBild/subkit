@@ -10,16 +10,17 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
-import { skills as skillsTable, workflows, workflowVersions } from "../db/schema/index.ts";
+import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from "../pubsub/types.ts";
 import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
+import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
-import { validateOutputSchemaSuperset, validateWorkflowDef } from "./validator.ts";
+import { validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 
 /**
@@ -172,6 +173,8 @@ export async function createWorkflow(
   }
   const skillGate = await applySkillSchemaGate(input.tenant_id, validation.workflow, db);
   if (!skillGate.ok) return { errors: skillGate.errors };
+  const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, db);
+  if (!storageGate.ok) return { errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
   const slug = def.slug ?? slugify(def.name);
   let result: string;
@@ -277,6 +280,8 @@ export async function updateWorkflow(
   }
   const skillGate = await applySkillSchemaGate(input.tenant_id, validation.workflow, db);
   if (!skillGate.ok) return { errors: skillGate.errors };
+  const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, db);
+  if (!storageGate.ok) return { errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
   const updated = await db.transaction(async (tx) => {
     const wfRows = await tx
@@ -957,42 +962,4 @@ export async function restoreWorkflowVersion(
   });
   if (!updatedId) return null;
   return loadWorkflowView(tenant_id, updatedId, db);
-}
-
-/**
- * Skill-schema gate. When the workflow declares `derived_from_skill_id`,
- * load the referenced skill and require the workflow's `output_schema`
- * to structurally cover the skill's. The proof-before-save invariant
- * means a recipe-cloned workflow cannot silently narrow its public
- * contract away from the skill's promise. Returns `{ok:true}` when
- * either the skill is missing (treated as if no contract was promised)
- * or the gate passes — typed errors only on actual narrowing.
- */
-async function applySkillSchemaGate(
-  tenant_id: string,
-  def: WorkflowDef,
-  exec: Executor,
-): Promise<{ ok: true } | { ok: false; errors: string[] }> {
-  const skillId = (def as { derived_from_skill_id?: string | null }).derived_from_skill_id;
-  if (!skillId) return { ok: true };
-  const rows = await exec
-    .select({ output_schema: skillsTable.output_schema })
-    .from(skillsTable)
-    .where(and(eq(skillsTable.tenant_id, tenant_id), eq(skillsTable.slug, skillId)))
-    .limit(1);
-  const skillSchema = rows[0]?.output_schema ?? null;
-  const result = validateOutputSchemaSuperset(skillSchema, def.output_schema ?? null);
-  if (result.ok) return { ok: true };
-  log.workflow.validation.failed({
-    tenant_id,
-    op: "skill_gate",
-    error_count: result.missing_fields.length,
-    first_error: `output_schema missing required fields from skill ${skillId}: ${result.missing_fields.join(", ")}`,
-  });
-  return {
-    ok: false,
-    errors: [
-      `skill_schema_gate: workflow.output_schema is missing fields required by derived_from_skill_id=${skillId}: ${result.missing_fields.join(", ")}`,
-    ],
-  };
 }
