@@ -20,6 +20,7 @@ import {
 } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
+import { detectSchedulePhrases } from "../../workflows/schedule-phrase-detector.ts";
 import { createWorkflow, updateWorkflow } from "../../workflows/service.ts";
 import { triggerOf } from "../../workflows/trigger-bindings.ts";
 import { WORKFLOW_DEF_FIELD_KEYS, type WorkflowDef } from "../../workflows/types.ts";
@@ -1208,6 +1209,23 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     name: workflow.name,
     definition: def,
   });
+  // Prominent unbound-schedule warning (audit M4). `applyTriggerBindings`
+  // already writes the warn + audit row + counter when a committed
+  // workflow's name/description phrases a cadence but its trigger stayed
+  // `request` — observability the AUTHOR never sees (5 such commits
+  // shipped without anyone binding a schedule). Surface the same detection
+  // on the commit envelope so the LLM (COMMIT SUMMARY rule) relays it and
+  // the schedule gets bound in the same session. A warning, not a
+  // rejection: the phrase regex has false positives ("Daily Report
+  // formatter" names the data, not a cadence), and the detector's contract
+  // is explicitly observability-only (see schedule-phrase-detector.ts).
+  const schedulePhrase =
+    triggerOf(def as unknown as WorkflowDef).kind === "request"
+      ? detectSchedulePhrases({ name: def.name, description: def.description ?? null })
+      : null;
+  const scheduleWarning = schedulePhrase?.matched
+    ? `WARNING: the workflow's name/description phrases a recurring cadence (${schedulePhrase.matched_phrases.join(", ")}) but NO schedule trigger is bound — it will only run when invoked manually. If it should run on a schedule, add \`trigger: { kind: "schedule", … }\` via edit_workflow_patch and re-commit; if manual invocation is intended, tell the user explicitly.`
+    : null;
   return {
     ok: true,
     data: {
@@ -1223,8 +1241,11 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
       slug: workflow.slug,
       name: workflow.name,
       usage,
+      ...(scheduleWarning ? { schedule_warning: scheduleWarning } : {}),
       next_best_actions: ["run_workflow", "inspect_workflow"],
-      next_prompt: candidateNotice ? `${usage.follow_up}\n${candidateNotice}` : usage.follow_up,
+      next_prompt: [scheduleWarning, usage.follow_up, candidateNotice]
+        .filter((part): part is string => Boolean(part))
+        .join("\n"),
     },
     committed_workflow_id: workflow.id,
   };
