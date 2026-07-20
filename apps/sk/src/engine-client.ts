@@ -52,6 +52,11 @@ import { skillsMethods } from "./engine-client/skills.ts";
 import { statsMethods } from "./engine-client/stats.ts";
 import { workflowsMethods } from "./engine-client/workflows.ts";
 
+// ---------- Re-exported resource-module surface ----------
+// The wire types (and the few value exports) moved with their method
+// groups into `./engine-client/*.ts`; re-exporting them here keeps
+// every existing `from "./engine-client.ts"` import site working.
+export type { ConnectorPromotionResponse } from "./engine-client/connectors.ts";
 export type {
   ConversationContextSnapshot,
   ConversationDetail,
@@ -71,10 +76,6 @@ export type {
   SetupValidationValue,
   StatusSummary,
 } from "./engine-client/diagnostics.ts";
-// ---------- Re-exported resource-module surface ----------
-// The wire types (and the few value exports) moved with their method
-// groups into `./engine-client/*.ts`; re-exporting them here keeps
-// every existing `from "./engine-client.ts"` import site working.
 export type {
   ConnectorResolutionSummary,
   ExecutionCost,

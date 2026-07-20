@@ -119,6 +119,34 @@ Connector validation is available on demand and during authoring. Operators do n
 
 A draft connector that does not yet have a saved credential cannot be probed. The probe path returns a structured `credential_required` envelope rather than silently sending an unauthenticated request. The conversational layer treats this as a signal to collect the credential through a masked form before the next probe.
 
+Templates may attach bounded, non-secret headers to their health endpoint. The header schema rejects authentication, cookie, transport, and CR/LF-bearing values; a saved credential remains the only source of authentication. This is used for vendor-required protocol headers such as Notion's `Notion-Version`, so a connector probe exercises the same valid request shape as runtime traffic.
+
+---
+
+## Audited DEV to PROD Promotion
+
+An admin can promote a persisted DEV connector without reading or re-entering its credential. The operation is one transaction: connector state, credential state, promotion idempotency record, and immutable audit entries either all commit or all roll back. It requires the dedicated `connector:promote` permission and an `Idempotency-Key`; only the SHA-256 digest of that key is persisted.
+
+Two strategies make retention explicit:
+
+| Strategy | Connector identity | Credential handling | DEV after success |
+|---|---|---|---|
+| `copy` | Creates a new PROD connector id | Decrypts and re-encrypts supported static credentials under a new credential id and AAD; token-mint caches are cleared | Retained |
+| `move` | Keeps the connector id | Keeps credential ids, ciphertext, OAuth refresh state, and end-user bindings; only the environment changes | Removed |
+
+`copy` deliberately rejects OAuth/OAuth-client state and connectors with end-user credential bindings: duplicating either would create ambiguous refresh ownership or silently lose user bindings. Use `move` for those connectors. A conflicting active PROD connector with the same tenant-scoped slug is also rejected. Copy carries the pinned template snapshot, connector configuration, self-description links, circuit/health state, and static credential; ingested document rows and observed schema history stay attached to the DEV connector.
+
+Every successful operation writes `connector.environment_promoted` and one `credential.environment_promoted` event per affected credential. Audit metadata contains ids, environments, strategy, request source, and the idempotency-key digest—never plaintext or ciphertext.
+
+The conversational action is `promote_connector`. The equivalent CLI command is:
+
+```bash
+sk connectors promote <dev-connector-id> --to prod --strategy copy
+sk connectors promote <dev-connector-id> --to prod --strategy move --yes
+```
+
+The REST form is `POST /v1/connectors/{id}/promote` with a required `Idempotency-Key` header and body `{ "target_environment": "prod", "strategy": "copy" | "move" }`. A new copy returns 201; a move or idempotent replay returns 200.
+
 ---
 
 ## Live API Discovery

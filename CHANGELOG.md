@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] – 2026-07-20
+
+### Added
+- Admin-only, tenant-scoped connector promotion moves or copies a complete
+  DEV binding to PROD without secret re-entry. The transactional REST,
+  conversation, and CLI surfaces require idempotency, preserve explicit
+  source-retention semantics, and emit connector plus per-credential audit
+  events.
+- Static credentials are re-encrypted under fresh credential ids for copy;
+  move preserves OAuth refresh metadata, ciphertext/AAD bindings, health
+  state, and end-user credential ownership.
+
+### Fixed
+- Schedule catalog responses now include the persisted JSON input payload,
+  and create/update/list paths round-trip objects, arrays, scalars, and null.
+- Repeated `POST /v1/schedules` upserts return 200 with
+  `upsert_status: "updated"` and audit `schedule.updated`; only inserts return
+  201 and audit `schedule.created`.
+- Built-in Notion health probes send the required `Notion-Version` header,
+  including compatibility for connectors pinned to historical template
+  snapshots. Probe headers are bounded and cannot inject authentication,
+  cookie, or transport headers or shadow saved credential headers.
+
 ## [1.20.4] – 2026-07-19
 
 First shipped tag carrying the 1.20.3 changes: the v1.20.3 release build

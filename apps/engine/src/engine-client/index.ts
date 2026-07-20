@@ -9,6 +9,7 @@
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
+import { promoteConnector } from "../connectors/promotion.ts";
 import {
   deleteConnector,
   getConnector,
@@ -137,6 +138,19 @@ export class EngineClient {
       deleteConnector(this.tenant_id, id, this.actor_id, this.db, opts),
     update: (id: string, patch: UpdateConnectorInput) =>
       updateConnector(this.tenant_id, id, patch, this.actor_id, this.db),
+    promote: (id: string, strategy: "copy" | "move", idempotencyKey: string) =>
+      promoteConnector(
+        {
+          tenant_id: this.tenant_id,
+          source_connector_id: id,
+          strategy,
+          idempotency_key: idempotencyKey,
+          actor_id: this.actor_id,
+          actor_type: this.actor_type,
+          request_source: "conversation_tool",
+        },
+        this.db,
+      ),
     count: async () => {
       // Live rows only — mirrors workflows.count.
       const [row] = await this.db
