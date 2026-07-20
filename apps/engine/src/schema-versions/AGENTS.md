@@ -6,12 +6,15 @@ and behind the per-connector `schemaVersion` field on `ConnectorSystem`.
 
 ## What schema versioning IS
 
-- A per-tenant + per-connector + per-endpoint record of the response shape
-  ("connector X's `/customers` endpoint last produced this JSON skeleton").
+- A per-tenant + per-connector + per-endpoint + per-Workflow + per-Step record
+  of the accumulated response contract and latest raw response shape.
 - A signal source for the self-healing drift detector: when the shape changes
   in a way that breaks a workflow, the repair loop opens a patch candidate.
 - A pin that tells `ConnectorSystem` consumers which schema version their
   cached structural assumptions were validated against.
+- Workflow and Step ids are observation provenance, not versioned workflow
+  structure: they prevent optional variants from unrelated consumers being
+  merged into one contract.
 
 ## What schema versioning is NOT
 
