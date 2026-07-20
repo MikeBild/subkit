@@ -132,6 +132,16 @@ describe("buildQuery — extra fields are forwarded", () => {
     );
     expect("connector_id" in q).toBe(false);
   });
+
+  test("usage traffic class and response mode are forwarded", () => {
+    const q = buildQuery(
+      { from: "2026-01-01T00:00:00.000Z", to: "2026-01-02T00:00:00.000Z" },
+      { bucket: "hour", from: "now-24h" },
+      { traffic_class: "synthetic", response_mode: "sse" },
+    );
+    expect(q.traffic_class).toBe("synthetic");
+    expect(q.response_mode).toBe("sse");
+  });
 });
 
 // ---- buildQuery — client-side validation -----------------------------------

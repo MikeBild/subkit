@@ -40,6 +40,7 @@ import {
   setMcpTaskFailure,
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
+import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { withJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_QUEUE, type ConversationRunTurnJob } from "../queues.ts";
 import { planProviderLimitPark } from "./provider-limit-park.ts";
@@ -224,6 +225,20 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
 
     // (g) Success — persist the terminal CallToolResult envelope.
     await setMcpTaskResult(data.tenant_id, data.mcp_task_id, toEnvelope(outcome), db);
+    recordUsageEvent(db, {
+      tenantId: data.tenant_id,
+      surface: "conversations",
+      operation: "mcp/turn",
+      method: "EVENT",
+      outcome: "success",
+      requestSource: task.request_source,
+      actorId: task.actor_id,
+      sessionId: data.conversation_id,
+      durationMs: Date.now() - started,
+      platform: "http",
+      responseMode: "async",
+      taskPhase: outcome.result.status === "awaiting_input" ? "input_required" : "completed",
+    });
     log.queue.job.completed({
       msg: "conversation.run-turn job completed",
       queue: CONVERSATION_RUN_TURN_QUEUE,
@@ -271,6 +286,20 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
         },
         db,
       );
+      recordUsageEvent(db, {
+        tenantId: data.tenant_id,
+        surface: "conversations",
+        operation: "mcp/turn",
+        method: "EVENT",
+        outcome: "success",
+        requestSource: task.request_source,
+        actorId: task.actor_id,
+        sessionId: data.conversation_id,
+        durationMs: Date.now() - started,
+        platform: "http",
+        responseMode: "async",
+        taskPhase: "input_required",
+      });
       log.queue.job.completed({
         msg: "conversation.run-turn elicitation answer failed validation — row stays pending",
         queue: CONVERSATION_RUN_TURN_QUEUE,
@@ -324,6 +353,20 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     }
     const failureReason = err instanceof Error ? err.message : String(err);
     await setMcpTaskFailure(data.tenant_id, data.mcp_task_id, failureReason, db);
+    recordUsageEvent(db, {
+      tenantId: data.tenant_id,
+      surface: "conversations",
+      operation: "mcp/turn",
+      method: "EVENT",
+      outcome: "server_error",
+      requestSource: task.request_source,
+      actorId: task.actor_id,
+      sessionId: data.conversation_id,
+      durationMs: Date.now() - started,
+      platform: "http",
+      responseMode: "async",
+      taskPhase: "failed",
+    });
     await auditAwait(
       {
         tenant_id: data.tenant_id,

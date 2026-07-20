@@ -1454,6 +1454,520 @@
           "count"
         ]
       },
+      "StatsUsageResponse": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "enum": [
+              "subkit.usage-stats.v1"
+            ]
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "http",
+              "chat",
+              "mcp",
+              "conversations"
+            ]
+          },
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "minute",
+              "hour",
+              "day",
+              "month",
+              "year"
+            ]
+          },
+          "tz": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "truncated_at": {
+            "type": "string"
+          },
+          "traffic_class": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "organic",
+                "synthetic",
+                "internal"
+              ]
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "buckets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "calls": {
+                        "type": "number"
+                      },
+                      "unique_actors": {
+                        "type": "number"
+                      },
+                      "unique_sessions": {
+                        "type": "number"
+                      },
+                      "failures": {
+                        "type": "number"
+                      },
+                      "duration_ms": {
+                        "type": "object",
+                        "properties": {
+                          "measured": {
+                            "type": "number"
+                          },
+                          "avg": {
+                            "type": "number"
+                          },
+                          "p50": {
+                            "type": "number"
+                          },
+                          "p95": {
+                            "type": "number"
+                          },
+                          "p99": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "measured",
+                          "avg",
+                          "p50",
+                          "p95",
+                          "p99",
+                          "max"
+                        ]
+                      },
+                      "bytes": {
+                        "type": "object",
+                        "properties": {
+                          "request": {
+                            "type": "number"
+                          },
+                          "response": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "request",
+                          "response"
+                        ]
+                      },
+                      "streams": {
+                        "type": "object",
+                        "properties": {
+                          "completed": {
+                            "type": "number"
+                          },
+                          "cancelled": {
+                            "type": "number"
+                          },
+                          "errored": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "completed",
+                          "cancelled",
+                          "errored"
+                        ]
+                      },
+                      "ts": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "calls",
+                      "unique_actors",
+                      "unique_sessions",
+                      "failures",
+                      "duration_ms",
+                      "bytes",
+                      "streams",
+                      "ts"
+                    ]
+                  }
+                },
+                "totals": {
+                  "type": "object",
+                  "properties": {
+                    "calls": {
+                      "type": "number"
+                    },
+                    "unique_actors": {
+                      "type": "number"
+                    },
+                    "unique_sessions": {
+                      "type": "number"
+                    },
+                    "failures": {
+                      "type": "number"
+                    },
+                    "duration_ms": {
+                      "type": "object",
+                      "properties": {
+                        "measured": {
+                          "type": "number"
+                        },
+                        "avg": {
+                          "type": "number"
+                        },
+                        "p50": {
+                          "type": "number"
+                        },
+                        "p95": {
+                          "type": "number"
+                        },
+                        "p99": {
+                          "type": "number"
+                        },
+                        "max": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "measured",
+                        "avg",
+                        "p50",
+                        "p95",
+                        "p99",
+                        "max"
+                      ]
+                    },
+                    "bytes": {
+                      "type": "object",
+                      "properties": {
+                        "request": {
+                          "type": "number"
+                        },
+                        "response": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "request",
+                        "response"
+                      ]
+                    },
+                    "streams": {
+                      "type": "object",
+                      "properties": {
+                        "completed": {
+                          "type": "number"
+                        },
+                        "cancelled": {
+                          "type": "number"
+                        },
+                        "errored": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "completed",
+                        "cancelled",
+                        "errored"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "calls",
+                    "unique_actors",
+                    "unique_sessions",
+                    "failures",
+                    "duration_ms",
+                    "bytes",
+                    "streams"
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "buckets",
+                "totals"
+              ]
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "number"
+              },
+              "unique_actors": {
+                "type": "number"
+              },
+              "unique_sessions": {
+                "type": "number"
+              },
+              "failures": {
+                "type": "number"
+              },
+              "duration_ms": {
+                "type": "object",
+                "properties": {
+                  "measured": {
+                    "type": "number"
+                  },
+                  "avg": {
+                    "type": "number"
+                  },
+                  "p50": {
+                    "type": "number"
+                  },
+                  "p95": {
+                    "type": "number"
+                  },
+                  "p99": {
+                    "type": "number"
+                  },
+                  "max": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "measured",
+                  "avg",
+                  "p50",
+                  "p95",
+                  "p99",
+                  "max"
+                ]
+              },
+              "bytes": {
+                "type": "object",
+                "properties": {
+                  "request": {
+                    "type": "number"
+                  },
+                  "response": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "request",
+                  "response"
+                ]
+              },
+              "streams": {
+                "type": "object",
+                "properties": {
+                  "completed": {
+                    "type": "number"
+                  },
+                  "cancelled": {
+                    "type": "number"
+                  },
+                  "errored": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "completed",
+                  "cancelled",
+                  "errored"
+                ]
+              },
+              "by_outcome": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              "success_ratio": {
+                "type": "object",
+                "properties": {
+                  "numerator": {
+                    "type": "number"
+                  },
+                  "denominator": {
+                    "type": "number"
+                  },
+                  "value": {
+                    "type": "number",
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator",
+                  "value"
+                ]
+              },
+              "surface_details": {
+                "type": "object",
+                "properties": {
+                  "sessions_initialized": {
+                    "type": "number"
+                  },
+                  "sessions_closed": {
+                    "type": "number"
+                  },
+                  "capacity_rejections": {
+                    "type": "number"
+                  },
+                  "active_sessions_peak": {
+                    "type": "number"
+                  },
+                  "sync_responses": {
+                    "type": "number"
+                  },
+                  "async_responses": {
+                    "type": "number"
+                  },
+                  "task_started": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "sessions_initialized",
+                  "sessions_closed",
+                  "capacity_rejections",
+                  "active_sessions_peak",
+                  "sync_responses",
+                  "async_responses",
+                  "task_started"
+                ]
+              }
+            },
+            "required": [
+              "calls",
+              "unique_actors",
+              "unique_sessions",
+              "failures",
+              "duration_ms",
+              "bytes",
+              "streams",
+              "by_outcome",
+              "success_ratio",
+              "surface_details"
+            ]
+          },
+          "semantic": {
+            "type": "object",
+            "properties": {
+              "value_state": {
+                "type": "string",
+                "enum": [
+                  "measured",
+                  "zero",
+                  "missing"
+                ]
+              },
+              "value_kind": {
+                "type": "string",
+                "enum": [
+                  "count"
+                ]
+              },
+              "unit": {
+                "type": "string",
+                "enum": [
+                  "calls"
+                ]
+              }
+            },
+            "required": [
+              "value_state",
+              "value_kind",
+              "unit"
+            ]
+          },
+          "quality": {
+            "type": "object",
+            "properties": {
+              "sampled": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "unique_scope": {
+                "type": "string",
+                "enum": [
+                  "exact_window"
+                ]
+              },
+              "identity": {
+                "type": "string",
+                "enum": [
+                  "product_local_hmac"
+                ]
+              },
+              "content_captured": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "retention_days": {
+                "type": "number"
+              },
+              "duration_coverage": {
+                "type": "object",
+                "properties": {
+                  "numerator": {
+                    "type": "number"
+                  },
+                  "denominator": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ]
+              }
+            },
+            "required": [
+              "sampled",
+              "unique_scope",
+              "identity",
+              "content_captured",
+              "retention_days",
+              "duration_coverage"
+            ]
+          }
+        },
+        "required": [
+          "schema_version",
+          "surface",
+          "bucket",
+          "tz",
+          "from",
+          "to",
+          "traffic_class",
+          "groups",
+          "totals",
+          "semantic",
+          "quality"
+        ]
+      },
       "SettingsListResponse": {
         "type": "object",
         "properties": {
@@ -15955,6 +16469,830 @@
           },
           "400": {
             "description": "Invalid window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/http": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "HTTP route usage, latency, bytes, and errors",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            },
+            "required": true,
+            "name": "bucket",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tz",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "default": [
+                "organic"
+              ]
+            },
+            "required": false,
+            "name": "traffic_class",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "operation",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "outcome",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "request_source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "platform",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "response_mode",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "group_by",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact tenant-scoped usage report (no content or raw identifiers)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsUsageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window, traffic class, or grouping",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/chat": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "Chat turns, delivery modes, deduplication, and outcomes",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            },
+            "required": true,
+            "name": "bucket",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tz",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "default": [
+                "organic"
+              ]
+            },
+            "required": false,
+            "name": "traffic_class",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "operation",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "outcome",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "request_source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "platform",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "response_mode",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "group_by",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact tenant-scoped usage report (no content or raw identifiers)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsUsageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window, traffic class, or grouping",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/mcp": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "MCP JSON-RPC, session, capacity, task, and SSE usage",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            },
+            "required": true,
+            "name": "bucket",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tz",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "default": [
+                "organic"
+              ]
+            },
+            "required": false,
+            "name": "traffic_class",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "operation",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "outcome",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "request_source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "platform",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "response_mode",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "group_by",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact tenant-scoped usage report (no content or raw identifiers)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsUsageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window, traffic class, or grouping",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stats/conversations": {
+      "get": {
+        "tags": [
+          "Stats"
+        ],
+        "summary": "Conversation calls, streaming completion, disconnects, and outcomes",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "minute",
+                "hour",
+                "day",
+                "month",
+                "year"
+              ]
+            },
+            "required": true,
+            "name": "bucket",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tz",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "default": [
+                "organic"
+              ]
+            },
+            "required": false,
+            "name": "traffic_class",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "operation",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "outcome",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "request_source",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "platform",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "response_mode",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "name": "group_by",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exact tenant-scoped usage report (no content or raw identifiers)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsUsageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window, traffic class, or grouping",
             "content": {
               "application/json": {
                 "schema": {

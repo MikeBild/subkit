@@ -9,6 +9,7 @@ import type { EngineClient } from "../engine-client.ts";
 // surfaces have a single import site and the snake_case wire shape
 // stays authoritative.
 export type StatsQualityResponse = components["schemas"]["StatsQualityResponse"];
+export type StatsUsageResponse = components["schemas"]["StatsUsageResponse"];
 
 // ---------- Stats wire types ----------
 // Mirror apps/engine/src/http/routes/stats/schemas.ts. Kept structural
@@ -39,6 +40,10 @@ export interface StatsQuery {
   model?: string;
   flow?: string;
   user_id?: string;
+  traffic_class?: string;
+  operation?: string;
+  platform?: string;
+  response_mode?: string;
 }
 
 export interface StatsDurationAgg {
@@ -139,6 +144,18 @@ export const statsMethods = {
   },
   statsLlm(this: EngineClient, query: StatsQuery): Promise<StatsLlmResponse> {
     return this.request("GET", "/v1/stats/llm", undefined, query);
+  },
+  statsHttp(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
+    return this.request("GET", "/v1/stats/http", undefined, query);
+  },
+  statsChat(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
+    return this.request("GET", "/v1/stats/chat", undefined, query);
+  },
+  statsMcp(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
+    return this.request("GET", "/v1/stats/mcp", undefined, query);
+  },
+  statsConversations(this: EngineClient, query: StatsQuery): Promise<StatsUsageResponse> {
+    return this.request("GET", "/v1/stats/conversations", undefined, query);
   },
   /**
    * Authoring-quality rollup — one-shot vs. post-repair success rates

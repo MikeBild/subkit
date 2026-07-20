@@ -14,6 +14,11 @@
 import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "../http/openapi.ts";
 import { logger } from "../logging/logger.ts";
+import {
+  recordUsageEvent,
+  trafficClassFromHeader,
+  type UsageEventInput,
+} from "../stats/usage-events.ts";
 import { emitRequestEvent } from "./analytics.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
@@ -31,6 +36,81 @@ function templatePath(c: { req: { routePath?: string; url: string } }): string {
   } catch {
     return "unknown";
   }
+}
+
+/** Canonical, bounded usage route. Unmatched requests never persist the raw path. */
+function usagePath(c: { req: { routePath?: string } }): string {
+  const route = c.req.routePath;
+  if (!route || route === "*" || route === "/*") return "unmatched";
+  return route.replace(/:([A-Za-z0-9_]+)/g, "{$1}").slice(0, 160);
+}
+
+function numberHeader(value: string | undefined): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function requestOutcome(status: number): string {
+  if (status < 400) return "success";
+  if (status === 401 || status === 403) return "denied";
+  if (status === 404) return "not_found";
+  if (status === 429) return "rate_limited";
+  if (status < 500) return "client_error";
+  return "server_error";
+}
+
+function isInternalUsageRoute(path: string): boolean {
+  return (
+    path.startsWith("/v1/stats/") ||
+    path.startsWith("/v1/operator/") ||
+    path === "/health" ||
+    path === "/ready" ||
+    path === "/metrics" ||
+    path === "/openapi.json" ||
+    path === "/docs" ||
+    path === "/llms.txt" ||
+    path === "/llms-full.txt"
+  );
+}
+
+/**
+ * Hand the response-body lifetime to a privacy-safe usage event. This records
+ * completion vs client cancellation without inspecting any SSE frame content.
+ */
+function trackUsageStream(
+  body: ReadableStream<Uint8Array>,
+  onEnd: (outcome: "completed" | "cancelled" | "errored", bytes: number) => void,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let bytes = 0;
+  let ended = false;
+  const finish = (outcome: "completed" | "cancelled" | "errored") => {
+    if (ended) return;
+    ended = true;
+    onEnd(outcome, bytes);
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          finish("completed");
+          controller.close();
+          return;
+        }
+        bytes += chunk.value.byteLength;
+        controller.enqueue(chunk.value);
+      } catch (err) {
+        finish("errored");
+        controller.error(err);
+      }
+    },
+    async cancel(reason) {
+      finish("cancelled");
+      await reader.cancel(reason);
+    },
+  });
 }
 
 export function metricsMiddleware(): MiddlewareHandler<AppEnv> {
@@ -116,6 +196,62 @@ export function metricsMiddleware(): MiddlewareHandler<AppEnv> {
                   ? String(thrownError)
                   : null,
           });
+        }
+
+        // Product-internal usage: `/mcp` has a richer transport-level writer
+        // (JSON-RPC method + session lifecycle), and chat dispatch has its own
+        // normalized writer. Conversation HTTP routes are classified into the
+        // dedicated conversations surface; the remaining API is HTTP.
+        const route = usagePath(c);
+        if (route !== "/mcp" && tenant_id) {
+          const db = c.get("db");
+          const sessionId = principal?.api_key_id ?? principal?.session_id ?? null;
+          const contentType = c.res.headers.get("content-type") ?? "";
+          const isStream = contentType.includes("text/event-stream") && c.res.body !== null;
+          const surface =
+            route.startsWith("/v1/conversations/") || route === "/v1/conversations"
+              ? "conversations"
+              : "http";
+          const requestedTraffic = trafficClassFromHeader(c.req.header("x-subkit-traffic-class"));
+          const event: UsageEventInput = {
+            tenantId: tenant_id,
+            surface,
+            operation: route,
+            method,
+            outcome: requestOutcome(status),
+            trafficClass: isInternalUsageRoute(route) ? "internal" : requestedTraffic,
+            requestSource: request_source,
+            actorId: principal?.id ?? null,
+            sessionId,
+            statusCode: status,
+            durationMs: duration,
+            requestBytes: numberHeader(c.req.header("content-length")),
+            responseBytes: numberHeader(c.res.headers.get("content-length") ?? undefined),
+            streamOutcome: isStream ? undefined : "not_streamed",
+            platform: "http",
+            responseMode: isStream ? "sse" : "json",
+          };
+          if (isStream && c.res.body) {
+            const original = c.res;
+            c.res = new Response(
+              trackUsageStream(c.res.body, (streamOutcome, responseBytes) => {
+                recordUsageEvent(db, {
+                  ...event,
+                  outcome: streamOutcome === "completed" ? event.outcome : "disconnected",
+                  durationMs: Date.now() - started,
+                  responseBytes,
+                  streamOutcome,
+                });
+              }),
+              {
+                status: original.status,
+                statusText: original.statusText,
+                headers: original.headers,
+              },
+            );
+          } else {
+            recordUsageEvent(db, event);
+          }
         }
       }
     }

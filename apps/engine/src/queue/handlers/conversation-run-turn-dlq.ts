@@ -25,6 +25,7 @@ import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { getMcpTask, setMcpTaskFailureIfNotTerminal } from "../../mcp/tasks/store.ts";
+import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { withJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_DLQ, type ConversationRunTurnJob } from "../queues.ts";
 
@@ -96,6 +97,20 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
     });
     return;
   }
+
+  recordUsageEvent(db, {
+    tenantId: data.tenant_id,
+    surface: "conversations",
+    operation: "mcp/turn",
+    method: "EVENT",
+    outcome: "server_error",
+    requestSource: "mcp",
+    actorId: data.actor_id,
+    sessionId: data.conversation_id,
+    platform: "http",
+    responseMode: "async",
+    taskPhase: "failed",
+  });
 
   log.queue.job.completed({
     msg: "conversation.run-turn.dlq job — mcp_tasks row marked failed (worker_expired)",

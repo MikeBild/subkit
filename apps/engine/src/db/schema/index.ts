@@ -31,6 +31,7 @@ export * from "./request_hooks.ts";
 export * from "./self_healing_scans.ts";
 export * from "./skills.ts";
 export * from "./tool_approvals.ts";
+export * from "./usage.ts";
 export * from "./webhooks.ts";
 // webhooks-extras is a re-export barrel (same tables); omitted to avoid
 // duplicate symbol exports.
