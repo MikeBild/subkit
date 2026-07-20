@@ -242,6 +242,31 @@ export const connectorEnvironments = pgTable(
   ],
 );
 
+// ----- connector_promotions ------------------------------------------------
+
+export const connectorPromotions = pgTable(
+  "connector_promotions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    idempotency_key_hash: text("idempotency_key_hash").notNull(),
+    request_fingerprint: text("request_fingerprint").notNull(),
+    source_connector_id: uuid("source_connector_id").notNull(),
+    target_connector_id: uuid("target_connector_id").notNull(),
+    strategy: text("strategy").notNull(),
+    response: jsonb("response").$type<Record<string, unknown>>().notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("connector_promotions_tenant_idempotency_key").on(
+      t.tenant_id,
+      t.idempotency_key_hash,
+    ),
+    index("connector_promotions_source_idx").on(t.tenant_id, t.source_connector_id),
+    index("connector_promotions_target_idx").on(t.tenant_id, t.target_connector_id),
+  ],
+);
+
 // ----- credentials ----------------------------------------------------------
 
 export const credentials = pgTable(

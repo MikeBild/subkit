@@ -49,7 +49,15 @@ export interface CreateScheduleInput {
   paused?: boolean;
 }
 
-export async function createSchedule(db: Db, input: CreateScheduleInput): Promise<ScheduleRow> {
+export type CreateScheduleOutcome = {
+  status: "created" | "updated";
+  row: ScheduleRow;
+};
+
+export async function createSchedule(
+  db: Db,
+  input: CreateScheduleInput,
+): Promise<CreateScheduleOutcome> {
   const parsed = parseCronExpression(input.cron);
   if (!parsed.ok) {
     throw Object.assign(new Error(`invalid cron: ${parsed.reason}`), {
@@ -98,7 +106,7 @@ export async function createSchedule(db: Db, input: CreateScheduleInput): Promis
       })
       .where(eq(workflowsSchedules.id, prior.id))
       .returning();
-    return updated[0] as ScheduleRow;
+    return { status: "updated", row: updated[0] as ScheduleRow };
   }
   const rows = await db
     .insert(workflowsSchedules)
@@ -112,7 +120,7 @@ export async function createSchedule(db: Db, input: CreateScheduleInput): Promis
       input: (input.input ?? null) as never,
     })
     .returning();
-  return rows[0] as ScheduleRow;
+  return { status: "created", row: rows[0] as ScheduleRow };
 }
 
 /**

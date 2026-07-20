@@ -3257,13 +3257,22 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Created */
+                /** @description Existing workflow schedule updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleUpsertResponse"];
+                    };
+                };
+                /** @description Schedule created */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ScheduleEntry"];
+                        "application/json": components["schemas"]["ScheduleUpsertResponse"];
                     };
                 };
                 /** @description Invalid cron */
@@ -4919,6 +4928,86 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connectors/{id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Promote a connector and its credentials from DEV to PROD */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "idempotency-key": string;
+                };
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConnectorPromotionBody"];
+                };
+            };
+            responses: {
+                /** @description Moved or idempotently replayed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorPromotionResponse"];
+                    };
+                };
+                /** @description Copied */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorPromotionResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Promotion is not safe for the connector state */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -13704,7 +13793,13 @@ export interface components {
             /** @enum {string} */
             execution_mode: "dev" | "prod";
             paused: boolean;
+            /** @description Persisted workflow input returned verbatim to workflow readers; credentials belong in connector credential storage. */
+            input?: unknown;
             created_at: string;
+        };
+        ScheduleUpsertResponse: components["schemas"]["ScheduleEntry"] & {
+            /** @enum {string} */
+            upsert_status: "created" | "updated";
         };
         ScheduleCreateBody: {
             /** Format: uuid */
@@ -13714,7 +13809,9 @@ export interface components {
             /** @enum {string} */
             execution_mode?: "dev" | "prod";
             paused?: boolean;
-            input?: unknown;
+            input?: string | number | boolean | unknown | unknown[] | {
+                [key: string]: unknown;
+            };
         };
         ScheduleUpdateBody: {
             cron?: string;
@@ -13722,7 +13819,9 @@ export interface components {
             /** @enum {string} */
             execution_mode?: "dev" | "prod";
             paused?: boolean;
-            input?: unknown;
+            input?: string | number | boolean | unknown | unknown[] | {
+                [key: string]: unknown;
+            };
         };
         ScheduleDeleteResponse: {
             id: string;
@@ -14271,6 +14370,9 @@ export interface components {
             expected_status?: number[];
             /** @default  */
             description: string;
+            headers?: {
+                [key: string]: string;
+            };
         } | null;
         ConnectorTemplateCredentialHint: {
             field: string;
@@ -14647,6 +14749,35 @@ export interface components {
         };
         /** @enum {string} */
         ProbeErrorCode: "credential_missing" | "credential_invalid" | "credential_expired" | "scope_insufficient" | "remote_api_disabled" | "remote_resource_not_found" | "unknown_upstream_error";
+        ConnectorPromotionResponse: {
+            /** @enum {string} */
+            strategy: "copy" | "move";
+            /** Format: uuid */
+            source_connector_id: string;
+            /** Format: uuid */
+            target_connector_id: string;
+            /** @enum {string} */
+            source_environment: "dev";
+            /** @enum {string} */
+            target_environment: "prod";
+            source_retained: boolean;
+            credential_mappings: {
+                /** @enum {string} */
+                mode: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4" | "token_mint" | "oauth2_client" | "oauth2_private_key";
+                /** Format: uuid */
+                source_credential_id: string;
+                /** Format: uuid */
+                target_credential_id: string;
+            }[];
+            idempotent_replay: boolean;
+            audit_log_ids: string[];
+        };
+        ConnectorPromotionBody: {
+            /** @enum {string} */
+            target_environment: "prod";
+            /** @enum {string} */
+            strategy: "copy" | "move";
+        };
         ConnectorCallResponse: {
             status: number;
             headers: {

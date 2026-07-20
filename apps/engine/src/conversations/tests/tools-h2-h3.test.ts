@@ -132,6 +132,7 @@ describe("conversation tools — registration", () => {
     "create_knowledge_source",
     "analyze_knowledge_source",
     "create_skill",
+    "promote_connector",
     "update_skill",
     "delete_skill",
     "create_schedule",

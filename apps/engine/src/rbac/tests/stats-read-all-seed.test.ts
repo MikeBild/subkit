@@ -21,6 +21,7 @@ function memberAllows(name: string): boolean {
   if (name === "api_key:write") return false;
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;
+  if (name === "connector:promote") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
   if (name === "discovery:approve") return false;
   if (name === "mcp:admin") return false;
@@ -60,6 +61,7 @@ describe("stats:read:all — catalog and seed invariants", () => {
     expect(memberAllows("execution:read")).toBe(true);
     expect(memberAllows("connector:read")).toBe(true);
     expect(memberAllows("connector:write")).toBe(true);
+    expect(memberAllows("connector:promote")).toBe(false);
   });
 
   it("member role still allows credential:read (the one credential permission members keep)", () => {

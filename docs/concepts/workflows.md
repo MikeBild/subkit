@@ -135,6 +135,8 @@ The trigger is recorded in every Execution and every Audit Log entry alongside t
 
 All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
 
+**Schedule resource upserts.** `POST /v1/schedules` is an upsert on `(tenant_id, workflow_id)`. A new row returns 201 with `upsert_status: "created"` and audits `schedule.created`; replacing the existing workflow schedule returns 200 with `upsert_status: "updated"` and audits `schedule.updated`. The persisted JSON `input`—including arrays, scalars, and `null`—is returned by create/update responses and by `GET /v1/schedules`, so the catalog shows the exact payload that unattended runs receive.
+
 **Webhook trigger, exactly.** Two facts trip up authors; both are grounded in `apps/engine/src/webhooks/inbound/service.ts`:
 
 - **`verify` is not the stored verifier.** `stripe-signature` → stored `verifier = "stripe"`; `github-hmac` → `"github"`; `none` → `"standard"` with `native_verifier_config.skip = true`. The stored `verifier` column is always one of `standard` / `github` / `stripe` — never `none`. A row whose `verifier` is set to `none` (or anything unrecognized) is denied at ingress with `unknown_verifier` / 401.

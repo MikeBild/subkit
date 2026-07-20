@@ -219,6 +219,7 @@ const ADMIN_TOOLS = [
   "preview_attachment",
   "preview_patch_candidate",
   "probe_connector",
+  "promote_connector",
   "propose_schema_migration",
   "read_knowledge",
   "rerun_execution",

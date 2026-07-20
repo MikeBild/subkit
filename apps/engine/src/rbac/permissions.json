@@ -48,6 +48,11 @@
     "description": "Initiate connector OAuth flows",
     "resource_type": "connector"
   },
+  {
+    "name": "connector:promote",
+    "description": "Promote a connector and its credentials from DEV to PROD",
+    "resource_type": "connector"
+  },
 
   {
     "name": "credential:read",

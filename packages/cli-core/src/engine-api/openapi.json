@@ -3519,6 +3519,10 @@
           "paused": {
             "type": "boolean"
           },
+          "input": {
+            "nullable": true,
+            "description": "Persisted workflow input returned verbatim to workflow readers; credentials belong in connector credential storage."
+          },
           "created_at": {
             "type": "string"
           }
@@ -3533,6 +3537,28 @@
           "execution_mode",
           "paused",
           "created_at"
+        ]
+      },
+      "ScheduleUpsertResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ScheduleEntry"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "upsert_status": {
+                "type": "string",
+                "enum": [
+                  "created",
+                  "updated"
+                ]
+              }
+            },
+            "required": [
+              "upsert_status"
+            ]
+          }
         ]
       },
       "ScheduleCreateBody": {
@@ -3560,7 +3586,32 @@
             "type": "boolean"
           },
           "input": {
-            "nullable": true
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "nullable": true
+              },
+              {
+                "type": "array",
+                "items": {
+                  "nullable": true
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "nullable": true
+                }
+              }
+            ]
           }
         },
         "required": [
@@ -3589,7 +3640,32 @@
             "type": "boolean"
           },
           "input": {
-            "nullable": true
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "nullable": true
+              },
+              {
+                "type": "array",
+                "items": {
+                  "nullable": true
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "nullable": true
+                }
+              }
+            ]
           }
         }
       },
@@ -5608,6 +5684,14 @@
           "description": {
             "type": "string",
             "default": ""
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
           }
         },
         "required": [
@@ -7026,6 +7110,120 @@
           "remote_api_disabled",
           "remote_resource_not_found",
           "unknown_upstream_error"
+        ]
+      },
+      "ConnectorPromotionResponse": {
+        "type": "object",
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "copy",
+              "move"
+            ]
+          },
+          "source_connector_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_connector_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source_environment": {
+            "type": "string",
+            "enum": [
+              "dev"
+            ]
+          },
+          "target_environment": {
+            "type": "string",
+            "enum": [
+              "prod"
+            ]
+          },
+          "source_retained": {
+            "type": "boolean"
+          },
+          "credential_mappings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "header",
+                    "query",
+                    "bearer",
+                    "basic",
+                    "oauth2",
+                    "aws_sigv4",
+                    "token_mint",
+                    "oauth2_client",
+                    "oauth2_private_key"
+                  ]
+                },
+                "source_credential_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "target_credential_id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "required": [
+                "mode",
+                "source_credential_id",
+                "target_credential_id"
+              ]
+            }
+          },
+          "idempotent_replay": {
+            "type": "boolean"
+          },
+          "audit_log_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "strategy",
+          "source_connector_id",
+          "target_connector_id",
+          "source_environment",
+          "target_environment",
+          "source_retained",
+          "credential_mappings",
+          "idempotent_replay",
+          "audit_log_ids"
+        ]
+      },
+      "ConnectorPromotionBody": {
+        "type": "object",
+        "properties": {
+          "target_environment": {
+            "type": "string",
+            "enum": [
+              "prod"
+            ]
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "copy",
+              "move"
+            ]
+          }
+        },
+        "required": [
+          "target_environment",
+          "strategy"
         ]
       },
       "ConnectorCallResponse": {
@@ -18491,12 +18689,22 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Created",
+          "200": {
+            "description": "Existing workflow schedule updated",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScheduleEntry"
+                  "$ref": "#/components/schemas/ScheduleUpsertResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Schedule created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleUpsertResponse"
                 }
               }
             }
@@ -20329,6 +20537,101 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connectors/{id}/promote": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Promote a connector and its credentials from DEV to PROD",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectorPromotionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Moved or idempotently replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorPromotionResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Copied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorPromotionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Promotion is not safe for the connector state",
             "content": {
               "application/json": {
                 "schema": {
