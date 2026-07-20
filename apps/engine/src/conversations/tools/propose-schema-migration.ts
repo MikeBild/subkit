@@ -19,12 +19,17 @@ const inputSchema = z
   .object({
     connector_id: z.string().uuid(),
     endpoint_key: z.string().min(1),
+    workflow_id: z.string().uuid().optional(),
+    step_id: z.string().min(1).optional(),
     /** When set, applyMigration runs against the sample and the result
      *  is returned alongside the plan so the operator sees the
      *  data-level effect of accepting it. */
     sample: z.unknown().optional(),
     /** Cap the chronological history attached to the response. */
     history_limit: z.number().int().positive().max(200).optional(),
+  })
+  .refine((value) => Boolean(value.workflow_id) === Boolean(value.step_id), {
+    message: "workflow_id and step_id must be supplied together",
   })
   .openapi("ProposeSchemaMigrationToolInput");
 
@@ -43,6 +48,8 @@ export const proposeSchemaMigrationTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         connector_id: args.connector_id,
         endpoint_key: args.endpoint_key,
+        ...(args.workflow_id ? { workflow_id: args.workflow_id } : {}),
+        ...(args.step_id ? { step_id: args.step_id } : {}),
       },
       ctx.db,
     );
@@ -61,6 +68,8 @@ export const proposeSchemaMigrationTool: ConversationTool = {
         tenant_id: ctx.tenant_id,
         connector_id: args.connector_id,
         endpoint_key: args.endpoint_key,
+        ...(args.workflow_id ? { workflow_id: args.workflow_id } : {}),
+        ...(args.step_id ? { step_id: args.step_id } : {}),
         limit: args.history_limit ?? 10,
       },
       ctx.db,

@@ -94,7 +94,7 @@ function logEntry(filled: AuditEntry): void {
 // number of in-flight `writeAudit` calls (i.e. by the DB pool + write timeout):
 // it cannot grow without bound unless the DB stalls every write indefinitely,
 // which is already the existing fire-and-forget failure mode.
-const _pendingAuditWrites = new Set<Promise<unknown>>();
+const _pendingAuditWrites = new Map<Promise<unknown>, Executor | undefined>();
 
 export function audit(entry: Partial<AuditEntry>, executor?: Executor): AuditEntry {
   const filled = buildEntry(entry);
@@ -112,7 +112,7 @@ export function audit(entry: Partial<AuditEntry>, executor?: Executor): AuditEnt
       error: err instanceof Error ? err.message : String(err),
     });
   });
-  _pendingAuditWrites.add(persist);
+  _pendingAuditWrites.set(persist, executor);
   void persist.finally(() => {
     _pendingAuditWrites.delete(persist);
   });
@@ -120,17 +120,20 @@ export function audit(entry: Partial<AuditEntry>, executor?: Executor): AuditEnt
   return filled;
 }
 
-/** Test seam: await every in-flight fire-and-forget `audit()` write to settle.
- *  Production never calls this. Use before asserting on `audit_log` contents
- *  that a prior fire-and-forget `audit()` may still be persisting. */
-export async function _drainAuditWritesForTests(): Promise<void> {
-  // Snapshot, don't loop-until-empty: the set is process-global, so under a
+/** Test seam: await in-flight fire-and-forget `audit()` writes to settle.
+ *  Pass the test's executor to avoid waiting on unrelated suites whose
+ *  disposable database may already be closing. Production never calls this. */
+export async function _drainAuditWritesForTests(executor?: Executor): Promise<void> {
+  // Snapshot, don't loop-until-empty: the map is process-global, so under a
   // full-suite run a background writer (worker, poller from a neighboring
   // suite) can enqueue a new audit every iteration and livelock the drain
   // until the test times out. The documented contract is "await the writes
   // in flight NOW" — a caller's own audit() is registered synchronously
   // before its triggering call returns, so the snapshot always covers it.
-  await Promise.allSettled([..._pendingAuditWrites]);
+  const pending = [..._pendingAuditWrites].flatMap(([write, writeExecutor]) =>
+    executor === undefined || writeExecutor === executor ? [write] : [],
+  );
+  await Promise.allSettled(pending);
 }
 
 /**

@@ -20,6 +20,25 @@ describe("verifyWorkflow — JSONata parsing", () => {
     });
     expect(r.errors[0]!.code).toBe("jsonata_syntax_error");
   });
+
+  test("bare JSONata function in branch.when → actionable validation error", () => {
+    const r = verifyWorkflow({
+      steps: [{ id: "b", kind: "branch", when: "not(true)", then_steps: [] }],
+    });
+    expect(r.errors).toContainEqual({
+      severity: "error",
+      code: "jsonata_unbound_function",
+      message: "JSONata function `not(...)` is not bound; use `$not(...)`",
+      path: "steps[0].when",
+    });
+  });
+
+  test("$-prefixed JSONata functions remain valid", () => {
+    const r = verifyWorkflow({
+      steps: [{ id: "b", kind: "branch", when: "$not($boolean(false))", then_steps: [] }],
+    });
+    expect(r.errors).toEqual([]);
+  });
 });
 
 describe("verifyWorkflow — JavaScript transforms (language-aware)", () => {

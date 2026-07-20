@@ -357,13 +357,24 @@ export const schemaVersions = pgTable(
       .notNull()
       .references(() => connectors.id, { onDelete: "cascade" }),
     endpoint_key: text("endpoint_key").notNull(),
+    workflow_id: uuid("workflow_id"),
+    step_id: text("step_id"),
     schema: jsonb("schema").notNull(),
+    observed_schema: jsonb("observed_schema"),
     seen_at: timestamp("seen_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
     index("schema_versions_connector_endpoint_seen_idx").on(
       t.connector_id,
       t.endpoint_key,
+      t.seen_at,
+    ),
+    index("schema_versions_provenance_seen_idx").on(
+      t.tenant_id,
+      t.connector_id,
+      t.endpoint_key,
+      t.workflow_id,
+      t.step_id,
       t.seen_at,
     ),
   ],

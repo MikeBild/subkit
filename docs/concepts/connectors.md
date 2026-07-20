@@ -105,7 +105,7 @@ All secrets live in the Credential Vault: encrypted at rest, never logged, never
 
 External APIs change. Fields are renamed, endpoints move, new error codes appear, response shapes evolve. A Connector that worked last month may not work the same way today.
 
-sk tracks schema versions for each Connector endpoint. As the engine executes Steps against a Connector, it observes the response shapes and compares them against the recorded schema. When a discrepancy appears — a field that was present is missing, a type that was a string is now an object — the engine classifies it as drift.
+sk tracks schema versions per Connector endpoint, Workflow, and Step. Successful responses accumulate observed fields into a contract, so request-dependent or optional fields can appear and disappear without being misclassified as removals. Incompatible type changes remain proactive drift signals; an actual missing path or failed validation is still detected reactively from the affected execution.
 
 Drift is detected from actual execution results, not from periodic polling. The signal comes from real workflow runs encountering real changes in the connected boundary. When drift is detected, it becomes the trigger for the self-healing process described in the execution document.
 

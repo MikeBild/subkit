@@ -1,13 +1,11 @@
 // Schema-version tracking.
 //
-// A request step that succeeds records a canonicalized shape for
-// `(connector_id, endpoint_key)` in the `schema_versions` table. The
-// self-healing loop reads the most recent row back when it diffs a
-// failing response. Keeping one insert-per-success is cheap because
-// `seen_at` is indexed and lookups are a single `ORDER BY seen_at DESC
-// LIMIT 1`.
+// A successful request accumulates a canonical response contract per
+// connector, endpoint, workflow, and step. The raw observation stays
+// alongside it for migration tooling; reactive repair reads the exact
+// provenance-specific contract back on failure.
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/index.ts";
@@ -32,23 +30,81 @@ export function deriveShape(value: unknown): SchemaShape {
   if (t === "boolean") return { type: "boolean" };
   if (Array.isArray(value)) {
     if (value.length === 0) return { type: "array", items: { type: "unknown" } };
-    const head = deriveShape(value[0]);
-    // Narrow the array item type by checking that all elements share
-    // the same top-level kind. Anything else widens to unknown.
+    let items = deriveShape(value[0]);
     for (let i = 1; i < value.length; i++) {
-      const next = deriveShape(value[i]);
-      if (next.type !== head.type) return { type: "array", items: { type: "unknown" } };
+      items = mergeObservedShapes(items, deriveShape(value[i]));
     }
-    return { type: "array", items: head };
+    return { type: "array", items };
   }
   if (t === "object") {
     const out: Record<string, SchemaShape> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    for (const [k, v] of entries) {
       out[k] = deriveShape(v);
     }
     return { type: "object", properties: out };
   }
   return { type: "unknown" };
+}
+
+/**
+ * Accumulate observed response evidence without treating an omitted
+ * property as a contract removal. Incompatible concrete types widen
+ * to unknown so proactive drift can still flag the type change once.
+ */
+export function mergeObservedShapes(previous: SchemaShape, observed: SchemaShape): SchemaShape {
+  return mergeShapes(previous, observed, false);
+}
+
+function mergeShapes(
+  previous: SchemaShape,
+  observed: SchemaShape,
+  refineUnknown: boolean,
+): SchemaShape {
+  if (previous.type === "unknown") return refineUnknown ? observed : previous;
+  if (observed.type === "unknown") return previous;
+  if (previous.type !== observed.type) return { type: "unknown" };
+  if (previous.type === "array" && observed.type === "array") {
+    return { type: "array", items: mergeShapes(previous.items, observed.items, true) };
+  }
+  if (previous.type === "object" && observed.type === "object") {
+    const properties: Record<string, SchemaShape> = {};
+    const keys = new Set([
+      ...Object.keys(previous.properties),
+      ...Object.keys(observed.properties),
+    ]);
+    for (const key of [...keys].sort((a, b) => a.localeCompare(b))) {
+      const before = previous.properties[key];
+      const after = observed.properties[key];
+      if (before && after) properties[key] = mergeShapes(before, after, false);
+      else if (before) properties[key] = before;
+      else if (after) properties[key] = after;
+    }
+    return { type: "object", properties };
+  }
+  return previous;
+}
+
+function shapesEqual(left: SchemaShape, right: SchemaShape): boolean {
+  if (left.type !== right.type) return false;
+  if (left.type === "array" && right.type === "array") {
+    return shapesEqual(left.items, right.items);
+  }
+  if (left.type === "object" && right.type === "object") {
+    const leftKeys = Object.keys(left.properties);
+    const rightKeys = Object.keys(right.properties);
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every((key) => {
+      const leftValue = left.properties[key];
+      const rightValue = right.properties[key];
+      return (
+        leftValue !== undefined && rightValue !== undefined && shapesEqual(leftValue, rightValue)
+      );
+    });
+  }
+  return true;
 }
 
 /**
@@ -68,22 +124,26 @@ export interface RecordShapeParams {
   tenant_id: string;
   connector_id: string;
   endpoint_key: string;
+  workflow_id?: string | null;
+  step_id?: string | null;
   value: unknown;
 }
 
 /**
- * Record the shape of a successful response. Called from the request
- * driver's happy path; the self-healing loop reads the most recent row
- * back via `getLatestShape`.
+ * Record the accumulated contract and raw observation of a successful
+ * response. Called from each request driver's happy path.
  */
 export async function recordSuccessShape(p: RecordShapeParams, exec?: Executor): Promise<string> {
   const db: Executor = exec ?? getDb();
-  const shape = deriveShape(p.value);
-  // Dedup: skip the insert when the latest recorded shape is identical.
-  // Without this a workflow on a minute schedule writes one row per run
-  // forever (unbounded table growth) while `getLatestShape` only ever
-  // reads the newest row — the steady state is one row per actual shape
-  // CHANGE, which is exactly the granularity the drift detector needs.
+  const observed = deriveShape(p.value);
+  const workflowCondition = p.workflow_id
+    ? eq(schemaVersions.workflow_id, p.workflow_id)
+    : isNull(schemaVersions.workflow_id);
+  const stepCondition = p.step_id
+    ? eq(schemaVersions.step_id, p.step_id)
+    : isNull(schemaVersions.step_id);
+  // The steady state stores one row per accumulated contract change,
+  // not one row per execution.
   const latest = await db
     .select({ id: schemaVersions.id, schema: schemaVersions.schema })
     .from(schemaVersions)
@@ -92,12 +152,17 @@ export async function recordSuccessShape(p: RecordShapeParams, exec?: Executor):
         eq(schemaVersions.tenant_id, p.tenant_id),
         eq(schemaVersions.connector_id, p.connector_id),
         eq(schemaVersions.endpoint_key, p.endpoint_key),
+        workflowCondition,
+        stepCondition,
       ),
     )
     .orderBy(desc(schemaVersions.seen_at))
     .limit(1);
   const latestRow = latest[0];
-  if (latestRow && JSON.stringify(latestRow.schema) === JSON.stringify(shape)) {
+  const shape = latestRow
+    ? mergeObservedShapes(latestRow.schema as unknown as SchemaShape, observed)
+    : observed;
+  if (latestRow && shapesEqual(latestRow.schema as unknown as SchemaShape, shape)) {
     return latestRow.id;
   }
   const [row] = await db
@@ -106,7 +171,10 @@ export async function recordSuccessShape(p: RecordShapeParams, exec?: Executor):
       tenant_id: p.tenant_id,
       connector_id: p.connector_id,
       endpoint_key: p.endpoint_key,
+      workflow_id: p.workflow_id ?? null,
+      step_id: p.step_id ?? null,
       schema: shape as unknown as Record<string, unknown>,
+      observed_schema: observed as unknown as Record<string, unknown>,
     })
     .returning({ id: schemaVersions.id });
   assertInsertRow(row, "schema_versions");
@@ -117,6 +185,8 @@ export interface GetLatestShapeParams {
   tenant_id: string;
   connector_id: string;
   endpoint_key: string;
+  workflow_id?: string;
+  step_id?: string;
 }
 
 export interface LatestEndpointShape {
@@ -177,16 +247,16 @@ export async function getLatestShape(
   exec?: Executor,
 ): Promise<SchemaShape | null> {
   const db: Executor = exec ?? getDb();
+  const conditions = [
+    eq(schemaVersions.connector_id, p.connector_id),
+    eq(schemaVersions.endpoint_key, p.endpoint_key),
+  ];
+  if (p.workflow_id) conditions.push(eq(schemaVersions.workflow_id, p.workflow_id));
+  if (p.step_id) conditions.push(eq(schemaVersions.step_id, p.step_id));
   const rows = await db
     .select()
     .from(schemaVersions)
-    .where(
-      and(
-        eq(schemaVersions.tenant_id, p.tenant_id),
-        eq(schemaVersions.connector_id, p.connector_id),
-        eq(schemaVersions.endpoint_key, p.endpoint_key),
-      ),
-    )
+    .where(and(eq(schemaVersions.tenant_id, p.tenant_id), ...conditions))
     .orderBy(desc(schemaVersions.seen_at))
     .limit(1);
   const row = rows[0];
@@ -301,20 +371,20 @@ export async function listShapeHistory(
   exec?: Executor,
 ): Promise<ShapeHistoryEntry[]> {
   const db: Executor = exec ?? getDb();
+  const conditions = [
+    eq(schemaVersions.connector_id, p.connector_id),
+    eq(schemaVersions.endpoint_key, p.endpoint_key),
+  ];
+  if (p.workflow_id) conditions.push(eq(schemaVersions.workflow_id, p.workflow_id));
+  if (p.step_id) conditions.push(eq(schemaVersions.step_id, p.step_id));
   const rows = await db
     .select()
     .from(schemaVersions)
-    .where(
-      and(
-        eq(schemaVersions.tenant_id, p.tenant_id),
-        eq(schemaVersions.connector_id, p.connector_id),
-        eq(schemaVersions.endpoint_key, p.endpoint_key),
-      ),
-    )
+    .where(and(eq(schemaVersions.tenant_id, p.tenant_id), ...conditions))
     .orderBy(desc(schemaVersions.seen_at))
     .limit(p.limit ?? 50);
   return rows.map((r) => ({
-    schema: r.schema as unknown as SchemaShape,
+    schema: (r.observed_schema ?? r.schema) as unknown as SchemaShape,
     seen_at: r.seen_at,
   }));
 }

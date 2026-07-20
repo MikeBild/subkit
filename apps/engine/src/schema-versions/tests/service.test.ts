@@ -1,7 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { connectors, schemaVersions, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { deriveShape, diffShapes, getLatestShape, recordSuccessShape } from "../service.ts";
+import {
+  deriveShape,
+  diffShapes,
+  getLatestShape,
+  mergeObservedShapes,
+  recordSuccessShape,
+} from "../service.ts";
 
 let testDb: TestDb;
 let tenantId: string;
@@ -120,6 +127,123 @@ describe("schema-versions/service", () => {
             },
           },
         },
+      },
+    });
+  });
+
+  test("optional response fields accumulate without becoming removals", async () => {
+    const variants = [
+      [{ rows: [], dimensionHeaders: [] }, { rows: [] }],
+      [{ messages: [], nextPageToken: "next" }, { messages: [] }],
+      [{ data: {}, errors: [] }, { data: {} }],
+      [{ daily: { time: [] } }, { current: { temperature: 20 } }],
+    ] as const;
+    for (const [withOptional, withoutOptional] of variants) {
+      const accumulated = mergeObservedShapes(
+        deriveShape(withOptional),
+        deriveShape(withoutOptional),
+      );
+      expect(mergeObservedShapes(accumulated, deriveShape(withoutOptional))).toEqual(accumulated);
+      expect(accumulated.type).toBe("object");
+    }
+  });
+
+  test("recording is monotonic and isolated by workflow step provenance", async () => {
+    const db = testDb.db;
+    const workflowA = "11111111-1111-4111-8111-111111111111";
+    const workflowB = "22222222-2222-4222-8222-222222222222";
+    const endpoint = "POST /reports:runReport";
+    await recordSuccessShape(
+      {
+        tenant_id: tenantId,
+        connector_id: connectorId,
+        endpoint_key: endpoint,
+        workflow_id: workflowA,
+        step_id: "ga4",
+        value: { rows: [], dimensionHeaders: [] },
+      },
+      db,
+    );
+    await recordSuccessShape(
+      {
+        tenant_id: tenantId,
+        connector_id: connectorId,
+        endpoint_key: endpoint,
+        workflow_id: workflowA,
+        step_id: "ga4",
+        value: { rows: [] },
+      },
+      db,
+    );
+    await recordSuccessShape(
+      {
+        tenant_id: tenantId,
+        connector_id: connectorId,
+        endpoint_key: endpoint,
+        workflow_id: workflowB,
+        step_id: "ga4",
+        value: { rows: "incompatible" },
+      },
+      db,
+    );
+
+    const rows = await db
+      .select()
+      .from(schemaVersions)
+      .where(
+        and(
+          eq(schemaVersions.tenant_id, tenantId),
+          eq(schemaVersions.connector_id, connectorId),
+          eq(schemaVersions.endpoint_key, endpoint),
+        ),
+      );
+    expect(rows).toHaveLength(2);
+    const shapeA = await getLatestShape(
+      {
+        tenant_id: tenantId,
+        connector_id: connectorId,
+        endpoint_key: endpoint,
+        workflow_id: workflowA,
+        step_id: "ga4",
+      },
+      db,
+    );
+    const shapeB = await getLatestShape(
+      {
+        tenant_id: tenantId,
+        connector_id: connectorId,
+        endpoint_key: endpoint,
+        workflow_id: workflowB,
+        step_id: "ga4",
+      },
+      db,
+    );
+    expect(shapeA).toMatchObject({
+      type: "object",
+      properties: { dimensionHeaders: { type: "array" }, rows: { type: "array" } },
+    });
+    expect(shapeB).toMatchObject({
+      type: "object",
+      properties: { rows: { type: "string" } },
+    });
+  });
+
+  test("incompatible concrete types widen to unknown", () => {
+    const widened = mergeObservedShapes(deriveShape({ value: 1 }), deriveShape({ value: "one" }));
+    expect(widened).toEqual({
+      type: "object",
+      properties: { value: { type: "unknown" } },
+    });
+    expect(mergeObservedShapes(widened, deriveShape({ value: 2 }))).toEqual(widened);
+  });
+
+  test("empty arrays gain a concrete item shape when evidence arrives", () => {
+    expect(
+      mergeObservedShapes(deriveShape({ rows: [] }), deriveShape({ rows: [{ id: 1 }] })),
+    ).toMatchObject({
+      type: "object",
+      properties: {
+        rows: { type: "array", items: { type: "object", properties: { id: { type: "number" } } } },
       },
     });
   });

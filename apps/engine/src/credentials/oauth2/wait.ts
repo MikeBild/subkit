@@ -79,14 +79,119 @@ export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
 // — a test that needs "at least N poll ticks" can compute the budget
 // instead of hardcoding a number that silently desyncs if this changes.
 export const POLL_INTERVAL_MS = 1_500;
+// A best-effort credential read must never monopolise a pool connection for
+// the lifetime of the OAuth wait. Keep the database deadline below the poll
+// cadence; a timed-out pool client is destroyed so queued application writes
+// can proceed on a fresh connection.
+export const OAUTH_CREDENTIAL_READ_TIMEOUT_MS = 1_000;
+
+type BoundedPoolClient = {
+  query: (config: {
+    text: string;
+    values: string[];
+    query_timeout: number;
+  }) => Promise<{ rows: Array<{ id: string }> }>;
+  release: (error?: Error | boolean) => void;
+};
+
+type BoundedPool = {
+  totalCount: number;
+  idleCount: number;
+  ending?: boolean;
+  ended?: boolean;
+  connect: () => Promise<BoundedPoolClient>;
+};
+
+// Bound credential reads across ALL waits sharing a Drizzle client. Per-wait
+// single-flight prevents one timer from overlapping itself, but a query that
+// outlives its wait can otherwise overlap the next wait and slowly exhaust the
+// same pool. A WeakSet keeps disposable databases isolated and collectible.
+const databasesWithCredentialPollInFlight = new WeakSet<object>();
 
 /** Is there a non-deleted credential row for (tenant, connector, env)? */
+function poolFor(db: Db): BoundedPool | null {
+  const candidate = (db as Db & { $client?: Partial<BoundedPool> }).$client;
+  if (
+    !candidate ||
+    typeof candidate.connect !== "function" ||
+    typeof candidate.totalCount !== "number" ||
+    typeof candidate.idleCount !== "number"
+  ) {
+    return null;
+  }
+  return candidate as BoundedPool;
+}
+
+async function credentialExistsWithBoundedPool(
+  pool: BoundedPool,
+  tenant_id: string,
+  connector_id: string,
+  environment: "dev" | "prod",
+  readTimeoutMs: number,
+): Promise<boolean | null> {
+  if (pool.ending || pool.ended) return null;
+
+  // Polling is a best-effort fallback. Never queue it behind active work or
+  // expand an already-busy pool: the callback event remains the primary path,
+  // and the next tick can retry when capacity is idle. A completely new pool
+  // (totalCount === 0) may establish its first connection for idempotency.
+  if (pool.totalCount > 0 && pool.idleCount === 0) return null;
+
+  const client = await pool.connect();
+  let released = false;
+  let deadline: ReturnType<typeof setTimeout> | null = null;
+  const timeoutError = new Error("OAuth credential read timed out");
+  try {
+    const query = client.query({
+      text: `SELECT id
+               FROM credentials
+              WHERE tenant_id = $1
+                AND connector_id = $2
+                AND environment = $3
+                AND deleted_at IS NULL
+              LIMIT 1`,
+      values: [tenant_id, connector_id, environment],
+      // node-postgres also enforces the deadline internally. The explicit
+      // race below lets us destroy the checked-out client deterministically
+      // even if the driver never receives a server response.
+      query_timeout: readTimeoutMs,
+    });
+    const timedOut = new Promise<never>((_resolve, reject) => {
+      deadline = setTimeout(() => reject(timeoutError), readTimeoutMs);
+      deadline.unref?.();
+    });
+    const result = await Promise.race([query, timedOut]);
+    return result.rows.length > 0;
+  } catch (err) {
+    // Passing an error to pg-pool release removes/destroys this client. Merely
+    // rejecting the JavaScript promise would leave a stalled backend holding
+    // the pool slot and can deadlock the credential write we are waiting for.
+    client.release(err instanceof Error ? err : timeoutError);
+    released = true;
+    throw err;
+  } finally {
+    if (deadline) clearTimeout(deadline);
+    if (!released) client.release();
+  }
+}
+
 async function credentialExists(
   db: Db,
   tenant_id: string,
   connector_id: string,
   environment: "dev" | "prod",
-): Promise<boolean> {
+  readTimeoutMs: number,
+): Promise<boolean | null> {
+  const pool = poolFor(db);
+  if (pool) {
+    return credentialExistsWithBoundedPool(
+      pool,
+      tenant_id,
+      connector_id,
+      environment,
+      readTimeoutMs,
+    );
+  }
   const rows = await db
     .select({ id: credentials.id })
     .from(credentials)
@@ -102,12 +207,30 @@ async function credentialExists(
   return rows.length > 0;
 }
 
+async function credentialExistsSingleFlight(
+  db: Db,
+  tenant_id: string,
+  connector_id: string,
+  environment: "dev" | "prod",
+  readTimeoutMs: number,
+): Promise<boolean | null> {
+  if (databasesWithCredentialPollInFlight.has(db)) return null;
+  databasesWithCredentialPollInFlight.add(db);
+  try {
+    return await credentialExists(db, tenant_id, connector_id, environment, readTimeoutMs);
+  } finally {
+    databasesWithCredentialPollInFlight.delete(db);
+  }
+}
+
 export function waitForOAuthCredential(p: WaitForOAuthCredentialInput): Promise<OAuthWaitStatus> {
   const timeoutMs = p.timeout_ms ?? OAUTH_WAIT_CEILING_MS;
+  const readTimeoutMs = Math.max(1, Math.min(OAUTH_CREDENTIAL_READ_TIMEOUT_MS, timeoutMs));
 
   return new Promise<OAuthWaitStatus>((resolve) => {
     let settled = false;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollInFlight = false;
     let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
     let subscribedListener: WaitForOAuthCredentialInput["listener"] | null = null;
 
@@ -134,7 +257,15 @@ export function waitForOAuthCredential(p: WaitForOAuthCredentialInput): Promise<
             // `settled` guard and is idempotent, so a late re-read that
             // calls `finish` after another path already did is a no-op.
             // `finish` is therefore never effectively called twice.
-            if (await credentialExists(p.db, p.tenant_id, p.connector_id, p.environment)) {
+            if (
+              await credentialExistsSingleFlight(
+                p.db,
+                p.tenant_id,
+                p.connector_id,
+                p.environment,
+                readTimeoutMs,
+              )
+            ) {
               finish("succeeded");
             }
           } catch {
@@ -157,7 +288,7 @@ export function waitForOAuthCredential(p: WaitForOAuthCredentialInput): Promise<
       } catch {
         /* listener may not be running in tests — ignore */
       }
-      if (pollTimer) clearInterval(pollTimer);
+      if (pollTimer) clearTimeout(pollTimer);
       if (timeoutTimer) clearTimeout(timeoutTimer);
       pollTimer = null;
       timeoutTimer = null;
@@ -204,47 +335,53 @@ export function waitForOAuthCredential(p: WaitForOAuthCredentialInput): Promise<
     }
 
     // 1. DB poll fallback — covers a missed `callback_succeeded` event.
-    pollTimer = setInterval(() => {
-      void (async () => {
-        if (settled) return;
-        try {
-          if (await credentialExists(p.db, p.tenant_id, p.connector_id, p.environment)) {
-            finish("succeeded");
-          }
-        } catch (err) {
-          // Poll is best-effort; a transient DB error must not settle
-          // the wait early. The timeout still bounds the loop.
-          logger.debug({
-            module: "oauth",
-            action: "oauth.wait.poll_failed",
-            msg: "waitForOAuthCredential poll tick failed; will retry",
-            tenant_id: p.tenant_id,
-            connector_id: p.connector_id,
-            error: err instanceof Error ? err.message : String(err),
-          });
+    // Schedule the next query only after the current one settles. A fixed
+    // interval launched overlapping SELECTs whenever Postgres took longer
+    // than the cadence; enough concurrent OAuth waits could then exhaust
+    // the pool and prevent the very credential write they were awaiting.
+    const pollCredential = async (): Promise<void> => {
+      if (settled || pollInFlight) return;
+      pollInFlight = true;
+      try {
+        if (
+          await credentialExistsSingleFlight(
+            p.db,
+            p.tenant_id,
+            p.connector_id,
+            p.environment,
+            readTimeoutMs,
+          )
+        ) {
+          finish("succeeded");
         }
-      })();
-    }, POLL_INTERVAL_MS);
-    pollTimer.unref?.();
+      } catch (err) {
+        // Poll is best-effort; a transient DB error must not settle
+        // the wait early. The timeout still bounds the loop.
+        logger.debug({
+          module: "oauth",
+          action: "oauth.wait.poll_failed",
+          msg: "waitForOAuthCredential poll tick failed; will retry",
+          tenant_id: p.tenant_id,
+          connector_id: p.connector_id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        pollInFlight = false;
+        if (!settled) {
+          pollTimer = setTimeout(() => void pollCredential(), POLL_INTERVAL_MS);
+          pollTimer.unref?.();
+        }
+      }
+    };
 
     // 3. Upper bound. Each call holds one connection open for up to
     // `timeoutMs`.
     timeoutTimer = setTimeout(() => finish("timeout"), timeoutMs);
     timeoutTimer.unref?.();
 
-    // Idempotency — resolve immediately if the credential already
-    // exists (covers the DB-pause OAuth resume re-driving the tool).
-    // Runs AFTER the listener is registered above, so a `callback_*`
-    // event arriving during this async query is still caught.
-    void (async () => {
-      if (settled) return;
-      try {
-        if (await credentialExists(p.db, p.tenant_id, p.connector_id, p.environment)) {
-          finish("succeeded");
-        }
-      } catch {
-        /* best-effort — the DB poll and timeout still bound the wait */
-      }
-    })();
+    // Idempotency — the first single-flight poll runs immediately, AFTER
+    // the listener is registered, so an event arriving during the query
+    // is still caught without opening a second concurrent DB request.
+    void pollCredential();
   });
 }
