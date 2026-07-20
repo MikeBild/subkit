@@ -79,10 +79,7 @@ export const OAUTH_WAIT_MIN_FLOOR_MS = 5_000;
 // — a test that needs "at least N poll ticks" can compute the budget
 // instead of hardcoding a number that silently desyncs if this changes.
 export const POLL_INTERVAL_MS = 1_500;
-// A best-effort credential read must never monopolise a pool connection for
-// the lifetime of the OAuth wait. Keep the database deadline below the poll
-// cadence; a timed-out pool client is destroyed so queued application writes
-// can proceed on a fresh connection.
+// Keep the read deadline below the poll cadence so a stalled poll cannot monopolise the pool.
 export const OAUTH_CREDENTIAL_READ_TIMEOUT_MS = 1_000;
 
 type BoundedPoolClient = {
@@ -131,10 +128,7 @@ async function credentialExistsWithBoundedPool(
 ): Promise<boolean | null> {
   if (pool.ending || pool.ended) return null;
 
-  // Polling is a best-effort fallback. Never queue it behind active work or
-  // expand an already-busy pool: the callback event remains the primary path,
-  // and the next tick can retry when capacity is idle. A completely new pool
-  // (totalCount === 0) may establish its first connection for idempotency.
+  // Polling is best-effort, so it must not queue behind work or expand an already-busy pool.
   if (pool.totalCount > 0 && pool.idleCount === 0) return null;
 
   const client = await pool.connect();
@@ -151,9 +145,7 @@ async function credentialExistsWithBoundedPool(
                 AND deleted_at IS NULL
               LIMIT 1`,
       values: [tenant_id, connector_id, environment],
-      // node-postgres also enforces the deadline internally. The explicit
-      // race below lets us destroy the checked-out client deterministically
-      // even if the driver never receives a server response.
+      // The explicit race lets us destroy the client even when node-postgres receives no response.
       query_timeout: readTimeoutMs,
     });
     const timedOut = new Promise<never>((_resolve, reject) => {
@@ -163,9 +155,7 @@ async function credentialExistsWithBoundedPool(
     const result = await Promise.race([query, timedOut]);
     return result.rows.length > 0;
   } catch (err) {
-    // Passing an error to pg-pool release removes/destroys this client. Merely
-    // rejecting the JavaScript promise would leave a stalled backend holding
-    // the pool slot and can deadlock the credential write we are waiting for.
+    // Releasing with an error destroys the client instead of leaving its stalled backend pooled.
     client.release(err instanceof Error ? err : timeoutError);
     released = true;
     throw err;
