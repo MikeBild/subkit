@@ -33,10 +33,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The E2E release gate runs every file in its own sequential worker process,
   isolating process-global mock/config state and server teardown while each
   app retains its own PgBoss instance.
-- Database-backed integration files run serially in local and CI gates,
-  preventing concurrent disposable pools, queue workers, and catalog
-  migrations from deadlocking after the long-lived Bun process reaches high
-  memory pressure.
+- Unit and integration gates run every file in a fresh sequential process,
+  preventing sessions, disposable pools, queue workers, catalog migrations,
+  and module globals from accumulating in a long-lived Bun runtime.
+- Elicitation outcome handling loads the conversation tool registry only when
+  replaying a confirmed tool call, removing a startup import cycle that could
+  expose an uninitialized `ask_user_choice` tool.
 - Headless CLI create, resume, and attachment turns consume their POST SSE
   response directly and stop on `completed`, eliminating the replay-subscribe
   race and indefinite waits on keep-alive transports.
