@@ -73,12 +73,14 @@ flowchart TB
 
 | Role | Can do | Cannot do |
 |---|---|---|
-| **admin** | Full platform control: roles, keys, connectors, workflows | — |
-| **member** | Author and trigger workflows | Manage tenant identity/keys |
+| **admin** | Full platform control: roles, keys, connector promotion, workflows | — |
+| **member** | Author and trigger workflows | Manage tenant identity/keys or promote DEV connectors to PROD |
 | **end-user** | Trigger and view workflows | Modify any definition |
 | **service account** | Programmatic access | Reach any interactive surface |
 
 Beyond the built-ins, operators define **custom roles** for finer control, attach **resource grants** scoped to a single resource with an expiry, and group users for assignment.
+
+`connector:promote` is intentionally admin-only in the built-in roles. It moves encrypted production access and therefore does not ride on the broader member-level `connector:write` permission. A custom role may receive it explicitly; every allow or deny is audited before promotion state changes.
 
 ### Before-Request Hooks
 

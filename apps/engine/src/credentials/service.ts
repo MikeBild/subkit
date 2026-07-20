@@ -260,6 +260,7 @@ export type CredentialWriteSource =
   | "refresh_worker"
   | "http_route"
   | "cli_bootstrap"
+  | "connector_promotion"
   // Browser-submitted via the single-use credential-setup grant form
   // (GET/POST /v1/connectors/{id}/credentials/setup) — the non-OAuth
   // counterpart to `oauth_callback`.

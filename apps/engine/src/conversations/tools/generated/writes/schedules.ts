@@ -26,6 +26,15 @@ const CronString = z
     'Cron expression (5-field, e.g. "0 9 * * 1-5") or the shorthand "every:<seconds>" (e.g. "every:60").',
   );
 
+const ScheduleInputSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(z.unknown()),
+  z.record(z.string(), z.unknown()),
+]);
+
 function scheduleView(row: ScheduleRow): Record<string, unknown> {
   return {
     id: row.id,
@@ -57,7 +66,7 @@ const CreateInput = z
     cron: CronString,
     timezone: z.string().optional(),
     execution_mode: z.enum(["dev", "prod"]).optional(),
-    input: z.unknown().optional(),
+    input: ScheduleInputSchema.optional(),
     paused: z.boolean().optional(),
   })
   .openapi("CreateScheduleToolInput");
@@ -71,7 +80,7 @@ export const createScheduleTool: ConversationTool = {
   requires_persisted_workflow: true,
   async execute(ctx, args: z.infer<typeof CreateInput>) {
     try {
-      const row = await createSchedule(ctx.db, {
+      const { row, status } = await createSchedule(ctx.db, {
         tenant_id: ctx.tenant_id,
         workflow_id: args.workflow_id,
         cron: args.cron,
@@ -83,7 +92,7 @@ export const createScheduleTool: ConversationTool = {
       await ctx.engineClient.audit_write({
         resource_type: "schedule",
         resource_id: row.id,
-        action: "schedule.created",
+        action: status === "created" ? "schedule.created" : "schedule.updated",
         result: "success",
         metadata: {
           workflow_id: row.workflow_id,
@@ -91,9 +100,11 @@ export const createScheduleTool: ConversationTool = {
           timezone: row.timezone,
           execution_mode: row.execution_mode,
           paused: row.paused,
+          kind: status,
+          input_changed: args.input !== undefined,
         },
       });
-      return { ok: true, data: scheduleView(row) };
+      return { ok: true, data: { ...scheduleView(row), upsert_status: status } };
     } catch (err) {
       return invalidCronResponse(err);
     }
@@ -142,7 +153,7 @@ const UpdateInput = z
     timezone: z.string().optional(),
     execution_mode: z.enum(["dev", "prod"]).optional(),
     paused: z.boolean().optional(),
-    input: z.unknown().optional(),
+    input: ScheduleInputSchema.optional(),
   })
   .openapi("UpdateScheduleToolInput");
 

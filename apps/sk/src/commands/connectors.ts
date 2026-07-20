@@ -307,6 +307,63 @@ const deleteCommand = defineCommand({
   },
 });
 
+const promoteCommand = defineCommand({
+  meta: {
+    name: "promote",
+    description: "Promote a connector and its credentials from DEV to PROD",
+  },
+  args: {
+    id: { type: "positional", required: false, description: "DEV connector id" },
+    to: { type: "string", default: "prod", description: "Target environment (prod only)" },
+    strategy: {
+      type: "string",
+      default: "copy",
+      description: "Promotion strategy: copy or move",
+    },
+    "idempotency-key": {
+      type: "string",
+      description: "Stable retry key; generated when omitted",
+    },
+    yes: { type: "boolean", description: "Confirm a move without prompting" },
+    json: { type: "boolean", description: "JSON output" },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    const jsonMode = Boolean(args.json);
+    try {
+      const id = await pickId({
+        label: "DEV connector id",
+        argValue: args.id,
+        fetch: () => fetchConnectorRows(client),
+      });
+      if (args.to !== "prod") throw new Error("--to must be prod");
+      if (args.strategy !== "copy" && args.strategy !== "move") {
+        throw new Error("--strategy must be copy or move");
+      }
+      if (args.strategy === "move" && !args.yes) {
+        const confirmed = await prompts.confirm({
+          message: `Move connector "${id}" from DEV to PROD? The DEV connector will not remain.`,
+        });
+        if (!confirmed || prompts.isCancel(confirmed)) return;
+      }
+      const idempotencyKey = args["idempotency-key"] ?? `sk-promote-${crypto.randomUUID()}`;
+      const result = await client.promoteConnector(
+        id,
+        { target_environment: "prod", strategy: args.strategy },
+        idempotencyKey,
+      );
+      if (jsonMode) {
+        printJson({ idempotency_key: idempotencyKey, ...result });
+      } else {
+        process.stderr.write(`${pc.dim("Idempotency-Key:")} ${idempotencyKey}\n`);
+        printJson(result);
+      }
+    } catch (err) {
+      reportCommandError(err, { json: jsonMode });
+    }
+  },
+});
+
 const testCommand = defineCommand({
   meta: { name: "test", description: "Test a connector connection" },
   args: {
@@ -411,6 +468,7 @@ export const connectorsCommand = defineCommand({
     create: createCommand,
     patch: patchCommand,
     delete: deleteCommand,
+    promote: promoteCommand,
     test: testCommand,
     probe: probeCommand,
     "docs-ingest": docsIngestCommand,

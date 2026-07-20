@@ -634,6 +634,7 @@ export const MCP_TURN_KEEP_PAUSE_WRITE_TOOLS: ReadonlySet<string> = new Set([
   // Credential / connector mutations.
   "authenticate_oauth",
   "import_connector_from_spec",
+  "promote_connector",
   "save_connector_draft",
   "update_connector",
   // User / role / api-key mutations.

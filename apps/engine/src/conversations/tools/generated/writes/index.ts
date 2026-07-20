@@ -11,6 +11,7 @@ import { createApiKeyTool } from "./create-api-key.ts";
 import { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
 import { createSkillTool } from "./create-skill.ts";
 import { deleteSkillTool } from "./delete-skill.ts";
+import { promoteConnectorTool } from "./promote-connector.ts";
 import { rerunExecutionTool } from "./rerun-execution.ts";
 import { runWorkflowTool } from "./run-workflow.ts";
 import { scheduleTools } from "./schedules.ts";
@@ -34,6 +35,7 @@ export { createApiKeyTool } from "./create-api-key.ts";
 export { createKnowledgeSourceTool } from "./create-knowledge-source.ts";
 export { createSkillTool } from "./create-skill.ts";
 export { deleteSkillTool } from "./delete-skill.ts";
+export { promoteConnectorTool } from "./promote-connector.ts";
 export { rerunExecutionTool } from "./rerun-execution.ts";
 export { runWorkflowTool } from "./run-workflow.ts";
 export {
@@ -51,6 +53,7 @@ export { updateWorkflowTool } from "./update-workflow.ts";
 export const ALL_GENERATED_WRITE_TOOLS: ConversationTool[] = [
   runWorkflowTool,
   rerunExecutionTool,
+  promoteConnectorTool,
   approveSkillCandidateTool,
   approvePatchCandidateTool,
   createApiKeyTool,

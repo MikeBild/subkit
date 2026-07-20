@@ -44,10 +44,16 @@ async function createWorkflow(name: string): Promise<{ id: string }> {
 describe("schedules HTTP write surface", () => {
   test("POST creates, re-POST upserts (one schedule per workflow)", async () => {
     const wf = await createWorkflow("sched-upsert");
+    const objectInput = { items: [1, 2, 3, 4, 5], mode: "catalog" };
     const created = await fetch(`${ctx.baseUrl}/v1/schedules`, {
       method: "POST",
       headers: headers(),
-      body: JSON.stringify({ workflow_id: wf.id, cron: "0 8 * * *", timezone: "Europe/Berlin" }),
+      body: JSON.stringify({
+        workflow_id: wf.id,
+        cron: "0 8 * * *",
+        timezone: "Europe/Berlin",
+        input: objectInput,
+      }),
     });
     expect(created.status).toBe(201);
     const row = (await created.json()) as {
@@ -55,10 +61,33 @@ describe("schedules HTTP write surface", () => {
       cron: string;
       workflow_slug: string;
       execution_mode: string;
+      input: unknown;
+      upsert_status: string;
     };
     expect(row.cron).toBe("0 8 * * *");
     expect(row.workflow_slug).toContain("sched-upsert");
     expect(row.execution_mode).toBe("prod");
+    expect(row.input).toEqual(objectInput);
+    expect(row.upsert_status).toBe("created");
+
+    const list = await fetch(`${ctx.baseUrl}/v1/schedules?workflow_id=${wf.id}`, {
+      headers: headers(),
+    });
+    const catalog = (await list.json()) as { schedules: Array<{ input: unknown }> };
+    expect(catalog.schedules[0]?.input).toEqual(objectInput);
+
+    const replayWorkflow = await createWorkflow("sched-upsert-replay");
+    const replay = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        workflow_id: replayWorkflow.id,
+        cron: "0 8 * * *",
+        input: catalog.schedules[0]?.input,
+      }),
+    });
+    expect(replay.status).toBe(201);
+    expect(((await replay.json()) as { input: unknown }).input).toEqual(objectInput);
 
     const again = await fetch(`${ctx.baseUrl}/v1/schedules`, {
       method: "POST",
@@ -67,19 +96,59 @@ describe("schedules HTTP write surface", () => {
         workflow_id: wf.id,
         cron: "30 9 * * *",
         execution_mode: "dev",
+        input: "scalar-input",
       }),
     });
-    expect(again.status).toBe(201);
-    const row2 = (await again.json()) as { id: string; cron: string; execution_mode: string };
+    expect(again.status).toBe(200);
+    const row2 = (await again.json()) as {
+      id: string;
+      cron: string;
+      execution_mode: string;
+      input: unknown;
+      upsert_status: string;
+    };
     expect(row2.id).toBe(row.id); // upsert, not a second fire time
     expect(row2.cron).toBe("30 9 * * *");
     expect(row2.execution_mode).toBe("dev");
+    expect(row2.input).toBe("scalar-input");
+    expect(row2.upsert_status).toBe("updated");
 
     const rows = await ctx.db
       .select()
       .from(workflowsSchedules)
       .where(eq(workflowsSchedules.workflow_id, wf.id));
     expect(rows.length).toBe(1);
+
+    const audits = await ctx.db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(and(eq(auditLog.resource_type, "schedule"), eq(auditLog.resource_id, row.id)));
+    expect(audits.map((entry) => entry.action)).toEqual(["schedule.created", "schedule.updated"]);
+  });
+
+  test("schedule input round-trips null and arrays through write and catalog responses", async () => {
+    const wf = await createWorkflow("sched-json-roundtrip");
+    const created = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ workflow_id: wf.id, cron: "0 8 * * *", input: [1, "two"] }),
+    });
+    const row = (await created.json()) as { id: string; input: unknown };
+    expect(row.input).toEqual([1, "two"]);
+
+    const updated = await fetch(`${ctx.baseUrl}/v1/schedules/${row.id}`, {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({ input: null }),
+    });
+    expect(((await updated.json()) as { input: unknown }).input).toBeNull();
+
+    const list = await fetch(`${ctx.baseUrl}/v1/schedules?workflow_id=${wf.id}`, {
+      headers: headers(),
+    });
+    expect(
+      ((await list.json()) as { schedules: Array<{ input: unknown }> }).schedules[0]?.input,
+    ).toBeNull();
   });
 
   test("POST with invalid cron is 400, unknown workflow is 404", async () => {

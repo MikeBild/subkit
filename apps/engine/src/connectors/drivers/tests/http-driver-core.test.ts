@@ -57,6 +57,7 @@ async function makeConnector(params: {
   auth_type: ConnectorView["auth_type"];
   config?: Record<string, unknown>;
   base_url?: string;
+  template_slug?: string;
 }): Promise<ConnectorView> {
   const created = await createConnector(
     {
@@ -68,6 +69,7 @@ async function makeConnector(params: {
         base_url: params.base_url ?? mock.baseUrl,
         auth_type: params.auth_type,
         config: params.config ?? {},
+        ...(params.template_slug ? { template_slug: params.template_slug } : {}),
       },
       actor_id: null,
     },
@@ -446,6 +448,67 @@ describe("probeHttpConnector", () => {
       };
       jsonResponse(res, 200, { ok: true });
     });
+  });
+
+  test("historical Notion probes add Notion-Version while saved credentials supply auth", async () => {
+    const conn = await makeConnector({
+      auth_type: "bearer",
+      template_slug: "notion",
+      config: {
+        probe_endpoint: {
+          method: "GET",
+          path: "/users/me",
+          expected_status: [200, 200],
+          description: "historical snapshot without headers",
+        },
+      },
+    });
+    await upsertCredential(
+      {
+        tenant_id: tenantId,
+        connector_id: conn.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "notion-probe-token" },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+
+    const probe = await probeHttpConnector({ db: ctx.db, tenant_id: tenantId, connector: conn });
+    expect(probe.ok).toBe(true);
+    expect(lastRequest?.url).toBe("/users/me");
+    expect(lastRequest?.headers["notion-version"]).toBe("2022-06-28");
+    expect(lastRequest?.headers.authorization).toBe("Bearer notion-probe-token");
+  });
+
+  test("probe headers cannot shadow a custom saved credential header", async () => {
+    const conn = await makeConnector({
+      auth_type: "header",
+      config: {
+        probe_endpoint: {
+          method: "GET",
+          path: "/healthz",
+          expected_status: [200, 299],
+          headers: { "X-Tenant-Identity": "template-value" },
+        },
+      },
+    });
+    await upsertCredential(
+      {
+        tenant_id: tenantId,
+        connector_id: conn.id,
+        environment: "dev",
+        mode: "header",
+        value: { mode: "header", headers: { "X-Tenant-Identity": "saved-value" } },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+
+    const probe = await probeHttpConnector({ db: ctx.db, tenant_id: tenantId, connector: conn });
+    expect(probe.ok).toBe(false);
+    expect(probe.detail).toContain("supplied by the saved credential");
   });
 
   test("network failure (unreachable host) is caught and returned as ok:false with a detail message", async () => {
