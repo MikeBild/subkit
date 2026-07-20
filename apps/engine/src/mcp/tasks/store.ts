@@ -57,6 +57,7 @@ export interface McpTaskRow {
   kind: "start" | "append" | "respond_elicitation";
   job_id: string | null;
   actor_id: string | null;
+  request_source: string;
   user_message_id: string | null;
   result: ConversationTurnEnvelope | null;
   failure_reason: string | null;
@@ -188,11 +189,19 @@ export async function setMcpTaskCancelled(
   tenant_id: string,
   task_id: string,
   db: Db,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const rows = await db
     .update(mcpTasks)
     .set({ cancelled_at: new Date(), updated_at: new Date() })
-    .where(and(eq(mcpTasks.tenant_id, tenant_id), eq(mcpTasks.id, task_id)));
+    .where(
+      and(
+        eq(mcpTasks.tenant_id, tenant_id),
+        eq(mcpTasks.id, task_id),
+        sql`${mcpTasks.cancelled_at} IS NULL`,
+      ),
+    )
+    .returning({ id: mcpTasks.id });
+  return rows.length > 0;
 }
 
 /**

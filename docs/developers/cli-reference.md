@@ -58,7 +58,7 @@ every API call.
 | `sk show` | — | Show cached metadata for a session by id or alias | — |
 | `sk skill-candidates` | `skill:read` | Manage skill candidates | `approve`, `get`, `list`, `reject` |
 | `sk skills` | `skill:read` | Manage skills | `activate`, `archive`, `create`, `delete`, `edit`, `get`, `history`, `list`, `patch`, `restore`, `sync` |
-| `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `connectors`, `events`, `executions`, `llm` |
+| `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `chat`, `connectors`, `conversations`, `events`, `executions`, `http`, `llm`, `mcp` |
 | `sk status` | — | Print the active profile + engine reachability | — |
 | `sk subscriptions` | `subscription:read` | Manage event subscriptions | `create`, `delete`, `deliveries`, `get`, `list`, `patch`, `replay` |
 | `sk system-accounts` | `identity:read` | Manage system accounts | `create`, `delete`, `list` |

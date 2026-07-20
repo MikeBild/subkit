@@ -21,7 +21,7 @@
 - [Connectors & Credentials (operator guide)](operators/connectors-and-credentials.md): Connect a system once, reuse it everywhere — and the credential is never exposed.
 - [Deploy & upgrade the engine](operators/deploy.md): The production engine is a single bun build --compile binary at /usr/local/bin/engine, run by the subkit-engine systemd unit.
 - [Notifications](operators/notifications.md): Operators hear about what matters, not noise.
-- [Observability & Resource Limits](operators/observability.md): See every run, catch drift before it costs you.
+- [Observability & Resource Limits](operators/observability.md): See every run, understand content-free product usage, and catch drift before it costs you.
 - [Quickstart — Operator](operators/quickstart.md): Outcome: a governed, audited automation engine your whole team can use — live in production in 15 minutes.
 - [Runtime Dependencies](operators/runtime-dependencies.md): Outcome: discovery works against every documentation site, including JavaScript-rendered SPAs.
 - [Scheduling & Hooks (operator guide)](operators/scheduling-and-hooks.md): Outcome: automation that fires on time or on event — verified at the door.

@@ -2,7 +2,8 @@
 
 > **Audience:** SREs, platform engineers, operators running sk in production
 
-**See every run, catch drift before it costs you.** sk runs unattended: observable
+**See every run, understand content-free product usage, and catch drift before it costs
+you.** sk runs unattended: observable
 enough to diagnose a problem in minutes, bounded enough that no single workflow,
 tenant, or external dependency can degrade the platform for everyone else. The payoff
 is operational — fewer incidents, faster root-cause, predictable AI spend.
@@ -12,6 +13,7 @@ is operational — fewer incidents, faster root-cause, predictable AI spend.
 | Scrape process-wide metrics | [`/metrics` (Prometheus)](#observability) |
 | Trace one failing run across surfaces | [Telemetry Surface](#telemetry-surface) — correlate by `trace_id` |
 | Answer per-tenant questions over time | [`/v1/stats/*`](#tenant-scoped-runtime-stats-v1stats) |
+| Optimise HTTP, Chat, Conversation, and MCP product usage | [Privacy-safe usage reports](#privacy-safe-product-usage) |
 | Keep a tenant from monopolizing capacity | [Resource Limits](#resource-limits-and-operational-safety) |
 | Tune ingestion / knowledge budgets | [Documentation & Knowledge Tunables](#documentation--knowledge-tunables) |
 
@@ -85,6 +87,36 @@ Each event carries `method`, `path` (route template, not raw URL), `status_code`
 caught and logged at debug level — a slow or unavailable endpoint never stalls a
 response.
 
+### Privacy-safe product usage
+
+SubKit can persist a product-internal usage ledger in its own Postgres. It is disabled by
+default and makes no external request. Configure a dedicated product-local key before the
+switch so actor and session identities are one-way HMAC pseudonyms:
+
+```bash
+sk settings set observability.usage.hmac_secret '"<at-least-32-random-characters>"'
+sk settings set observability.usage.retention_days 90
+sk settings set observability.usage.enabled true
+```
+
+The schema is deliberately payload-free. It stores bounded route/operation classes,
+outcomes, traffic class, duration/byte counts, stream result, platform/mode/task phase,
+active MCP session counts, and product-local HMACs. It has no columns for HTTP query
+strings, unknown raw paths, messages, prompts, MCP arguments/results/resource URIs, Chat
+platform IDs, IP addresses, user agents, OAuth material, or credentials. Unknown and
+dynamic values collapse to bounded `unmatched`, `other`, or `unknown` classes.
+
+`X-SubKit-Traffic-Class: synthetic` marks content-free canaries; `internal` is reserved for
+collectors and reporting. Stats default to `organic`, so health probes and canaries do not
+distort product decisions. Google Chat propagates this header only after request
+verification; MCP and HTTP apply it at their authenticated transport edge.
+
+Raw rows expire after 90 days by default (configurable from 31–365). The four semantic
+reports are exact, never sampled, and return exact full-window unique actors/sessions,
+ratio numerator and denominator, duration coverage, `measured|zero|missing` value state,
+and retention truncation. Cockpit and ContentKit can therefore distinguish “zero usage”
+from “collection disabled” without guessing.
+
 ### Telemetry Surface
 
 Every code path an operator may need to debug emits at least one structured event
@@ -151,8 +183,9 @@ requirement.
 
 Where `/metrics` is a process-wide Prometheus snapshot that resets on redeploy and is
 **not** tenant-scoped, the `/v1/stats/*` surface answers per-tenant operational
-questions over time-bucketed history. It aggregates at read time from `executions`,
-`audit_log`, and `llm_usage` — no new tables. Every route filters
+questions over time-bucketed history. Operational routes aggregate at read time from
+`executions`, `audit_log`, and `llm_usage`; product usage routes aggregate the bounded
+`usage_events` ledger. Every route filters
 `tenant_id = principal.tenant_id` as the first predicate and is gated by the single
 `stats:read` permission (admins hold it by default; members opt in via a custom role).
 
@@ -162,6 +195,10 @@ questions over time-bucketed history. It aggregates at read time from `execution
 | `GET /v1/stats/connectors` | `audit_log` (`action='connector.invoked'`) | connector-call volume + latency + outcome + status-class (`4xx_auth`/`4xx_rate_limited`/…) |
 | `GET /v1/stats/events` | `audit_log` (per `?class=`) | webhook / chat / schedule / self-healing / discovery / policy / external-write event volume |
 | `GET /v1/stats/llm` | `llm_usage` | token usage + cache-hit rate + latency by model / flow |
+| `GET /v1/stats/http` | `usage_events` | canonical route volume, exact actors/sessions, latency, bytes, outcomes |
+| `GET /v1/stats/chat` | `usage_events` | Chat event kind/platform, sync vs async, deduplication, outcomes |
+| `GET /v1/stats/mcp` | `usage_events` | JSON-RPC classes, tasks, SSE completion/disconnect, session churn/capacity |
+| `GET /v1/stats/conversations` | `usage_events` | cross-surface HTTP/Chat/MCP turns, async task lifecycle, input pauses, completion/disconnect, outcomes |
 
 Connector status classes use the upstream transport status when one exists.
 `network_error` means that a connector call failed before receiving such a
@@ -182,7 +219,14 @@ carries three rollups: per-bucket (`groups[].buckets[]`), per-group totals
 Two btree indexes back these routes:
 `executions (tenant_id, status, started_at)` and `audit_log (tenant_id, action, ts)`.
 
-Operators read this surface from the CLI: `sk stats executions|connectors|events|llm`
+Usage routes add `traffic_class` (default `organic`) and controlled filters for
+`operation`, `outcome`, `request_source`, `platform`, and `response_mode`. At most two
+controlled `group_by` dimensions are accepted. Their response schema is
+`subkit.usage-stats.v1`; `quality.sampled=false`, `quality.unique_scope=exact_window`, and
+every ratio carries both numerator and denominator.
+
+Operators read this surface from the CLI:
+`sk stats executions|connectors|events|llm|http|chat|mcp|conversations`
 (human ASCII table + sparkline by default, `--json` for cron/CI/ETL), and it feeds the
 `sk` settings Status heatmap + Usage token bar.
 

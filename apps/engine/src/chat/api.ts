@@ -178,6 +178,7 @@ const ChatEventSchema = z
     // app — drives DM auto-registration (see chat/dm-autoregister.ts).
     is_direct_message: z.boolean().optional(),
     event_key: z.string().optional(),
+    traffic_class: z.enum(["organic", "synthetic", "internal"]).optional(),
     raw: z.unknown(),
   })
   .passthrough();

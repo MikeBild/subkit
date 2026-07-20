@@ -33,6 +33,7 @@ import { cancelConversationAbort } from "../../conversations/abort.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { projectTurnEnvelopeForClient } from "../capabilities/turn-projection.ts";
 import {
   getMcpTask,
@@ -156,8 +157,23 @@ export class ConversationTaskStore implements TaskStore {
       // Stamp the terminal cancel marker, then abort the running turn
       // so `runLoop` stops promptly. The worker's entry guard catches a
       // cancel that lands before the turn starts.
-      await setMcpTaskCancelled(this.tenantId, taskId, this.db);
+      const firstCancellation = await setMcpTaskCancelled(this.tenantId, taskId, this.db);
       cancelConversationAbort(this.tenantId, row.conversation_id);
+      if (firstCancellation) {
+        recordUsageEvent(this.db, {
+          tenantId: this.tenantId,
+          surface: "conversations",
+          operation: "mcp/task/cancel",
+          method: "POST",
+          outcome: "cancelled",
+          requestSource: row.request_source,
+          actorId: row.actor_id,
+          sessionId: row.conversation_id,
+          platform: "http",
+          responseMode: "async",
+          taskPhase: "cancelled",
+        });
+      }
       logger.info({
         module: "mcp.tasks",
         action: "task.cancelled",

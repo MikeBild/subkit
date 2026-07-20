@@ -530,6 +530,36 @@ const AnalyticsSection = z
   .prefault({})
   .describe("Config-driven product analytics (disabled by default; zero external calls when off)");
 
+const UsageSection = z
+  .object({
+    enabled: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Persist privacy-safe, tenant-scoped product usage events locally. Disabled by default; requires hmac_secret when enabled.",
+      )
+      .meta(global()),
+    hmac_secret: z
+      .string()
+      .default("")
+      .describe(
+        "Product-local HMAC secret for actor and session pseudonyms. Set at least 32 characters before enabling usage telemetry.",
+      )
+      .meta(global({ secret: true })),
+    retention_days: z
+      .number()
+      .int()
+      .min(31)
+      .max(365)
+      .default(90)
+      .describe("Raw usage-event retention in days; aggregate reports may outlive raw rows.")
+      .meta(global()),
+  })
+  .prefault({})
+  .describe(
+    "Privacy-safe, product-internal usage measurement (local Postgres only; no content fields)",
+  );
+
 const ObservabilitySection = z
   .object({
     langfuse: z
@@ -556,6 +586,7 @@ const ObservabilitySection = z
       .prefault({})
       .describe("OpenTelemetry OTLP exporter"),
     analytics: AnalyticsSection,
+    usage: UsageSection,
     deployment_environment: z
       .string()
       .min(1)

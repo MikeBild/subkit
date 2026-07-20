@@ -125,6 +125,8 @@ export interface ChatEvent {
    *  (Events API), `view.id` (`view_submission`), `trigger_id`
    *  (`block_actions`), or hash of `command+text+ts` (slash). */
   event_key?: string;
+  /** Canary classification propagated from a verified ingress header. */
+  traffic_class?: "organic" | "synthetic" | "internal";
   raw: unknown;
 }
 
