@@ -122,55 +122,34 @@ describe("validateWorkflowDef · redundant Authorization header", () => {
     expect(result.ok).toBe(true);
   });
 
-  // The reserved-header rule covers all three of Authorization /
-  // Cookie / Proxy-Authorization. Cookie + Proxy-Authorization were
-  // widened in the dirty diff alongside the original Authorization
-  // check (Pass-A audit, conversation 730c568a follow-up); these
-  // tests pin them so the contract can't silently shrink back to
-  // Authorization-only.
-  test.each([
-    "Cookie",
-    "cookie",
-    "COOKIE",
-  ])("rejects a request step with connector_id and a %s header", (headerName) => {
-    const result = validateWorkflowDef({
-      name: "t",
-      steps: [
-        {
-          id: "fetch",
-          kind: "request",
-          method: "GET",
-          path: "/me",
-          connector_id: "a1b2c3d4-1111-4222-8333-444455556666",
-          headers: { [headerName]: "session=abc" },
-        },
-      ],
-    });
-    expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.path.endsWith(`.headers.${headerName}`))).toBe(true);
-  });
+  const reservedHeaders = [
+    ["Cookie", "session=abc"],
+    ["cookie", "session=abc"],
+    ["COOKIE", "session=abc"],
+    ["Proxy-Authorization", "Bearer proxytoken"],
+    ["proxy-authorization", "Bearer proxytoken"],
+    ["PROXY-AUTHORIZATION", "Bearer proxytoken"],
+  ] as const;
 
-  test.each([
-    "Proxy-Authorization",
-    "proxy-authorization",
-    "PROXY-AUTHORIZATION",
-  ])("rejects a request step with connector_id and a %s header", (headerName) => {
-    const result = validateWorkflowDef({
-      name: "t",
-      steps: [
-        {
-          id: "fetch",
-          kind: "request",
-          method: "GET",
-          path: "/me",
-          connector_id: "a1b2c3d4-1111-4222-8333-444455556666",
-          headers: { [headerName]: "Bearer proxytoken" },
-        },
-      ],
+  for (const [headerName, headerValue] of reservedHeaders) {
+    test(`rejects connector request header ${headerName}`, () => {
+      const result = validateWorkflowDef({
+        name: "t",
+        steps: [
+          {
+            id: "fetch",
+            kind: "request",
+            method: "GET",
+            path: "/me",
+            connector_id: "a1b2c3d4-1111-4222-8333-444455556666",
+            headers: { [headerName]: headerValue },
+          },
+        ],
+      });
+      expect(result.ok).toBe(false);
+      expect(result.errors.some((e) => e.path.endsWith(`.headers.${headerName}`))).toBe(true);
     });
-    expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.path.endsWith(`.headers.${headerName}`))).toBe(true);
-  });
+  }
 
   test("accepts step-level Authorization on a connector_id whose auth_type is none", () => {
     // The auth-flows.md skill documents the multi-step token-mint
