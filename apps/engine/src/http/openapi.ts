@@ -3,6 +3,7 @@
 
 import { VERSION } from "@cli-core/version.ts";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import type { RequestSource, ServiceMetadata } from "../observability/service-metadata.ts";
@@ -21,6 +22,9 @@ export type AppEnv = {
     request_source: RequestSource;
     request_started_at: number;
     db: Db;
+    /** Request-local queue runtime. Tests bind an isolated PgBoss instance;
+     * production falls back to the process-wide engine singleton. */
+    boss?: PgBoss;
     principal?: ResolvedPrincipal;
     /**
      * Bound by the auth middleware once a principal resolves. Downstream

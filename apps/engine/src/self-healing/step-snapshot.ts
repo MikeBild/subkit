@@ -89,6 +89,7 @@ export async function loadStepSnapshot(
   if (!row) return null;
   return {
     id: row.id,
+    step_key: row.step_key,
     kind: row.kind,
     status: row.status,
     error: row.error,

@@ -203,6 +203,8 @@ export async function runGraphqlWithRetry(p: RunGraphqlWithRetryParams): Promise
           tenant_id: egressInput.tenant_id,
           connector_id: egressInput.connector_id,
           endpoint_key: graphqlEndpointKey(lastRes.operation_name),
+          workflow_id: egressInput.workflow_id ?? null,
+          step_id: egressInput.step_id ?? null,
           value,
         },
         p.queryArgs.db,

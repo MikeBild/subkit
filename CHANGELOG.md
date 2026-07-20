@@ -4,6 +4,38 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.1] – 2026-07-20
+
+### Fixed
+- Workflow validation now rejects bare JSONata calls such as `not(...)` in
+  branch predicates and suggests the runtime-compatible `$not(...)` form.
+- Successful connector responses now build a cumulative shape contract per
+  workflow step, preserving optional fields across executions instead of
+  misclassifying their absence as response-schema drift.
+- Proactive drift detection is scoped to the exact workflow and step that
+  produced the response evidence. Legacy unscoped observations and additive
+  response changes no longer create unsafe patch candidates; incompatible
+  type changes remain detectable.
+- Schema history retains the raw observed response shape alongside its
+  cumulative runtime contract, so migration previews remain evidence-based
+  without weakening drift detection.
+- Test-only audit draining can be scoped to its originating database, avoiding
+  ordering-dependent notification-suite timeouts from unrelated disposable
+  database writes.
+- E2E apps now bind their own PgBoss instance, so parallel disposable
+  databases cannot enqueue through or tear down a process-global queue runtime.
+- Fast MCP workflow calls can no longer start a progress poller after the run
+  has already settled, preventing leaked background queries; disposable test
+  databases terminate in-flight backends before awaiting pool drain.
+- OAuth credential polling is single-flight per database, uses idle pool
+  capacity only, and destroys a client whose bounded read stalls, so slow or
+  timed-out waits cannot exhaust the connection pool or block credential writes.
+- The E2E release gate runs every file in its own sequential worker process,
+  isolating process-global mock/config state and server teardown while each
+  app retains its own PgBoss instance.
+- Headless CLI runs stop on the protocol-level `completed` SSE frame instead
+  of waiting indefinitely for a keep-alive transport to close.
+
 ## [1.21.0] – 2026-07-20
 
 ### Added

@@ -531,9 +531,9 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         ssseParseErrorReported = true;
         stderr.write("sk: malformed SSE frame — see ~/.sk/debug.log for details\n");
       }
-      return;
+      return true;
     }
-    if (typeof ev.type !== "string") return;
+    if (typeof ev.type !== "string") return true;
     debugLog(
       "dialog.turn_event",
       verbose ? { event: ev } : { event_type: ev.type },
@@ -544,6 +544,11 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       writeLine(stdout, JSON.stringify(ev));
     }
     streamState = applyTurnEvent(streamState, ev);
+    // `completed` is the conversation protocol's terminal turn frame.
+    // Do not additionally wait for HTTP EOF: proxies and Hono's SSE adapter
+    // may keep the response alive even though the engine has finished.
+    if (ev.type === "completed") return false;
+    return true;
   });
   debugLog("sse.close", { final_status: streamState.status }, traceContext());
 

@@ -154,15 +154,38 @@ export async function createTestDb(label: string): Promise<TestDb> {
   await seedBuiltinRolesAndPermissions(db);
 
   const cleanup = async () => {
-    await pool.end().catch(() => {});
     const admin2 = new Client({ connectionString: getAdminUrl() });
     await admin2.connect();
     try {
-      // Terminate any lingering connections before DROP.
+      // Terminate lingering or in-flight clients BEFORE awaiting pool.end().
+      // Waiting on the pool first deadlocks teardown when a fire-and-forget
+      // query still owns a client: the backend termination that would reject
+      // that query was only attempted after the wait. Once terminated, pg
+      // rejects the query, releases its client, and the pool drains normally.
       await admin2.query(
         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
         [dbName],
       );
+      // `pg_terminate_backend` rejects ordinary `pool.query()` calls and
+      // they release themselves. Still, a client checked out by a leaked
+      // fire-and-forget task can remain in pg-pool's bookkeeping after its
+      // backend is already gone, causing `pool.end()` to wait forever. Give
+      // normal error propagation a short turn, then remove only those
+      // already-terminated clients through pg-pool's internal cleanup hook.
+      // This is deliberately confined to disposable test pools.
+      const internalPool = pool as pg.Pool & {
+        _clients?: pg.PoolClient[];
+        _remove?: (client: pg.PoolClient, callback?: () => void) => void;
+      };
+      const endPromise = pool.end().catch(() => {});
+      const endedNormally = await Promise.race([
+        endPromise.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 250)),
+      ]);
+      if (!endedNormally && internalPool._clients && internalPool._remove) {
+        for (const client of [...internalPool._clients]) internalPool._remove(client);
+        await endPromise;
+      }
       await admin2.query(`DROP DATABASE IF EXISTS "${dbName}"`);
     } finally {
       await admin2.end();

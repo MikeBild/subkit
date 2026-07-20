@@ -41,6 +41,7 @@ import sql0020MightyMagdalene from "./0020_mighty_magdalene.sql" with { type: "t
 import sql0021CrazySilkFever from "./0021_crazy_silk_fever.sql" with { type: "text" };
 import sql0022CalmGroot from "./0022_calm_groot.sql" with { type: "text" };
 import sql0023EarlySharonCarter from "./0023_early_sharon_carter.sql" with { type: "text" };
+import sql0024CuddlyStarkIndustries from "./0024_cuddly_stark_industries.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -89,6 +90,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0021_crazy_silk_fever": sql0021CrazySilkFever,
   "0022_calm_groot": sql0022CalmGroot,
   "0023_early_sharon_carter": sql0023EarlySharonCarter,
+  "0024_cuddly_stark_industries": sql0024CuddlyStarkIndustries,
 };
 
 const journal = journalMeta as unknown as Journal;

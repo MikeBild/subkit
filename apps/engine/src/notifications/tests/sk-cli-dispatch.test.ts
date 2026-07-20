@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 async function wipe(): Promise<void> {
-  await _drainAuditWritesForTests();
+  await _drainAuditWritesForTests(ctx.db);
   await ctx.db.delete(cliNotificationInbox);
   await ctx.db.delete(notificationDeliveries);
   await ctx.db.delete(notificationRules);
@@ -138,7 +138,7 @@ describe("notifications: sk_cli channel dispatch", () => {
     expect(deliveries.length).toBe(1);
 
     // Audit entry.
-    await _drainAuditWritesForTests();
+    await _drainAuditWritesForTests(ctx.db);
     const auditRows = await ctx.db
       .select()
       .from(auditLog)

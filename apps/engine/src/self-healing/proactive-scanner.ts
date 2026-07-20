@@ -7,13 +7,9 @@
 //     `stdlib_version_drift` signals for workflows + request hooks
 //     whose recorded sk-stdlib major differs from the engine's.
 //
-//   * `scanSchemaShapeDrift`    — walks every unique
-//     `(tenant, connector, endpoint)` triplet in `schema_versions`,
-//     pulls the two most recent rows, runs `diffShapes()`. A non-empty
-//     diff emits a `schema_diff` signal. This is the proactive
-//     equivalent of the reactive shape-diff path: drift is found by
-//     comparing recorded shapes over time, not by waiting for a
-//     downstream step to fail on a missing key.
+//   * `scanSchemaShapeDrift`    — compares accumulated observations per
+//     `(tenant, connector, endpoint, workflow, step)`. Incompatible
+//     type changes emit `schema_diff`; additive fields remain evidence.
 //
 //   * `scanValidationDrift`     — walks every workflow whose current
 //     version's `dag.validation_expression` is non-empty. If the
@@ -38,7 +34,7 @@ import { tenants } from "../db/schema/identity.ts";
 import { workflows, workflowVersions } from "../db/schema/workflows.ts";
 import { logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
-import { diffShapes } from "../schema-versions/service.ts";
+import { diffShapesDeep } from "../schema-versions/service.ts";
 import { scanStdlibDrift } from "./stdlib-drift-scan.ts";
 import type { DriftSignal, SchemaShape } from "./types.ts";
 
@@ -48,9 +44,7 @@ export interface ProactiveScanFilters {
    *  (the scheduler does this implicitly per-tenant, so it always
    *  passes the tenant_id). */
   tenant_id?: string;
-  /** Limit validation-drift scanning to a single workflow. Stdlib +
-   *  schema drift scanners ignore this filter — drift on a connector
-   *  endpoint is not workflow-scoped. */
+  /** Limit validation and schema-drift scanning to a single workflow. */
   workflow_id?: string;
   /** Limit schema-drift scanning to a single connector. Stdlib +
    *  validation drift scanners ignore this filter. */
@@ -178,57 +172,46 @@ async function scanStdlibVersionDriftForTenant(
 }
 
 /**
- * Schema shape drift — for every unique (tenant, connector, endpoint)
- * triple in `schema_versions`, compare the two most recent recorded
- * shapes. A non-empty diff emits a `schema_diff` signal.
- *
- * Patch Candidates require a workflow anchor; we pick the first
- * workflow in the tenant that references the connector. If no
- * workflow uses the connector, the drift is logged but not promoted
- * to a candidate (there is nothing to patch yet).
+ * Schema shape drift compares observations only within their recorded
+ * workflow and step provenance. Additive evidence is compatible;
+ * incompatible type changes are the proactive patch signal.
  */
 async function scanSchemaShapeDriftForTenant(
   tenant_id: string,
   exec: Executor,
-  filters: { connector_id?: string },
+  filters: { connector_id?: string; workflow_id?: string },
 ): Promise<{ anchored: ScannedSignal[]; unanchored: UnanchoredDrift[] }> {
+  const conditions = [isNotNull(schemaVersions.workflow_id), isNotNull(schemaVersions.step_id)];
+  if (filters.connector_id) {
+    conditions.push(eq(schemaVersions.connector_id, filters.connector_id));
+  }
+  if (filters.workflow_id) {
+    conditions.push(eq(schemaVersions.workflow_id, filters.workflow_id));
+  }
   const rows = await exec
     .select({
       connector_id: schemaVersions.connector_id,
       endpoint_key: schemaVersions.endpoint_key,
+      workflow_id: schemaVersions.workflow_id,
+      step_id: schemaVersions.step_id,
       schema: schemaVersions.schema,
       seen_at: schemaVersions.seen_at,
     })
     .from(schemaVersions)
-    .where(
-      filters.connector_id
-        ? and(
-            eq(schemaVersions.tenant_id, tenant_id),
-            eq(schemaVersions.connector_id, filters.connector_id),
-          )
-        : eq(schemaVersions.tenant_id, tenant_id),
-    )
+    .where(and(eq(schemaVersions.tenant_id, tenant_id), ...conditions))
     .orderBy(desc(schemaVersions.seen_at));
 
-  // Group by (connector_id, endpoint_key) keeping rows in descending
-  // seen_at order; take the first two per group. The grouping key
-  // carries the tuple explicitly because `endpoint_key` is free-form
-  // text and can contain ':' (e.g. "GET /users/:id") — concatenating
-  // into a single delimited string would lose information on split.
   interface GroupEntry {
     connector_id: string;
     endpoint_key: string;
+    workflow_id: string;
+    step_id: string;
     rows: Array<{ schema: SchemaShape; seen_at: Date }>;
   }
   const grouped = new Map<string, GroupEntry>();
   for (const row of rows) {
-    // Key tuple by (connector_id, endpoint_key). The composite
-    // string is for Map dedup only — the entry value carries
-    // both fields explicitly, so we never split the key back
-    // apart. UUID connector_ids contain only hex+hyphens, so
-    // "::" is a safe delimiter even when endpoint_key carries
-    // arbitrary punctuation.
-    const key = `${row.connector_id}::${row.endpoint_key}`;
+    if (!row.workflow_id || !row.step_id) continue;
+    const key = JSON.stringify([row.connector_id, row.endpoint_key, row.workflow_id, row.step_id]);
     const existing = grouped.get(key);
     if (existing) {
       if (existing.rows.length >= 2) continue;
@@ -237,6 +220,8 @@ async function scanSchemaShapeDriftForTenant(
       grouped.set(key, {
         connector_id: row.connector_id,
         endpoint_key: row.endpoint_key,
+        workflow_id: row.workflow_id,
+        step_id: row.step_id,
         rows: [{ schema: row.schema as SchemaShape, seen_at: row.seen_at }],
       });
     }
@@ -244,20 +229,29 @@ async function scanSchemaShapeDriftForTenant(
 
   if (grouped.size === 0) return { anchored: [], unanchored: [] };
 
-  // Map connector_id -> the workflow_id of the first workflow that
-  // references it. We need this anchor for the Patch Candidate row.
-  // The candidate is best-effort: when nothing references the
-  // connector, the drift surfaces in the unanchored bucket instead.
-  const connectorWorkflowAnchors = await loadConnectorWorkflowAnchors(tenant_id, exec);
+  const workflowRows = await exec
+    .select({ id: workflows.id, dag: workflowVersions.dag })
+    .from(workflows)
+    .innerJoin(workflowVersions, eq(workflows.current_version_id, workflowVersions.id))
+    .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)));
+  const activeWorkflows = new Map(
+    workflowRows.map((row) => [row.id, extractWorkflowStepIds(row.dag)]),
+  );
 
   const anchored: ScannedSignal[] = [];
   const unanchored: UnanchoredDrift[] = [];
-  for (const { connector_id, endpoint_key, rows: bucket } of grouped.values()) {
+  for (const {
+    connector_id,
+    endpoint_key,
+    workflow_id,
+    step_id,
+    rows: bucket,
+  } of grouped.values()) {
     if (bucket.length < 2) continue; // Need before AND after to diff.
     const [after, before] = bucket; // desc order: index 0 newest
     if (!after || !before) continue;
-    const diff = diffShapes(before.schema, after.schema);
-    if (diff.added.length + diff.removed.length + diff.widened.length === 0) continue;
+    const diff = diffShapesDeep(before.schema, after.schema);
+    if (diff.widened.length === 0) continue;
 
     const signal: DriftSignal = {
       kind: "schema_diff",
@@ -267,16 +261,17 @@ async function scanSchemaShapeDriftForTenant(
       removed: diff.removed,
       widened: diff.widened,
     };
-    const workflow_id = connectorWorkflowAnchors.get(connector_id);
-    if (!workflow_id) {
-      unanchored.push({ signal, reason: "no_workflow_anchor", resource_id: connector_id });
+    if (!activeWorkflows.get(workflow_id)?.has(step_id)) {
+      unanchored.push({ signal, reason: "no_workflow_anchor", resource_id: workflow_id });
       logger.info({
         module: "self-healing",
         action: "proactive_scan.unanchored",
-        msg: "schema drift detected but no workflow references the connector",
+        msg: "schema drift provenance references no active workflow",
         tenant_id,
+        workflow_id,
         connector_id,
         endpoint_key,
+        step_id,
       });
       continue;
     }
@@ -295,6 +290,8 @@ async function scanSchemaShapeDriftForTenant(
             "schema_diff",
             connector_id,
             endpoint_key,
+            workflow_id,
+            step_id,
           ]),
           // The "response" we hand the LLM is the newer shape — the
           // model uses it to ground the patch (rename / type-widen
@@ -307,53 +304,23 @@ async function scanSchemaShapeDriftForTenant(
   return { anchored, unanchored };
 }
 
-async function loadConnectorWorkflowAnchors(
-  tenant_id: string,
-  exec: Executor,
-): Promise<Map<string, string>> {
-  // Walk the tenant's workflows once, peek into the current version's
-  // dag JSON for step `connector_id` references, and remember the
-  // first workflow that touches each connector. Tolerant: malformed
-  // dag JSON simply contributes no anchors.
-  const rows = await exec
-    .select({
-      workflow_id: workflows.id,
-      dag: workflowVersions.dag,
-    })
-    .from(workflows)
-    .innerJoin(workflowVersions, eq(workflows.current_version_id, workflowVersions.id))
-    .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)));
-
-  const anchors = new Map<string, string>();
-  for (const row of rows) {
-    const connectors = extractConnectorIdsFromDag(row.dag);
-    for (const cid of connectors) {
-      if (!anchors.has(cid)) anchors.set(cid, row.workflow_id);
-    }
-  }
-  return anchors;
-}
-
-function extractConnectorIdsFromDag(dag: unknown): string[] {
-  if (!dag || typeof dag !== "object") return [];
-  const out = new Set<string>();
+function extractWorkflowStepIds(dag: unknown): Set<string> {
+  const stepIds = new Set<string>();
   const stack: unknown[] = [dag];
   while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || typeof node !== "object") continue;
-    if (Array.isArray(node)) {
-      for (const item of node) stack.push(item);
+    const value = stack.pop();
+    if (!value || typeof value !== "object") continue;
+    if (Array.isArray(value)) {
+      stack.push(...value);
       continue;
     }
-    for (const [k, v] of Object.entries(node)) {
-      if (k === "connector_id" && typeof v === "string") {
-        out.add(v);
-      } else if (v && typeof v === "object") {
-        stack.push(v);
-      }
+    const object = value as Record<string, unknown>;
+    if (typeof object.id === "string" && typeof object.kind === "string") {
+      stepIds.add(object.id);
     }
+    stack.push(...Object.values(object));
   }
-  return [...out];
+  return stepIds;
 }
 
 function readValidationExpression(dag: unknown): string | null {
@@ -500,6 +467,7 @@ async function scanForDriftImpl(filters: ProactiveScanFilters, exec: Db): Promis
         scanStdlibVersionDriftForTenant(tenant_id, exec),
         scanSchemaShapeDriftForTenant(tenant_id, exec, {
           ...(filters.connector_id ? { connector_id: filters.connector_id } : {}),
+          ...(filters.workflow_id ? { workflow_id: filters.workflow_id } : {}),
         }),
         scanValidationDriftForTenant(tenant_id, exec, {
           ...(filters.workflow_id ? { workflow_id: filters.workflow_id } : {}),

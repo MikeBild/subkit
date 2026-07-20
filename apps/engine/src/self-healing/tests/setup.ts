@@ -155,6 +155,8 @@ export async function createSelfHealingCtx(label: string): Promise<SelfHealingTe
     tenant_id: tenant.id,
     connector_id: connector.id,
     endpoint_key,
+    workflow_id: workflow.id,
+    step_id: "req-1",
     schema: {
       type: "object",
       properties: {

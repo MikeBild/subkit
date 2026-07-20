@@ -854,11 +854,17 @@ export async function runSelfHealingLoop(
   // 2. Pull the last known shape for the connector/endpoint, if any.
   let lastShape = null;
   if (params.connector_id && params.endpoint_key) {
+    const requestConnector =
+      snapshot.request_meta && "connector" in snapshot.request_meta
+        ? snapshot.request_meta.connector
+        : null;
+    const workflowStepId = requestConnector?.step_key ?? snapshot.step_key;
     lastShape = await getLatestShape(
       {
         tenant_id: params.tenant_id,
         connector_id: params.connector_id,
         endpoint_key: params.endpoint_key,
+        ...(workflowStepId ? { workflow_id: params.workflow_id, step_id: workflowStepId } : {}),
       },
       db,
     );
