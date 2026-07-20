@@ -11,6 +11,7 @@ import { registerStatsEventsRoute } from "./events.ts";
 import { registerStatsExecutionsRoute } from "./executions.ts";
 import { registerStatsLlmRoute } from "./llm.ts";
 import { registerStatsQualityRoute } from "./quality.ts";
+import { registerUsageStatsRoutes } from "./usage.ts";
 
 export function registerStatsRoutes(app: OpenAPIHono<AppEnv>): void {
   // Single permission gate for the whole surface. Tenant-scoped read —
@@ -22,10 +23,15 @@ export function registerStatsRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/stats/events", requirePermission("stats:read"));
   app.use("/v1/stats/llm", requirePermission("stats:read"));
   app.use("/v1/stats/quality", requirePermission("stats:read"));
+  app.use("/v1/stats/http", requirePermission("stats:read"));
+  app.use("/v1/stats/chat", requirePermission("stats:read"));
+  app.use("/v1/stats/mcp", requirePermission("stats:read"));
+  app.use("/v1/stats/conversations", requirePermission("stats:read"));
 
   registerStatsExecutionsRoute(app);
   registerStatsConnectorsRoute(app);
   registerStatsEventsRoute(app);
   registerStatsLlmRoute(app);
   registerStatsQualityRoute(app);
+  registerUsageStatsRoutes(app);
 }

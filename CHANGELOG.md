@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] – 2026-07-20
+
+### Added
+- Opt-in, product-internal usage telemetry for canonical HTTP routes, Google Chat and other
+  Chat turns, Conversation calls/streams, and MCP JSON-RPC/session/task/capacity behavior.
+  Tenant-scoped actor/session identities use a dedicated product-local HMAC; the bounded
+  ledger cannot store messages, prompts, tool arguments/results, raw paths/query strings,
+  IPs, user agents, OAuth material, or plaintext dynamic identifiers.
+- `GET /v1/stats/http|chat|mcp|conversations` and matching
+  `sk stats http|chat|mcp|conversations` commands return exact full-window identities,
+  numerator/denominator ratios, stream outcomes, latency/byte coverage, retention quality,
+  traffic-class separation, and semantic measured/zero/missing states for Cockpit reports.
+- `observability.usage.enabled`, `hmac_secret`, and `retention_days` settings; telemetry is
+  disabled by default and raw rows expire after 90 days unless configured otherwise.
+
 ## [1.21.1] – 2026-07-20
 
 ### Fixed

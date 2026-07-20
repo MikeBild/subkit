@@ -58,6 +58,13 @@ throwaway playground drafts that never persist and partial-accept of individual 
 governed MCP surface those tools expose — session progress, confirmation gates, and
 secrets-never-in-chat routing — see the [tool palette](docs/developers/tool-palette.md).
 
+Operators can measure how the product is actually used without collecting content:
+opt-in, tenant-scoped usage reports cover canonical HTTP routes, Chat turns, Conversation
+streams, and MCP JSON-RPC/session/capacity behavior. Actor and session identities are
+product-local HMACs; messages, prompts, arguments, results, raw URLs, IPs, and user agents
+are never stored. See [Observability & usage reports](docs/operators/observability.md) and
+`sk stats http|chat|mcp|conversations --json`.
+
 ---
 
 ## For Coding Agents

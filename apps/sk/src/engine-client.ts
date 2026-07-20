@@ -128,6 +128,7 @@ export type {
   StatsQualityResponse,
   StatsQuery,
   StatsTokenAgg,
+  StatsUsageResponse,
 } from "./engine-client/stats.ts";
 export type { ScheduleEntry } from "./engine-client/workflows.ts";
 

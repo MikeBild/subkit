@@ -159,6 +159,9 @@ Observability
 | `observability.predictive.memory_cap_fraction` | number | `0.9` | global | no | no | Fraction of the host memory cap the RSS high-water may reach before an OOM-risk warning. |
 | `observability.predictive.pool_saturation_pct` | number | `80` | global | no | no | Percent of the Postgres pool in use (or any waiting clients) above which saturation is flagged. |
 | `observability.predictive.transient_retry_rate` | number | `1` | global | no | no | Transient-DB-retries-per-minute above which a flapping Postgres is flagged. |
+| `observability.usage.enabled` | boolean | `false` | global | no | no | Persist privacy-safe, tenant-scoped product usage events locally. Disabled by default; requires hmac_secret when enabled. |
+| `observability.usage.hmac_secret` | string | `""` | global | yes | no | Product-local HMAC secret for actor and session pseudonyms. Set at least 32 characters before enabling usage telemetry. |
+| `observability.usage.retention_days` | number | `90` | global | no | no | Raw usage-event retention in days; aggregate reports may outlive raw rows. |
 
 ## egress
 Egress filter

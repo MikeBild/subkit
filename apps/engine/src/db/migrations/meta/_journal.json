@@ -176,6 +176,13 @@
       "when": 1784556259775,
       "tag": "0024_cuddly_stark_industries",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784587875973,
+      "tag": "0025_oval_gamma_corps",
+      "breakpoints": true
     }
   ]
 }

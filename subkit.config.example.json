@@ -152,6 +152,11 @@
       "api_key": "",
       "project": ""
     },
+    "usage": {
+      "enabled": false,
+      "hmac_secret": "",
+      "retention_days": 90
+    },
     "deployment_environment": "development",
     "field_truncation_chars": 2048,
     "predictive": {

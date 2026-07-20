@@ -639,6 +639,234 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/stats/http": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** HTTP route usage, latency, bytes, and errors */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    traffic_class?: string | string[];
+                    operation?: string | string[];
+                    outcome?: string | string[];
+                    request_source?: string | string[];
+                    platform?: string | string[];
+                    response_mode?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Exact tenant-scoped usage report (no content or raw identifiers) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsUsageResponse"];
+                    };
+                };
+                /** @description Invalid window, traffic class, or grouping */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stats/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Chat turns, delivery modes, deduplication, and outcomes */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    traffic_class?: string | string[];
+                    operation?: string | string[];
+                    outcome?: string | string[];
+                    request_source?: string | string[];
+                    platform?: string | string[];
+                    response_mode?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Exact tenant-scoped usage report (no content or raw identifiers) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsUsageResponse"];
+                    };
+                };
+                /** @description Invalid window, traffic class, or grouping */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stats/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** MCP JSON-RPC, session, capacity, task, and SSE usage */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    traffic_class?: string | string[];
+                    operation?: string | string[];
+                    outcome?: string | string[];
+                    request_source?: string | string[];
+                    platform?: string | string[];
+                    response_mode?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Exact tenant-scoped usage report (no content or raw identifiers) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsUsageResponse"];
+                    };
+                };
+                /** @description Invalid window, traffic class, or grouping */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stats/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversation calls, streaming completion, disconnects, and outcomes */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    traffic_class?: string | string[];
+                    operation?: string | string[];
+                    outcome?: string | string[];
+                    request_source?: string | string[];
+                    platform?: string | string[];
+                    response_mode?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Exact tenant-scoped usage report (no content or raw identifiers) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsUsageResponse"];
+                    };
+                };
+                /** @description Invalid window, traffic class, or grouping */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings": {
         parameters: {
             query?: never;
@@ -13275,6 +13503,134 @@ export interface components {
         StatsQualityFailureReason: {
             code: string;
             count: number;
+        };
+        StatsUsageResponse: {
+            /** @enum {string} */
+            schema_version: "subkit.usage-stats.v1";
+            /** @enum {string} */
+            surface: "http" | "chat" | "mcp" | "conversations";
+            /** @enum {string} */
+            bucket: "minute" | "hour" | "day" | "month" | "year";
+            tz: string;
+            from: string;
+            to: string;
+            truncated_at?: string;
+            traffic_class: ("organic" | "synthetic" | "internal")[];
+            groups: {
+                key: {
+                    [key: string]: string;
+                };
+                buckets: {
+                    calls: number;
+                    unique_actors: number;
+                    unique_sessions: number;
+                    failures: number;
+                    duration_ms: {
+                        measured: number;
+                        avg: number;
+                        p50: number;
+                        p95: number;
+                        p99: number;
+                        max: number;
+                    };
+                    bytes: {
+                        request: number;
+                        response: number;
+                    };
+                    streams: {
+                        completed: number;
+                        cancelled: number;
+                        errored: number;
+                    };
+                    ts: string;
+                }[];
+                totals: {
+                    calls: number;
+                    unique_actors: number;
+                    unique_sessions: number;
+                    failures: number;
+                    duration_ms: {
+                        measured: number;
+                        avg: number;
+                        p50: number;
+                        p95: number;
+                        p99: number;
+                        max: number;
+                    };
+                    bytes: {
+                        request: number;
+                        response: number;
+                    };
+                    streams: {
+                        completed: number;
+                        cancelled: number;
+                        errored: number;
+                    };
+                };
+            }[];
+            totals: {
+                calls: number;
+                unique_actors: number;
+                unique_sessions: number;
+                failures: number;
+                duration_ms: {
+                    measured: number;
+                    avg: number;
+                    p50: number;
+                    p95: number;
+                    p99: number;
+                    max: number;
+                };
+                bytes: {
+                    request: number;
+                    response: number;
+                };
+                streams: {
+                    completed: number;
+                    cancelled: number;
+                    errored: number;
+                };
+                by_outcome: {
+                    [key: string]: number;
+                };
+                success_ratio: {
+                    numerator: number;
+                    denominator: number;
+                    value: number | null;
+                };
+                surface_details: {
+                    sessions_initialized: number;
+                    sessions_closed: number;
+                    capacity_rejections: number;
+                    active_sessions_peak: number;
+                    sync_responses: number;
+                    async_responses: number;
+                    task_started: number;
+                };
+            };
+            semantic: {
+                /** @enum {string} */
+                value_state: "measured" | "zero" | "missing";
+                /** @enum {string} */
+                value_kind: "count";
+                /** @enum {string} */
+                unit: "calls";
+            };
+            quality: {
+                /** @enum {boolean} */
+                sampled: false;
+                /** @enum {string} */
+                unique_scope: "exact_window";
+                /** @enum {string} */
+                identity: "product_local_hmac";
+                /** @enum {boolean} */
+                content_captured: false;
+                retention_days: number;
+                duration_coverage: {
+                    numerator: number;
+                    denominator: number;
+                };
+            };
         };
         SettingsListResponse: {
             items: components["schemas"]["SettingLeafEntry"][];

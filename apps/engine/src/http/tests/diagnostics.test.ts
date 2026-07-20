@@ -271,6 +271,8 @@ describe("/v1/diagnostics/setup", () => {
         "Observability secrets surface in /v1/diagnostics/observability (planned). Setup view is bootstrap-config-only.",
       "observability.analytics.api_key":
         "Observability secrets surface in /v1/diagnostics/observability (planned). Setup view is bootstrap-config-only.",
+      "observability.usage.hmac_secret":
+        "The usage pseudonymization secret belongs to the observability diagnostic surface; the bootstrap setup view intentionally never exposes it.",
       "mcp.api_key":
         "MCP routes have their own diagnostic; /v1/diagnostics/setup is intentionally narrower.",
       "llm.providers.bedrock.session_token":

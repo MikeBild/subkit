@@ -1,4 +1,4 @@
-// `sk stats <executions|connectors|events|llm>` — scripted-only verb
+// `sk stats <executions|connectors|events|llm|http|chat|mcp|conversations>`
 // over the tenant-scoped runtime stats surface. Zero-config: each
 // subcommand has a sensible default bucket + window so it "just works"
 // with no flags. Human ASCII table + sparkline by default; `--json`
@@ -19,6 +19,7 @@ import {
   type StatsExecutionsResponse,
   type StatsLlmResponse,
   type StatsQuery,
+  type StatsUsageResponse,
 } from "../engine-client.ts";
 import { humanMs } from "../render/format.ts";
 
@@ -385,6 +386,65 @@ const llmCommand = defineCommand({
   },
 });
 
+type UsageSurface = "http" | "chat" | "mcp" | "conversations";
+
+const usageArgs = {
+  ...commonArgs,
+  "traffic-class": {
+    type: "string" as const,
+    description: "organic|synthetic|internal (comma-separated; default organic)",
+  },
+  operation: { type: "string" as const, description: "Filter canonical operation(s)" },
+  outcome: { type: "string" as const, description: "Filter outcome(s)" },
+  "request-source": { type: "string" as const, description: "Filter request source(s)" },
+  platform: { type: "string" as const, description: "Filter platform(s)" },
+  "response-mode": { type: "string" as const, description: "json|sse|sync|async|none" },
+};
+
+function usageCommand(surface: UsageSurface, description: string) {
+  return defineCommand({
+    meta: { name: surface, description },
+    args: usageArgs,
+    async run({ args }) {
+      const { engine_url, api_key, active_tenant_id } = resolveProfile();
+      const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+      try {
+        const q = buildQuery(
+          args,
+          { bucket: "hour", from: "now-24h" },
+          {
+            traffic_class: args["traffic-class"] as string | undefined,
+            operation: args.operation as string | undefined,
+            outcome: args.outcome as string | undefined,
+            request_source: args["request-source"] as string | undefined,
+            platform: args.platform as string | undefined,
+            response_mode: args["response-mode"] as string | undefined,
+          },
+        );
+        const res = await (surface === "http"
+          ? client.statsHttp(q)
+          : surface === "chat"
+            ? client.statsChat(q)
+            : surface === "mcp"
+              ? client.statsMcp(q)
+              : client.statsConversations(q));
+        if (args.json) return void printJson(res);
+        renderUsage(res);
+      } catch (err) {
+        handleError(err);
+      }
+    },
+  });
+}
+
+const httpCommand = usageCommand("http", "HTTP route volume, latency, bytes, and errors");
+const chatCommand = usageCommand("chat", "Chat turns, modes, deduplication, and outcomes");
+const mcpCommand = usageCommand("mcp", "MCP JSON-RPC, sessions, capacity, tasks, and SSE");
+const conversationsCommand = usageCommand(
+  "conversations",
+  "Conversation calls, streams, disconnects, and outcomes",
+);
+
 // --- renderers -------------------------------------------------------------
 
 function renderExecutions(res: StatsExecutionsResponse): void {
@@ -501,6 +561,48 @@ function renderLlm(res: StatsLlmResponse): void {
   }
 }
 
+function renderUsage(res: StatsUsageResponse): void {
+  envelopeNote(res);
+  const totals = res.totals;
+  if (res.semantic.value_state === "missing") {
+    process.stdout.write(`${pc.yellow("usage telemetry is disabled or unavailable")}\n`);
+    return;
+  }
+  if (totals.calls === 0) {
+    emptyWindow();
+    return;
+  }
+  process.stdout.write(`${pc.bold(`${res.surface} usage`)}\n`);
+  process.stdout.write(`  calls:        ${num(totals.calls)}\n`);
+  process.stdout.write(
+    `  identities:   actors=${num(totals.unique_actors)} · sessions=${num(totals.unique_sessions)} (exact window)\n`,
+  );
+  const ratio = totals.success_ratio;
+  const pct = ratio.value == null ? "n/a" : `${(ratio.value * 100).toFixed(1)}%`;
+  process.stdout.write(
+    `  success:      ${pct} (${num(ratio.numerator)} / ${num(ratio.denominator)})\n`,
+  );
+  process.stdout.write(
+    `  latency:      avg=${humanMs(totals.duration_ms.avg)} p50=${humanMs(totals.duration_ms.p50)} p95=${humanMs(totals.duration_ms.p95)} p99=${humanMs(totals.duration_ms.p99)} max=${humanMs(totals.duration_ms.max)}\n`,
+  );
+  process.stdout.write(
+    `  bytes:        request=${num(totals.bytes.request)} · response=${num(totals.bytes.response)}\n`,
+  );
+  process.stdout.write(
+    `  streams:      completed=${num(totals.streams.completed)} · cancelled=${num(totals.streams.cancelled)} · errored=${num(totals.streams.errored)}\n`,
+  );
+  const buckets = res.groups[0]?.buckets ?? [];
+  if (buckets.length > 0) {
+    process.stdout.write(`  calls/bucket: ${pc.cyan(sparkline(buckets.map((b) => b.calls)))}\n`);
+  }
+  if (res.surface === "mcp") {
+    const d = totals.surface_details;
+    process.stdout.write(
+      `  MCP sessions: init=${num(d.sessions_initialized)} · closed=${num(d.sessions_closed)} · peak=${num(d.active_sessions_peak)} · capacity rejects=${num(d.capacity_rejections)}\n`,
+    );
+  }
+}
+
 function keyLabel(key: Record<string, string>): string {
   const entries = Object.entries(key);
   if (entries.length === 0) return "(all)";
@@ -514,5 +616,9 @@ export const statsCommand = defineCommand({
     connectors: connectorsCommand,
     events: eventsCommand,
     llm: llmCommand,
+    http: httpCommand,
+    chat: chatCommand,
+    mcp: mcpCommand,
+    conversations: conversationsCommand,
   },
 });
