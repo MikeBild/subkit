@@ -100,22 +100,8 @@ jobs:
       # are embedded in the engine binary and run in-process on every boot.
 
       - name: Unit + integration tests
-        # `--max-concurrency=4` caps the number of test files bun runs
-        # in parallel. Without this, ~150 of the 612 test files race to
-        # spin up tenant-scoped Postgres databases (see
-        # `apps/engine/src/db/tests/setup.ts`) and exhaust the pool,
-        # surfacing as 5s timeouts in MCP / chat / journey
-        # tests that are otherwise green in isolation. The CI runner's
-        # 4-core sizing makes 4 the natural ceiling.
-        #
-        # `--timeout 60000` covers the worst-case `createTestDb`
-        # `beforeAll` on the GH runner (CREATE DATABASE + 14 embedded
-        # migrations applied via per-migration transactions). The
-        # default 5 s exceeds budget on contended runners and surfaces
-        # as `TypeError: undefined is not an object (evaluating
-        # 'ctx.cleanup')` for every downstream test that depends on
-        # the timed-out fixture.
-        run: bun test --max-concurrency=4 --timeout 60000 apps/ packages/
+        # Database-owning files run serially so disposable pools, workers, and catalog migrations cannot block one another.
+        run: bun test --max-concurrency=1 --timeout 120000 apps/ packages/
 
       - name: AI eval contract
         run: bun run verify:ai
