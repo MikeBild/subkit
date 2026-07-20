@@ -18,7 +18,10 @@
 // it's an invariant bug; otherwise it returns a structured
 // { errors, warnings, infos } tuple.
 
-import { compile as compileJsonata } from "../execution/jsonata-engine.ts";
+import {
+  compile as compileJsonata,
+  findUnboundFunctionCalls,
+} from "../execution/jsonata-engine.ts";
 import { validateBareIterationIdentifiers } from "../workflows/reference-validator.ts";
 import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "../workflows/types-web-scraper.ts";
 
@@ -68,6 +71,14 @@ function addFinding(report: VerifierReport, finding: VerifierFinding): void {
 function tryJsonata(expression: string, path: string, report: VerifierReport): void {
   try {
     compileJsonata(expression);
+    for (const finding of findUnboundFunctionCalls(expression)) {
+      addFinding(report, {
+        severity: "error",
+        code: "jsonata_unbound_function",
+        message: `JSONata function \`${finding.name}(...)\` is not bound; use \`${finding.suggestion}(...)\``,
+        path,
+      });
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     addFinding(report, {

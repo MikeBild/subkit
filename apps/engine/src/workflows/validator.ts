@@ -16,6 +16,10 @@
 // onto `RunResult.warnings` and trigger the `partial_success` gate in
 // `run-workflow.ts` that refuses the commit.
 
+import {
+  compile as compileJsonata,
+  findUnboundFunctionCalls,
+} from "../execution/jsonata-engine.ts";
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
 import { compileSelector } from "../execution/selectors.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
@@ -242,6 +246,20 @@ export function validateWorkflowDef(
       }
     }
     if (step.kind === "branch") {
+      try {
+        compileJsonata(step.when);
+        for (const finding of findUnboundFunctionCalls(step.when)) {
+          errors.push({
+            path: `steps.${step.id}.when`,
+            message: `JSONata function \`${finding.name}(...)\` is not bound; use \`${finding.suggestion}(...)\``,
+          });
+        }
+      } catch (e) {
+        errors.push({
+          path: `steps.${step.id}.when`,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
       for (const ref of step.then_steps) {
         if (!ids.has(ref)) {
           if (allowForwardRefs) {
