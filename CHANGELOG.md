@@ -33,8 +33,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The E2E release gate runs every file in its own sequential worker process,
   isolating process-global mock/config state and server teardown while each
   app retains its own PgBoss instance.
-- Headless CLI runs stop on the protocol-level `completed` SSE frame instead
-  of waiting indefinitely for a keep-alive transport to close.
+- Headless CLI create, resume, and attachment turns consume their POST SSE
+  response directly and stop on `completed`, eliminating the replay-subscribe
+  race and indefinite waits on keep-alive transports.
 
 ## [1.21.0] – 2026-07-20
 

@@ -129,18 +129,8 @@ describe("runHeadless --attach", () => {
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
-      // 4. POST /v1/conversations/<id>/messages (append after attach)
-      if (url.includes("/messages"))
-        return new Response(
-          JSON.stringify({
-            conversation: { id: CONV_ID, status: "active" },
-            events: [],
-            status: "active",
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      // 5. GET /v1/conversations/<id>/stream
-      if (url.includes("/stream")) return makeStreamResponse("File received!");
+      // 4. POST /v1/conversations/<id>/messages streams the turn after attach.
+      if (url.includes("/messages")) return makeStreamResponse("File received!");
       return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
     }) as typeof globalThis.fetch;
 
@@ -229,16 +219,7 @@ describe("runHeadless --attach", () => {
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
-      if (url.includes("/messages"))
-        return new Response(
-          JSON.stringify({
-            conversation: { id: CONV_ID, status: "active" },
-            events: [],
-            status: "active",
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      if (url.includes("/stream")) return makeStreamResponse("Quiet success!");
+      if (url.includes("/messages")) return makeStreamResponse("Quiet success!");
       return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
     }) as typeof globalThis.fetch;
 
