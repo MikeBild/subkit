@@ -17,9 +17,10 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
+import type { Executor } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { auditAwait } from "../audit.ts";
+import { _drainAuditWritesForTests, audit, auditAwait } from "../audit.ts";
 
 let dbA: TestDb;
 let dbB: TestDb;
@@ -97,5 +98,44 @@ describe("audit writer — pool isolation", () => {
     expect(bList.length).toBe(1);
     expect(bList[0]?.tenant_id).toBe(tenantB);
     expect(bList[0]?.action).toBe("user.created");
+  });
+
+  test("executor-scoped drain ignores an unrelated stalled write", async () => {
+    let releaseStalled!: () => void;
+    const stalled = new Promise<void>((resolve) => {
+      releaseStalled = resolve;
+    });
+    const fakeExecutor = (write: Promise<void>): Executor =>
+      ({
+        insert: () => ({
+          values: () => ({ onConflictDoNothing: () => write }),
+        }),
+      }) as unknown as Executor;
+    const stalledExecutor = fakeExecutor(stalled);
+    const readyExecutor = fakeExecutor(Promise.resolve());
+
+    audit(
+      {
+        tenant_id: tenantA,
+        action: "tenant.created",
+        resource_type: "tenant",
+        resource_id: "stalled-write",
+      },
+      stalledExecutor,
+    );
+    audit(
+      {
+        tenant_id: tenantA,
+        action: "tenant.created",
+        resource_type: "tenant",
+        resource_id: "ready-write",
+      },
+      readyExecutor,
+    );
+
+    // A process-global drain would hang here on the unrelated write.
+    await _drainAuditWritesForTests(readyExecutor);
+    releaseStalled();
+    await _drainAuditWritesForTests(stalledExecutor);
   });
 });

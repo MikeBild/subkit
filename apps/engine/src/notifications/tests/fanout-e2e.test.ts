@@ -47,7 +47,7 @@ beforeEach(() => {
 });
 
 async function wipe() {
-  await _drainAuditWritesForTests();
+  await _drainAuditWritesForTests(ctx.db);
   await ctx.db.delete(notificationDeliveries);
   await ctx.db.delete(notificationRules);
   await ctx.db.delete(notificationChannels);
@@ -117,7 +117,7 @@ describe("notifications: fanout-event end-to-end", () => {
     expect(sentRow).toBeDefined();
     expect(sentRow?.event_type).toBe("execution.failed");
 
-    await _drainAuditWritesForTests();
+    await _drainAuditWritesForTests(ctx.db);
     const audit = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, ctx.tenant_id));
     const auditSent = audit.find((r) => r.action === "chat.message.sent");
     expect(auditSent).toBeDefined();

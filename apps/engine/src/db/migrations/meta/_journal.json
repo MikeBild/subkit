@@ -169,6 +169,13 @@
       "when": 1784544840872,
       "tag": "0023_early_sharon_carter",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784556259775,
+      "tag": "0024_cuddly_stark_industries",
+      "breakpoints": true
     }
   ]
 }

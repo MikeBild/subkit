@@ -10,6 +10,7 @@
 // in a per-test database and registry without touching env globals.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import type { PgBoss } from "pg-boss";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
 import { createFirebaseProvider } from "../auth/providers/firebase.ts";
 import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
@@ -101,6 +102,9 @@ import { registerWorkflowRoutes } from "./routes/workflows.ts";
 
 export interface CreateAppOptions {
   db?: Db;
+  /** Bind a queue runtime to this app. Disposable test apps must inject
+   * their own instance so parallel databases cannot share the global boss. */
+  boss?: PgBoss;
   registry?: AuthProviderRegistry;
   chatRegistry?: ChatAdapterRegistry;
   /** Override for the chat-route enqueue callback. Default forwards to
@@ -261,6 +265,13 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
       await next();
     });
   }
+  if (opts.boss) {
+    const boundBoss = opts.boss;
+    app.use("*", async (c, next) => {
+      c.set("boss", boundBoss);
+      await next();
+    });
+  }
   app.use("*", authMiddleware(registry));
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
@@ -313,7 +324,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
       (async (job: AgentSessionAnalyzeJob) => {
         // Lazily resolved like chatEnqueue: boot order stays intact and
         // tests that don't start a boss inject their own stub.
-        await getBoss().send(AGENT_SESSION_ANALYZE_QUEUE, job);
+        await (opts.boss ?? getBoss()).send(AGENT_SESSION_ANALYZE_QUEUE, job);
       }),
   });
   registerDiscoveryRoutes(app);
@@ -339,7 +350,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
         // getBoss() is resolved lazily at request time so the engine
         // boot order (boss start → migrations → http listen) stays
         // intact; tests that don't start a boss don't hit this path.
-        await getBoss().send(CHAT_EVENT_QUEUE, job);
+        await (opts.boss ?? getBoss()).send(CHAT_EVENT_QUEUE, job);
       }),
   });
   registerChatWorkspaceRoutes(app, { registry: chatRegistry });

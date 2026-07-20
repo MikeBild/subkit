@@ -57,7 +57,7 @@ export function registerCancelRoute(app: OpenAPIHono<AppEnv>): void {
     if (row.status === "queued") {
       try {
         const { getBoss } = await import("../../../queue/boss.ts");
-        const boss = getBoss();
+        const boss = c.get("boss") ?? getBoss();
         const jobs = await boss.findJobs<{ execution_id: string }>(EXECUTION_RUN_QUEUE, {
           data: { execution_id: id },
         });
