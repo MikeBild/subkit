@@ -100,8 +100,8 @@ jobs:
       # are embedded in the engine binary and run in-process on every boot.
 
       - name: Unit + integration tests
-        # Database-owning files run serially so disposable pools, workers, and catalog migrations cannot block one another.
-        run: bun test --max-concurrency=1 --timeout 120000 apps/ packages/
+        # Every file gets a fresh process so sessions, pools, workers, and process globals cannot accumulate across suites.
+        run: bun run scripts/test-files-isolated.ts apps packages
 
       - name: AI eval contract
         run: bun run verify:ai
