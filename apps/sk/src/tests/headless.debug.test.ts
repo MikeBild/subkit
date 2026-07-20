@@ -58,27 +58,35 @@ function sseResponse(text = "ok"): Response {
   );
 }
 
-function createConversationResponse(): Response {
+function createSseResponse(text = "ok"): Response {
+  const encoder = new TextEncoder();
   return new Response(
-    JSON.stringify({
-      conversation: {
-        id: "conv-1",
-        tenant_id: "tenant-1",
-        target_workflow_id: null,
-        target_connector_id: null,
-        status: "active",
-        owner_id: null,
-        model: null,
-        title: null,
-        created_at: "2026-04-23T00:00:00.000Z",
-        updated_at: "2026-04-23T00:00:00.000Z",
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `event: conversation_started\ndata: ${JSON.stringify({
+              conversation: {
+                id: "conv-1",
+                title: null,
+                model: null,
+              },
+            })}\n\n`,
+          ),
+        );
+        controller.enqueue(
+          encoder.encode(
+            `event: message\ndata: {"type":"message","role":"assistant","content":{"text":"${text}"}}\n\n`,
+          ),
+        );
+        controller.enqueue(
+          encoder.encode('event: message\ndata: {"type":"completed","status":"active"}\n\n'),
+        );
       },
-      events: [],
-      status: "active",
     }),
     {
       status: 200,
-      headers: { "content-type": "application/json", "x-trace-id": "trace-create" },
+      headers: { "content-type": "text/event-stream", "x-trace-id": "trace-stream" },
     },
   );
 }
@@ -92,55 +100,15 @@ describe("runHeadless debug tracing", () => {
   test("logs turn lifecycle and streamed frames", async () => {
     process.env.SK_DEBUG = "1";
     process.env.SK_DEBUG_FILE = logPath;
-    const encoder = new TextEncoder();
     let fetchCount = 0;
     globalThis.fetch = (async (input) => {
       fetchCount += 1;
       const url = String(input);
       if (fetchCount === 1) {
         expect(url).toContain("/v1/conversations");
-        return new Response(
-          JSON.stringify({
-            conversation: {
-              id: "conv-1",
-              tenant_id: "tenant-1",
-              target_workflow_id: null,
-              target_connector_id: null,
-              status: "active",
-              owner_id: null,
-              model: null,
-              title: null,
-              created_at: "2026-04-23T00:00:00.000Z",
-              updated_at: "2026-04-23T00:00:00.000Z",
-            },
-            events: [],
-            status: "active",
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json", "x-trace-id": "trace-create" },
-          },
-        );
+        return createSseResponse("Hello, world!");
       }
-      return new Response(
-        new ReadableStream({
-          start(controller) {
-            controller.enqueue(
-              encoder.encode(
-                'event: message\ndata: {"type":"message","role":"assistant","content":{"text":"Hello, world!"}}\n\n',
-              ),
-            );
-            controller.enqueue(
-              encoder.encode('event: message\ndata: {"type":"completed","status":"active"}\n\n'),
-            );
-            controller.close();
-          },
-        }),
-        {
-          status: 200,
-          headers: { "content-type": "text/event-stream", "x-trace-id": "trace-stream" },
-        },
-      );
+      return sseResponse("unexpected request");
     }) as typeof globalThis.fetch;
 
     const stdout: string[] = [];
@@ -178,6 +146,56 @@ describe("runHeadless debug tracing", () => {
     );
   });
 
+  test("resume consumes the append response stream without a replay request", async () => {
+    const encoder = new TextEncoder();
+    const urls: string[] = [];
+    let cancelled = false;
+    globalThis.fetch = (async (input, init) => {
+      urls.push(String(input));
+      expect(init?.method).toBe("POST");
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                'event: message\ndata: {"type":"message","role":"assistant","content":{"text":"resumed"}}\n\n',
+              ),
+            );
+            controller.enqueue(
+              encoder.encode('event: message\ndata: {"type":"completed","status":"active"}\n\n'),
+            );
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    }) as typeof globalThis.fetch;
+
+    const stdout: string[] = [];
+    const result = await runHeadless({
+      profile: {
+        name: "default",
+        engine_url: "http://engine.local",
+        api_key: "test-key",
+        active_tenant_id: "tenant-1",
+      },
+      prompt: "continue",
+      output: "json",
+      resume: "conv-existing",
+      cwd: tmpDir,
+      noMemory: true,
+      stdout: { write: (s) => void stdout.push(s) },
+      stderr: { write: () => undefined },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(urls).toEqual(["http://engine.local/v1/conversations/conv-existing/messages"]);
+    expect(stdout.join("")).toContain('"session_id": "conv-existing"');
+    expect(cancelled).toBe(true);
+  });
+
   test("resolves connector slug bindings before creating a conversation", async () => {
     const connectorId = "11111111-1111-4111-8111-111111111111";
     let createdConnectorId: unknown = null;
@@ -194,7 +212,7 @@ describe("runHeadless debug tracing", () => {
       }
       if (url.includes("/v1/conversations") && init?.method === "POST") {
         createdConnectorId = readJsonBody(init).connector_id;
-        return createConversationResponse();
+        return createSseResponse();
       }
       return sseResponse();
     }) as typeof globalThis.fetch;
@@ -237,7 +255,7 @@ describe("runHeadless debug tracing", () => {
       }
       if (url.includes("/v1/conversations") && init?.method === "POST") {
         createdWorkflowId = readJsonBody(init).workflow_id;
-        return createConversationResponse();
+        return createSseResponse();
       }
       return sseResponse();
     }) as typeof globalThis.fetch;
