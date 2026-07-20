@@ -146,12 +146,36 @@ describe("runHeadless debug tracing", () => {
     );
   });
 
-  test("resume consumes the append response stream without a replay request", async () => {
+  test("resume hydrates history and consumes the append stream without replaying SSE", async () => {
     const encoder = new TextEncoder();
     const urls: string[] = [];
     let cancelled = false;
     globalThis.fetch = (async (input, init) => {
       urls.push(String(input));
+      if (init?.method === "GET") {
+        return new Response(
+          JSON.stringify({
+            conversation: {},
+            messages: [
+              {
+                id: "msg-user-1",
+                role: "user",
+                parts: [{ type: "text", text: "first" }],
+                created_at: "2026-01-01T00:00:00.000Z",
+              },
+              {
+                id: "msg-assistant-1",
+                role: "assistant",
+                parts: [{ type: "text", text: "remembered" }],
+                created_at: "2026-01-01T00:00:01.000Z",
+              },
+            ],
+            tool_calls: [],
+            draft: null,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
       expect(init?.method).toBe("POST");
       return new Response(
         new ReadableStream({
@@ -191,8 +215,13 @@ describe("runHeadless debug tracing", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(urls).toEqual(["http://engine.local/v1/conversations/conv-existing/messages"]);
+    expect(urls).toEqual([
+      "http://engine.local/v1/conversations/conv-existing",
+      "http://engine.local/v1/conversations/conv-existing/messages",
+    ]);
+    expect(urls.some((url) => url.endsWith("/stream"))).toBe(false);
     expect(stdout.join("")).toContain('"session_id": "conv-existing"');
+    expect(stdout.join("")).toContain('"content": "remembered"');
     expect(cancelled).toBe(true);
   });
 

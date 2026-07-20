@@ -123,6 +123,30 @@ function matchesSelector(row: Record<string, unknown>, selector: string): boolea
   );
 }
 
+function hydratePersistedMessages(
+  session: SkSessionState,
+  messages: Array<{ id: string; role: string; parts: unknown[] }>,
+): SkSessionState {
+  let hydrated = session;
+  for (const message of messages) {
+    if (
+      message.role !== "user" &&
+      message.role !== "assistant" &&
+      message.role !== "system" &&
+      message.role !== "tool"
+    ) {
+      continue;
+    }
+    hydrated = applyTurnEvent(hydrated, {
+      type: "message",
+      role: message.role,
+      content: message.parts,
+      id: message.id,
+    });
+  }
+  return hydrated;
+}
+
 async function resolveResourceSelector(
   client: EngineClient,
   kind: "connector" | "workflow",
@@ -243,7 +267,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       conversation_id: null,
     };
   }
-  const session = initialSessionState(conversationId);
+  let session = initialSessionState(conversationId);
   const attachPaths = opts.attach ?? [];
   const hasAttach = attachPaths.length > 0;
   let streamResponse: Response | null = null;
@@ -279,6 +303,8 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   // When `--attach` is set we create first, link files, then append over SSE.
   try {
     if (conversationId) {
+      const detail = await client.getConversation(conversationId);
+      session = hydratePersistedMessages(session, detail.messages);
       if (hasAttach) {
         // Defer the append until after attachments are uploaded + linked.
       } else {

@@ -177,7 +177,12 @@ export interface RequestCredentialFormEvent {
 
 export interface ConversationDetail {
   conversation: ConversationSummary;
-  messages: unknown[];
+  messages: Array<{
+    id: string;
+    role: string;
+    parts: unknown[];
+    created_at: string;
+  }>;
   tool_calls: unknown[];
   draft: unknown;
   approvals?: unknown[];

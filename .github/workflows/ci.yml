@@ -154,8 +154,8 @@ jobs:
           expect -v
 
       - name: E2E tests
-        # Each file gets a fresh worker so process-global mocks, servers, and app pools cannot leak.
-        run: bun test --parallel=1 tests/e2e/
+        # Each file gets a fresh process so process-global mocks, servers, and app pools cannot leak.
+        run: bun run scripts/test-e2e-isolated.ts
 
       - name: Smoke run engine binary
         id: smoke
