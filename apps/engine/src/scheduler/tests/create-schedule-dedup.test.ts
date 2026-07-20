@@ -49,9 +49,11 @@ test("repeated create_schedule for one workflow keeps a single, updated row", as
     input: { note: "second" },
   });
 
-  expect(second.id).toBe(first.id);
-  expect(second.cron).toBe("15 3 * * *");
-  expect((second.input as { note?: string }).note).toBe("second");
+  expect(first.status).toBe("created");
+  expect(second.status).toBe("updated");
+  expect(second.row.id).toBe(first.row.id);
+  expect(second.row.cron).toBe("15 3 * * *");
+  expect((second.row.input as { note?: string }).note).toBe("second");
 
   const rows = await listSchedules(testDb.db, tenant_id, workflow_id);
   expect(rows.total).toBe(1);

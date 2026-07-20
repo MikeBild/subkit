@@ -6,6 +6,22 @@
 import { TransportError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 
+export interface ConnectorPromotionResponse {
+  strategy: "copy" | "move";
+  source_connector_id: string;
+  target_connector_id: string;
+  source_environment: "dev";
+  target_environment: "prod";
+  source_retained: boolean;
+  credential_mappings: Array<{
+    mode: string;
+    source_credential_id: string;
+    target_credential_id: string;
+  }>;
+  idempotent_replay: boolean;
+  audit_log_ids: string[];
+}
+
 export const connectorsMethods = {
   /**
    * Subscribe to the tenant-scoped event stream filtered to
@@ -171,6 +187,21 @@ export const connectorsMethods = {
   },
   testConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
     return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/test`);
+  },
+  promoteConnector(
+    this: EngineClient,
+    id: string,
+    body: { target_environment: "prod"; strategy: "copy" | "move" },
+    idempotencyKey: string,
+  ): Promise<ConnectorPromotionResponse> {
+    return this.request(
+      "POST",
+      `/v1/connectors/${encodeURIComponent(id)}/promote`,
+      body,
+      undefined,
+      undefined,
+      { "idempotency-key": idempotencyKey },
+    );
   },
   startConnectorOAuth(this: EngineClient, id: string): Promise<{ oauth_url: string }> {
     return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/oauth/start`);

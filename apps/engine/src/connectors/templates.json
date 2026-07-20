@@ -10126,7 +10126,10 @@
       "method": "GET",
       "path": "/users/me",
       "expected_status": [200, 200],
-      "description": "Fetch integration bot user"
+      "description": "Fetch integration bot user",
+      "headers": {
+        "Notion-Version": "2022-06-28"
+      }
     },
     "credential_hints": [
       {

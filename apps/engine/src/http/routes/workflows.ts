@@ -290,9 +290,26 @@ const ScheduleEntry = z
     timezone: z.string(),
     execution_mode: z.enum(["dev", "prod"]),
     paused: z.boolean(),
+    input: z
+      .unknown()
+      .nullable()
+      .describe(
+        "Persisted workflow input returned verbatim to workflow readers; credentials belong in connector credential storage.",
+      ),
     created_at: z.string(),
   })
   .openapi("ScheduleEntry");
+const ScheduleUpsertResponse = ScheduleEntry.extend({
+  upsert_status: z.enum(["created", "updated"]),
+}).openapi("ScheduleUpsertResponse");
+const ScheduleInputSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(z.unknown()),
+  z.record(z.string(), z.unknown()),
+]);
 const ScheduleListResponse = z
   .object({
     schedules: z.array(ScheduleEntry),
@@ -333,7 +350,7 @@ const ScheduleCreateBody = z
     execution_mode: z.enum(["dev", "prod"]).optional(),
     paused: z.boolean().optional(),
     /** Input payload passed to every scheduled run. */
-    input: z.unknown().optional(),
+    input: ScheduleInputSchema.optional(),
   })
   .openapi("ScheduleCreateBody");
 
@@ -343,7 +360,7 @@ const ScheduleUpdateBody = z
     timezone: z.string().optional(),
     execution_mode: z.enum(["dev", "prod"]).optional(),
     paused: z.boolean().optional(),
-    input: z.unknown().optional(),
+    input: ScheduleInputSchema.optional(),
   })
   .openapi("ScheduleUpdateBody");
 
@@ -361,7 +378,14 @@ const createScheduleRoute = createRoute({
     body: { content: { "application/json": { schema: ScheduleCreateBody } } },
   },
   responses: {
-    201: { description: "Created", content: { "application/json": { schema: ScheduleEntry } } },
+    200: {
+      description: "Existing workflow schedule updated",
+      content: { "application/json": { schema: ScheduleUpsertResponse } },
+    },
+    201: {
+      description: "Schedule created",
+      content: { "application/json": { schema: ScheduleUpsertResponse } },
+    },
     400: {
       description: "Invalid cron",
       content: { "application/json": { schema: ErrorSchema } },
@@ -579,6 +603,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
           timezone: r.timezone,
           execution_mode: r.execution_mode,
           paused: r.paused,
+          input: r.input ?? null,
           created_at: r.created_at.toISOString(),
         })),
         total,
@@ -605,6 +630,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       timezone: row.timezone,
       execution_mode: row.execution_mode,
       paused: row.paused,
+      input: row.input ?? null,
       created_at: row.created_at.toISOString(),
     };
   };
@@ -622,9 +648,9 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
-    let row: ScheduleRow;
+    let outcome: Awaited<ReturnType<typeof createSchedule>>;
     try {
-      row = await createSchedule(db, {
+      outcome = await createSchedule(db, {
         tenant_id: principal.tenant_id,
         workflow_id: body.workflow_id,
         cron: body.cron,
@@ -637,12 +663,13 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       rethrowScheduleError(err);
       throw err;
     }
+    const { row, status } = outcome;
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
         actor_type: "user",
         actor_id: principal.id,
-        action: AuditAction.SCHEDULE_CREATED,
+        action: status === "created" ? AuditAction.SCHEDULE_CREATED : AuditAction.SCHEDULE_UPDATED,
         resource_type: "schedule",
         resource_id: row.id,
         result: "success",
@@ -652,11 +679,17 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
           timezone: row.timezone,
           execution_mode: row.execution_mode,
           paused: row.paused,
+          kind: status,
+          input_changed: body.input !== undefined,
         },
       },
       db,
     );
-    return c.json(await serializeSchedule(c, principal.tenant_id, row), 201);
+    const response = {
+      ...(await serializeSchedule(c, principal.tenant_id, row)),
+      upsert_status: status,
+    };
+    return status === "created" ? c.json(response, 201) : c.json(response, 200);
   });
 
   app.openapi(updateScheduleRoute, async (c) => {

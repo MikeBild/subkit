@@ -77,6 +77,7 @@ export const AuditAction = {
   CREDENTIAL_UPDATED: "credential.updated",
   CREDENTIAL_ROTATED: "credential.rotated",
   CREDENTIAL_DELETED: "credential.deleted",
+  CREDENTIAL_ENVIRONMENT_PROMOTED: "credential.environment_promoted",
 
   CONNECTOR_CREATED: "connector.created",
   CONNECTOR_UPDATED: "connector.updated",

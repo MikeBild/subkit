@@ -22,6 +22,7 @@ import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowedResolved, assertRobotsAllowed } from "../egress-guard.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
+import { type ProbeEndpoint, ProbeEndpointSchema } from "../templates.ts";
 import type { ConnectorView } from "../types.ts";
 import { signSigV4Request } from "./aws-sigv4.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
@@ -1191,20 +1192,41 @@ export function classifyHttpProbeStatus(
   return { code: "unknown_upstream_error" };
 }
 
-// Shape stored in connector.config.probe_endpoint (mirrors ProbeEndpointSchema).
-interface ProbeEndpointConfig {
-  method: "GET" | "HEAD" | "POST";
-  path: string;
-  expected_status: [number, number];
-  description: string;
+function resolveProbeEndpointConfig(connector: ConnectorView): ProbeEndpoint | null {
+  const raw = getConnectorProbeEndpoint(connector);
+  if (raw === null || raw === undefined) return null;
+  const parsed = ProbeEndpointSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new HttpRequestInvalidError(
+      `invalid connector probe_endpoint: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
+      "config.probe_endpoint",
+    );
+  }
+  const config = parsed.data;
+  if (connector.template_slug !== "notion") return config;
+  const headers = { ...(config.headers ?? {}) };
+  const hasVersion = Object.keys(headers).some((name) => name.toLowerCase() === "notion-version");
+  if (!hasVersion) headers["Notion-Version"] = "2022-06-28";
+  return { ...config, headers };
 }
 
-function isProbeEndpointConfig(v: unknown): v is ProbeEndpointConfig {
-  if (!v || typeof v !== "object") return false;
-  const c = v as Record<string, unknown>;
-  return (
-    typeof c.path === "string" && Array.isArray(c.expected_status) && c.expected_status.length === 2
+function assertProbeHeadersDoNotShadowCredential(
+  config: ProbeEndpoint | null,
+  credential: DecryptedCredential | null,
+): void {
+  if (!config?.headers || credential?.mode !== "header") return;
+  const credentialNames = new Set(
+    Object.keys(credential.headers).map((name) => name.toLowerCase()),
   );
+  const shadowed = Object.keys(config.headers).find((name) =>
+    credentialNames.has(name.toLowerCase()),
+  );
+  if (shadowed) {
+    throw new HttpRequestInvalidError(
+      `probe header "${shadowed}" is supplied by the saved credential`,
+      `config.probe_endpoint.headers.${shadowed}`,
+    );
+  }
 }
 
 /**
@@ -1233,6 +1255,7 @@ export async function probeHttpConnector(p: {
     // Guard: auth-required connectors must have a persisted credential row.
     // Without one the request would go out unauthenticated and 401/404 in a
     // way that is indistinguishable from a genuine connectivity failure.
+    let probeCredential: DecryptedCredential | null = null;
     if (p.connector.auth_type !== "none") {
       const credRow = await getCredentialForConnector(
         p.tenant_id,
@@ -1256,10 +1279,11 @@ export async function probeHttpConnector(p: {
           error_code: "credential_missing",
         };
       }
+      probeCredential = credRow.value;
     }
 
-    const rawProbe = getConnectorProbeEndpoint(p.connector);
-    const probeConfig = isProbeEndpointConfig(rawProbe) ? rawProbe : null;
+    const probeConfig = resolveProbeEndpointConfig(p.connector);
+    assertProbeHeadersDoNotShadowCredential(probeConfig, probeCredential);
 
     const method = probeConfig?.method ?? "GET";
     // Empty path means probe the base_url directly (no path segment appended).
@@ -1271,6 +1295,7 @@ export async function probeHttpConnector(p: {
       connector: p.connector,
       method,
       path_or_url: pathOrUrl,
+      ...(probeConfig?.headers ? { headers: probeConfig.headers } : {}),
     });
 
     const latency_ms = Date.now() - start;
@@ -1280,7 +1305,7 @@ export async function probeHttpConnector(p: {
 
     if (probeConfig !== null) {
       // Explicit probe: success iff status is within the declared range.
-      const [lo, hi] = probeConfig.expected_status;
+      const [lo, hi] = probeConfig.expected_status ?? [200, 299];
       ok = res.status >= lo && res.status <= hi;
     } else {
       // Fallback probe: 404/405 from "GET /" is ambiguous — the service may
