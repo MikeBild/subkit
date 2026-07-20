@@ -137,7 +137,7 @@ describe("buildOperatorHealthDigest — risk[] from metrics", () => {
     // still be in flight here — draining first makes the delete deterministic
     // (the "long settled" assumption flaked in CI: a late insert landed after
     // the delete and the count read 1 instead of 0).
-    await _drainAuditWritesForTests();
+    await _drainAuditWritesForTests(testDb.db);
     await testDb.db.delete(auditLog).where(eq(auditLog.action, AuditAction.RISK_SIGNAL_RAISED));
 
     // Read-only summary: deterministic — `audit: false` skips the whole edge

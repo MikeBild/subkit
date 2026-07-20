@@ -34,7 +34,7 @@ import type { Db } from "../../apps/engine/src/db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../../apps/engine/src/http/server.ts";
-import { createBoss, disposeBoss, startBoss, stopBoss } from "../../apps/engine/src/queue/boss.ts";
+import { createBoss, disposeBoss } from "../../apps/engine/src/queue/boss.ts";
 import { registerAllHandlers } from "../../apps/engine/src/queue/handlers/index.ts";
 import {
   backfillRoleIds,
@@ -330,17 +330,15 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   }
 
   // pg-boss.
-  let boss: PgBoss;
-  try {
-    boss = await startBoss({ connectionString: testDb.url });
-  } catch {
-    boss = await createBoss({ connectionString: testDb.url });
-  }
+  // Every suite owns its queue runtime. Using the module-scoped startBoss()
+  // singleton routes jobs from later suites into the first suite's disposable
+  // database, including when a developer runs selected files concurrently.
+  const boss = await createBoss({ connectionString: testDb.url });
   await registerAllHandlers({ boss, db: testDb.db });
 
   // HTTP server on random port.
   const registry = buildDefaultRegistry(testDb.db);
-  const app = createApp({ db: testDb.db, registry });
+  const app = createApp({ db: testDb.db, registry, boss });
   const server: ServerType = serve({ fetch: app.fetch, port: 0 });
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") throw new Error("failed to get server port");
@@ -376,9 +374,8 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
       );
       // 1. Close HTTP server.
       await closeHttpServer(server);
-      // 2. Stop pg-boss and close all its Postgres connections.
-      await bestEffortTeardown("shared pg-boss stop", () => stopBoss(5_000), 8_000);
-      await bestEffortTeardown("suite pg-boss dispose", () => disposeBoss(boss, 2_000), 3_000);
+      // 2. Stop this suite's pg-boss and close all its Postgres connections.
+      await bestEffortTeardown("suite pg-boss dispose", () => disposeBoss(boss, 5_000), 8_000);
       // 3. Give pg-boss connections time to fully close before dropping DB.
       // allow-wall-clock: socket teardown requires real I/O time.
       await new Promise((r) => setTimeout(r, 200));

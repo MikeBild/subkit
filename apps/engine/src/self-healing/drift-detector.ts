@@ -15,6 +15,7 @@ import type { DriftSignal, SchemaShape } from "./types.ts";
 /** Minimal view of the failing step the detector needs. */
 export interface FailingStepSnapshot {
   id: string;
+  step_key?: string;
   kind: string;
   status: string;
   error?: unknown;

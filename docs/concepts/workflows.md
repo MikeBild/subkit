@@ -193,7 +193,7 @@ flowchart LR
 
 *No autonomous repair in production. The loop runs through a human gate. The compounding effect — each run improving the next — comes from operator-reviewed drift repair feeding back into authoring.*
 
-The engine monitors active Connectors for schema drift. Drift is detected from execution results — when a Step receives a response that does not match the recorded schema for that endpoint, the engine classifies it as drift and initiates the repair process. Detection is passive: no polling, no scheduled checks, just observation of what actually runs.
+The engine monitors active Connectors for schema drift from real execution results. Successful response evidence is accumulated per endpoint, Workflow, and Step; optional field absence is compatible, while incompatible type changes are proactive drift. Missing paths, validation failures, and endpoint removals remain reactive signals from the affected run. Detection is passive: no vendor polling, just observation of what actually executes plus the scheduled comparison of recorded evidence.
 
 When drift is detected, the self-healing loop analyzes the failure, consults the Connector's latest documentation, and proposes the smallest change that would make the Step work again. The proposal is validated by dry-running it against recorded Execution Fixtures — samples of past successful inputs and outputs. This validation step distinguishes a plausible repair from one that would introduce new failures.
 

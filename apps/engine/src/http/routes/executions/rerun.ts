@@ -141,7 +141,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         trace_id,
         execution_mode,
       };
-      await getBoss().send(EXECUTION_RUN_QUEUE, job);
+      await (c.get("boss") ?? getBoss()).send(EXECUTION_RUN_QUEUE, job);
       return c.json({ execution_id, status: "queued" }, 202);
     }
 

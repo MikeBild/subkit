@@ -128,6 +128,8 @@ beforeAll(async () => {
     tenant_id: ctx.tenantId,
     connector_id: connectorId,
     endpoint_key: endpointKey,
+    workflow_id: workflowId,
+    step_id: "req-1",
     schema: {
       type: "object",
       properties: {
@@ -313,6 +315,8 @@ describe("journey: self-healing safe patch", () => {
         tenant_id: ctx.tenantId,
         connector_id: driftConnectorId,
         endpoint_key: endpoint,
+        workflow_id: driftWorkflowId,
+        step_id: "drift-step",
         value: upstreamV1,
       },
       ctx.db,
@@ -461,6 +465,8 @@ describe("journey: self-healing safe patch", () => {
         tenant_id: ctx.tenantId,
         connector_id: driftConnectorId,
         endpoint_key: endpoint,
+        workflow_id: driftWorkflowId,
+        step_id: "drift-step",
         value: upstreamV2,
       },
       ctx.db,

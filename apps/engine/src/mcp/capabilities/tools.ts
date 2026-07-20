@@ -592,7 +592,12 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
   const state: {
     bridge: { stop: () => void } | null;
     executionId: string | null;
-  } = { bridge: null, executionId: null };
+    runSettled: boolean;
+  } = { bridge: null, executionId: null, runSettled: false };
+  const settleProgressBridge = (): void => {
+    state.runSettled = true;
+    state.bridge?.stop();
+  };
   const notifier: ProgressNotifier = {
     send: async (progress, total, message) => {
       if (progressToken === undefined || progressToken === null) return;
@@ -642,7 +647,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         const latest = rows[rows.length - 1];
         if (latest) {
           state.executionId = latest.id;
-          if (progressToken !== undefined && progressToken !== null) {
+          if (!state.runSettled && progressToken !== undefined && progressToken !== null) {
             state.bridge = startProgressBridge(
               db,
               principal.tenant_id,
@@ -667,7 +672,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     if (outcome.timedOut) {
       // Still running — stop blocking the client but keep the run alive.
       extra.signal.removeEventListener("abort", onSignalAbort);
-      runPromise.then(() => state.bridge?.stop()).catch(() => state.bridge?.stop());
+      void runPromise.then(settleProgressBridge, settleProgressBridge);
       const execId = state.executionId;
       if (!execId) {
         // We never captured the execution id (the id-poll had not landed
@@ -731,7 +736,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       };
     }
     const result = outcome.result;
-    state.bridge?.stop();
+    settleProgressBridge();
     // When a run produced non-fatal warnings (e.g. jsonata
     // `unresolved_identifier`), wrap the output so the MCP client sees
     // them alongside the payload. See held-preview.ts.
@@ -834,7 +839,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       ...structured,
     };
   } catch (err) {
-    state.bridge?.stop();
+    settleProgressBridge();
     if (state.executionId) cancel(state.executionId);
     const text = toMcpErrorText(err);
     logger.error({
