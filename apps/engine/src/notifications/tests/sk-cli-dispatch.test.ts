@@ -21,6 +21,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { _drainAuditWritesForTests } from "../../audit/index.ts";
 import { SkCliAdapter } from "../../chat/sk-cli/adapter.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import {
@@ -51,6 +52,7 @@ beforeEach(() => {
 });
 
 async function wipe(): Promise<void> {
+  await _drainAuditWritesForTests();
   await ctx.db.delete(cliNotificationInbox);
   await ctx.db.delete(notificationDeliveries);
   await ctx.db.delete(notificationRules);
@@ -136,6 +138,7 @@ describe("notifications: sk_cli channel dispatch", () => {
     expect(deliveries.length).toBe(1);
 
     // Audit entry.
+    await _drainAuditWritesForTests();
     const auditRows = await ctx.db
       .select()
       .from(auditLog)

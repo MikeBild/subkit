@@ -20,6 +20,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+import { _drainAuditWritesForTests } from "../../audit/index.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import {
   notificationChannels,
@@ -46,6 +47,7 @@ beforeEach(() => {
 });
 
 async function wipe() {
+  await _drainAuditWritesForTests();
   await ctx.db.delete(notificationDeliveries);
   await ctx.db.delete(notificationRules);
   await ctx.db.delete(notificationChannels);
@@ -115,6 +117,7 @@ describe("notifications: fanout-event end-to-end", () => {
     expect(sentRow).toBeDefined();
     expect(sentRow?.event_type).toBe("execution.failed");
 
+    await _drainAuditWritesForTests();
     const audit = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, ctx.tenant_id));
     const auditSent = audit.find((r) => r.action === "chat.message.sent");
     expect(auditSent).toBeDefined();
