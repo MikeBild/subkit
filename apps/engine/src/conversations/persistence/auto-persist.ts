@@ -88,7 +88,7 @@ import {
   UpdateWorkflowInput,
   updateWorkflowTool,
 } from "../tools/generated/writes/update-workflow.ts";
-import { getTool, type ToolContext, type ToolResult } from "../tools/index.ts";
+import type { ToolContext, ToolResult } from "../tools/index.ts";
 import { checkToolPermission, resolveConversationPrincipal } from "../tools/permission-gate.ts";
 import { normalizeWorkflowInput, workflowInputRecord } from "../tools/workflow-input-normalize.ts";
 import { mergeFormIntoCredential } from "./auto-persist/credential-cache.ts";
@@ -1005,6 +1005,7 @@ export async function maybeAutoPersistFromElicitation(
           };
           break;
         }
+        const { getTool } = await import("../tools/index.ts");
         const gatedTool = getTool(gatedToolName);
         if (!gatedTool) {
           result = {
