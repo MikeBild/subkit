@@ -618,3 +618,48 @@ describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference
     }
   });
 });
+
+describe("seed sweep never overwrites a non-seed source occupying a seed slug", () => {
+  test("user bundle under a seed slug survives applyKnowledgeSeeds untouched", async () => {
+    const { upsertKnowledgeBundle } = await import("../bundle-service.ts");
+    // A user bundle occupies the slug BEFORE the sweep (the delete-a-seed →
+    // import-your-own scenario the partial unique index newly permits).
+    const userBundle = await upsertKnowledgeBundle(
+      {
+        tenant_id: tenantA,
+        actor_id: null,
+        input: { name: "User owned", slug: "sweep-collision" },
+        files: [{ path: "mine.md", content: "user knowledge — must survive" }],
+      },
+      dbCtx.db,
+    );
+    expect(userBundle.knowledge_source.source_type).toBe("bundle");
+
+    const outcome = await applyKnowledgeSeeds(
+      [
+        {
+          slug: "sweep-collision",
+          name: "Seed pretender",
+          description: "seed content",
+          tags: [],
+          scope: "global",
+          version: 1,
+          body: "# Seed body that must NOT replace user knowledge",
+        },
+      ],
+      tenantA,
+      dbCtx.db,
+    );
+    expect(outcome.unchanged).toBe(1);
+    expect(outcome.updated).toBe(0);
+    expect(outcome.inserted).toBe(0);
+
+    const [row] = await dbCtx.db
+      .select()
+      .from(knowledgeSources)
+      .where(eq(knowledgeSources.id, userBundle.knowledge_source.id));
+    expect(row!.source_type).toBe("bundle");
+    expect(row!.name).toBe("User owned");
+    expect(row!.version).toBe(userBundle.knowledge_source.version);
+  });
+});

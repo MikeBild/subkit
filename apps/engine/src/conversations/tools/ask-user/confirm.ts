@@ -3,9 +3,15 @@
 // `kind` field lets the client pick the right sub-renderer
 // (save-workflow-draft diff, external-write target, generic fallback).
 //
-// PR 2 migrates commit + external-write callers to emit this tool.
+// Commit and external-write callers emit this tool.
 
 import { z } from "@hono/zod-openapi";
+import { scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
+import {
+  authoringIntentFingerprint,
+  type ConfirmIntent,
+  intentHasDistinguishingAction,
+} from "../../intent-fingerprint.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { type CommitIntent, commitIntentSchema, describePatchOps } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
@@ -42,7 +48,7 @@ const inputSchema = z
     /** Structured before/after JSON for save_workflow_draft kinds. */
     diff: z.unknown().optional(),
     /**
-     * Per-op review rows for `partial_diff_approval` kinds (D3). Optional —
+     * Per-op review rows for `partial_diff_approval` kinds. Optional —
      * when omitted the engine derives them from the `apply_workflow_patch`
      * commit_intent's `payload.patches`, so the model never has to duplicate
      * the diff list. Each row is `{ label, preview? }`; the client renders a
@@ -78,6 +84,61 @@ export const askUserConfirmTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const effectiveCommitIntent = defaultCommitIntent(args);
+    // Declined-intent guard: if the operator already declined this exact
+    // action in THIS conversation, answer with the prior decline instead of
+    // re-prompting — even in `auto` mode, because an explicit "no" on an
+    // identical action outranks session-level implicit approval. Keyed by the
+    // intent fingerprint (kind + commit_intent + target + draft identity), so
+    // an edited draft yields a new fingerprint and prompts normally. Only
+    // proposals carrying a concrete action (commit_intent / target) are
+    // guarded — a bare question has no stable identity to remember. Fail-open:
+    // a null fingerprint falls through to the prompt.
+    // Fingerprint the SCRUBBED projection: the recorder hashes the persisted
+    // elicitation input, which `pauseForUserInput` scrubs for secrets before
+    // it is stored. Scrubbing here too keeps the guard's live fingerprint
+    // byte-identical to the recorded one — otherwise a confirm carrying a
+    // secret-shaped string would hash differently on the two sides and the
+    // guard would silently never match.
+    const confirmIntent = scrubStringsDeep({
+      kind: args.kind,
+      commit_intent: effectiveCommitIntent,
+      target: args.target,
+    }) as ConfirmIntent;
+    const denied = ctx.getDraft().state?.last_denied_intent;
+    if (denied?.fingerprint && intentHasDistinguishingAction(confirmIntent)) {
+      const candidateFp = authoringIntentFingerprint(confirmIntent, ctx.getDraft());
+      if (candidateFp && candidateFp === denied.fingerprint) {
+        // One-shot escape — but ONLY in an attended mode, where a human is
+        // present to deliberately retry: clear the stamp so the NEXT identical
+        // proposal reaches a prompt. In `auto` mode there is no human
+        // re-driving, so the earlier explicit "no" must stay sticky and is
+        // never cleared — otherwise a second identical re-proposal would fall
+        // through to the auto-resolve branch and silently auto-approve the very
+        // action the operator declined. Clearing is best-effort (fail-open):
+        // a failed write just leaves the stamp in place, the safe direction.
+        if (ctx.permission_mode !== "auto") {
+          const draft = ctx.getDraft();
+          if (draft.state) {
+            draft.state.last_denied_intent = null;
+            try {
+              await ctx.setDraft(draft);
+            } catch {
+              // Keep the stamp — a persist failure must not surface as a
+              // tool crash, and a still-set stamp only re-suppresses once more.
+            }
+          }
+        }
+        return {
+          ok: true,
+          data: {
+            confirmed: false,
+            already_declined: true,
+            reason:
+              "The operator already declined this exact action earlier in this conversation. Not re-prompting. Propose a different approach or move on.",
+          },
+        };
+      }
+    }
     // Auto-resolve when the client is in `permission_mode=auto`. The
     // mode itself IS the governance signal — save_workflow_draft, external
     // writes, run_workflow, save_connector_draft were all visible in
@@ -118,7 +179,7 @@ export const askUserConfirmTool: ConversationTool = {
     const overrideWarning = buildOverrideWarning(effectiveCommitIntent);
     const baseSummary = args.summary ?? args.question;
     const summary = overrideWarning ? `${overrideWarning}\n\n${baseSummary}` : baseSummary;
-    // Per-op review rows for the partial-accept card (D3). Derive them
+    // Per-op review rows for the partial-accept card. Derive them
     // from the `apply_workflow_patch` commit_intent's patches when the model
     // did not supply an explicit `diffs` list, so the client's
     // PartialApprovalPrompt can render one accept/reject toggle per op.

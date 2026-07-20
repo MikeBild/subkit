@@ -324,7 +324,7 @@ Per-vendor backoff escalates exponentially on 429/5xx (cap 30s, 4 attempts). Out
 The Layer-1 test emits a `console.warn` (it does **not** fail the suite) when a template's `verified_at` is `null` or older than 90 days. Sample output:
 
 ```
-[connector-templates] vendor-drift sweep stale on 44/55 templates.
+[connector-templates] vendor-drift sweep stale on 44/56 templates.
 Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1 bun scripts/template-vendor-sweep.ts) to refresh verified_at.
   - airtable (verified_at=null, never swept)
   - hubspot (verified_at=null, never swept)
@@ -404,7 +404,9 @@ in your documents. The worked walkthrough is [Model a Domain](../authors/model-a
 ## Where do I create each?
 
 - **Knowledge Source** — self-serve: in a Conversation, upload or paste a
-  document and ask to add it; or `sk knowledge-sources create --file …`.
+  document and ask to add it; `sk knowledge-sources create --file …` for one
+  file, or `sk knowledge-sources import ./team-wiki` for a whole markdown
+  directory (an Obsidian vault, an agent wiki, an OKF bundle).
 - **Skill** — operator-owned: author one in a Conversation, `sk skills create
   --file …`, or promote a detected **Skill Candidate**
   (`sk skill-candidates approve <id>`).
@@ -670,6 +672,20 @@ The following properties hold by construction — they are not optional configur
 
 ---
 
+## Answer Provenance and Honest Refusal
+
+Governance is not only about who may act — it is also about whether an answer can be trusted and whether a refusal is respected. Three properties hold on the conversational surface.
+
+**Provenance you can check.** When an answer is grounded in a knowledge source or connector documentation, sk surfaces a `Sources: <name>` footer naming the sources the answer was built on, and mirrors the same references into the audit log as a `conversation.answer_cited` row. Only citations that resolve to a real, tenant-owned source are ever surfaced or logged — a fabricated or since-deleted provenance handle is dropped before the footer and the audit see it. The footer appears identically on the live surface and on replayed transcripts.
+
+**An answer that quotes must quote faithfully.** Before a grounded chat answer stands, a deterministic anti-drift check confirms that every cited id resolves for the tenant and that every verbatim quoted span appears in a cited excerpt. A failure — an unresolvable citation or a quote grounded in none of the cited sources — is treated like a low-confidence result: the turn surfaces an `ask_user_text` the operator must answer before the conversation continues, rather than letting drifted prose stand as the final answer. The check runs on the citations the model actually cited, so an answer that cited only fabricated sources still fails and abstains.
+
+**A no that is respected.** When an operator declines a concrete action (one that persists or writes externally), sk records the fingerprint of the declined intent. An identical re-proposal in the same conversation is answered with the prior decline instead of re-prompting — and in `auto` mode the decline stays sticky, so a previously-refused action is never silently auto-approved. A bare question is never treated as sticky, and an edited draft is a new proposal that prompts normally; a deliberate later retry in an attended mode reaches a fresh prompt.
+
+**Grounding staleness is visible.** A workflow draft records a fingerprint of the connector schema it was grounded on. At `/context`, sk recomputes it and flags a draft whose connector schema has changed since — a "re-check before saving" advisory. It never blocks, and any ambiguity (a missing or expired discovery index) resolves to silence rather than a false warning.
+
+---
+
 ## Secret Hygiene at the Conversational Surface
 
 The conversational surface introduces additional pressure on secret handling: an LLM may attempt to type a credential into a tool argument, an operator may paste a token into the chat input, or a debug log may capture a verbose elicitation payload. sk applies multiple defences so any one of these doesn't propagate into a persistent surface.
@@ -825,6 +841,8 @@ flowchart LR
     Drift --> Patch["Patch Candidate<br/>(operator-reviewed)"]
     Run --> Pattern["Recurring pattern"]
     Pattern --> SkillC["Skill Candidate<br/>(operator-promoted)"]
+    Session["Coding-agent session"] --> Learning["Session learning<br/>(operator-reviewed)"]
+    Learning --> SkillC
     Patch --> Author["Better authoring"]
     SkillC --> Author
     Author --> Run
@@ -836,7 +854,14 @@ confidence scores and links to the supporting executions. Self-healing drift
 detection keeps workflows healthy as connected systems change, proposing the
 smallest safe fix as a Patch Candidate.
 
-Same shape both times: the engine surfaces proposals, humans decide. The engine
+External coding-agent sessions (Claude Code, Codex) feed the same queue: a
+SessionEnd hook posts the transcript to `POST /v1/agent/sessions` for
+distillation, and the agent can save an explicitly taught rule mid-session via
+the `save_learning` tool. Both paths produce `session_learning` Skill
+Candidates reviewed with `sk learnings review`; an approved learning becomes an
+active, domain-tagged Skill that the next session briefing carries.
+
+Same shape every time: the engine surfaces proposals, humans decide. The engine
 gets smarter over time — but only with human approval at each step.
 
 ---
@@ -1076,7 +1101,7 @@ The trigger is recorded in every Execution and every Audit Log entry alongside t
 |---|---|---|
 | `request` | (none) | Default. Run is initiated on demand by a caller — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`. |
 | `webhook` | `source` (string slug per integration — a provider label stored in `native_verifier_config.source`, **not** the ingress URL path), `events[]` (provider event names; empty means "any"), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing begins; replay-id deduplication suppresses retried deliveries. Executor lives in `apps/engine/src/webhooks/inbound/service.ts`. |
-| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N` shorthand), `tz` (IANA, default `UTC`); optional `business_days_only`, `skip_dates[]` (ISO `YYYY-MM-DD`) | Reverse-bound to a `workflows_schedules` row. The scheduler reconciler validates the cron expression at bind time and uses `tz` so firings land at the operator's local wall-clock time. `business_days_only` skips weekends; `skip_dates` declares holidays / freezes explicitly (no holiday calendar is inferred). Catch-up semantics: a missed firing fires on the next reconciler pass rather than being silently skipped. Executor lives in `apps/engine/src/scheduler/reconciler.ts`. |
+| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N` shorthand), `tz` (IANA, default `UTC`); optional `execution_mode` (`dev` \| `prod`, default `prod`), `business_days_only`, `skip_dates[]` (ISO `YYYY-MM-DD`) | Reverse-bound to a `workflows_schedules` row. The scheduler reconciler validates the cron expression at bind time, persists the connector environment, and uses `tz` so firings land at the operator's local wall-clock time. Unattended runs target production connectors by default; dev schedules are explicit. `business_days_only` skips weekends; `skip_dates` declares holidays / freezes explicitly (no holiday calendar is inferred). Catch-up semantics: a missed firing fires on the next reconciler pass rather than being silently skipped. Executor lives in `apps/engine/src/scheduler/reconciler.ts`. |
 
 All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
 
@@ -2208,7 +2233,7 @@ flowchart LR
 | Surface | Endpoint / command | Scope | Answers |
 |---|---|---|---|
 | **Metrics** | `/metrics` | Process-wide, resets on redeploy | Latency by route, execution duration + step counts, error/retry rates, queue depth, token usage, pool stats |
-| **Structured logging** | JSON on stdout | Per-event | Query/alert on fields directly — `trace_id`, `tenant_id`, `request_source`, severity |
+| **Structured logging** | JSON on stdout | Per-event | Query/alert on fields directly — `trace_id`, `span_id`, `service.name`, `service.version`, `deployment.environment.name`, `tenant_id`, `request_source`, severity |
 | **Execution inspection** | `sk executions tail <id>` + API | Per-execution | Per-step logs; failed steps include full error, inputs, raw connector response |
 | **Event streaming** | tenant-wide SSE | Per-tenant | Real-time execution events for external dashboards/alerting |
 
@@ -2259,8 +2284,10 @@ with a stable `action` field. The full surface:
 | `metrics.write_failed` | `observability` | Metric write threw | `error` |
 
 **Identity envelope.** Every record above carries `tenant_id` (where applicable),
-`trace_id`, and `request_source`. Operators correlate across surfaces
-(HTTP → execution → notification) by `trace_id`.
+`trace_id`, `span_id` (HTTP edges), and `request_source`. HTTP requests accept
+W3C `traceparent`, retain its 128-bit trace ID and sampled flag, and create a fresh
+server span. Operators correlate across surfaces (HTTP → execution → notification)
+by `trace_id`.
 
 The full Prometheus metric registry is built in
 [`apps/engine/src/observability/metrics.ts`](../../apps/engine/src/observability/metrics.ts).
@@ -2315,6 +2342,14 @@ questions over time-bucketed history. It aggregates at read time from `execution
 | `GET /v1/stats/connectors` | `audit_log` (`action='connector.invoked'`) | connector-call volume + latency + outcome + status-class (`4xx_auth`/`4xx_rate_limited`/…) |
 | `GET /v1/stats/events` | `audit_log` (per `?class=`) | webhook / chat / schedule / self-healing / discovery / policy / external-write event volume |
 | `GET /v1/stats/llm` | `llm_usage` | token usage + cache-hit rate + latency by model / flow |
+
+Connector status classes use the upstream transport status when one exists.
+`network_error` means that a connector call failed before receiving such a
+status; a successful call without an HTTP-like status is classified as
+`no_status`, not as a network error.
+The aggregator accepts historical egress aliases while new audit rows carry
+the canonical `connector_id`, `method`, `path`, `status_code`, and `latency_ms`
+fields.
 
 **Bucket grammar.** `bucket` (`minute|hour|day|month|year`), required `from`, optional
 `to` (default now) and `tz` (default UTC). Hard window caps reject scans that would
@@ -2653,7 +2688,13 @@ same audit — only the way the run is initiated differs.
 |---|---|---|
 | `request` | (none) | Default. Run is initiated on demand — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`. |
 | `webhook` | `source` (slug), `events[]` (provider event names; empty = any), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing; replay-id deduplication suppresses retried deliveries. |
-| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N`), `tz` (IANA, default `UTC`); optional `business_days_only`, `skip_dates[]` | Reverse-bound to a `workflows_schedules` row. The reconciler validates the cron at bind time and fires at the operator's local wall-clock time. `business_days_only` skips weekends; `skip_dates` declares holidays/freezes explicitly. A missed firing fires on the next reconciler pass rather than being silently skipped. |
+| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N`), `tz` (IANA, default `UTC`); optional `execution_mode` (`dev` \| `prod`, default `prod`), `business_days_only`, `skip_dates[]` | Reverse-bound to a `workflows_schedules` row. The reconciler validates the cron at bind time and fires at the operator's local wall-clock time. Scheduled automation targets production connectors by default; set `execution_mode: dev` explicitly for an authoring loop. `business_days_only` skips weekends; `skip_dates` declares holidays/freezes explicitly. A missed firing fires on the next reconciler pass rather than being silently skipped. |
+
+The execution mode is persisted on the schedule and copied into every queued
+execution. It is not inferred from connector availability. This keeps the immutable
+execution record, connector resolution, audit trail, and warning semantics aligned:
+a production schedule records `execution_mode=prod` and resolves production
+connectors without a misleading environment-fallback warning.
 
 Setting `webhook` or `schedule` reverse-binds the inbound binding or cron schedule
 keyed on `(tenant_id, workflow_id)` at save time and removes the binding on delete
@@ -3013,10 +3054,12 @@ language, approve what the AI proposes, and ship a governed, versioned workflow.
 ```mermaid
 flowchart TD
     Q[quickstart.md<br/>authenticate · first conversation] --> R[repl-tour.md<br/>the sk REPL · approve-to-commit]
+    Q --> CC[coding-agents.md<br/>ground Claude Code / Codex]
     R --> A[authoring-workflows.md<br/>the AI authoring loop]
     A --> RC[recipes.md<br/>reusable recipes]
     A --> CS[custom-skills.md<br/>encode your conventions]
     A --> KS[knowledge-sources.md<br/>ground proposals in your docs]
+    CC --> KS
     CS --> MD[model-a-domain.md<br/>connector + skills + knowledge]
     KS --> MD
     R --> SL[slash-commands.md<br/>REPL command reference]
@@ -3026,6 +3069,7 @@ flowchart TD
 | Doc | What it covers |
 |---|---|
 | [quickstart.md](quickstart.md) | Get authenticated and open your first authoring conversation in about 5 minutes. |
+| [coding-agents.md](coding-agents.md) | Ground Claude Code / Codex in your team's knowledge: connect, import your wiki with a domain tag, grounded sessions, review loop. |
 | [repl-tour.md](repl-tour.md) | Author connectors and workflows by conversation in the `sk` REPL — the approve-to-commit loop, slash commands, headless `-p`. |
 | [authoring-workflows.md](authoring-workflows.md) | The AI authoring loop, the human approval gate, probe/preview, and stage-aware prompting. |
 | [recipes.md](recipes.md) | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
@@ -3138,6 +3182,8 @@ The state is persisted in the conversation draft summary:
 | `checkpoints[]` | freshness for `inspect`, `validate`, `probe`, `preview`, `persist`, `execute`, `diagnose` |
 
 The current stage, active target, and checkpoint freshness are part of the runtime contract, not prompt advice. The same grounding rule applies to explanatory follow-ups: when a user asks why something was named or configured a certain way, the assistant answers from recorded state, audit history, ingested docs, or a fresh grounding call — or says plainly that the reason is not recorded. It does not speculate.
+
+When an answer is grounded in a knowledge source or connector documentation, `sk` shows a dim `Sources: …` footer beneath it — the source names the answer was built on, so a reader can verify the claim rather than trust the prose. The footer appears only when the turn actually cited a source that resolves for the tenant (the same refs written to the audit log); a source-less answer shows nothing. It carries no new interaction — it is a display of the grounding that already happened.
 
 ### New draft versus saved workflow
 
@@ -3493,6 +3539,273 @@ The conversational layer is aware of the stdlib and proposes `sk.*` forms by def
 </content>
 </invoke>
 
+<!-- Source: docs/authors/coding-agents.md -->
+
+# Use sk from a coding agent (Claude Code, Codex, …)
+
+> **Audience:** You use Claude Code, Codex, Cursor, Claude Desktop, claude.ai,
+> or ChatGPT, and want it grounded in your team's knowledge instead of guessing.
+
+**Outcome:** every new session starts knowing your domain's rules, looks your
+runbooks up instead of inventing them, and what you teach it in one session is
+waiting — after your review — in the next one.
+
+This page is the whole path: install → connect your client → import your
+knowledge → ask a grounded question. About 10 minutes.
+
+```mermaid
+flowchart LR
+    Wiki["Your wiki<br/>(markdown directory)"] -->|"sk knowledge-sources import<br/>--tags domain:&lt;slug&gt;"| Engine[("sk engine")]
+    Engine -->|"session briefing<br/>(hook)"| Session["Coding-agent session"]
+    Session -->|"search_knowledge_v2 / read_knowledge<br/>(over MCP)"| Engine
+    Session -->|"capture hook / save_learning"| Queue["Review queue"]
+    Queue -->|"sk learnings review"| Engine
+```
+
+## What your client can do
+
+Two channels do different jobs. **MCP** lets a session search and read your
+knowledge; the **briefing hook** tells it your rules and what knowledge exists
+before it starts. Not every client supports both:
+
+| Client | MCP (lookup) | Briefing hook | Setup |
+|---|---|---|---|
+| **Claude Code** | yes | yes | [below](#claude-code) |
+| **Codex** | yes | yes (feature-gated) | [below](#codex) |
+| **Cursor**, **Claude Desktop** | yes | no | [below](#cursor-claude-desktop-and-other-mcp-clients) |
+| **claude.ai**, **ChatGPT** | yes (OAuth) | no | [below](#claudeai-and-chatgpt-oauth) |
+
+A client without hooks still gets every tool — it just is not *told* about your
+domain up front, so ask it to search, or put the instruction in the client's own
+rules file (`CLAUDE.md`, `AGENTS.md`, Cursor rules …).
+
+## Before you start
+
+You need the `sk` CLI installed and logged in:
+
+```bash
+curl -fsSL <engine-url>/install | bash      # the CLI is served by your engine
+sk login --engine-url <engine-url> --api-key <wf_live_…>
+sk status                                   # engine + key confirmed
+```
+
+Your operator gives you the engine URL and the API key. If you run the engine
+yourself, start at the [self-host guide](../developers/self-host.md).
+
+## 1. Declare the domain in your repo
+
+A **domain** is a business area you curate knowledge for — `blog-de`,
+`payments`, `platform`. It is nothing but the tag `domain:<slug>` on Skills and
+Knowledge Sources; there is no table and no config object to create.
+
+```bash
+cd <your-repo>
+sk agent init --domains <domain-slug>
+```
+
+This writes `.sk/agent.json` (commit it — it is how a session in this repo knows
+which domains to pull), wires the Claude Code hooks, and prints the Codex
+snippets plus the MCP command for both. Re-running it never duplicates anything.
+
+Worth running even on a client without hooks: `.sk/agent.json` is what
+`sk agent briefing` reads, so you can always fetch the briefing by hand.
+
+## 2. Connect your client
+
+The registration commands below need the API key in your shell. It is the same
+key you logged in with; if you no longer have it at hand:
+
+```bash
+export SK_API_KEY="$(jq -r '.profiles.default.api_key' ~/.sk/config.json)"
+```
+
+### Claude Code
+
+```bash
+claude mcp add --transport http --scope user sk <engine-url>/mcp \
+  --header "Authorization: Bearer ${SK_API_KEY}"
+```
+
+Your shell expands `${SK_API_KEY}` as you run the line, so the key is stored in
+Claude Code's own config — the export is only needed once, at registration time.
+Confirm with `claude mcp list`; `sk` should show as connected.
+
+`sk agent init` already wired the hooks in `~/.claude/settings.json`:
+`SessionStart` (matcher `startup|resume|compact`, so it survives context
+compaction) injects the briefing, and `SessionEnd` posts the transcript for
+learning capture.
+
+> **Already connected?** If your Claude account carries the sk connector, your
+> sessions can already call `search_knowledge_v2`, `read_knowledge`,
+> `find_skill`, and `save_learning`. Do not add a second registration for the
+> same engine — it duplicates the whole tool catalog.
+
+### Codex
+
+```bash
+codex mcp add sk --url <engine-url>/mcp --bearer-token-env-var SK_API_KEY
+```
+
+Codex reads `SK_API_KEY` at call time, not just at registration — so export it
+in your shell profile, not just the current shell.
+
+Hooks are feature-gated. `sk agent init` prints, but cannot apply, two manual
+steps:
+
+1. Enable them in `~/.codex/config.toml`:
+   ```toml
+   [features]
+   hooks = true
+   ```
+2. Add the printed `~/.codex/hooks.json`. Codex has no `SessionEnd` event, so
+   capture runs on the `Stop` hook — which fires per turn. That is cheap: the
+   engine dedups repeated captures by learning fingerprint.
+
+Hooks additionally need a one-time trust confirmation via `/hooks` in the Codex
+TUI.
+
+### Cursor, Claude Desktop, and other MCP clients
+
+Add the engine as a streamable-HTTP MCP server in the client's config:
+
+```json
+{
+  "mcpServers": {
+    "sk": {
+      "url": "https://<engine-host>/mcp",
+      "transport": "streamable-http",
+      "headers": { "Authorization": "Bearer wf_live_…" }
+    }
+  }
+}
+```
+
+These clients have no session hook, so nothing injects the briefing. Paste the
+grounding rule into the client's own rules file so sessions know to look up:
+
+```text
+For facts about <domain-slug>, call search_knowledge_v2 with
+tags: ["domain:<domain-slug>"] instead of guessing. If it returns
+nothing, say so.
+```
+
+### claude.ai and ChatGPT (OAuth)
+
+These clients cannot hold a static key. The engine is a full OAuth 2.1
+authorization server for `/mcp`, so they authenticate interactively instead:
+point the connector at `https://<engine-host>/mcp` and the client discovers
+OAuth via `/.well-known/oauth-protected-resource`, registers itself, and opens
+the sk login + consent flow. No header, no key. The ChatGPT connector steps and
+the full flow: [input surfaces](../developers/input-surfaces.md).
+
+> **`sk mcp` is a different thing.** It is a stdio proxy exposing
+> `sk_conversation_*` tools for driving conversations from an IDE plugin. It
+> does **not** carry the knowledge tools, so it is not the path for this page.
+
+## 3. Import your knowledge — tagged with the domain
+
+This is the step that connects the two halves. Knowledge only reaches a session
+if it carries that session's `domain:` tag.
+
+```bash
+sk knowledge-sources import ./team-wiki --tags "domain:<domain-slug>"
+```
+
+`import` takes a whole markdown directory — an Obsidian vault, an
+agent-maintained wiki, an [OKF](https://okf.md/) bundle, a Notion export — and
+makes one searchable source with a passage per file. Re-running it is a no-op
+when nothing changed, so a nightly CI job keeps sk in sync with a git wiki
+without churn. Details and the frontmatter rules:
+[Knowledge Sources](./knowledge-sources.md).
+
+For a single file, `sk knowledge-sources create --file ./runbook.md --tags
+"domain:<domain-slug>"` does the same job.
+
+> **The tag is not optional.** An import without `--tags "domain:<slug>"`
+> succeeds and is searchable — but the briefing never indexes it and sessions
+> in that domain will not know it exists.
+
+## 4. Verify before you trust it
+
+```bash
+sk agent briefing        # what a fresh session will be told
+```
+
+You should see your source under **Knowledge index** and a grounding rule
+naming your domain:
+
+```text
+# sk session briefing — domains: payments
+
+Grounding rule: for facts of these domains, look up instead of guessing —
+call `search_knowledge_v2` with `tags: ["domain:payments"]`.
+If the search returns nothing, say so; do not invent domain internals.
+
+## Knowledge index (search, don't preload)
+- **Team Wiki** (`team-wiki`)
+```
+
+Full documents are never preloaded — the session gets an index and fetches
+details on demand, which is what keeps the context small.
+
+Now start your agent in the repo and ask something only your wiki knows. It
+searches instead of guessing, and cites the source it used.
+
+## 5. Teach it once, keep it
+
+When you correct the agent, that correction can outlive the session:
+
+- **Automatic** — the capture hook posts the transcript; the engine distills
+  only durable rules a human actually taught. A routine session correctly
+  produces nothing. (Claude Code and Codex only — it is the hook that posts it.)
+- **Explicit** — say "remember this" and the agent calls `save_learning`. This
+  works on every MCP client, hooks or not.
+
+Both create *proposals*, never live knowledge. You decide:
+
+```bash
+sk learnings list        # what is waiting
+sk learnings review      # approve / edit / reject
+```
+
+An approved learning becomes an active skill carrying the domain tag — the very
+next briefing in that domain includes it. You can also approve without leaving
+the session: ask the agent to approve the candidate and confirm your client's
+native dialog.
+
+Optionally materialise the domain's skills as `SKILL.md` files, so the
+conventions work even with no engine connection. Both Claude Code and Codex
+hot-reload them:
+
+```bash
+sk skills sync
+```
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `sk agent briefing` says "no domains" | The directory (or a parent) has no `.sk/agent.json` — run `sk agent init`, or pass `--domains`. |
+| Briefing shows no knowledge index | The source is missing the `domain:<slug>` tag. Check `sk knowledge-sources list`; fix with `sk knowledge-sources patch <id> --tags "domain:<slug>,…"` (tags are replaced wholesale). |
+| The session ignores your knowledge | The hook fires but MCP is not registered — the agent knows what exists but cannot fetch it. Check `claude mcp list` / `codex mcp list`. |
+| No briefing at all, but tools work | Expected on a client without hooks (Cursor, Claude Desktop, claude.ai, ChatGPT) — put the grounding rule in the client's rules file. |
+| The briefing misses a skill | Only **active** skills with the domain tag are included. Check `sk skills list`. |
+| Codex: hooks never fire | `[features] hooks = true` missing in `~/.codex/config.toml`, or the one-time `/hooks` trust confirmation is pending. |
+| Nothing happens at all | Hooks never break a session: on any error they print nothing and exit 0. The swallowed error is in `~/.sk/debug.log` (`agent.briefing_hook_failed`, `agent.capture_hook_failed`). |
+
+## Related
+
+- [Coding-agent integration](../developers/coding-agent-integration.md) — the
+  loop's mechanics: briefing assembly, capture, dedup, review.
+- [Knowledge Sources](./knowledge-sources.md) — import, tags, refresh, and
+  reading knowledge back.
+- [Input surfaces](../developers/input-surfaces.md) — MCP transport, OAuth 2.1,
+  and every other door into the engine.
+- [Knowledge & Skills](../concepts/knowledge-and-skills.md) — the concepts and
+  why the loop compounds.
+- [Model a Domain](./model-a-domain.md) — connector + skills + knowledge for a
+  whole domain.
+
 <!-- Source: docs/authors/custom-skills.md -->
 
 # Custom Skills
@@ -3689,10 +4002,43 @@ before searching, and a search can be narrowed to sources carrying a given tag.
 | Rule | Detail |
 |---|---|
 | Description | Generated only when none was supplied. |
-| Tags | A deduped set; re-analysis replaces them wholesale. |
+| Tags | Topical tags are a deduped set that re-analysis replaces wholesale; **namespaced tags** (a name-shaped prefix — letters/digits, Unicode included — a colon, and content directly after it: `domain:blog-de`, `café:paris`) are structural routing keys that always survive re-analysis, and re-analysis never adds new ones. Prose or punctuation colons (`note: x`, `q&a:faq`) stay topical. The `<ns>:` shape is reserved for routing, so don't use it for plain topical tags. To re-home a source (drop or change a `domain:*` tag), edit the tags explicitly (`sk knowledge-sources update` / PATCH) — explicit edits replace the tag set wholesale. |
+| Embeddings | Freshly ingested or updated chunks are embedded right away (source-scoped, off the request path); semantic ranking works within seconds of an update, no manual step needed. |
 | Failure mode | Best-effort — if it fails (e.g. model budget exhausted) the upload still succeeds, just without enrichment. |
 | Re-run | `sk knowledge-sources analyze <id>`, or the `analyze_knowledge_source` tool in chat. |
 | Bulk paths | Crawled pages and scheduled refreshes stay mechanical — not auto-analyzed. |
+
+## Importing a whole directory (knowledge bundles)
+
+A team wiki rarely lives in one file. `import` turns a directory of markdown
+files — an Obsidian vault, an agent-maintained wiki, a Notion export, or an
+[OKF](https://okf.md/) bundle — into **one** knowledge source with one
+searchable passage per file:
+
+```bash
+sk knowledge-sources import ./team-wiki --tags "runbooks"
+```
+
+In the REPL the same import is `/knowledge import ./team-wiki` — ask a question
+right after and the answer grounds on your wiki.
+
+> **Importing for a coding agent?** Tag the source with the domain, or a Claude
+> Code / Codex session will never see it: `sk knowledge-sources import ./team-wiki
+> --tags "domain:<slug>"`. The session briefing indexes exactly the sources
+> carrying its `domain:` tag — see [Use sk from a coding agent](./coding-agents.md).
+
+| Behavior | Detail |
+|---|---|
+| Upsert by slug | Re-running the import is idempotent: unchanged content reports `unchanged`, changed content re-ingests in place. Perfect for a CI job that keeps sk in sync with a git wiki. |
+| Frontmatter | Read tolerantly, never rejected. `type: Runbook` becomes a structural `type:runbook` tag (filterable in search); a `tags:` list merges into the source's topical tags. Files without frontmatter import fine. |
+| Reserved files | `index.md` and `log.md` (navigation/history in OKF bundles) are skipped at any depth. |
+| Reading it back | `read_knowledge` (chat/MCP tool) pages through the full content — e.g. *"read me the deploy runbook"* after a search hit; `GET /v1/knowledge-sources/{id}/chunks` is the raw HTTP form. Nothing is locked in. |
+
+Pairing with a knowledge-engineering system that exports OKF bundles: schedule
+a workflow that pulls the exported bundle and posts it to
+`POST /v1/knowledge-sources/bundle` — curated knowledge lands in sk as governed
+grounding: every read is RBAC-gated (`knowledge:read`), and every import that
+writes anything is audited (an unchanged re-import is a deliberate no-op).
 
 ## Refresh strategies and scope
 
@@ -3716,6 +4062,7 @@ hardware that warrants larger corpora. The full tunable table lives in
 
 ## Further reading
 
+- [Use sk from a coding agent](./coding-agents.md) — grounding a coding agent in these sources: the `domain:` tag, the briefing, and the review loop.
 - [Knowledge & Skills](../concepts/knowledge-and-skills.md) — the conceptual model and context-assembly order.
 - [Model a Domain](./model-a-domain.md) — a Knowledge Source and a Skill configured side by side for one domain, worked end to end.
 - [Custom Skills](./custom-skills.md) — the dense, prescriptive counterpart to Knowledge Sources.
@@ -3891,6 +4238,9 @@ Your operator has given you **one** of the following. Pick the matching path.
 - **Portal-token link** — you are a scoped end-user → Path B.
 - **Slack / Teams / Google Chat** where the sk bot is installed → Path C.
 - **An MCP client** (Claude Desktop, Cursor, …) → Path D.
+- **Claude Code or Codex** → [Use sk from a coding agent](./coding-agents.md) — the
+  coding-agent loop needs a briefing hook and domain-tagged knowledge on top of
+  the MCP registration, so it has its own page.
 
 > **Want to run your own engine first?** [Self-host quickstart](../developers/self-host.md) takes you from the Docker image to a first connector and workflow.
 
@@ -3938,6 +4288,10 @@ Add the engine as a streamable-HTTP MCP server:
 ```
 
 Your client discovers workflows, prompts, and resources automatically. See [input surfaces](../developers/input-surfaces.md) for MCP details.
+
+**Claude Code / Codex** register from the shell rather than a JSON file, and
+want the briefing hook and domain-tagged knowledge as well — that whole path is
+[Use sk from a coding agent](./coding-agents.md).
 
 ## Troubleshooting
 
@@ -4748,7 +5102,8 @@ so this column is the UX gate, not the security boundary.
 | `/context` | — | `conversation:read` | Inspect the conversation context currently in scope |
 | `/files` | — | `file:read` | Browse files linked to this conversation and insert an @file mention |
 | `/init` | — | `conversation:write` | Generate a starter SK.md |
-| `/knowledge` | — | `knowledge:read` | List knowledge sources in scope |
+| `/knowledge` | — | `knowledge:read` | List knowledge sources, or import a markdown directory — /knowledge import <dir> [name] |
+| `/learnings` | — | `skill:read` | Review proposed session learnings (approve or reject each in chat) |
 | `/memory` | — | — | Open SK.md in $EDITOR |
 | `/mention` | — | — | Open the inline @-mention fuzzy picker (file / connector / workflow) |
 | `/paste` | — | — | Insert clipboard content (text or image) as a paste ref |
@@ -4815,18 +5170,24 @@ flowchart TD
     SH --> IS[input-surfaces.md]
     IS --> TP[tool-palette.md]
     IS --> CLI[cli-reference.md]
+    IS --> CA[coding-agent-integration.md]
     TP --> EP[evidence-process.md]
 ```
 
-Start with **quickstart** for a green gate locally, then **self-host** to stand up your own engine. **input-surfaces** maps the doors in (CLI, REST, MCP), with **cli-reference** and **tool-palette** as the per-surface detail. **evidence-process** is the bar for changing LLM-driven paths.
+Start with **quickstart** for a green gate locally, then **self-host** to stand up your own engine. **input-surfaces** maps the doors in (CLI, REST, MCP), with **cli-reference** and **tool-palette** as the per-surface detail. **coding-agent-integration** turns sk into the knowledge source for Claude Code and Codex sessions. **evidence-process** is the bar for changing LLM-driven paths.
+
+> Just want your own Claude Code grounded in your team's knowledge? You are not
+> in the contributor lane — go to
+> [Use sk from a coding agent](../authors/coding-agents.md).
 
 | Page | What it covers | Link |
 | --- | --- | --- |
 | Quickstart — Developer | Clone to a passing test suite and a live engine in ~10 minutes. | [quickstart.md](quickstart.md) |
-| Quickstart — Zero to Running | Self-host the engine in your own infra with PostgreSQL, no SaaS lock-in. | [self-host.md](self-host.md) |
+| Self-Host sk — Zero to Running | Self-host the engine in your own infra with PostgreSQL, no SaaS lock-in. | [self-host.md](self-host.md) |
 | Input Surfaces | The doors into the engine — CLI, REST, MCP, webhooks — over one RBAC and Audit model. | [input-surfaces.md](input-surfaces.md) |
 | sk CLI reference | Non-interactive `sk` commands for scripting and CI. | [cli-reference.md](cli-reference.md) |
 | Tool palette and dispatch | Every LLM action as a named, governed, audited tool. | [tool-palette.md](tool-palette.md) |
+| Coding-agent integration | sk as the knowledge/skill source for Claude Code and Codex — briefing, capture, review, skills sync. | [coding-agent-integration.md](coding-agent-integration.md) |
 | Evidence process | Verifying a behavioral / LLM-path change with proof, not guesses. | [evidence-process.md](evidence-process.md) |
 
 <!-- Source: docs/developers/cli-reference.md -->
@@ -4846,6 +5207,7 @@ every API call.
 
 | command | requires | description | subcommands |
 | ------- | -------- | ----------- | ----------- |
+| `sk agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init` |
 | `sk apikeys` | `api_key:read` | Manage API keys | `create`, `list`, `revoke`, `rotate` |
 | `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
 | `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show`, `tail` |
@@ -4867,7 +5229,8 @@ every API call.
 | `sk install` | `connector:write` | Guided setup for enterprise integrations | `github`, `google-workspace`, `hubspot`, `jira`, `salesforce`, `slack`, `teams` |
 | `sk invites` | `identity:read` | Manage user-provisioning invites | `list`, `revoke` |
 | `sk join` | — | Redeem an invite to provision your personal API key (no login required) | — |
-| `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `list`, `patch`, `search` |
+| `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `import`, `list`, `patch`, `search` |
+| `sk learnings` | `skill:read` | Review learnings captured from coding-agent sessions | `list`, `review` |
 | `sk login` | — | Authenticate against a subkit engine | — |
 | `sk logout` | — | Drop the active profile | — |
 | `sk logs` | `audit:read` | Tail the engine's runtime log ring. --follow streams via SSE; --since accepts 5m / 2h / 1d / ISO-8601. | — |
@@ -4888,7 +5251,7 @@ every API call.
 | `sk settings` | `settings:read` | List, read, write, or interactively configure engine settings (secrets always masked) | `configure`, `get`, `list`, `set` |
 | `sk show` | — | Show cached metadata for a session by id or alias | — |
 | `sk skill-candidates` | `skill:read` | Manage skill candidates | `approve`, `get`, `list`, `reject` |
-| `sk skills` | `skill:read` | Manage skills | `activate`, `archive`, `create`, `delete`, `edit`, `get`, `history`, `list`, `patch`, `restore` |
+| `sk skills` | `skill:read` | Manage skills | `activate`, `archive`, `create`, `delete`, `edit`, `get`, `history`, `list`, `patch`, `restore`, `sync` |
 | `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `connectors`, `events`, `executions`, `llm` |
 | `sk status` | — | Print the active profile + engine reachability | — |
 | `sk subscriptions` | `subscription:read` | Manage event subscriptions | `create`, `delete`, `deliveries`, `get`, `list`, `patch`, `replay` |
@@ -4897,6 +5260,189 @@ every API call.
 | `sk update` | — | Update sk CLI to the latest version | — |
 | `sk users` | `identity:read` | Manage identity users | `create`, `delete`, `get`, `invite`, `list`, `patch` |
 | `sk workflows` | `workflow:read` | Manage workflows | `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `preview`, `restore`, `run`, `update`, `validate` |
+
+<!-- Source: docs/developers/coding-agent-integration.md -->
+
+# Coding-Agent Integration (Claude Code & Codex)
+
+> **Just want it working?** [Use sk from a coding agent](../authors/coding-agents.md)
+> is the step-by-step path (install → connect → import your knowledge → ask a
+> grounded question). This page is the mechanics underneath it.
+
+sk can act as the central knowledge and skill source for your coding agents.
+Every new Claude Code or Codex session starts grounded in your business
+domains, and what a session teaches flows back — reviewed by a human — so the
+next session already knows it.
+
+The loop, end to end:
+
+```mermaid
+flowchart LR
+    Briefing["1 · Session briefing<br/>(SessionStart hook)"] --> Session["Coding-agent session"]
+    Session -->|"search_knowledge_v2 / find_skill"| Lookup["2 · Look up, don't guess"]
+    Session -->|"SessionEnd / Stop hook<br/>or save_learning"| Capture["3 · Capture"]
+    Capture --> Review["4 · Human review<br/>(sk learnings review)"]
+    Review --> Skill["Active, domain-tagged skill"]
+    Skill --> Briefing
+    Skill --> Sync["5 · sk skills sync<br/>(SKILL.md files)"]
+```
+
+Nothing becomes live knowledge without step 4 — capture always produces
+*proposals*, and a human decides.
+
+## Concepts in one minute
+
+- **Domain** — a business area you curate knowledge for (for example
+  `blog-de`). Technically it is just the tag `domain:<slug>` on Skills and
+  Knowledge Sources; there is no extra table or configuration object.
+- **Briefing** — a budgeted markdown block the engine assembles per domain:
+  the domain's active skills (your conventions), an index of its knowledge
+  sources, and the grounding rule ("look up with `search_knowledge_v2`,
+  and say so when nothing is found"). Full documents are never preloaded —
+  sessions fetch details on demand, which keeps the context small.
+- **Learning** — a durable rule a human taught, corrected, or confirmed in a
+  session. Learnings arrive as `session_learning` skill candidates in a
+  review queue; approving one creates an active, domain-tagged skill.
+
+## Setup (once per repo, ~2 minutes)
+
+Prerequisite: the `sk` CLI is installed and logged in (`sk status` shows your
+engine and an API key).
+
+```bash
+cd <your-repo>
+sk agent init --domains <domain-slug>[,<more-domains>]
+```
+
+This does three things:
+
+1. Writes `.sk/agent.json` into the repo — the repo's domain declaration:
+
+   ```json
+   { "domains": ["blog-de"] }
+   ```
+
+   Commit this file; it is how a session in this repo knows which domains to
+   pull. An optional `"budget_tokens": <n>` caps the briefing size.
+
+2. Wires the Claude Code hooks in `~/.claude/settings.json` (idempotent —
+   re-running never duplicates):
+   - `SessionStart` (matcher `startup|resume|compact`) runs
+     `sk agent briefing --hook` and injects the briefing into the fresh
+     session. The `compact` matcher re-injects it after context compaction.
+   - `SessionEnd` runs `sk agent capture --hook`, which posts the session
+     transcript for learning distillation.
+
+3. Prints the Codex snippets (hooks are feature-gated there) and the MCP
+   registration commands for both agents.
+
+Verify with `sk agent briefing` inside the repo — you should see the
+briefing markdown. In a directory without `.sk/agent.json` the hook stays
+silent by design: repos without declared domains are none of the engine's
+business.
+
+### Codex specifics
+
+Codex needs two one-time steps that `sk agent init` prints but cannot do for
+you:
+
+- Enable hooks in `~/.codex/config.toml` (`[features] hooks = true`) and add
+  the printed `~/.codex/hooks.json` (Codex has no `SessionEnd` event, so
+  capture runs on the `Stop` hook — the engine dedups repeated captures by
+  learning fingerprint, so per-turn capture is cheap).
+- Register the MCP server:
+  `codex mcp add sk --url <engine-url>/mcp --bearer-token-env-var SK_API_KEY`.
+  Export `SK_API_KEY` in your shell profile. Hooks additionally require a
+  one-time trust confirmation via `/hooks` inside the Codex TUI.
+
+### Claude Code MCP registration
+
+If your Claude account already carries the sk connector (it shows up in
+`claude mcp list` as connected), sessions can call `search_knowledge_v2`,
+`find_skill`, and `save_learning` already — do not add a second registration
+for the same engine, it would duplicate the whole tool catalog. Otherwise:
+
+```bash
+claude mcp add --transport http --scope user sk <engine-url>/mcp \
+  --header "Authorization: Bearer ${SK_API_KEY}"
+```
+
+## The capture loop in practice
+
+During a session, two paths feed the review queue:
+
+- **Automatic** — when the session ends, the hook posts the transcript to
+  `POST /v1/agent/sessions`. The engine distills ONLY durable rules a human
+  explicitly taught or corrected; a routine session correctly produces
+  nothing. Distillation runs asynchronously; results appear in the queue a
+  few seconds later.
+- **Explicit** — the agent calls the `save_learning` MCP tool the moment you
+  say "merke dir das" / "remember this". It creates the same kind of
+  proposal, never live knowledge, so it needs no confirmation dialog.
+
+Re-teaching the same rule later updates the existing proposal (evidence
+accrues) instead of duplicating it; a rejected learning is never proposed
+again.
+
+## Review and curation
+
+```bash
+sk learnings list             # what is waiting
+sk learnings review           # interactive: approve / edit / reject / skip
+```
+
+You can also approve without leaving the coding session: tell the agent to
+approve the candidate and confirm your client's native dialog — that click is
+the explicit operator approval (requires `skill:write`).
+
+Approving promotes the learning to an **active skill carrying the domain
+tags** — the very next session briefing in that domain includes it. Rejecting
+retires the learning's fingerprint for good. Editing before approve lets you
+tighten title and body; the review is the human gate, so approved learnings
+go straight to active.
+
+## Offline skills: `sk skills sync`
+
+```bash
+cd <your-repo>
+sk skills sync
+```
+
+Materializes the domains' active skills as Agent-Skills-standard `SKILL.md`
+directories into `.claude/skills/` and `.agents/skills/` of the repo. Both
+agents hot-reload these, so the conventions work even without a live engine
+connection; the briefing remains the freshness channel. Sync is safe by
+construction: it only creates, updates, or prunes directories carrying its
+managed marker — hand-authored skills are never touched. Re-run after
+approving learnings to refresh the files.
+
+## Troubleshooting
+
+- Hooks never break a session: on any error `sk agent briefing --hook` and
+  `sk agent capture --hook` print nothing and exit 0. The swallowed error is
+  recorded in `~/.sk/debug.log` (`agent.briefing_hook_failed`,
+  `agent.capture_hook_failed`).
+- `sk agent briefing` says "no domains" — the directory (or any parent) has
+  no `.sk/agent.json`; run `sk agent init` or pass `--domains`.
+- The briefing misses a skill — only **active** skills with the domain tag
+  are included; check `sk skills list` and the tag `domain:<slug>`.
+- Capture produced no candidates — expected for routine sessions; the
+  distiller extracts only human-taught rules. Check `sk learnings list` a
+  minute after session end (analysis is queued).
+
+## Related
+
+- [Use sk from a coding agent](../authors/coding-agents.md) — the end-to-end setup
+  path this page's mechanics sit under.
+- [Knowledge Sources](../authors/knowledge-sources.md) — how to get the
+  knowledge this briefing indexes IN: `sk knowledge-sources import ./wiki
+  --tags "domain:<slug>"`, tagging, and refresh.
+- [Knowledge & Skills concepts](../concepts/knowledge-and-skills.md) — how
+  the compounding loop fits the wider platform.
+- [Model a Domain](../authors/model-a-domain.md) — building the
+  connector + skills + knowledge trio for a new domain.
+- [CLI reference](./cli-reference.md) — all `sk agent`, `sk learnings`, and
+  `sk skills` flags.
 
 <!-- Source: docs/developers/evidence-process.md -->
 
@@ -5384,7 +5930,7 @@ curl -s http://localhost:3000/v1/health | jq
 
 ## 5. Where things live
 
-- `apps/engine/src/` — the server. Subsystem-per-directory (43 in total). Start with [AGENTS.md](../../AGENTS.md) for the map.
+- `apps/engine/src/` — the server. Subsystem-per-directory (45 in total). Start with [AGENTS.md](../../AGENTS.md) for the map.
 - `apps/sk/` — `sk` unified CLI. REPL for end-users; full admin surface for operators and admins.
 - `packages/shared/` — cross-process types.
 - `docs/` — eight concept docs. See [docs/README.md](../README.md) for the index.
@@ -5396,7 +5942,7 @@ curl -s http://localhost:3000/v1/health | jq
 
 <!-- Source: docs/developers/self-host.md -->
 
-# Quickstart — Zero to Running
+# Self-Host sk — Zero to Running
 
 **sk runs inside your own infrastructure — your data stays yours.** One container,
 one stateful dependency (PostgreSQL), no SaaS lock-in and nothing leaving your
@@ -5613,37 +6159,54 @@ Settings → MCP Servers) — Codex auto-detects the transport from `url`, and
 `bearer_token_env_var` names an env var so the key stays out of the file:
 
 ```toml
-[mcp_servers.subkit]
+[mcp_servers.sk]
 url = "http://localhost:3000/mcp"
-bearer_token_env_var = "SUBKIT_API_KEY"
+bearer_token_env_var = "SK_API_KEY"
 ```
 ```bash
-export SUBKIT_API_KEY=wf_live_…   # the key from `engine --issue-admin-key`
+export SK_API_KEY=wf_live_…   # the key from `engine --issue-admin-key`
 ```
 
 Inline-header JSON shape (Claude Desktop / Cursor):
 
 ```json
-{ "mcpServers": { "subkit": {
+{ "mcpServers": { "sk": {
   "url": "http://localhost:3000/mcp",
   "transport": "streamable-http",
   "headers": { "Authorization": "Bearer wf_live_…" }
 } } }
 ```
 
-**B. stdio (local).** After `sk login` on your machine, let the client spawn the
-bundled proxy (reads `~/.sk/config.json`):
+For **Claude Code**, register from the shell instead — and see
+[Use sk from a coding agent](../authors/coding-agents.md) for the full loop
+(briefing hook + knowledge import), which this step does not cover:
 
-```json
-{ "mcpServers": { "subkit": { "command": "sk", "args": ["mcp"] } } }
+```bash
+claude mcp add --transport http --scope user sk http://localhost:3000/mcp \
+  --header "Authorization: Bearer ${SK_API_KEY}"
 ```
 
-Once connected, the client sees your tenant's tools — author and run workflows
-through the authoring triad (`author_workflow` to build a grounded draft,
-`dry_run_workflow` to test it, `edit_workflow_patch` to refine it, and
+Once connected over HTTP, the client sees your tenant's tools — author and run
+workflows through the authoring triad (`author_workflow` to build a grounded
+draft, `dry_run_workflow` to test it, `edit_workflow_patch` to refine it, and
 `save_workflow_draft` to commit), inspect connectors (`test_connector`,
-`list_recipes`), and more. Destructive calls require a confirm first. Verify the
-endpoint by hand:
+`list_recipes`), ground answers (`search_knowledge_v2`, `read_knowledge`), and
+more. Destructive calls require a confirm first.
+
+**B. stdio (local, conversation-only).** After `sk login`, a client can spawn
+the bundled proxy, which reads `~/.sk/config.json` so no key handling is needed:
+
+```json
+{ "mcpServers": { "sk-cli": { "command": "sk", "args": ["mcp"] } } }
+```
+
+This proxy is deliberately narrow: it exposes only `sk_ping` and
+`sk_conversation_create` / `_append` / `_get` / `_list`, for driving the
+conversation surface from an IDE plugin. It does **not** carry the tool
+catalog above — if you want knowledge lookup, workflow authoring, or connector
+tools, use the HTTP path.
+
+Verify the HTTP endpoint by hand:
 
 ```bash
 curl -s http://localhost:3000/mcp \
@@ -5926,7 +6489,7 @@ arrives over chat or MCP.
 
 > **Status:** authoritative. See
 > [`apps/engine/src/tools/`](../../apps/engine/src/tools/) for the
-> implementation and `AGENTS.md` lines 142–185 for the subsystem map.
+> implementation and the subsystem map in `AGENTS.md` ("Architecture And Domain Safety").
 
 ## Why this exists
 
@@ -6012,7 +6575,7 @@ category — channel-scoped, not role-scoped.
 | Group | Tools |
 |---|---|
 | Conversational meta | `ask_user_confirm` · `ask_user_choice` · `ask_user_multi` · `ask_user_text` · `ask_user_form` · `cannot_help` · `list_skills` · `load_skill` · `list_attachments` · `preview_attachment` · `get_raw_result` |
-| Knowledge + docs (read) | `search_knowledge` · `search_docs` · `list_knowledge_sources` · `get_knowledge_source` |
+| Knowledge + docs (read) | `search_knowledge` · `read_knowledge` · `search_docs` · `list_knowledge_sources` · `get_knowledge_source` |
 | Workflows (read) | `list_workflows` · `get_workflow` · `find_workflow` |
 | Executions (read) | `list_executions` · `get_execution` · `inspect_execution` · `inspect_execution_step` |
 | Connector metadata (read) | `list_connectors` · `get_connector` · `find_connector` |
@@ -6424,7 +6987,7 @@ apps/engine/src/conversations/tools/
 - [`docs/concepts/glossary.md`](../concepts/glossary.md) — vocabulary (workflow, connector, skill).
 - [`docs/developers/input-surfaces.md`](./input-surfaces.md) — how chat/MCP/HTTP surfaces map to the conversation loop.
 - [`docs/admins/rbac-and-roles.md`](../admins/rbac-and-roles.md) — RBAC, audit, policy.
-- `AGENTS.md` lines 142–185 — subsystem map (the row for `tools` lives here).
+- `AGENTS.md`, section "Architecture And Domain Safety" — subsystem map (the row for `tools` lives here).
 
 ## Cutover state
 
@@ -7690,6 +8253,7 @@ Observability
 | `observability.analytics.enabled` | boolean | `false` | global | no | no | Enable product-analytics emission. Off by default — no external calls are made unless this is true and an endpoint is configured. |
 | `observability.analytics.endpoint` | string | `""` | global | no | no | Self-hostable analytics ingest endpoint. Empty disables emission even when enabled=true. |
 | `observability.analytics.project` | string | `""` | global | no | no | Project or workspace identifier on the analytics platform. |
+| `observability.deployment_environment` | string | `"development"` | global | no | no | Deployment identity used for the OpenTelemetry deployment.environment.name resource attribute. |
 | `observability.field_truncation_chars` | number | `2048` | global | no | no | Per-field cap (in characters / UTF-16 code units, not bytes) applied to structured log fields after redaction. |
 | `observability.langfuse.host` | string | `""` | global | no | no |  |
 | `observability.langfuse.public_key` | string | `""` | global | no | no |  |

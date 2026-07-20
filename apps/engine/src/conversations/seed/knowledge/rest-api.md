@@ -4,7 +4,7 @@ name: sk Platform Reference — REST API
 description: The /v1 REST surface of the sk engine — auth, OpenAPI/Scalar, every resource group's CRUD endpoints and shapes, pagination/filter conventions, and POST /v1/executions for saved/draft/step runs.
 tags: [sk-platform-reference, rest-api, http, openapi, executions]
 scope: global
-version: 1
+version: 2
 ---
 
 # REST API Overview
@@ -185,6 +185,13 @@ Retrievable corpus chunks that feed LLM context.
 - `POST /v1/knowledge-sources/{id}/analyze` — LLM-generate a description + tags.
 - `POST /v1/knowledge-sources/inline` — create a source from inline JSON content.
 - `GET /v1/knowledge-sources/search` — semantic search over chunks; returns ranked `{ id, source_name, source_tags, title, path, snippet, fetched_at }` items.
+
+# Coding-Agent Integration
+
+The grounding + capture surface for external coding agents (Claude Code, Codex). Domains are the tag convention `domain:<slug>` on skills and knowledge sources; a repo declares its domains in `.sk/agent.json`.
+
+- `GET /v1/agent/briefing` — budgeted, domain-scoped grounding markdown for session start. Query: `domains` (comma-separated slugs, required), `budget_tokens` (500–16000, default 4000). Returns `{ markdown, domains, budget_tokens, used_tokens, skills_full, skills_title_only, knowledge_sources, knowledge_sources_omitted, proposed_candidates }`. Gated `skill:read`; the knowledge-index section additionally requires `knowledge:read`. Deterministic budget trim: index entries drop first, then skill bodies collapse to pointer lines.
+- `POST /v1/agent/sessions` — capture a finished session's transcript for learning distillation. Body: `{ agent, session_id?, repo?, domains?, transcript }` (transcript ≤ 1,000,000 chars, JSONL or plain text). Returns `202 { queued: true, transcript_chars }`; analysis runs asynchronously and extracted learnings land as `session_learning` skill candidates with `status: "proposed"` — nothing goes live without human approval via the skill-candidates approve route. Gated `skill:propose` (proposing never implies approving). Audited as `agent_session.captured`.
 
 # Identity
 

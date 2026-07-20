@@ -144,11 +144,12 @@ On-demand only. No reverse binding. Every legacy workflow behaves as this.
   kind: "schedule",
   cron,                                    // 5-field cron "m h dom mon dow" or "every:N" shorthand
   tz,                                      // IANA timezone, e.g. "Europe/Berlin"; default "UTC"
+  execution_mode?,                         // "prod" (default) or explicit "dev"
   business_days_only?,                     // true = skip weekend firings
   skip_dates?                              // string[] of "YYYY-MM-DD" dates to skip (holidays, freezes)
 }
 ```
-`cron` is validated at bind time. `tz` controls the wall-clock the cron lands on (passed to pg-boss). `business_days_only` skips Sat/Sun only — holiday calendars are never inferred; declare them explicitly in `skip_dates`. `skip_dates` entries must match `^\d{4}-\d{2}-\d{2}$` and are compared against the trigger's `tz` (the calendar day in the workflow's timezone). Schedule firing is reconciled by the scheduler; webhook firing by the inbound driver.
+`cron` is validated at bind time. `tz` controls the wall-clock the cron lands on (passed to pg-boss). `execution_mode` is persisted with the schedule and copied into the queued execution; unattended automation defaults to `prod`, while short authoring loops must request `dev` explicitly. `business_days_only` skips Sat/Sun only — holiday calendars are never inferred; declare them explicitly in `skip_dates`. `skip_dates` entries must match `^\d{4}-\d{2}-\d{2}$` and are compared against the trigger's `tz` (the calendar day in the workflow's timezone). Schedule firing is reconciled by the scheduler; webhook firing by the inbound driver.
 
 # MCP tools
 
@@ -165,5 +166,5 @@ To run a workflow on demand over MCP use `run_workflow` (or the per-workflow `wf
 - "Does the ingress need an API key?" → No. The signature is the auth. The CRUD `/v1/webhooks/inbound` routes do need a bearer token.
 - "Why am I getting 401?" → `inactive` binding, bad/missing signature, unknown verifier, `event_not_subscribed`, or `workflow_unresolved`. Check the binding's `active`, `verifier`, secret, and the workflow's current version.
 - "Why did a repeated event not run twice?" → replay dedup on the provider event id; the duplicate returns `{ deduped: true }`.
-- "Set up a daily run at 07:00 Berlin, weekdays only, skip holidays?" → `trigger: { kind: "schedule", cron: "0 7 * * *", tz: "Europe/Berlin", business_days_only: true, skip_dates: ["<YYYY-MM-DD>"] }` (skip_dates takes ISO-8601 calendar dates, e.g. public holidays).
+- "Set up a daily run at 07:00 Berlin, weekdays only, skip holidays?" → `trigger: { kind: "schedule", cron: "0 7 * * *", tz: "Europe/Berlin", execution_mode: "prod", business_days_only: true, skip_dates: ["<YYYY-MM-DD>"] }` (skip_dates takes ISO-8601 calendar dates, e.g. public holidays).
 - "Trigger-bound webhook rejects real events?" → the bind wrote a placeholder secret; rotate the real signing secret onto the binding.

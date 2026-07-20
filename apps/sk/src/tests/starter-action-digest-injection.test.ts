@@ -1,9 +1,10 @@
-// Tests for the digest-driven starter-action injection logic.
+// Tests for the digest- and learnings-driven starter-action injection logic.
 //
 // When a digest with failures is present AND the persona may run the triage
-// action, the REPL prepends a "guided triage" entry keyed "1" and renumbers the
-// persona defaults starting at "2". When there is no digest, the digest has no
-// failures, or the persona lacks the required permission, the defaults are left
+// action, the REPL prepends a "guided triage" entry keyed "1". When proposed
+// session learnings are pending AND the persona may read skills, a "review
+// learnings" entry takes the next free number. The persona defaults renumber
+// after the injected entries. When neither gate fires, the defaults are left
 // unchanged. These tests exercise the REAL building blocks from
 // repl/starter-action-injection.ts (the same functions ink-app.tsx calls), so
 // the rendered list, the dispatch list, and the RBAC gate cannot drift.
@@ -13,6 +14,8 @@ import type { OperatorHealthDigest } from "../engine-client.ts";
 import {
   buildStarterActions,
   buildStarterTaskActions,
+  REVIEW_LEARNINGS_ACTION_ID,
+  shouldInjectLearnings,
   shouldInjectTriage,
   TRIAGE_ACTION_ID,
 } from "../repl/starter-action-injection.ts";
@@ -25,6 +28,9 @@ const denyAll: PersonaProbe = { allows: () => false };
 // Allows everything except conversation:write — enough to read the digest, not
 // enough to run the triage action.
 const noWrite: PersonaProbe = { allows: (p) => p !== "conversation:write" };
+// Allows everything except skill:read — enough for triage, not enough to
+// review proposed learnings.
+const noSkillRead: PersonaProbe = { allows: (p) => p !== "skill:read" };
 
 function makeDigest(counts: number[] = [3]): OperatorHealthDigest {
   return {
@@ -71,6 +77,23 @@ describe("shouldInjectTriage — RBAC + failure gate", () => {
   });
 });
 
+describe("shouldInjectLearnings — RBAC + count gate", () => {
+  test("true when learnings are pending and the persona may read skills", () => {
+    expect(shouldInjectLearnings(1, allowAll)).toBe(true);
+    expect(shouldInjectLearnings(7, allowAll)).toBe(true);
+  });
+
+  test("false when the persona lacks skill:read", () => {
+    expect(shouldInjectLearnings(3, denyAll)).toBe(false);
+    expect(shouldInjectLearnings(3, noSkillRead)).toBe(false);
+  });
+
+  test("false when no learnings are pending", () => {
+    expect(shouldInjectLearnings(0, allowAll)).toBe(false);
+    expect(shouldInjectLearnings(-1, allowAll)).toBe(false);
+  });
+});
+
 describe("buildStarterActions — injected", () => {
   test("triage entry is at key '1' with the triage actionId", () => {
     const actions = buildStarterActions("admin", allowAll, makeDigest([3]));
@@ -108,6 +131,97 @@ describe("buildStarterTaskActions — injected", () => {
     expect(actions[0]?.id).toBe(TRIAGE_ACTION_ID);
     expect(actions[0]?.key).toBe("1");
     expect(actions[1]?.key).toBe("2");
+  });
+});
+
+describe("learnings injection — without triage", () => {
+  test("learnings entry takes key '1' when there is no digest", () => {
+    const actions = buildStarterActions("admin", allowAll, null, 2);
+    expect(actions[0]?.key).toBe("1");
+    expect(actions[0]?.actionId).toBe(REVIEW_LEARNINGS_ACTION_ID);
+    expect(actions[0]?.label).toBe("Review 2 proposed learnings");
+    expect(actions[0]?.detail).toBe("curation");
+    expect(actions.slice(1).map((a) => a.key)).toEqual(["2", "3", "4", "5", "6"]);
+  });
+
+  test("label singularises when exactly one learning is pending", () => {
+    const actions = buildStarterActions("admin", allowAll, null, 1);
+    expect(actions[0]?.label).toBe("Review 1 proposed learning");
+  });
+
+  test("dispatch list mirrors the render list", () => {
+    const actions = buildStarterTaskActions("admin", allowAll, null, 2);
+    expect(actions[0]?.id).toBe(REVIEW_LEARNINGS_ACTION_ID);
+    expect(actions[0]?.key).toBe("1");
+    expect(actions[1]?.key).toBe("2");
+  });
+
+  test("not injected when pendingLearnings is 0 (explicit and default)", () => {
+    expect(
+      buildStarterActions("admin", allowAll, null, 0).find(
+        (a) => a.actionId === REVIEW_LEARNINGS_ACTION_ID,
+      ),
+    ).toBeUndefined();
+    expect(
+      buildStarterActions("admin", allowAll, null).find(
+        (a) => a.actionId === REVIEW_LEARNINGS_ACTION_ID,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("not injected when the probe lacks skill:read", () => {
+    const actions = buildStarterActions("admin", noSkillRead, null, 3);
+    expect(actions.find((a) => a.actionId === REVIEW_LEARNINGS_ACTION_ID)).toBeUndefined();
+    expect(actions).toEqual(starterActionsForPersona("admin", noSkillRead));
+  });
+});
+
+describe("learnings injection — combined with triage", () => {
+  test("triage keeps key '1', learnings takes '2', defaults renumber from '3'", () => {
+    const rendered = buildStarterActions("admin", allowAll, makeDigest([3]), 2);
+    expect(rendered[0]?.key).toBe("1");
+    expect(rendered[0]?.actionId).toBe(TRIAGE_ACTION_ID);
+    expect(rendered[1]?.key).toBe("2");
+    expect(rendered[1]?.actionId).toBe(REVIEW_LEARNINGS_ACTION_ID);
+    expect(rendered.slice(2).map((a) => a.key)).toEqual(["3", "4", "5", "6", "7"]);
+    const keys = rendered.map((a) => a.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  test("triage-only when the probe lacks skill:read", () => {
+    const rendered = buildStarterActions("admin", noSkillRead, makeDigest([3]), 2);
+    expect(rendered[0]?.actionId).toBe(TRIAGE_ACTION_ID);
+    expect(rendered.find((a) => a.actionId === REVIEW_LEARNINGS_ACTION_ID)).toBeUndefined();
+    expect(rendered.slice(1).map((a) => a.key)).toEqual(["2", "3", "4", "5", "6"]);
+  });
+
+  test("learnings-only at key '1' when the probe lacks conversation:write", () => {
+    // noWrite hides the triage action AND the conversation:write defaults, so
+    // the learnings entry leads and the surviving defaults renumber after it.
+    const rendered = buildStarterActions("admin", noWrite, makeDigest([3]), 1);
+    expect(rendered[0]?.key).toBe("1");
+    expect(rendered[0]?.actionId).toBe(REVIEW_LEARNINGS_ACTION_ID);
+    expect(rendered.find((a) => a.actionId === TRIAGE_ACTION_ID)).toBeUndefined();
+  });
+
+  test("render ↔ dispatch key parity holds for every gate combination", () => {
+    const digest = makeDigest([5]);
+    const probes: Array<[string, PersonaProbe]> = [
+      ["allowAll", allowAll],
+      ["noWrite", noWrite],
+      ["noSkillRead", noSkillRead],
+      ["denyAll", denyAll],
+    ];
+    for (const [label, probe] of probes) {
+      for (const learnings of [0, 1, 4]) {
+        const rendered = buildStarterActions("admin", probe, digest, learnings);
+        const dispatch = buildStarterTaskActions("admin", probe, digest, learnings);
+        expect(
+          rendered.map((a) => a.key),
+          `probe=${label} learnings=${learnings}`,
+        ).toEqual(dispatch.map((a) => a.key ?? ""));
+      }
+    }
   });
 });
 

@@ -1,6 +1,6 @@
-// source_faithful — anti-drift check (Track A / A4).
+// source_faithful — anti-drift check.
 //
-// The "prove-after" half of the grounding contract (A2) attaches a
+// The "prove-after" half of the grounding contract attaches a
 // citation envelope to every answer that grounded itself in a source.
 // This module closes the remaining gap: the prose must stay FAITHFUL to
 // the sources it cited. A citation envelope proves an answer *touched* a
@@ -22,7 +22,7 @@
 //
 // Anything beyond those two — free-text paraphrase faithfulness that no
 // structural predicate can decide — escalates to the format-aware judge
-// (the F4' pattern in preview-judge.ts), and ONLY then. The judge is the
+// (preview-judge.ts), and ONLY then. The judge is the
 // escalation, never the first line: deterministic checks are cheaper,
 // faster, and not themselves a hallucination risk.
 //
@@ -33,6 +33,7 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
+import { connectorDocumentChunks } from "../db/schema/connector_docs.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
@@ -41,7 +42,7 @@ import type { Citation } from "./citations.ts";
 export interface SourceFaithfulParams {
   /** The assistant's final visible prose. */
   text: string;
-  /** The A2 citation envelope harvested from this turn. */
+  /** The citation envelope harvested from this turn. */
   citations: ReadonlyArray<Citation>;
   tenant_id: string;
   db: Executor;
@@ -103,7 +104,7 @@ function normalise(s: string): string {
  * normalised form is a substring of any cited excerpt's normalised form.
  * Returns the quoted spans that appear in NO cited excerpt.
  *
- * Excerpts are clipped (A2 caps them at 200 chars), so a quote can be
+ * Excerpts are clipped (capped at 200 chars), so a quote can be
  * legitimately grounded yet fall outside the excerpt window — to avoid a
  * false drift signal, a span LONGER than the longest excerpt is treated
  * as unverifiable here (deferred to the judge), not failed.
@@ -126,36 +127,91 @@ export function findUngroundedQuotes(text: string, citations: ReadonlyArray<Cita
 }
 
 /**
- * Deterministic resolution check. Every cited knowledge_chunk id must
- * resolve to a row owned by this tenant. Returns the cited ids that do
- * NOT resolve. Tenant-scoped query (audit-invariant: tenant_id predicate
- * is present and visible).
- *
- * Non-knowledge_chunk citation kinds (execution / connector_call) are a
- * future extension of the envelope; until they are harvested they are
- * never present, so the id list passed here is uniform.
+ * Deterministic resolution check. Every cited id must resolve to a row
+ * owned by this tenant — knowledge_chunk ids against the knowledge chunks,
+ * connector_doc ids against the connector-document chunks (each split out by
+ * source_type and queried separately). Returns the cited ids that do NOT
+ * resolve. Both queries are tenant-scoped (audit-invariant: tenant_id
+ * predicate is present and visible), so a fabricated id of either kind is
+ * caught by the anti-drift gate.
  */
+const CITATION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Split cited ids into (malformed — never resolvable, and would make the
+ *  inArray uuid cast throw) and (queryable UUIDs). */
+function splitCitationIds(ids: string[]): { malformed: string[]; queryable: string[] } {
+  const unique = Array.from(new Set(ids));
+  return {
+    malformed: unique.filter((id) => !CITATION_UUID.test(id)),
+    queryable: unique.filter((id) => CITATION_UUID.test(id)),
+  };
+}
+
 async function findUnresolvedIds(
   citations: ReadonlyArray<Citation>,
   tenant_id: string,
   db: Executor,
 ): Promise<string[]> {
-  // knowledge_chunk ids are UUIDs; a non-UUID id can never resolve and
-  // would make the inArray query throw (uuid cast), so it is unresolved
-  // by definition without touching the DB.
-  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const cited = citations.filter((c) => c.source_type === "knowledge_chunk").map((c) => c.id);
-  const unique = Array.from(new Set(cited));
-  const malformed = unique.filter((id) => !UUID.test(id));
-  const queryable = unique.filter((id) => UUID.test(id));
-  if (queryable.length === 0) return malformed;
-  const rows = await db
-    .select({ id: knowledgeChunks.id })
-    .from(knowledgeChunks)
-    .where(and(eq(knowledgeChunks.tenant_id, tenant_id), inArray(knowledgeChunks.id, queryable)));
-  const resolved = new Set(rows.map((r) => r.id));
-  const unresolved = queryable.filter((id) => !resolved.has(id));
-  return [...malformed, ...unresolved];
+  // EVERY harvested source_type MUST resolve against a real, tenant-scoped
+  // table — a harvested-but-unqueried kind would let a fabricated citation
+  // id pass the anti-drift gate unverified (a provenance hole).
+  const kc = splitCitationIds(
+    citations.filter((c) => c.source_type === "knowledge_chunk").map((c) => c.id),
+  );
+  const dc = splitCitationIds(
+    citations.filter((c) => c.source_type === "connector_doc").map((c) => c.id),
+  );
+
+  const [knowledgeRows, docRows] = await Promise.all([
+    kc.queryable.length === 0
+      ? Promise.resolve([] as { id: string }[])
+      : db
+          .select({ id: knowledgeChunks.id })
+          .from(knowledgeChunks)
+          .where(
+            and(
+              eq(knowledgeChunks.tenant_id, tenant_id),
+              inArray(knowledgeChunks.id, kc.queryable),
+            ),
+          ),
+    dc.queryable.length === 0
+      ? Promise.resolve([] as { id: string }[])
+      : db
+          .select({ id: connectorDocumentChunks.id })
+          .from(connectorDocumentChunks)
+          .where(
+            and(
+              eq(connectorDocumentChunks.tenant_id, tenant_id),
+              inArray(connectorDocumentChunks.id, dc.queryable),
+            ),
+          ),
+  ]);
+
+  const knowledgeResolved = new Set(knowledgeRows.map((r) => r.id));
+  const docResolved = new Set(docRows.map((r) => r.id));
+  return [
+    ...kc.malformed,
+    ...kc.queryable.filter((id) => !knowledgeResolved.has(id)),
+    ...dc.malformed,
+    ...dc.queryable.filter((id) => !docResolved.has(id)),
+  ];
+}
+
+/**
+ * Keep only the citations that RESOLVE to a real, tenant-owned source. The
+ * prove-after footer and the `answer_cited` audit must never surface a
+ * fabricated or since-deleted provenance handle, so unresolvable citations
+ * are dropped BEFORE either is emitted — the same resolve the anti-drift gate
+ * runs, applied up front. Returns the resolvable subset (possibly empty).
+ */
+export async function keepResolvableCitations(
+  citations: ReadonlyArray<Citation>,
+  tenant_id: string,
+  db: Executor,
+): Promise<Citation[]> {
+  if (citations.length === 0) return [];
+  const unresolved = new Set(await findUnresolvedIds(citations, tenant_id, db));
+  return citations.filter((c) => !unresolved.has(c.id));
 }
 
 const FaithfulnessJudgeSummary = {
@@ -164,8 +220,9 @@ const FaithfulnessJudgeSummary = {
 } as const;
 
 /**
- * Free-text faithfulness judge — the F4' escalation. Reached ONLY after
- * both deterministic checks pass and there is prose to judge. Asks the
+ * Free-text faithfulness judge — the escalation past the deterministic
+ * checks. Reached ONLY after both deterministic checks pass and there is
+ * prose to judge. Asks the
  * tenant model whether the answer makes any factual claim NOT supported
  * by the cited excerpts. Never throws: an infra blip is `undefined`
  * (treated as a pass by the caller — the judge is an escalation, not a

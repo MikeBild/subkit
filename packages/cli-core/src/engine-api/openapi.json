@@ -3444,6 +3444,13 @@
             "minLength": 1,
             "default": "UTC"
           },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
           "business_days_only": {
             "type": "boolean"
           },
@@ -3502,6 +3509,13 @@
           "timezone": {
             "type": "string"
           },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
           "paused": {
             "type": "boolean"
           },
@@ -3516,6 +3530,7 @@
           "workflow_name",
           "cron",
           "timezone",
+          "execution_mode",
           "paused",
           "created_at"
         ]
@@ -3533,6 +3548,13 @@
           },
           "timezone": {
             "type": "string"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
           },
           "paused": {
             "type": "boolean"
@@ -3555,6 +3577,13 @@
           },
           "timezone": {
             "type": "string"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
           },
           "paused": {
             "type": "boolean"
@@ -8678,6 +8707,58 @@
           "hits"
         ]
       },
+      "KnowledgeChunkListResponse": {
+        "type": "object",
+        "properties": {
+          "knowledge_source_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "chunk_count": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ordinal": {
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "path": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "content": {
+                  "type": "string"
+                },
+                "byte_size": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "ordinal",
+                "title",
+                "path",
+                "content",
+                "byte_size"
+              ]
+            }
+          }
+        },
+        "required": [
+          "knowledge_source_id",
+          "name",
+          "chunk_count",
+          "items"
+        ]
+      },
       "UpdateKnowledgeSourceBody": {
         "type": "object",
         "properties": {
@@ -8834,6 +8915,109 @@
           "name"
         ]
       },
+      "KnowledgeBundleUpsertResponse": {
+        "type": "object",
+        "properties": {
+          "knowledge_source": {
+            "$ref": "#/components/schemas/KnowledgeSource"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "created",
+              "updated",
+              "unchanged"
+            ]
+          },
+          "ingested_count": {
+            "type": "integer"
+          },
+          "skipped_count": {
+            "type": "integer"
+          },
+          "skipped_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "knowledge_source",
+          "outcome",
+          "ingested_count",
+          "skipped_count",
+          "skipped_files"
+        ]
+      },
+      "CreateKnowledgeSourceBundleBody": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateKnowledgeSourceBody"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/KnowledgeBundleFile"
+                },
+                "minItems": 1,
+                "maxItems": 500
+              }
+            },
+            "required": [
+              "files"
+            ]
+          }
+        ]
+      },
+      "KnowledgeBundleFile": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ]
+      },
+      "KnowledgeSourceUploadError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "KnowledgeSourceUploadForm": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "Document to ingest (markdown, text, JSON, ...)"
+          },
+          "metadata": {
+            "type": "string",
+            "description": "JSON-encoded knowledge-source fields (name, scope, tags, ...)"
+          }
+        }
+      },
       "SkillCandidateListResponse": {
         "type": "object",
         "properties": {
@@ -8842,10 +9026,15 @@
             "items": {
               "$ref": "#/components/schemas/SkillCandidate"
             }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
-          "items"
+          "items",
+          "total"
         ]
       },
       "SkillCandidate": {
@@ -8884,7 +9073,8 @@
               "failure_pattern",
               "success_pattern",
               "chained_workflow_pattern",
-              "authoring_capability"
+              "authoring_capability",
+              "session_learning"
             ]
           },
           "title": {
@@ -8950,6 +9140,13 @@
           },
           "version": {
             "type": "integer"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
           },
           "created_at": {
             "type": "string"
@@ -9018,6 +9215,116 @@
             "type": "string"
           }
         }
+      },
+      "AgentBriefingResponse": {
+        "type": "object",
+        "properties": {
+          "markdown": {
+            "type": "string"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "budget_tokens": {
+            "type": "integer"
+          },
+          "used_tokens": {
+            "type": "integer"
+          },
+          "skills_full": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skills_title_only": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "knowledge_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "knowledge_sources_omitted": {
+            "type": "integer"
+          },
+          "proposed_candidates": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "markdown",
+          "domains",
+          "budget_tokens",
+          "used_tokens",
+          "skills_full",
+          "skills_title_only",
+          "knowledge_sources",
+          "knowledge_sources_omitted",
+          "proposed_candidates"
+        ]
+      },
+      "AgentSessionCaptureResponse": {
+        "type": "object",
+        "properties": {
+          "queued": {
+            "type": "boolean"
+          },
+          "transcript_chars": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued",
+          "transcript_chars"
+        ]
+      },
+      "AgentSessionCaptureBody": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "Producing agent, e.g. claude-code, codex",
+            "example": "claude-code"
+          },
+          "session_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]*$"
+            },
+            "maxItems": 10,
+            "default": []
+          },
+          "transcript": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000000
+          }
+        },
+        "required": [
+          "agent",
+          "transcript"
+        ]
       },
       "DiscoveryRunListResponse": {
         "type": "object",
@@ -9282,6 +9589,79 @@
             "type": "string"
           }
         }
+      },
+      "DiscoveryUploadError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "DiscoveryRunWithArchiveStats": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DiscoveryRun"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "archive_stats": {
+                "type": "object",
+                "properties": {
+                  "extracted_count": {
+                    "type": "integer"
+                  },
+                  "skipped_count": {
+                    "type": "integer"
+                  },
+                  "skipped_reasons": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number"
+                    }
+                  },
+                  "total_bytes": {
+                    "type": "integer"
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "extracted_count",
+                  "skipped_count",
+                  "skipped_reasons",
+                  "total_bytes",
+                  "truncated"
+                ]
+              }
+            },
+            "required": [
+              "archive_stats"
+            ]
+          }
+        ]
+      },
+      "DiscoveryArchiveUploadError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "skipped_reasons": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "error"
+        ]
       },
       "ConversationListResponse": {
         "type": "object",
@@ -9845,10 +10225,49 @@
           },
           "client_suppress": {
             "type": "boolean"
+          },
+          "event": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "request_credential_form"
+                ]
+              },
+              "credential_hint": {
+                "type": "string",
+                "maxLength": 120
+              }
+            },
+            "required": [
+              "type"
+            ]
           }
         },
         "required": [
           "message"
+        ]
+      },
+      "ConversationUploadRunOutcome": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ConversationRunOutcome"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "ingested_knowledge_source_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "ingested_knowledge_source_ids"
+            ]
+          }
         ]
       },
       "RespondElicitationBody": {
@@ -10396,6 +10815,57 @@
               "workflow_id",
               "current_version"
             ]
+          },
+          "last_context_budget": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "cap_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "dropped_sections": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "assembled_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cap_tokens",
+              "total_tokens",
+              "dropped_sections",
+              "assembled_at"
+            ]
+          },
+          "grounding_status": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "fresh",
+                  "stale",
+                  "unknown"
+                ]
+              },
+              "advisory": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "state",
+              "advisory"
+            ]
           }
         },
         "required": [
@@ -10420,7 +10890,9 @@
           "attachments",
           "latest_probe",
           "latest_preview",
-          "workflow_version"
+          "workflow_version",
+          "last_context_budget",
+          "grounding_status"
         ]
       },
       "CompactConversationResponse": {
@@ -13094,6 +13566,434 @@
         "required": [
           "type",
           "payload"
+        ]
+      },
+      "RbacPermissionListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PermissionCatalogEntry"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "PermissionCatalogEntry": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "resource_type"
+        ]
+      },
+      "RbacRoleListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RbacRole"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "RbacRole": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "is_builtin": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "description",
+          "is_builtin",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "RbacRoleDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "is_builtin": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "description",
+          "is_builtin",
+          "created_at",
+          "updated_at",
+          "permissions"
+        ]
+      },
+      "CreateRbacRoleRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateRbacRoleRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "GrantRolePermissionRequest": {
+        "type": "object",
+        "properties": {
+          "permission": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "permission"
+        ]
+      },
+      "AssignUserRoleResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "role_id": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "ok",
+          "user_id",
+          "role_id"
+        ]
+      },
+      "AssignUserRoleRequest": {
+        "type": "object",
+        "properties": {
+          "role_id": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "RbacGrantListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RbacGrant"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "RbacGrant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "subject_type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account",
+              "group"
+            ]
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "permission_id": {
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          },
+          "granted_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "subject_type",
+          "subject_id",
+          "resource_type",
+          "resource_id",
+          "permission_id",
+          "permission",
+          "granted_by",
+          "created_at",
+          "expires_at"
+        ]
+      },
+      "CreateRbacGrantRequest": {
+        "type": "object",
+        "properties": {
+          "subject_type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account",
+              "group"
+            ]
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "resource_type": {
+            "type": "string"
+          },
+          "resource_id": {
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "subject_type",
+          "subject_id",
+          "resource_type",
+          "resource_id",
+          "permission"
+        ]
+      },
+      "RbacGroupListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RbacGroup"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "RbacGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "name",
+          "description",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "CreateRbacGroupRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateRbacGroupRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "RbacCanResponse": {
+        "type": "object",
+        "properties": {
+          "allow": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "allow",
+          "reason",
+          "source"
+        ]
+      },
+      "RbacCanRequest": {
+        "type": "object",
+        "properties": {
+          "principal_id": {
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "principal_id",
+          "permission"
         ]
       },
       "AuditLogListResponse": {
@@ -19861,6 +20761,89 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Submit the credential-setup form (consumes the single-use grant)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "HTML-form submission. `grant` is always required; exactly one of the per-auth_type field sets applies: `token` (bearer), `username`+`password` (basic), `header_name`+`header_value` (header), `query_name`+`query_value` (query).",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant": {
+                    "type": "string",
+                    "description": "Single-use setup grant token (sksg_…)"
+                  },
+                  "token": {
+                    "type": "string",
+                    "description": "Bearer token (auth_type: bearer)"
+                  },
+                  "username": {
+                    "type": "string",
+                    "description": "Username (auth_type: basic)"
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "Password (auth_type: basic)"
+                  },
+                  "header_name": {
+                    "type": "string",
+                    "description": "Header name (auth_type: header)"
+                  },
+                  "header_value": {
+                    "type": "string",
+                    "description": "Header value (auth_type: header)"
+                  },
+                  "query_name": {
+                    "type": "string",
+                    "description": "Query parameter name (auth_type: query)"
+                  },
+                  "query_value": {
+                    "type": "string",
+                    "description": "Query parameter value (auth_type: query)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credential saved (HTML thank-you page)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Grant missing/invalid/expired/replayed, or a required form field is missing (HTML error page)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/connectors/discover": {
@@ -20138,6 +21121,63 @@
         "responses": {
           "204": {
             "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/credentials/{id}": {
+      "delete": {
+        "tags": [
+          "credentials"
+        ],
+        "summary": "Delete a credential",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "deleted"
+                  ]
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found",
@@ -20772,6 +21812,59 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Create a knowledge source from a multipart file upload",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeSourceUploadForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing file field or invalid metadata JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSourceUploadError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File exceeds maximum size",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSourceUploadError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/knowledge-sources/search": {
@@ -20845,6 +21938,83 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/KnowledgeSearchResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/chunks": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Read a knowledge source's full chunk content (paginated)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Narrow to chunks with this bundle-relative path (e.g. /runbooks/deploy.md)."
+            },
+            "required": false,
+            "description": "Narrow to chunks with this bundle-relative path (e.g. /runbooks/deploy.md).",
+            "name": "path",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeChunkListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -21112,6 +22282,70 @@
         }
       }
     },
+    "/v1/knowledge-sources/bundle": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Import a knowledge bundle (directory of markdown files, upsert by slug)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeSourceBundleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upserted (created, updated, or unchanged)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBundleUpsertResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slug already belongs to a non-bundle knowledge source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Bundle exceeds maximum size",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/skill-candidates": {
       "get": {
         "tags": [
@@ -21175,7 +22409,10 @@
               "enum": [
                 "repair_pattern",
                 "failure_pattern",
-                "success_pattern"
+                "success_pattern",
+                "chained_workflow_pattern",
+                "authoring_capability",
+                "session_learning"
               ]
             },
             "required": false,
@@ -21395,6 +22632,111 @@
         }
       }
     },
+    "/v1/agent/briefing": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Domain-scoped session briefing for external coding agents",
+        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, and the search-first grounding rule. Intended for SessionStart hooks.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Comma-separated domain slugs",
+              "example": "blog-de"
+            },
+            "required": true,
+            "description": "Comma-separated domain slugs",
+            "name": "domains",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 500,
+              "maximum": 16000
+            },
+            "required": false,
+            "name": "budget_tokens",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentBriefingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent/sessions": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Capture a coding-agent session transcript for learning distillation",
+        "description": "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` skill candidates that wait for human review — nothing goes live from this endpoint.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSessionCaptureBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted — analysis queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSessionCaptureResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/discovery/runs": {
       "get": {
         "tags": [
@@ -21451,6 +22793,76 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DiscoveryRunListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "discovery"
+        ],
+        "summary": "Create a discovery run from uploaded files",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "files"
+                ],
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "Files to analyze — repeat the field per file. Max 50 files, 100 MB total."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Optional human-readable run label."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted — run created, analysis pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryUploadError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Upload exceeds the size cap",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryUploadError"
                 }
               }
             }
@@ -21736,6 +23148,75 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/discovery/runs/from-archive": {
+      "post": {
+        "tags": [
+          "discovery"
+        ],
+        "summary": "Create a discovery run from a codebase archive",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "archive"
+                ],
+                "properties": {
+                  "archive": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Zip archive of a codebase. Max 100 MB."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Optional human-readable run label."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted — run created, analysis pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryRunWithArchiveStats"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryArchiveUploadError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Archive exceeds the size cap",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryUploadError"
                 }
               }
             }
@@ -22391,6 +23872,109 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{id}/messages/upload": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Append a user message with file attachments and drive another turn",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "description": "The user's message"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "description": "Attached files (1-10); each is auto-ingested as a Knowledge Source scoped to the conversation's target workflow (or global)"
+                  },
+                  "memory": {
+                    "type": "string",
+                    "description": "Optional SUBKIT.md content"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationUploadRunOutcome"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
                 }
               }
             }
@@ -26137,6 +27721,1013 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/permissions": {
+      "get": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "List the permission catalog",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacPermissionListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/roles": {
+      "get": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "List roles",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacRoleListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Create a custom role",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRbacRoleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacRole"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/roles/{id}": {
+      "get": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Get a role with its permissions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacRoleDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Update a custom role",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRbacRoleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacRole"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Delete a custom role",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/roles/{id}/permissions": {
+      "post": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Grant a permission to a role",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantRolePermissionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/roles/{id}/permissions/{permission}": {
+      "delete": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Revoke a permission from a role",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "permission",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/users/{user_id}/role": {
+      "post": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Assign or clear a user's role",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "user_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignUserRoleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignUserRoleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/grants": {
+      "get": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "List resource grants",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacGrantListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Create a resource grant",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRbacGrantRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacGrant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/grants/{id}": {
+      "delete": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Revoke a resource grant",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/groups": {
+      "get": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "List groups",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacGroupListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Create a group",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRbacGroupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacGroup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/groups/{id}": {
+      "patch": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Update a group",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRbacGroupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacGroup"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Delete a group",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/groups/{id}/members/{user_id}": {
+      "post": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Add a user to a group",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "user_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Remove a user from a group",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "user_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/groups/{id}/roles/{role_id}": {
+      "post": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Assign a role to a group",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "role_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Revoke a role from a group",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "role_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rbac/can": {
+      "post": {
+        "tags": [
+          "rbac"
+        ],
+        "summary": "Check whether a principal holds a permission",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RbacCanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbacCanResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {

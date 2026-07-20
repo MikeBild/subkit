@@ -92,12 +92,11 @@ describe("decideConfirm — writes under confirm_before_execution", () => {
 
 describe("decideConfirm — enumerated MCP collapse", () => {
   test("mcp surface + collapsible tool proceeds with mcp_client_dialog_gate", () => {
-    for (const tool of [
-      "create_knowledge_source",
-      "create_schedule",
-      "create_skill",
-      "save_workflow_draft",
-    ]) {
+    // create_skill left this set when it stopped creating active skills:
+    // it is pinned no_confirm now (the candidate approve step IS the
+    // confirmation), so a confirm for it only ever comes from an explicit
+    // per-conversation override — which must keep pausing.
+    for (const tool of ["create_knowledge_source", "create_schedule", "save_workflow_draft"]) {
       const decision = decideConfirm({
         resolvedMode: "confirm_before_execution",
         priorApproval: false,

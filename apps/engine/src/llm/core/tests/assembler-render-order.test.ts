@@ -603,7 +603,17 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
     if (recipeBodiesIdx > -1) {
       expect(recipeBodiesIdx).toBeGreaterThan(samplesIdx);
     }
-    // And the section is genuinely gone from the rendered prompt.
-    expect(prompt.system).not.toContain("# Recorded endpoint samples");
+    // Two-stage trim contract: the heavy sample payload is replaced by a
+    // one-line reference (the model keeps the signal that real recorded
+    // shapes exist and which tool re-records them) — and ONLY when the
+    // budget is beyond-tight (the ladder exhausted every other section)
+    // does the reference line itself go, tagged authoring_evidence_refs:
+    // it must never be the reason the base prompt cannot fit.
+    if (dropped.includes("authoring_evidence_refs")) {
+      expect(prompt.system).not.toContain("# Recorded endpoint samples");
+    } else {
+      expect(prompt.system).toContain("# Recorded endpoint samples");
+      expect(prompt.system).toContain("[trimmed to fit the context budget");
+    }
   });
 });

@@ -78,12 +78,6 @@ const PRODUCT_MODE_ALLOW_LIST: ReadonlySet<string> = new Set([
   "get_execution",
 ]);
 
-/** `tenant_write` tools exempt from the readOnly hide because they are
- *  workflow *runs*, not config mutations — consistent with the `wf_` palette,
- *  which surfaces in product mode regardless of `readOnly`. Mirrors the
- *  search-first floor in `mcp/mode-resolver.ts` (MCP_CORE_TOOL_NAMES). */
-const READONLY_EXEMPT_RUNS: ReadonlySet<string> = new Set(["run_workflow"]);
-
 function visibilityFor(
   category: ToolCategory,
   surface: ToolSurface,
@@ -186,6 +180,12 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   create_knowledge_source: {
     permission: "knowledge:write",
   },
+  // save_learning creates a NEW proposed skill candidate (no pre-existing
+  // id to scope to). Deliberately `skill:propose`, NOT `skill:write` —
+  // proposing must never imply the authority to approve.
+  save_learning: {
+    permission: "skill:propose",
+  },
   update_knowledge_source: {
     permission: "knowledge:write",
     resource: (args) => {
@@ -277,6 +277,15 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
     permission: "knowledge:read",
     resource: (args) => {
       const id = (args as { id?: unknown }).id;
+      return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
+    },
+  },
+  read_knowledge: {
+    // Full-content read — strictly more sensitive than the gated
+    // list/get above; must never ship weaker than them on the MCP path.
+    permission: "knowledge:read",
+    resource: (args) => {
+      const id = (args as { knowledge_source_id?: unknown }).knowledge_source_id;
       return typeof id === "string" && id.length > 0 ? { type: "knowledge", id } : null;
     },
   },
@@ -378,9 +387,11 @@ function isVisibleForFilter(t: ConversationTool, filter: ToolListFilter): boolea
     }
   }
 
-  // readOnly hides every tenant_write regardless of mode — except workflow
-  // runs, which behave like the always-on wf_ palette (RBAC still gates them).
-  if (filter.readOnly && t.category === "tenant_write" && !READONLY_EXEMPT_RUNS.has(t.name)) {
+  // readOnly hides every tenant_write regardless of mode — except tools
+  // that declare `visible_when_readonly` on their definition (a run rather
+  // than a config mutation, or a self-gated capture-loop write; the WHY
+  // lives at each definition site). RBAC still gates them.
+  if (filter.readOnly && t.category === "tenant_write" && !t.visible_when_readonly) {
     return false;
   }
 

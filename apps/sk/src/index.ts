@@ -2,9 +2,8 @@
 // docs/developers/input-surfaces.md for the rationale; this file is the command
 // entry point only.
 //
-// Bare `sk` opens an interactive REPL against the active profile
-// (Step 4 of the rollout — currently a stub that points the user to
-// `-p`). `sk -p "..."` runs headless and prints via the chosen output
+// Bare `sk` opens the interactive Ink REPL against the active profile.
+// `sk -p "..."` runs headless and prints via the chosen output
 // format. `sk login`, `sk logout`, `sk tenants [use <id>]`, and
 // `sk status` live here as top-level commands so scripts never need
 // to enter the REPL.
@@ -16,6 +15,7 @@ import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { type CommandDef, defineCommand, runCommand, type SubCommandsDef, showUsage } from "citty";
 import pc from "picocolors";
+import { agentCommand } from "./commands/agent.ts";
 import { apiKeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
 import { authCommand } from "./commands/auth.ts";
@@ -37,6 +37,7 @@ import { installCommand } from "./commands/install.ts";
 import { invitesCommand } from "./commands/invites.ts";
 import { joinCommand } from "./commands/join.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
+import { learningsCommand } from "./commands/learnings.ts";
 import { logsCommand } from "./commands/logs.ts";
 import { mcpServersCommand } from "./commands/mcp-servers.ts";
 import { notificationsCommand } from "./commands/notifications.ts";
@@ -71,6 +72,7 @@ import { runHeadless } from "./headless.ts";
 import { riskSummaryLine } from "./lib/operator-digest.ts";
 import { suggestCommand } from "./lib/suggest.ts";
 import { runMcpProxy } from "./mcp-proxy.ts";
+import { personaCanSee, recordPersonaHint } from "./persona-probe.ts";
 
 // `runInkRepl` is loaded lazily — its module graph pulls in Ink, React,
 // every transcript cell, and the slash registry, which is wasteful for
@@ -132,6 +134,7 @@ const loginCommand = defineCommand({
         const client = new EngineClient({ engine_url: engineUrl, api_key: apiKey, tenant });
         const h = await client.health();
         process.stdout.write(`sk: engine health: ${h.status} db=${h.db_connected}\n`);
+        await recordPersonaHint(client, profileName, engineUrl, apiKey, tenant);
         // Best-effort leading-indicator risk line — never blocks login.
         const risk = await riskSummaryLine(client);
         if (risk) process.stdout.write(`sk: ${risk}\n`);
@@ -212,6 +215,17 @@ const loginCommand = defineCommand({
             api_key: result.api_key,
             active_tenant_id: result.tenant_id,
           });
+          await recordPersonaHint(
+            new EngineClient({
+              engine_url: engineUrl,
+              api_key: result.api_key,
+              tenant: result.tenant_id,
+            }),
+            profileName,
+            engineUrl,
+            result.api_key,
+            result.tenant_id,
+          );
           process.stdout.write(
             `sk: signed in as ${result.email || result.sub} — profile '${profileName}' saved\n`,
           );
@@ -244,12 +258,24 @@ const loginCommand = defineCommand({
             engine_url: engineUrl,
             scope,
           });
+          const activeTenant = tenant ?? result.tenant_id ?? null;
           saveProfile({
             name: profileName,
             engine_url: engineUrl,
             api_key: result.api_key,
-            active_tenant_id: tenant ?? result.tenant_id ?? null,
+            active_tenant_id: activeTenant,
           });
+          await recordPersonaHint(
+            new EngineClient({
+              engine_url: engineUrl,
+              api_key: result.api_key,
+              tenant: activeTenant,
+            }),
+            profileName,
+            engineUrl,
+            result.api_key,
+            activeTenant,
+          );
           process.stdout.write(`sk: signed in as ${result.sub} — profile '${profileName}' saved\n`);
           return;
         } catch (err) {
@@ -298,12 +324,20 @@ const loginCommand = defineCommand({
         engine_url: engineUrl,
         scope,
       });
+      const activeTenant = tenant ?? result.tenant_id ?? null;
       saveProfile({
         name: profileName,
         engine_url: engineUrl,
         api_key: result.api_key,
-        active_tenant_id: tenant ?? result.tenant_id ?? null,
+        active_tenant_id: activeTenant,
       });
+      await recordPersonaHint(
+        new EngineClient({ engine_url: engineUrl, api_key: result.api_key, tenant: activeTenant }),
+        profileName,
+        engineUrl,
+        result.api_key,
+        activeTenant,
+      );
       process.stdout.write(
         `sk: signed in as ${result.sub} — profile '${profileName}' saved to ${configPath()}\n`,
       );
@@ -602,6 +636,8 @@ const mainCommand = defineCommand({
     files: filesCommand,
     attach: attachCommand,
     auth: authCommand,
+    agent: agentCommand,
+    learnings: learningsCommand,
     // operator commands
     workflows: workflowsCommand,
     connectors: connectorsCommand,
@@ -759,46 +795,9 @@ const mainCommand = defineCommand({
 
 const rawArgs = process.argv.slice(2);
 
-// Persona tier: 1=enduser/portal, 2=member, 3=operator, 4=admin.
-const PERSONA_LEVEL: Record<string, number> = {
-  admin: 4,
-  operator: 3,
-  member: 2,
-  portal: 1,
-  enduser: 1,
-  user: 1,
-};
-const PERM_TIER: Record<string, number> = {
-  "audit:read": 4,
-  "rbac:read": 4,
-  "api_key:read": 4,
-  "portal_token:read": 4,
-  "identity:read": 4,
-  "workflow:read": 3,
-  "connector:read": 3,
-  "connector:write": 3,
-  "chat_workspace:read": 3,
-  "mcp_server:manage": 3,
-  "credential:read": 3,
-  "execution:read": 3,
-  "notification:read": 3,
-  "notification:write": 3,
-  "discovery:read": 3,
-  "subscription:read": 3,
-  "inbound_hook:read": 3,
-  "file:read": 1,
-  "file:write": 1,
-  "file:delete": 1,
-  "mcp:read": 2,
-  "skill:read": 2,
-  "knowledge:read": 2,
-  "conversation:write": 1,
-};
-function personaCanSee(hint: string | null | undefined, requires: string | undefined): boolean {
-  if (!requires) return true;
-  const level = PERSONA_LEVEL[hint ?? "user"] ?? 1;
-  return level >= (PERM_TIER[requires] ?? 1);
-}
+// `personaCanSee` + the persona/permission tier tables live in
+// `persona-probe.ts` — the persona vocabulary has one home, and tests can
+// import it without loading this entry module's full command graph.
 
 interface SubEntry {
   /** citty's own sub-command value type — the commands carry heterogeneous
@@ -832,6 +831,8 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   files: { command: filesCommand, requires: "file:read" },
   attach: { command: attachCommand, requires: "file:write" },
   auth: { command: authCommand, requires: "connector:write" },
+  agent: { command: agentCommand, requires: "skill:read" },
+  learnings: { command: learningsCommand, requires: "skill:read" },
   // operator
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },

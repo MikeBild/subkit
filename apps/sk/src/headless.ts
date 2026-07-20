@@ -30,6 +30,7 @@ import {
   serializeDebugError,
 } from "./debug.ts";
 import { EngineClient } from "./engine-client.ts";
+import { formatCitationsFooter, terminalAssistantCitations } from "./lib/citations-footer.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { saveSessionMetadata } from "./sessions.ts";
@@ -552,6 +553,8 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     const text = assistantText.trim();
     if (text) {
       writeLine(stdout, text);
+      const footer = formatCitationsFooter(terminalAssistantCitations(streamState.messages));
+      if (footer) writeLine(stdout, footer);
     } else {
       // Tool-only turn: the model ran the work but produced no prose
       // (production sessions saw `sk -p "run X and show results"` exit

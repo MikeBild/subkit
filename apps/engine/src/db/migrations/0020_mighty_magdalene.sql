@@ -1,0 +1,2 @@
+DROP INDEX "knowledge_sources_tenant_slug_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "knowledge_sources_tenant_slug_key" ON "knowledge_sources" USING btree ("tenant_id","slug") WHERE deleted_at IS NULL;

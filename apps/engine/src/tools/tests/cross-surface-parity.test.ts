@@ -138,9 +138,11 @@ describe("tools/cross-surface-parity", () => {
     // is the second defense; it's covered by
     // `connectors/service.ts:getConnector` tests and exercised
     // end-to-end by `mcp/tests/test-connector-dedupe.test.ts:75-90`
-    // (unknown connector_id → connector_not_found). A true multi-tenant
-    // integration test requires multi-tenant scaffolding in
-    // `startMcpTestSuite`; deferred until that lands.
+    // (unknown connector_id → connector_not_found). The true
+    // multi-tenant integration test lives in
+    // `mcp/tests/cross-tenant-executor-isolation.test.ts`: an
+    // RBAC-passing tenant-A key probing a real tenant-B connector
+    // gets connector_not_found from the executor WHERE clause.
     const principalA = makeTestPrincipal({
       tenant_id: "00000000-0000-0000-0000-aaaaaaaaaaaa",
     });

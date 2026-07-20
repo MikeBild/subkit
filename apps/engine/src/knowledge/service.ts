@@ -13,18 +13,22 @@ import { type Db, type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
+import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { embeddingsAvailable } from "../embeddings/local-provider.ts";
 import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
+import type { PersistInlineUploadResult } from "../files/persist-inline-upload.ts";
 import { invoke } from "../llm/core/invoke.ts";
-import { log } from "../logging/logger.ts";
+import { errorFields, log, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
 import {
+  assertTenantKnowledgeBudget,
   KNOWLEDGE_SOURCE_MAX_BYTES,
-  KNOWLEDGE_TENANT_MAX_BYTES,
   KnowledgeBudgetExceededError,
 } from "./budgets.ts";
+import { linkKnowledgeFile, persistKnowledgeFile } from "./file-persist.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
+import { dedupeTags, mergeStructuralTags } from "./tags.ts";
 import type {
   AnalyzeKnowledgeSourceParams,
   CreateKnowledgeSourceParams,
@@ -49,23 +53,36 @@ function toSlug(name: string): string {
     .slice(0, 100);
 }
 
-// REPLACE-semantics tag normalizer: trims, drops empties, dedupes
-// case-insensitively (keeping first-seen casing), and caps to 20. This
-// is the single guard against the array-doubling class of bug — tags are
-// always set to a deduped replacement set, never concatenated.
-function dedupeTags(tags: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of tags) {
-    const tag = raw.trim();
-    if (!tag) continue;
-    const key = tag.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(tag.slice(0, 40));
-    if (out.length >= 20) break;
+// Tag normalization + the structural-tag contract live in ./tags.ts.
+
+/**
+ * Fire-and-forget, source-scoped embedding backfill kicked right after a
+ * create/ingest commits. Freshly (re)ingested chunks carry NULL embeddings
+ * and the scheduler sweep only lands every 5 minutes (capped) — until then a
+ * source ranks on FTS alone, which for non-English content made it
+ * practically invisible right after every update. The targeted kick keeps
+ * the request path non-blocking (the deliberate create-path property), stays
+ * bounded to one source, and is a no-op when the local model is unavailable.
+ */
+export async function kickSourceEmbeddingBackfill(
+  tenant_id: string,
+  knowledge_source_id: string,
+  db: Executor,
+): Promise<void> {
+  try {
+    if (!(await embeddingsAvailable())) return;
+    const result = await backfillEmbeddings({ tenant_id, knowledge_source_id }, db);
+    if (result.knowledge.embedded > 0) invalidateKnowledgeCache(tenant_id);
+  } catch (err) {
+    logger.warn({
+      module: "knowledge",
+      action: "embedding.backfill_kick_failed",
+      msg: "post-ingest embedding backfill failed — the scheduler sweep will retry",
+      tenant_id,
+      knowledge_source_id,
+      ...errorFields(err),
+    });
   }
-  return out;
 }
 
 function toView(row: typeof knowledgeSources.$inferSelect): KnowledgeSourceView {
@@ -127,28 +144,28 @@ export async function createKnowledgeSource(
   const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
   const format = detectFormat(p.upload.filename, p.upload.mime);
 
-  // Parse → chunk → fingerprint → dedup (before transaction — pure CPU work)
-  const rawChunks = parseFileToChunks(content, p.upload.filename, format);
+  // Parse → chunk → fingerprint → dedup (before transaction — pure CPU work).
+  // Bundle imports arrive pre-parsed (one chunk per file, path attached),
+  // skip the file parser, AND skip dedup: bundle files are per-path entities
+  // addressed by `read_knowledge {path}` — near-dup/exact dedup across paths
+  // would silently make an imported file unreadable.
+  const rawChunks = p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format);
   const fingerprinted = fingerprintChunks(rawChunks);
-  const { accepted, skipped } = dedupChunks(fingerprinted);
+  const { accepted, skipped } = p.parsed_chunks
+    ? { accepted: fingerprinted, skipped: 0 }
+    : dedupChunks(fingerprinted);
 
   const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
 
-  return await (db as Db).transaction(async (tx) => {
-    // Check tenant-level budget INSIDE transaction to prevent race conditions
-    // where concurrent inserts both pass the check.
-    const tenantUsage = await tx
-      .select({ total: sql<number>`coalesce(sum(${knowledgeSources.bytes_total}), 0)` })
-      .from(knowledgeSources)
-      .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), isNull(knowledgeSources.deleted_at)));
-    const currentBytes = Number(tenantUsage[0]?.total ?? 0);
-    if (currentBytes + totalBytes > KNOWLEDGE_TENANT_MAX_BYTES) {
-      throw new KnowledgeBudgetExceededError(
-        `Tenant knowledge budget exceeded (${currentBytes} + ${totalBytes} > ${KNOWLEDGE_TENANT_MAX_BYTES})`,
-        currentBytes + totalBytes,
-        KNOWLEDGE_TENANT_MAX_BYTES,
-      );
-    }
+  // Persist the upload bytes before the transaction (object-store put +
+  // scan must not run inside it). Known risk: the files row commits
+  // independently, so a failed create below leaves an orphaned files row
+  // for the cleanup cron to reap.
+  const sourceType = p.source_type_override ?? "file_upload";
+  const persisted = sourceType === "url" ? null : await persistKnowledgeFile(db, p);
+
+  const created = await (db as Db).transaction(async (tx) => {
+    await assertTenantKnowledgeBudget(tx, p.tenant_id, totalBytes);
 
     const [row] = await tx
       .insert(knowledgeSources)
@@ -161,9 +178,10 @@ export async function createKnowledgeSource(
         scope: p.input.scope ?? "global",
         workflow_id: p.input.workflow_id ?? null,
         status: "active",
-        source_type: p.source_type_override ?? "file_upload",
+        source_type: sourceType,
         source_uri: p.source_uri_override ?? p.upload.filename,
         mime_type: p.upload.mime ?? null,
+        file_id: persisted ? persisted.row.id : null,
         version,
         bytes_total: totalBytes,
         chunk_count: accepted.length,
@@ -173,6 +191,18 @@ export async function createKnowledgeSource(
       .returning();
 
     assertInsertRow(row, "knowledge_sources");
+
+    if (persisted) {
+      await linkKnowledgeFile(tx, {
+        tenant_id: p.tenant_id,
+        actor_id: p.actor_id,
+        knowledge_source_id: row.id,
+        slug,
+        filename: p.upload.filename,
+        mime: p.upload.mime ?? null,
+        persisted,
+      });
+    }
 
     // Insert chunks. Embeddings are populated out-of-band by
     // backfillEmbeddings so the inline HTTP create never blocks on model
@@ -216,6 +246,8 @@ export async function createKnowledgeSource(
     invalidateKnowledgeCache(p.tenant_id);
     return toView(row);
   });
+  void kickSourceEmbeddingBackfill(p.tenant_id, created.id, db);
+  return created;
 }
 
 export async function listKnowledgeSources(
@@ -463,7 +495,7 @@ export async function analyzeKnowledgeSource(
     return toView(source);
   }
 
-  const nextTags = dedupeTags(analysis.tags);
+  const nextTags = mergeStructuralTags(source.tags ?? [], analysis.tags);
   const overwriteDescription = source.description === null || p.force === true;
 
   return await (db as Db).transaction(async (tx) => {
@@ -587,15 +619,47 @@ export async function ingestKnowledgeSource(
       format,
       byte_size: byteSize,
     },
-    fn: () => parseFileToChunks(content, p.upload.filename, format),
+    fn: () => p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format),
   });
   const fingerprinted = fingerprintChunks(rawChunks);
-  const { accepted, skipped } = dedupChunks(fingerprinted);
+  // Bundles skip dedup — see the create path: per-path entities must all
+  // stay readable via `read_knowledge {path}`.
+  const { accepted, skipped } = p.parsed_chunks
+    ? { accepted: fingerprinted, skipped: 0 }
+    : dedupChunks(fingerprinted);
 
   const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
   const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
 
+  // Re-persist the refreshed bytes so file_id tracks the current content.
+  // URL sources stay file-less (source_uri is their canonical reference).
+  // Same orphan risk as the create path: the files row commits outside
+  // the transaction below.
+  const sourceRows = await db
+    .select({ source_type: knowledgeSources.source_type, slug: knowledgeSources.slug })
+    .from(knowledgeSources)
+    .where(
+      and(
+        eq(knowledgeSources.tenant_id, p.tenant_id),
+        eq(knowledgeSources.id, p.knowledge_source_id),
+        isNull(knowledgeSources.deleted_at),
+      ),
+    )
+    .limit(1);
+  const sourceRow = sourceRows[0];
+  let persisted: PersistInlineUploadResult | null = null;
+  let sourceSlug = p.upload.filename;
+  if (sourceRow && sourceRow.source_type !== "url") {
+    persisted = await persistKnowledgeFile(db, p);
+    sourceSlug = sourceRow.slug;
+  }
+
   await (db as Db).transaction(async (tx) => {
+    // Same tenant-budget guard as the create path — a re-ingest that grows
+    // a source (nightly bundle re-import) must not silently sail past the
+    // cap. Counts everything except the source being replaced.
+    await assertTenantKnowledgeBudget(tx, p.tenant_id, totalBytes, p.knowledge_source_id);
+
     // Delete old chunks
     await tx
       .delete(knowledgeChunks)
@@ -627,12 +691,25 @@ export async function ingestKnowledgeSource(
         chunk_count: accepted.length,
         source_uri: p.upload.filename,
         mime_type: p.upload.mime ?? null,
+        ...(persisted ? { file_id: persisted.row.id } : {}),
         last_refreshed_at: new Date(),
         status: "active",
         last_error: null,
         updated_at: new Date(),
       })
       .where(eq(knowledgeSources.id, p.knowledge_source_id));
+
+    if (persisted) {
+      await linkKnowledgeFile(tx, {
+        tenant_id: p.tenant_id,
+        actor_id: p.actor_id,
+        knowledge_source_id: p.knowledge_source_id,
+        slug: sourceSlug,
+        filename: p.upload.filename,
+        mime: p.upload.mime ?? null,
+        persisted,
+      });
+    }
 
     await auditAwait(
       {
@@ -644,6 +721,7 @@ export async function ingestKnowledgeSource(
         resource_id: p.knowledge_source_id,
         result: "success",
         metadata: {
+          ...(sourceRow ? { slug: sourceRow.slug } : {}),
           chunk_count: accepted.length,
           skipped_count: skipped,
           bytes_total: totalBytes,
@@ -664,6 +742,7 @@ export async function ingestKnowledgeSource(
   });
 
   invalidateKnowledgeCache(p.tenant_id);
+  void kickSourceEmbeddingBackfill(p.tenant_id, p.knowledge_source_id, db);
 
   return {
     knowledge_source_id: p.knowledge_source_id,

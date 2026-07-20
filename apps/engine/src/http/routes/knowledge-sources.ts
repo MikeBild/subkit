@@ -7,9 +7,12 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../knowledge/index.ts";
 import {
+  CreateKnowledgeSourceBundleSchema,
   CreateKnowledgeSourceInlineSchema,
   CreateKnowledgeSourceSchema,
   KNOWLEDGE_SOURCE_MAX_BYTES,
+  KnowledgeBudgetExceededError,
+  KnowledgeSlugConflictError,
   KnowledgeSourceSchema,
   UpdateKnowledgeSourceSchema,
 } from "../../knowledge/index.ts";
@@ -179,6 +182,147 @@ const createInlineRoute = createRoute({
   },
 });
 
+// Bare `{ error, hint }` envelope the multipart handler has always
+// returned — documented as-is (deliberately NOT ErrorSchema) so the
+// wire contract stays byte-identical for existing SDK consumers.
+const KnowledgeSourceUploadError = z
+  .object({ error: z.string(), hint: z.string().optional() })
+  .openapi("KnowledgeSourceUploadError");
+
+// Multipart form shape. `file` is the raw document; `metadata` is a
+// JSON-encoded string matching CreateKnowledgeSourceSchema. The handler
+// parses `c.req.formData()` itself — the schema exists for the OpenAPI
+// document, not for validation.
+const KnowledgeSourceUploadForm = z
+  .object({
+    file: z.any().openapi({
+      type: "string",
+      format: "binary",
+      description: "Document to ingest (markdown, text, JSON, ...)",
+    }),
+    metadata: z.string().optional().openapi({
+      description: "JSON-encoded knowledge-source fields (name, scope, tags, ...)",
+    }),
+  })
+  .openapi("KnowledgeSourceUploadForm");
+
+const createUploadRoute = createRoute({
+  method: "post",
+  path: "/v1/knowledge-sources",
+  tags: ["knowledge"],
+  summary: "Create a knowledge source from a multipart file upload",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: {
+      content: { "multipart/form-data": { schema: KnowledgeSourceUploadForm } },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      description: "Created",
+      content: { "application/json": { schema: KnowledgeSourceSchema } },
+    },
+    400: {
+      description: "Missing file field or invalid metadata JSON",
+      content: { "application/json": { schema: KnowledgeSourceUploadError } },
+    },
+    413: {
+      description: "File exceeds maximum size",
+      content: { "application/json": { schema: KnowledgeSourceUploadError } },
+    },
+  },
+});
+
+// Knowledge bundle — a directory of markdown files as one JSON body
+// (`sk knowledge-sources import`, REPL `/knowledge import`, workflows).
+// Upsert by slug: unchanged content is a no-op, changed content
+// re-ingests in place. Frontmatter is read tolerantly (OKF-compatible);
+// nothing is ever rejected for missing/unknown frontmatter.
+const KnowledgeBundleUpsertResponse = z
+  .object({
+    knowledge_source: KnowledgeSourceSchema,
+    outcome: z.enum(["created", "updated", "unchanged"]),
+    ingested_count: z.number().int(),
+    skipped_count: z.number().int(),
+    skipped_files: z.array(z.string()),
+  })
+  .openapi("KnowledgeBundleUpsertResponse");
+
+const bundleRoute = createRoute({
+  method: "post",
+  path: "/v1/knowledge-sources/bundle",
+  tags: ["knowledge"],
+  summary: "Import a knowledge bundle (directory of markdown files, upsert by slug)",
+  security: [{ bearerAuth: [] }],
+  request: {
+    body: { content: { "application/json": { schema: CreateKnowledgeSourceBundleSchema } } },
+  },
+  responses: {
+    200: {
+      description: "Upserted (created, updated, or unchanged)",
+      content: { "application/json": { schema: KnowledgeBundleUpsertResponse } },
+    },
+    409: {
+      description: "Slug already belongs to a non-bundle knowledge source",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    413: {
+      description: "Bundle exceeds maximum size",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    422: {
+      description: "Validation error",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
+const KnowledgeChunkListResponse = z
+  .object({
+    knowledge_source_id: z.string(),
+    name: z.string(),
+    chunk_count: z.number().int(),
+    items: z.array(
+      z.object({
+        ordinal: z.number().int(),
+        title: z.string().nullable(),
+        path: z.string().nullable(),
+        content: z.string(),
+        byte_size: z.number().int(),
+      }),
+    ),
+  })
+  .openapi("KnowledgeChunkListResponse");
+
+const chunksRoute = createRoute({
+  method: "get",
+  path: "/v1/knowledge-sources/{id}/chunks",
+  tags: ["knowledge"],
+  summary: "Read a knowledge source's full chunk content (paginated)",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    query: z
+      .object({
+        path: z.string().optional().openapi({
+          description:
+            "Narrow to chunks with this bundle-relative path (e.g. /runbooks/deploy.md).",
+        }),
+        limit: z.coerce.number().int().positive().max(200).optional(),
+        offset: z.coerce.number().int().min(0).optional(),
+      })
+      .openapi("ListKnowledgeChunksQuery"),
+  },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: KnowledgeChunkListResponse } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 const searchRoute = createRoute({
   method: "get",
   path: "/v1/knowledge-sources/search",
@@ -215,6 +359,16 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.use("/v1/knowledge-sources/inline", async (c, next) => {
     if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
+    return next();
+  });
+
+  app.use("/v1/knowledge-sources/bundle", async (c, next) => {
+    if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
+    return next();
+  });
+
+  app.use("/v1/knowledge-sources/:id/chunks", async (c, next) => {
+    if (c.req.method === "GET") return requirePermission("knowledge:read")(c, next);
     return next();
   });
 
@@ -274,6 +428,35 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
     return c.json({ hits }, 200);
+  });
+
+  // Chunk read — registered before the bare :id route (same collision
+  // discipline as /search above).
+  app.openapi(chunksRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const q = c.req.valid("query");
+    const result = await svc.listKnowledgeChunks(
+      {
+        tenant_id: principal.tenant_id,
+        knowledge_source_id: id,
+        ...(q.path !== undefined ? { path: q.path } : {}),
+        ...(q.limit !== undefined ? { limit: q.limit } : {}),
+        ...(q.offset !== undefined ? { offset: q.offset } : {}),
+      },
+      db,
+    );
+    if (!result) throw new NotFoundError("knowledge_source");
+    return c.json(
+      {
+        knowledge_source_id: result.source.id,
+        name: result.source.name,
+        chunk_count: result.source.chunk_count,
+        items: result.chunks,
+      },
+      200,
+    );
   });
 
   app.openapi(getRoute, async (c) => {
@@ -386,8 +569,74 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     },
   );
 
-  // Legacy multipart upload route (non-OpenAPI). File uploads only.
-  app.post("/v1/knowledge-sources", async (c) => {
+  // Bundle upsert. Budget errors surface as 413 and slug conflicts as 409
+  // via typed errors from the service — the canonical serialization the
+  // service fingerprints is what the budget is enforced against, so the
+  // route does not pre-measure a second, subtly different byte count.
+  app.openapi(
+    bundleRoute,
+    async (c) => {
+      const principal = requireAuth(c);
+      const db = c.get("db");
+      const body = c.req.valid("json");
+      const { files, ...inputFields } = body;
+      try {
+        const result = await svc.upsertKnowledgeBundle(
+          {
+            tenant_id: principal.tenant_id,
+            actor_id: principal.id,
+            input: inputFields,
+            files,
+          },
+          db,
+        );
+        return c.json(result, 200);
+      } catch (err) {
+        if (err instanceof KnowledgeSlugConflictError) {
+          return c.json(
+            {
+              code: "slug_conflict",
+              message: err.message,
+              hint: "bundle upserts only replace bundle sources; choose a different slug",
+            },
+            409,
+          );
+        }
+        if (err instanceof KnowledgeBudgetExceededError) {
+          return c.json(
+            {
+              code: "content_too_large",
+              message: err.message,
+              hint: "split the bundle into smaller sources or remove large files",
+            },
+            413,
+          );
+        }
+        throw err;
+      }
+    },
+    (result, c) => {
+      if (result.success) return undefined;
+      return c.json(
+        {
+          code: "validation_failed",
+          message: "request body did not satisfy CreateKnowledgeSourceBundleBody",
+          details: {
+            issues: result.error.issues.map((i) => ({
+              path: i.path.join("."),
+              message: i.message,
+            })),
+          },
+        },
+        422,
+      );
+    },
+  );
+
+  // Multipart upload route. The OpenAPI spec documents the form shape;
+  // the handler keeps its own formData() parsing (multipart fields are
+  // not Zod-validated — `metadata` is a JSON string decoded below).
+  app.openapi(createUploadRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
     const formData = await c.req.formData();

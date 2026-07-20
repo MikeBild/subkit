@@ -35,6 +35,11 @@ import sql0014DedupWorkflowSchedules from "./0014_dedup_workflow_schedules.sql" 
 import sql0015NervousSalo from "./0015_nervous_salo.sql" with { type: "text" };
 import sql0016TranquilDragonMan from "./0016_tranquil_dragon_man.sql" with { type: "text" };
 import sql0017AbandonedSasquatch from "./0017_abandoned_sasquatch.sql" with { type: "text" };
+import sql0018WorkableMarrow from "./0018_workable_marrow.sql" with { type: "text" };
+import sql0019CloudyJazinda from "./0019_cloudy_jazinda.sql" with { type: "text" };
+import sql0020MightyMagdalene from "./0020_mighty_magdalene.sql" with { type: "text" };
+import sql0021CrazySilkFever from "./0021_crazy_silk_fever.sql" with { type: "text" };
+import sql0022CalmGroot from "./0022_calm_groot.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -77,6 +82,11 @@ const SQL_BY_TAG: Record<string, string> = {
   "0015_nervous_salo": sql0015NervousSalo,
   "0016_tranquil_dragon_man": sql0016TranquilDragonMan,
   "0017_abandoned_sasquatch": sql0017AbandonedSasquatch,
+  "0018_workable_marrow": sql0018WorkableMarrow,
+  "0019_cloudy_jazinda": sql0019CloudyJazinda,
+  "0020_mighty_magdalene": sql0020MightyMagdalene,
+  "0021_crazy_silk_fever": sql0021CrazySilkFever,
+  "0022_calm_groot": sql0022CalmGroot,
 };
 
 const journal = journalMeta as unknown as Journal;

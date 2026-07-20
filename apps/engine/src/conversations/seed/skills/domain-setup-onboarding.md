@@ -3,12 +3,12 @@ slug: domain-setup-onboarding
 scope: global
 title: Modeling a Domain with Skills and Knowledge Sources
 description: When the user asks how to teach sk about a whole business domain (an expense policy, a compliance framework, music theory), explain the connector + skill + knowledge-source trio and offer to set it up. Grounds the concept via the sk-platform-reference knowledge corpus.
-activates_when: [{"kind":"intent_keyword","word":"model a domain"},{"kind":"intent_keyword","word":"model my domain"},{"kind":"intent_keyword","word":"set up a domain"},{"kind":"intent_keyword","word":"teach the engine"},{"kind":"intent_keyword","word":"teach sk about"},{"kind":"intent_keyword","word":"domain knowledge"},{"kind":"intent_keyword","word":"add a knowledge source"},{"kind":"intent_keyword","word":"add knowledge"},{"kind":"intent_keyword","word":"author a skill"},{"kind":"intent_keyword","word":"skills vs knowledge"},{"kind":"intent_keyword","word":"skills and knowledge sources"}]
+activates_when: [{"kind":"intent_keyword","word":"model a domain"},{"kind":"intent_keyword","word":"model my domain"},{"kind":"intent_keyword","word":"set up a domain"},{"kind":"intent_keyword","word":"teach the engine"},{"kind":"intent_keyword","word":"teach sk about"},{"kind":"intent_keyword","word":"domain knowledge"},{"kind":"intent_keyword","word":"add a knowledge source"},{"kind":"intent_keyword","word":"add knowledge"},{"kind":"intent_keyword","word":"author a skill"},{"kind":"intent_keyword","word":"skills vs knowledge"},{"kind":"intent_keyword","word":"skills and knowledge sources"},{"kind":"intent_keyword","word":"claude code"},{"kind":"intent_keyword","word":"codex"},{"kind":"intent_keyword","word":"coding agent"},{"kind":"intent_keyword","word":"session briefing"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [onboarding, skills, knowledge-sources, domain-modeling, authoring-only]
-version: 1
+version: 2
 ---
 
 # Modeling a Domain with Skills and Knowledge Sources
@@ -62,10 +62,12 @@ user accepts. Call one state-changing tool at a time and wait for confirmation.
   uploaded (an `@attachment` reference). Suggest tags so later searches can be
   narrowed. This is the fastest win — do it first when a document is available.
 - **Skill (operator-owned).** Offer to author the conventions as a Skill with
-  `create_skill`, or — when the convention emerges from how their workflows
-  actually run — to let the engine propose it as a Skill Candidate the operator
-  promotes. Be honest: a Skill is prescriptive guidance a human owns; confirm the
-  wording before you create it, and never claim a Skill was created that was not.
+  `create_skill` — this files a PROPOSED skill candidate for human review, never
+  an active skill. The operator approves it in this session
+  (`approve_skill_candidate`) or later via `sk learnings review`; engine-detected
+  patterns land in the same candidate queue. Be honest: a Skill is prescriptive
+  guidance a human owns; confirm the wording before you propose it, and never
+  claim a Skill is active while it is still a candidate.
 - **Connector (as needed).** If the domain has an API the user wants to call,
   route into the normal connector-creation flow.
 
@@ -78,3 +80,14 @@ user accepts. Call one state-changing tool at a time and wait for confirmation.
 - The shape is domain-agnostic — the same trio models an expense policy, tax
   law, a product catalog, or music theory. Reassure the user that whatever their
   field, the pattern is the same.
+
+## Consuming the domain from coding agents
+
+Once the trio exists, coding agents (Claude Code, Codex) can work inside the
+domain: tag the domain's Skills and Knowledge Sources with `domain:<slug>`,
+have the user run `sk agent init --domains <slug>` in their repo, and every
+new session starts with the domain briefing and searches the knowledge with
+`search_knowledge_v2`. What sessions teach flows back as `session_learning`
+candidates reviewed via `sk learnings review`. Offer this as the follow-up
+when a user finishes modeling a domain and mentions Claude Code, Codex, or
+coding sessions.

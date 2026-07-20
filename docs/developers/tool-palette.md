@@ -7,7 +7,7 @@ arrives over chat or MCP.
 
 > **Status:** authoritative. See
 > [`apps/engine/src/tools/`](../../apps/engine/src/tools/) for the
-> implementation and `AGENTS.md` lines 142–185 for the subsystem map.
+> implementation and the subsystem map in `AGENTS.md` ("Architecture And Domain Safety").
 
 ## Why this exists
 
@@ -93,7 +93,7 @@ category — channel-scoped, not role-scoped.
 | Group | Tools |
 |---|---|
 | Conversational meta | `ask_user_confirm` · `ask_user_choice` · `ask_user_multi` · `ask_user_text` · `ask_user_form` · `cannot_help` · `list_skills` · `load_skill` · `list_attachments` · `preview_attachment` · `get_raw_result` |
-| Knowledge + docs (read) | `search_knowledge` · `search_docs` · `list_knowledge_sources` · `get_knowledge_source` |
+| Knowledge + docs (read) | `search_knowledge` · `read_knowledge` · `search_docs` · `list_knowledge_sources` · `get_knowledge_source` |
 | Workflows (read) | `list_workflows` · `get_workflow` · `find_workflow` |
 | Executions (read) | `list_executions` · `get_execution` · `inspect_execution` · `inspect_execution_step` |
 | Connector metadata (read) | `list_connectors` · `get_connector` · `find_connector` |
@@ -505,7 +505,7 @@ apps/engine/src/conversations/tools/
 - [`docs/concepts/glossary.md`](../concepts/glossary.md) — vocabulary (workflow, connector, skill).
 - [`docs/developers/input-surfaces.md`](./input-surfaces.md) — how chat/MCP/HTTP surfaces map to the conversation loop.
 - [`docs/admins/rbac-and-roles.md`](../admins/rbac-and-roles.md) — RBAC, audit, policy.
-- `AGENTS.md` lines 142–185 — subsystem map (the row for `tools` lives here).
+- `AGENTS.md`, section "Architecture And Domain Safety" — subsystem map (the row for `tools` lives here).
 
 ## Cutover state
 

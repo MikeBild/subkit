@@ -13,6 +13,7 @@ every API call.
 
 | command | requires | description | subcommands |
 | ------- | -------- | ----------- | ----------- |
+| `sk agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init` |
 | `sk apikeys` | `api_key:read` | Manage API keys | `create`, `list`, `revoke`, `rotate` |
 | `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
 | `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show`, `tail` |
@@ -34,7 +35,8 @@ every API call.
 | `sk install` | `connector:write` | Guided setup for enterprise integrations | `github`, `google-workspace`, `hubspot`, `jira`, `salesforce`, `slack`, `teams` |
 | `sk invites` | `identity:read` | Manage user-provisioning invites | `list`, `revoke` |
 | `sk join` | — | Redeem an invite to provision your personal API key (no login required) | — |
-| `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `list`, `patch`, `search` |
+| `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `import`, `list`, `patch`, `search` |
+| `sk learnings` | `skill:read` | Review learnings captured from coding-agent sessions | `list`, `review` |
 | `sk login` | — | Authenticate against a subkit engine | — |
 | `sk logout` | — | Drop the active profile | — |
 | `sk logs` | `audit:read` | Tail the engine's runtime log ring. --follow streams via SSE; --since accepts 5m / 2h / 1d / ISO-8601. | — |
@@ -55,7 +57,7 @@ every API call.
 | `sk settings` | `settings:read` | List, read, write, or interactively configure engine settings (secrets always masked) | `configure`, `get`, `list`, `set` |
 | `sk show` | — | Show cached metadata for a session by id or alias | — |
 | `sk skill-candidates` | `skill:read` | Manage skill candidates | `approve`, `get`, `list`, `reject` |
-| `sk skills` | `skill:read` | Manage skills | `activate`, `archive`, `create`, `delete`, `edit`, `get`, `history`, `list`, `patch`, `restore` |
+| `sk skills` | `skill:read` | Manage skills | `activate`, `archive`, `create`, `delete`, `edit`, `get`, `history`, `list`, `patch`, `restore`, `sync` |
 | `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `connectors`, `events`, `executions`, `llm` |
 | `sk status` | — | Print the active profile + engine reachability | — |
 | `sk subscriptions` | `subscription:read` | Manage event subscriptions | `create`, `delete`, `deliveries`, `get`, `list`, `patch`, `replay` |

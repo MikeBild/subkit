@@ -1,28 +1,10 @@
-// C19: Verify the knowledge chunker reads file bytes via the files table
-// (knowledge_sources.file_id) rather than the legacy source_uri text.
+// C19: Verify the knowledge service persists upload bytes into the
+// canonical `files` table and stamps `knowledge_sources.file_id`.
 //
-// CONTRACT STATUS: PARTIAL
-//
-// The schema (`knowledge_sources.file_id`) was shipped in migration 0019.
-// However, the knowledge service (`service.ts`) does NOT yet read via
-// `file_id` + objectStore.openRead. `createKnowledgeSource` and
-// `ingestKnowledgeSource` both accept a caller-supplied `upload.buffer`
-// and never consult `files.storage_uri` after the transaction commits.
-// The `file_id` foreign key is populated by the migration backfill only
-// for pre-existing rows; new rows created by the service leave `file_id`
-// NULL because the service does not insert into `files` first.
-//
-// This test locks the CURRENT behaviour so a future refactor can flip it
-// in lockstep:
-//   - Test A: createKnowledgeSource with source_type='file_upload' leaves
-//     file_id NULL (the gap — service must be wired to insert into `files`
-//     and set file_id).
-//   - Test B: source_type='url' uses source_uri (working, untouched by
-//     migration).
-//
-// TODO(files): wire knowledge service to insert into `files` table first,
-// obtain a file_id, and store it on the knowledge_sources row so the
-// chunker can read via objectStore.openRead(files.storage_uri).
+//   - Test A: createKnowledgeSource with source_type='file_upload'
+//     inserts a `files` row (via persistInlineUpload) and sets file_id.
+//   - Test B: source_type='url' keeps file_id NULL — source_uri is the
+//     canonical reference for URL sources.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
@@ -44,7 +26,7 @@ afterAll(async () => {
 }, 30_000);
 
 describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
-  test("source_type=file_upload: service creates knowledge_source row (current behaviour: file_id is NULL — gap)", async () => {
+  test("source_type=file_upload: service persists a files row and sets file_id", async () => {
     const result = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -71,19 +53,16 @@ describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
     expect(rows).toHaveLength(1);
     const ksRow = rows[0]!;
 
-    // TODO(files): this assertion should FAIL after the fix is shipped.
-    // Once the service is wired to insert into `files` first, file_id will
-    // be non-null and this test must be updated to assert it IS set.
-    expect(ksRow.file_id).toBeNull();
+    expect(ksRow.file_id).not.toBeNull();
 
-    // Confirm no `files` row was inserted for this knowledge source.
-    // After the fix, a `files` row should exist and ksRow.file_id should
-    // reference it.
+    // The service wrote a `files` row and ksRow.file_id references it.
     const fileRows = await ctx.testDb.db
       .select()
       .from(files)
       .where(and(eq(files.tenant_id, ctx.tenantId), eq(files.filename, "c19-test.md")));
-    expect(fileRows).toHaveLength(0); // gap: no file row written by service
+    expect(fileRows).toHaveLength(1);
+    expect(fileRows[0]!.id).toBe(ksRow.file_id as string);
+    expect(fileRows[0]!.storage_uri.length).toBeGreaterThan(0);
   });
 
   test("source_type=url: source_uri is canonical reference (untouched by files migration)", async () => {

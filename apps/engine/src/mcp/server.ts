@@ -50,6 +50,10 @@ const BASE_INTRO = [
   "",
   "Tools are grouped into workflow tools (find, inspect, and run your workflows) and",
   "conversation/session tools (author, refine, and commit workflows through a guided chat).",
+  "",
+  "Grounding: for questions about the tenant's business domains (conventions, runbooks,",
+  "internal APIs), call `search_knowledge_v2` FIRST and answer from the hits — do not",
+  "answer from prior knowledge. If the search returns nothing, say so instead of guessing.",
 ].join("\n");
 
 export async function createMcpServer(p: CreateMcpServerParams): Promise<Server> {

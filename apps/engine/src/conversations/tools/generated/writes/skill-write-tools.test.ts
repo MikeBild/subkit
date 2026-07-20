@@ -1,8 +1,9 @@
 // Integration + unit tests for the skill MCP write tools.
 //
 // Coverage:
-//  (a) create_skill  — skill row created, domain audit (skill.created),
-//                      surface audit (conversation.create_skill), returned audit_log_id.
+//  (a) create_skill  — files a PROPOSED session_learning candidate (review
+//                      queue), skill_candidate.proposed audit, NO skill row,
+//                      NO skill.created audit; identical re-proposal dedups.
 //  (b) update_skill  — patch applied; missing id → not_found.
 //  (c) delete_skill  — deleted; missing id → not_found.
 //  (d) tenant isolation — a skill from another tenant is not updatable/deletable.
@@ -28,10 +29,12 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { proposeLearning } from "../../../../agent/sessions.ts";
 import { AuditAction } from "../../../../audit/types.ts";
-import { auditLog, tenants } from "../../../../db/schema/index.ts";
+import { auditLog, skillCandidates, skills, tenants } from "../../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../../db/tests/setup.ts";
 import { EngineClient } from "../../../../engine-client/index.ts";
+import { createSkill } from "../../../../skills/service.ts";
 import { dispatchTool } from "../../../../tools/dispatcher.ts";
 import { conversationToolProvider } from "../../../../tools/providers/conversation.ts";
 import { buildRegistry } from "../../../../tools/registry.ts";
@@ -97,13 +100,14 @@ describe("skill write tools — integration (a–d)", () => {
 
   // ─── (a) create_skill ───────────────────────────────────────────────────────
 
-  describe("(a) create_skill — happy path", () => {
-    test("skill row created + domain audit (skill.created) + surface audit (conversation.create_skill) + audit_log_id returned", async () => {
+  describe("(a) create_skill — proposes a candidate, never an active skill", () => {
+    test("files a proposed session_learning candidate + skill_candidate.proposed audit; NO skill row", async () => {
       const ctx = makeCtx(tenantAId);
       const result = await createSkillTool.execute(ctx, {
         scope: "global",
         title: "Test Skill Alpha",
         body: "Guide body for testing create_skill",
+        tags: ["domain:testing"],
       });
 
       expect(result.ok).toBe(true);
@@ -111,43 +115,206 @@ describe("skill write tools — integration (a–d)", () => {
 
       const data = result.data as {
         created: boolean;
-        skill: { id: string; title: string; tenant_id: string };
-        audit_log_id: string;
+        action: string;
+        candidate_id: string;
+        next_best_actions: string[];
       };
-      expect(data.created).toBe(true);
-      expect(data.skill.title).toBe("Test Skill Alpha");
-      expect(data.skill.tenant_id).toBe(tenantAId);
-      expect(typeof data.skill.id).toBe("string");
-      expect(typeof data.audit_log_id).toBe("string");
+      // Honest envelope: nothing tenant-visible was activated.
+      expect(data.created).toBe(false);
+      expect(data.action).toBe("proposed");
+      expect(typeof data.candidate_id).toBe("string");
+      expect(data.next_best_actions).toContain("approve_skill_candidate");
 
-      // Domain audit: skill.created emitted inside skillsSvc.createSkill.
-      const domainRows = await testDb.db
-        .select({ action: auditLog.action, resource_id: auditLog.resource_id })
+      // The candidate landed in the review queue (same kind the
+      // `sk learnings review` queue and welcome-row count select on).
+      const candidateRows = await testDb.db
+        .select({
+          status: skillCandidates.status,
+          pattern_kind: skillCandidates.pattern_kind,
+          title: skillCandidates.title,
+        })
+        .from(skillCandidates)
+        .where(
+          and(eq(skillCandidates.tenant_id, tenantAId), eq(skillCandidates.id, data.candidate_id)),
+        );
+      expect(candidateRows.length).toBe(1);
+      expect(candidateRows[0]?.status).toBe("proposed");
+      expect(candidateRows[0]?.pattern_kind).toBe("session_learning");
+      expect(candidateRows[0]?.title).toBe("Test Skill Alpha");
+
+      // Candidate lifecycle audit exists …
+      const candidateAudit = await testDb.db
+        .select({ action: auditLog.action })
         .from(auditLog)
         .where(
           and(
             eq(auditLog.tenant_id, tenantAId),
-            eq(auditLog.action, AuditAction.SKILL_CREATED),
-            eq(auditLog.resource_id, data.skill.id),
+            eq(auditLog.action, AuditAction.SKILL_CANDIDATE_PROPOSED),
+            eq(auditLog.resource_id, data.candidate_id),
           ),
         );
-      expect(domainRows.length).toBe(1);
+      expect(candidateAudit.length).toBe(1);
 
-      // Surface audit: conversation.create_skill emitted by the tool itself.
-      const surfaceRows = await testDb.db
-        .select({ id: auditLog.id, action: auditLog.action, resource_id: auditLog.resource_id })
+      // … and NO active skill and NO skill.created audit were produced.
+      const skillRows = await testDb.db
+        .select({ id: skills.id })
+        .from(skills)
+        .where(and(eq(skills.tenant_id, tenantAId), eq(skills.title, "Test Skill Alpha")));
+      expect(skillRows.length).toBe(0);
+      const skillCreatedAudit = await testDb.db
+        .select({ id: auditLog.id })
         .from(auditLog)
         .where(
+          and(eq(auditLog.tenant_id, tenantAId), eq(auditLog.action, AuditAction.SKILL_CREATED)),
+        );
+      expect(skillCreatedAudit.length).toBe(0);
+    });
+
+    test("identical re-proposal dedups; a REVISED body files a fresh candidate", async () => {
+      // Content is part of the identity on purpose: upsertFromSignal's
+      // update branch persists only confidence/version/evidence, so a
+      // title-only identity would report "updated" while silently
+      // keeping the OLD body — and a rejected title would block every
+      // future revision.
+      const ctx = makeCtx(tenantAId);
+      const first = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Dedup Skill",
+        body: "v1",
+      });
+      expect(first.ok).toBe(true);
+      const firstData = first.data as { candidate_id: string };
+
+      const identical = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Dedup Skill",
+        body: "v1",
+      });
+      expect(identical.ok).toBe(true);
+      const identicalData = identical.data as { candidate_id: string; action: string };
+      expect(identicalData.action).toBe("updated");
+      expect(identicalData.candidate_id).toBe(firstData.candidate_id);
+
+      const revised = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Dedup Skill",
+        body: "v2",
+      });
+      expect(revised.ok).toBe(true);
+      const revisedData = revised.data as { candidate_id: string; action: string };
+      expect(revisedData.action).toBe("proposed");
+      expect(revisedData.candidate_id).not.toBe(firstData.candidate_id);
+      // The revision's own body is what the reviewer will approve.
+      const rows = await testDb.db
+        .select({ body: skillCandidates.body })
+        .from(skillCandidates)
+        .where(
           and(
-            eq(auditLog.tenant_id, tenantAId),
-            eq(auditLog.action, "conversation.create_skill"),
-            eq(auditLog.resource_id, data.skill.id),
+            eq(skillCandidates.tenant_id, tenantAId),
+            eq(skillCandidates.id, revisedData.candidate_id),
           ),
         );
-      expect(surfaceRows.length).toBe(1);
+      expect(rows[0]?.body).toBe("v2");
+      // …and the stale v1 candidate was superseded, not left cluttering
+      // the review queue (revision retirement). Note: the title contains
+      // BOTH a lowercase "s" run and normal spaces — regression cover for
+      // the tagged-template \\s+ cooking bug (a single backslash made the
+      // SQL replace the LETTER "s", silently no-oping retirement).
+      const staleRows = await testDb.db
+        .select({ status: skillCandidates.status })
+        .from(skillCandidates)
+        .where(
+          and(
+            eq(skillCandidates.tenant_id, tenantAId),
+            eq(skillCandidates.id, firstData.candidate_id),
+          ),
+        );
+      expect(staleRows[0]?.status).toBe("superseded");
 
-      // The returned audit_log_id must be the surface audit row's id.
-      expect(surfaceRows[0]?.id).toBe(data.audit_log_id);
+      // Revert: re-proposing v1 verbatim REVIVES the superseded candidate
+      // (no human reviewed it — a "skipped: already reviewed" would lie)
+      // and retires v2 in turn.
+      const reverted = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Dedup Skill",
+        body: "v1",
+      });
+      expect(reverted.ok).toBe(true);
+      const revertedData = reverted.data as { candidate_id: string; action: string };
+      expect(revertedData.action).toBe("updated");
+      expect(revertedData.candidate_id).toBe(firstData.candidate_id);
+      const afterRevert = await testDb.db
+        .select({ id: skillCandidates.id, status: skillCandidates.status })
+        .from(skillCandidates)
+        .where(
+          and(eq(skillCandidates.tenant_id, tenantAId), eq(skillCandidates.title, "Dedup Skill")),
+        );
+      const byId = new Map(afterRevert.map((r) => [r.id, r.status]));
+      expect(byId.get(firstData.candidate_id)).toBe("proposed");
+      expect(byId.get(revisedData.candidate_id)).toBe("superseded");
+    });
+
+    test("a re-taught learning revives with the NEW body after a cross-title supersede", async () => {
+      // Cross-family case: save_learning fingerprints are title-only, so
+      // its revival MUST write the signal's content — resurrecting the
+      // stale body while reporting "updated" would silently drop what
+      // the user just re-taught.
+      const learned = await proposeLearning({
+        tenant_id: tenantAId,
+        title: "Retry With Backoff",
+        body: "body A",
+        domains: [],
+        confidence: "high",
+        evidence_summary: "test",
+        db: testDb.db,
+      });
+      expect(learned.action).toBe("proposed");
+
+      // An authored proposal under the same title retires the learning.
+      const ctx = makeCtx(tenantAId);
+      const authored = await createSkillTool.execute(ctx, {
+        scope: "global",
+        title: "Retry With Backoff",
+        body: "body B",
+      });
+      expect(authored.ok).toBe(true);
+
+      // Re-teaching with a NEW body revives the learning row carrying C.
+      const retaught = await proposeLearning({
+        tenant_id: tenantAId,
+        title: "Retry With Backoff",
+        body: "body C",
+        domains: [],
+        confidence: "high",
+        evidence_summary: "test",
+        db: testDb.db,
+      });
+      expect(retaught.action).toBe("updated");
+      expect(retaught.candidate_id).toBe(learned.candidate_id);
+      const rows = await testDb.db
+        .select({ status: skillCandidates.status, body: skillCandidates.body })
+        .from(skillCandidates)
+        .where(
+          and(
+            eq(skillCandidates.tenant_id, tenantAId),
+            eq(skillCandidates.id, String(learned.candidate_id)),
+          ),
+        );
+      expect(rows[0]?.status).toBe("proposed");
+      expect(rows[0]?.body).toBe("body C");
+    });
+
+    test("scope/entity mismatch fails at PROPOSAL time, not at the reviewer's approve step", async () => {
+      const ctx = makeCtx(tenantAId);
+      // connector scope without connector_id — the schema mirror of
+      // skills/service.ts validateScope rejects it before any row exists.
+      expect(
+        createSkillTool.execute(ctx, {
+          scope: "connector",
+          title: "Unbound Connector Skill",
+          body: "never approvable",
+        }),
+      ).rejects.toThrow();
     });
   });
 
@@ -157,13 +324,15 @@ describe("skill write tools — integration (a–d)", () => {
     test("happy path: title patch applied, audit_log_id returned", async () => {
       const ctx = makeCtx(tenantAId);
 
-      const created = await createSkillTool.execute(ctx, {
-        scope: "global",
-        title: "Before Update",
-        body: "Original body content",
-      });
-      expect(created.ok).toBe(true);
-      const { skill: seedSkill } = created.data as { skill: { id: string } };
+      // Seed via the admin/REST service — the conversational tool only
+      // proposes candidates now.
+      const seedSkill = await createSkill(
+        {
+          tenant_id: tenantAId,
+          input: { scope: "global", title: "Before Update", body: "Original body content" },
+        },
+        testDb.db,
+      );
 
       const result = await updateSkillTool.execute(ctx, {
         id: seedSkill.id,
@@ -201,13 +370,13 @@ describe("skill write tools — integration (a–d)", () => {
     test("happy path: skill deleted, id + audit_log_id returned", async () => {
       const ctx = makeCtx(tenantAId);
 
-      const created = await createSkillTool.execute(ctx, {
-        scope: "global",
-        title: "To Be Deleted",
-        body: "Ephemeral",
-      });
-      expect(created.ok).toBe(true);
-      const { skill: toDelete } = created.data as { skill: { id: string } };
+      const toDelete = await createSkill(
+        {
+          tenant_id: tenantAId,
+          input: { scope: "global", title: "To Be Deleted", body: "Ephemeral" },
+        },
+        testDb.db,
+      );
 
       const result = await deleteSkillTool.execute(ctx, { id: toDelete.id });
       expect(result.ok).toBe(true);
@@ -232,15 +401,14 @@ describe("skill write tools — integration (a–d)", () => {
 
   describe("(d) tenant isolation", () => {
     test("update_skill using another tenant's skill id → not_found (no cross-tenant update)", async () => {
-      // Seed a skill in tenant B.
-      const ctxB = makeCtx(tenantBId);
-      const created = await createSkillTool.execute(ctxB, {
-        scope: "global",
-        title: "Tenant B Only Skill",
-        body: "Belongs to tenant B",
-      });
-      expect(created.ok).toBe(true);
-      const { skill: bSkill } = created.data as { skill: { id: string } };
+      // Seed a skill in tenant B via the admin/REST service.
+      const bSkill = await createSkill(
+        {
+          tenant_id: tenantBId,
+          input: { scope: "global", title: "Tenant B Only Skill", body: "Belongs to tenant B" },
+        },
+        testDb.db,
+      );
 
       // Tenant A tries to update tenant B's skill — must get not_found, not a
       // cross-tenant mutation (engineClient filters by tenant_id).
@@ -255,14 +423,17 @@ describe("skill write tools — integration (a–d)", () => {
     });
 
     test("delete_skill using another tenant's skill id → not_found (no cross-tenant deletion)", async () => {
-      const ctxB = makeCtx(tenantBId);
-      const created = await createSkillTool.execute(ctxB, {
-        scope: "global",
-        title: "Tenant B Skill for Delete Guard",
-        body: "Belongs to tenant B",
-      });
-      expect(created.ok).toBe(true);
-      const { skill: bSkill } = created.data as { skill: { id: string } };
+      const bSkill = await createSkill(
+        {
+          tenant_id: tenantBId,
+          input: {
+            scope: "global",
+            title: "Tenant B Skill for Delete Guard",
+            body: "Belongs to tenant B",
+          },
+        },
+        testDb.db,
+      );
 
       const ctxA = makeCtx(tenantAId);
       const result = await deleteSkillTool.execute(ctxA, { id: bSkill.id });

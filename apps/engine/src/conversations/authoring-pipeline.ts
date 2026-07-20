@@ -52,10 +52,11 @@ import { runCriticAgent } from "./authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "./authoring-critic/gating.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
 import {
-  type DiscoveredConnectorEndpoints,
+  buildGroundingIndex,
   describeEndpointGroundingBlock,
   evaluateEndpointGrounding,
 } from "./endpoint-grounding.ts";
+import { groundingFingerprint } from "./intent-fingerprint.ts";
 import { detectNamedOutputFormat } from "./output-format.ts";
 import { type RecordedEvalReport, runRecordedEval } from "./recorded-eval.ts";
 import type { ToolContext } from "./tools/index.ts";
@@ -543,22 +544,7 @@ export async function runAuthoringPipeline(
     "info",
     `ground · ${discoveredEndpointCount} discovered endpoint(s), docs for ${docsByConnector.size}/${connectors.length} connector(s)`,
   );
-  const groundingIndex = new Map<string, DiscoveredConnectorEndpoints>();
-  for (const c of connectors) {
-    const index = discoveredById.get(c.id);
-    if (!index) continue;
-    const projected: DiscoveredConnectorEndpoints = {
-      slug: c.slug,
-      base_url: c.base_url,
-      endpoints: index.endpoints.map((e) => ({
-        method: e.method,
-        path: e.path,
-        request_content_type: e.request_content_type,
-      })),
-    };
-    groundingIndex.set(c.id, projected);
-    groundingIndex.set(c.slug, projected);
-  }
+  const groundingIndex = buildGroundingIndex(connectors, discoveredById);
 
   // ---------------------------------------------------- GENERATE/EVALUATE
   // One shared deadline for the whole pipeline (generate passes + the
@@ -908,6 +894,23 @@ export async function runAuthoringPipeline(
   };
   const merged = { ...workflowDraft, ...extra } as WorkflowDraftDocument;
   const nextDraft = withWorkflowDraft(currentDraft, merged, "workflow_authored_one_shot");
+  // Stamp the grounding this draft was built on (a hash of the discovered
+  // endpoint projection, not the data) so `/context` can flag it stale at
+  // resume when the connector schema has since changed. The connector set is
+  // stored alongside on AuthoringState — NOT on the workflow draft, whose
+  // normalize allowlist strips unknown fields — so the snapshot recompute can
+  // re-read the discovery index for exactly these connectors. Only the
+  // connectors that actually CONTRIBUTED endpoints to the fingerprint are
+  // stored: a connector that had no index here must not later read as `stale`
+  // simply because it GAINED one. Fail-open: a null fingerprint means no
+  // advisory.
+  const groundingFp = groundingFingerprint(groundingIndex);
+  if (groundingFp && nextDraft.state) {
+    nextDraft.state.grounding_fingerprint = groundingFp;
+    nextDraft.state.grounding_connector_ids = connectors
+      .filter((c) => (discoveredById.get(c.id)?.endpoints.length ?? 0) > 0)
+      .map((c) => c.id);
+  }
   await ctx.setDraft(nextDraft);
 
   const findingCount = recordedEval.expressions.filter((f) => f.status !== "ok").length;

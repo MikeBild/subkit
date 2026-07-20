@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { _resetLoggerForTests, errorFields, logger, reconfigureLogger } from "./logger.ts";
+import { withContext } from "./context.ts";
+import {
+  _resetLoggerForTests,
+  errorFields,
+  logger,
+  reconfigureLogger,
+  reconfigureObservability,
+} from "./logger.ts";
 import { redact } from "./redact.ts";
 
 describe("redact", () => {
@@ -160,5 +167,119 @@ describe("ndjson field-length cap", () => {
     );
     const deep = (rec.nested as Record<string, unknown>).deep as string;
     expect(deep).toContain("…[truncated 952 chars]");
+  });
+
+  test("stamps OTel resource identity and W3C trace/span context", () => {
+    reconfigureObservability({
+      service_name: "subkit",
+      deployment_environment: "production",
+    });
+    const rec = captureNdjson(() =>
+      withContext(
+        {
+          trace_id: "4bf92f3577b34da6a3ce929d0e0e4736",
+          span_id: "00f067aa0ba902b7",
+        },
+        () => logger.info({ module: "http", action: "contract.test" }),
+      ),
+    );
+    expect(rec["service.name"]).toBe("subkit");
+    expect(rec["service.version"]).toBeString();
+    expect(rec["deployment.environment.name"]).toBe("production");
+    expect(rec.trace_id).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+    expect(rec.span_id).toBe("00f067aa0ba902b7");
+  });
+});
+
+describe("sd-daemon priority prefix", () => {
+  // Raw-line capture (unlike captureNdjson, which JSON.parses and would
+  // choke on the `<N>` marker). Env mutations are applied BEFORE
+  // _resetLoggerForTests() so defaultSdDaemonPrefix() re-reads them.
+  function captureRawLine(env: Record<string, string | undefined>, fn: () => void): string {
+    const savedEnv: Record<string, string | undefined> = {
+      SK_LOG_SD_DAEMON: process.env.SK_LOG_SD_DAEMON,
+      JOURNAL_STREAM: process.env.JOURNAL_STREAM,
+    };
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    _resetLoggerForTests();
+    reconfigureLogger({ format: "ndjson", level: "trace" });
+    const orig = process.stdout.write.bind(process.stdout);
+    let captured = "";
+    process.stdout.write = ((chunk: string | Uint8Array): boolean => {
+      captured += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      fn();
+    } finally {
+      process.stdout.write = orig as typeof process.stdout.write;
+      for (const [k, v] of Object.entries(savedEnv)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      _resetLoggerForTests();
+    }
+    return captured.trim();
+  }
+
+  test("maps error→<3> and warn→<4> when SK_LOG_SD_DAEMON=1", () => {
+    const errLine = captureRawLine({ SK_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined }, () =>
+      logger.error({ module: "t", action: "a", msg: "boom" }),
+    );
+    expect(errLine.startsWith("<3>{")).toBe(true);
+    const warnLine = captureRawLine({ SK_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined }, () =>
+      logger.warn({ module: "t", action: "a" }),
+    );
+    expect(warnLine.startsWith("<4>{")).toBe(true);
+  });
+
+  test("maps fatal→<2>, info→<6>, debug/trace→<7>", () => {
+    const env = { SK_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined };
+    expect(
+      captureRawLine(env, () => logger.fatal({ module: "t", action: "a" })).startsWith("<2>{"),
+    ).toBe(true);
+    expect(
+      captureRawLine(env, () => logger.info({ module: "t", action: "a" })).startsWith("<6>{"),
+    ).toBe(true);
+    expect(
+      captureRawLine(env, () => logger.debug({ module: "t", action: "a" })).startsWith("<7>{"),
+    ).toBe(true);
+    expect(
+      captureRawLine(env, () => logger.trace({ module: "t", action: "a" })).startsWith("<7>{"),
+    ).toBe(true);
+  });
+
+  test("keeps the JSON payload unchanged after the marker", () => {
+    const line = captureRawLine({ SK_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined }, () =>
+      logger.error({ module: "t", action: "a", msg: "boom" }),
+    );
+    const rec = JSON.parse(line.slice("<3>".length)) as Record<string, unknown>;
+    expect(rec.level).toBe("error");
+    expect(rec.module).toBe("t");
+    expect(rec.msg).toBe("boom");
+  });
+
+  test("emits bare JSON without the flag and without JOURNAL_STREAM", () => {
+    const line = captureRawLine({ SK_LOG_SD_DAEMON: undefined, JOURNAL_STREAM: undefined }, () =>
+      logger.error({ module: "t", action: "a" }),
+    );
+    expect(line.startsWith("{")).toBe(true);
+  });
+
+  test("auto-enables when systemd exports JOURNAL_STREAM", () => {
+    const line = captureRawLine({ SK_LOG_SD_DAEMON: undefined, JOURNAL_STREAM: "9:12345" }, () =>
+      logger.error({ module: "t", action: "a" }),
+    );
+    expect(line.startsWith("<3>{")).toBe(true);
+  });
+
+  test("SK_LOG_SD_DAEMON=0 force-disables even under JOURNAL_STREAM", () => {
+    const line = captureRawLine({ SK_LOG_SD_DAEMON: "0", JOURNAL_STREAM: "9:12345" }, () =>
+      logger.error({ module: "t", action: "a" }),
+    );
+    expect(line.startsWith("{")).toBe(true);
   });
 });

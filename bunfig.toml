@@ -2,4 +2,7 @@
 registry = "https://registry.npmjs.org/"
 
 [test]
-preload = ["./apps/sk/src/tests/setup-isolated-home.ts"]
+preload = [
+  "./apps/sk/src/tests/setup-isolated-home.ts",
+  "./apps/engine/src/tests/setup-deterministic-env.ts",
+]

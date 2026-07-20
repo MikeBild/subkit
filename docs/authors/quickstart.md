@@ -30,6 +30,9 @@ Your operator has given you **one** of the following. Pick the matching path.
 - **Portal-token link** — you are a scoped end-user → Path B.
 - **Slack / Teams / Google Chat** where the sk bot is installed → Path C.
 - **An MCP client** (Claude Desktop, Cursor, …) → Path D.
+- **Claude Code or Codex** → [Use sk from a coding agent](./coding-agents.md) — the
+  coding-agent loop needs a briefing hook and domain-tagged knowledge on top of
+  the MCP registration, so it has its own page.
 
 > **Want to run your own engine first?** [Self-host quickstart](../developers/self-host.md) takes you from the Docker image to a first connector and workflow.
 
@@ -77,6 +80,10 @@ Add the engine as a streamable-HTTP MCP server:
 ```
 
 Your client discovers workflows, prompts, and resources automatically. See [input surfaces](../developers/input-surfaces.md) for MCP details.
+
+**Claude Code / Codex** register from the shell rather than a JSON file, and
+want the briefing hook and domain-tagged knowledge as well — that whole path is
+[Use sk from a coding agent](./coding-agents.md).
 
 ## Troubleshooting
 

@@ -5,8 +5,10 @@
 //   - the literal token is NOT visible in the rendered frame
 //     (no leak into transcript / composer);
 //   - the redirect hint IS shown with the safe 6-char prefix sample;
-//   - submitting again sends the masked nudge (not the original token)
-//     to `onPrompt`;
+//   - submitting again sends the typed `request_credential_form` event
+//     (detected kind as `credential_hint`) plus the benign prose
+//     fallback as the message — never the original token — to
+//     `onPrompt`;
 //   - Esc clears the redirect without sending anything.
 //
 // Tests use a tmp history path so they don't touch ~/.sk.
@@ -111,12 +113,12 @@ const DOP_TOKEN = "dop_v1_a9053683ac4c864800f693f0c7b325d880a44f056bd884c8d975db
 
 describe("composer: input-side credential filter", () => {
   test("paste of a dop_v1_… token is intercepted before reaching onPrompt", async () => {
-    const calls: string[] = [];
+    const calls: Array<{ text: string; opts: Parameters<InkAppProps["onPrompt"]>[1] }> = [];
     const instance = render(
       <InkApp
         {...defaultProps({
-          onPrompt: async (text) => {
-            calls.push(text);
+          onPrompt: async (text, opts) => {
+            calls.push({ text, opts });
             return {
               events: framesOf({ type: "completed", status: "active" }),
               conversationId: "c-secret",
@@ -148,13 +150,23 @@ describe("composer: input-side credential filter", () => {
     expect(frame).not.toContain(DOP_TOKEN);
 
     // Press Enter again to confirm the redirect — the engine should
-    // receive the masked nudge instead of the raw paste.
+    // receive the typed event (+ benign prose fallback as the message)
+    // instead of the raw paste.
     await pressEnter(instance);
     await tick(40);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toBe(REQUEST_CREDENTIAL_FORM_FALLBACK);
-    expect(calls[0]).not.toContain(DOP_TOKEN);
+    // The typed event drives the engine's deterministic masked-form
+    // short-circuit; the detected kind rides as credential_hint.
+    expect(calls[0]?.opts?.event).toEqual({
+      type: "request_credential_form",
+      credential_hint: "digitalocean_pat",
+    });
+    // The message is the benign prose fallback (older-engine
+    // degradation path), never the original token.
+    expect(calls[0]?.text).toBe(REQUEST_CREDENTIAL_FORM_FALLBACK);
+    expect(calls[0]?.text).not.toContain(DOP_TOKEN);
+    expect(JSON.stringify(calls[0])).not.toContain(DOP_TOKEN);
     instance.unmount();
   });
 

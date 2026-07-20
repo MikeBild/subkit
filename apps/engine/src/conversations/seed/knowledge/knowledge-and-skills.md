@@ -4,7 +4,7 @@ name: sk Platform Reference — Knowledge Sources & Skills
 description: How Skills and Knowledge Sources differ, when to use which, how the engine processes and searches knowledge, and how to model a whole business domain with a connector plus skills plus knowledge sources.
 tags: [sk-platform-reference, skills, knowledge-sources, domain-modeling, concepts]
 scope: global
-version: 1
+version: 3
 ---
 
 # Knowledge Sources & Skills
@@ -93,13 +93,49 @@ tax law, a product catalog, or music theory — a `music-theory-authoring` Skill
 for the conventions plus `harmonic-functions`, `chord-voicings`, and a glossary
 as Knowledge Sources.
 
+## Coding-agent sessions: briefing in, learnings back
+
+Domains connect Skills and Knowledge Sources to external coding agents
+(Claude Code, Codex). A domain is the tag `domain:<slug>` on both primitives;
+a repo declares which domains it works in via `.sk/agent.json` (written by
+`sk agent init`).
+
+- **In:** every new session gets a budgeted briefing (`GET /v1/agent/briefing`)
+  carrying the domain's active Skills verbatim and an INDEX of its Knowledge
+  Sources — details stay behind `search_knowledge_v2` so sessions look up
+  instead of preloading. `sk skills sync` additionally materializes the Skills
+  as SKILL.md files for offline use.
+- **Back:** session transcripts (`POST /v1/agent/sessions`, wired by the
+  SessionEnd hook) and explicit `save_learning` calls produce
+  `session_learning` Skill Candidates. They coexist in the review queue,
+  dedup by normalized title + domains, and become active domain-tagged Skills
+  only through `sk learnings review` — the same human gate every other
+  candidate passes.
+
 ## Creating each
 
 - **Knowledge Source** — self-serve. In a Conversation, upload or paste the
   document and ask to add it as a Knowledge Source (tag it while you are there).
   Scriptable: `sk knowledge-sources create --file ./runbook.md --tags "..."`, or
   `POST /v1/knowledge-sources`.
+- **Knowledge bundle (whole directory)** — import a markdown directory
+  (Obsidian vault, agent wiki, OKF bundle) as ONE source with one passage per
+  file: `sk knowledge-sources import ./team-wiki` or `/knowledge import
+  ./team-wiki` in the REPL (`POST /v1/knowledge-sources/bundle`). Upsert by
+  slug — re-imports of unchanged content are no-ops. Frontmatter is read
+  tolerantly: `type: Runbook` becomes a filterable `type:runbook` tag; files
+  without frontmatter import fine; `index.md`/`log.md` are skipped.
+
 - **Skill** — operator-owned. Author one in a Conversation, from the CLI
   (`sk skills create --file ./skill.json`, a SkillDef JSON), or promote a
   detected Skill Candidate (`sk skill-candidates approve <id>`). Skills are not
   created silently — a human always confirms what becomes canonical guidance.
+
+## Reading knowledge back
+
+`search_knowledge_v2` returns ranked snippets. When a snippet is not enough
+("read me the deploy runbook"), `read_knowledge` pages through a source's FULL
+content — pass `path` (e.g. `/runbooks/deploy.md`) for one file of a bundle, or
+repeat with `next_offset` for everything. Raw HTTP:
+`GET /v1/knowledge-sources/{id}/chunks`. Both are RBAC-gated by
+`knowledge:read`.

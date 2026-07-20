@@ -17,7 +17,7 @@
 
 import { and, desc, eq, sql } from "drizzle-orm";
 import { assertInsertRow } from "../../db/assert-insert.ts";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import { conversationToolCalls, mcpTasks } from "../../db/schema/index.ts";
 
 /**
@@ -117,7 +117,7 @@ export async function setMcpTaskJobId(
 export async function getMcpTask(
   tenant_id: string,
   task_id: string,
-  db: Db,
+  db: Executor,
 ): Promise<McpTaskRow | null> {
   const [row] = await db
     .select()
@@ -165,7 +165,7 @@ export async function setMcpTaskFailureIfNotTerminal(
   tenant_id: string,
   task_id: string,
   failure_reason: string,
-  db: Db,
+  db: Executor,
 ): Promise<boolean> {
   const rows = await db
     .update(mcpTasks)

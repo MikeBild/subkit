@@ -45,7 +45,13 @@ same audit — only the way the run is initiated differs.
 |---|---|---|
 | `request` | (none) | Default. Run is initiated on demand — chat `run_workflow`, MCP, the CLI, or `POST /v1/executions`. Inline runs complete on the request path; `async: true` is honoured only for `source=saved`. |
 | `webhook` | `source` (slug), `events[]` (provider event names; empty = any), `verify` (`stripe-signature` \| `github-hmac` \| `none`) | Reverse-bound to a `webhooks_inbound` row. Inbound posts are signature-verified before any processing; replay-id deduplication suppresses retried deliveries. |
-| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N`), `tz` (IANA, default `UTC`); optional `business_days_only`, `skip_dates[]` | Reverse-bound to a `workflows_schedules` row. The reconciler validates the cron at bind time and fires at the operator's local wall-clock time. `business_days_only` skips weekends; `skip_dates` declares holidays/freezes explicitly. A missed firing fires on the next reconciler pass rather than being silently skipped. |
+| `schedule` | `cron` (5-field `m h dom mon dow` or `every:N`), `tz` (IANA, default `UTC`); optional `execution_mode` (`dev` \| `prod`, default `prod`), `business_days_only`, `skip_dates[]` | Reverse-bound to a `workflows_schedules` row. The reconciler validates the cron at bind time and fires at the operator's local wall-clock time. Scheduled automation targets production connectors by default; set `execution_mode: dev` explicitly for an authoring loop. `business_days_only` skips weekends; `skip_dates` declares holidays/freezes explicitly. A missed firing fires on the next reconciler pass rather than being silently skipped. |
+
+The execution mode is persisted on the schedule and copied into every queued
+execution. It is not inferred from connector availability. This keeps the immutable
+execution record, connector resolution, audit trail, and warning semantics aligned:
+a production schedule records `execution_mode=prod` and resolves production
+connectors without a misleading environment-fallback warning.
 
 Setting `webhook` or `schedule` reverse-binds the inbound binding or cron schedule
 keyed on `(tenant_id, workflow_id)` at save time and removes the binding on delete

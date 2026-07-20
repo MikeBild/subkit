@@ -10,7 +10,12 @@ import { eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
 import * as invokeModule from "../../llm/core/invoke.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
-import { analyzeKnowledgeSource, createKnowledgeSource, getKnowledgeSource } from "../service.ts";
+import {
+  analyzeKnowledgeSource,
+  createKnowledgeSource,
+  getKnowledgeSource,
+  updateKnowledgeSource,
+} from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip.
@@ -95,6 +100,117 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  test("preserves namespaced tags (domain:*) and replaces only topical tags", async () => {
+    // Regression: analysis used to REPLACE the whole tag set, silently
+    // dropping `domain:<slug>` — the source vanished from its domain
+    // briefing and tag-filtered search until the operator re-tagged it.
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: {
+          name: "Domain Tagged Doc",
+          scope: "global",
+          tags: ["domain:harmoniqs", "old-note"],
+        },
+        upload: {
+          buffer: Buffer.from("# Harmony\n\nCircle of fifths and scale chords."),
+          filename: "harmony.md",
+          mime: "text/markdown",
+        },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    expect(source.tags).toEqual(["domain:harmoniqs", "old-note"]);
+
+    const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
+      makeInvokeResult({
+        description: "Fundamentals of harmony.",
+        tags: ["music-theory", "chords"],
+      }),
+    );
+    try {
+      const enriched = await analyzeKnowledgeSource(
+        { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
+        ctx.testDb.db,
+      );
+      expect(enriched!.tags).toEqual(["domain:harmoniqs", "music-theory", "chords"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("only name-shaped namespace prefixes are structural — and analysis mints no routing keys", async () => {
+    // `isStructuralTag`: NAME-shaped prefix (letters/digits/underscore,
+    // hyphens inside, Unicode) + colon + content directly after. Prose or
+    // punctuation colons ("note: x", "note about: chords", "q&a:faq") must
+    // not pin a tag forever; `café:paris` stays structural.
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: {
+          name: "Colon Tagged Doc",
+          scope: "global",
+          tags: ["domain:harmoniqs", "café:paris", "note: x", "note about: chords", "q&a:faq"],
+        },
+        upload: {
+          buffer: Buffer.from("# Chords\n\nScale chords in a major key."),
+          filename: "chords.md",
+          mime: "text/markdown",
+        },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
+      makeInvokeResult({
+        description: "Chord theory.",
+        // `domain:evil` is structural-shaped model output — analysis must
+        // never mint a routing key, only replace topical tags.
+        tags: ["chords", "domain:evil"],
+      }),
+    );
+    try {
+      const enriched = await analyzeKnowledgeSource(
+        { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
+        ctx.testDb.db,
+      );
+      expect(enriched!.tags).toEqual(["domain:harmoniqs", "café:paris", "chords"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("an explicit tags PATCH replaces wholesale — the one way to re-home a source", async () => {
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: {
+          name: "Re-homed Doc",
+          scope: "global",
+          tags: ["domain:harmoniqs", "music-theory"],
+        },
+        upload: {
+          buffer: Buffer.from("# Relocation\n\nThis source changes domain."),
+          filename: "relocation.md",
+          mime: "text/markdown",
+        },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    const patched = await updateKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        id: source.id,
+        patch: { tags: ["domain:blog-de", "music-theory"] },
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    expect(patched!.tags).toEqual(["domain:blog-de", "music-theory"]);
   });
 
   test("does NOT overwrite an existing description unless force is set", async () => {

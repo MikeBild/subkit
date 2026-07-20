@@ -118,6 +118,9 @@ function runCoverage(subsystemDir: string): CoverageRow[] {
         "00000000000000000000000000000000000000000000000000000000000000aa",
     },
     encoding: "utf8",
+    // Route suites log ~1MB+ of structured JSON; the 1MB spawnSync default
+    // kills the child with ENOBUFS before the coverage table prints.
+    maxBuffer: 64 * 1024 * 1024,
   });
   // bun prints the coverage table on stderr alongside the test summary.
   const stream = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;

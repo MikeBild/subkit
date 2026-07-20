@@ -11,6 +11,7 @@ import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { discoveryArtifacts, discoveryFiles, discoveryRuns } from "../db/schema/discovery.ts";
+import { fileLinks } from "../db/schema/files.ts";
 import { detectFormat, parseFileToChunks } from "../knowledge/parsers.ts";
 import { logger } from "../logging/logger.ts";
 import type {
@@ -158,6 +159,22 @@ export async function createDiscoveryRun(
       .returning();
 
     assertInsertRow(run, "discovery_runs");
+
+    // Link the persisted raw-archive file (canonical `files` row) to the
+    // run. The extracted text still lands in `discovery_files` below —
+    // this link is what keeps the original binary upload retrievable.
+    if (p.archive_file_id) {
+      await tx
+        .insert(fileLinks)
+        .values({
+          tenant_id: p.tenant_id,
+          file_id: p.archive_file_id,
+          resource_type: "discovery_run",
+          resource_id: run.id,
+          role: "archive",
+        })
+        .onConflictDoNothing();
+    }
 
     // Insert all pre-parsed files in a clean transaction
     for (const pf of parsedFiles) {

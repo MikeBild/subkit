@@ -269,6 +269,31 @@ const ContextPane: React.FC<{
         <Text>{pane.snapshot.latest_diagnosis.reason}</Text>
       </Box>
     ) : null}
+    {pane.snapshot.last_context_budget ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="cyan" bold>
+          context budget (last turn)
+        </Text>
+        <Text>
+          {pane.snapshot.last_context_budget.total_tokens}/
+          {pane.snapshot.last_context_budget.cap_tokens} tokens
+        </Text>
+        <Text>
+          {pane.snapshot.last_context_budget.dropped_sections.length > 0
+            ? `trimmed to fit: ${pane.snapshot.last_context_budget.dropped_sections.join(", ")}`
+            : "nothing was trimmed"}
+        </Text>
+      </Box>
+    ) : null}
+    {pane.snapshot.grounding_status?.state === "stale" &&
+    pane.snapshot.grounding_status.advisory ? (
+      <Box flexDirection="column" marginTop={1}>
+        <Text color="yellow" bold>
+          grounding
+        </Text>
+        <Text color="yellow">⚠ {pane.snapshot.grounding_status.advisory}</Text>
+      </Box>
+    ) : null}
   </Pane>
 ));
 ContextPane.displayName = "ContextPane";

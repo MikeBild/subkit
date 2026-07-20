@@ -51,9 +51,10 @@
       "observed": { "line": 93, "branch": null }
     },
     "apps/engine/src/http/routes": {
-      "line_min": 0,
-      "branch_min": 0,
-      "rationale": "Per-route coverage measurement is deferred — the route boundary harness covers Zod/RBAC/tenant/audit assertions across the catalogue rather than per-line. Raise from 0 once the large route files are split and per-resource files become small enough for line coverage to be meaningful."
+      "line_min": 51,
+      "branch_min": 41,
+      "rationale": "Route coverage is now enforced. The route boundary harness plus per-route tests pin Zod/RBAC/tenant/audit contracts; the floor sits three points under the observed LOC-weighted aggregate and should ratchet up as the large route files are split into per-resource files.",
+      "observed": { "line": 54.85, "branch": null }
     }
   }
 }

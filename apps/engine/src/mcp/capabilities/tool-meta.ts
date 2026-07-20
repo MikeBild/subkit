@@ -63,6 +63,9 @@ const ADDITIVE_WRITES: ReadonlySet<string> = new Set([
   "conversation_start",
   "conversation_append",
   "conversation_respond_elicitation",
+  // Creates an inert `proposed` skill candidate — the human approve gate
+  // is downstream, so gating the proposal itself buys no safety.
+  "save_learning",
 ]);
 
 /**
@@ -130,6 +133,19 @@ const EXTERNAL_REACHING_TOOLS: ReadonlySet<string> = new Set([
 
 function reachesExternal(toolName: string): boolean {
   return EXTERNAL_REACHING_TOOLS.has(toolName);
+}
+
+/**
+ * Tools exempt from client-side deferred loading (tool search). Claude Code
+ * and Codex defer-load large catalogs; only names + descriptions stay in
+ * context until a tool is searched for. The grounding entry points must stay
+ * fully loaded so a fresh session can look domain facts up on the first turn
+ * without a search round-trip — they ARE the search.
+ */
+const ALWAYS_LOAD_TOOLS: ReadonlySet<string> = new Set(["search_knowledge_v2", "find_skill"]);
+
+export function alwaysLoadTool(toolName: string): boolean {
+  return ALWAYS_LOAD_TOOLS.has(toolName);
 }
 
 export function buildConversationToolMeta(

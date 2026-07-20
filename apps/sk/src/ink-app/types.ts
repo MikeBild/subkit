@@ -11,6 +11,7 @@ import type { SkSessionState, TurnEvent } from "@cli-core/index.ts";
 import type {
   EngineClient,
   OperatorHealthDigest,
+  RequestCredentialFormEvent,
   SetupValidationResponse,
   StatusSummary,
 } from "../engine-client.ts";
@@ -56,6 +57,12 @@ export interface InkAppProps {
    *  to inject the "guided triage" starter action. `null` when the tenant
    *  is all-clear or the engine is unreachable. */
   digestSnapshot?: OperatorHealthDigest | null;
+  /** Count of proposed session-learning skill candidates awaiting review,
+   *  fetched best-effort at REPL open (and on tenant switch). When > 0 and
+   *  the persona holds `skill:read`, the welcome row injects a
+   *  "Review N proposed learning(s)" starter action. Defaults to 0 so an
+   *  absent prop keeps today's behavior. */
+  pendingLearningsCount?: number;
   /** Active permission mode for the status line badge. */
   permissionMode?: PermissionMode;
   /**
@@ -102,10 +109,17 @@ export interface InkAppProps {
    * false, the Composer ignores incoming `next_suggestion` frames.
    */
   nextCommandPreviewEnabled?: boolean;
-  /** Called when the user submits a plain prompt (non-slash). */
+  /** Called when the user submits a plain prompt (non-slash). The
+   *  optional `event` is the typed no-LLM turn event (secret-redirect
+   *  confirmation); the host threads it onto the message-append body —
+   *  it only exists on the append route, so a create-conversation
+   *  first turn drops it and relies on the prose fallback in `text`. */
   onPrompt: (
     text: string,
-    opts?: { permission_mode?: "auto" | "ask" | "plan" | "yolo" },
+    opts?: {
+      permission_mode?: "auto" | "ask" | "plan" | "yolo";
+      event?: RequestCredentialFormEvent;
+    },
   ) => Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }>;
   /** Called when the user submits a slash command other than `/exit`. */
   onSlash?: (

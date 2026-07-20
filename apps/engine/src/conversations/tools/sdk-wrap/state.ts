@@ -94,6 +94,13 @@ export interface TurnSignals {
    */
   assistantMessageId?: string | null;
   /**
+   * Id of the most recently emitted terminal assistant message. Unlike
+   * `assistantMessageId` (reset to null after each step's message emit),
+   * this persists so the post-loop citations frame can anchor its footer
+   * to the answer it belongs under.
+   */
+  lastAssistantMessageId?: string | null;
+  /**
    * Per-step buffer of child rows created by tool wrappers since the
    * last `onStepFinish`. Normal writes already stamp
    * `parent_message_id`; the loop keeps this buffer so its end-of-step
@@ -196,7 +203,7 @@ export interface TurnSignals {
    * (run_workflow / wf_<slug>), keyed by its args hash. When the loop
    * guard aborts an IDENTICAL re-issued call, the abort envelope attaches
    * this as `prior_success_output` — the run already succeeded; hiding its
-   * result behind "no output" was the production A2 failure mode (the
+   * result behind "no output" was the production failure mode (the
    * loop-abort envelope replaced the success in the fallback summary).
    */
   lastExecutionSuccess: { tool: string; args_hash: string; output: unknown } | null;

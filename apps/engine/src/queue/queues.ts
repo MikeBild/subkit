@@ -24,6 +24,7 @@ export type QueueName =
   | "connector.ingest-docs"
   | "knowledge.ingest"
   | "skill-candidate.analyze"
+  | "agent-session.analyze"
   | "workflow.repair"
   | "webhook.deliver"
   | "event.fanout"
@@ -36,6 +37,7 @@ export const QUEUE_NAMES: QueueName[] = [
   "connector.ingest-docs",
   "knowledge.ingest",
   "skill-candidate.analyze",
+  "agent-session.analyze",
   "workflow.repair",
   "webhook.deliver",
   "event.fanout",
@@ -121,6 +123,16 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
       retryLimit: 3,
       retryDelay: 5,
       retryBackoff: true,
+    },
+  },
+  // Transcript distillation makes one LLM extract call; a retry re-spends
+  // tokens but fingerprint dedup makes the outcome idempotent, so a single
+  // retry covers transient provider errors without doubling cost twice.
+  "agent-session.analyze": {
+    name: "agent-session.analyze",
+    queue: {
+      retryLimit: 1,
+      retryDelay: 60,
     },
   },
   "workflow.repair": {
@@ -218,6 +230,13 @@ export interface ConversationRunTurnJob {
   principal?: import("../auth/types.ts").ResolvedPrincipal | null;
   kind: "start" | "append" | "respond_elicitation";
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  /**
+   * How many times this turn has been parked-and-re-enqueued after a
+   * provider quota/rate-limit error (see
+   * `queue/handlers/provider-limit-park.ts`). Bounded by
+   * `PROVIDER_LIMIT_PARK_MAX`; absent means zero.
+   */
+  provider_limit_parks?: number;
   /** Present only for `respond_elicitation` turns. */
   elicitation_id?: string;
   reason?: string;

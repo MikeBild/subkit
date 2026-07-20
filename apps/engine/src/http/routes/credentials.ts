@@ -2,9 +2,10 @@
 //
 // Most credential lifecycle operations are driven through
 // `POST /v1/connectors/:id/credentials` (create) or the oauth2 callback.
-// This module adds the missing `POST /v1/credentials/:id/rotate` endpoint
-// so operators can force a rotation without waiting for the inline
-// refresh worker to observe expiry.
+// This module adds the `POST /v1/credentials/:id/rotate` endpoint so
+// operators can force a rotation without waiting for the inline refresh
+// worker to observe expiry, and `DELETE /v1/credentials/:id` so operators
+// can revoke a credential outright.
 //
 // Behaviour:
 //   * `oauth2` credentials: runs the refresh grant using the parent
@@ -17,7 +18,7 @@
 //     rotation has to go through the `POST /v1/connectors/:id/credentials`
 //     write path with a fresh payload.
 //
-// RBAC: gated on `credential:rotate`.
+// RBAC: rotate is gated on `credential:rotate`, delete on `credential:delete`.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull } from "drizzle-orm";
@@ -25,6 +26,7 @@ import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as connectorSvc from "../../connectors/index.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/index.ts";
 import {
+  deleteCredential,
   getCredentialForConnector,
   rotateOAuth2Tokens,
   runRefreshTokenGrant,
@@ -64,10 +66,48 @@ const rotateRouteSpec = createRoute({
   },
 });
 
+const deleteRouteSpec = createRoute({
+  method: "delete",
+  path: "/v1/credentials/{id}",
+  tags: ["credentials"],
+  summary: "Delete a credential",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "Deleted",
+      content: { "application/json": { schema: z.object({ deleted: z.literal(true) }) } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/credentials/:id/rotate", async (c, next) => {
     const id = c.req.param("id");
     return requirePermission("credential:rotate", () => ({ type: "credential", id }))(c, next);
+  });
+
+  app.use("/v1/credentials/:id", async (c, next) => {
+    if (c.req.method !== "DELETE") return next();
+    const id = c.req.param("id");
+    return requirePermission("credential:delete", () => ({ type: "credential", id }))(c, next);
+  });
+
+  app.openapi(deleteRouteSpec, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+
+    const rows = await db
+      .select({ id: credentials.id })
+      .from(credentials)
+      .where(and(eq(credentials.tenant_id, principal.tenant_id), eq(credentials.id, id)))
+      .limit(1);
+    if (!rows[0]) throw new NotFoundError("credential");
+
+    await deleteCredential(principal.tenant_id, id, principal.id, db);
+    return c.json({ deleted: true as const }, 200);
   });
 
   app.openapi(rotateRouteSpec, async (c) => {

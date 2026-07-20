@@ -4,6 +4,7 @@
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
+import type { Citation } from "./citations.ts";
 
 export type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
 /**
@@ -300,6 +301,22 @@ export interface AuthoringState {
   /** Preview-judge circuit-breaker — see `JudgeBreakerState`. Absent /
    *  null when the judge has never blocked this draft. */
   judge_breaker?: JudgeBreakerState | null;
+  /** Fingerprint of the grounding this draft was built on (a hash of the
+   *  discovered connector-endpoint projection). `/context` recomputes the
+   *  current fingerprint at resume and flags the draft stale when they
+   *  differ. Absent / null when no grounded draft was generated. */
+  grounding_fingerprint?: string | null;
+  /** The connector ids the grounding fingerprint was computed over. Stored
+   *  here — not on the workflow draft, whose normalize allowlist would drop
+   *  it — so `/context` can re-read the discovery index for exactly those
+   *  connectors and recompute the current fingerprint. Absent / null when no
+   *  grounded draft was generated. */
+  grounding_connector_ids?: string[] | null;
+  /** The last authoring intent the user DECLINED, keyed by its intent
+   *  fingerprint. An identical re-proposal in the same conversation
+   *  references this instead of re-eliciting. Absent / null when nothing
+   *  was declined this conversation. */
+  last_denied_intent?: { fingerprint: string; timestamp: string } | null;
 }
 
 /**
@@ -731,6 +748,24 @@ export type TurnEvent =
       suggestion: string | null;
       reason: SuggestNextReason;
       kind: SuggestNextKind | null;
+    }
+  /**
+   * Terminal citations frame — the "prove-after" grounding half made
+   * visible. Emitted exactly once per turn AFTER the assistant's terminal
+   * `message`, and before the `next_suggestion` / `completed` frames and the
+   * SSE `outcome` envelope (which drops `events[]`), only when the turn
+   * produced citations that resolve to a real source. The client anchors the
+   * footer by `parent_message_id`, so this wire order is not load-bearing.
+   * Carries the same refs already harvested for the audit log; the client
+   * renders a dim "Sources: …" footer under the anchored assistant message.
+   * Absent entirely on citation-less turns.
+   */
+  | {
+      type: "citations";
+      citations: Citation[];
+      /** Assistant message the footer anchors under; falls back to the
+       *  last assistant message client-side when unset. */
+      parent_message_id?: string;
     };
 
 export interface ConversationResumeSummary {

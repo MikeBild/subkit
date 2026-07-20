@@ -25,6 +25,10 @@ import { registerMcpHttpRoutes } from "../mcp/transports/streamable-http.ts";
 import { errorRing } from "../observability/error-ring.ts";
 import { metricsMiddleware } from "../observability/middleware.ts";
 import { getBoss } from "../queue/boss.ts";
+import {
+  AGENT_SESSION_ANALYZE_QUEUE,
+  type AgentSessionAnalyzeJob,
+} from "../queue/handlers/agent-session-analyze.ts";
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queue/queues.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";
@@ -32,6 +36,8 @@ import { loggingMiddleware } from "./middleware/logging.ts";
 import { rateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { traceMiddleware } from "./middleware/trace.ts";
 import { type AppEnv, createOpenApiApp, OPENAPI_INFO, SECURITY_SCHEMES } from "./openapi.ts";
+import { registerAgentBriefingRoutes } from "./routes/agent-briefing.ts";
+import { registerAgentSessionRoutes } from "./routes/agent-sessions.ts";
 import { registerAiExtractRoute } from "./routes/ai/extract.ts";
 import { registerAiGenerateRoute } from "./routes/ai/generate.ts";
 import { registerAiRepairRoute } from "./routes/ai/repair.ts";
@@ -102,6 +108,9 @@ export interface CreateAppOptions {
    *  hooks-inbound pattern. Tests that exercise the chat HTTP surface
    *  without running a real boss can pass a stub here. */
   chatEnqueue?: (job: ChatEventJob) => Promise<void>;
+  /** Override for the agent-session capture enqueue callback. Same
+   *  lazy-boss rationale as `chatEnqueue`; tests inject a stub. */
+  agentSessionEnqueue?: (job: AgentSessionAnalyzeJob) => Promise<void>;
   /** Override the in-memory rate limiter (default 100 req / 60s). Used
    *  by the http test scaffold to bump the ceiling so per-leaf sweep
    *  tests fit under the budget even as the schema grows. */
@@ -297,6 +306,16 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerSkillRoutes(app);
   registerKnowledgeSourceRoutes(app);
   registerSkillCandidateRoutes(app);
+  registerAgentBriefingRoutes(app);
+  registerAgentSessionRoutes(app, {
+    enqueue:
+      opts.agentSessionEnqueue ??
+      (async (job: AgentSessionAnalyzeJob) => {
+        // Lazily resolved like chatEnqueue: boot order stays intact and
+        // tests that don't start a boss inject their own stub.
+        await getBoss().send(AGENT_SESSION_ANALYZE_QUEUE, job);
+      }),
+  });
   registerDiscoveryRoutes(app);
   registerConversationRoutes(app);
   registerConversationAttachmentRoutes(app);

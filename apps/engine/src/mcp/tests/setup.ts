@@ -23,6 +23,8 @@ import {
   executionSteps,
   executions,
   skills,
+  tenants,
+  users,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
@@ -49,7 +51,18 @@ export interface McpTestSuite {
   connectTasks: () => Promise<Client>;
   connectTasksWithApiKey: (apiKey: string) => Promise<Client>;
   seedWorkflow: (def: WorkflowDef & { slug: string }) => Promise<{ id: string; slug: string }>;
+  /**
+   * Seed a SECOND tenant (plus an admin user in it) in the same test
+   * database. Multi-tenant isolation suites pair this with
+   * `seedConnectorForTenant` + `issueApiKeyForTenant` to prove that
+   * RBAC-passing credentials still cannot cross the tenant boundary.
+   */
+  seedTenant: (label: string) => Promise<{ tenantId: string; userId: string }>;
   seedConnector: (overrides?: Partial<ConnectorSeed>) => Promise<{ id: string }>;
+  seedConnectorForTenant: (
+    tenantId: string,
+    overrides?: Partial<ConnectorSeed>,
+  ) => Promise<{ id: string }>;
   seedSkill: (overrides?: Partial<SkillSeed>) => Promise<{ id: string }>;
   seedExecution: (opts?: SeedExecutionOpts) => Promise<{ execution_id: string }>;
 }
@@ -206,11 +219,36 @@ export async function startMcpTestSuite(
     return { id: wf.id, slug: def.slug };
   };
 
+  const seedTenant = async (label: string): Promise<{ tenantId: string; userId: string }> => {
+    const [tenant] = await http.db
+      .insert(tenants)
+      .values({ slug: `t2-${label}`, display_name: `Second Tenant ${label}` })
+      .returning();
+    if (!tenant) throw new Error("seed second tenant failed");
+    const [user] = await http.db
+      .insert(users)
+      .values({
+        tenant_id: tenant.id,
+        email: `admin-${label}@second.test.local`,
+        role: "admin",
+      })
+      .returning();
+    if (!user) throw new Error("seed second tenant user failed");
+    return { tenantId: tenant.id, userId: user.id };
+  };
+
   const seedConnector = async (overrides: Partial<ConnectorSeed> = {}): Promise<{ id: string }> => {
+    return seedConnectorForTenant(http.tenantId, overrides);
+  };
+
+  const seedConnectorForTenant = async (
+    tenantId: string,
+    overrides: Partial<ConnectorSeed> = {},
+  ): Promise<{ id: string }> => {
     const [row] = await http.db
       .insert(connectors)
       .values({
-        tenant_id: http.tenantId,
+        tenant_id: tenantId,
         slug: overrides.slug ?? `cn-${Math.random().toString(36).slice(2, 8)}`,
         display_name: overrides.display_name ?? "Test Connector",
         driver: overrides.driver ?? "http",
@@ -301,7 +339,9 @@ export async function startMcpTestSuite(
     connectTasks,
     connectTasksWithApiKey,
     seedWorkflow,
+    seedTenant,
     seedConnector,
+    seedConnectorForTenant,
     seedSkill,
     seedExecution,
   };

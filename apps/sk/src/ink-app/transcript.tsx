@@ -377,6 +377,7 @@ export function buildTranscript(input: TranscriptBuildInput): TranscriptBuildRes
           content={m.content}
           parts={m.parts}
           columns={columns}
+          citations={m.citations}
         />,
       );
       renderedAnyMessageBefore = true;

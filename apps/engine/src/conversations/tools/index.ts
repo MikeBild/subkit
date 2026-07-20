@@ -56,6 +56,7 @@ import { proposeSchemaMigrationTool } from "./propose-schema-migration.ts";
 import { proposeSkillTool } from "./propose-skill.ts";
 import { requestConnectorReauthTool } from "./request-connector-reauth.ts";
 import { saveConnectorDraftTool } from "./save-connector-draft.ts";
+import { saveLearningTool } from "./save-learning.ts";
 import { saveWorkflowDraftTool } from "./save-workflow-draft.ts";
 import { searchDocsTool } from "./search-docs.ts";
 import { searchKnowledgeTool } from "./search-knowledge.ts";
@@ -281,6 +282,13 @@ export interface ConversationTool {
    *  by the description compiler to tell the model up front what skill to
    *  load. Not enforced by this field alone. */
   readonly requires_skill?: string;
+  /** tenant_write only: keep this tool callable on the read-only MCP
+   *  surface, which otherwise hides every tenant_write. Set it ONLY when
+   *  the definition site states why the write is safe there (a run rather
+   *  than a config mutation, or an inert/self-gated capture-loop write) —
+   *  the provider filter reads this flag instead of a hand-curated name
+   *  set, so the exemption and its rationale live on the tool itself. */
+  readonly visible_when_readonly?: boolean;
   /** A realistic example argument object. Rendered as `<example>` and
    *  parsed by some clients (MCP) to prefill inputs. */
   readonly example_input?: Readonly<Record<string, unknown>>;
@@ -399,6 +407,7 @@ register(inspectConnectorDraftTool);
 register(inspectWorkflowDraftTool);
 register(inspectWorkflowTool);
 register(searchKnowledgeTool);
+register(saveLearningTool);
 register(searchDocsTool);
 register(analyzeScrapeTargetTool);
 register(listSkillSuggestionsTool);

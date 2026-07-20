@@ -113,7 +113,7 @@ import {
   loadActivationCatalog,
   reaffirmLoadedForTurn,
 } from "./skill-autoload.ts";
-import { checkSourceFaithful } from "./source-faithful.ts";
+import { checkSourceFaithful, keepResolvableCitations } from "./source-faithful.ts";
 import { nextSuggestion } from "./streaming.ts";
 import { elideWithinTurnToolOutputs } from "./tool-output-elision.ts";
 import {
@@ -250,9 +250,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // CONTEXT prompt block AND the output guard's url.unknown_origin check — they
   // must agree, or the model is told the URL but the guard then scrubs it.
   const resolvedEngineUrl = p.runtime_context?.engine_url ?? engineUrlFromConfig();
-  // Caller registers + unregisters on their synchronous-accept frame
-  // (A4). The loop only consumes the signal here;
-  // re-registering inside this body would re-open the cancel race.
+  // Caller registers + unregisters on their synchronous-accept frame.
+  // The loop only consumes the signal here; re-registering inside this
+  // body would re-open the cancel race.
   const turnAbortCtrl = p.turn_abort_ctrl;
 
   log.debug({
@@ -1683,6 +1683,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             signals.pendingChildToolCallIds = [];
             signals.pendingChildElicitationIds = [];
             signals.assistantMessageId = null;
+            signals.lastAssistantMessageId = assistantMessageId;
             if (hasText) {
               signals.lastAssistantText = guarded.text;
             }
@@ -1950,6 +1951,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         parent_message_id: fallbackMessageId,
       });
       signals.lastAssistantText = synthetic;
+      // Anchor the citations footer to the synthesized answer the operator
+      // actually reads, not the earlier tool-making message — and so the
+      // replay path (which anchors to this text-bearing message) agrees.
+      signals.lastAssistantMessageId = fallbackMessageId;
       // Distinguish three turn shapes for ops triage:
       //   - `next_prompt_from_tool` — benign, the freshest tool returned
       //     an actionable next-step the model would have echoed anyway.
@@ -2017,11 +2022,41 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // turn is intentionally NOT done here — it would require
   // restructuring the runOnce / fallback flow and is left as a
   // follow-up.
-  // Harvest the A2 citation envelope once, up front: the source_faithful
-  // anti-drift check (A4) reads it, and the prove-after audit mirror below
-  // re-uses the same array. Empty when the turn cited no source.
-  const citations: Citation[] =
+  // Harvest the citation envelope once, up front. Two views:
+  //   - `harvestedCitations` — everything the turn cited, verified or not.
+  //     The anti-drift gate reads THIS: a turn that cited only fabricated /
+  //     since-deleted ids must still fail resolution and abstain, so filtering
+  //     before the gate would silently disarm it (the answer would stand with
+  //     no footer AND no challenge).
+  //   - `citations` — the resolvable subset, used for the footer and the audit
+  //     mirror: the prove-after half must never advertise a provenance handle
+  //     that isn't real (and non-chat turns, which skip the gate, still get a
+  //     clean footer). Fail-open: a resolve error keeps the harvested set.
+  const harvestedCitations: Citation[] =
     !cancelled && signals.lastAssistantText ? harvestCitations(events) : [];
+  let citations: Citation[] = harvestedCitations;
+  if (harvestedCitations.length > 0) {
+    try {
+      citations = await keepResolvableCitations(harvestedCitations, p.tenant_id, p.db);
+    } catch {
+      // Keep the harvested set on a transient resolve error.
+    }
+  }
+
+  // Prove-after made visible: emit the terminal citations frame so the
+  // client renders a "Sources: …" footer under the answer. Pushed here —
+  // after the terminal message, before the SSE `outcome` frame drops
+  // `events[]` — exactly once, only when the turn cited a resolvable source.
+  // Anchors to the last assistant message; the client falls back to the same.
+  if (citations.length > 0) {
+    events.push({
+      type: "citations",
+      citations,
+      ...(signals.lastAssistantMessageId
+        ? { parent_message_id: signals.lastAssistantMessageId }
+        : {}),
+    });
+  }
 
   let criticVerdict: CriticVerdict | undefined;
   if (!cancelled && (signals.committed || signals.lastAssistantText)) {
@@ -2114,8 +2149,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           stepRouterSignals.priorCriticFail = true;
         }
 
-        // A4 — source_faithful anti-drift. Runs ONLY for a chat terminal
-        // that carries a citation envelope (A2): the deterministic checks
+        // Source-faithful anti-drift. Runs ONLY for a chat terminal
+        // that carries a citation envelope: the deterministic checks
         // verify every cited id resolves and every verbatim quote is in a
         // cited excerpt; only free-text paraphrase faithfulness escalates
         // to the format-aware judge. A failure is folded into the SAME
@@ -2124,11 +2159,14 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         // check is a no-op (passing) when there is no envelope — that case
         // is the prove-before gate's job, not this one.
         let faithfulVerdict: Awaited<ReturnType<typeof checkSourceFaithful>> | undefined;
-        if (artifact.kind === "chat" && citations.length > 0) {
+        // Gate on the HARVESTED set (not the resolvable subset): a turn that
+        // cited only unresolvable ids must still reach the resolve check and
+        // fail, forcing an abstention rather than standing unchallenged.
+        if (artifact.kind === "chat" && harvestedCitations.length > 0) {
           try {
             faithfulVerdict = await checkSourceFaithful({
               text: artifact.payload,
-              citations,
+              citations: harvestedCitations,
               tenant_id: p.tenant_id,
               db: p.db,
               ...(turnAbortCtrl.signal ? { signal: turnAbortCtrl.signal } : {}),
@@ -2145,7 +2183,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               verdict: faithfulVerdict.verdict,
               confidence: faithfulVerdict.confidence,
               reason: faithfulVerdict.reason,
-              citation_count: citations.length,
+              citation_count: harvestedCitations.length,
               checks: faithfulVerdict.checks,
               detail: faithfulVerdict.detail ?? null,
             });
@@ -2189,7 +2227,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           will_escalate_next_turn: criticVerdict.verdict === "fail" || faithfulnessAbstains,
           will_abstain: commitAbstains || faithfulnessAbstains,
         });
-        // Lever 15 + A4: confidence-based abstention. A low-confidence
+        // Confidence-based abstention: a low-confidence
         // COMMIT, or a source_faithful FAILURE on a chat answer, surfaces an
         // `ask_user_text` elicitation the operator must answer before the
         // conversation continues. This does NOT roll back the commit / unsend

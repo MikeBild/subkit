@@ -436,6 +436,16 @@ function normalizeJudgeBreaker(value: unknown): JudgeBreakerState | null {
   };
 }
 
+function normalizeLastDeniedIntent(
+  value: unknown,
+): { fingerprint: string; timestamp: string } | null {
+  if (!isRecord(value) || typeof value.fingerprint !== "string") return null;
+  return {
+    fingerprint: value.fingerprint,
+    timestamp: typeof value.timestamp === "string" ? value.timestamp : nowIso(),
+  };
+}
+
 export function normalizeState(
   raw: unknown,
   legacyMode: AuthoringMode | undefined,
@@ -473,6 +483,17 @@ export function normalizeState(
     // it only makes the breaker degrade to advisory one block sooner,
     // never a deadlock).
     judge_breaker: normalizeJudgeBreaker(state.judge_breaker),
+    // Grounding fingerprint + the connector set it was computed over — must
+    // survive resume or the /context staleness check has nothing to compare
+    // against and no connectors to recompute for.
+    grounding_fingerprint:
+      typeof state.grounding_fingerprint === "string" ? state.grounding_fingerprint : null,
+    grounding_connector_ids: Array.isArray(state.grounding_connector_ids)
+      ? state.grounding_connector_ids.filter((id): id is string => typeof id === "string")
+      : null,
+    // Last declined intent — must survive resume so the guard still
+    // recognises the rejected proposal after a session reload.
+    last_denied_intent: normalizeLastDeniedIntent(state.last_denied_intent),
   };
   if (isRecord(state.checkpoints)) {
     for (const key of CHECKPOINT_KEYS) {

@@ -159,6 +159,22 @@ export interface ConversationRunOutcome {
   pending_approval_id?: string;
 }
 
+/**
+ * Typed client event on POST /v1/conversations/{id}/messages — drives a
+ * deterministic no-LLM turn on the engine. Single-variant for now;
+ * mirrors `AppendConversationMessageBody.event` in the engine's Zod
+ * schema. `request_credential_form` asks the engine to open the masked
+ * `ask_user_form` (password/sensitive field) directly after the
+ * composer's input-side secret filter fired. `credential_hint` is a
+ * short kind label (e.g. "digitalocean_pat") — NEVER the secret itself.
+ * Older engines strip the unknown key and fall back to the prose the
+ * same request carries as `message`.
+ */
+export interface RequestCredentialFormEvent {
+  type: "request_credential_form";
+  credential_hint?: string;
+}
+
 export interface ConversationDetail {
   conversation: ConversationSummary;
   messages: unknown[];
@@ -289,6 +305,20 @@ export interface ConversationContextSnapshot {
     workflow_id: string;
     current_version: number | null;
   } | null;
+  /** What the LAST assembled turn dropped to fit the model context —
+   *  null when no turn ran since engine start. */
+  last_context_budget: {
+    cap_tokens: number;
+    total_tokens: number;
+    dropped_sections: string[];
+    assembled_at: string;
+  } | null;
+  /** Whether the draft's grounding is still current (advisory; never
+   *  blocks). null when the draft carries no grounding checkpoint. */
+  grounding_status: {
+    state: "fresh" | "stale" | "unknown";
+    advisory: string | null;
+  } | null;
 }
 
 export const conversationsMethods = {
@@ -351,6 +381,8 @@ export const conversationsMethods = {
       step_budget?: number;
       /** Client-side opt-out for the next-message preview frame. */
       client_suppress?: boolean;
+      /** Typed no-LLM turn event — see `RequestCredentialFormEvent`. */
+      event?: RequestCredentialFormEvent;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
@@ -399,6 +431,8 @@ export const conversationsMethods = {
       step_budget?: number;
       /** Client-side opt-out for the next-message preview frame. */
       client_suppress?: boolean;
+      /** Typed no-LLM turn event — see `RequestCredentialFormEvent`. */
+      event?: RequestCredentialFormEvent;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<Response> {

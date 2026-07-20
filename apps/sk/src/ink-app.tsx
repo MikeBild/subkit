@@ -110,6 +110,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   setupSnapshot,
   connectionSnapshot,
   digestSnapshot,
+  pendingLearningsCount = 0,
   permissionMode = "ask",
   historyPath,
   onPrompt,
@@ -197,10 +198,12 @@ export const InkApp: React.FC<InkAppProps> = ({
   );
 
   // Render + dispatch lists derive injection (and the RBAC gate) from the same
-  // (probe, digest) inputs inside the shared helpers, so they can't drift.
+  // (probe, digest, pendingLearnings) inputs inside the shared helpers, so
+  // they can't drift.
   const starterTaskActions = useMemo(
-    () => buildStarterTaskActions(persona.label, persona.probe, digestSnapshot),
-    [persona.label, persona.probe, digestSnapshot],
+    () =>
+      buildStarterTaskActions(persona.label, persona.probe, digestSnapshot, pendingLearningsCount),
+    [persona.label, persona.probe, digestSnapshot, pendingLearningsCount],
   );
   const availableTaskActions = useMemo(
     () =>
@@ -444,13 +447,16 @@ export const InkApp: React.FC<InkAppProps> = ({
       // The previous submit detected a secret-shape and armed
       // `pendingSecretRedirect`. The `raw` we got is the redirect hint
       // text we put back into the buffer; the user pressing Enter again
-      // is consent to forward the masked nudge to the agent. We
-      // override `raw` with the fallback message so the engine never
-      // sees the original token. Esc-clear is handled in the key
-      // handler; that path cancels the redirect and never calls
-      // handleSubmit.
+      // is consent to forward the masked request to the agent. We
+      // override `raw` with the benign fallback message and carry the
+      // typed `request_credential_form` event onto the turn so the
+      // engine opens the masked form deterministically — the engine
+      // never sees the original token either way. Esc-clear is handled
+      // in the key handler; that path cancels the redirect and never
+      // calls handleSubmit.
       const redirected = consumeArmedRedirect();
-      if (redirected !== null) raw = redirected;
+      if (redirected !== null) raw = redirected.message;
+      const redirectEvent = redirected?.event;
       const trimmed = raw.trim();
       setInput(EMPTY_BUFFER);
       historyDraftRef.current = null;
@@ -491,6 +497,11 @@ export const InkApp: React.FC<InkAppProps> = ({
           respondElicitation: submitElicitationResponse,
           runYoloSlash,
           runBuiltin: handleBuiltinSlash,
+          // Same re-entry pattern as drainQueueOrHold's `resubmit`: the
+          // prompt is not slash-shaped, so it takes the plain-prompt path.
+          submitPrompt: (prompt) => {
+            void handleSubmit(prompt);
+          },
         })
       ) {
         return;
@@ -570,6 +581,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         if (!alreadyEchoed) setSession(optimisticSession);
         const { events, conversationId } = await onPrompt(finalPrompt, {
           permission_mode: activeMode,
+          ...(redirectEvent ? { event: redirectEvent } : {}),
         });
         const finalState = await applyEventStream(
           { ...optimisticSession, conversationId },
@@ -754,6 +766,7 @@ export const InkApp: React.FC<InkAppProps> = ({
       statusSnapshot={statusSnapshot}
       setupSnapshot={setupSnapshot}
       digestSnapshot={digestSnapshot}
+      pendingLearningsCount={pendingLearningsCount}
       tip={tip.current}
       whatsNew={whatsNew}
     />

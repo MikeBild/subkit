@@ -124,9 +124,13 @@ export function audit(entry: Partial<AuditEntry>, executor?: Executor): AuditEnt
  *  Production never calls this. Use before asserting on `audit_log` contents
  *  that a prior fire-and-forget `audit()` may still be persisting. */
 export async function _drainAuditWritesForTests(): Promise<void> {
-  while (_pendingAuditWrites.size > 0) {
-    await Promise.allSettled([..._pendingAuditWrites]);
-  }
+  // Snapshot, don't loop-until-empty: the set is process-global, so under a
+  // full-suite run a background writer (worker, poller from a neighboring
+  // suite) can enqueue a new audit every iteration and livelock the drain
+  // until the test times out. The documented contract is "await the writes
+  // in flight NOW" — a caller's own audit() is registered synchronously
+  // before its triggering call returns, so the snapshot always covers it.
+  await Promise.allSettled([..._pendingAuditWrites]);
 }
 
 /**

@@ -96,6 +96,17 @@ function groupToolCallsByAssistantTurn(
   return out;
 }
 
+/**
+ * True when a persisted message content carries non-empty prose. The stream
+ * replay uses this to mirror the live loop's `lastAssistantText` gate: a
+ * terminal citations frame is emitted only for a turn that produced an actual
+ * answer, not one that ended tool-only or was cancelled mid-flight.
+ */
+export function messageHasText(content: unknown): boolean {
+  const text = extractText(content);
+  return text !== null && text.length > 0;
+}
+
 function extractText(content: unknown): string | null {
   if (content === null || content === undefined) return null;
   if (typeof content === "string") return content;

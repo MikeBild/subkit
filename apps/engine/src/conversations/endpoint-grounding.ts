@@ -35,6 +35,46 @@ export interface DiscoveredConnectorEndpoints {
   }>;
 }
 
+/** Discovery result shape this module consumes (a subset of the connector
+ *  discovery `DiscoveryResult`). */
+interface DiscoveryIndexLike {
+  endpoints: ReadonlyArray<{
+    method: string;
+    path: string;
+    request_content_type: string | null;
+  }>;
+}
+
+/**
+ * Build the grounding index (connector → discovered endpoints) keyed by
+ * BOTH connector id and slug, so a request step bound either way resolves.
+ * Shared by the authoring pipeline (which grounds generation) and the
+ * `/context` staleness check (which recomputes the current fingerprint) so
+ * both project the discovered endpoints identically.
+ */
+export function buildGroundingIndex(
+  connectors: ReadonlyArray<{ id: string; slug: string; base_url: string | null }>,
+  discoveredById: ReadonlyMap<string, DiscoveryIndexLike>,
+): Map<string, DiscoveredConnectorEndpoints> {
+  const index = new Map<string, DiscoveredConnectorEndpoints>();
+  for (const c of connectors) {
+    const discovered = discoveredById.get(c.id);
+    if (!discovered) continue;
+    const projected: DiscoveredConnectorEndpoints = {
+      slug: c.slug,
+      base_url: c.base_url,
+      endpoints: discovered.endpoints.map((e) => ({
+        method: e.method,
+        path: e.path,
+        request_content_type: e.request_content_type,
+      })),
+    };
+    index.set(c.id, projected);
+    index.set(c.slug, projected);
+  }
+  return index;
+}
+
 export interface EndpointGroundingBlock {
   /** id of the request step that targets an undocumented path / wrong body. */
   step_id: string;

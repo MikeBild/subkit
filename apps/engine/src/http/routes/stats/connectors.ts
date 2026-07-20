@@ -33,6 +33,7 @@ const STATUS_CLASSES: StatusClass[] = [
   "4xx_rate_limited",
   "5xx",
   "network_error",
+  "no_status",
 ];
 
 const route = createRoute({

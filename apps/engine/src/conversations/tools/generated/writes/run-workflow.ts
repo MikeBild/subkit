@@ -181,6 +181,9 @@ export const runWorkflowTool: ConversationTool = {
     "FALLBACK for executing an ALREADY-SAVED workflow. Prefer the `wf_<slug>` tool when the workflow has an input schema — that tool already carries the schema. Use `run_workflow` only when you have a UUID, when the workflow is not in the `wf_` catalog, or when running the workflow most recently bound to this conversation. Accepts `workflow` as a slug or UUID. WRITE-classified steps (email sends, posts, publishes) are HELD by default — resolved but NOT dispatched — so a run is side-effect-safe; the envelope reports `writes_held` + `held_step_ids`. A live send is the operator's decision: pass `execute_writes: true` only when the user explicitly asked for one, and understand that it raises an approval the operator answers rather than performing the writes. To verify a DRAFT, use `dry_run_workflow`, never `run_workflow`. Never call `dry_run_workflow` on a saved workflow — that is for drafts only. Do NOT use `run_workflow` to build/create/test a NEW workflow (even if the user pasted example data or JSONata) — that is authoring intent: call `author_workflow` (then `edit_workflow_patch` for edits).",
   inputSchema: Input,
   category: "tenant_write",
+  // A workflow *run*, not a config mutation — consistent with the `wf_`
+  // palette, which surfaces regardless of readOnly (RBAC still gates it).
+  visible_when_readonly: true,
   requires_persisted_workflow: true,
   async execute(ctx, args: RunWorkflowArgs) {
     const currentDraft = ctx.getDraft();

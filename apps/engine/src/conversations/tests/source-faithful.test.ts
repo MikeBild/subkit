@@ -1,4 +1,4 @@
-// source_faithful anti-drift check (Track A / A4).
+// source_faithful anti-drift check.
 //
 // Two layers under test:
 //   - Pure deterministic helpers (no DB, no LLM): quote extraction and
@@ -20,6 +20,7 @@ import {
   checkSourceFaithful,
   extractQuotedSpans,
   findUngroundedQuotes,
+  keepResolvableCitations,
 } from "../source-faithful.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -119,6 +120,34 @@ afterAll(async () => {
   resetMockProvider();
 }, 30_000);
 
+describe.skipIf(skip)("keepResolvableCitations", () => {
+  test("drops citations whose id does not resolve, keeps the ones that do", async () => {
+    const fabricated = "00000000-0000-0000-0000-000000000000";
+    const kept = await keepResolvableCitations(
+      [
+        cite({ id: resolvableChunkId, source_name: "Compliance Policy" }),
+        cite({ id: fabricated, source_name: "Ghost Source" }),
+      ],
+      tenantId,
+      testDb.db,
+    );
+    expect(kept.map((c) => c.id)).toEqual([resolvableChunkId]);
+  });
+
+  test("a wrong-tenant chunk id does not resolve (tenant isolation)", async () => {
+    const kept = await keepResolvableCitations(
+      [cite({ id: resolvableChunkId })],
+      "11111111-1111-1111-1111-111111111111",
+      testDb.db,
+    );
+    expect(kept).toEqual([]);
+  });
+
+  test("empty in → empty out (no query)", async () => {
+    expect(await keepResolvableCitations([], tenantId, testDb.db)).toEqual([]);
+  });
+});
+
 describe.skipIf(skip)("checkSourceFaithful", () => {
   test("no envelope → no-op pass (the prove-before gate's job, not this one)", async () => {
     const v = await checkSourceFaithful({
@@ -162,6 +191,28 @@ describe.skipIf(skip)("checkSourceFaithful", () => {
     });
     expect(v.verdict).toBe("fail");
     expect(v.confidence).toBeLessThan(0.6);
+    expect(v.checks.ids_resolve).toBe(false);
+    expect(v.detail).toContain("unresolved");
+  });
+
+  test("a fabricated connector_doc id is flagged unresolved (the provenance-hole guard)", async () => {
+    // Before connector_doc citations got their own resolve query, a
+    // connector_doc id was DROPPED from the filter → silently exempt →
+    // a fabricated one passed the gate. It must now fail like a bogus
+    // knowledge_chunk id does.
+    const v = await checkSourceFaithful({
+      text: "Per the connector docs, charges use POST /v1/charges.",
+      citations: [
+        cite({
+          id: "88888888-8888-8888-8888-888888888888",
+          source_type: "connector_doc",
+          excerpt: "anything",
+        }),
+      ],
+      tenant_id: tenantId,
+      db: testDb.db,
+    });
+    expect(v.verdict).toBe("fail");
     expect(v.checks.ids_resolve).toBe(false);
     expect(v.detail).toContain("unresolved");
   });

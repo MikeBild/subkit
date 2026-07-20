@@ -19,7 +19,9 @@ import {
 import {
   createSessionLeaseManager,
   MAX_LIVE_SESSIONS,
+  MAX_LIVE_SESSIONS_HARD,
   SESSION_IDLE_TTL_MS,
+  SESSION_STUCK_TTL_MS,
   type Session,
 } from "./streamable-http.ts";
 
@@ -300,11 +302,130 @@ describe("createSessionLeaseManager · evictOverflow", () => {
         return s;
       });
 
-      manager.evictOverflow();
+      expect(manager.evictOverflow()).toBe(true);
 
       expect(manager.sessions.size).toBe(MAX_LIVE_SESSIONS);
       await Promise.resolve();
       expect(busy.every((s) => !s.closed())).toBe(true);
+    } finally {
+      restoreClock(prev);
+    }
+  });
+
+  // Over-cap admission is bounded. At the HARD ceiling with every lease busy
+  // there is nothing left to evict and nothing left to admit — evictOverflow
+  // must say no so the route handler answers 503 instead of growing the map
+  // without bound (the observed 80×-in-a-row "admitting over cap" incident).
+  test("at the hard cap with every lease busy, evictOverflow refuses admission and evicts nothing", async () => {
+    const clock = createDeterministicClock();
+    const prev = installClock(clock);
+    try {
+      const manager = createSessionLeaseManager();
+      const busy = Array.from({ length: MAX_LIVE_SESSIONS_HARD }, (_, i) => {
+        clock.advanceBy(1_000);
+        const s = fakeSession(clock.now(), 1);
+        manager.sessions.set(`busy-${i}`, s.session);
+        return s;
+      });
+
+      expect(manager.evictOverflow()).toBe(false);
+      expect(manager.hasAdmissionRoom()).toBe(false);
+
+      expect(manager.sessions.size).toBe(MAX_LIVE_SESSIONS_HARD);
+      await Promise.resolve();
+      expect(busy.every((s) => !s.closed())).toBe(true);
+    } finally {
+      restoreClock(prev);
+    }
+  });
+
+  test("hasAdmissionRoom is true below the hard cap, and true at the hard cap once a lease is evictable", () => {
+    const clock = createDeterministicClock();
+    const prev = installClock(clock);
+    try {
+      const manager = createSessionLeaseManager();
+      for (let i = 0; i < MAX_LIVE_SESSIONS_HARD - 1; i++) {
+        manager.sessions.set(`busy-${i}`, fakeSession(clock.now(), 1).session);
+      }
+      // One under the hard cap: always admissible, busy or not.
+      expect(manager.hasAdmissionRoom()).toBe(true);
+
+      manager.sessions.set("last-busy", fakeSession(clock.now(), 1).session);
+      expect(manager.hasAdmissionRoom()).toBe(false);
+
+      // One lease finishes its work → the map has a victim again.
+      const idle = manager.sessions.get("busy-0");
+      expect(idle).toBeDefined();
+      manager.release(idle!);
+      expect(manager.hasAdmissionRoom()).toBe(true);
+    } finally {
+      restoreClock(prev);
+    }
+  });
+
+  // A busy lease past the stuck TTL is a retain that never came back, not an
+  // open stream — under capacity pressure it becomes the victim.
+  test("at the hard cap, a stuck busy lease is evicted so admission can proceed", async () => {
+    const clock = createDeterministicClock();
+    const prev = installClock(clock);
+    try {
+      const manager = createSessionLeaseManager();
+      const stuck = fakeSession(clock.now(), 1);
+      manager.sessions.set("stuck", stuck.session);
+      clock.advanceBy(SESSION_STUCK_TTL_MS + 1);
+      for (let i = 1; i < MAX_LIVE_SESSIONS_HARD; i++) {
+        manager.sessions.set(`busy-${i}`, fakeSession(clock.now(), 1).session);
+      }
+      expect(manager.hasAdmissionRoom()).toBe(true);
+
+      expect(manager.evictOverflow()).toBe(true);
+
+      expect(manager.sessions.has("stuck")).toBe(false);
+      expect(manager.sessions.size).toBe(MAX_LIVE_SESSIONS_HARD - 1);
+      await Promise.resolve();
+      expect(stuck.closed()).toBe(true);
+    } finally {
+      restoreClock(prev);
+    }
+  });
+});
+
+describe("createSessionLeaseManager · stuck-lease sweep", () => {
+  test("a busy lease untouched past SESSION_STUCK_TTL_MS is evicted by the sweeper", async () => {
+    const clock = createDeterministicClock();
+    const prev = installClock(clock);
+    try {
+      const manager = createSessionLeaseManager();
+      const stuck = fakeSession(clock.now());
+      manager.sessions.set("stuck-lease", stuck.session);
+      manager.retain(stuck.session);
+
+      clock.advanceBy(SESSION_STUCK_TTL_MS + 1);
+      manager.tick();
+
+      expect(manager.sessions.has("stuck-lease")).toBe(false);
+      await Promise.resolve();
+      expect(stuck.closed()).toBe(true);
+    } finally {
+      restoreClock(prev);
+    }
+  });
+
+  test("a busy lease under the stuck TTL survives the sweep (never idle while in flight)", async () => {
+    const clock = createDeterministicClock();
+    const prev = installClock(clock);
+    try {
+      const manager = createSessionLeaseManager();
+      const streaming = fakeSession(clock.now());
+      manager.sessions.set("live-stream", streaming.session);
+      manager.retain(streaming.session);
+
+      clock.advanceBy(SESSION_STUCK_TTL_MS - 1);
+      manager.tick();
+
+      expect(manager.sessions.has("live-stream")).toBe(true);
+      await Promise.resolve();
+      expect(streaming.closed()).toBe(false);
     } finally {
       restoreClock(prev);
     }

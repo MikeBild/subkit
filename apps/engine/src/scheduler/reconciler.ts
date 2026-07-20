@@ -830,6 +830,7 @@ export class SchedulerReconciler {
           workflow_id: wf.id,
           input: stripCalendarGates(schedule.input),
           request_source: "scheduler",
+          execution_mode: schedule.execution_mode,
         };
         // Stamp `last_enqueued_at = now` BEFORE the enqueue so a crash
         // mid-fire cannot replay the schedule on next boot.
@@ -1309,6 +1310,7 @@ export class SchedulerReconciler {
       source_ref: null,
       request_source: "scheduler",
       parent_execution_id: null,
+      execution_mode: payload.execution_mode ?? "prod",
       input: payload.input ?? null,
     });
     const job: ExecutionRunJob = { ...payload, execution_id, request_source: "scheduler" };
@@ -1388,6 +1390,7 @@ export class SchedulerReconciler {
       source_ref: null,
       request_source: "scheduler",
       parent_execution_id: null,
+      execution_mode: payload.execution_mode ?? "prod",
       input: payload.input ?? null,
     });
     const job: ExecutionRunJob = { ...payload, execution_id, request_source: "scheduler" };
@@ -1460,6 +1463,7 @@ export class SchedulerReconciler {
         // never see `business_days_only` / `skip_dates`.
         input: stripCalendarGates(schedule.input ?? null),
         request_source: "scheduler",
+        execution_mode: schedule.execution_mode,
       };
       // Cron-mode schedules are fired directly by
       // `reconcileWorkflowSchedules`; only `every:N` schedules need a

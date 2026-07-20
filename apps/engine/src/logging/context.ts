@@ -6,6 +6,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
  */
 export type LogContext = {
   trace_id?: string;
+  /** W3C server span id for the current execution edge. */
+  span_id?: string;
   tenant_id?: string;
   execution_id?: string;
   workflow_id?: string;
@@ -33,11 +35,8 @@ export function getContext(): LogContext {
   return storage.getStore() ?? {};
 }
 
-/**
- * Generate a short-ish trace id. Not cryptographically significant, just
- * needs to be collision-resistant within a request burst. Uses Bun / Node
- * built-in `crypto.randomUUID` and strips to 12 hex chars for compact logs.
- */
+/** Legacy non-W3C helper retained for queue/CLI contexts. HTTP edges use a
+ * full 128-bit W3C trace id in traceMiddleware. */
 export function newTraceId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
 }

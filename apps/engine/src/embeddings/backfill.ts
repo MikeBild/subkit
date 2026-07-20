@@ -213,15 +213,21 @@ async function backfillConversationTopics(
 /** Backfill embeddings for knowledge + connector-doc chunks AND
  *  conversation topics. Returns per-target counts. Best-effort: when the
  *  model is unavailable every target reports what it scanned with
- *  `embedded: 0`. */
+ *  `embedded: 0`. A `knowledge_source_id`-scoped call touches ONLY that
+ *  source's knowledge chunks — the tenant-wide docs and conversation-topic
+ *  backlogs belong to the capped scheduler sweep, never to a per-source kick
+ *  on the request path. */
 export async function backfillEmbeddings(
   opts: BackfillOptions = {},
   exec?: Executor,
 ): Promise<{ knowledge: BackfillResult; docs: BackfillResult; conversations: BackfillResult }> {
   const db = exec ?? getDb();
   const knowledge = await backfillKnowledge(db, opts);
-  const docs = await backfillDocs(db, opts);
-  const convTopics = await backfillConversationTopics(db, opts);
+  const sourceScoped = Boolean(opts.knowledge_source_id);
+  const docs = sourceScoped ? { scanned: 0, embedded: 0 } : await backfillDocs(db, opts);
+  const convTopics = sourceScoped
+    ? { scanned: 0, embedded: 0 }
+    : await backfillConversationTopics(db, opts);
   log.info({
     module: "embeddings",
     action: "backfill.completed",

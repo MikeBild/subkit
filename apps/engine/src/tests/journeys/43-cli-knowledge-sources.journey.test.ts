@@ -285,4 +285,149 @@ describe("journey 43: sk knowledge-sources CLI", () => {
     });
     expect(res.status).toBe(401);
   });
+
+  // ---- bundle import (directory → one source, upsert by slug) ----
+
+  let bundleDir = "";
+  let bundleSourceId = "";
+
+  test("AC9: knowledge-sources import creates one source from a directory", async () => {
+    bundleDir = path.join(tmpdir(), `ks-bundle-${TEST_NOW_MS}`);
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(path.join(bundleDir, "runbooks"), { recursive: true });
+    writeFileSync(
+      path.join(bundleDir, "index.md"),
+      "# Journey Wiki\n\n* [Deploy](runbooks/deploy.md)",
+    );
+    writeFileSync(
+      path.join(bundleDir, "runbooks", "deploy.md"),
+      "---\ntype: Runbook\ntitle: Deploy\n---\n# Deploy\n\nAlways run the smoke test after deploying.",
+    );
+    writeFileSync(path.join(bundleDir, "notes.md"), "Plain note without frontmatter.");
+
+    const { stdout } = await run(knowledgeSourcesCommand, ["import", bundleDir]);
+    const body = JSON.parse(extractLastJson(stdout)) as {
+      outcome: string;
+      ingested_count: number;
+      skipped_files: string[];
+      knowledge_source: { id: string; name: string; slug: string; tags: string[] };
+    };
+    expect(body.outcome).toBe("created");
+    // index.md skipped; deploy.md + notes.md ingested.
+    expect(body.ingested_count).toBe(2);
+    expect(body.skipped_files).toEqual(["/index.md"]);
+    // Name from the root index.md H1.
+    expect(body.knowledge_source.name).toBe("Journey Wiki");
+    expect(body.knowledge_source.tags).toContain("type:runbook");
+    bundleSourceId = body.knowledge_source.id;
+  });
+
+  test("AC10: imported bundle is searchable with the structural type tag", async () => {
+    const res = await fetch(
+      `${ctx.baseUrl}/v1/knowledge-sources/search?q=smoke%20test%20deploy&tags=type:runbook`,
+      { headers: { authorization: `Bearer ${ctx.apiKey}` } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { hits: { source_name: string }[] };
+    expect(body.hits.length).toBeGreaterThan(0);
+    expect(body.hits[0]!.source_name).toBe("Journey Wiki");
+  });
+
+  test("AC11: chunks endpoint returns the full file content by path", async () => {
+    const res = await fetch(
+      `${ctx.baseUrl}/v1/knowledge-sources/${bundleSourceId}/chunks?path=${encodeURIComponent("/runbooks/deploy.md")}`,
+      { headers: { authorization: `Bearer ${ctx.apiKey}` } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: { content: string }[] };
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]!.content).toContain("Always run the smoke test after deploying.");
+    expect(body.items[0]!.content).toContain("type: Runbook");
+  });
+
+  test("AC12: re-import of unchanged directory is a no-op (outcome unchanged)", async () => {
+    const { stdout } = await run(knowledgeSourcesCommand, ["import", bundleDir]);
+    const body = JSON.parse(extractLastJson(stdout)) as {
+      outcome: string;
+      ingested_count: number;
+      knowledge_source: { id: string };
+    };
+    expect(body.outcome).toBe("unchanged");
+    expect(body.ingested_count).toBe(0);
+    expect(body.knowledge_source.id).toBe(bundleSourceId);
+  });
+
+  test("AC13: changed file re-ingests in place (outcome updated, same id)", async () => {
+    writeFileSync(
+      path.join(bundleDir, "notes.md"),
+      "---\ntype: Decision\n---\nNow a typed decision note.",
+    );
+    const { stdout } = await run(knowledgeSourcesCommand, ["import", bundleDir]);
+    const body = JSON.parse(extractLastJson(stdout)) as {
+      outcome: string;
+      knowledge_source: { id: string; tags: string[] };
+    };
+    expect(body.outcome).toBe("updated");
+    expect(body.knowledge_source.id).toBe(bundleSourceId);
+    expect(body.knowledge_source.tags).toContain("type:decision");
+    expect(body.knowledge_source.tags).toContain("type:runbook");
+  });
+
+  test("AC14: import option flags map through (--name/--slug/--description/--tags)", async () => {
+    const { stdout } = await run(
+      knowledgeSourcesCommand,
+      ["import", bundleDir],
+      [
+        "--name",
+        "Flagged Wiki",
+        "--slug",
+        "flagged-wiki",
+        "--description",
+        "flag mapping probe",
+        "--tags",
+        "domain:journeys, extra",
+      ],
+    );
+    const body = JSON.parse(extractLastJson(stdout)) as {
+      outcome: string;
+      knowledge_source: {
+        name: string;
+        slug: string;
+        description: string | null;
+        tags: string[];
+      };
+    };
+    expect(body.outcome).toBe("created");
+    expect(body.knowledge_source.name).toBe("Flagged Wiki");
+    expect(body.knowledge_source.slug).toBe("flagged-wiki");
+    expect(body.knowledge_source.description).toBe("flag mapping probe");
+    // Operator-supplied structural tag is honored (unlike frontmatter ones).
+    expect(body.knowledge_source.tags).toContain("domain:journeys");
+    expect(body.knowledge_source.tags).toContain("extra");
+  });
+
+  test("AC15: --json error discipline — slug conflict surfaces as structured error, not a crash", async () => {
+    // Seed a NON-bundle source owning a slug, then import onto it.
+    const form = new FormData();
+    form.append("file", new Blob(["# owned"], { type: "text/markdown" }), "owned.md");
+    form.append("metadata", JSON.stringify({ name: "Owned doc", slug: "cli-owned-slug" }));
+    const seeded = await fetch(`${ctx.baseUrl}/v1/knowledge-sources`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+      body: form,
+    });
+    expect(seeded.status).toBe(201);
+
+    const { message, captured } = await runExpectError(
+      knowledgeSourcesCommand,
+      ["import", bundleDir],
+      ["--slug", "cli-owned-slug"],
+    );
+    const combined = `${message}\n${captured.stderr}\n${captured.stdout}`.toLowerCase();
+    expect(
+      combined.includes("slug_conflict") ||
+        combined.includes("409") ||
+        combined.includes("already belongs"),
+    ).toBe(true);
+  });
 });

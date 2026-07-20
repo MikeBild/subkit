@@ -9,7 +9,14 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import * as svc from "../../../conversations/index.ts";
-import { serializeEvent, withoutApprovalHandle } from "../../../conversations/index.ts";
+import {
+  harvestCitationsFromPersisted,
+  keepResolvableCitations,
+  messageHasText,
+  serializeEvent,
+  type TurnEvent,
+  withoutApprovalHandle,
+} from "../../../conversations/index.ts";
 import { monthlyUsage, resolveModelRoute } from "../../../llm/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -109,7 +116,54 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
         );
       };
 
+      // Re-derive the terminal `citations` frame per historical turn (it is
+      // never persisted — the live loop only streams it, see
+      // conversations/loop.ts). A turn spans from one "user" message up to
+      // (but not including) the next; the tool_result events emitted for
+      // its children are the same envelope `harvestCitations` reads live.
+      //
+      // Mirror the live loop EXACTLY: it anchors to `lastAssistantMessageId`
+      // (the LAST assistant message of the turn, text-bearing or not) and
+      // gates emission on `lastAssistantText` (whether the turn produced ANY
+      // assistant prose). So here: anchor to the last assistant message, and
+      // emit only if some assistant message in the turn carried text — a
+      // turn that ended tool-only or produced no prose shows no footer live,
+      // and must show none on replay. (The one irreducible gap is a turn
+      // cancelled AFTER producing prose: live suppresses via `!cancelled`,
+      // but cancellation is not persisted, so replay cannot see it.)
+      let turnToolResults: TurnEvent[] = [];
+      let turnLastAssistantId: string | null = null;
+      let turnHadText = false;
+      const flushTurnCitations = async () => {
+        if (turnLastAssistantId && turnHadText) {
+          let citations = harvestCitationsFromPersisted(turnToolResults);
+          // Drop citations whose source no longer resolves (deleted since the
+          // turn), mirroring the live loop — the footer must never advertise a
+          // provenance handle that isn't real. Fail-open on a resolve error.
+          if (citations.length > 0) {
+            try {
+              citations = await keepResolvableCitations(citations, principal.tenant_id, db);
+            } catch {
+              // Keep the harvested set on a transient resolve error.
+            }
+          }
+          if (citations.length > 0) {
+            await stream.writeSSE(
+              serializeEvent({
+                type: "citations",
+                citations,
+                parent_message_id: turnLastAssistantId,
+              }),
+            );
+          }
+        }
+        turnToolResults = [];
+        turnLastAssistantId = null;
+        turnHadText = false;
+      };
+
       for (const msg of detail.messages) {
+        if (msg.role === "user") await flushTurnCitations();
         await stream.writeSSE(
           serializeEvent({
             type: "message",
@@ -119,11 +173,26 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
             parent_message_id: msg.id,
           }),
         );
+        if (msg.role === "assistant") {
+          turnLastAssistantId = msg.id;
+          if (messageHasText(msg.content)) turnHadText = true;
+        }
         const childCallsForMsg = childCalls.get(msg.id) ?? [];
-        for (const call of childCallsForMsg) await emitCall(call);
+        for (const call of childCallsForMsg) {
+          await emitCall(call);
+          if (call.output !== null && call.output !== undefined) {
+            turnToolResults.push({
+              type: "tool_result",
+              call_id: call.id,
+              tool: call.tool,
+              output: call.output,
+            });
+          }
+        }
         const childElicitsForMsg = childElicits.get(msg.id) ?? [];
         for (const elicit of childElicitsForMsg) await emitElicit(elicit);
       }
+      await flushTurnCitations();
       // Legacy rows without parent_message_id — emit at the end so
       // clients that consume parent_message_id place them under the
       // last assistant message of their time window.

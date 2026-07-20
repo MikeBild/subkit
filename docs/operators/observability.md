@@ -53,7 +53,7 @@ flowchart LR
 | Surface | Endpoint / command | Scope | Answers |
 |---|---|---|---|
 | **Metrics** | `/metrics` | Process-wide, resets on redeploy | Latency by route, execution duration + step counts, error/retry rates, queue depth, token usage, pool stats |
-| **Structured logging** | JSON on stdout | Per-event | Query/alert on fields directly — `trace_id`, `tenant_id`, `request_source`, severity |
+| **Structured logging** | JSON on stdout | Per-event | Query/alert on fields directly — `trace_id`, `span_id`, `service.name`, `service.version`, `deployment.environment.name`, `tenant_id`, `request_source`, severity |
 | **Execution inspection** | `sk executions tail <id>` + API | Per-execution | Per-step logs; failed steps include full error, inputs, raw connector response |
 | **Event streaming** | tenant-wide SSE | Per-tenant | Real-time execution events for external dashboards/alerting |
 
@@ -104,8 +104,10 @@ with a stable `action` field. The full surface:
 | `metrics.write_failed` | `observability` | Metric write threw | `error` |
 
 **Identity envelope.** Every record above carries `tenant_id` (where applicable),
-`trace_id`, and `request_source`. Operators correlate across surfaces
-(HTTP → execution → notification) by `trace_id`.
+`trace_id`, `span_id` (HTTP edges), and `request_source`. HTTP requests accept
+W3C `traceparent`, retain its 128-bit trace ID and sampled flag, and create a fresh
+server span. Operators correlate across surfaces (HTTP → execution → notification)
+by `trace_id`.
 
 The full Prometheus metric registry is built in
 [`apps/engine/src/observability/metrics.ts`](../../apps/engine/src/observability/metrics.ts).
@@ -160,6 +162,14 @@ questions over time-bucketed history. It aggregates at read time from `execution
 | `GET /v1/stats/connectors` | `audit_log` (`action='connector.invoked'`) | connector-call volume + latency + outcome + status-class (`4xx_auth`/`4xx_rate_limited`/…) |
 | `GET /v1/stats/events` | `audit_log` (per `?class=`) | webhook / chat / schedule / self-healing / discovery / policy / external-write event volume |
 | `GET /v1/stats/llm` | `llm_usage` | token usage + cache-hit rate + latency by model / flow |
+
+Connector status classes use the upstream transport status when one exists.
+`network_error` means that a connector call failed before receiving such a
+status; a successful call without an HTTP-like status is classified as
+`no_status`, not as a network error.
+The aggregator accepts historical egress aliases while new audit rows carry
+the canonical `connector_id`, `method`, `path`, `status_code`, and `latency_ms`
+fields.
 
 **Bucket grammar.** `bucket` (`minute|hour|day|month|year`), required `from`, optional
 `to` (default now) and `tz` (default UTC). Hard window caps reject scans that would

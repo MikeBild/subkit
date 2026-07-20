@@ -147,6 +147,26 @@ export const AppendMessageBody = z
      * close marker.
      */
     client_suppress: z.boolean().optional(),
+    /**
+     * Typed client event driving a deterministic, no-LLM turn.
+     * Single-variant object for now — promote to a
+     * `z.discriminatedUnion("type", …)` when a second event type lands.
+     *
+     * `request_credential_form`: the sk composer detected a pasted
+     * secret and asks the engine to open the masked `ask_user_form`
+     * (password/sensitive field) directly instead of relaying prose for
+     * the model to re-derive. `credential_hint` is a short kind label
+     * (e.g. "digitalocean_pat") — NEVER the secret itself. Older
+     * clients that keep sending only the prose fallback stay on the
+     * LLM path unchanged; older engines strip the unknown key and fall
+     * back to the prose the same request carries as `message`.
+     */
+    event: z
+      .object({
+        type: z.literal("request_credential_form"),
+        credential_hint: z.string().max(120).optional(),
+      })
+      .optional(),
   })
   .openapi("AppendConversationMessageBody");
 
@@ -166,6 +186,26 @@ export const NextSuggestionEventSchema = z
     kind: z.enum(SUGGEST_NEXT_KINDS).nullable(),
   })
   .openapi("NextSuggestionEvent");
+
+/** A source ref attached to an answer (the "prove-after" grounding half).
+ *  `RunOutcomeSchema.events` is `z.array(z.any())`, so these named
+ *  component schemas are what document + type the citations frame. */
+export const CitationSchema = z
+  .object({
+    source_type: z.enum(["knowledge_chunk", "connector_doc"]),
+    id: z.string(),
+    source_name: z.string().optional(),
+    excerpt: z.string().optional(),
+  })
+  .openapi("Citation");
+
+export const CitationsEventSchema = z
+  .object({
+    type: z.literal("citations"),
+    citations: z.array(CitationSchema),
+    parent_message_id: z.string().optional(),
+  })
+  .openapi("CitationsEvent");
 
 /**
  * Body for the lightweight feedback route the client posts after the
@@ -361,6 +401,25 @@ export const ContextSnapshotSchema = z
       .object({
         workflow_id: z.string(),
         current_version: z.number().nullable(),
+      })
+      .nullable(),
+    // What the LAST assembled turn dropped to fit the model context —
+    // null when no turn ran since engine start (in-process cache).
+    last_context_budget: z
+      .object({
+        cap_tokens: z.number().int().nonnegative(),
+        total_tokens: z.number().int().nonnegative(),
+        dropped_sections: z.array(z.string()),
+        assembled_at: z.string(),
+      })
+      .nullable(),
+    // Whether the draft's grounding (the connector schema/knowledge it was
+    // built on) is still current, checked at resume. Advisory only — never
+    // blocks. `null` when the draft carries no grounding checkpoint.
+    grounding_status: z
+      .object({
+        state: z.enum(["fresh", "stale", "unknown"]),
+        advisory: z.string().nullable(),
       })
       .nullable(),
   })

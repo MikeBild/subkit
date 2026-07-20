@@ -117,12 +117,17 @@ function prefixSample(token: string): string {
 }
 
 /**
- * The fallback message the composer sends to the engine when a secret
- * shape is detected. The engine has no `request_credential_form` event
- * yet (PR5 deferred the engine route change — see ink-app.tsx comment),
- * so we re-prompt the agent in plain language. The agent's skill set
- * already requires it to use `ask_user_form(type: password)` for any
- * credential, so this nudge is enough to get the masked form back.
+ * The prose fallback the composer sends as the turn's `message` when a
+ * secret shape is detected. The primary mechanism is now the typed
+ * `request_credential_form` event on the message-append body (see
+ * `RequestCredentialFormEvent` in engine-client/conversations.ts) — the
+ * engine short-circuits the turn and opens the masked `ask_user_form`
+ * deterministically, no LLM call. This prose rides along for code
+ * paths that cannot carry the event (a create-conversation first turn)
+ * and for older engines that strip the unknown `event` key: the
+ * agent's skill set already requires `ask_user_form(type: password)`
+ * for any credential, so re-prompting in plain language still gets the
+ * masked form back.
  */
 export const REQUEST_CREDENTIAL_FORM_FALLBACK =
   "Please ask me for the credential through a masked form (ask_user_form with type: password, sensitive: true). I attempted to paste a credential into chat — do not echo anything; collect it via the form.";

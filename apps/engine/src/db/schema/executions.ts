@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { tenantId, timestamps } from "./_common.ts";
+import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";
 import { workflows, workflowVersions } from "./workflows.ts";
@@ -13,8 +13,6 @@ export const executionStatusEnum = pgEnum("execution_status", [
   "aborted",
   "timed_out",
 ]);
-
-export const executionModeEnum = pgEnum("execution_mode", ["dev", "prod"]);
 
 export const patchClassificationEnum = pgEnum("patch_classification", ["safe", "unsafe"]);
 export const patchStatusEnum = pgEnum("patch_status", [

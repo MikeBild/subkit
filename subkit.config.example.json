@@ -152,6 +152,7 @@
       "api_key": "",
       "project": ""
     },
+    "deployment_environment": "development",
     "field_truncation_chars": 2048,
     "predictive": {
       "pool_saturation_pct": 80,

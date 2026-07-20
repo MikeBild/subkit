@@ -7,7 +7,7 @@
 
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
-import { loadBootstrap, type SkBootstrapSnapshot } from "../lib/bootstrap.ts";
+import { DEFAULT_SK_PREFS, loadBootstrap, type SkBootstrapSnapshot } from "../lib/bootstrap.ts";
 import type { PersonaProbe } from "../slash.ts";
 
 export interface ResolvedPersona {
@@ -27,6 +27,22 @@ export interface ResolvedPersona {
   source: "network" | "cache" | "fallback";
   /** Engine-resolved REPL/UI/notification prefs. */
   prefs: SkBootstrapSnapshot["prefs"];
+}
+
+/** Minimal persona keyed off the profile alone — used when the engine is
+ *  unreachable during a profile switch so the footer at least shows the
+ *  right engine + profile name. Grants nothing. */
+export function fallbackPersona(profile: ResolvedProfile): ResolvedPersona {
+  return {
+    label: profile.persona_hint ?? "user",
+    probe: { allows: () => false },
+    allowed: new Set(),
+    tenant: profile.active_tenant_id ?? null,
+    email: null,
+    fetchedAt: Date.now(),
+    source: "fallback",
+    prefs: DEFAULT_SK_PREFS,
+  };
 }
 
 export async function resolvePersona(

@@ -10,12 +10,14 @@
 //        grant → 400 HTML error page.
 //
 //   POST /v1/connectors/{id}/credentials/setup                — UNAUTHENTICATED
-//        (grant-token auth). Form-encoded body — cannot be expressed cleanly
-//        via @hono/zod-openapi (same precedent as the MCP OAuth consent
-//        decision and token endpoints in http/routes/oauth/{consent,token}.ts).
-//        Atomically consumes the grant, upserts the credential, clears
-//        needs_reauth, and renders a thank-you HTML page. Invalid/expired/
-//        replayed grant → 400 HTML.
+//        (grant-token auth). Form-encoded body, registered via app.openapi.
+//        The urlencoded body is documented as a plain OpenAPI schema object
+//        (not zod) so no body validator runs — the handler's parseFormBody
+//        plus per-auth_type field checks remain the sole boundary validation,
+//        keeping every error path an HTML page for the browser. Atomically
+//        consumes the grant, upserts the credential, clears needs_reauth, and
+//        renders a thank-you HTML page. Invalid/expired/replayed grant →
+//        400 HTML.
 //
 // This is a SEPARATE path from POST /v1/connectors/{id}/credentials (the
 // existing API-key-gated route, untouched) — that route stays for
@@ -64,6 +66,67 @@ const credentialSetupFormRoute = createRoute({
     200: { description: "OK (HTML form)", content: { "text/html": { schema: z.string() } } },
     400: {
       description: "Grant invalid/expired (HTML error page)",
+      content: { "text/html": { schema: z.string() } },
+    },
+  },
+});
+
+// Form fields the POST handler reads, documented as a plain OpenAPI schema
+// object rather than a zod schema. A zod form schema here would make
+// @hono/zod-openapi register a body validator that (a) consumes the raw
+// request body before the handler's parseFormBody can read it and (b) sends
+// malformed submissions to the JSON defaultHook instead of the HTML error
+// pages a browser expects. Every field is optional in the document because
+// which fields are required depends on the connector's auth_type — the
+// handler enforces them per mode.
+const credentialSetupSubmitRoute = createRoute({
+  method: "post",
+  path: "/v1/connectors/{id}/credentials/setup",
+  tags: ["connectors"],
+  summary: "Submit the credential-setup form (consumes the single-use grant)",
+  // Unauthenticated, same as the GET twin: authentication is the single-use
+  // `grant` token round-tripped from the rendered form's hidden field. The
+  // grant is consumed atomically on submit — a replay renders a 400 HTML page.
+  request: {
+    params: IdParam,
+    body: {
+      description:
+        "HTML-form submission. `grant` is always required; exactly one of the " +
+        "per-auth_type field sets applies: `token` (bearer), `username`+`password` " +
+        "(basic), `header_name`+`header_value` (header), `query_name`+`query_value` (query).",
+      content: {
+        "application/x-www-form-urlencoded": {
+          schema: {
+            type: "object",
+            properties: {
+              grant: { type: "string", description: "Single-use setup grant token (sksg_…)" },
+              token: { type: "string", description: "Bearer token (auth_type: bearer)" },
+              username: { type: "string", description: "Username (auth_type: basic)" },
+              password: { type: "string", description: "Password (auth_type: basic)" },
+              header_name: { type: "string", description: "Header name (auth_type: header)" },
+              header_value: { type: "string", description: "Header value (auth_type: header)" },
+              query_name: {
+                type: "string",
+                description: "Query parameter name (auth_type: query)",
+              },
+              query_value: {
+                type: "string",
+                description: "Query parameter value (auth_type: query)",
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Credential saved (HTML thank-you page)",
+      content: { "text/html": { schema: z.string() } },
+    },
+    400: {
+      description:
+        "Grant missing/invalid/expired/replayed, or a required form field is missing (HTML error page)",
       content: { "text/html": { schema: z.string() } },
     },
   },
@@ -173,13 +236,13 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   // ── POST /v1/connectors/{id}/credentials/setup ────────────────────────────
-  // Raw handler — form-encoded body (an HTML <form> POST). Cannot be
-  // expressed cleanly via @hono/zod-openapi; same precedent as
-  // http/routes/oauth/{consent,token}.ts. The body is still validated at the
-  // boundary — see the per-mode field checks below.
-  app.post("/v1/connectors/:id/credentials/setup", async (c) => {
+  // Form-encoded body (an HTML <form> POST). The route spec documents the
+  // body without a zod schema, so no body validator runs — parseFormBody plus
+  // the per-mode field checks below stay the boundary validation and every
+  // failure renders HTML, not the JSON defaultHook.
+  app.openapi(credentialSetupSubmitRoute, async (c) => {
     const db = c.get("db");
-    const id = c.req.param("id");
+    const { id } = c.req.valid("param");
     const form = await parseFormBody(c.req.raw);
     const grant = form.get("grant") ?? "";
 

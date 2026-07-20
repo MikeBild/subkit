@@ -158,7 +158,27 @@ export type TurnEvent =
       suggestion: string | null;
       reason: SuggestNextReason;
       kind: SuggestNextKind | null;
+    }
+  /**
+   * Terminal citations frame — mirrors the engine TurnEvent. Emitted once
+   * per turn after the terminal `message`, before the SSE outcome. The
+   * `Citation` shape is re-declared locally (cli-core must not import
+   * apps/*) with the FULL final union so it never re-widens.
+   */
+  | {
+      type: "citations";
+      citations: Citation[];
+      parent_message_id?: string;
     };
+
+/** Source ref attached to an assistant answer — mirror of the engine
+ *  `Citation` (cli-core cannot import apps/*). Kept in lockstep. */
+export interface Citation {
+  source_type: "knowledge_chunk" | "connector_doc";
+  id: string;
+  source_name?: string;
+  excerpt?: string;
+}
 
 /**
  * Pending user-input request — populated when the loop pauses on any
@@ -217,6 +237,9 @@ export interface MessageState {
   parts?: RenderableMessagePart[];
   /** Persisted message ID — needed so child tool calls can match by parent_message_id. */
   id?: string;
+  /** Source refs for this answer — set by the terminal `citations` frame;
+   *  rendered as a dim "Sources: …" footer. Absent on citation-less turns. */
+  citations?: Citation[];
 }
 
 export interface ToolLogEntry {
@@ -724,6 +747,25 @@ export function applyTurnEvent(state: SkSessionState, ev: TurnEvent): SkSessionS
           ev.suggestion && ev.kind ? { suggestion: ev.suggestion, kind: ev.kind } : null,
         nextSuggestionReason: ev.reason,
       };
+    }
+    case "citations": {
+      if (ev.citations.length === 0) return state;
+      // Attach to the anchored assistant message (by parent_message_id),
+      // else the last assistant message. No match (e.g. frame arrived
+      // before its message) → no-op, never fabricate a row.
+      let idx = -1;
+      for (let i = state.messages.length - 1; i >= 0; i--) {
+        const m = state.messages[i];
+        if (m?.role !== "assistant") continue;
+        if (ev.parent_message_id ? m.id === ev.parent_message_id : true) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx === -1) return state;
+      const messages = state.messages.slice();
+      messages[idx] = { ...messages[idx]!, citations: ev.citations };
+      return { ...state, messages };
     }
     default:
       return state;

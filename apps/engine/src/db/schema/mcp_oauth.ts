@@ -131,7 +131,9 @@ export const mcpOauthAccessTokens = pgTable(
     token_sha256: text("token_sha256").notNull(),
     scope: text("scope").notNull(),
     resource: text("resource"),
-    refresh_token_id: uuid("refresh_token_id").references(() => mcpOauthRefreshTokens.id),
+    refresh_token_id: uuid("refresh_token_id").references(() => mcpOauthRefreshTokens.id, {
+      onDelete: "set null",
+    }),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
     last_used_at: timestamp("last_used_at", { withTimezone: true }),
