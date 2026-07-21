@@ -50,6 +50,13 @@ export interface RegisterConversationRunTurnOptions {
   db: Db;
 }
 
+const NATIVE_ELICITATION_CANCELLATION_REASONS = new Set([
+  "user_declined",
+  "user_cancelled",
+  "external_interaction_failed",
+  "invalid_elicit_response",
+]);
+
 /**
  * Read the user message text for THIS turn by its
  * `conversation_messages` row id. The MCP tool handler captured the id
@@ -186,6 +193,11 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
               ? humanInBandAnswer(data.principal)
               : MODEL_RELAYED_ANSWER,
           output: elicitation.output,
+          ...(data.answer_channel === "mcp_native" &&
+          data.reason &&
+          NATIVE_ELICITATION_CANCELLATION_REASONS.has(data.reason)
+            ? { resolution_status: "cancelled" as const }
+            : {}),
           // The resumed runLoop runs on the MCP surface — without this the
           // inner confirm gate and prompt variants would treat the resumed
           // turn as a default (chat-capable) one and pause enumerated

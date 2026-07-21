@@ -4,12 +4,14 @@ import { ElicitationCompleteNotificationSchema } from "@modelcontextprotocol/sdk
 import { and, eq } from "drizzle-orm";
 import { markConnectorNativeUrlElicitationsComplete } from "../../conversations/native-url-elicitation.ts";
 import {
+  auditLog,
   conversationElicitations,
   conversations,
   mcpTasks,
   workflows,
 } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 describe("MCP conversation native elicitation — real Streamable HTTP", () => {
@@ -83,6 +85,80 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     expect(stored?.protocol_native).toBe(true);
     expect(stored?.output).toEqual({ value: "canary", option_index: 0 });
     expect(stored?.delivery_attempts).toBe(1);
+  });
+
+  test("a native decline is persisted and audited as a rejection", async () => {
+    const declineClient = await suite.connectElicitation(async (request) => {
+      expect(request.params.mode).toBe("form");
+      return { action: "decline" };
+    });
+    const [conversation] = await suite.http.db
+      .insert(conversations)
+      .values({
+        tenant_id: suite.http.tenantId,
+        owner_id: suite.http.userId,
+        status: "awaiting_input",
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation seed failed");
+    const [elicitation] = await suite.http.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: suite.http.tenantId,
+        conversation_id: conversation.id,
+        tool_name: "ask_user_choice",
+        summary: "Decline rollout",
+        input: {
+          question: "Decline rollout",
+          options: [{ value: "stable", label: "Stable" }],
+        },
+      })
+      .returning();
+    if (!elicitation) throw new Error("elicitation seed failed");
+    await suite.http.db.insert(mcpTasks).values({
+      tenant_id: suite.http.tenantId,
+      conversation_id: conversation.id,
+      turn_seq: 1,
+      kind: "start",
+      actor_id: suite.http.userId,
+      request_source: "mcp",
+      result: { conversation_id: conversation.id, status: "awaiting_input", events: [] },
+    });
+
+    const result = await declineClient.callTool({
+      name: "conversation_get",
+      arguments: { conversation_id: conversation.id },
+    });
+    expect(result.isError).toBe(false);
+
+    const stored = await waitFor(
+      async () => {
+        const [row] = await suite.http.db
+          .select()
+          .from(conversationElicitations)
+          .where(
+            and(
+              eq(conversationElicitations.tenant_id, suite.http.tenantId),
+              eq(conversationElicitations.id, elicitation.id),
+            ),
+          );
+        return row?.status === "cancelled" ? row : null;
+      },
+      { tries: 500, sleepMs: 10, label: "native decline resolution" },
+    );
+    expect(stored.decision_reason).toBe("user_declined");
+    const [audit] = await suite.http.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, suite.http.tenantId),
+          eq(auditLog.resource_type, "conversation_elicitation"),
+          eq(auditLog.resource_id, elicitation.id),
+          eq(auditLog.action, "approval.rejected"),
+        ),
+      );
+    expect(audit?.reason).toBe("user_declined");
   });
 
   test("tasks/get delivers native input and rearms the same task", async () => {

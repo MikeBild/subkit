@@ -54,6 +54,8 @@ export interface RespondElicitationParams {
   /** User's answer — shape depends on the tool (choice/multi/text/form/confirm). */
   output: unknown;
   reason?: string;
+  /** Explicit transport decision; free-form `reason` text never decides governance. */
+  resolution_status?: "resolved" | "cancelled";
   permission_mode?: ConversationPermissionMode | null;
   /**
    * When true, require that `actor_id` matches the conversation's
@@ -262,6 +264,7 @@ export async function respondElicitation(
       id: p.elicitation_id,
       output,
       decided_by: p.actor_id,
+      ...(p.resolution_status ? { status: p.resolution_status } : {}),
       ...(p.reason ? { reason: p.reason } : {}),
     },
     exec,
@@ -346,11 +349,16 @@ export async function respondElicitation(
     });
   }
 
-  log.conversation.approval.approved({
+  const decisionLog = {
     conversation_id: p.conversation_id,
     approval_id: p.elicitation_id,
     actor_id: p.actor_id,
-  });
+  };
+  if (resolved.status === "resolved") {
+    log.conversation.approval.approved(decisionLog);
+  } else {
+    log.conversation.approval.rejected({ ...decisionLog, reason: p.reason });
+  }
 
   await exec
     .update(conversations)
