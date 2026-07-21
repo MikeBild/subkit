@@ -122,16 +122,81 @@ describe("importConnectorFromSpecTool", () => {
       }),
     );
     const data = result.data as {
-      template_match: null;
+      template_match: { slug: string };
       draft: {
         auth_type: string;
         base_url: string;
         config: { imported_sample_endpoints: Array<{ path: string }> };
       };
     };
-    expect(data.template_match).toBeNull();
+    expect(data.template_match.slug).toBe("cloudflare");
     expect(data.draft.base_url).toBe("https://api.cloudflare.com/client/v4");
     expect(data.draft.auth_type).toBe("bearer");
     expect(data.draft.config.imported_sample_endpoints[0]?.path).toBe("/user/tokens/verify");
+  });
+
+  test("Firebase Discovery metadata matches the built-in Firebase template", async () => {
+    const discovery = JSON.stringify({
+      kind: "discovery#restDescription",
+      protocol: "rest",
+      title: "Cloud Firestore API",
+      version: "v1",
+      rootUrl: "https://firestore.googleapis.com/",
+      servicePath: "",
+      auth: {
+        oauth2: {
+          scopes: {
+            "https://www.googleapis.com/auth/datastore": { description: "Firestore access" },
+          },
+        },
+      },
+      schemas: { Document: { type: "object" } },
+      resources: {
+        projects: {
+          resources: {
+            databases: {
+              resources: {
+                documents: {
+                  methods: {
+                    get: {
+                      id: "firestore.projects.databases.documents.get",
+                      httpMethod: "GET",
+                      flatPath:
+                        "v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}",
+                      response: { $ref: "Document" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const result = await importConnectorFromSpecTool.execute(nullCtx, {
+      source: "google_discovery",
+      content: discovery,
+      environment: "prod",
+    });
+    const data = result.data as {
+      template_match: { slug: string };
+      draft: {
+        auth_type: string;
+        base_url: string;
+        config: {
+          imported_source: string;
+          imported_sample_endpoints: Array<{ method: string; path: string }>;
+        };
+      };
+    };
+    expect(data.template_match.slug).toBe("firebase");
+    expect(data.draft.base_url).toBe("https://firestore.googleapis.com");
+    expect(data.draft.auth_type).toBe("oauth2");
+    expect(data.draft.config.imported_source).toBe("google_discovery");
+    expect(data.draft.config.imported_sample_endpoints[0]).toMatchObject({
+      method: "GET",
+      path: "/v1/projects/{projectsId}/databases/{databasesId}/documents/{documentsId}",
+    });
   });
 });

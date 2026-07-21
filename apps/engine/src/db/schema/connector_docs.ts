@@ -27,6 +27,7 @@ import { tenants } from "./identity.ts";
 
 export const docSourceTypeEnum = pgEnum("doc_source_type", [
   "openapi",
+  "google_discovery",
   "markdown",
   "llms_txt",
   "html",

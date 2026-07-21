@@ -93,7 +93,7 @@ Collected so every reader has the same expansion at hand.
 
 **Connector** — a configured connection to an external integration boundary. A Connector is built from a template, a driver, and credentials. It represents a specific integration instance — for example, a Stripe production account or a GitHub organisation. Connectors are tenant-scoped and versioned.
 
-**Connector Template** — a pre-built blueprint for a well-known service. Templates include the driver type, authentication configuration, documentation ingestion setup, and guided setup instructions. sk ships 55 Connector Templates covering services across payments, CRM, DevOps, data, communication, and cloud infrastructure. Templates are the starting point for creating a Connector; they are not Connectors themselves.
+**Connector Template** — a pre-built blueprint for a well-known service. Templates include the driver type, authentication configuration, documentation ingestion setup, and guided setup instructions. sk ships 57 Connector Templates covering services across payments, CRM, DevOps, data, communication, and cloud infrastructure. Templates are the starting point for creating a Connector; they are not Connectors themselves.
 
 **Driver** — the protocol layer that executes Connector requests. sk has four built-in drivers: HTTP, GraphQL, PostgreSQL, and S3. Each driver handles request construction, response parsing, pagination, and error normalisation for its protocol. Drivers are not pluggable at runtime — the four built-in drivers cover the intended integration surface.
 

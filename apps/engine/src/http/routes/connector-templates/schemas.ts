@@ -255,12 +255,20 @@ export const RecipePackResponseSchema = z
 
 export const ImportRequestSchema = z
   .object({
-    source: z.enum(["postman", "har", "openapi", "graphql", "graphql_introspection", "curl"]),
+    source: z.enum([
+      "postman",
+      "har",
+      "openapi",
+      "google_discovery",
+      "graphql",
+      "graphql_introspection",
+      "curl",
+    ]),
     content: z
       .string()
       .min(1)
       .describe(
-        "Inline specification content or a source-specific URL/command. URL-fetched OpenAPI documents are streamed with a 50 MiB limit; server and security metadata seed the connector draft.",
+        "Inline specification content or a source-specific URL/command. URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit; specification metadata seeds the connector draft.",
       ),
     headers: z.record(z.string(), z.string()).optional(),
     name: z.string().min(1).optional(),

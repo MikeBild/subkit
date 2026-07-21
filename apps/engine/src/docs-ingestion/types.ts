@@ -7,6 +7,7 @@
 
 export type DocSourceType =
   | "openapi"
+  | "google_discovery"
   | "markdown"
   | "llms_txt"
   | "graphql"

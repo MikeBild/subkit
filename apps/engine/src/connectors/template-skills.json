@@ -260,6 +260,29 @@
     ],
     "doc_refs": ["https://airtable.com/developers/web/api/introduction"]
   },
+  "cloudflare-basics": {
+    "title": "Cloudflare REST API Basics",
+    "body": "Authenticate with a scoped API token as a Bearer token. Requests use https://api.cloudflare.com/client/v4. Most resources are scoped below an account ID or zone ID, so resolve those identifiers before calling resource endpoints. Cloudflare list endpoints commonly use page/per_page pagination and return result_info alongside result.",
+    "examples": [
+      "GET /user/tokens/verify — verify the configured API token",
+      "GET /zones?per_page=50 — list zones visible to the token",
+      "GET /zones/{zone_id}/dns_records?per_page=100 — list DNS records in a zone"
+    ],
+    "best_practices": [
+      "Create a separate least-privilege API token for each automation instead of using the Global API Key",
+      "Resolve account and zone IDs through list endpoints and store the immutable IDs instead of relying on names",
+      "Paginate list endpoints with page and per_page, and inspect result_info.total_pages before stopping"
+    ],
+    "pitfalls": [
+      "A valid token can still return authorization errors when it lacks the exact account or zone permission required by an endpoint",
+      "Account-scoped and zone-scoped endpoints use different identifier paths; putting a zone ID in an account path returns a misleading not-found response",
+      "Cloudflare API tokens are secrets; revoke and replace any token that has been pasted into chat, logs, or source control"
+    ],
+    "doc_refs": [
+      "https://developers.cloudflare.com/api/",
+      "https://developers.cloudflare.com/fundamentals/api/get-started/create-token/"
+    ]
+  },
   "confluence-basics": {
     "title": "Confluence Cloud API Basics",
     "body": "Authenticate via OAuth 2.0 (3LO) or Basic Auth with an API token (same Atlassian tokens as Jira). The v2 API at /wiki/api/v2 uses cursor-based pagination via limit and _links.next. Rate limit is 65K points per hour. The same Atlassian OAuth app can serve both Jira and Confluence.",
@@ -645,17 +668,19 @@
   },
   "firebase-basics": {
     "title": "Firebase Firestore REST API Basics",
-    "body": "Authenticate via OAuth 2.0 with a service account or user credentials. All requests go to https://firestore.googleapis.com/v1. Documents are organized in collections. Queries use structured query objects in POST bodies. Supports real-time listeners via the listen RPC.",
+    "body": "Authenticate through the connector's Google OAuth 2.0 flow, or supply a short-lived Firebase Authentication ID token as Bearer credentials. The connector base is https://firestore.googleapis.com and Firestore REST paths begin with /v1. Documents are organized in collections; queries use structured query objects in POST bodies. Firebase ID-token requests are evaluated by Firestore Security Rules, while Google OAuth access follows IAM.",
     "examples": [
       "GET /v1/projects/{projectId}/databases/(default)/documents/{collection} — list documents in a collection",
       "POST /v1/projects/{projectId}/databases/(default)/documents/{collection} — create a document"
     ],
     "best_practices": [
-      "Use service accounts with Firestore Admin IAM role for server-to-server access",
+      "Grant the narrowest Google OAuth scopes and IAM permissions that the workflow requires",
+      "Use Firebase ID tokens only for end-user flows governed by Firestore Security Rules and refresh them before their one-hour expiry",
       "Design document hierarchies to minimize reads — Firestore charges per read operation"
     ],
     "pitfalls": [
-      "Firestore queries require composite indexes for multi-field filters — missing indexes return an error with a link to create the index"
+      "Firestore queries require composite indexes for multi-field filters — missing indexes return an error with a link to create the index",
+      "The built-in OAuth flow accepts an OAuth client ID and secret; a service-account JSON key is not an interchangeable OAuth client secret"
     ],
     "doc_refs": ["https://firebase.google.com/docs/firestore/reference/rest"]
   },

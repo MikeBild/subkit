@@ -79,10 +79,29 @@ on their behalf — proper delegation, not credential sharing.
 Attach a credential from the CLI:
 
 ```bash
-sk connectors credentials set <CONNECTOR_ID> --mode bearer --token sk_live_…
+sk credentials set <CONNECTOR_ID> --mode bearer --token sk_live_…
 #   modes: bearer | header | query | basic | aws_sigv4 | none
-sk connectors credentials list <CONNECTOR_ID>
+sk credentials list <CONNECTOR_ID>
 ```
+
+Cloudflare and Firebase/Firestore are built in:
+
+```bash
+# Cloudflare: use a newly created, least-privilege API token.
+sk connectors create --template cloudflare --name cloudflare-prod
+sk credentials set <CONNECTOR_ID> --mode bearer --token '<NEW_SCOPED_TOKEN>'
+
+# Firebase: store the Google OAuth client once per tenant/template, then authorize the connector.
+sk connector-templates set-oauth --slug firebase \
+  --client-id '<GOOGLE_OAUTH_CLIENT_ID>' \
+  --client-secret '<GOOGLE_OAUTH_CLIENT_SECRET>'
+sk connectors create --template firebase --name firebase-prod
+sk auth --connector-id <CONNECTOR_ID>
+```
+
+Revoke any Cloudflare token that has appeared in chat, logs, shell history, or source control.
+Firebase ID tokens are also accepted as short-lived Bearer credentials for end-user flows; a
+service-account JSON key is not an OAuth client secret.
 
 ## Health and validation
 
