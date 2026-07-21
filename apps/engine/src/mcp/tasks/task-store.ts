@@ -57,10 +57,16 @@ export interface ConversationTaskStoreParams {
 export class ConversationTaskStore implements TaskStore {
   private readonly db: Db;
   private readonly tenantId: string;
+  private inputRequiredHandler?: (row: McpTaskRow) => Promise<boolean>;
 
   constructor(p: ConversationTaskStoreParams) {
     this.db = p.db;
     this.tenantId = p.tenant_id;
+  }
+
+  /** Bind the live per-session MCP channel after the Server is constructed. */
+  setInputRequiredHandler(handler: (row: McpTaskRow) => Promise<boolean>): void {
+    this.inputRequiredHandler = handler;
   }
 
   /**
@@ -86,8 +92,15 @@ export class ConversationTaskStore implements TaskStore {
   }
 
   async getTask(taskId: string): Promise<Task | null> {
-    const row = await getMcpTask(this.tenantId, taskId, this.db);
+    let row = await getMcpTask(this.tenantId, taskId, this.db);
     if (!row) return null;
+    if ((await this.deriveTask(row)).status === "input_required" && this.inputRequiredHandler) {
+      const attempted = await this.inputRequiredHandler(row);
+      if (attempted) {
+        row = await getMcpTask(this.tenantId, taskId, this.db);
+        if (!row) return null;
+      }
+    }
     return this.deriveTask(row);
   }
 

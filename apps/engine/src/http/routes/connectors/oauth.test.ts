@@ -24,7 +24,14 @@ import {
   type MockOAuthServer,
   startMockOAuthServer,
 } from "../../../credentials/oauth2/tests/mock-server.ts";
-import { connectorOauthStates, connectors, credentials, events } from "../../../db/schema/index.ts";
+import {
+  connectorOauthStates,
+  connectors,
+  conversationElicitations,
+  conversations,
+  credentials,
+  events,
+} from "../../../db/schema/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
@@ -110,6 +117,31 @@ describe("GET /v1/oauth/callback", () => {
   test("happy path persists the credential and deletes the state row", async () => {
     const state = "state-happy-path-1";
     await seedStateRow(state);
+    const [conversation] = await server.db
+      .insert(conversations)
+      .values({
+        tenant_id: server.tenantId,
+        owner_id: server.userId,
+        status: "awaiting_input",
+      })
+      .returning();
+    if (!conversation) throw new Error("seed conversation failed");
+    const [elicitation] = await server.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: server.tenantId,
+        conversation_id: conversation.id,
+        tool_name: "ask_user_confirm",
+        summary: "Authorize connector",
+        input: {
+          connector_id: connectorId,
+          authorization_url: `${server.baseUrl}/oauth/start`,
+        },
+        protocol_native: true,
+        delivery_last_error: "url_accepted",
+      })
+      .returning();
+    if (!elicitation) throw new Error("seed elicitation failed");
     const code = "test-code-stub";
     const res = await fetch(`${server.baseUrl}/v1/oauth/callback?state=${state}&code=${code}`);
     expect(res.status).toBe(200);
@@ -122,6 +154,11 @@ describe("GET /v1/oauth/callback", () => {
     expect(cred!.mode).toBe("oauth2");
 
     expect(await getStateRow(state)).toBeNull();
+    const [completedElicitation] = await server.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitation.id));
+    expect(completedElicitation?.delivery_last_error).toBe("url_completed");
 
     // v4.8.0 Fix #1: callback must also publish
     // `connector.oauth.callback_succeeded` on the `connector.oauth`

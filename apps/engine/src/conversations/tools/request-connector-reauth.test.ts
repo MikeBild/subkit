@@ -14,16 +14,23 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { setConfigKey } from "../../config/loader.ts";
-import { connectors } from "../../db/schema/index.ts";
+import { connectors, conversations } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import type { ToolContext } from "./index.ts";
 import { requestConnectorReauthTool } from "./request-connector-reauth.ts";
 
 let ctx: ConversationTestCtx;
+let conversationId: string;
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("req_reauth");
+  const [conversation] = await ctx.testDb.db
+    .insert(conversations)
+    .values({ tenant_id: ctx.tenant_id, owner_id: ctx.user_id, status: "active" })
+    .returning({ id: conversations.id });
+  if (!conversation) throw new Error("seed conversation failed");
+  conversationId = conversation.id;
 });
 
 afterAll(async () => {
@@ -66,7 +73,7 @@ function makeToolContext(
   return {
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
-    conversation_id: crypto.randomUUID(), // allow-random: legacy; review before changing
+    conversation_id: conversationId,
     actor_id: actorId,
     connector_id: null,
     workflow_id: null,
@@ -179,7 +186,7 @@ describe("request_connector_reauth — MCP surface routes to a secure setup URL 
   // instead mint a real single-use credential-setup grant URL
   // (/v1/connectors/:id/credentials/setup?grant=sksg_…) and NOT bind a
   // re-issue draft nor instruct ask_user_form.
-  test("non-OAuth connector over MCP → method:portal_setup with a tokenized setup_url", async () => {
+  test("non-OAuth connector over MCP → URL elicitation pause, no URL in tool data", async () => {
     await setConfigKey("server.public_base_url", "https://engine.test");
     const { connector_id } = await seedConnector({ slug: "rr-mcp-bearer", auth_type: "bearer" });
 
@@ -194,20 +201,21 @@ describe("request_connector_reauth — MCP surface routes to a secure setup URL 
 
     expect(result.ok).toBe(true);
     const data = (result as { data: Record<string, unknown> }).data;
-    expect(data.method).toBe("portal_setup");
-    expect(data.mode).toBe("credential_re_issue");
-    expect(String(data.setup_url)).toMatch(
+    expect(data.status).toBe("awaiting_input");
+    expect("setup_url" in data).toBe(false);
+    const pauseInput = result.pause?.input as Record<string, unknown>;
+    expect(String(pauseInput.setup_url)).toMatch(
       new RegExp(
         `^https://engine\\.test/v1/connectors/${connector_id}/credentials/setup\\?grant=sksg_`,
       ),
     );
-    expect(data.single_use).toBe(true);
-    expect(typeof data.expires_at).toBe("string");
+    expect(pauseInput.single_use).toBe(true);
+    expect(typeof pauseInput.expires_at).toBe("string");
     // No in-chat form and no draft binding over MCP.
     expect("next_prompt" in data).toBe(false);
     expect(bound).toBe(false);
-    expect(String(data.instructions).toLowerCase()).toContain(
-      "never ask the user to paste the secret in chat",
+    expect((pauseInput.commit_intent as { kind?: string }).kind).toBe(
+      "credential_reissue_completed",
     );
   });
 
@@ -227,6 +235,36 @@ describe("request_connector_reauth — MCP surface routes to a secure setup URL 
     expect("setup_url" in data).toBe(false);
     expect(String(data.next_prompt).toLowerCase()).toContain("ask_user_form");
     expect(bound).toBe(true);
+  });
+
+  test("OAuth authorization-code over MCP → URL elicitation pause", async () => {
+    await setConfigKey("server.public_base_url", "https://engine.test");
+    const { connector_id } = await seedConnector({
+      slug: "rr-mcp-oauth",
+      auth_type: "oauth2",
+      config: {
+        oauth: {
+          authorization_endpoint: "https://provider.test/oauth/authorize",
+          token_endpoint: "https://provider.test/oauth/token",
+          client_id: "test-client",
+          grant_type: "authorization_code",
+        },
+      },
+    });
+
+    const result = await requestConnectorReauthTool.execute(makeToolContext(ctx.user_id, "mcp"), {
+      connector_id,
+    });
+
+    expect(result.ok).toBe(true);
+    const data = (result as { data: Record<string, unknown> }).data;
+    expect(data.status).toBe("awaiting_input");
+    expect("reauth_url" in data).toBe(false);
+    const pauseInput = result.pause?.input as Record<string, unknown>;
+    expect(String(pauseInput.authorization_url)).toContain(
+      `/v1/connectors/${connector_id}/oauth/start?grant=skog_`,
+    );
+    expect((pauseInput.commit_intent as { kind?: string }).kind).toBe("oauth_completed");
   });
 });
 

@@ -140,17 +140,37 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 The complete MCP conversation cluster is `conversation_start`, `conversation_append`, `conversation_get`, `conversation_respond_elicitation`, and `conversation_commit` — the session orchestration an AI client uses to open, drive, resolve elicitations on, and commit an authoring conversation. See [Tool palette → MCP session and confirmation tools](./tool-palette.md#mcp-session-and-confirmation-tools) for each tool's role.
 >
-> **Elicitation over MCP is always the DB-pause path.** No in-process elicitation bridge exists on any surface: an `ask_user_*` / `authenticate_oauth` inserts a pending `conversation_elicitations` row, sets the conversation to `awaiting_input`, and the turn ends. The task then derives `input_required`; the client reads the pending form via `conversation_get` (or `tasks/get`) and resolves it with `conversation_respond_elicitation`, which enqueues the next turn. (Write approvals never elicit at all — they wait at their `approval_url`.)
+> **Persisted-to-native MCP elicitation.** Background workers have no live MCP
+> session, so an `ask_user_*`, conversation approval, or browser authorization
+> first persists a pending `conversation_elicitations` row and ends the turn.
+> The next `conversation_get` or `tasks/get` on a client advertising
+> `elicitation` atomically leases that row and emits a real server→client
+> `elicitation/create`: form mode for primitive questions/approvals and URL mode
+> for OAuth or credential setup. A form answer is stamped as
+> `human/in_band_elicitation`, queued, and resumes the same conversation. URL
+> acceptance only acknowledges navigation; the credential/OAuth callback marks
+> the persisted row complete and emits `notifications/elicitation/complete`
+> before the next poll resumes it. Tasks clients retain the same task id. A
+> short DB lease prevents duplicate
+> dialogs across concurrent polls and expires after a disconnect so another
+> replica can retry. Ordinary questions still have the explicit
+> `conversation_respond_elicitation` fallback on clients without elicitation;
+> approval-bearing rows remain human-only and cannot be answered by a model.
 
 **Governance.** All MCP calls are subject to the same RBAC checks and Audit Log entries as direct API calls. There is no privileged back channel; identity and permissions are enforced identically regardless of which surface initiated the request.
 
-**Destructive-action flow.** Tenant writes (e.g. `delete_workflow`, `revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation authoring actions. One rule governs every write tool on every client: **an approval is granted by a human, out of band, through the approval portal.**
+**Destructive-action flow.** Tenant writes (e.g. `delete_workflow`, `revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation authoring actions. One rule governs every write tool on every client: **an approval is granted by a human, never by the model.**
 
-*Every client.* The first call returns a `needs_confirm` envelope — `{status: "needs_confirm", tool, pending_output, tool_call_id, approval_url}` — and an `approval.requested` audit row that persists the encrypted arguments and the `would_write` preview. The approval is minted UNGRANTED. A person opens `approval_url`, sees exactly what will be written, and grants or declines (`approval.granted` / `approval.declined`). Only then does `confirm_tool_call({tool, confirm_id})` succeed: the engine claims that single-use approval under a CAS, replays the arguments it already holds, emits `approval.approved`, and executes. Before the human decides, the same call answers `approval_not_granted`.
+*Standalone tool calls.* The first call returns a `needs_confirm` envelope — `{status: "needs_confirm", tool, pending_output, tool_call_id, approval_url}` — and an `approval.requested` audit row that persists the encrypted arguments and the `would_write` preview. The approval is minted UNGRANTED. A person opens `approval_url`, sees exactly what will be written, and grants or declines (`approval.granted` / `approval.declined`). Only then does `confirm_tool_call({tool, confirm_id})` succeed: the engine claims that single-use approval under a CAS, replays the arguments it already holds, emits `approval.approved`, and executes. Before the human decides, the same call answers `approval_not_granted`.
 
 `confirm_tool_call` is therefore a **trigger**, not a gate — it performs a call a human already approved and can approve nothing itself. It is offered to every client, with no capability-based refusal, because there is nothing left for one to protect.
 
-*Clients that advertise `elicitation`.* No different. The engine never issues an in-band `elicitation/create` for a write approval — production showed the responses are not human decisions (29 unanswered prompts, 0 fulfilled; the one client that answered auto-declined without a person ever seeing the prompt). Whatever capabilities a client advertises, the approval waits, ungranted, at its `approval_url`.
+*Conversation clients that advertise form elicitation.* A policy gate reached
+inside `conversation_*` is persisted by the worker and delivered by the next
+poll as `elicitation/create(mode: form)`. Only the active MCP session can supply
+the answer; it is recorded with human in-band provenance before the held call is
+claimed. Standalone tool calls still use the approval portal because they have
+no conversation/task pause to reattach to.
 
 There is no argument on any tool, and no `_meta` flag a model-driven client can set, that clears a confirmation gate. `_meta.sk_confirm` is the same trigger `confirm_tool_call` is, and fails the same way on an ungranted approval.
 

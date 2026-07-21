@@ -584,6 +584,72 @@ describe("conversation.run-turn worker — respond_elicitation surface threading
     expect(captured[0]?.elicitation_id).toBe(elicitation.id);
     expect(captured[0]?.conversation_id).toBe(conversation_id);
   }, 30_000);
+
+  test("mcp_native provenance becomes a human in-band answer and cannot come from tool args", async () => {
+    const created = await svc.createConversation(
+      { tenant_id: tenantId, actor_id: userId, initial_message: "native answer seed" },
+      queue.testDb.db,
+    );
+    const conversation_id = created.conversation.id;
+    const elicitation = await createElicitation(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        tool_call_id: null,
+        tool_name: "ask_user_confirm",
+        summary: "approve native action",
+        input: { question: "Approve?" },
+        actor_id: userId,
+      },
+      queue.testDb.db,
+    );
+    const mcp_task_id = await insertMcpTask(
+      {
+        tenant_id: tenantId,
+        conversation_id,
+        kind: "respond_elicitation",
+        actor_id: userId,
+        request_source: "mcp",
+        user_message_id: null,
+      },
+      queue.testDb.db,
+    );
+    const principal = {
+      kind: "user" as const,
+      id: userId,
+      tenant_id: tenantId,
+      provider: "api_key" as const,
+      roles: ["admin"],
+    };
+    const captured: svc.RespondElicitationParams[] = [];
+    const spy = spyOn(svc, "respondElicitation").mockImplementation(async (p) => {
+      captured.push(p);
+      return {
+        conversation: created.conversation,
+        result: { events: [], status: "active" as const },
+      };
+    });
+    try {
+      await enqueueConversationRunTurn(queue.boss, {
+        tenant_id: tenantId,
+        conversation_id,
+        mcp_task_id,
+        actor_id: userId,
+        principal,
+        kind: "respond_elicitation",
+        elicitation_id: elicitation.id,
+        answer_channel: "mcp_native",
+      });
+      await waitForTerminal(mcp_task_id);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(captured[0]?.answer_actor).toEqual({
+      kind: "human",
+      user_id: userId,
+      via: "in_band_elicitation",
+    });
+  }, 30_000);
 });
 
 describe("conversation.run-turn worker — concurrent turns (B2)", () => {

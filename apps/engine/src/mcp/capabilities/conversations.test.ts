@@ -874,6 +874,121 @@ describe("conversation_get — respond_elicitation in-flight vs crashed", () => 
   });
 });
 
+describe("conversation_get — native MCP elicitation delivery", () => {
+  async function seedNativeChoice(): Promise<{ conversation_id: string; elicitation_id: string }> {
+    const [conv] = await testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: principal.tenant_id,
+        owner_id: principal.id,
+        status: "awaiting_input",
+      })
+      .returning();
+    if (!conv) throw new Error("seed conversation failed");
+    const [elicitation] = await testDb.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: principal.tenant_id,
+        conversation_id: conv.id,
+        tool_name: "ask_user_choice",
+        summary: "choose rollout",
+        input: {
+          question: "Choose rollout",
+          options: [
+            { value: "canary", label: "Canary" },
+            { value: "full", label: "Full" },
+          ],
+        },
+        status: "pending",
+      })
+      .returning();
+    if (!elicitation) throw new Error("seed elicitation failed");
+    await testDb.db.insert(mcpTasks).values({
+      tenant_id: principal.tenant_id,
+      conversation_id: conv.id,
+      turn_seq: 1,
+      kind: "start",
+      actor_id: principal.id,
+      request_source: "mcp",
+      result: { conversation_id: conv.id, status: "awaiting_input", events: [] },
+    });
+    return { conversation_id: conv.id, elicitation_id: elicitation.id };
+  }
+
+  test("delivers the persisted choice through the live MCP request and queues its answer", async () => {
+    const { conversation_id, elicitation_id } = await seedNativeChoice();
+    let calls = 0;
+    const got = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_get",
+      args: { conversation_id },
+      nativeElicitation: {
+        elicitForm: async (params) => {
+          calls += 1;
+          expect(params.requestedSchema.properties.value).toMatchObject({
+            type: "string",
+            enum: ["canary", "full"],
+          });
+          return { action: "accept", content: { value: "canary" } };
+        },
+      },
+    });
+    expect(got.isError).toBe(false);
+    expect(calls).toBe(1);
+    const [row] = await testDb.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitation_id));
+    expect(row?.protocol_native).toBe(true);
+    expect(row?.delivery_attempts).toBe(1);
+    expect(row?.output).toEqual({ value: "canary", option_index: 0 });
+    const tasks = await testDb.db
+      .select()
+      .from(mcpTasks)
+      .where(eq(mcpTasks.conversation_id, conversation_id));
+    expect(tasks.some((task) => task.kind === "respond_elicitation" && task.job_id)).toBe(true);
+  });
+
+  test("a concurrent poll sees the durable lease and does not open a second dialog", async () => {
+    const { conversation_id } = await seedNativeChoice();
+    let releaseFirst: (() => void) | undefined;
+    const firstAnswer = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let calls = 0;
+    const nativeElicitation = {
+      elicitForm: async () => {
+        calls += 1;
+        await firstAnswer;
+        return { action: "cancel" as const };
+      },
+    };
+    const first = handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_get",
+      args: { conversation_id },
+      nativeElicitation,
+    });
+    while (calls === 0) await Bun.sleep(5);
+    const second = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_get",
+      args: { conversation_id },
+      nativeElicitation,
+    });
+    const secondBody = JSON.parse(second.content[0]?.text ?? "{}") as {
+      phase?: string;
+    };
+    expect(secondBody.phase).toBe("awaiting_human_input");
+    expect(calls).toBe(1);
+    releaseFirst?.();
+    await first;
+  });
+});
+
 describe("conversation_get — working heartbeat", () => {
   test("a non-terminal turn reports numeric elapsed_ms + the newest action", async () => {
     const [conv] = await testDb.db

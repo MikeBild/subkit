@@ -43,6 +43,7 @@ import sql0022CalmGroot from "./0022_calm_groot.sql" with { type: "text" };
 import sql0023EarlySharonCarter from "./0023_early_sharon_carter.sql" with { type: "text" };
 import sql0024CuddlyStarkIndustries from "./0024_cuddly_stark_industries.sql" with { type: "text" };
 import sql0025OvalGammaCorps from "./0025_oval_gamma_corps.sql" with { type: "text" };
+import sql0026KnownNicoMinoru from "./0026_known_nico_minoru.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -93,6 +94,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0023_early_sharon_carter": sql0023EarlySharonCarter,
   "0024_cuddly_stark_industries": sql0024CuddlyStarkIndustries,
   "0025_oval_gamma_corps": sql0025OvalGammaCorps,
+  "0026_known_nico_minoru": sql0026KnownNicoMinoru,
 };
 
 const journal = journalMeta as unknown as Journal;

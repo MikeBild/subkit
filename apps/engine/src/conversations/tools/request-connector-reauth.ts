@@ -19,11 +19,9 @@
 //     draft and collects the new secret via ask_user_form; rotates in place.
 //
 //   - Non-OAuth (basic/bearer/header/query) over MCP: mints a single-use
-//     credential-setup grant URL (sksg_… token, 10-min TTL,
-//     /v1/connectors/:id/credentials/setup?grant=…) that renders a real
-//     browser form for the new secret — a secret must never be collected as
-//     chat text over MCP. Submitting the form rotates the credential in
-//     place, same as the sk-cli/web path.
+//     credential-setup grant and pauses on a URL-mode elicitation. The URL is
+//     sent server→client, never returned as model text. The browser form keeps
+//     the secret outside MCP form/chat payloads and rotates in place.
 //
 // Resolution:
 //   - `connector_id` (uuid) takes precedence.
@@ -49,6 +47,7 @@ import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts"
 import { logger } from "../../logging/logger.ts";
 import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
+import { pauseForUserInput } from "./ask-user/common.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const RequestConnectorReauthInput = z
@@ -84,16 +83,16 @@ function structuredError(
 export const requestConnectorReauthTool: ConversationTool = {
   name: "request_connector_reauth",
   description:
-    "Repair a connector whose credential is dead — flagged `needs_reauth`, or a `call_connector`/`probe_connector` came back `health: auth_failed`. OAuth2 (authorization_code) connectors → mints a single-use sign-in link (expires ~10 min) to open in a browser. OAuth2 (client_credentials) → refreshes the token machine-side and returns `status: reauthorized`. Non-OAuth (basic/bearer/header/query) → starts an in-chat credential re-issue: loads the connector into a draft and collects the new secret via `ask_user_form`; rotates in place (same connector id, dependent workflows untouched) — no delete+recreate. Resolves by `connector_id` (uuid) or `slug`.",
+    "Repair a connector whose credential is dead — flagged `needs_reauth`, or a `call_connector`/`probe_connector` came back `health: auth_failed`. OAuth2 (authorization_code) and non-OAuth MCP repairs pause for native URL-mode elicitation; the URL is never returned as model text. OAuth2 (client_credentials) refreshes machine-side. Local sk/web non-OAuth repairs use a masked form. Every path rotates in place (same connector id, dependent workflows untouched). Resolves by `connector_id` (uuid) or `slug`.",
   use_case:
-    "A saved connector's credential was revoked or rotated upstream and calls now fail with auth_failed. For OAuth2 authorization-code connectors, request_connector_reauth returns a one-time URL to open in a browser; for client-credentials connectors it refreshes immediately; for non-OAuth it binds a re-issue draft so the next ask_user_form submission rotates the credential on the existing connector.",
+    "A saved connector's credential was revoked or rotated upstream and calls now fail with auth_failed. MCP browser flows are surfaced through native URL elicitation; client-credentials refresh immediately; local sk/web non-OAuth flows use a masked form.",
   important_notes: [
     "Pass either `connector_id` (uuid) or `slug`; `connector_id` wins when both are given.",
-    "OAuth2 (authorization_code) → returns `method: oauth2`, `reauth_url` (present the URL verbatim on its own line as a bare URL — no markdown, no shortening), `single_use: true`, `expires_at`. Opening the link redirects to the provider sign-in page. If the link expires, call this tool again.",
+    "OAuth2 (authorization_code) → over MCP pauses for native URL elicitation; local surfaces receive `reauth_url`. The single-use browser grant expires after approximately ten minutes.",
     "OAuth2 (client_credentials) → returns `method: oauth2`, `status: reauthorized` — no URL needed.",
     "Non-OAuth on sk-cli/web → returns `method: portal_setup`, `mode: credential_re_issue`, and stages a re-issue draft; follow with `ask_user_form(type: password, sensitive: true)` to collect the new secret and it rotates in place.",
-    "Non-OAuth over MCP → returns `method: portal_setup`, `mode: credential_re_issue`, `setup_url` (a real single-use secure page — present it verbatim on its own line, no markdown, no shortening), `single_use: true`, `expires_at`. Opening it lets the user enter the new secret directly in the browser; submitting rotates the credential in place. If it expires before submission, call this tool again.",
-    "Never paste the secret in chat — on sk-cli/web collect it through `ask_user_form(type: password, sensitive: true)`; over MCP it is entered directly on the `setup_url` page, never in chat.",
+    "Non-OAuth over MCP → pauses for `elicitation/create(mode: url)` backed by a single-use secure credential page. The URL is transported directly to the client and is absent from model-facing tool data.",
+    "Never paste the secret in chat — on sk-cli/web collect it through `ask_user_form(type: password, sensitive: true)`; over MCP it is entered only in the URL-elicited secure page.",
     "Requires `connector:write` on the connector (the non-OAuth path stages a credential rotation).",
   ],
   example_input: { slug: "digitalocean" },
@@ -235,28 +234,27 @@ export const requestConnectorReauthTool: ConversationTool = {
           connector_id: connector.id,
           auth_type: connector.auth_type,
         });
-        return {
-          ok: true,
-          data: {
-            connector: connector.slug,
-            method: "portal_setup",
-            mode: "credential_re_issue",
-            auth_type: connector.auth_type,
-            ...(isCognito ? { grant_type: "cognito_user_password" } : {}),
+        return pauseForUserInput(ctx, {
+          tool_name: "ask_user_confirm",
+          summary: `Reconnect ${connector.display_name ?? connector.slug} in the secure browser flow.`,
+          input: {
+            kind: "external_write",
+            question: "Did you complete the credential setup in the browser?",
+            summary:
+              `Open the secure credential setup for ${connector.display_name ?? connector.slug}, ` +
+              "save the replacement credential, then return to this client.",
             setup_url: grantResult.url,
+            connector_id: connector.id,
+            connector_slug: connector.slug,
             single_use: true,
             expires_at: grantResult.expires_at.toISOString(),
-            needs_reauth: connector.needs_reauth,
-            auth_failed_at: connector.auth_failed_at?.toISOString() ?? null,
-            instructions:
-              "Present this URL verbatim on its own line as a bare URL — no markdown wrapper, no shortening. " +
-              "It is single-use and expires in approximately 10 minutes. " +
-              "Opening it takes the user to a secure page to enter the new secret; submitting the form rotates " +
-              "the credential in place on the existing connector (the id and every dependent workflow stay intact). " +
-              "If the link expires before the user submits it, call request_connector_reauth again for a fresh one. " +
-              "Never ask the user to paste the secret in chat.",
+            commit_intent: {
+              kind: "credential_reissue_completed",
+              payload: { connector_id: connector.id, connector_slug: connector.slug },
+              description: `Resume work that was blocked on ${connector.slug}: the credential is now active.`,
+            },
           },
-        };
+        });
       }
 
       const draftConnector = hydrateDraftFromSavedConnector(connector);
@@ -365,6 +363,30 @@ export const requestConnectorReauthTool: ConversationTool = {
       conversation_id: ctx.conversation_id,
       connector_id: connector.id,
     });
+
+    if (ctx.surface === "mcp") {
+      return pauseForUserInput(ctx, {
+        tool_name: "ask_user_confirm",
+        summary: `Reconnect ${connector.display_name ?? connector.slug} with OAuth.`,
+        input: {
+          kind: "external_write",
+          question: "Did you complete the OAuth authorization in the browser?",
+          summary:
+            `Authorize ${connector.display_name ?? connector.slug} in the secure browser flow, ` +
+            "then return to this client.",
+          authorization_url: grantResult.url,
+          connector_id: connector.id,
+          connector_slug: connector.slug,
+          single_use: true,
+          expires_at: grantResult.expires_at.toISOString(),
+          commit_intent: {
+            kind: "oauth_completed",
+            payload: { connector_id: connector.id, connector_slug: connector.slug },
+            description: `Resume work that was blocked on ${connector.slug}: the credential is now active.`,
+          },
+        },
+      });
+    }
 
     return {
       ok: true,

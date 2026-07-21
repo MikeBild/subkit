@@ -24,12 +24,14 @@ import {
   CallToolRequestSchema,
   type CallToolResult,
   ListToolsRequestSchema,
+  ElicitResultSchema as McpElicitResultSchema,
   type ServerNotification,
   type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, asc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
+import { registerNativeUrlElicitationCompletion } from "../../conversations/native-url-elicitation.ts";
 import type { Db } from "../../db/client.ts";
 import { executions, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
@@ -387,8 +389,17 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         // DB-pause elicitation path, NOT the live `ElicitationBridge` —
         // a backgrounded turn has no live session.
         const taskParamPresent = request.params.task !== undefined;
-        const clientTasksCapable = server.getClientCapabilities()?.tasks !== undefined;
+        const clientCapabilities = server.getClientCapabilities();
+        const clientTasksCapable = clientCapabilities?.tasks !== undefined;
         const taskAugmented = taskParamPresent && clientTasksCapable;
+        const elicitationCapabilities = clientCapabilities?.elicitation;
+        // MCP backwards compatibility: `elicitation: {}` means form support.
+        // SDK 1.29's convenience `elicitInput()` does not normalize that form,
+        // so issue the typed request directly after this explicit capability check.
+        const formElicitationCapable =
+          elicitationCapabilities !== undefined &&
+          (elicitationCapabilities.form !== undefined || elicitationCapabilities.url === undefined);
+        const urlElicitationCapable = elicitationCapabilities?.url !== undefined;
         const result = await handleConversationTool({
           db,
           principal,
@@ -397,6 +408,47 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           ...(permissionMode ? { permission_mode: permissionMode } : {}),
           ...(playground ? { playground } : {}),
           ...(taskAugmented ? { taskAugmented } : {}),
+          ...(formElicitationCapable || urlElicitationCapable
+            ? {
+                nativeElicitation: {
+                  ...(formElicitationCapable
+                    ? {
+                        elicitForm: async (params) =>
+                          await server.request(
+                            {
+                              method: "elicitation/create",
+                              params: { mode: "form", ...params },
+                            },
+                            McpElicitResultSchema,
+                            { signal: extra.signal },
+                          ),
+                      }
+                    : {}),
+                  ...(urlElicitationCapable
+                    ? {
+                        elicitUrl: async (params) => {
+                          const unregister = registerNativeUrlElicitationCompletion(
+                            params.elicitationId,
+                            server.createElicitationCompletionNotifier(params.elicitationId),
+                          );
+                          try {
+                            const result = await server.request(
+                              { method: "elicitation/create", params },
+                              McpElicitResultSchema,
+                              { signal: extra.signal },
+                            );
+                            if (result.action !== "accept") unregister();
+                            return result;
+                          } catch (err) {
+                            unregister();
+                            throw err;
+                          }
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         });
         logger.info({
           module: "mcp",

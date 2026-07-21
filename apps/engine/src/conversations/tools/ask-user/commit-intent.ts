@@ -38,6 +38,7 @@ export const MODEL_COMMIT_INTENT_KINDS = [
   // engine logged `auto_persist.skipped: elicitation resolved without
   // commit_intent` on every OAuth approval (session ed20f48d).
   "oauth_completed",
+  "credential_reissue_completed",
   // run_workflow's missing-input auto-form carries this intent so the
   // harness executes the run with the submitted values directly on
   // form submit. Pre-fix the resume contract relied on the LLM
