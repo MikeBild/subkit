@@ -67,6 +67,12 @@ jobs:
         run: bun run lint
 
       - name: Typecheck
+        # The generated OpenAPI types plus the full engine graph exceed V8's
+        # default ~2 GiB old-space limit on hosted runners. The runner has
+        # enough memory; raise only this step's heap instead of weakening the
+        # typecheck or splitting its project graph.
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: bun run typecheck
 
       - name: Recipe lint
