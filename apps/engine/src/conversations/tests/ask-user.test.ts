@@ -315,21 +315,44 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
     }
   });
 
-  test("bearer draft + `api_key` field → credential_form_mismatch (canonical name is `token`)", async () => {
-    const ctx = buildGatedCtx({
-      name: "t",
-      slug: "t",
-      driver: "http",
-      environment: "dev",
-      auth_type: "bearer",
-    });
+  test("bearer draft canonicalizes one sensitive alias to `token` before pausing", async () => {
+    if (!integrationDb || !integrationTenantId) throw new Error("integration DB not initialized");
+    const [conv] = await integrationDb.db
+      .insert(conversations)
+      .values({ tenant_id: integrationTenantId, status: "awaiting_input" })
+      .returning();
+    const conversation_id = conv!.id;
+    const draft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "t",
+        slug: "t-alias",
+        driver: "http",
+        environment: "dev",
+        auth_type: "bearer",
+      },
+      workflow: { name: "", steps: [] },
+    };
+    await appendSnapshot(integrationTenantId, conversation_id, draft, integrationDb.db);
+    const ctx: ToolContext = {
+      db: integrationDb.db,
+      tenant_id: integrationTenantId,
+      conversation_id,
+      actor_id: null,
+      connector_id: null,
+      workflow_id: null,
+      engineClient: null as never,
+      getDraft: () => draft,
+      setDraft: async () => {},
+    };
     const result = await askUserFormTool.execute(ctx, {
       question: "Enter your API key",
-      fields: [{ name: "api_key", label: "API key", type: "password" }],
+      fields: [{ name: "cloudflare_api_key", label: "API key", type: "password" }],
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error_code).toBe("credential_form_mismatch");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const input = result.pause?.input as { fields?: Array<{ name?: string }> } | undefined;
+      expect(input?.fields?.[0]?.name).toBe("token");
     }
   });
 
@@ -338,7 +361,7 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
   // instead of thrashing (conversation 68b5c87e: 4 rejected forms).
   // `data` is what reaches the model as the tool-result payload, so the
   // prose message must live there too.
-  test("credential_form_mismatch data carries expected_fields + message (bearer)", async () => {
+  test("ambiguous bearer form mismatch carries expected_fields + message", async () => {
     const ctx = buildGatedCtx({
       name: "t",
       slug: "t",
@@ -348,7 +371,10 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
     });
     const result = await askUserFormTool.execute(ctx, {
       question: "Enter your API key",
-      fields: [{ name: "api_key", label: "API key", type: "password" }],
+      fields: [
+        { name: "api_key", label: "API key", type: "password" },
+        { name: "access_key", label: "Access key", type: "password" },
+      ],
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {

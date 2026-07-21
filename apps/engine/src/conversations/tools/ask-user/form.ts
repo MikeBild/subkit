@@ -230,7 +230,7 @@ export function validateFormFieldValue(
 export const askUserFormTool: ConversationTool = {
   name: "ask_user_form",
   description:
-    'Ask the user to fill in a small form of typed fields. The client renders a stacked input; the submitted {name:value} map resumes the loop. Pre-fill every value you already know via the field `default` (never on password/sensitive fields) so the user confirms instead of retyping. If you pass `commit_intent`, the harness applies the intended write atomically when the operator submits — the form value (e.g. credential) flows directly into the commit. You DO NOT need to call save_connector_draft afterward; the next turn will already see a synthetic tool result describing the persistence with source="harness_auto_persist".',
+    'Ask the user to fill in a small form of typed fields. The client renders a stacked input; the submitted {name:value} map resumes the loop. Credential field names are canonical: bearer uses `token`; basic uses `username` + `password`; header uses `header_name` + `header_value`; query uses `param_name` + `param_value`; aws_sigv4 uses `access_key_id` + `secret_access_key` with optional `session_token`. Pre-fill every value you already know via the field `default` (never on password/sensitive fields) so the user confirms instead of retyping. If you pass `commit_intent`, the harness applies the intended write atomically when the operator submits — the form value (e.g. credential) flows directly into the commit. You DO NOT need to call save_connector_draft afterward; the next turn will already see a synthetic tool result describing the persistence with source="harness_auto_persist".',
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -270,6 +270,22 @@ export const askUserFormTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
         });
         if (resolution.seedMode) {
+          const sensitiveFields = args.fields.filter(
+            (field) => field.type === "password" || field.sensitive === true,
+          );
+          if (
+            resolution.seedMode === "bearer" &&
+            sensitiveFields.length === 1 &&
+            !args.fields.some((field) => field.name.toLowerCase() === "token")
+          ) {
+            const sensitiveName = sensitiveFields[0]?.name;
+            args = {
+              ...args,
+              fields: args.fields.map((field) =>
+                field.name === sensitiveName ? { ...field, name: "token" } : field,
+              ),
+            };
+          }
           // Slots already supplied outside the form: real (non-mustache)
           // string values in commit_intent.payload.credential (e.g. the
           // LLM pre-supplies `header_name`) plus config/template-derived
