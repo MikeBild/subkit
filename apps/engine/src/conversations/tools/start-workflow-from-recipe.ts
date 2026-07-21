@@ -114,6 +114,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
   ],
   inputSchema,
   category: "draft_write" as const,
+  authoring_resource: "workflow",
   requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);

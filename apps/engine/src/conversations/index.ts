@@ -25,8 +25,23 @@ export {
   type DirectInvokeParams,
   invokeConversationToolDirect,
 } from "./direct-invoke.ts";
-export { markConnectorNativeUrlElicitationsComplete } from "./native-url-elicitation.ts";
+export {
+  DRAFT_CREDENTIAL_SETUP_KIND,
+  isDraftCredentialSetupAuthType,
+  mintDraftCredentialSetupUrl,
+  validateDraftCredentialSetup,
+} from "./draft-credential-setup.ts";
+export {
+  claimDraftCredentialNativeUrlElicitation,
+  completeDraftCredentialNativeUrlElicitation,
+  markConnectorNativeUrlElicitationsComplete,
+  releaseDraftCredentialNativeUrlElicitation,
+} from "./native-url-elicitation.ts";
 export * from "./parts.ts";
+export {
+  clearDraftCredential,
+  setDraftCredential,
+} from "./persistence/draft-credential-cache.ts";
 export * from "./service.ts";
 // Re-exported so the replay path can drop since-unresolvable citations before
 // the footer, mirroring the live loop's governance filter.

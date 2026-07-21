@@ -40,6 +40,7 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
     "Start a connector draft directly from the user's description. Use this as the default path when the user did not explicitly choose a template.",
   inputSchema,
   category: "draft_write",
+  authoring_resource: "connector",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     // Reuse-existing-saved-connector: if the operator pasted a URL

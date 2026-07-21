@@ -441,10 +441,13 @@ success with approval double-counts every declined-but-delivered prompt.
 A connector credential the operator supplies never lands in the conversation
 transcript, a persisted tool-call row, or the model's replayed context:
 
-- **Over MCP** a secret-shaped elicitation is refused (`secret_elicitation_blocked`)
-  and degraded to URL-mode elicitation or the portal DB-pause; poll-based clients
-  mask the field because `conversation_get` relays the form's `type:"password"` /
-  `sensitive:true` markers verbatim.
+- **Over MCP** a secret-shaped form is never sent as `mode: form`. For an unsaved
+  bearer, basic, header, query, or AWS SigV4 connector draft, the engine converts
+  it to a single-use `mode: url` elicitation. Submission stages the value only for
+  the draft probe; a green probe atomically persists the connector and encrypted
+  credential. Saved connectors use the corresponding reauthentication URL flow.
+  Clients without URL elicitation can still expose the persisted setup action from
+  `conversation_get`, but the secret is never accepted through chat text.
 - When a secret **is** typed into the sanctioned CLI/web masked form, its answer
   value is projected to `***redacted***` at the single persist chokepoint
   (`resolveElicitation`), and credential subtrees in

@@ -147,6 +147,7 @@ export const saveConnectorDraftTool: ConversationTool = {
     "Diagnostic re-issue: persist the draft atomically with an optionally-rotated credential. The normal commit path is the harness auto-persist on `ask_user_form` submit — only call this tool when the operator wants to re-save (rotate credential, recover from a partial write, or save with `force_save: true` after a failed probe).",
   inputSchema,
   category: "tenant_write",
+  authoring_resource: "connector",
   // Reads the conversation's connector draft (ctx.getDraft) — a direct MCP
   // stub-ctx dispatch would save an EMPTY connector. Rejected off-chat.
   requires_draft: true,

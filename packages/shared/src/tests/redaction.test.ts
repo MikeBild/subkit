@@ -158,6 +158,12 @@ describe("scrubString — bearer pattern over prose", () => {
     expect(scrubString(text)).toBe(text);
   });
 
+  test('prose "bearer credential." is not captured as a draft credential', () => {
+    const text = "Continue with the new bearer credential.";
+    expect(scrubString(text)).toBe(text);
+    expect(findSecretSpans(text)).toEqual([]);
+  });
+
   test("a real Authorization operand (>=16 token chars) IS matched", () => {
     const out = scrubString("Authorization: Bearer abc123def456ghi789jkl0");
     expect(out).toBe("Authorization: ***REDACTED:bearer***");

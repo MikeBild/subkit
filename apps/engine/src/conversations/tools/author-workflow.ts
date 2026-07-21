@@ -64,6 +64,7 @@ export const authorWorkflowTool: ConversationTool = {
   },
   inputSchema,
   category: "draft_write",
+  authoring_resource: "workflow",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const connectorRefs = [...new Set([...args.connector_ids, ...args.connector_slugs])];

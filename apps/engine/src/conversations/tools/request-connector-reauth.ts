@@ -102,6 +102,7 @@ export const requestConnectorReauthTool: ConversationTool = {
   // credential write happens downstream through the elicitation → auto-persist
   // path, which carries its own gate.
   category: "draft_write",
+  authoring_resource: "connector",
   permission: {
     action: "connector:write",
     resourceType: "connector",

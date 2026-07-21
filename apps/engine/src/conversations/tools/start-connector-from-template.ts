@@ -33,6 +33,7 @@ export const startConnectorFromTemplateTool: ConversationTool = {
     "Start a connector draft from a connector template. Use this only when the user wants the template; templates are optional accelerators.",
   inputSchema,
   category: "draft_write",
+  authoring_resource: "connector",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const resolved = await resolveConnectorTemplate({

@@ -5578,6 +5578,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connector-drafts/{id}/credentials/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Browser-openable credential form for an unsaved connector draft */
+        get: {
+            parameters: {
+                query: {
+                    grant: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK (HTML form) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Grant invalid, expired, or already used */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Submit a credential for an unsaved connector draft */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            /** @description Single-use HTML credential form submission. */
+            requestBody?: {
+                content: {
+                    "application/x-www-form-urlencoded": {
+                        grant?: string;
+                        token?: string;
+                        username?: string;
+                        password?: string;
+                        header_name?: string;
+                        header_value?: string;
+                        query_name?: string;
+                        query_value?: string;
+                        access_key_id?: string;
+                        secret_access_key?: string;
+                        session_token?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Credential staged for the draft probe */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Grant or credential input invalid */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connectors/{id}/credentials/setup": {
         parameters: {
             query?: never;
