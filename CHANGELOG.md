@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.1] – 2026-07-21
+
+### Fixed
+- Canonicalize a single sensitive Bearer credential field to `token` before opening the
+  credential prompt. Agents may now label or name that one field for the vendor without turning
+  a recoverable alias into an extra failed conversation turn; ambiguous multi-secret forms still
+  fail closed with the canonical field contract.
+- Put every static-auth credential field name directly in the `ask_user_form` tool description so
+  the authoring model receives the contract before its first call, not only after a rejection.
+
+### Tests
+- Reproduce the production Cloudflare draft using a vendor-specific Bearer field alias and prove
+  the persisted elicitation is normalized to the extractor's canonical `token` slot.
+
 ## [1.23.0] – 2026-07-21
 
 ### Added
