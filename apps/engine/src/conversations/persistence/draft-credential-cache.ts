@@ -16,9 +16,7 @@
 // process (a 30-min TTL covers a reasonable authoring session).
 //
 // Lifecycle:
-//   - populated by `respondElicitation` when an `ask_user_form`
-//     submission contains credential-shaped fields for the active
-//     draft's `auth_type`.
+//   - populated by a local masked form or the MCP draft-credential URL route.
 //   - read by `probe_connector_draft` and converted to a
 //     `DecryptedCredential` override fed straight into the HTTP driver.
 //   - cleared by `saveConnectorAtomic` after the credential has been

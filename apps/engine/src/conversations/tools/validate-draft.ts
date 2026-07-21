@@ -17,6 +17,7 @@ export const validateDraftTool: ConversationTool = {
     "Re-run the workflow validator on the current draft. Validation state is already inlined into every authoring turn's context (the `- Validation: N errors` section), so this tool is rarely needed — calling it repeatedly with identical args trips the per-tool loop cap. Reserve it for forcing a re-check after a change applied OUTSIDE the conversation.",
   inputSchema,
   category: "draft_write" as const,
+  authoring_resource: "workflow",
   async execute(ctx, _args): Promise<ToolResult> {
     const draft = ctx.getDraft();
     const workflowDraft = getWorkflowDraft(draft);

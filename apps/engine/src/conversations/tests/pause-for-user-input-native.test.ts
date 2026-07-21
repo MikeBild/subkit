@@ -409,7 +409,7 @@ describe("pauseForUserInput — degrade-to-DB-pause for non-flat tool input", ()
 // `surface === "mcp"`; sk-cli / web input surfaces are untouched.
 // ---------------------------------------------------------------------------
 describe("pauseForUserInput — D7 secret-elicitation guard (surface gated)", () => {
-  test("ask_user_form(password) over MCP → directive, NO pause, NO elicitation row", async () => {
+  test("password form without an active connector draft → directive and no row", async () => {
     const conversation_id = await freshConversation();
     // Capable bridge present — the guard must still preempt it: the secret
     // must never reach the wire, and no DB elicitation row may be opened.

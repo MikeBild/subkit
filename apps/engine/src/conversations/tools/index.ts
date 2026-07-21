@@ -257,6 +257,8 @@ export interface ConversationTool {
   // Keep output validation targeted there; do not generalise it here.
   readonly inputSchema: z.ZodTypeAny;
   readonly category: ToolCategory;
+  // Keeps connector and workflow state machines disjoint during authoring.
+  readonly authoring_resource?: "connector" | "workflow";
   /**
    * `args` is untrusted at the type level. The dispatcher (`tools/dispatcher.ts`
    * canonicalizeArgs) and the chat loop's AI SDK boundary both hand over

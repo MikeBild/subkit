@@ -157,6 +157,14 @@ The complete MCP conversation cluster is `conversation_start`, `conversation_app
 > `conversation_respond_elicitation` fallback on clients without elicitation;
 > approval-bearing rows remain human-only and cannot be answered by a model.
 
+Static credentials are intentionally not transported in MCP form-elicitation
+payloads. For a new unsaved bearer/basic/header/query/AWS-SigV4 connector, the
+worker mints a single-use URL capability bound to the conversation draft. The
+credential submission remains process-local until an authenticated green probe
+atomically writes the connector and encrypted credential. This avoids the
+invalid lifecycle “save to obtain an id, but probe before save”. The native `sk`
+surface continues to use its masked in-terminal form.
+
 **Governance.** All MCP calls are subject to the same RBAC checks and Audit Log entries as direct API calls. There is no privileged back channel; identity and permissions are enforced identically regardless of which surface initiated the request.
 
 **Destructive-action flow.** Tenant writes (e.g. `delete_workflow`, `revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation authoring actions. One rule governs every write tool on every client: **an approval is granted by a human, never by the model.**

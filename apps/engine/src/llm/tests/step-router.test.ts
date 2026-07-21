@@ -14,7 +14,10 @@ import type { LlmProviderKind } from "../types.ts";
 function fakeTool(
   name: string,
   category: ConversationTool["category"],
-  opts: { requires_persisted_workflow?: boolean } = {},
+  opts: {
+    requires_persisted_workflow?: boolean;
+    authoring_resource?: ConversationTool["authoring_resource"];
+  } = {},
 ): [string, ConversationTool] {
   return [
     name,
@@ -28,6 +31,7 @@ function fakeTool(
       ...(opts.requires_persisted_workflow === true
         ? { requires_persisted_workflow: true as const }
         : {}),
+      ...(opts.authoring_resource ? { authoring_resource: opts.authoring_resource } : {}),
     },
   ];
 }
@@ -36,9 +40,11 @@ const TOOLS: Record<string, ConversationTool> = Object.fromEntries([
   fakeTool("ask_user_text", "draft_write"),
   fakeTool("inspect_workflow", "tenant_read"),
   fakeTool("list_workflows", "tenant_read"),
-  fakeTool("edit_workflow_patch", "draft_write"),
-  fakeTool("save_workflow_draft", "tenant_write"),
-  fakeTool("author_workflow", "draft_write"),
+  fakeTool("edit_workflow_patch", "draft_write", { authoring_resource: "workflow" }),
+  fakeTool("save_workflow_draft", "tenant_write", { authoring_resource: "workflow" }),
+  fakeTool("author_workflow", "draft_write", { authoring_resource: "workflow" }),
+  fakeTool("inspect_connector_draft", "draft_write", { authoring_resource: "connector" }),
+  fakeTool("probe_connector_draft", "draft_write", { authoring_resource: "connector" }),
   // delete_workflow / update_workflow target an existing workflow by explicit
   // id/slug — they are NOT requires_persisted_workflow (see cleanup.ts /
   // update-workflow.ts) and must stay reachable on a fresh conversation.
@@ -256,6 +262,16 @@ describe("prepareStep — activeTools narrowing", () => {
     const decision = prepareStep(baseParams({ signals: { stage: "workflow_inspected" } }));
     expect(decision?.activeTools).toContain("edit_workflow_patch");
     expect(decision?.activeTools).toContain("inspect_workflow");
+    expect(decision?.activeTools).not.toContain("save_workflow_draft");
+    expect(decision?.activeTools).not.toContain("probe_connector_draft");
+  });
+
+  it("keeps connector authoring stages free of workflow draft tools", () => {
+    const decision = prepareStep(baseParams({ signals: { stage: "connector_validated" } }));
+    expect(decision?.activeTools).toContain("inspect_connector_draft");
+    expect(decision?.activeTools).toContain("probe_connector_draft");
+    expect(decision?.activeTools).not.toContain("author_workflow");
+    expect(decision?.activeTools).not.toContain("edit_workflow_patch");
     expect(decision?.activeTools).not.toContain("save_workflow_draft");
   });
 

@@ -77,7 +77,8 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
   // auth" in a connector-authoring reply).
   {
     kind: "bearer",
-    regex: /Bearer\s+(?=[A-Za-z0-9._-]*[0-9._-])[A-Za-z0-9._-]{8,}/gi,
+    regex:
+      /Bearer\s+(?=[A-Za-z0-9._-]*(?:[0-9_]|\.[A-Za-z0-9_-]))[A-Za-z0-9._-]{7,}[A-Za-z0-9_-]/gi,
   },
   // NOTE: the `generic` high-entropy matcher is NOT in this flat-replace
   // loop. It lives in `GENERIC_TOKEN_RE` and runs through a separate,

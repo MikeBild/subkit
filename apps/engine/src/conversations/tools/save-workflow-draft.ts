@@ -70,6 +70,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
   ],
   inputSchema,
   category: "draft_write" as const,
+  authoring_resource: "workflow",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     logger.info({

@@ -219,6 +219,7 @@ export const dryRunTransformTool: ConversationTool = {
   },
   inputSchema: DryRunInput,
   category: "tenant_read",
+  authoring_resource: "workflow",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const parsed = DryRunInput.safeParse(rawArgs);
     if (!parsed.success) {
