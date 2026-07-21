@@ -79,6 +79,49 @@ export function projectTurnEventsForClient(events: readonly unknown[]): unknown[
  */
 export function projectTurnEnvelopeForClient(
   env: ConversationTurnEnvelope,
+  live?: { pending_elicitation_id: string | null },
 ): ConversationTurnEnvelope {
-  return { ...env, events: projectTurnEventsForClient(env.events) };
+  const events = projectTurnEventsForClient(env.events);
+  const staleElicitationId =
+    live && env.pending_elicitation_id !== live.pending_elicitation_id
+      ? env.pending_elicitation_id
+      : undefined;
+  if (!staleElicitationId) return { ...env, events };
+
+  const reconciledEvents = events.flatMap((event) => {
+    if (!event || typeof event !== "object") return [event];
+    const frame = event as Record<string, unknown>;
+    if (frame.type === "elicit_request" && frame.elicitation_id === staleElicitationId) {
+      return [];
+    }
+    if (frame.type === "next_suggestion") return [];
+    if (frame.type === "completed" && frame.status === "awaiting_input") {
+      return [{ ...frame, status: "active" }];
+    }
+    const output = frame.output;
+    if (
+      frame.type === "tool_result" &&
+      output &&
+      typeof output === "object" &&
+      (output as Record<string, unknown>).elicitation_id === staleElicitationId
+    ) {
+      return [
+        {
+          ...frame,
+          output: {
+            status: "no_longer_pending",
+            elicitation_id: staleElicitationId,
+            note: "This elicitation is no longer pending. Read the current conversation state before requesting new input.",
+          },
+        },
+      ];
+    }
+    return [event];
+  });
+  const { pending_elicitation_id: _retired, ...withoutPending } = env;
+  return {
+    ...withoutPending,
+    status: env.status === "awaiting_input" ? "active" : env.status,
+    events: reconciledEvents,
+  };
 }

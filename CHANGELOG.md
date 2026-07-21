@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.3] – 2026-07-21
+
+### Fixed
+- Reconcile completed MCP poll envelopes with the live elicitation state. Once an input prompt is
+  resolved or expires, `conversation_get` and `tasks/result` no longer replay its stale setup URL,
+  nested `awaiting_input` status, or retry suggestion from the persisted turn snapshot.
+
+### Tests
+- Model the full production credential-prompt turn envelope in the expiry integration test and
+  assert both MCP poll surfaces remove stale prompt data while preserving a genuinely live prompt.
+- Make the native-decline Streamable HTTP journey wait for the rejection audit to become readable,
+  rather than racing the transaction commit after observing a neighboring status change.
+
 ## [1.23.2] – 2026-07-21
 
 ### Fixed

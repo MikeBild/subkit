@@ -111,4 +111,53 @@ describe("turn-projection — lean MCP poll envelope (T1 fix)", () => {
     const huge = projectTurnEnvelopeForClient(rawTurnEnvelope(5_000_000));
     expect(bytes(huge)).toBeLessThan(8_000);
   });
+
+  it("retires a resolved input prompt from a persisted awaiting-input snapshot", () => {
+    const elicitationId = "elicitation-expired";
+    const raw = {
+      conversation_id: "conv1",
+      status: "awaiting_input" as const,
+      pending_elicitation_id: elicitationId,
+      events: [
+        {
+          type: "tool_result",
+          output: { status: "awaiting_input", elicitation_id: elicitationId },
+        },
+        {
+          type: "elicit_request",
+          elicitation_id: elicitationId,
+          input: { setup_url: "https://engine.invalid/credentials/setup?grant=secret" },
+        },
+        { type: "completed", status: "awaiting_input" },
+        { type: "next_suggestion", suggestion: "retry ask_user_form" },
+      ],
+    };
+
+    const projected = projectTurnEnvelopeForClient(raw, { pending_elicitation_id: null });
+
+    expect(projected.status).toBe("active");
+    expect(projected.pending_elicitation_id).toBeUndefined();
+    expect(projected.events.map((event) => (event as { type?: string }).type)).toEqual([
+      "tool_result",
+      "completed",
+    ]);
+    expect(JSON.stringify(projected)).not.toContain("credentials/setup?grant=");
+    expect(JSON.stringify(projected)).toContain("no_longer_pending");
+  });
+
+  it("preserves the prompt while the same elicitation is still pending", () => {
+    const elicitationId = "elicitation-live";
+    const raw = {
+      conversation_id: "conv1",
+      status: "awaiting_input" as const,
+      pending_elicitation_id: elicitationId,
+      events: [{ type: "elicit_request", elicitation_id: elicitationId }],
+    };
+
+    const projected = projectTurnEnvelopeForClient(raw, {
+      pending_elicitation_id: elicitationId,
+    });
+
+    expect(projected).toEqual(raw);
+  });
 });

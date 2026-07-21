@@ -122,7 +122,20 @@ export class ConversationTaskStore implements TaskStore {
       // clients and Tasks clients see the identical body. Lean projection
       // matches `conversation_get`: drop replay frames, truncate oversized
       // payloads (thesis T1) — same shape, no token-by-token replay.
-      const leanResult = projectTurnEnvelopeForClient(row.result);
+      const [pending] = await this.db
+        .select({ id: conversationElicitations.id })
+        .from(conversationElicitations)
+        .where(
+          and(
+            eq(conversationElicitations.tenant_id, this.tenantId),
+            eq(conversationElicitations.conversation_id, row.conversation_id),
+            eq(conversationElicitations.status, "pending"),
+          ),
+        )
+        .limit(1);
+      const leanResult = projectTurnEnvelopeForClient(row.result, {
+        pending_elicitation_id: pending?.id ?? null,
+      });
       return {
         content: [{ type: "text", text: JSON.stringify(leanResult) }],
         isError: false,
