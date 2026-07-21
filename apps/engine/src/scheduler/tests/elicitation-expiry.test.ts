@@ -151,7 +151,13 @@ async function seedDraftCredentialElicitation(p: {
   return row.id;
 }
 
-async function seedCompletedMcpTask(conversationId: string): Promise<string> {
+async function seedCompletedMcpTask(
+  conversationId: string,
+  elicitationId: string,
+): Promise<string> {
+  const setupUrl =
+    `https://engine.invalid/v1/connector-drafts/${conversationId}` +
+    "/credentials/setup?grant=canary";
   const [row] = await srv.db
     .insert(mcpTasks)
     .values({
@@ -161,7 +167,24 @@ async function seedCompletedMcpTask(conversationId: string): Promise<string> {
       kind: "start",
       actor_id: srv.userId,
       request_source: "mcp",
-      result: { conversation_id: conversationId, status: "awaiting_input", events: [] },
+      result: {
+        conversation_id: conversationId,
+        status: "awaiting_input",
+        pending_elicitation_id: elicitationId,
+        events: [
+          {
+            type: "tool_result",
+            output: { status: "awaiting_input", elicitation_id: elicitationId },
+          },
+          {
+            type: "elicit_request",
+            elicitation_id: elicitationId,
+            input: { kind: "connector_draft_credential_setup", setup_url: setupUrl },
+          },
+          { type: "completed", status: "awaiting_input" },
+          { type: "next_suggestion", suggestion: "retry ask_user_form" },
+        ],
+      },
     })
     .returning();
   if (!row) throw new Error("seed mcp task failed");
@@ -268,7 +291,7 @@ describe("runElicitationExpiry — expired draft credential setup", () => {
       toolCallId,
       expiresAt: expiredAt,
     });
-    const taskId = await seedCompletedMcpTask(conversationId);
+    const taskId = await seedCompletedMcpTask(conversationId, elicitationId);
     const store = new ConversationTaskStore({ db: srv.db, tenant_id: srv.tenantId });
     const principal = {
       kind: "user" as const,
@@ -302,8 +325,30 @@ describe("runElicitationExpiry — expired draft credential setup", () => {
       name: "conversation_get",
       args: { conversation_id: conversationId },
     });
-    const afterBody = JSON.parse(after.content[0]?.text ?? "{}") as { status?: string };
+    const afterBody = JSON.parse(after.content[0]?.text ?? "{}") as {
+      status?: string;
+      result?: { status?: string; pending_elicitation_id?: string; events?: unknown[] };
+    };
     expect(afterBody.status).toBe("completed");
+    expect(afterBody.result?.status).toBe("active");
+    expect(afterBody.result?.pending_elicitation_id).toBeUndefined();
+    expect(
+      afterBody.result?.events?.some((event) => {
+        return (event as { type?: string }).type === "elicit_request";
+      }),
+    ).toBe(false);
+    expect(JSON.stringify(afterBody)).not.toContain("credentials/setup?grant=");
+
+    const taskResult = (await store.getTaskResult(taskId)) as {
+      content: Array<{ type: string; text: string }>;
+    };
+    const taskBody = JSON.parse(taskResult.content[0]?.text ?? "{}") as {
+      status?: string;
+      pending_elicitation_id?: string;
+    };
+    expect(taskBody.status).toBe("active");
+    expect(taskBody.pending_elicitation_id).toBeUndefined();
+    expect(JSON.stringify(taskBody)).not.toContain("credentials/setup?grant=");
 
     const [toolCall] = await srv.db
       .select({ output: conversationToolCalls.output })

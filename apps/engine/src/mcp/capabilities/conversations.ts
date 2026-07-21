@@ -812,7 +812,9 @@ async function conversationGet(
     // Lean projection: drop the live-streaming replay frames and truncate
     // oversized payloads so a poll client gets status + final message + tool
     // outcomes, not the token-by-token replay (thesis T1). Shape preserved.
-    const leanResult = projectTurnEnvelopeForClient(latest.result);
+    const leanResult = projectTurnEnvelopeForClient(latest.result, {
+      pending_elicitation_id: pending?.id ?? null,
+    });
     if (pending) {
       return successText({
         status: "input_required",
