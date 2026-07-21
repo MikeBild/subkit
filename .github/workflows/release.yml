@@ -377,26 +377,54 @@ jobs:
           done
           find artifacts -type f | sort
 
+      - name: Generate SBOM (CycloneDX)
+        # Pinned to a commit SHA, not @v0, because anchore frequently
+        # republishes major-tagged actions with breaking changes. To
+        # update: pick the latest sha at https://github.com/anchore/sbom-action
+        # and re-pin here.
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.20.4
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: artifacts/sbom.cdx.json
+          # Don't auto-attach to the GitHub Release here; we batch the
+          # whole upload in the next step so the SHA256SUMS line covers
+          # the SBOM too.
+          upload-release-assets: false
+          upload-artifact: false
+
       - name: Generate SHA256SUMS
         run: |
+          set -euo pipefail
           cd artifacts
-          # Write to a temp file then move so the pipeline never reads and writes
-          # SHA256SUMS at once (atomic; silences shellcheck SC2094).
-          find . -type f ! -name SHA256SUMS | sort | while read -r f; do
+          # Keep the output outside artifacts while walking the tree. Writing
+          # SHA256SUMS.tmp inside artifacts made `find` hash the empty temp file
+          # and, because the SBOM step used to run later, omitted the SBOM.
+          sums_tmp=$(mktemp)
+          trap 'rm -f "$sums_tmp"' EXIT
+          find . -type f ! -name 'SHA256SUMS*' ! -name '*.sig' | sort | while read -r f; do
             digest=$(sha256sum "$f" | cut -d ' ' -f 1)
             printf '%s  %s\n' "$digest" "$(basename "$f")"
-          done > SHA256SUMS.tmp
-          mv SHA256SUMS.tmp SHA256SUMS
-          expected=$(find . -type f \( -name 'sk_*' -o -name 'engine_*' \) | wc -l | tr -d ' ')
-          actual=$(grep -Ec '^[0-9a-f]{64}  (sk|engine)_' SHA256SUMS || true)
+          done > "$sums_tmp"
+          mv "$sums_tmp" SHA256SUMS
+          trap - EXIT
+
+          expected=$(find . -type f ! -name 'SHA256SUMS*' ! -name '*.sig' | wc -l | tr -d ' ')
+          actual=$(wc -l < SHA256SUMS | tr -d ' ')
+          binary_expected=$(find . -type f \( -name 'sk_*' -o -name 'engine_*' \) | wc -l | tr -d ' ')
+          binary_actual=$(grep -Ec '^[0-9a-f]{64}  (sk|engine)_' SHA256SUMS || true)
+          sbom_actual=$(grep -Ec '^[0-9a-f]{64}  sbom\.cdx\.json$' SHA256SUMS || true)
           test "$actual" -eq "$expected"
+          test "$binary_actual" -eq "$binary_expected"
+          test "$sbom_actual" -eq 1
+          ! grep -Eq 'SHA256SUMS|\.sig$' SHA256SUMS
           cat SHA256SUMS
 
-      # Sign the SHA256SUMS file with the project's
-      # Ed25519 release key. `updater.ts::performUpdate` refuses to
-      # install any binary whose SHA256SUMS does not validate against
-      # the embedded `RELEASE_PUBLIC_KEY`. Signature is uploaded as the
-      # `SHA256SUMS.sig` release asset alongside the sums file.
+      # Sign the complete SHA256SUMS file (binaries + SBOM) with the
+      # project's Ed25519 release key. `updater.ts::performUpdate`
+      # refuses to install any binary whose SHA256SUMS does not validate
+      # against the embedded `RELEASE_PUBLIC_KEY`. Signature is uploaded
+      # as the `SHA256SUMS.sig` release asset alongside the sums file.
       - name: Sign SHA256SUMS (Ed25519)
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
@@ -414,22 +442,6 @@ jobs:
           printf '%s\n' "$RELEASE_SIGNING_KEY" > "$tmpkey"
           openssl pkeyutl -sign -inkey "$tmpkey" -rawin -in artifacts/SHA256SUMS -out artifacts/SHA256SUMS.sig
           ls -la artifacts/SHA256SUMS artifacts/SHA256SUMS.sig
-
-      - name: Generate SBOM (CycloneDX)
-        # Pinned to a commit SHA, not @v0, because anchore frequently
-        # republishes major-tagged actions with breaking changes. To
-        # update: pick the latest sha at https://github.com/anchore/sbom-action
-        # and re-pin here.
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.20.4
-        with:
-          path: .
-          format: cyclonedx-json
-          output-file: artifacts/sbom.cdx.json
-          # Don't auto-attach to the GitHub Release here; we batch the
-          # whole upload in the next step so the SHA256SUMS line covers
-          # the SBOM too.
-          upload-release-assets: false
-          upload-artifact: false
 
       # The release body is the tag's own CHANGELOG.md section, so the
       # GitHub release page answers "what shipped?" without a click —
