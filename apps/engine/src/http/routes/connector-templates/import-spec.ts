@@ -14,9 +14,9 @@ const importRoute = createRoute({
   path: "/v1/connector-templates/import",
   tags: ["connectors"],
   summary:
-    "Import a connector draft from an API collection, HAR, OpenAPI/GraphQL spec, or curl command",
+    "Import a connector draft from an API collection, HAR, OpenAPI/Google Discovery/GraphQL spec, or curl command",
   description:
-    "URL-fetched OpenAPI documents are streamed with a 50 MiB limit. OpenAPI server and security metadata seed the draft base URL and authentication type.",
+    "URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit. Specification server and authentication metadata seed the draft.",
   security: [{ bearerAuth: [] }],
   request: { body: { content: { "application/json": { schema: ImportRequestSchema } } } },
   responses: {

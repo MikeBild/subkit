@@ -5623,6 +5623,7 @@
               "postman",
               "har",
               "openapi",
+              "google_discovery",
               "graphql",
               "graphql_introspection",
               "curl"
@@ -5631,7 +5632,7 @@
           "content": {
             "type": "string",
             "minLength": 1,
-            "description": "Inline specification content or a source-specific URL/command. URL-fetched OpenAPI documents are streamed with a 50 MiB limit; server and security metadata seed the connector draft."
+            "description": "Inline specification content or a source-specific URL/command. URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit; specification metadata seeds the connector draft."
           },
           "headers": {
             "type": "object",
@@ -5817,10 +5818,9 @@
               "type": "object",
               "properties": {
                 "version": {
-                  "type": "number",
-                  "enum": [
-                    1
-                  ]
+                  "type": "integer",
+                  "minimum": 0,
+                  "exclusiveMinimum": true
                 },
                 "slug": {
                   "type": "string",
@@ -5868,6 +5868,7 @@
                   "nullable": true,
                   "enum": [
                     "openapi",
+                    "google_discovery",
                     "markdown",
                     "llms_txt",
                     "html",
@@ -6552,10 +6553,9 @@
         "type": "object",
         "properties": {
           "version": {
-            "type": "number",
-            "enum": [
-              1
-            ]
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
           },
           "slug": {
             "type": "string",
@@ -6603,6 +6603,7 @@
             "nullable": true,
             "enum": [
               "openapi",
+              "google_discovery",
               "markdown",
               "llms_txt",
               "html",
@@ -6770,10 +6771,9 @@
         "type": "object",
         "properties": {
           "version": {
-            "type": "number",
-            "enum": [
-              1
-            ]
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
           },
           "slug": {
             "type": "string",
@@ -6821,6 +6821,7 @@
             "nullable": true,
             "enum": [
               "openapi",
+              "google_discovery",
               "markdown",
               "llms_txt",
               "html",
@@ -8351,6 +8352,7 @@
             "type": "string",
             "enum": [
               "openapi",
+              "google_discovery",
               "markdown",
               "llms_txt"
             ]
@@ -21116,8 +21118,8 @@
         "tags": [
           "connectors"
         ],
-        "summary": "Import a connector draft from an API collection, HAR, OpenAPI/GraphQL spec, or curl command",
-        "description": "URL-fetched OpenAPI documents are streamed with a 50 MiB limit. OpenAPI server and security metadata seed the draft base URL and authentication type.",
+        "summary": "Import a connector draft from an API collection, HAR, OpenAPI/Google Discovery/GraphQL spec, or curl command",
+        "description": "URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit. Specification server and authentication metadata seed the draft.",
         "security": [
           {
             "bearerAuth": []

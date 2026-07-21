@@ -4461,8 +4461,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Import a connector draft from an API collection, HAR, OpenAPI/GraphQL spec, or curl command
-         * @description URL-fetched OpenAPI documents are streamed with a 50 MiB limit. OpenAPI server and security metadata seed the draft base URL and authentication type.
+         * Import a connector draft from an API collection, HAR, OpenAPI/Google Discovery/GraphQL spec, or curl command
+         * @description URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit. Specification server and authentication metadata seed the draft.
          */
         post: {
             parameters: {
@@ -14582,8 +14582,8 @@ export interface components {
         };
         ConnectorSpecImportRequest: {
             /** @enum {string} */
-            source: "postman" | "har" | "openapi" | "graphql" | "graphql_introspection" | "curl";
-            /** @description Inline specification content or a source-specific URL/command. URL-fetched OpenAPI documents are streamed with a 50 MiB limit; server and security metadata seed the connector draft. */
+            source: "postman" | "har" | "openapi" | "google_discovery" | "graphql" | "graphql_introspection" | "curl";
+            /** @description Inline specification content or a source-specific URL/command. URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit; specification metadata seeds the connector draft. */
             content: string;
             headers?: {
                 [key: string]: string;
@@ -14632,8 +14632,7 @@ export interface components {
         };
         ConnectorTemplateListResponse: {
             items: {
-                /** @enum {number} */
-                version: 1;
+                version: number;
                 slug: string;
                 name: string;
                 /** @enum {string} */
@@ -14644,7 +14643,7 @@ export interface components {
                 oauth: components["schemas"]["ConnectorTemplateOAuth"];
                 default_skill: string | null;
                 /** @enum {string|null} */
-                ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
+                ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
                 ingestion_url: string | null;
                 icon: string;
                 description: string;
@@ -14831,8 +14830,7 @@ export interface components {
             template: string;
         };
         ConnectorTemplateRow: {
-            /** @enum {number} */
-            version: 1;
+            version: number;
             slug: string;
             name: string;
             /** @enum {string} */
@@ -14843,7 +14841,7 @@ export interface components {
             oauth: components["schemas"]["ConnectorTemplateOAuth"];
             default_skill: string | null;
             /** @enum {string|null} */
-            ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
+            ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
             ingestion_url: string | null;
             icon: string;
             description: string;
@@ -14887,8 +14885,7 @@ export interface components {
             source: "tenant";
         };
         ConnectorTemplateCreateBody: {
-            /** @enum {number} */
-            version: 1;
+            version: number;
             slug: string;
             name: string;
             /** @enum {string} */
@@ -14899,7 +14896,7 @@ export interface components {
             oauth: components["schemas"]["ConnectorTemplateOAuth"];
             default_skill: string | null;
             /** @enum {string|null} */
-            ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
+            ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
             ingestion_url: string | null;
             icon: string;
             description: string;
@@ -15296,7 +15293,7 @@ export interface components {
         };
         ConnectorDocsIngestBody: {
             /** @enum {string} */
-            source_type: "openapi" | "markdown" | "llms_txt";
+            source_type: "openapi" | "google_discovery" | "markdown" | "llms_txt";
             /** Format: uri */
             url?: string;
             content?: string;

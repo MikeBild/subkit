@@ -30,6 +30,7 @@ export const TemplateAuthTypeEnum = z.enum([
 
 export const TemplateIngestionSourceEnum = z.enum([
   "openapi",
+  "google_discovery",
   "markdown",
   "llms_txt",
   "html",
@@ -375,7 +376,10 @@ export type ConnectorRecipe = z.infer<typeof ConnectorRecipeSchema>;
 
 export const ConnectorTemplateSchema = z
   .object({
-    version: z.literal(1),
+    /** Monotonic per-template revision. Bump when built-in defaults or
+     *  ingestion behavior changes so saved connectors retain auditable
+     *  provenance against the catalog revision they were created from. */
+    version: z.number().int().positive(),
     slug: z
       .string()
       .min(1)

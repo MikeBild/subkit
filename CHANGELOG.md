@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] – 2026-07-21
+
+### Added
+- Ship Cloudflare as a normal built-in connector template with scoped Bearer-token setup,
+  official OpenAPI ingestion, a credential probe, operator guidance, and read-only token,
+  zone, and DNS starter recipes.
+- Import Google REST Discovery documents inline or by URL with the same SSRF guard, full-body
+  deadline, and 50 MiB streaming limit as OpenAPI. Nested resources, method paths, schemas,
+  service roots, and OAuth/query-key hints now seed connector drafts and documentation chunks.
+
+### Changed
+- Upgrade the Firebase/Firestore built-in to template revision 2 and ingest the official
+  Firestore v1 Discovery document instead of incorrectly treating it as OpenAPI. Setup guidance
+  now distinguishes Google OAuth clients, Firebase ID tokens, and service-account JSON keys.
+- Allow monotonic positive built-in template revisions so connector provenance can identify
+  material catalog migrations.
+
+### Security
+- Document least-privilege Cloudflare tokens and explicit revocation of any credential exposed
+  through chat, logs, shell history, or source control; no operator credential is used by the
+  test or release pipeline.
+
 ## [1.22.4] – 2026-07-21
 
 ### Fixed

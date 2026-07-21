@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import {
+  fetchGoogleDiscoverySpec,
   fetchGraphQLIntrospection,
   fetchOpenApiSpec,
+  GOOGLE_DISCOVERY_SPEC_MAX_BYTES,
   OPENAPI_SPEC_MAX_BYTES,
+  readGoogleDiscoverySpecBody,
   readOpenApiSpecBody,
   SpecFetchError,
 } from "../spec-fetchers.ts";
@@ -150,6 +153,47 @@ describe("readOpenApiSpecBody — streaming size enforcement", () => {
       readOpenApiSpecBody(res, "https://api.example.com/openapi.json", 1024),
     ).rejects.toThrow(SpecFetchError);
     expect(cancelled).toBe(true);
+  });
+});
+
+describe("Google Discovery spec fetcher", () => {
+  test("uses the same exact 50 MiB byte budget as OpenAPI", () => {
+    expect(GOOGLE_DISCOVERY_SPEC_MAX_BYTES).toBe(52_428_800);
+  });
+
+  test("rejects private hosts with the shared SSRF guard", async () => {
+    await expect(fetchGoogleDiscoverySpec("http://127.0.0.1/discovery.json")).rejects.toThrow(
+      SpecFetchError,
+    );
+  });
+
+  seamTest("fetches a public Discovery document", async () => {
+    const content = JSON.stringify({
+      kind: "discovery#restDescription",
+      protocol: "rest",
+      resources: {},
+    });
+    fetchSpy.mockResolvedValue(
+      new Response(content, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await fetchGoogleDiscoverySpec(
+      "https://firestore.googleapis.com/$discovery/rest?version=v1",
+    );
+    expect(result.content).toBe(content);
+    expect(result.content_type).toBe("application/json");
+  });
+
+  test("reports Google Discovery in streaming size errors", async () => {
+    const res = new Response(null, {
+      status: 200,
+      headers: { "content-length": String(GOOGLE_DISCOVERY_SPEC_MAX_BYTES + 1) },
+    });
+    await expect(
+      readGoogleDiscoverySpecBody(res, "https://example.googleapis.com/discovery.json"),
+    ).rejects.toThrow("Google Discovery spec exceeds 50 MiB");
   });
 });
 

@@ -19,7 +19,9 @@ export interface FetchedSpec {
   fetched_from: string;
 }
 
-export const OPENAPI_SPEC_MAX_BYTES = 50 * 1024 * 1024;
+export const API_SPEC_MAX_BYTES = 50 * 1024 * 1024;
+export const OPENAPI_SPEC_MAX_BYTES = API_SPEC_MAX_BYTES;
+export const GOOGLE_DISCOVERY_SPEC_MAX_BYTES = API_SPEC_MAX_BYTES;
 const TIMEOUT_MS = 15_000;
 
 function isPrivateHost(host: string): boolean {
@@ -43,23 +45,40 @@ export class SpecFetchError extends Error {
   }
 }
 
-export async function readOpenApiSpecBody(
+async function readSpecBody(
   res: Response,
   url: string,
-  maxBytes = OPENAPI_SPEC_MAX_BYTES,
+  kind: "OpenAPI" | "Google Discovery",
+  maxBytes: number,
 ): Promise<string> {
   try {
     return await readBodyCapped(res, maxBytes, url);
   } catch (err) {
     if (err instanceof HttpRequestInvalidError) {
       throw new SpecFetchError(
-        `OpenAPI spec exceeds ${maxBytes === OPENAPI_SPEC_MAX_BYTES ? "50 MiB" : `${maxBytes} bytes`}`,
+        `${kind} spec exceeds ${maxBytes === API_SPEC_MAX_BYTES ? "50 MiB" : `${maxBytes} bytes`}`,
         url,
         res.status,
       );
     }
     throw err;
   }
+}
+
+export async function readOpenApiSpecBody(
+  res: Response,
+  url: string,
+  maxBytes = OPENAPI_SPEC_MAX_BYTES,
+): Promise<string> {
+  return await readSpecBody(res, url, "OpenAPI", maxBytes);
+}
+
+export async function readGoogleDiscoverySpecBody(
+  res: Response,
+  url: string,
+  maxBytes = GOOGLE_DISCOVERY_SPEC_MAX_BYTES,
+): Promise<string> {
+  return await readSpecBody(res, url, "Google Discovery", maxBytes);
 }
 
 interface BudgetedResponse {
@@ -109,6 +128,33 @@ export async function fetchOpenApiSpec(
       throw new SpecFetchError(`OpenAPI fetch returned ${response.status}`, url, response.status);
     }
     const content = await readOpenApiSpecBody(response, url);
+    return {
+      content,
+      content_type: response.headers.get("content-type") ?? "application/json",
+      fetched_from: url,
+    };
+  } finally {
+    release();
+  }
+}
+
+export async function fetchGoogleDiscoverySpec(
+  url: string,
+  headers?: Record<string, string>,
+): Promise<FetchedSpec> {
+  const { response, release } = await fetchWithBudget(url, {
+    method: "GET",
+    ...(headers ? { headers } : {}),
+  });
+  try {
+    if (!response.ok) {
+      throw new SpecFetchError(
+        `Google Discovery fetch returned ${response.status}`,
+        url,
+        response.status,
+      );
+    }
+    const content = await readGoogleDiscoverySpecBody(response, url);
     return {
       content,
       content_type: response.headers.get("content-type") ?? "application/json",

@@ -12,7 +12,7 @@ import { loadBuiltinTemplates, type TemplateCapabilities } from "./templates.ts"
 const templates = loadBuiltinTemplates();
 
 // Derived from the real apps/engine/src/connectors/templates.json content
-// (56 templates) as of this pin — slug -> { version, capabilities }, sorted
+// (57 templates) as of this pin — slug -> { version, capabilities }, sorted
 // by slug for determinism. Update deliberately when a template is added,
 // removed, or its version/capabilities intentionally change.
 const EXPECTED_INVENTORY = {
@@ -88,6 +88,10 @@ const EXPECTED_INVENTORY = {
     version: 1,
     capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
   },
+  cloudflare: {
+    version: 1,
+    capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
+  },
   confluence: {
     version: 1,
     capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
@@ -101,7 +105,7 @@ const EXPECTED_INVENTORY = {
     capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
   },
   firebase: {
-    version: 1,
+    version: 2,
     capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
   },
   github: {
