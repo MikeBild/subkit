@@ -239,6 +239,8 @@ export interface ConversationRunTurnJob {
   provider_limit_parks?: number;
   /** Present only for `respond_elicitation` turns. */
   elicitation_id?: string;
+  /** Server-authored provenance. MCP tool arguments can never set this. */
+  answer_channel?: "model_relay" | "mcp_native";
   reason?: string;
   runtime_context?: {
     engine_url?: string;

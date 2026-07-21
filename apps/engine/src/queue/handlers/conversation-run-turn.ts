@@ -29,7 +29,7 @@ import {
   registerConversationAbort,
   unregisterConversationAbort,
 } from "../../conversations/abort.ts";
-import { MODEL_RELAYED_ANSWER } from "../../conversations/answer-actor.ts";
+import { humanInBandAnswer, MODEL_RELAYED_ANSWER } from "../../conversations/answer-actor.ts";
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
@@ -181,7 +181,10 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
           // approval-bearing elicitation never reaches here — the MCP tool
           // refuses it — and if one ever did, the claim would answer
           // `approval_not_granted`.
-          answer_actor: MODEL_RELAYED_ANSWER,
+          answer_actor:
+            data.answer_channel === "mcp_native"
+              ? humanInBandAnswer(data.principal)
+              : MODEL_RELAYED_ANSWER,
           output: elicitation.output,
           // The resumed runLoop runs on the MCP surface — without this the
           // inner confirm gate and prompt variants would treat the resumed

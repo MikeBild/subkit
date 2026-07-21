@@ -16,6 +16,11 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import {
+  type ElicitRequest,
+  ElicitRequestSchema,
+  type ElicitResult,
+} from "@modelcontextprotocol/sdk/types.js";
 import { eq } from "drizzle-orm";
 import {
   apiKeys,
@@ -37,6 +42,15 @@ export interface McpTestSuite {
   cleanup: () => Promise<void>;
   connect: () => Promise<Client>;
   connectWithApiKey: (apiKey: string) => Promise<Client>;
+  connectElicitation: (
+    handler: (request: ElicitRequest) => Promise<ElicitResult>,
+  ) => Promise<Client>;
+  connectUrlElicitation: (
+    handler: (request: ElicitRequest) => Promise<ElicitResult>,
+  ) => Promise<Client>;
+  connectTasksElicitation: (
+    handler: (request: ElicitRequest) => Promise<ElicitResult>,
+  ) => Promise<Client>;
   issueApiKey: (scopes: string[]) => Promise<{ plaintext: string }>;
   issueApiKeyForTenant: (
     tenantId: string,
@@ -148,6 +162,65 @@ export async function startMcpTestSuite(
 
   const connectTasks = async (): Promise<Client> => {
     return connectTasksWithApiKey(http.apiKey);
+  };
+
+  const connectTasksElicitation = async (
+    handler: (request: ElicitRequest) => Promise<ElicitResult>,
+  ): Promise<Client> => {
+    const transport = new StreamableHTTPClientTransport(new URL(`${http.baseUrl}/mcp`), {
+      requestInit: {
+        headers: { authorization: `Bearer ${http.apiKey}` },
+      },
+    });
+    const client = new Client(
+      { name: "subkit-mcp-tests-tasks-elicitation", version: "0.0.0" },
+      {
+        capabilities: {
+          elicitation: { form: {} },
+          tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } },
+        },
+      },
+    );
+    client.setRequestHandler(ElicitRequestSchema, async (request) => handler(request));
+    await client.connect(transport as unknown as Transport);
+    openClients.push(client);
+    return client;
+  };
+
+  const connectElicitation = async (
+    handler: (request: ElicitRequest) => Promise<ElicitResult>,
+  ): Promise<Client> => {
+    const transport = new StreamableHTTPClientTransport(new URL(`${http.baseUrl}/mcp`), {
+      requestInit: {
+        headers: { authorization: `Bearer ${http.apiKey}` },
+      },
+    });
+    const client = new Client(
+      { name: "subkit-mcp-tests-elicitation", version: "0.0.0" },
+      { capabilities: { elicitation: { form: {} } } },
+    );
+    client.setRequestHandler(ElicitRequestSchema, async (request) => handler(request));
+    await client.connect(transport as unknown as Transport);
+    openClients.push(client);
+    return client;
+  };
+
+  const connectUrlElicitation = async (
+    handler: (request: ElicitRequest) => Promise<ElicitResult>,
+  ): Promise<Client> => {
+    const transport = new StreamableHTTPClientTransport(new URL(`${http.baseUrl}/mcp`), {
+      requestInit: {
+        headers: { authorization: `Bearer ${http.apiKey}` },
+      },
+    });
+    const client = new Client(
+      { name: "subkit-mcp-tests-url-elicitation", version: "0.0.0" },
+      { capabilities: { elicitation: { url: {} } } },
+    );
+    client.setRequestHandler(ElicitRequestSchema, async (request) => handler(request));
+    await client.connect(transport as unknown as Transport);
+    openClients.push(client);
+    return client;
   };
 
   const connectTasksWithApiKey = async (apiKey: string): Promise<Client> => {
@@ -334,9 +407,12 @@ export async function startMcpTestSuite(
     cleanup,
     connect,
     connectWithApiKey,
+    connectElicitation,
+    connectUrlElicitation,
     issueApiKey,
     issueApiKeyForTenant,
     connectTasks,
+    connectTasksElicitation,
     connectTasksWithApiKey,
     seedWorkflow,
     seedTenant,

@@ -27,6 +27,8 @@ import {
   auditLog,
   connectorCredentialSetupGrants,
   connectors,
+  conversationElicitations,
+  conversations,
   credentials,
 } from "../../../db/schema/index.ts";
 import { now } from "../../../utils/clock.ts";
@@ -145,6 +147,31 @@ describe("GET /v1/connectors/{id}/credentials/setup?grant=…", () => {
 describe("POST /v1/connectors/{id}/credentials/setup", () => {
   test("(b) valid submission → consumes grant, upserts credential, clears needs_reauth", async () => {
     const token = await seedGrant();
+    const [conversation] = await server.db
+      .insert(conversations)
+      .values({
+        tenant_id: server.tenantId,
+        owner_id: server.userId,
+        status: "awaiting_input",
+      })
+      .returning();
+    if (!conversation) throw new Error("seed conversation failed");
+    const [elicitation] = await server.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: server.tenantId,
+        conversation_id: conversation.id,
+        tool_name: "ask_user_confirm",
+        summary: "Reconnect connector",
+        input: {
+          connector_id: connectorId,
+          setup_url: `${server.baseUrl}/setup`,
+        },
+        protocol_native: true,
+        delivery_last_error: "url_accepted",
+      })
+      .returning();
+    if (!elicitation) throw new Error("seed elicitation failed");
 
     const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/credentials/setup`, {
       method: "POST",
@@ -172,6 +199,12 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
       .where(eq(connectors.id, connectorId))
       .limit(1);
     expect(connectorRow?.needs_reauth).toBe(false);
+
+    const [completedElicitation] = await server.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitation.id));
+    expect(completedElicitation?.delivery_last_error).toBe("url_completed");
 
     // grant_consumed audit row present.
     const consumedAudit = await server.db
