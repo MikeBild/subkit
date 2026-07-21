@@ -38,6 +38,7 @@ import {
   escapeHtml,
   validateSetupGrant,
 } from "../../../connectors/index.ts";
+import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -345,6 +346,22 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       await clearConnectorReauth(db, tenant_id, connector_id, {
         actor_id: created_by_actor_id,
       });
+
+      try {
+        await markConnectorNativeUrlElicitationsComplete(
+          { tenant_id, connector_id, outcome: "succeeded" },
+          db,
+        );
+      } catch (completionErr) {
+        logger.warn({
+          module: "credentials_setup",
+          action: "credentials_setup.elicitation_completion_failed",
+          msg: "credential saved but native MCP URL completion could not be recorded",
+          tenant_id,
+          connector_id,
+          error: completionErr instanceof Error ? completionErr.message : String(completionErr),
+        });
+      }
 
       logger.info({
         module: "credentials_setup",

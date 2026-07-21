@@ -25,6 +25,7 @@ export {
   type DirectInvokeParams,
   invokeConversationToolDirect,
 } from "./direct-invoke.ts";
+export { markConnectorNativeUrlElicitationsComplete } from "./native-url-elicitation.ts";
 export * from "./parts.ts";
 export * from "./service.ts";
 // Re-exported so the replay path can drop since-unresolvable citations before

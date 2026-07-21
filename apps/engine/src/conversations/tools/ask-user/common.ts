@@ -90,12 +90,11 @@ function secretElicitationBlockedOverMcp(
   const message =
     "A secret (API key / token / password) must never be requested as chat text over MCP — " +
     "route credential entry to the secure flow instead. " +
-    "To repair a saved connector whose credential is dead, call request_connector_reauth: it returns " +
-    "a one-time OAuth sign-in URL for OAuth2 connectors, or a secure credential-setup URL " +
-    "(method: portal_setup) for basic/bearer/header/query connectors — present that URL verbatim for " +
-    "the user to open. For an OAuth2 connector being authored, use authenticate_oauth. " +
+    "To repair a saved connector whose credential is dead, call request_connector_reauth: it starts " +
+    "a native URL-mode sign-in or credential-setup flow without returning the URL as model text. " +
+    "For an OAuth2 connector being authored, use authenticate_oauth. " +
     "For a brand-new connector, save the connector first (save_connector_draft), then call " +
-    "request_connector_reauth to mint a secure setup URL. " +
+    "request_connector_reauth to start secure URL elicitation. " +
     "Do NOT ask the user to paste the secret in chat.";
   return {
     ok: false,

@@ -7,7 +7,8 @@
 // `askUser.choice`, `askUser.multi`, `askUser.text`, `askUser.form`,
 // and `askUser.confirm` without branching per tool.
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -32,6 +33,8 @@ export interface ElicitationRecord {
   output: unknown;
   status: ElicitationStatus;
   decision_reason: string | null;
+  delivery_last_error: string | null;
+  delivery_attempts: number;
   created_at: string;
   /**
    * Causal anchor to the assistant message that requested this input.
@@ -39,6 +42,98 @@ export interface ElicitationRecord {
    * orphans after all anchored events.
    */
   parent_message_id?: string | null;
+}
+
+export interface NativeDeliveryClaim {
+  elicitation: ElicitationRecord;
+  lease_id: string;
+}
+
+/**
+ * Atomically lease a pending elicitation for one native MCP round-trip.
+ * Expired leases are reclaimable after a client disconnect or process crash.
+ */
+export async function claimNativeElicitationDelivery(
+  p: { tenant_id: string; conversation_id: string; id: string; lease_ms?: number },
+  exec: Executor,
+): Promise<NativeDeliveryClaim | null> {
+  const lease_id = randomUUID();
+  const now = new Date();
+  const lease_expires_at = new Date(now.getTime() + (p.lease_ms ?? 90_000));
+  const [row] = await exec
+    .update(conversationElicitations)
+    .set({
+      protocol_native: true,
+      delivery_lease_id: lease_id,
+      delivery_lease_expires_at: lease_expires_at,
+      delivery_last_error: null,
+      delivery_attempts: sql`${conversationElicitations.delivery_attempts} + 1`,
+      updated_at: now,
+    })
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, p.tenant_id),
+        eq(conversationElicitations.conversation_id, p.conversation_id),
+        eq(conversationElicitations.id, p.id),
+        eq(conversationElicitations.status, "pending"),
+        or(
+          isNull(conversationElicitations.delivery_lease_expires_at),
+          lt(conversationElicitations.delivery_lease_expires_at, now),
+        ),
+      ),
+    )
+    .returning();
+  return row ? { elicitation: rowToRecord(row), lease_id } : null;
+}
+
+/** Release only the lease owned by this request; a newer claimant is untouched. */
+export async function releaseNativeElicitationDelivery(
+  p: { tenant_id: string; id: string; lease_id: string; error_code?: string },
+  exec: Executor,
+): Promise<void> {
+  await exec
+    .update(conversationElicitations)
+    .set({
+      delivery_lease_id: null,
+      delivery_lease_expires_at: null,
+      delivery_last_error: p.error_code ?? null,
+      updated_at: new Date(),
+    })
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, p.tenant_id),
+        eq(conversationElicitations.id, p.id),
+        eq(conversationElicitations.delivery_lease_id, p.lease_id),
+        eq(conversationElicitations.status, "pending"),
+      ),
+    );
+}
+
+/** Record URL navigation consent without overwriting a callback that already completed. */
+export async function acknowledgeNativeUrlElicitation(
+  p: { tenant_id: string; id: string; lease_id: string },
+  exec: Executor,
+): Promise<void> {
+  await exec
+    .update(conversationElicitations)
+    .set({
+      delivery_lease_id: null,
+      delivery_lease_expires_at: null,
+      delivery_last_error: sql`case
+        when ${conversationElicitations.delivery_last_error} in ('url_completed', 'url_failed')
+          then ${conversationElicitations.delivery_last_error}
+        else 'url_accepted'
+      end`,
+      updated_at: new Date(),
+    })
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, p.tenant_id),
+        eq(conversationElicitations.id, p.id),
+        eq(conversationElicitations.delivery_lease_id, p.lease_id),
+        eq(conversationElicitations.status, "pending"),
+      ),
+    );
 }
 
 type Row = typeof conversationElicitations.$inferSelect;
@@ -54,6 +149,8 @@ function rowToRecord(row: Row): ElicitationRecord {
     output: row.output,
     status: row.status as ElicitationStatus,
     decision_reason: row.decision_reason,
+    delivery_last_error: row.delivery_last_error,
+    delivery_attempts: row.delivery_attempts,
     created_at: row.created_at.toISOString(),
     parent_message_id: row.parent_message_id,
   };

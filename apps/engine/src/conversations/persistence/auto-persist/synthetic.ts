@@ -103,6 +103,8 @@ export function intentToolName(intent: CommitIntent): string {
       // G8: the OAuth flow's commit_intent maps to the tool whose
       // result the dispatcher injects — authenticate_oauth.
       return "authenticate_oauth";
+    case "credential_reissue_completed":
+      return "request_connector_reauth";
     case "run_workflow":
       return "run_workflow";
     case "create_api_key":

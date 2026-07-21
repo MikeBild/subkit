@@ -56,7 +56,7 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   // Secret hygiene: the model tried to collect a secret-shaped value (api key,
   // token, password) as free chat text over MCP. Route to the secure flow.
   secret_elicitation_blocked:
-    "a secret-shaped value must never be collected as plain chat text over MCP — do NOT re-ask for it with ask_user_text/ask_user_form. Route the operator to the secure credential flow instead: authenticate_oauth (browser sign-in) for OAuth connectors, or request_connector_reauth (method: portal_setup) which issues a one-time secure portal link for the operator to enter the secret out-of-band",
+    "a secret-shaped value must never be collected as plain chat text over MCP — do NOT re-ask for it with ask_user_text/ask_user_form. Route the operator to the secure credential flow instead: authenticate_oauth or request_connector_reauth starts native URL-mode elicitation so the URL is delivered to the client rather than returned as model text",
   // Surface-restriction signals from the unified tool dispatcher.
   not_available_on_surface:
     "this tool exists in the catalog but cannot be invoked from the current surface — for draft_write tools (save_workflow_draft, dry_run_workflow), the operator must drive the call from a chat conversation, not a headless MCP session",

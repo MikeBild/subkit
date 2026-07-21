@@ -16,7 +16,17 @@
 // `save-workflow-draft` repo-wide and this table now backs the
 // save-workflow-draft + external-write confirmation flows.
 
-import { boolean, index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { conversationMessages, conversations, conversationToolCalls } from "./conversations.ts";
 import { tenants, users } from "./identity.ts";
@@ -54,6 +64,13 @@ export const conversationElicitations = pgTable(
     // than the DB-pause + `respondElicitation` path. Lets observability
     // distinguish a protocol-native prompt from a portal-surface one.
     protocol_native: boolean("protocol_native").notNull().default(false),
+    // A short durable claim held while a polling MCP request is displaying
+    // this prompt. The engine can run more than one replica, so an in-memory
+    // mutex would still allow duplicate dialogs and duplicate answers.
+    delivery_lease_id: uuid("delivery_lease_id"),
+    delivery_lease_expires_at: timestamp("delivery_lease_expires_at", { withTimezone: true }),
+    delivery_attempts: integer("delivery_attempts").notNull().default(0),
+    delivery_last_error: text("delivery_last_error"),
     decided_by: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
     decided_at: timestamp("decided_at", { withTimezone: true }),
     // Machine-code decision token — a stable string, not free prose.

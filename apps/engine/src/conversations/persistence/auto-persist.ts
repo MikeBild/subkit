@@ -1181,7 +1181,8 @@ export async function maybeAutoPersistFromElicitation(
         result = await updateWorkflowTool.execute(ctx, UpdateWorkflowInput.parse(intent.payload));
         break;
       }
-      case "oauth_completed": {
+      case "oauth_completed":
+      case "credential_reissue_completed": {
         // G8 / H2 (runtime-logs review plan): the OAuth flow's
         // "Have you completed the authorization in your browser?"
         // elicitation carries this commit_intent. When the operator
@@ -1190,7 +1191,8 @@ export async function maybeAutoPersistFromElicitation(
         // exact tool call that was blocked on the missing credential,
         // so the LLM has a deterministic next step instead of having
         // to scan chat history to figure out what to retry.
-        toolName = "authenticate_oauth";
+        const oauthFlow = intent.kind === "oauth_completed";
+        toolName = oauthFlow ? "authenticate_oauth" : "request_connector_reauth";
         const connectorId =
           typeof intent.payload.connector_id === "string" ? intent.payload.connector_id : null;
         const connectorSlug =
@@ -1280,12 +1282,12 @@ export async function maybeAutoPersistFromElicitation(
         // reported success). getCredentialForConnector returns null when
         // no primary credential exists (the oauth2_client identity slot is
         // excluded), which is exactly the pre-token state.
-        let oauthCredentialPresent = false;
+        let credentialPresent = false;
         if (connectorId) {
           try {
             const conn = await getConnector(p.tenant_id, connectorId, p.db);
             const env: "dev" | "prod" = conn?.environment === "prod" ? "prod" : "dev";
-            oauthCredentialPresent = Boolean(
+            credentialPresent = Boolean(
               await getCredentialForConnector(p.tenant_id, connectorId, env, p.db),
             );
           } catch (err) {
@@ -1300,34 +1302,35 @@ export async function maybeAutoPersistFromElicitation(
             });
           }
         }
-        result = oauthCredentialPresent
+        result = credentialPresent
           ? {
               ok: true,
               data: {
-                authenticated: true,
+                ...(oauthFlow ? { authenticated: true } : { reconnected: true }),
                 ...(connectorId ? { connector_id: connectorId } : {}),
                 ...(connectorSlug ? { connector_slug: connectorSlug } : {}),
                 ...(blockedCallToRetry
                   ? {
                       blocked_call_to_retry: blockedCallToRetry,
-                      note: `OAuth flow completed. The saved credential is now active. Retry the call that was blocked on this connector: ${blockedCallToRetry.tool}(...). The same input shape is in blocked_call_to_retry.input — re-issue verbatim.`,
+                      note: `${oauthFlow ? "OAuth flow" : "Credential re-issue"} completed. The saved credential is now active. Retry the call that was blocked on this connector: ${blockedCallToRetry.tool}(...). The same input shape is in blocked_call_to_retry.input — re-issue verbatim.`,
                     }
                   : {
-                      note: "OAuth flow completed. The saved credential is now active; retry the call_connector / dry_run_workflow / run_workflow that was blocked on this connector.",
+                      note: `${oauthFlow ? "OAuth flow" : "Credential re-issue"} completed. The saved credential is now active; retry the call_connector / dry_run_workflow / run_workflow that was blocked on this connector.`,
                     }),
               },
             }
           : {
               ok: false,
-              error_code: "oauth_not_completed",
-              message:
-                "No OAuth credential was minted for this connector — the provider never completed the authorization callback, so the connector is NOT authenticated. Do NOT retry the connector or report success. Causes: the authorization URL was not actually completed in the browser, or the provider rejected it (the redirect URI is not registered in the provider app, or a requested scope is not approved). Have the operator open the authorization URL, finish the consent so the provider redirects back to the engine callback, THEN call authenticate_oauth again to resume waiting for the token.",
+              error_code: oauthFlow ? "oauth_not_completed" : "credential_reissue_not_completed",
+              message: oauthFlow
+                ? "No OAuth credential was minted for this connector — the provider never completed the authorization callback, so the connector is NOT authenticated. Do NOT retry the connector or report success. Causes: the authorization URL was not actually completed in the browser, or the provider rejected it (the redirect URI is not registered in the provider app, or a requested scope is not approved). Have the operator open the authorization URL, finish the consent so the provider redirects back to the engine callback, THEN call authenticate_oauth again to resume waiting for the token."
+                : "No replacement credential is stored for this connector. The credential-setup flow was not completed, so the connector is NOT reconnected. Do not retry the connector or report success; run request_connector_reauth again and complete the URL elicitation.",
               data: {
-                authenticated: false,
+                ...(oauthFlow ? { authenticated: false } : { reconnected: false }),
                 ...(connectorId ? { connector_id: connectorId } : {}),
                 ...(connectorSlug ? { connector_slug: connectorSlug } : {}),
               },
-              next_best_actions: ["authenticate_oauth"],
+              next_best_actions: [oauthFlow ? "authenticate_oauth" : "request_connector_reauth"],
             };
         break;
       }

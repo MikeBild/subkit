@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.2] – 2026-07-21
+
+### Fixed
+- Deliver conversation questions and governed write confirmations that were persisted by a
+  background worker as native MCP `elicitation/create` requests on `conversation_get` and
+  `tasks/get`. Answers now retain verified human provenance, Tasks reuse their original id,
+  and an expiring database lease prevents duplicate dialogs across concurrent polls.
+- Keep OAuth and credential-rotation URLs out of model-facing tool results. URL acceptance
+  is separated from external completion; successful callbacks persist completion and emit
+  `notifications/elicitation/complete` before the conversation can resume.
+- Preserve explicit form fallback for non-approval questions while continuing to reject
+  model-relayed answers for approval-bearing elicitations.
+
+### Added
+- Real Streamable HTTP, pg-boss, Tasks, form, URL, callback, and governed-write regression
+  coverage for the complete persisted MCP human-in-the-loop lifecycle.
+
 ## [1.22.1] – 2026-07-21
 
 ### Fixed
