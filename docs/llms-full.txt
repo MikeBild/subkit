@@ -191,6 +191,45 @@ The REST form is `POST /v1/connectors/{id}/promote` with a required `Idempotency
 
 ---
 
+## OpenAPI Connector Import
+
+`import_connector_from_spec` creates a connector draft from inline OpenAPI JSON/YAML or an
+HTTP(S) spec URL. The equivalent REST surface is `POST /v1/connector-templates/import` with
+`source: "openapi"`. URL-fetched OpenAPI bodies are streamed with a 50 MiB (52,428,800 byte)
+hard limit: a declared oversized body is rejected before reading, while an unknown-length
+stream is cancelled on the first byte over budget.
+
+The importer reads top-level `servers` and `components.securitySchemes`. Absolute servers are
+preferred over the spec-host origin, relative servers resolve against the spec URL, and server
+variables use their declared defaults. Supported authentication hints are Bearer, OAuth2,
+header/query API keys, and Basic; Bearer wins when the document declares several alternatives.
+The public request and response shapes do not change.
+
+Cloudflare is not a built-in Connector Template. Import the smaller JSON document from its
+[official API schema repository](https://github.com/cloudflare/api-schemas) (YAML is also
+supported) to create the draft:
+
+```json
+{
+  "source": "openapi",
+  "content": "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
+  "name": "Cloudflare",
+  "environment": "dev"
+}
+```
+
+The resulting draft uses `https://api.cloudflare.com/client/v4` and `auth_type: "bearer"`.
+Collect the Cloudflare token afterward through the masked credential form; never put it in the
+spec URL, the public spec fetch's headers, a chat message, connector config, or workflow. Probe a
+user token with
+`GET /user/tokens/verify`, or an account-owned token with
+`GET /accounts/{account_id}/tokens/verify`, before promoting the connector to PROD.
+
+This 50 MiB allowance is specific to connector-spec import. Live API Discovery below remains
+bounded to 16 MiB and returns a curated, cached endpoint index rather than a connector draft.
+
+---
+
 ## Live API Discovery
 
 Connectors that ship with an `ingestion_url` (the OpenAPI or Swagger spec) can be inspected without authoring a single workflow step. The conversational tool `discover_connector_endpoints` and the matching HTTP route fetch and parse the spec server-side, returning a curated index of endpoints with auth schemes, parameters, and pagination hints.
@@ -3561,6 +3600,13 @@ When a user names an external boundary — "pull from our Salesforce instance" o
 | Connector Templates | A catalog covering common enterprise services — driver type, auth config, doc references, setup guidance. The AI understands the target API, not just the idea of it |
 | Documentation Ingestion | OpenAPI specs, GraphQL schemas, and HTML docs are indexed and become context for that connector — specific endpoints, parameters, error codes |
 | Credential Vault | Users never handle raw secrets; the AI proposes "use your Stripe connector" without seeing the key. Credentials are referenced by name, never by value |
+
+When no catalog template exists, `import_connector_from_spec` can start from OpenAPI JSON or
+YAML, inline or at a URL. URL imports are streamed up to 50 MiB and use OpenAPI server and
+security metadata to seed the draft. For example, Cloudflare's official spec resolves to its
+`/client/v4` API server with Bearer authentication even though the document itself is hosted on
+GitHub. The credential is still collected only after import through the masked form and must not
+appear in the public Cloudflare spec fetch or conversation transcript.
 
 ---
 

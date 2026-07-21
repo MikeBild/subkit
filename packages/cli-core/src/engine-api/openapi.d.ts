@@ -4460,7 +4460,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Import a connector draft from an API collection, HAR, OpenAPI/GraphQL spec, or curl command */
+        /**
+         * Import a connector draft from an API collection, HAR, OpenAPI/GraphQL spec, or curl command
+         * @description URL-fetched OpenAPI documents are streamed with a 50 MiB limit. OpenAPI server and security metadata seed the draft base URL and authentication type.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -14580,6 +14583,7 @@ export interface components {
         ConnectorSpecImportRequest: {
             /** @enum {string} */
             source: "postman" | "har" | "openapi" | "graphql" | "graphql_introspection" | "curl";
+            /** @description Inline specification content or a source-specific URL/command. URL-fetched OpenAPI documents are streamed with a 50 MiB limit; server and security metadata seed the connector draft. */
             content: string;
             headers?: {
                 [key: string]: string;
