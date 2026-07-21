@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.3] – 2026-07-21
+
+### Fixed
+- Persist native MCP `decline`, `cancel`, and failed external-interaction outcomes as
+  cancelled elicitations and record `approval.rejected` in both the immutable audit log and
+  structured runtime logs. The queue transport now carries an explicit decision state so
+  free-form reason text cannot alter governance semantics.
+
+### Added
+- Real Streamable HTTP regression coverage proving that a native client decline survives the
+  queue boundary as a cancelled decision with a rejected approval audit entry.
+
 ## [1.22.2] – 2026-07-21
 
 ### Fixed
