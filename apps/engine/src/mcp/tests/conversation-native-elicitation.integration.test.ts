@@ -198,17 +198,23 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
       { tries: 500, sleepMs: 10, label: "native decline resolution" },
     );
     expect(stored.decision_reason).toBe("user_declined");
-    const [audit] = await suite.http.db
-      .select()
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.tenant_id, suite.http.tenantId),
-          eq(auditLog.resource_type, "conversation_elicitation"),
-          eq(auditLog.resource_id, elicitation.id),
-          eq(auditLog.action, "approval.rejected"),
-        ),
-      );
+    const audit = await waitFor(
+      async () => {
+        const [row] = await suite.http.db
+          .select()
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tenant_id, suite.http.tenantId),
+              eq(auditLog.resource_type, "conversation_elicitation"),
+              eq(auditLog.resource_id, elicitation.id),
+              eq(auditLog.action, "approval.rejected"),
+            ),
+          );
+        return row ?? null;
+      },
+      { tries: 500, sleepMs: 10, label: "native decline audit commit" },
+    );
     expect(audit?.reason).toBe("user_declined");
     await waitForResumedTask(conversation.id);
   });
