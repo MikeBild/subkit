@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { importConnectorFromSpecTool } from "../tools/import-connector-from-spec.ts";
 
 // Smoke tests for the conversation tool — no DB or draft state needed.
@@ -7,6 +8,11 @@ import { importConnectorFromSpecTool } from "../tools/import-connector-from-spec
 
 // biome-ignore lint/suspicious/noExplicitAny: minimal stub for stateless tool
 const nullCtx = null as any;
+let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
+
+beforeEach(() => {
+  fetchSpy = mock<typeof fetch>();
+});
 
 describe("importConnectorFromSpecTool", () => {
   test("tool name is import_connector_from_spec", () => {
@@ -85,5 +91,47 @@ describe("importConnectorFromSpecTool", () => {
         environment: "dev",
       }),
     ).rejects.toThrow();
+  });
+
+  test("Cloudflare OpenAPI metadata seeds the API server and bearer auth", async () => {
+    const cloudflareSpec = JSON.stringify({
+      openapi: "3.0.3",
+      servers: [{ url: "https://api.cloudflare.com/client/v4" }],
+      security: [{ api_email: [], api_key: [] }, { api_token: [] }],
+      components: {
+        securitySchemes: {
+          api_email: { in: "header", name: "X-Auth-Email", type: "apiKey" },
+          api_key: { in: "header", name: "X-Auth-Key", type: "apiKey" },
+          api_token: { scheme: "bearer", type: "http" },
+        },
+      },
+      paths: { "/user/tokens/verify": { get: { responses: { "200": {} } } } },
+    });
+    fetchSpy.mockResolvedValue(
+      new Response(cloudflareSpec, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const result = await withDriverFetchForTests(fetchSpy as unknown as typeof fetch, () =>
+      importConnectorFromSpecTool.execute(nullCtx, {
+        source: "openapi",
+        content: "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
+        environment: "dev",
+      }),
+    );
+    const data = result.data as {
+      template_match: null;
+      draft: {
+        auth_type: string;
+        base_url: string;
+        config: { imported_sample_endpoints: Array<{ path: string }> };
+      };
+    };
+    expect(data.template_match).toBeNull();
+    expect(data.draft.base_url).toBe("https://api.cloudflare.com/client/v4");
+    expect(data.draft.auth_type).toBe("bearer");
+    expect(data.draft.config.imported_sample_endpoints[0]?.path).toBe("/user/tokens/verify");
   });
 });

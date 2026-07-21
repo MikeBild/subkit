@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { parseGraphQL } from "./graphql.ts";
 import { parseHar } from "./har.ts";
-import { parseOpenApi } from "./openapi.ts";
+import { parseOpenApi, parseOpenApiWithMetadata } from "./openapi.ts";
 import { parsePostman } from "./postman.ts";
 
 // ---------------------------------------------------------------------------
@@ -116,6 +116,116 @@ describe("parseOpenApi", () => {
     });
     const [endpoint] = parseOpenApi(doc);
     expect(endpoint!.expected_statuses).toEqual([200]);
+  });
+
+  it("parses YAML documents", () => {
+    const yaml = `
+openapi: 3.0.3
+paths:
+  /status:
+    get:
+      summary: Get status
+      responses:
+        "200": {}
+`;
+    const [endpoint] = parseOpenApi(yaml);
+    expect(endpoint?.path).toBe("/status");
+    expect(endpoint?.method).toBe("GET");
+  });
+
+  it("extracts the API server and prefers bearer among alternative security schemes", () => {
+    const parsed = parseOpenApiWithMetadata(
+      JSON.stringify({
+        openapi: "3.0.3",
+        servers: [{ url: "https://api.cloudflare.com/client/v4" }],
+        security: [{ api_email: [], api_key: [] }, { api_token: [] }],
+        components: {
+          securitySchemes: {
+            api_email: { in: "header", name: "X-Auth-Email", type: "apiKey" },
+            api_key: { in: "header", name: "X-Auth-Key", type: "apiKey" },
+            api_token: { scheme: "bearer", type: "http" },
+          },
+        },
+        paths: { "/user/tokens/verify": { get: { responses: { "200": {} } } } },
+      }),
+    );
+    expect(parsed.servers).toEqual(["https://api.cloudflare.com/client/v4"]);
+    expect(parsed.auth_hint).toEqual({ type: "bearer" });
+  });
+
+  it("resolves relative servers against the spec URL and expands variable defaults", () => {
+    const parsed = parseOpenApiWithMetadata(
+      JSON.stringify({
+        openapi: "3.0.3",
+        servers: [
+          {
+            url: "https://{region}.example.com/{version}",
+            variables: {
+              region: { default: "eu" },
+              version: { default: "v2" },
+            },
+          },
+          { url: "/client/v4" },
+        ],
+        paths: {},
+      }),
+      "https://docs.example.com/spec/openapi.json",
+    );
+    expect(parsed.servers).toEqual([
+      "https://eu.example.com/v2",
+      "https://docs.example.com/client/v4",
+    ]);
+  });
+
+  it("ignores unresolved template variables and non-HTTP server protocols", () => {
+    const parsed = parseOpenApiWithMetadata(
+      JSON.stringify({
+        openapi: "3.0.3",
+        servers: [{ url: "https://{region}.example.com" }, { url: "file:///tmp/api" }],
+        paths: {},
+      }),
+    );
+    expect(parsed.servers).toEqual([]);
+  });
+
+  it("detects OAuth2, header, query, and basic authentication", () => {
+    const cases = [
+      [{ type: "oauth2", flows: {} }, { type: "oauth2" }],
+      [
+        { type: "apiKey", in: "header", name: "X-API-Key" },
+        { type: "header", header_name: "X-API-Key" },
+      ],
+      [
+        { type: "apiKey", in: "query", name: "api_key" },
+        { type: "query", query_param: "api_key" },
+      ],
+      [{ type: "http", scheme: "basic" }, { type: "basic" }],
+    ] as const;
+    for (const [scheme, expected] of cases) {
+      const parsed = parseOpenApiWithMetadata(
+        JSON.stringify({
+          openapi: "3.0.3",
+          security: [{ auth: [] }],
+          components: { securitySchemes: { auth: scheme } },
+          paths: {},
+        }),
+      );
+      expect(parsed.auth_hint).toEqual(expected);
+    }
+  });
+
+  it("does not infer authentication from unreferenced schemes when security is anonymous", () => {
+    const parsed = parseOpenApiWithMetadata(
+      JSON.stringify({
+        openapi: "3.0.3",
+        security: [],
+        components: {
+          securitySchemes: { unused: { type: "http", scheme: "bearer" } },
+        },
+        paths: {},
+      }),
+    );
+    expect(parsed.auth_hint).toBeNull();
   });
 });
 

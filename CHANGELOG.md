@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.4] – 2026-07-21
+
+### Fixed
+- Stream URL-fetched OpenAPI documents with a 50 MiB hard limit, rejecting oversized
+  `Content-Length` values before reading and cancelling chunked bodies at the first byte over
+  budget. The fetch deadline now covers the complete response body instead of only headers.
+- Derive imported connector base URLs and authentication from OpenAPI `servers` and
+  `securitySchemes`, so the official Cloudflare spec produces
+  `https://api.cloudflare.com/client/v4` with Bearer authentication instead of the raw spec
+  host with no authentication.
+
+### Added
+- YAML support and real Cloudflare JSON/YAML regression coverage for OpenAPI connector imports.
+
 ## [1.22.3] – 2026-07-21
 
 ### Fixed
