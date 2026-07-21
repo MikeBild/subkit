@@ -20,9 +20,16 @@
 // existing approval pause, so the pause contract stays compatible.
 
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { auditAwait } from "../../../audit/audit.ts";
+import { AuditAction } from "../../../audit/types.ts";
 import { logger } from "../../../logging/logger.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { humanInBandAnswer } from "../../answer-actor.ts";
+import {
+  DRAFT_CREDENTIAL_SETUP_KIND,
+  isDraftCredentialSetupAuthType,
+  mintDraftCredentialSetupUrl,
+} from "../../draft-credential-setup.ts";
 import { ElicitationUnsupportedError } from "../../elicitation-bridge.ts";
 import {
   createElicitation,
@@ -72,11 +79,11 @@ export function scrubAskUserPayload<T extends { summary: string; input: unknown 
  * the loop folds `next_best_actions` into `prior_failures` and the model
  * re-routes without ever surfacing the secret prompt to the user.
  */
-function secretElicitationBlockedOverMcp(
+async function secretElicitationBlockedOverMcp(
   ctx: ToolContext,
   p: { tool_name: AskUserToolName; summary: string },
   hit: SecretElicitationHit,
-): ToolResult {
+): Promise<ToolResult> {
   logger.warn({
     module: "conversation",
     action: "ask_user.secret_elicitation_blocked",
@@ -87,20 +94,74 @@ function secretElicitationBlockedOverMcp(
     reason: hit.reason,
     field: hit.field,
   });
+  const connector = ctx.getDraft().connector;
+  const authType = connector?.auth_type ?? "none";
+  if (connector && !connector.saved_connector_id && isDraftCredentialSetupAuthType(authType)) {
+    const grant = mintDraftCredentialSetupUrl(ctx.conversation_id);
+    if (!grant.ok) {
+      return {
+        ok: false,
+        error_code: grant.error,
+        message:
+          "The engine has no public origin for secure credential entry. Configure server.public_base_url or SUBKIT_PUBLIC_BASE_URL, then request the credential again.",
+        next_best_actions: [p.tool_name],
+      };
+    }
+    const label = connector.name ?? connector.slug ?? "connector";
+    const routed = await pauseForUserInput(ctx, {
+      tool_name: "ask_user_confirm",
+      summary: `Enter the credential for ${label} in the secure setup flow.`,
+      input: {
+        kind: DRAFT_CREDENTIAL_SETUP_KIND,
+        question: "Complete the secure credential setup, then return to this client.",
+        summary:
+          `Enter the ${authType} credential for ${label}. ` +
+          "After submission the connector draft will be probed before it is saved.",
+        setup_url: grant.url,
+        conversation_id: ctx.conversation_id,
+        connector_slug: connector.slug ?? null,
+        auth_type: authType,
+        single_use: true,
+        expires_at: grant.expires_at.toISOString(),
+        next_best_actions: ["probe_connector_draft"],
+      },
+    });
+    if (routed.ok && routed.pause) {
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: ctx.engineClient.context.actor_type ?? (ctx.actor_id ? "user" : "system"),
+          actor_id: ctx.actor_id,
+          action: AuditAction.CONNECTOR_CREDENTIAL_GRANT_ISSUED,
+          resource_type: "conversation",
+          resource_id: ctx.conversation_id,
+          result: "success",
+          metadata: {
+            draft_only: true,
+            auth_type: authType,
+            connector_slug: connector.slug ?? null,
+            elicitation_id: routed.pause.elicitation_id,
+          },
+        },
+        ctx.db,
+      );
+    }
+    return routed;
+  }
   const message =
     "A secret (API key / token / password) must never be requested as chat text over MCP — " +
     "route credential entry to the secure flow instead. " +
     "To repair a saved connector whose credential is dead, call request_connector_reauth: it starts " +
     "a native URL-mode sign-in or credential-setup flow without returning the URL as model text. " +
     "For an OAuth2 connector being authored, use authenticate_oauth. " +
-    "For a brand-new connector, save the connector first (save_connector_draft), then call " +
-    "request_connector_reauth to start secure URL elicitation. " +
+    "For a brand-new static-credential connector, start and validate the connector draft first, " +
+    "then request the credential again so the secure draft setup flow can be opened. " +
     "Do NOT ask the user to paste the secret in chat.";
   return {
     ok: false,
     error_code: "secret_elicitation_blocked",
     message,
-    next_best_actions: ["request_connector_reauth", "authenticate_oauth", "save_connector_draft"],
+    next_best_actions: ["request_connector_reauth", "authenticate_oauth"],
     data: { error_code: "secret_elicitation_blocked", reason: hit.reason, field: hit.field },
   };
 }
@@ -121,7 +182,7 @@ export async function pauseForUserInput(
   // refused and routed to the secure flow (portal-setup URL / OAuth).
   if (ctx.surface === "mcp") {
     const secret = detectSecretElicitation(p.tool_name, p.input);
-    if (secret) return secretElicitationBlockedOverMcp(ctx, p, secret);
+    if (secret) return await secretElicitationBlockedOverMcp(ctx, p, secret);
   }
   // ── MCP-native form elicitation ────────────────────────────────────
   // Take the in-process bridge when: the client advertised the

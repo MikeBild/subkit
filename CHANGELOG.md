@@ -21,6 +21,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Allow monotonic positive built-in template revisions so connector provenance can identify
   material catalog migrations.
 
+### Fixed
+- Remove the new static-credential connector deadlock: MCP URL elicitation can now collect a
+  bearer, basic, header, query, or AWS SigV4 credential for an unsaved draft before its mandatory
+  live probe; a green probe then persists the connector and encrypted credential atomically.
+- Reuse the original MCP task when `conversation_get` resumes a native elicitation, so accepted,
+  declined, and URL-completed prompts terminate the task that the client is polling.
+- Keep connector and workflow authoring tools structurally disjoint while a draft state machine is
+  active, preventing connector conversations from selecting workflow commit tools.
+- Stop prose ending in “bearer credential.” from being misclassified and cached as a bearer token.
+
+### Tests
+- Cover the full Streamable HTTP journey from an unsaved bearer connector through URL credential
+  input, queue resume, authenticated probe, connector save, and encrypted credential persistence.
+  Native elicitation tests now also fail when the resumed background task fails or never finishes.
+
 ### Security
 - Document least-privilege Cloudflare tokens and explicit revocation of any credential exposed
   through chat, logs, shell history, or source control; no operator credential is used by the

@@ -22358,6 +22358,140 @@
         }
       }
     },
+    "/v1/connector-drafts/{id}/credentials/setup": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Browser-openable credential form for an unsaved connector draft",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 20
+            },
+            "required": true,
+            "name": "grant",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (HTML form)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Grant invalid, expired, or already used",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Submit a credential for an unsaved connector draft",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "description": "Single-use HTML credential form submission.",
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant": {
+                    "type": "string"
+                  },
+                  "token": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "header_name": {
+                    "type": "string"
+                  },
+                  "header_value": {
+                    "type": "string"
+                  },
+                  "query_name": {
+                    "type": "string"
+                  },
+                  "query_value": {
+                    "type": "string"
+                  },
+                  "access_key_id": {
+                    "type": "string"
+                  },
+                  "secret_access_key": {
+                    "type": "string"
+                  },
+                  "session_token": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credential staged for the draft probe",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Grant or credential input invalid",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connectors/{id}/credentials/setup": {
       "get": {
         "tags": [

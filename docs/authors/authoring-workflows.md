@@ -144,7 +144,8 @@ The clean authoring experience treats intermediate verification as first-class p
 | 1 | Start or update the connector draft |
 | 2 | Inspect the current draft |
 | 3 | Validate required fields and config shape |
-| 4 | Probe the real upstream boundary — a green probe persists inline; envelope carries `auto_saved: true` |
+| 4 | Collect static credentials through the masked `sk` form or MCP single-use URL elicitation; never through chat text |
+| 5 | Probe the real upstream boundary — a green probe persists inline; envelope carries `auto_saved: true` |
 
 **Workflows:**
 

@@ -16,6 +16,7 @@ export const diagnoseLatestExecutionTool: ConversationTool = {
     "Inspect the latest execution with step-level previews and warnings so the next edit is grounded in the real runtime output.",
   inputSchema,
   category: "draft_write",
+  authoring_resource: "workflow",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const currentDraft = ctx.getDraft();

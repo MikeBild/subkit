@@ -117,7 +117,7 @@ Every Connector can be tested independently of any workflow. The engine validate
 
 Connector validation is available on demand and during authoring. Operators do not need to wait for a full workflow failure before checking whether a Connector is reachable, authenticated, and returning the expected shape.
 
-A draft connector that does not yet have a saved credential cannot be probed. The probe path returns a structured `credential_required` envelope rather than silently sending an unauthenticated request. The conversational layer treats this as a signal to collect the credential through a masked form before the next probe.
+A draft connector that does not yet have a credential cannot be probed. The probe path returns a structured `credential_required` envelope rather than silently sending an unauthenticated request. `sk` collects the value in its masked terminal form. MCP clients use a single-use URL elicitation for an unsaved static-credential draft; the submission stages the credential in engine memory, resumes the same conversation, and the next green probe persists the connector and encrypted credential atomically. The draft never has to be saved unauthenticated just to obtain a connector id.
 
 Templates may attach bounded, non-secret headers to their health endpoint. The header schema rejects authentication, cookie, transport, and CR/LF-bearing values; a saved credential remains the only source of authentication. This is used for vendor-required protocol headers such as Notion's `Notion-Version`, so a connector probe exercises the same valid request shape as runtime traffic.
 
@@ -293,7 +293,7 @@ flowchart TB
     Discover["discover_connector_endpoints"]
     Draft["start_connector_from_template<br/>or _from_description"]
     AuthType{Auth type}
-    AskForm["ask_user_form<br/>(password, sensitive)"]
+    AskForm["secure credential input<br/>(masked in sk · URL-mode over MCP)"]
     AskFormOA["ask_user_form +<br/>commit_intent: save_connector_draft"]
     Probe["probe_connector_draft"]
     OAuth["authenticate_oauth<br/>(browser opens)"]
@@ -313,7 +313,7 @@ flowchart TB
 
 1. The agent calls `discover_connector_endpoints` to ground its endpoint choices in real spec data.
 2. The agent calls `start_connector_from_template` (or `start_connector_from_description`) to create a draft.
-3. The agent calls `ask_user_form(type: password, sensitive: true)` to collect the credential. The form value lands on the draft via the credential cache; no `commit_intent` is needed.
+3. The agent requests the credential. `sk` renders a masked terminal form. Over MCP, where protocol form elicitation must not carry secrets, the engine converts the request into a single-use URL-mode elicitation tied to the unsaved draft. In either case the value lands only in the draft credential cache; no connector row or `commit_intent` is needed.
 4. The agent calls `probe_connector_draft`. A green probe (`ok: true`) persists the connector + credential atomically inside the same tool call — DB row, encrypted credential, audit entry — and the response envelope carries `auto_saved: true` plus the saved connector shape. The agent does NOT need to call `save_connector_draft` afterward.
 5. The agent calls `call_connector` to iterate / paginate / sample.
 
@@ -332,7 +332,7 @@ The diagnostic tools `save_connector_draft` and `save_workflow_draft` remain ava
 | `auto_persist_on_confirmation` | harness auto-persist | An `ask_user_form` carrying `commit_intent` (OAuth2 happy path, plus delete/revoke confirmations) |
 | `manual_re_issue` | `save_connector_draft` / `save_workflow_draft` (direct) | Operator-driven re-save, force-save, credential rotation |
 
-Credentials only flow through the masked form path. The `update_connector_draft` tool rejects any credential-shaped key in `config` with a structured `credential_must_use_form` envelope. Drivers no longer accept inline credentials from `connector.config` at probe time. There is no shortcut.
+Credentials only flow through a sanctioned secret-input surface: the masked `sk` form or the single-use MCP URL flow. The `update_connector_draft` tool rejects any credential-shaped key in `config` with a structured `credential_must_use_form` envelope. Drivers no longer accept inline credentials from `connector.config` at probe time. There is no chat-text or connector-config shortcut.
 
 ---
 
@@ -345,6 +345,7 @@ The catalogue ships three layers of validation:
 - **Layer 1 — structural lint.** `apps/engine/src/connectors/templates.test.ts` runs at every PR: every template must parse `ConnectorTemplateSchema`, slugs are globally unique, recipes pass `WorkflowDefSchema`, etc. No network.
 - **Layer 2 — cross-reference invariants.** Same test file: every `default_skill` resolves to a known entry in `template-skills.json`, recipe placeholders are bound, no credential-shaped literals leak into recipe workflows. No network.
 - **Layer 3 — vendor-drift sweep.** A network sweep HEADs every `base_url`, calls every declared `probe_endpoint`, and fetches `<oauth.issuer_url>/.well-known/openid-configuration` for OAuth templates, stamping `verified_at` per template. It **never runs in CI** — gated by `RUN_TEMPLATE_AUDIT=1` so a careless pipeline can't hammer vendors. The sweep lives in `scripts/template-vendor-sweep.ts` and runs on an operator-chosen cadence against `templates.json`.
+- **Layer 4 — conversation journey.** `conversation-native-elicitation.integration.test.ts` drives a real Streamable HTTP MCP client from an unsaved bearer draft through URL elicitation, single-use credential submission, conversation resume, authenticated probe, connector save, and encrypted credential persistence. This composed state-machine test is mandatory because isolated tests of form delivery, probing, and saving cannot detect lifecycle deadlocks between those components.
 
 ### Running the sweep
 

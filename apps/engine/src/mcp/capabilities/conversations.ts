@@ -802,6 +802,7 @@ async function conversationGet(
       principal,
       pending,
       nativeElicitation: opts.nativeElicitation,
+      reuse_task_id: latest.id,
       ...(opts.permission_mode ? { permission_mode: opts.permission_mode } : {}),
     });
     if (delivered) return delivered;

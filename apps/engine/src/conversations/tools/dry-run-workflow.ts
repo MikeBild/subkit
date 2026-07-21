@@ -75,6 +75,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     "Run the entire draft workflow via runExecution (source=draft). Produces an executions row with source_kind=draft, no workflow_id / workflow_version_id persisted. Read steps execute for real; WRITE steps (sends, publishes, mutations) are HELD by default — fully resolved (URL/headers/body materialized as the step artifact) but never dispatched, so previews cannot publish. Pass execute_writes: true only after the user explicitly confirmed a live preview. External destinations (recipients, channels, webhook URLs) must come from the user, never fabricated placeholders.",
   inputSchema,
   category: "draft_write" as const,
+  authoring_resource: "workflow",
   requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);

@@ -14,6 +14,7 @@ export const inspectWorkflowDraftTool: ConversationTool = {
     "Inspect the current workflow draft, including step order, validation summary, latest preview, and the recommended next action. Each step entry is enriched with its most recent output_preview + scope_at_step (when a dry-run / run has been recorded) so the LLM can author downstream transforms / loops against real shapes.",
   inputSchema,
   category: "draft_write",
+  authoring_resource: "workflow",
   async execute(ctx): Promise<ToolResult> {
     const nextDraft = withWorkflowInspection(ctx.getDraft());
     await ctx.setDraft(nextDraft);
