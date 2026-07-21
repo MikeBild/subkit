@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.2] – 2026-07-21
+
+### Fixed
+- Expire unanswered draft-credential setup elicitations when their single-use grant dies. The
+  scheduler now marks the elicitation `timeout`, reactivates the conversation transactionally,
+  back-fills the abandoned tool result, and lets both `conversation_get` and MCP Tasks leave
+  `input_required` so the operator can request a fresh secure prompt.
+
+### Tests
+- Cover the full expired-grant lifecycle against Postgres, the real `conversation_get` capability,
+  and the MCP TaskStore; also prove an unexpired grant and ordinary untimed prompts remain pending.
+
 ## [1.23.1] – 2026-07-21
 
 ### Fixed

@@ -745,8 +745,8 @@ export async function resolveElicitationAndReactivate(
 }
 
 /**
- * Expire an approval-backed elicitation whose approval handle died
- * unanswered, and un-strand its conversation — ONE transaction.
+ * Expire a time-bounded elicitation whose capability died unanswered, and
+ * un-strand its conversation — ONE transaction.
  *
  * Deliberately a SIBLING of `resolveElicitationAndReactivate`, not an
  * option on it: a resume path owns the conversation and flips it back to
@@ -756,8 +756,8 @@ export async function resolveElicitationAndReactivate(
  * abandoned. Hence the guarded flip below.
  *
  * Three writes:
- *   1. Resolve the elicitation to `timeout` with `approval_expired` and
- *      no decider — nobody answered, so no human is named. The CAS on
+ *   1. Resolve the elicitation to `timeout` with its machine-code expiry
+ *      reason and no decider — nobody answered, so no human is named. The CAS on
  *      `status = 'pending'` inside `resolveElicitation` makes a race with
  *      a concurrent `respondElicitation` safe: the loser observes
  *      `already_resolved` and writes nothing else.
@@ -769,10 +769,18 @@ export async function resolveElicitationAndReactivate(
  *      model exactly what happened and what to do next. Mirrors the
  *      stale-supersede backfill in `insertElicitation`.
  */
+export type ElicitationExpiryReason = "approval_expired" | "credential_setup_expired";
+
 export async function expireElicitationAndReactivate(
-  p: { tenant_id: string; conversation_id: string; id: string },
+  p: {
+    tenant_id: string;
+    conversation_id: string;
+    id: string;
+    reason?: ElicitationExpiryReason;
+  },
   db: Db,
 ): Promise<ResolveElicitationResult> {
+  const reason = p.reason ?? "approval_expired";
   // Definite assignment — same reasoning as `resolveElicitationAndReactivate`.
   let resolution!: ResolveElicitationResult;
   await db.transaction(async (tx) => {
@@ -782,7 +790,7 @@ export async function expireElicitationAndReactivate(
         id: p.id,
         output: null,
         decided_by: null,
-        reason: "approval_expired",
+        reason,
         status: "timeout",
       },
       tx,
@@ -806,8 +814,11 @@ export async function expireElicitationAndReactivate(
           output: {
             ok: false,
             abandoned: true,
-            reason: "approval_expired",
-            note: "the operator did not answer the confirmation within the approval window; nothing ran. Ask the user whether they still want this action, and re-issue the tool call if so.",
+            reason,
+            note:
+              reason === "credential_setup_expired"
+                ? "the secure credential setup link expired before the operator submitted it; no credential was stored. Ask whether they want a fresh credential prompt and re-issue the tool call if so."
+                : "the operator did not answer the confirmation within the approval window; nothing ran. Ask the user whether they still want this action, and re-issue the tool call if so.",
           } as Record<string, unknown>,
         })
         .where(eq(conversationToolCalls.id, toolCallId));

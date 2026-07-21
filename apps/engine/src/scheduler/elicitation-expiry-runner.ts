@@ -1,4 +1,4 @@
-// Zombie reconciliation for approval-backed elicitations.
+// Zombie reconciliation for time-bounded elicitations.
 //
 // The chat confirm gate mints a `tool_approvals` row (15-minute TTL, see
 // `tools/approval.ts`), opens an `ask_user_confirm` elicitation carrying the
@@ -10,24 +10,26 @@
 // MCP Tasks poll that keeps deriving `input_required` for a decision that can
 // no longer be made.
 //
-// This sweep closes that gap. It walks pending elicitations old enough to
-// have outlived the approval TTL whose input carries an approval handle,
-// checks the handle against `tool_approvals`, and — when the approval row is
-// ABSENT or past `expires_at`, regardless of granted/declined state (an
-// unclaimed grant dies on the same TTL) — expires the elicitation and
-// reactivates its conversation via `expireElicitationAndReactivate`. Rows
-// whose approval is still live are untouched: the operator may yet answer.
+// This sweep closes that gap for both approval handles and draft-credential
+// setup grants. Approval-backed rows are reconciled against `tool_approvals`;
+// draft-credential rows carry their own ISO `expires_at`. Once either
+// capability is dead, the sweep expires the elicitation and reactivates its
+// conversation via `expireElicitationAndReactivate`.
 //
 // TENANT SCOPING: the SELECT is a global, cross-tenant sweep like the other
 // retention runners, but every per-row action runs under the row's own
 // tenant — the resolve, the conversation flip, and the ELICITATION_EXPIRED
 // audit row all land tenant-scoped.
 //
-// ONE CLOCK: the age prefilter and the approval-liveness check both compare
-// against Postgres' `now()`, the same clock `expires_at` was written with.
-// The app clock never participates.
+// ONE CLOCK PER CAPABILITY: approval age/liveness compares against Postgres'
+// `now()`. Draft grants are minted by the engine clock, so their embedded
+// expiry compares against this sweep's engine-supplied `started` instant.
 
-import { and, asc, eq, lt, sql } from "drizzle-orm";
+import { and, asc, eq, lt, or, sql } from "drizzle-orm";
+import {
+  DRAFT_CREDENTIAL_SETUP_KIND,
+  DRAFT_CREDENTIAL_SETUP_TTL_MS,
+} from "../conversations/draft-credential-setup.ts";
 import { expireElicitationAndReactivate } from "../conversations/elicitations.ts";
 import {
   APPROVAL_HANDLE_KEY,
@@ -44,12 +46,12 @@ import { APPROVAL_TTL_MS } from "../tools/approval.ts";
 const ELICITATION_EXPIRY_BATCH = 200;
 
 /**
- * Run one expiry sweep over approval-backed pending elicitations.
+ * Run one expiry sweep over time-bounded pending elicitations.
  *
  * The SELECT prefilters in SQL — `status = 'pending'`, older than the
- * approval TTL, and `input->'commit_intent'->'payload'` carries an
- * `approval_id` key — so the scan never touches ordinary `ask_user_*`
- * prompts, which have no TTL and may legitimately wait on a human for days.
+ * approval TTL or the draft-credential TTL. The JSON predicates restrict the
+ * scan to approval handles and draft-credential setup rows, so ordinary
+ * `ask_user_*` prompts may still wait on a human for days.
  */
 export async function runElicitationExpiry(started: Date, db: Db): Promise<void> {
   const tickId = started.toISOString();
@@ -69,19 +71,61 @@ export async function runElicitationExpiry(started: Date, db: Db): Promise<void>
       .where(
         and(
           eq(conversationElicitations.status, "pending"),
-          lt(
-            conversationElicitations.created_at,
-            sql`now() - make_interval(secs => ${APPROVAL_TTL_MS / 1000})`,
+          or(
+            and(
+              lt(
+                conversationElicitations.created_at,
+                sql`now() - make_interval(secs => ${APPROVAL_TTL_MS / 1000})`,
+              ),
+              // `jsonb_exists` is the function form of the jsonb `?` operator.
+              sql`jsonb_exists(${conversationElicitations.input} -> 'commit_intent' -> 'payload', ${APPROVAL_HANDLE_KEY})`,
+            ),
+            and(
+              lt(
+                conversationElicitations.created_at,
+                sql`now() - make_interval(secs => ${DRAFT_CREDENTIAL_SETUP_TTL_MS / 1000})`,
+              ),
+              sql`${conversationElicitations.input} ->> 'kind' = ${DRAFT_CREDENTIAL_SETUP_KIND}`,
+            ),
           ),
-          // `jsonb_exists` is the function form of the jsonb `?` operator —
-          // used here so the key check stays a parameterizable expression.
-          sql`jsonb_exists(${conversationElicitations.input} -> 'commit_intent' -> 'payload', ${APPROVAL_HANDLE_KEY})`,
         ),
       )
       .orderBy(asc(conversationElicitations.created_at))
       .limit(ELICITATION_EXPIRY_BATCH);
 
     for (const row of rows) {
+      const input =
+        row.input && typeof row.input === "object" && !Array.isArray(row.input)
+          ? (row.input as Record<string, unknown>)
+          : null;
+      if (input?.kind === DRAFT_CREDENTIAL_SETUP_KIND) {
+        const expiresAt = typeof input.expires_at === "string" ? Date.parse(input.expires_at) : NaN;
+        if (!Number.isFinite(expiresAt) || expiresAt > started.getTime()) continue;
+        try {
+          const resolution = await expireElicitationAndReactivate(
+            {
+              tenant_id: row.tenant_id,
+              conversation_id: row.conversation_id,
+              id: row.id,
+              reason: "credential_setup_expired",
+            },
+            db,
+          );
+          if (resolution.kind === "resolved") expired_count += 1;
+        } catch (err) {
+          logger.error({
+            module: "scheduler",
+            action: "elicitation_expiry.row_failed",
+            msg: "expiring draft-credential elicitation failed",
+            tick_id: tickId,
+            tenant_id: row.tenant_id,
+            conversation_id: row.conversation_id,
+            elicitation_id: row.id,
+            ...errorFields(err),
+          });
+        }
+        continue;
+      }
       // Canonical extraction — same reader the resume dispatcher uses, so a
       // prefilter false-positive (e.g. an empty-string handle) is skipped
       // rather than treated as an absent approval.
@@ -130,7 +174,7 @@ export async function runElicitationExpiry(started: Date, db: Db): Promise<void>
   logger.info({
     module: "scheduler",
     action: "elicitation_expiry.fired",
-    msg: "approval-backed elicitation expiry sweep completed",
+    msg: "time-bounded elicitation expiry sweep completed",
     tick_id: tickId,
     expired_count,
     duration_ms: Date.now() - started.getTime(),
