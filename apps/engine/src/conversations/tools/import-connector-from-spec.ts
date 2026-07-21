@@ -5,11 +5,16 @@
 // template; otherwise we fall back to a manual HTTP connector draft.
 
 import { z } from "@hono/zod-openapi";
-import { fetchGraphQLIntrospection, fetchOpenApiSpec } from "../../connectors/spec-fetchers.ts";
+import {
+  fetchGoogleDiscoverySpec,
+  fetchGraphQLIntrospection,
+  fetchOpenApiSpec,
+} from "../../connectors/spec-fetchers.ts";
 import { enrichConnectorFromTemplate } from "../../connectors/template-enrichment.ts";
 import { matchTemplateByUrl } from "../../connectors/template-url-match.ts";
 import type { EndpointSpec } from "../../llm/flows/document-analysis.ts";
 import { parseCurlCommand } from "../../llm/flows/document-parsers/curl.ts";
+import { parseGoogleDiscoveryWithMetadata } from "../../llm/flows/document-parsers/google-discovery.ts";
 import { parseGraphQL } from "../../llm/flows/document-parsers/graphql.ts";
 import { parseGraphQLIntrospection } from "../../llm/flows/document-parsers/graphql-introspection.ts";
 import { parseHar } from "../../llm/flows/document-parsers/har.ts";
@@ -22,6 +27,7 @@ const SourceEnum = z.enum([
   "postman",
   "har",
   "openapi",
+  "google_discovery",
   "graphql",
   "graphql_introspection",
   "curl",
@@ -32,8 +38,9 @@ const inputSchema = z
     source: SourceEnum,
     /**
      * Raw body, URL, or a curl command depending on `source`. For
-     * `openapi` this may be either inline content or an https:// URL —
-     * a URL triggers a live fetch (spec-fetchers, SSRF-guarded). For
+     * `openapi` and `google_discovery` this may be either inline content
+     * or an https:// URL — a URL triggers a live fetch (spec-fetchers,
+     * SSRF-guarded). For
      * `graphql_introspection`, this is the endpoint URL.
      */
     content: z.string().min(1),
@@ -114,6 +121,20 @@ async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
       auth_hint: parsed.auth_hint,
     };
   }
+  if (source === "google_discovery") {
+    const raw = content.trim();
+    let text = raw;
+    if (/^https?:\/\//i.test(raw)) {
+      const fetched = await fetchGoogleDiscoverySpec(raw, headers);
+      text = fetched.content;
+    }
+    const parsed = parseGoogleDiscoveryWithMetadata(text);
+    return {
+      endpoints: parsed.endpoints,
+      base_url: parsed.base_url,
+      auth_hint: parsed.auth_hint,
+    };
+  }
   if (source === "graphql") {
     const eps = parseGraphQL(content);
     return { endpoints: eps, base_url: "" };
@@ -130,7 +151,7 @@ async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
 export const importConnectorFromSpecTool: ConversationTool = {
   name: "import_connector_from_spec",
   description:
-    "Import an API specification (an API request collection, HAR, OpenAPI inline or URL up to 50 MiB, GraphQL SDL, GraphQL introspection endpoint, or a curl command) into a connector draft. OpenAPI server and security metadata seed the base URL and authentication. Auto-matches a built-in template when the base URL is recognised; otherwise produces a manual HTTP connector draft with the sampled endpoints attached.",
+    "Import an API specification (an API request collection, HAR, OpenAPI or Google Discovery inline/URL up to 50 MiB, GraphQL SDL, GraphQL introspection endpoint, or a curl command) into a connector draft. Specification metadata seeds the base URL and authentication. Auto-matches a built-in template when the base URL is recognised; otherwise produces a manual HTTP connector draft with sampled endpoints attached.",
   use_case:
     "Use when the operator brings an existing API spec, request collection, curl command, or a GraphQL endpoint URL. Faster than manually describing the connector.",
   example_input: {

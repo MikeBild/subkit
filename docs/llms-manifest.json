@@ -10,7 +10,7 @@
       "audience": "concepts",
       "path": "docs/concepts/connectors.md",
       "title": "Connectors & Integration",
-      "summary": "Outcome: authenticate an external system once, reuse it across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log."
+      "summary": "Outcome: authenticate external systems—including built-in Cloudflare and Firebase/Firestore—once, reuse them across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log."
     },
     {
       "audience": "concepts",

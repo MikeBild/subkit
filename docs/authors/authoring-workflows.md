@@ -405,12 +405,13 @@ When a user names an external boundary — "pull from our Salesforce instance" o
 | Documentation Ingestion | OpenAPI specs, GraphQL schemas, and HTML docs are indexed and become context for that connector — specific endpoints, parameters, error codes |
 | Credential Vault | Users never handle raw secrets; the AI proposes "use your Stripe connector" without seeing the key. Credentials are referenced by name, never by value |
 
-When no catalog template exists, `import_connector_from_spec` can start from OpenAPI JSON or
-YAML, inline or at a URL. URL imports are streamed up to 50 MiB and use OpenAPI server and
-security metadata to seed the draft. For example, Cloudflare's official spec resolves to its
-`/client/v4` API server with Bearer authentication even though the document itself is hosted on
-GitHub. The credential is still collected only after import through the masked form and must not
-appear in the public Cloudflare spec fetch or conversation transcript.
+Cloudflare and Firebase/Firestore are catalog templates (`cloudflare` and `firebase`). When no
+catalog template exists, `import_connector_from_spec` can start from OpenAPI JSON/YAML or Google
+REST Discovery JSON, inline or at a URL. URL imports are streamed up to 50 MiB and use server,
+service-root, and security metadata to seed the draft. Cloudflare's official OpenAPI document
+auto-matches the Cloudflare template; Firestore's official Discovery document auto-matches
+Firebase revision 2. Credentials are collected only after import through the masked or managed
+OAuth flow and must never appear in the public spec fetch or conversation transcript.
 
 ---
 

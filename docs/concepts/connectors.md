@@ -2,7 +2,7 @@
 
 > **Audience:** Engineers wiring sk to external systems, operators curating the catalogue
 
-**Outcome:** authenticate an external system once, reuse it across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log. Connectors collapse weeks of bespoke integration glue into a one-time, governed setup — typed, authenticated, monitored, and audited.
+**Outcome:** authenticate external systems—including built-in Cloudflare and Firebase/Firestore—once, reuse them across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log. Connectors collapse weeks of bespoke integration glue into a one-time, governed setup — typed, authenticated, monitored, and audited.
 
 A Connector combines three independently-evolving layers: a **Driver** (protocol), a **Connector Template** (target-specific config + context), and a **Credential** (vault-managed secret).
 
@@ -64,7 +64,7 @@ The two connectors can coexist in a tenant — one `github` connector for writes
 
 Templates are what make the AI's proposals accurate. Without templates, the AI cannot propose the correct authentication pattern, suggest the right endpoints, or explain the connector target's specific behaviors and limitations.
 
-sk ships 55 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Notion, Google services, AWS services, databases, and more.
+sk ships 57 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Notion, Cloudflare, Firebase/Firestore, Google services, AWS services, databases, and more.
 
 A Template is more than a configuration skeleton. It includes: the appropriate driver, the authentication configuration for that service (OAuth2 scopes, API key placement, basic auth conventions), links to documentation that the platform will index, setup guidance the AI presents when a user configures the Connector, and example Skill content the AI can draw on when proposing integrations.
 
@@ -151,21 +151,37 @@ The REST form is `POST /v1/connectors/{id}/promote` with a required `Idempotency
 
 ## OpenAPI Connector Import
 
-`import_connector_from_spec` creates a connector draft from inline OpenAPI JSON/YAML or an
-HTTP(S) spec URL. The equivalent REST surface is `POST /v1/connector-templates/import` with
-`source: "openapi"`. URL-fetched OpenAPI bodies are streamed with a 50 MiB (52,428,800 byte)
-hard limit: a declared oversized body is rejected before reading, while an unknown-length
-stream is cancelled on the first byte over budget.
+`import_connector_from_spec` creates a connector draft from inline OpenAPI JSON/YAML, Google
+REST Discovery JSON, or an HTTP(S) spec URL. The equivalent REST surface is
+`POST /v1/connector-templates/import` with `source: "openapi"` or
+`source: "google_discovery"`. URL-fetched specification bodies are streamed with a 50 MiB
+(52,428,800 byte) hard limit: a declared oversized body is rejected before reading, while an
+unknown-length stream is cancelled on the first byte over budget.
 
 The importer reads top-level `servers` and `components.securitySchemes`. Absolute servers are
 preferred over the spec-host origin, relative servers resolve against the spec URL, and server
 variables use their declared defaults. Supported authentication hints are Bearer, OAuth2,
 header/query API keys, and Basic; Bearer wins when the document declares several alternatives.
-The public request and response shapes do not change.
+Google Discovery imports recursively read nested resources and methods, build the service base
+URL from `baseUrl` or `rootUrl` + `servicePath`, resolve request/response schema references, and
+derive OAuth2 or query-key authentication hints. The public import response shape is unchanged.
 
-Cloudflare is not a built-in Connector Template. Import the smaller JSON document from its
-[official API schema repository](https://github.com/cloudflare/api-schemas) (YAML is also
-supported) to create the draft:
+Cloudflare now ships as the built-in `cloudflare` template. Create it directly, then add a newly
+created least-privilege API token through the credential command's masked/secret input path:
+
+```bash
+sk connectors create --template cloudflare --name cloudflare-dev
+sk credentials set <CONNECTOR_ID> --mode bearer --token '<NEW_SCOPED_TOKEN>'
+sk connectors test <CONNECTOR_ID>
+```
+
+The template uses `https://api.cloudflare.com/client/v4`, Bearer authentication, the official
+[Cloudflare OpenAPI schema](https://github.com/cloudflare/api-schemas), and three read-only
+starter recipes: token verification, zone listing, and DNS-record listing. A token that has
+appeared in chat, source code, shell history, or logs must be revoked and replaced before use.
+The Global API Key is intentionally not the default.
+
+The same official schema can still be imported explicitly when testing or customizing a draft:
 
 ```json
 {
@@ -176,12 +192,24 @@ supported) to create the draft:
 }
 ```
 
-The resulting draft uses `https://api.cloudflare.com/client/v4` and `auth_type: "bearer"`.
-Collect the Cloudflare token afterward through the masked credential form; never put it in the
-spec URL, the public spec fetch's headers, a chat message, connector config, or workflow. Probe a
-user token with
-`GET /user/tokens/verify`, or an account-owned token with
-`GET /accounts/{account_id}/tokens/verify`, before promoting the connector to PROD.
+The resulting draft auto-matches the same built-in template. Never put a token in the spec URL,
+public spec-fetch headers, a chat message, connector config, or workflow.
+
+Firebase/Firestore ships as template revision 2 and ingests the official Firestore v1 Google
+Discovery document. Configure a Google OAuth client, create the connector, and authorize it:
+
+```bash
+sk connector-templates set-oauth --slug firebase \
+  --client-id '<GOOGLE_OAUTH_CLIENT_ID>' \
+  --client-secret '<GOOGLE_OAUTH_CLIENT_SECRET>'
+sk connectors create --template firebase --name firebase-dev
+sk auth --connector-id <CONNECTOR_ID>
+```
+
+The built-in OAuth scopes are `cloud-platform` and `datastore`. For end-user requests governed
+by Firestore Security Rules, a short-lived Firebase Authentication ID token may instead be stored
+as a Bearer credential. A service-account JSON key is not an OAuth client secret and must not be
+pasted into the OAuth fields.
 
 This 50 MiB allowance is specific to connector-spec import. Live API Discovery below remains
 bounded to 16 MiB and returns a curated, cached endpoint index rather than a connector draft.

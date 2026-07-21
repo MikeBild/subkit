@@ -6,7 +6,7 @@
 ## Concepts
 
 - [Concepts](concepts/README.md): The shared mental model for sk: how connectors, workflows, knowledge, skills, and governance fit together — so every team means the same thing and reasons about the same system.
-- [Connectors & Integration](concepts/connectors.md): Outcome: authenticate an external system once, reuse it across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log.
+- [Connectors & Integration](concepts/connectors.md): Outcome: authenticate external systems—including built-in Cloudflare and Firebase/Firestore—once, reuse them across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log.
 - [FAQ](concepts/faq.md): Outcome: a fast path from "what even is this?" to the one page that answers it in full.
 - [Concepts & Domain Model](concepts/glossary.md): One vocabulary, defined once.
 - [Governance & Audit](concepts/governance-and-audit.md): Pass the audit on the first pass.
