@@ -58,6 +58,12 @@ throwaway playground drafts that never persist and partial-accept of individual 
 governed MCP surface those tools expose — session progress, confirmation gates, and
 secrets-never-in-chat routing — see the [tool palette](docs/developers/tool-palette.md).
 
+APIs without a built-in Connector Template can be bootstrapped from OpenAPI JSON or YAML.
+URL imports are streamed with a 50 MiB limit and use the document's server and security
+metadata to seed the connector base URL and authentication. The
+[connector guide](docs/concepts/connectors.md#openapi-connector-import) includes the Cloudflare
+example and the separate discovery limits.
+
 Operators can measure how the product is actually used without collecting content:
 opt-in, tenant-scoped usage reports cover canonical HTTP routes, Chat turns, Conversation
 streams, and MCP JSON-RPC/session/capacity behavior. Actor and session identities are

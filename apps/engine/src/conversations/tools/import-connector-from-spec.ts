@@ -13,7 +13,7 @@ import { parseCurlCommand } from "../../llm/flows/document-parsers/curl.ts";
 import { parseGraphQL } from "../../llm/flows/document-parsers/graphql.ts";
 import { parseGraphQLIntrospection } from "../../llm/flows/document-parsers/graphql-introspection.ts";
 import { parseHar } from "../../llm/flows/document-parsers/har.ts";
-import { parseOpenApi } from "../../llm/flows/document-parsers/openapi.ts";
+import { parseOpenApiWithMetadata } from "../../llm/flows/document-parsers/openapi.ts";
 import { parsePostman } from "../../llm/flows/document-parsers/postman.ts";
 import { findReusableConnectorByUrl } from "./connector-reuse.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -48,7 +48,11 @@ const inputSchema = z
 type Parsed = {
   endpoints: EndpointSpec[];
   base_url: string;
-  auth_hint?: { type: string; header_name?: string } | null;
+  auth_hint?: {
+    type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2";
+    header_name?: string;
+    query_param?: string;
+  } | null;
 };
 
 function urlBaseFromFullUrl(u: string): string {
@@ -101,10 +105,13 @@ async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
       const fetched = await fetchOpenApiSpec(raw, headers);
       text = fetched.content;
     }
-    const eps = parseOpenApi(text);
+    const parsed = parseOpenApiWithMetadata(text, sourceUrl ?? undefined);
     return {
-      endpoints: eps,
-      base_url: sourceUrl ? urlBaseFromFullUrl(sourceUrl) : firstEndpointBaseUrl(eps),
+      endpoints: parsed.endpoints,
+      base_url:
+        parsed.servers[0] ??
+        (sourceUrl ? urlBaseFromFullUrl(sourceUrl) : firstEndpointBaseUrl(parsed.endpoints)),
+      auth_hint: parsed.auth_hint,
     };
   }
   if (source === "graphql") {
@@ -123,7 +130,7 @@ async function parseSource(args: z.infer<typeof inputSchema>): Promise<Parsed> {
 export const importConnectorFromSpecTool: ConversationTool = {
   name: "import_connector_from_spec",
   description:
-    "Import an API specification (an API request collection, HAR, OpenAPI inline or URL, GraphQL SDL, GraphQL introspection endpoint, or a curl command) into a connector draft. Auto-matches a built-in template when the base URL is recognised; otherwise produces a manual HTTP connector draft with the sampled endpoints attached.",
+    "Import an API specification (an API request collection, HAR, OpenAPI inline or URL up to 50 MiB, GraphQL SDL, GraphQL introspection endpoint, or a curl command) into a connector draft. OpenAPI server and security metadata seed the base URL and authentication. Auto-matches a built-in template when the base URL is recognised; otherwise produces a manual HTTP connector draft with the sampled endpoints attached.",
   use_case:
     "Use when the operator brings an existing API spec, request collection, curl command, or a GraphQL endpoint URL. Faster than manually describing the connector.",
   example_input: {
@@ -188,14 +195,7 @@ export const importConnectorFromSpecTool: ConversationTool = {
     }
 
     // Manual fallback — no template matched.
-    const authType =
-      parsed.auth_hint?.type === "bearer"
-        ? "bearer"
-        : parsed.auth_hint?.type === "basic"
-          ? "basic"
-          : parsed.auth_hint?.type === "header"
-            ? "header"
-            : "none";
+    const authType = parsed.auth_hint?.type ?? "none";
     return {
       ok: true,
       data: {
