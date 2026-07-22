@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] – 2026-07-22
+
+### Fixed
+- Replace the last retired `auth.oidc` documentation shape with the canonical
+  `auth.providers` protocol list and regenerate agent-facing documentation.
+- Add a contract test that rejects the former parallel auth trees in both the
+  operator source and generated `llms-full.txt`.
+
 ## [2.0.0] – 2026-07-22
 
 ### Added
