@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] – 2026-07-22
+
+### Changed
+- Replace the last concrete identity-product example with deployment-owned
+  provider ids and protocol-only documentation, then regenerate agent docs.
+- Extend the architecture contract to reject concrete provider products in
+  browser-auth runtime and documentation.
+
 ## [2.0.3] – 2026-07-22
 
 ### Fixed
@@ -41,7 +49,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   code branch.
 
 ### Changed
-- Remove the parallel `auth.provider`, `auth.firebase.*`, `auth.oidc.*`, and
+- Remove the parallel provider-specific auth trees and
   MCP-only provider list. Discovery, browser login and bearer verification now
   consume the same structural list, with no legacy parser or route aliases.
 - Store external identities in the provider-neutral `user_identities` relation

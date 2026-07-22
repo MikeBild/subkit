@@ -200,7 +200,7 @@ There is no argument on any tool, and no `_meta` flag a model-driven client can 
 
 The sk engine is a full OAuth 2.1 authorization server and resource server for `/mcp`. This lets OAuth-only clients — including the ChatGPT custom connector, Claude.ai, and Cursor — authenticate without a static API key.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named `token_bridge` and `oidc` adapters. Product names are configuration values, not engine modes; Supabase Identity, for example, is an ordinary OIDC record with `id: "supabase"`.
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named `token_bridge` and `oidc` adapters. Provider ids and labels are deployment-owned values, never engine modes.
 
 ```json
 {
@@ -223,9 +223,9 @@ The sk engine is a full OAuth 2.1 authorization server and resource server for `
         },
         {
           "protocol": "oidc",
-          "id": "supabase",
-          "label": "Supabase",
-          "issuer_url": "https://<supabase-oidc-issuer>",
+          "id": "workforce-oidc",
+          "label": "Workforce OIDC",
+          "issuer_url": "https://identity.example.com",
           "client_id": "<client-id>",
           "client_secret": "<secret>"
         }

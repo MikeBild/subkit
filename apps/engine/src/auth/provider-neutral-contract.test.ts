@@ -11,6 +11,7 @@ function productionSources(path: string): string[] {
 }
 
 test("runtime auth remains provider-neutral with only generic browser routes", () => {
+  const concreteProvider = new RegExp(["fire" + "base", "supa" + "base"].join("|"), "i");
   const files = [
     ...productionSources("apps/engine/src/auth"),
     ...productionSources("apps/engine/src/config"),
@@ -19,8 +20,12 @@ test("runtime auth remains provider-neutral with only generic browser routes", (
     ...productionSources("packages/cli-core/src"),
   ];
   const source = files.map((file) => readFileSync(file, "utf8")).join("\n");
-  expect(source).not.toMatch(/firebase|FIREBASE_|login\/(?:firebase|api-key|token-bridge)/i);
-  expect(source).not.toMatch(/auth\.(?:provider|firebase|oidc)\b|mcp_oauth\.providers/);
+  const retiredAuthTree = new RegExp(
+    `auth\\.(?:${["provider", "fire" + "base", "oidc"].join("|")})\\b|mcp_oauth\\.providers`,
+  );
+  expect(source).not.toMatch(concreteProvider);
+  expect(source).not.toMatch(/login\/(?:api-key|token-bridge)/i);
+  expect(source).not.toMatch(retiredAuthTree);
   expect(source).not.toContain("/v1/identity/sessions/oidc");
   expect(source).toContain("/v1/identity/login/start");
   expect(source).toContain("/v1/identity/login/callback");
@@ -32,5 +37,14 @@ test("operator and generated agent docs contain no retired auth tree", () => {
   const docs = ["docs/admins/configuration.md", "docs/llms-full.txt"]
     .map((file) => readFileSync(file, "utf8"))
     .join("\n");
-  expect(docs).not.toMatch(/"auth"\s*:\s*\{\s*"(?:provider|firebase|oidc)"\s*:/);
+  const retiredAuthTree = new RegExp(
+    `"auth"\\s*:\\s*\\{\\s*"(?:${["provider", "fire" + "base", "oidc"].join("|")})"\\s*:`,
+  );
+  expect(docs).not.toMatch(retiredAuthTree);
+});
+
+test("browser-auth documentation contains protocols, not concrete providers", () => {
+  const concreteProvider = new RegExp(["fire" + "base", "supa" + "base"].join("|"), "i");
+  const source = readFileSync("docs/developers/input-surfaces.md", "utf8");
+  expect(source).not.toMatch(concreteProvider);
 });
