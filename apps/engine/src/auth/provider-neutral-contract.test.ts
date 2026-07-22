@@ -27,3 +27,10 @@ test("runtime auth remains provider-neutral with only generic browser routes", (
   expect(source).toContain("/v1/identity/logout");
   expect(source).toContain("/v1/identity/sessions");
 });
+
+test("operator and generated agent docs contain no retired auth tree", () => {
+  const docs = ["docs/admins/configuration.md", "docs/llms-full.txt"]
+    .map((file) => readFileSync(file, "utf8"))
+    .join("\n");
+  expect(docs).not.toMatch(/"auth"\s*:\s*\{\s*"(?:provider|firebase|oidc)"\s*:/);
+});

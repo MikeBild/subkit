@@ -7400,7 +7400,13 @@ the file only needs to carry overrides:
   "llm":     { "provider": "anthropic",
                "api_key":  "…",                 // sensitive, masked everywhere
                "providers": { "anthropic": { "model": "claude-sonnet-4-6" } } },
-  "auth":    { "oidc": { "issuer_url": "…" }, "session": { "secret": "auto-generated" } },
+  "auth":    { "providers": [
+                 { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
+                 { "protocol": "oidc", "id": "workforce", "label": "Work account",
+                   "issuer_url": "https://identity.example.com", "client_id": "…",
+                   "tenant_slug": "default" }
+               ],
+               "session": { "secret": "auto-generated" } },
   "platform":      { "slack": { … }, "teams": { … }, "googlechat": { … } },
   "storage":       { "s3": { … }, "knowledge": { "backend": "local" } },
   "observability": { "langfuse": { "secret_key": "…" },
