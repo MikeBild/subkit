@@ -143,7 +143,6 @@ describe(`secret-mask leak audit — ${SECRET_LEAVES.length} secret leaves`, () 
     expect(dotted).toContain("storage.offload.access_key");
     expect(dotted).toContain("storage.offload.secret_key");
     expect(dotted).toContain("mcp.api_key");
-    expect(dotted).toContain("auth.oidc.client_secret");
     expect(dotted).toContain("observability.langfuse.secret_key");
   });
 });

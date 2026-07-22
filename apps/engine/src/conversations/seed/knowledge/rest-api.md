@@ -204,7 +204,7 @@ The grounding + capture surface for external coding agents (Claude Code, Codex).
 - `GET /v1/identity/whoami` — the calling principal.
 - `GET /v1/identity/permissions` — the caller's effective, enforced permission set (displayed equals enforced).
 - `GET /v1/identity/providers` — configured auth providers.
-- `POST /v1/identity/sessions/oidc` — exchange an OIDC session.
+- `POST /v1/identity/sessions` — exchange a configured provider assertion.
 
 # RBAC
 

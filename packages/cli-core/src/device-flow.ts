@@ -10,6 +10,7 @@ import * as oauth from "openid-client";
 import pc from "picocolors";
 
 export interface DeviceFlowOptions {
+  provider_id: string;
   issuer_url: string;
   client_id: string;
   engine_url: string;
@@ -26,7 +27,7 @@ export interface DeviceFlowResult {
   api_key: string;
   user_id: string;
   tenant_id: string;
-  sub: string;
+  email: string;
 }
 
 const DEFAULT_SCOPE = "openid profile email offline_access";
@@ -67,19 +68,22 @@ export async function runDeviceFlow(opts: DeviceFlowOptions): Promise<DeviceFlow
   }
 
   const tokens = await oauth.pollDeviceAuthorizationGrant(config, initiated);
-  const id_token = (tokens as { id_token?: string }).id_token;
-  if (!id_token) {
-    throw new Error("device flow returned no id_token");
+  const identityToken = (tokens as { id_token?: string }).id_token;
+  if (!identityToken) {
+    throw new Error("device flow returned no identity assertion");
   }
 
-  // Exchange id_token for a personal API key minted by the engine.
+  // Exchange the identity assertion for a personal API key minted by the engine.
   const fetchImpl = opts.fetchImpl ?? fetch;
   const exchangeRes = await fetchImpl(
-    `${opts.engine_url.replace(/\/$/, "")}/v1/identity/sessions/oidc`,
+    `${opts.engine_url.replace(/\/$/, "")}/v1/identity/sessions`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id_token, issuer: issuerUrl.toString() }),
+      body: JSON.stringify({
+        provider_id: opts.provider_id,
+        identity_token: identityToken,
+      }),
     },
   );
   if (!exchangeRes.ok) {

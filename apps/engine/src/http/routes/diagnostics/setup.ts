@@ -100,24 +100,6 @@ function formatDatabaseUrl(dsn: string | undefined): string | null {
 
 function buildAuthSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
   const cfg = snapshot.auth;
-  const issues: SetupIssue[] = [];
-  const recommendations: string[] = [];
-  const firebaseProject = present(cfg.firebase.project_id);
-  const firebaseLoginUrl = present(cfg.firebase.login_url);
-  if (Boolean(firebaseProject) !== Boolean(firebaseLoginUrl)) {
-    issues.push(
-      buildIssue(
-        "auth-firebase-partial",
-        "warning",
-        "Firebase login",
-        "auth.firebase.project_id and auth.firebase.login_url should be set together or both unset.",
-      ),
-    );
-    recommendations.push(
-      "Run `sk settings set auth.firebase.project_id ...` + `sk settings set auth.firebase.login_url ...` to complete the pair (or unset both).",
-    );
-  }
-  const oidcIssuer = present(cfg.oidc.issuer_url);
   return buildSection(
     "Auth",
     [
@@ -127,23 +109,13 @@ function buildAuthSection(snapshot: ReturnType<typeof getConfig>): SetupSection 
         status_hint: null,
       },
       {
-        key: "auth.oidc.issuer_url",
-        value: oidcIssuer ?? null,
-        status_hint: oidcIssuer ? null : "Not configured",
-      },
-      {
-        key: "auth.firebase.project_id",
-        value: firebaseProject ?? null,
-        status_hint: firebaseProject ? null : "Not configured",
-      },
-      {
-        key: "auth.firebase.login_url",
-        value: firebaseLoginUrl ?? null,
-        status_hint: firebaseLoginUrl ? null : "Not configured",
+        key: "auth.providers",
+        value: cfg.providers.map((provider) => `${provider.id}:${provider.protocol}`).join(", "),
+        status_hint: null,
       },
     ],
-    issues,
-    recommendations,
+    [],
+    [],
   );
 }
 
@@ -537,8 +509,8 @@ const setupRoute = createRoute({
   summary: "Operator-facing setup validation for live engine configuration",
   description:
     "Returns the GLOBAL config snapshot only — tenant overlays are not represented here. " +
-    "Operators reading this expecting per-tenant `auth.firebase.*` (or any other tenant-scope leaf) " +
-    "should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins " +
+    "Operators reading this expecting tenant-scoped settings should hit " +
+    "`GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins " +
     "can validate the engine's bootstrap configuration without a tenant context.",
   security: [{ bearerAuth: [] }],
   responses: {

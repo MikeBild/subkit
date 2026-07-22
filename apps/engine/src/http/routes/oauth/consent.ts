@@ -13,7 +13,7 @@ import {
 } from "../../../audit/index.ts";
 import { createMcpOAuthProvider } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
-import { roles as rolesTable, tenants, users } from "../../../db/schema/index.ts";
+import { roles as rolesTable, sessions, tenants, users } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {
@@ -25,12 +25,12 @@ import {
   MCP_SCOPE_PERMISSIONS,
   parseFormBody,
   permittedMcpScopes,
-  renderConsentPage,
   resolveSession,
   sessionIsLive,
   signCsrfToken,
   verifyCsrfToken,
 } from "./shared.ts";
+import { authHtmlResponse, renderConsentPage } from "./ui.ts";
 
 export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
   // ── Authorization endpoint ─────────────────────────────────────────────────
@@ -208,12 +208,11 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       sessionPayload.user_id,
       userRow.role_name ?? userRow.role,
     );
-    // Offer the operator's FULL permitted ceiling, independent of what the
-    // client requested. The client's requested scope only controls which boxes
-    // are pre-checked; the resource owner may grant any scope their role holds.
-    // Stable presentation order: read, authoring, admin.
+    // A consent screen may only offer scopes the client actually requested.
+    // Clamp request ∩ supported ∩ current role, in stable presentation order.
     const scopeOrder = MCP_SCOPE_PERMISSIONS as readonly string[];
-    const offeredScopes = intersectScopes(roleScopes.join(" "), supportedScopes)
+    const requestBoundScopes = intersectScopes(requestedScope, supportedScopes);
+    const offeredScopes = intersectScopes(requestBoundScopes, roleScopes)
       .split(" ")
       .filter(Boolean)
       .sort((a, b) => scopeOrder.indexOf(a) - scopeOrder.indexOf(b));
@@ -232,8 +231,8 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
-    // Nothing the role permits intersects the supported scopes → access_denied.
-    if (offeredScopes.length === 0) {
+    // Read is the mandatory baseline. Never silently add an unrequested scope.
+    if (!offeredScopes.includes("mcp:read")) {
       return buildErrorRedirect(redirectUri, "access_denied", state);
     }
 
@@ -265,18 +264,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       resource,
     });
 
-    return c.html(html, 200, {
-      "X-Frame-Options": "DENY",
-      // Lock the consent page down: no scripts/images/fetch of any kind,
-      // inline <style> only. NOTE: no `form-action` directive — the consent
-      // decision legitimately redirects (302) to the OAuth client's
-      // redirect_uri (e.g. chatgpt.com), which `form-action 'self'` would
-      // block in the browser. The single form's action is hard-coded in
-      // renderConsentPage, so there is no injected-form-action surface.
-      "Content-Security-Policy":
-        "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
-      "Cache-Control": "no-store",
-    });
+    return authHtmlResponse(html);
   });
 
   // ── Consent decision ─────────────────────────────────────────────────────
@@ -361,6 +349,49 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
         db,
       );
       return buildErrorRedirect(redirectUri, "access_denied", state);
+    }
+
+    if (decision === "switch_account") {
+      await db
+        .update(sessions)
+        .set({ revoked_at: new Date() })
+        .where(
+          and(
+            eq(sessions.id, sessionPayload.session_id),
+            eq(sessions.tenant_id, sessionPayload.tenant_id),
+          ),
+        );
+      await auditAwait(
+        {
+          tenant_id: sessionPayload.tenant_id,
+          actor_type: "user",
+          actor_id: sessionPayload.user_id,
+          action: AuditAction.SESSION_REVOKED,
+          resource_type: "session",
+          resource_id: sessionPayload.session_id,
+          result: "success",
+          reason: "switch_account",
+          metadata: { request_source: readRequestSource(c), via: "mcp_oauth_consent" },
+        },
+        db,
+      );
+      const authorizeUrl = new URL("/v1/oauth/authorize", provider.getBaseUrl());
+      authorizeUrl.searchParams.set("client_id", clientId);
+      authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+      authorizeUrl.searchParams.set("response_type", "code");
+      authorizeUrl.searchParams.set("code_challenge", String(csrfPayload.code_challenge ?? ""));
+      authorizeUrl.searchParams.set("code_challenge_method", "S256");
+      authorizeUrl.searchParams.set("scope", String(csrfPayload.offered_scopes ?? "mcp:read"));
+      if (resource) authorizeUrl.searchParams.set("resource", resource);
+      if (state) authorizeUrl.searchParams.set("state", state);
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: authorizeUrl.toString(),
+          "set-cookie": "subkit_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+          "cache-control": "no-store",
+        },
+      });
     }
 
     const codeChallenge = (csrfPayload.code_challenge as string | undefined) ?? "";

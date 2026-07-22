@@ -12,10 +12,10 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
-import { createFirebaseProvider } from "../auth/providers/firebase.ts";
 import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
 import { createOidcProvider } from "../auth/providers/oidc.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
+import { createTokenBridgeProvider } from "../auth/providers/token-bridge.ts";
 import { AuthProviderRegistry } from "../auth/registry.ts";
 import { ChatAdapterRegistry } from "../chat/registry.ts";
 import { getConfig } from "../config/loader.ts";
@@ -68,7 +68,7 @@ import { registerLoginRoutes } from "./routes/identity/login.ts";
 import { registerEffectivePermissionsRoute } from "./routes/identity/permissions.ts";
 import { registerPortalTokenRoutes } from "./routes/identity/portal-tokens.ts";
 import { registerProvidersRoute } from "./routes/identity/providers.ts";
-import { registerSessionsOidcRoute } from "./routes/identity/sessions-oidc.ts";
+import { registerIdentitySessionsRoute } from "./routes/identity/sessions.ts";
 import { registerSkBootstrapRoute } from "./routes/identity/sk-bootstrap.ts";
 import { registerSystemAccountRoutes } from "./routes/identity/system-accounts.ts";
 import { registerTenantRoutes } from "./routes/identity/tenants.ts";
@@ -136,15 +136,10 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
       /* loader not initialised — fall through to local defaults below */
     }
   }
-  // Machine/token auth (API keys, portal tokens) is ALWAYS available — it is
-  // the programmatic + agent surface and is orthogonal to who owns *human*
-  // identity. MCP OAuth stays gated on its own server feature flag. The human
-  // identity provider is selected by `auth.provider` and exactly one is
-  // registered: "subkit" (default) registers none — humans authenticate with
-  // engine-issued API keys provisioned via admin-invite; "firebase"/"oidc"
-  // register the matching external provider.
   const enableMcpOAuth = auth?.mcp_oauth.enabled ?? true;
-  const provider = auth?.provider ?? "subkit";
+  const providerConfigs = auth?.providers ?? [
+    { protocol: "api_key" as const, id: "api-key", label: "SubKit API key" },
+  ];
 
   const registered: string[] = [];
 
@@ -161,19 +156,42 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
   registered.push("portal_token");
   reg.register(createApiKeyProvider(db ? { db } : {}));
   registered.push("api_key");
-  if (provider === "oidc") {
-    reg.register(createOidcProvider(db ? { db } : {}));
-    registered.push("oidc");
-  } else if (provider === "firebase") {
-    reg.register(createFirebaseProvider(db ? { db } : {}));
-    registered.push("firebase");
+  for (const provider of providerConfigs) {
+    if (provider.protocol === "token_bridge") {
+      reg.register(
+        createTokenBridgeProvider({
+          providerId: provider.id,
+          issuer: provider.issuer_url,
+          audience: provider.audience,
+          jwksUrl: provider.jwks_url,
+          tenantSlug: provider.tenant_slug,
+          subjectClaim: provider.subject_claim,
+          emailClaim: provider.email_claim,
+          emailVerifiedClaim: provider.email_verified_claim,
+          ...(db ? { db } : {}),
+        }),
+      );
+      registered.push(provider.id);
+    } else if (provider.protocol === "oidc") {
+      reg.register(
+        createOidcProvider({
+          providerId: provider.id,
+          issuerUrl: provider.issuer_url,
+          clientId: provider.client_id,
+          clientSecret: provider.client_secret,
+          scopes: provider.scopes,
+          tenantSlug: provider.tenant_slug,
+          ...(db ? { db } : {}),
+        }),
+      );
+      registered.push(provider.id);
+    }
   }
 
   logger.info({
     module: "auth",
     action: "registry.built",
     msg: "auth provider registry built",
-    human_provider: provider,
     providers: registered,
   });
 
@@ -290,7 +308,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerApiKeyRoutes(app);
   registerPortalTokenRoutes(app);
   registerProvidersRoute(app);
-  registerSessionsOidcRoute(app);
+  registerIdentitySessionsRoute(app);
   registerLoginRoutes(app);
   registerMcpOAuthRoutes(app);
   // Authenticated admin surface for platform-global OAuth clients.
@@ -382,6 +400,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     "bearerAuth",
     SECURITY_SCHEMES.bearerAuth,
   );
+  app.openAPIRegistry.registerComponent("securitySchemes", "oauth2", SECURITY_SCHEMES.oauth2);
 
   // Scalar UI. The page loads the Scalar bundle from jsdelivr; scope a
   // Content-Security-Policy to this response so the API origin can't be

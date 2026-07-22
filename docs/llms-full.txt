@@ -5947,7 +5947,49 @@ There is no argument on any tool, and no `_meta` flag a model-driven client can 
 
 The sk engine is a full OAuth 2.1 authorization server and resource server for `/mcp`. This lets OAuth-only clients — including the ChatGPT custom connector, Claude.ai, and Cursor — authenticate without a static API key.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`).
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named `token_bridge` and `oidc` adapters. Product names are configuration values, not engine modes; Supabase Identity, for example, is an ordinary OIDC record with `id: "supabase"`.
+
+```json
+{
+  "auth": {
+    "providers": [
+        {
+          "protocol": "api_key",
+          "id": "api-key",
+          "label": "SubKit API key"
+        },
+        {
+          "protocol": "token_bridge",
+          "id": "workforce",
+          "label": "Workforce sign-in",
+          "login_url": "https://login.example.com/subkit/",
+          "issuer_url": "https://issuer.example.com",
+          "audience": "subkit",
+          "jwks_url": "https://issuer.example.com/.well-known/jwks.json",
+          "tenant_slug": "default"
+        },
+        {
+          "protocol": "oidc",
+          "id": "supabase",
+          "label": "Supabase",
+          "issuer_url": "https://<supabase-oidc-issuer>",
+          "client_id": "<client-id>",
+          "client_secret": "<secret>"
+        }
+      ]
+  }
+}
+```
+
+Register `${server.public_base_url}/v1/identity/login/callback` as every OIDC
+adapter's redirect URI. Every adapter uses only the generic `login/start`,
+`login/callback`, and `logout` routes.
+
+The CLI discovers the same list through `GET /v1/identity/providers`. A
+token-bridge or device-flow result is exchanged at `POST /v1/identity/sessions`
+with `{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
+The exchange never accepts an arbitrary issuer URL and has no protocol- or
+vendor-specific route alias.
 
 **Discovery endpoints.**
 
@@ -5971,7 +6013,7 @@ sequenceDiagram
     C->>E: POST /v1/oauth/register (DCR, RFC 7591)
     E-->>C: { client_id, client_secret? }
     C->>U: 302 to /v1/oauth/authorize?code_challenge=...
-    U->>E: OIDC login + consent
+    U->>E: selected API-key, token-bridge or OIDC adapter + consent
     E-->>U: 302 to redirect_uri?code=...&state=...
     U-->>C: deliver code
     C->>E: POST /v1/oauth/token (code + verifier)
@@ -5985,8 +6027,8 @@ sequenceDiagram
 2. Client fetches `/.well-known/oauth-authorization-server` to get all endpoints.
 3. Client registers itself at `POST /v1/oauth/register` (dynamic client registration, RFC 7591). Returns `client_id` (and `client_secret` for confidential clients).
 4. Client redirects the user to `GET /v1/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&code_challenge=...&code_challenge_method=S256&scope=mcp:read&state=...`. PKCE S256 is mandatory; `plain` is rejected.
-5. If not logged in, the engine redirects to `/v1/identity/login/start` (OIDC). After login the user returns to the authorize page.
-6. The consent page shows the client name, tenant, and requested scopes. The user approves or denies.
+5. If not logged in, the engine redirects to `/v1/identity/login/start`, which shows the configured provider matrix. Every method creates the same revocable browser session.
+6. The common `sk` consent card shows the client name, tenant, and only requested scopes allowed by the current role. Read is mandatory; the user may reduce the grant, deny, log out, or switch accounts.
 7. On approval, the engine issues an authorization code and redirects to the client's `redirect_uri?code=...&state=...`.
 8. Client exchanges the code at `POST /v1/oauth/token` (form-encoded, `grant_type=authorization_code`). Response: `{ access_token: "wf_mcp_...", refresh_token: "wf_mcr_...", token_type: "bearer", expires_in: 3600 }`.
 9. Client uses `Authorization: Bearer wf_mcp_...` on subsequent `POST /mcp` calls.
@@ -6001,7 +6043,7 @@ sequenceDiagram
 | `mcp:authoring` | authoring | Adds `conversation.*` authoring tools. |
 | `mcp:admin` | admin | Adds full `tenant.*` admin tools (subject to RBAC). |
 
-The scope granted at consent is the intersection of what the client requested and what the consenting user's role permits. A token can never carry a scope its owner lacks.
+The scope granted at consent is the intersection of what the client requested, what the server supports and what the consenting user's current role permits. An unrequested scope is never displayed or granted, including when a form is tampered with. A role/session downgrade is rechecked at decision time.
 
 **Connecting ChatGPT custom connector.**
 
@@ -6031,7 +6073,7 @@ Add to `.cursor/mcp.json`:
 ```
 Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthenticated request and opens the browser-based consent flow.
 
-**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Refresh tokens rotate on every use and replay of a rotated token revokes the full chain. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
+**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Login state is short-lived and signed; account switching revokes the old session. Browser sessions have an eight-hour sliding limit and a 24-hour absolute lifetime cap. Refresh tokens rotate on every use and replay of a rotated token revokes the full chain. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
 
 ---
 
@@ -6236,15 +6278,39 @@ docker exec subkit sk init \
 > docker logs subkit 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
 > ```
 
-> **Authentication defaults to the local `subkit` provider** — people are added
-> by admin invite and authenticate with engine-issued API keys; no external
-> identity provider is involved (that's the [teammate flow](#add-a-teammate-multi-user)
-> below). To switch the whole engine to SSO via Firebase, set the provider and
-> restart:
-> ```bash
-> docker exec subkit sk settings set auth.provider '"firebase"' --force
-> docker restart subkit
-> ```
+> **Authentication defaults to the `api_key` adapter** — people are added by
+> admin invite and authenticate with engine-issued API keys. Configure external
+> identity by adding named `token_bridge` or `oidc` records to
+> `auth.providers` in `subkit.config.json`, then restart. No provider-specific
+> setting or route is required.
+
+For example, a hosted JWT bridge with a nested verification claim is only a
+configuration record:
+
+```json
+{
+  "auth": {
+    "providers": [
+      { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
+      {
+        "protocol": "token_bridge",
+        "id": "workforce-bridge",
+        "label": "Workforce bridge",
+        "login_url": "https://login.example.com/subkit/",
+        "issuer_url": "https://issuer.example.com",
+        "audience": "subkit",
+        "jwks_url": "https://issuer.example.com/.well-known/jwks.json",
+        "email_verified_claim": "user_metadata.email_verified",
+        "tenant_slug": "default"
+      }
+    ]
+  }
+}
+```
+
+The only browser endpoints remain `/v1/identity/login/start`,
+`/v1/identity/login/callback`, and `/v1/identity/logout` regardless of adapter
+id or vendor.
 
 Verify:
 
@@ -7687,10 +7753,9 @@ also fails after rotation**. There is no key-rotation envelope today.
    — every Slack/Teams/Google Chat workspace must be re-installed and
    re-onboarded through the platform's add-app flow.
 
-9. **Re-enter OIDC client secrets and tenant LLM API keys.** These tables
-   (`auth_provider_configs`, `tenant_llm_settings`) kept their non-secret
-   config; operators just re-enter the redacted credential leaf. CLI:
-   `sk settings set auth.oidc.client_secret '"…"'` and per-tenant `llm.api_key`.
+9. **Re-enter identity-provider secrets and tenant LLM API keys.** Update the
+   affected OIDC record in the structural `auth.providers` list inside
+   `subkit.config.json`; tenant LLM keys remain scalar `llm.api_key` settings.
 
 10. **Verify.** Hit `${ENGINE_URL}/v1/health` and run the tenant-scoped
     integration smoke; expect zero `decrypt_failed` `CryptoError` entries in the
@@ -8411,20 +8476,12 @@ Authentication
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `auth.firebase.login_url` | string | `""` | global | no | yes |  |
-| `auth.firebase.project_id` | string | `""` | global | no | yes |  |
-| `auth.firebase.tenant_slug` | string | `"default"` | global | no | yes | Tenant slug that Firebase-authenticated users are mapped into. |
 | `auth.mcp_oauth.access_token_ttl_seconds` | number | `3600` | global | no | no | Lifetime in seconds for MCP OAuth access tokens. |
 | `auth.mcp_oauth.authorization_code_ttl_seconds` | number | `60` | global | no | no | Lifetime in seconds for MCP OAuth authorization codes. |
 | `auth.mcp_oauth.dynamic_registration_enabled` | boolean | `true` | global | no | no | Allow RFC 7591 dynamic client registration at POST /v1/oauth/register. |
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
 | `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
-| `auth.oidc.client_id` | string | `""` | global | no | yes |  |
-| `auth.oidc.client_secret` | string | `""` | global | yes | yes |  |
-| `auth.oidc.issuer_url` | string | `""` | global | no | yes |  |
-| `auth.oidc.redirect_uri` | string | `""` | global | no | yes |  |
-| `auth.provider` | enum("subkit" \| "firebase" \| "oidc") | `"subkit"` | global | no | yes | Human identity provider: 'subkit' (local admin-invite), 'firebase' (Firebase ID tokens), or 'oidc' (generic OIDC). Machine auth (API keys, portal, MCP OAuth) is always available. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform
@@ -8593,3 +8650,7 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | `connectors.web_scraper.runtime.max_pages` | number | `1000` | tenant | no | no | Per-run crawl cap. Hard ceiling 10 000 (crawl_max_pages_exceeded). |
 | `connectors.web_scraper.runtime.respect_robots` | boolean | `true` | tenant | no | no | Skip URLs that robots.txt disallows for the configured User-Agent. |
 | `connectors.web_scraper.runtime.user_agent` | string | `"sk-web-scraper/1.0 (+https://subkit.io/bot)"` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. |
+
+## Structural settings
+
+`auth.providers` is the single provider-neutral auth list and is edited in `subkit.config.json`, not through the scalar settings API. Records use `protocol: api_key`, `token_bridge`, or `oidc`; one API-key adapter and multiple named bridge/OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. JWT bridges map `subject_claim`, `email_claim`, and `email_verified_claim`; safe dotted paths are accepted, defaults are `sub`, `email`, and `email_verified`, and verification must resolve to boolean `true`.

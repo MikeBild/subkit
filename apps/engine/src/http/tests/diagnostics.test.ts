@@ -251,8 +251,6 @@ describe("/v1/diagnostics/setup", () => {
     const KNOWN_OMITTED: Record<string, string> = {
       "llm.api_key":
         "Legacy single-provider key (pre-multi-provider). Tenant-scoped overrides go through llm.providers.<p>.api_key; this leaf is reserved for back-compat only.",
-      "auth.oidc.client_secret":
-        "OIDC integration runs in the auth subsystem's own diagnostic surface; not relevant to /v1/diagnostics/setup which targets bootstrap config.",
       "auth.session.secret":
         "Auto-generated on first boot if empty (logged once); operators don't author this — surfacing it as 'configured' would just be noise.",
       "platform.slack.signing_secret":

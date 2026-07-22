@@ -5,6 +5,9 @@
 // Also covers canonicalizeResourceUri as pure unit tests (no DB needed).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
@@ -22,7 +25,11 @@ beforeAll(async () => {
   // Load config once for the whole suite so that resolve()'s audience check
   // can read getConfig().server.public_base_url. The audience describe's
   // beforeAll then overrides only that key via setConfigKey().
-  await loadConfig();
+  const configDir = await mkdtemp(join(tmpdir(), "sk-mcp-oauth-provider-"));
+  await loadConfig({
+    env: { DATABASE_URL: "postgresql://test:test@127.0.0.1:5432/subkit" },
+    configPathOverride: join(configDir, "subkit.config.json"),
+  });
   testDb = await createTestDb("mcp-oauth-auth-provider");
   db = testDb.db;
 
@@ -42,7 +49,7 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  await testDb.cleanup();
+  if (testDb) await testDb.cleanup();
 }, 30_000);
 
 // Seed a DCR client row so the access token FK resolves

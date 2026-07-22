@@ -243,12 +243,10 @@ describe("consumer read-back per subsystem", () => {
     expect(getConfig().mcp.read_only).toBe(true);
   });
 
-  test("getConfig().auth.oidc.* updates flow through OIDC provider config", async () => {
-    expect(getConfig().auth.oidc.issuer_url).toBe("");
-    await setConfigKey("auth.oidc.issuer_url", "https://issuer.example.com", { force: true });
-    await setConfigKey("auth.oidc.client_id", "client-x", { force: true });
-    expect(getConfig().auth.oidc.issuer_url).toBe("https://issuer.example.com");
-    expect(getConfig().auth.oidc.client_id).toBe("client-x");
+  test("getConfig().auth.providers exposes the canonical provider list", () => {
+    expect(getConfig().auth.providers).toEqual([
+      { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+    ]);
   });
 
   test("getConfig().observability.* updates are visible to subsequent reads", async () => {

@@ -200,7 +200,49 @@ There is no argument on any tool, and no `_meta` flag a model-driven client can 
 
 The sk engine is a full OAuth 2.1 authorization server and resource server for `/mcp`. This lets OAuth-only clients — including the ChatGPT custom connector, Claude.ai, and Cursor — authenticate without a static API key.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`).
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named `token_bridge` and `oidc` adapters. Product names are configuration values, not engine modes; Supabase Identity, for example, is an ordinary OIDC record with `id: "supabase"`.
+
+```json
+{
+  "auth": {
+    "providers": [
+        {
+          "protocol": "api_key",
+          "id": "api-key",
+          "label": "SubKit API key"
+        },
+        {
+          "protocol": "token_bridge",
+          "id": "workforce",
+          "label": "Workforce sign-in",
+          "login_url": "https://login.example.com/subkit/",
+          "issuer_url": "https://issuer.example.com",
+          "audience": "subkit",
+          "jwks_url": "https://issuer.example.com/.well-known/jwks.json",
+          "tenant_slug": "default"
+        },
+        {
+          "protocol": "oidc",
+          "id": "supabase",
+          "label": "Supabase",
+          "issuer_url": "https://<supabase-oidc-issuer>",
+          "client_id": "<client-id>",
+          "client_secret": "<secret>"
+        }
+      ]
+  }
+}
+```
+
+Register `${server.public_base_url}/v1/identity/login/callback` as every OIDC
+adapter's redirect URI. Every adapter uses only the generic `login/start`,
+`login/callback`, and `logout` routes.
+
+The CLI discovers the same list through `GET /v1/identity/providers`. A
+token-bridge or device-flow result is exchanged at `POST /v1/identity/sessions`
+with `{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
+The exchange never accepts an arbitrary issuer URL and has no protocol- or
+vendor-specific route alias.
 
 **Discovery endpoints.**
 
@@ -224,7 +266,7 @@ sequenceDiagram
     C->>E: POST /v1/oauth/register (DCR, RFC 7591)
     E-->>C: { client_id, client_secret? }
     C->>U: 302 to /v1/oauth/authorize?code_challenge=...
-    U->>E: OIDC login + consent
+    U->>E: selected API-key, token-bridge or OIDC adapter + consent
     E-->>U: 302 to redirect_uri?code=...&state=...
     U-->>C: deliver code
     C->>E: POST /v1/oauth/token (code + verifier)
@@ -238,8 +280,8 @@ sequenceDiagram
 2. Client fetches `/.well-known/oauth-authorization-server` to get all endpoints.
 3. Client registers itself at `POST /v1/oauth/register` (dynamic client registration, RFC 7591). Returns `client_id` (and `client_secret` for confidential clients).
 4. Client redirects the user to `GET /v1/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&code_challenge=...&code_challenge_method=S256&scope=mcp:read&state=...`. PKCE S256 is mandatory; `plain` is rejected.
-5. If not logged in, the engine redirects to `/v1/identity/login/start` (OIDC). After login the user returns to the authorize page.
-6. The consent page shows the client name, tenant, and requested scopes. The user approves or denies.
+5. If not logged in, the engine redirects to `/v1/identity/login/start`, which shows the configured provider matrix. Every method creates the same revocable browser session.
+6. The common `sk` consent card shows the client name, tenant, and only requested scopes allowed by the current role. Read is mandatory; the user may reduce the grant, deny, log out, or switch accounts.
 7. On approval, the engine issues an authorization code and redirects to the client's `redirect_uri?code=...&state=...`.
 8. Client exchanges the code at `POST /v1/oauth/token` (form-encoded, `grant_type=authorization_code`). Response: `{ access_token: "wf_mcp_...", refresh_token: "wf_mcr_...", token_type: "bearer", expires_in: 3600 }`.
 9. Client uses `Authorization: Bearer wf_mcp_...` on subsequent `POST /mcp` calls.
@@ -254,7 +296,7 @@ sequenceDiagram
 | `mcp:authoring` | authoring | Adds `conversation.*` authoring tools. |
 | `mcp:admin` | admin | Adds full `tenant.*` admin tools (subject to RBAC). |
 
-The scope granted at consent is the intersection of what the client requested and what the consenting user's role permits. A token can never carry a scope its owner lacks.
+The scope granted at consent is the intersection of what the client requested, what the server supports and what the consenting user's current role permits. An unrequested scope is never displayed or granted, including when a form is tampered with. A role/session downgrade is rechecked at decision time.
 
 **Connecting ChatGPT custom connector.**
 
@@ -284,7 +326,7 @@ Add to `.cursor/mcp.json`:
 ```
 Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthenticated request and opens the browser-based consent flow.
 
-**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Refresh tokens rotate on every use and replay of a rotated token revokes the full chain. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
+**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Login state is short-lived and signed; account switching revokes the old session. Browser sessions have an eight-hour sliding limit and a 24-hour absolute lifetime cap. Refresh tokens rotate on every use and replay of a rotated token revokes the full chain. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
 
 ---
 

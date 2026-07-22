@@ -26,9 +26,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { resolveProviderIdentity } from "../auth/identity-link.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
 import type { Db } from "../db/client.ts";
-import { portalTokens, tenants, users } from "../db/schema/index.ts";
+import { portalTokens, tenants, userIdentities, users } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { fetchDiscovery, flushDiscoveryCache } from "./oidc-discovery.ts";
 import { issuePortalToken, revokePortalToken } from "./service.ts";
@@ -133,43 +134,23 @@ describe("portal-token revocation propagation", () => {
 // ---------- 2. concurrent JIT first-login ----------
 
 describe("concurrent JIT first-login", () => {
-  test("two simultaneous inserts on (tenant, sub) end up with exactly one row", async () => {
-    // The OIDC provider's JIT path does:
-    //   SELECT by (tenant, external_subject) → if absent, SELECT by
-    //   (tenant, email) → if absent, INSERT.
-    //
-    // Race: two concurrent code-grant callbacks for the same `sub`.
-    // If both observe an empty SELECT and both INSERT, they would race
-    // on the unique constraint. The test simulates the race by issuing
-    // two parallel transactions that try to upsert by external_subject.
-    // Whichever loses on the unique constraint must surface a clean
-    // error — and the post-condition is a single row with the new sub.
-    //
-    // The schema's unique constraint on `(tenant_id, external_subject)`
-    // is what enforces single-row outcome; if it ever drops, this test
-    // catches the regression.
+  test("two simultaneous resolutions of one provider subject produce one binding", async () => {
     const sub = "concurrent-sub-1";
     const email = "concurrent@id.local";
 
-    const insert = async () => {
-      try {
-        await db
-          .insert(users)
-          .values({ tenant_id: tenantId, email, role: "member", external_subject: sub });
-      } catch (err) {
-        // One side will lose the race — the unique constraint message
-        // is what we expect on the loser.
-        return (err as Error).message;
-      }
-      return "ok";
-    };
+    const resolve = () =>
+      resolveProviderIdentity(db, {
+        tenantId,
+        providerId: "test-identity",
+        subject: sub,
+        email,
+        linkByEmail: true,
+      });
 
-    const [a, b] = await Promise.all([insert(), insert()]);
-    const outcomes = [a, b];
-    expect(outcomes.filter((x) => x === "ok").length).toBe(1);
-    expect(outcomes.some((x) => x !== "ok")).toBe(true);
+    const [a, b] = await Promise.all([resolve(), resolve()]);
+    expect(a.user.id).toBe(b.user.id);
 
-    const rows = await db.select().from(users).where(eq(users.external_subject, sub));
+    const rows = await db.select().from(userIdentities).where(eq(userIdentities.subject, sub));
     expect(rows.length).toBe(1);
   });
 });

@@ -24,7 +24,7 @@ function stubClient(): EngineClient {
         tenant_slug: "acme",
         email: "u@a.test",
         role_name: "admin",
-        provider: "firebase",
+        provider: "workforce",
         base_url: "http://localhost:3000",
         scopes: null,
       },

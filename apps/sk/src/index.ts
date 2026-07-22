@@ -107,7 +107,6 @@ const loginCommand = defineCommand({
     ...commonArgs,
     "api-key": { type: "string", description: "Scripted API-key login (skips device flow)" },
     "portal-token": { type: "string", description: "Authenticate as a portal-token principal" },
-    "issuer-url": { type: "string", description: "OIDC issuer URL (device flow)" },
     "client-id": { type: "string", description: "OIDC client id (device flow)" },
     scope: { type: "string", description: "OIDC scope override" },
   },
@@ -164,8 +163,9 @@ const loginCommand = defineCommand({
 
     // Path 3: Discover providers from the engine and use the best available method.
     interface AuthProvider {
-      type: string;
-      name: string;
+      protocol: "api_key" | "token_bridge" | "oidc";
+      id: string;
+      label: string;
       login_url?: string;
       issuer?: string;
     }
@@ -174,7 +174,7 @@ const loginCommand = defineCommand({
       const res = await fetch(`${engineUrl}/v1/identity/providers`);
       if (res.ok) {
         const data = (await res.json()) as { providers: AuthProvider[] };
-        providers = data.providers.filter((p) => p.type !== "api-key");
+        providers = data.providers.filter((provider) => provider.protocol !== "api_key");
       }
     } catch {
       /* engine unreachable — fall through to manual OIDC */
@@ -189,8 +189,8 @@ const loginCommand = defineCommand({
         const selected = await prompts.select({
           message: "Sign in with",
           options: providers.map((p) => ({
-            value: p.type,
-            label: p.name,
+            value: p.id,
+            label: p.label,
             hint: p.login_url ?? p.issuer ?? "",
           })),
         });
@@ -198,14 +198,14 @@ const loginCommand = defineCommand({
           process.stdout.write("sk: login cancelled\n");
           return;
         }
-        provider = providers.find((p) => p.type === selected)!;
+        provider = providers.find((p) => p.id === selected)!;
       }
 
-      // Firebase / browser-based
-      if (provider.type === "firebase" && provider.login_url) {
-        process.stdout.write(`sk: signing in via ${provider.name}...\n`);
+      if (provider.protocol === "token_bridge" && provider.login_url) {
+        process.stdout.write(`sk: signing in via ${provider.label}...\n`);
         try {
           const result = await runBrowserLogin({
+            provider_id: provider.id,
             login_url: provider.login_url,
             engine_url: engineUrl,
           });
@@ -227,7 +227,7 @@ const loginCommand = defineCommand({
             result.tenant_id,
           );
           process.stdout.write(
-            `sk: signed in as ${result.email || result.sub} — profile '${profileName}' saved\n`,
+            `sk: signed in as ${result.email || result.user_id} — profile '${profileName}' saved\n`,
           );
           return;
         } catch (err) {
@@ -239,7 +239,7 @@ const loginCommand = defineCommand({
       }
 
       // OIDC device flow provider
-      if (provider.type === "oidc" && provider.issuer) {
+      if (provider.protocol === "oidc" && provider.issuer) {
         let clientId =
           (args["client-id"] as string | undefined) ?? process.env.SUBKIT_OIDC_CLIENT_ID ?? "";
         const scope = (args.scope as string | undefined) ?? DEFAULT_OIDC_SCOPE;
@@ -253,6 +253,7 @@ const loginCommand = defineCommand({
         }
         try {
           const result = await runDeviceFlow({
+            provider_id: provider.id,
             issuer_url: provider.issuer,
             client_id: clientId,
             engine_url: engineUrl,
@@ -276,7 +277,9 @@ const loginCommand = defineCommand({
             result.api_key,
             activeTenant,
           );
-          process.stdout.write(`sk: signed in as ${result.sub} — profile '${profileName}' saved\n`);
+          process.stdout.write(
+            `sk: signed in as ${result.email || result.user_id} — profile '${profileName}' saved\n`,
+          );
           return;
         } catch (err) {
           process.stderr.write(
@@ -287,66 +290,10 @@ const loginCommand = defineCommand({
       }
     }
 
-    // Fallback: manual OIDC device flow (no providers discovered)
-    let issuer = (args["issuer-url"] as string | undefined) ?? process.env.SUBKIT_OIDC_ISSUER ?? "";
-    let clientId =
-      (args["client-id"] as string | undefined) ?? process.env.SUBKIT_OIDC_CLIENT_ID ?? "";
-    const scope = (args.scope as string | undefined) ?? DEFAULT_OIDC_SCOPE;
-    try {
-      if (!issuer) {
-        const v = await prompts.text({
-          message: "OIDC issuer URL",
-          placeholder: "https://login.example.com/realms/main",
-        });
-        if (prompts.isCancel(v)) {
-          process.stdout.write("sk: login cancelled\n");
-          return;
-        }
-        issuer = v as string;
-      }
-      if (!clientId) {
-        const v = await prompts.text({ message: "OIDC client id", placeholder: "subkit-cli" });
-        if (prompts.isCancel(v)) {
-          process.stdout.write("sk: login cancelled\n");
-          return;
-        }
-        clientId = v as string;
-      }
-    } catch {
-      process.stdout.write("sk: login cancelled\n");
-      return;
-    }
-
-    try {
-      const result = await runDeviceFlow({
-        issuer_url: issuer,
-        client_id: clientId,
-        engine_url: engineUrl,
-        scope,
-      });
-      const activeTenant = tenant ?? result.tenant_id ?? null;
-      saveProfile({
-        name: profileName,
-        engine_url: engineUrl,
-        api_key: result.api_key,
-        active_tenant_id: activeTenant,
-      });
-      await recordPersonaHint(
-        new EngineClient({ engine_url: engineUrl, api_key: result.api_key, tenant: activeTenant }),
-        profileName,
-        engineUrl,
-        result.api_key,
-        activeTenant,
-      );
-      process.stdout.write(
-        `sk: signed in as ${result.sub} — profile '${profileName}' saved to ${configPath()}\n`,
-      );
-    } catch (err) {
-      process.stderr.write(
-        `sk: device-flow login failed: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
-      process.exit(2);
-    }
+    process.stderr.write(
+      "sk: the engine exposes no configured interactive identity provider; use --api-key or ask the operator to configure auth.providers\n",
+    );
+    process.exit(2);
   },
 });
 
@@ -484,10 +431,13 @@ async function runOnboarding(engineUrl: string): Promise<boolean> {
   const choice = await prompts.select({
     message: "How would you like to get started?",
     options: [
-      { value: "browser", label: "Log in via browser", hint: "SSO / Firebase" },
+      {
+        value: "identity",
+        label: "Use an identity provider",
+        hint: "Configured browser or device flow",
+      },
       { value: "api-key", label: "Paste an API key", hint: "wf_live_…" },
       { value: "init", label: "Point at an engine / bootstrap", hint: "sk init" },
-      { value: "device", label: "Device-code flow", hint: "OIDC" },
     ],
   });
   if (prompts.isCancel(choice)) {
@@ -540,16 +490,7 @@ async function runOnboarding(engineUrl: string): Promise<boolean> {
     return Boolean(resolveProfile().api_key);
   }
 
-  if (choice === "device") {
-    // Reuse the device-flow branch of `sk login`. Passing no --api-key
-    // makes loginCommand discover providers / fall back to device flow,
-    // which internally calls runDeviceFlow.
-    await runCommand(loginCommand, { rawArgs: ["--engine-url", engineUrl] });
-    return Boolean(resolveProfile().api_key);
-  }
-
-  // browser — reuse `sk login` provider discovery, which calls
-  // runBrowserLogin for Firebase/SSO providers.
+  // Identity provider — discovery selects the configured bridge or OIDC device flow.
   await runCommand(loginCommand, { rawArgs: ["--engine-url", engineUrl] });
   return Boolean(resolveProfile().api_key);
 }

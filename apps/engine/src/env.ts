@@ -84,14 +84,8 @@ const RETIRED_ENV_KEYS = new Set([
   "TEAMS_APP_ID",
   "TEAMS_APP_PASSWORD",
   "GOOGLE_CHAT_PROJECT_ID",
-  // Auth — moved to auth.*
-  "OIDC_ISSUER_URL",
-  "OIDC_CLIENT_ID",
-  "OIDC_CLIENT_SECRET",
-  "OIDC_REDIRECT_URI",
+  // Auth session — moved to auth.session.*
   "SESSION_SECRET",
-  "FIREBASE_PROJECT_ID",
-  "FIREBASE_LOGIN_URL",
   // Observability — moved to observability.*
   "LANGFUSE_SECRET_KEY",
   "LANGFUSE_PUBLIC_KEY",

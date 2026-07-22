@@ -18,7 +18,12 @@ describe("openapi", () => {
     const spec = (await res.json()) as {
       info: { title: string; version: string };
       paths: Record<string, unknown>;
-      components: { securitySchemes: Record<string, { type: string; scheme: string }> };
+      components: {
+        securitySchemes: Record<
+          string,
+          { type: string; scheme?: string; flows?: Record<string, unknown> }
+        >;
+      };
     };
     expect(spec.info.title).toBe("subkit engine");
     expect(spec.paths).toBeDefined();
@@ -26,6 +31,8 @@ describe("openapi", () => {
     expect(spec.components.securitySchemes.bearerAuth).toBeDefined();
     expect(spec.components.securitySchemes.bearerAuth?.type).toBe("http");
     expect(spec.components.securitySchemes.bearerAuth?.scheme).toBe("bearer");
+    expect(spec.components.securitySchemes.oauth2?.type).toBe("oauth2");
+    expect(spec.components.securitySchemes.oauth2?.flows?.authorizationCode).toBeDefined();
   });
 
   test("/docs serves Scalar HTML", async () => {

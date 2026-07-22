@@ -23,6 +23,7 @@ afterEach(() => {
 describe("browser-login", () => {
   test("rejects callback with wrong CSRF state", async () => {
     const loginPromise = runBrowserLogin({
+      provider_id: "workforce",
       login_url: "http://localhost:0", // won't actually open
       engine_url: "http://localhost:0",
       timeout_ms: 5_000,
@@ -70,7 +71,7 @@ describe("browser-login", () => {
         setTimeout(async () => {
           try {
             await fetch(
-              `http://127.0.0.1:${capturedPort}/callback?id_token=test-token&issuer=https://test.example.com&email=test@example.com&state=${capturedState}`,
+              `http://127.0.0.1:${capturedPort}/callback?identity_token=test-token&state=${capturedState}`,
             );
           } catch {
             /* server may close before response completes */
@@ -82,6 +83,7 @@ describe("browser-login", () => {
 
     try {
       const result = await runBrowserLogin({
+        provider_id: "workforce",
         login_url: "http://example.com/login",
         engine_url: "http://localhost:0",
         timeout_ms: 10_000,
@@ -89,14 +91,14 @@ describe("browser-login", () => {
         fetchImpl: async (_url, init) => {
           // Mock the engine token exchange
           const body = JSON.parse(init!.body as string);
-          expect(body.id_token).toBe("test-token");
-          expect(body.issuer).toBe("https://test.example.com");
+          expect(body.provider_id).toBe("workforce");
+          expect(body.identity_token).toBe("test-token");
           return new Response(
             JSON.stringify({
               api_key: "wf_live_test123",
               user_id: "u-123",
               tenant_id: "t-456",
-              sub: "google|12345",
+              email: "test@example.com",
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
@@ -117,6 +119,7 @@ describe("browser-login", () => {
     const start = Date.now();
     try {
       await runBrowserLogin({
+        provider_id: "workforce",
         login_url: "http://localhost:0",
         engine_url: "http://localhost:0",
         timeout_ms: 1_000,
@@ -148,7 +151,7 @@ describe("browser-login", () => {
         setTimeout(async () => {
           try {
             await fetch(
-              `http://127.0.0.1:${capturedPort}/callback?id_token=bad-token&issuer=https://bad.example.com&email=bad@example.com&state=${capturedState}`,
+              `http://127.0.0.1:${capturedPort}/callback?identity_token=bad-token&state=${capturedState}`,
             );
           } catch {
             /* expected */
@@ -160,6 +163,7 @@ describe("browser-login", () => {
 
     try {
       await runBrowserLogin({
+        provider_id: "workforce",
         login_url: "http://example.com/login",
         engine_url: "http://localhost:0",
         timeout_ms: 5_000,
