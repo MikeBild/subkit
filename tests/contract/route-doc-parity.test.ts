@@ -48,7 +48,7 @@ function collectRoutesFromSource(files: string[]): Set<string> {
   //      Zod-OpenAPI style used by most REST resources. `method:` and
   //      `path:` sit within ~200 chars.
   //   2. Raw Hono `app.<method>("/v1/...", handler)` — used by the MCP
-  //      OAuth bridge endpoints (DCR, authorize, token, revoke), which
+  //      OAuth boundary endpoints (DCR, authorize, token, revoke), which
   //      are not part of the typed OpenAPI surface.
   const patterns = [
     /method:\s*"(get|post|put|patch|delete)"[\s\S]{0,200}?path:\s*"(\/v1\/[^"]+)"/gi,
@@ -85,13 +85,17 @@ const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/connectors/call.ts",
   "apps/engine/src/http/routes/connectors/oauth.ts",
   "apps/engine/src/http/routes/connectors/credentials.ts",
+  "apps/engine/src/http/routes/connectors/promotion.ts",
   "apps/engine/src/http/routes/connector-discovery.ts",
+  "apps/engine/src/http/routes/connector-templates/import-spec.ts",
+  "apps/engine/src/http/routes/identity/providers.ts",
+  "apps/engine/src/http/routes/identity/sessions.ts",
   "apps/engine/src/http/routes/executions/list.ts",
   "apps/engine/src/http/routes/executions/run.ts",
   "apps/engine/src/http/routes/executions/transform.ts",
   "apps/engine/src/http/routes/executions/cancel.ts",
   "apps/engine/src/http/routes/workflows.ts",
-  // MCP OAuth 2.1 bridge endpoints — raw Hono routes (not createRoute).
+  // MCP OAuth 2.1 boundary endpoints — raw Hono routes (not createRoute).
   "apps/engine/src/http/routes/oauth/dcr.ts",
   "apps/engine/src/http/routes/oauth/consent.ts",
   "apps/engine/src/http/routes/oauth/token.ts",

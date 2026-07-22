@@ -44,7 +44,7 @@
 - [Developers](developers/README.md): Integrate, extend, and self-host sk — without forking security per surface.
 - [Coding-Agent Integration (Claude Code & Codex)](developers/coding-agent-integration.md): sk can act as the central knowledge and skill source for your coding agents.
 - [Evidence process — verifying a behavioral / LLM-path change](developers/evidence-process.md): Outcome: changes to LLM-driven paths ship proven, not guessed.
-- [Input Surfaces](developers/input-surfaces.md): Meet your team where they already work — without re-implementing access control per channel.
+- [Input Surfaces](developers/input-surfaces.md): Meet your team where they already work—with one governed engine and one common MCP auth contract.
 - [Quickstart — Developer](developers/quickstart.md): Ship to sk with confidence: a green quality gate on every change keeps regressions out of production.
 - [Self-Host sk — Zero to Running](developers/self-host.md): sk runs inside your own infrastructure — your data stays yours.
 - [Tool palette and dispatch](developers/tool-palette.md): Outcome: every LLM action against sk is a named, governed tool — one registry, one policy gate, one audit trail.

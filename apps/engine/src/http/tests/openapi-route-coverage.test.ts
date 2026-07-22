@@ -41,27 +41,8 @@ const EXCLUDED_ROUTES = new Set<string>([
   "GET /openapi.json",
   "GET /metrics",
   "GET /llms/{param}",
-  // OAuth 2.1 authorization-server protocol endpoints (RFC 8414 / 9728 /
-  // 7591 / 7009 / 6749) — shape is dictated by the OAuth spec the MCP
-  // client talks to, not by this engine's own API contract.
-  "GET /.well-known/oauth-authorization-server",
-  "GET /.well-known/oauth-protected-resource",
-  "GET /.well-known/oauth-protected-resource/mcp",
-  "GET /v1/oauth/authorize",
-  "POST /v1/oauth/authorize/decision",
-  "POST /v1/oauth/register",
-  "POST /v1/oauth/revoke",
-  "POST /v1/oauth/token",
-  // Browser-redirect human flows (OIDC login, session logout, the
-  // tool-approval decision form) — same bucket as "oauth callbacks": a
-  // human with a browser and no API key, not a JSON API consumer route.
-  // (`GET /v1/tool-approvals/decide`, the portal *page*, IS documented;
-  // only the form's POST target is excluded here.)
-  "GET /v1/identity/login/start",
-  "POST /v1/identity/login/start",
-  "GET /v1/identity/login/callback",
-  "POST /v1/identity/login/callback",
-  "POST /v1/identity/logout",
+  // Tool-approval decision forms and inbound webhooks have external/raw
+  // contracts. MCP authorization and browser identity flows are documented.
   "POST /v1/tool-approvals/decide",
   // Inbound webhook receivers: request shape is dictated by the external
   // platform (Slack/Google Chat/Teams/connector), not by this engine.
@@ -97,7 +78,87 @@ const EXCLUDED_ROUTES = new Set<string>([
 // packages/cli-core/src/engine-api/client-contract.test.ts.
 const KNOWN_UNDOCUMENTED_ROUTES: string[] = [];
 
+const MCP_AUTH_OPERATIONS = [
+  "GET /.well-known/oauth-protected-resource",
+  "GET /.well-known/oauth-protected-resource/mcp",
+  "GET /.well-known/oauth-authorization-server",
+  "POST /v1/oauth/register",
+  "GET /v1/oauth/authorize",
+  "POST /v1/oauth/authorize/decision",
+  "POST /v1/oauth/token",
+  "POST /v1/oauth/revoke",
+  "GET /v1/identity/providers",
+  "POST /v1/identity/sessions",
+  "GET /v1/identity/login/start",
+  "POST /v1/identity/login/start",
+  "GET /v1/identity/login/callback",
+  "POST /v1/identity/logout",
+] as const;
+const MCP_AUTH_PATHS = new Set(
+  MCP_AUTH_OPERATIONS.map((entry) => entry.slice(entry.indexOf(" ") + 1)),
+);
+
 describe("openapi route coverage", () => {
+  test("publishes the exact common MCP-auth operation set", async () => {
+    const res = await fetch(`${ctx.baseUrl}/openapi.json`);
+    expect(res.status).toBe(200);
+    const spec = (await res.json()) as { paths: Record<string, Record<string, unknown>> };
+    const actual = Object.entries(spec.paths)
+      .flatMap(([path, methods]) =>
+        Object.keys(methods).map((method) => `${method.toUpperCase()} ${path}`),
+      )
+      .filter((entry) => MCP_AUTH_PATHS.has(entry.slice(entry.indexOf(" ") + 1)))
+      .sort();
+    expect(actual).toEqual([...MCP_AUTH_OPERATIONS].sort());
+  });
+
+  test("publishes the common MCP-auth schemas as OpenAPI 3.1", async () => {
+    const res = await fetch(`${ctx.baseUrl}/openapi.json`);
+    expect(res.status).toBe(200);
+    const spec = (await res.json()) as {
+      openapi: string;
+      paths: Record<
+        string,
+        { post?: { operationId?: string; requestBody?: { required?: boolean } } }
+      >;
+      components: { schemas: Record<string, unknown> };
+    };
+    expect(spec.openapi).toBe("3.1.0");
+    expect(spec.paths["/v1/identity/sessions"]?.post?.operationId).toBe("createIdentitySession");
+    expect(spec.paths["/v1/identity/sessions"]?.post?.requestBody?.required).toBe(true);
+    expect(spec.components.schemas.AuthProvider).toEqual({
+      type: "object",
+      properties: {
+        protocol: { type: "string", enum: ["api_key", "oidc"] },
+        id: { type: "string" },
+        label: { type: "string", enum: ["SSO", "API key"] },
+        issuer: { type: "string", format: "uri" },
+      },
+      required: ["protocol", "id", "label"],
+      additionalProperties: false,
+    });
+    expect(spec.components.schemas.IdentitySessionRequest).toEqual({
+      type: "object",
+      properties: {
+        provider_id: { type: "string", minLength: 1 },
+        identity_token: { type: "string", minLength: 1 },
+      },
+      required: ["provider_id", "identity_token"],
+      additionalProperties: false,
+    });
+    expect(spec.components.schemas.IdentitySessionResponse).toEqual({
+      type: "object",
+      properties: {
+        api_key: { type: "string" },
+        principal_id: { type: "string" },
+        context_id: { type: ["string", "null"] },
+        email: { type: "string" },
+      },
+      required: ["api_key", "principal_id", "context_id", "email"],
+      additionalProperties: false,
+    });
+  });
+
   test("route registry enumeration is not vacuous", () => {
     // Canary: if `app.routes` ever stops exposing entries (Hono version
     // bump, wrapper change), this fails loudly instead of the coverage

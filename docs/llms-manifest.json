@@ -202,7 +202,7 @@
       "audience": "developers",
       "path": "docs/developers/input-surfaces.md",
       "title": "Input Surfaces",
-      "summary": "Meet your team where they already work — without re-implementing access control per channel."
+      "summary": "Meet your team where they already work—with one governed engine and one common MCP auth contract."
     },
     {
       "audience": "developers",

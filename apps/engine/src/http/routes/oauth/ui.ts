@@ -2,7 +2,7 @@
 
 import { escapeHtml } from "./shared.ts";
 
-const AUTH_CONTRACT = "mcp-auth-v1";
+const AUTH_CONTRACT = "mcp-auth-v2";
 
 const TOKENS = `
   :root{color-scheme:light;--bg:#f4f5f7;--card:#fff;--ink:#1f2328;--muted:#6a7280;--line:#e3e5e9;--soft:#f7f8fa;--primary:#1f6feb;--primary-hover:#1a60d0}
@@ -10,10 +10,10 @@ const TOKENS = `
   .card{background:var(--card);width:100%;max-width:420px;border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(20,24,33,.08);padding:32px}
   .brand{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:11px;background:var(--ink);color:#fff;font-weight:700;font-size:18px;letter-spacing:-.03em;margin:0 0 20px}
   h1{font-size:1.2rem;line-height:1.3;margin:0 0 8px}p{margin:0 0 10px;line-height:1.5}.muted{color:var(--muted);font-size:.9rem}.strong{font-weight:600}.error{color:#a21b1b}
-  ul.scopes,ul.providers{list-style:none;margin:18px 0 4px;padding:0}ul.scopes li,ul.providers li{padding:12px 14px;margin-bottom:8px;background:var(--soft);border:1px solid #ebedf0;border-radius:9px}
+  ul.scopes{list-style:none;margin:18px 0 4px;padding:0}ul.scopes li{padding:12px 14px;margin-bottom:8px;background:var(--soft);border:1px solid #ebedf0;border-radius:9px}.provider-stack{display:grid;gap:10px;margin-top:20px}
   .scope-row{display:flex;align-items:flex-start;gap:10px;cursor:pointer}.scope-row input[type=checkbox]{margin-top:2px;flex:none}.scope-text{display:flex;flex-direction:column;gap:2px}.scope-name{font-weight:600;font-size:.92rem}.scope-desc{color:var(--muted);font-size:.85rem}
   label.field{display:block;margin:16px 0 0;font-size:.9rem;font-weight:600}input[type=password]{width:100%;margin-top:6px;padding:11px 12px;border:1px solid #d6d9de;border-radius:9px;font:inherit}
-  .actions{display:flex;gap:10px;margin-top:22px}button,.button{flex:1;padding:11px 18px;font-size:.95rem;font-weight:600;cursor:pointer;border-radius:9px;border:1px solid transparent;font-family:inherit;text-align:center;text-decoration:none}.approve{background:var(--primary);color:#fff}.approve:hover{background:var(--primary-hover)}.deny{background:#fff;color:var(--ink);border-color:#d6d9de}.deny:hover{background:var(--bg)}
+  .actions{display:flex;gap:10px;margin-top:22px}button,.button{flex:1;min-height:44px;padding:11px 18px;display:flex;align-items:center;justify-content:center;font-size:.95rem;font-weight:600;cursor:pointer;border-radius:9px;border:1px solid transparent;font-family:inherit;text-align:center;text-decoration:none}.provider-stack .button{width:100%}.approve{background:var(--primary);color:#fff}.approve:hover{background:var(--primary-hover)}.deny{background:#fff;color:var(--ink);border-color:#d6d9de}.deny:hover{background:var(--bg)}
   .switch{display:block;margin:16px auto 0;padding:0;border:0;background:transparent;color:var(--muted);font-size:.82rem;text-decoration:underline}.footer{margin-top:20px;color:#99a0aa;font-size:.78rem;text-align:center}@media(max-width:480px){body{padding:12px}.card{padding:24px}.actions{flex-direction:column-reverse}}
 `;
 
@@ -24,7 +24,7 @@ function page(title: string, body: string): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow,noarchive">
-  <meta name="mcp-auth-ui-contract" content="1">
+  <meta name="mcp-auth-ui-contract" content="2">
   <title>${escapeHtml(title)} — SubKit</title>
   <style>${TOKENS}</style>
 </head>
@@ -49,7 +49,7 @@ export function authHtmlResponse(html: string, status = 200): Response {
 
 export interface LoginProviderChoice {
   id: string;
-  label: string;
+  protocol: "api_key" | "oidc";
   href: string;
 }
 
@@ -57,12 +57,12 @@ export function renderProviderChoice(providers: LoginProviderChoice[]): string {
   const links = providers
     .map(
       (provider) =>
-        `<li><a class="button approve" href="${escapeHtml(provider.href)}">Continue with ${escapeHtml(provider.label)}</a></li>`,
+        `<a class="button approve" href="${escapeHtml(provider.href)}">${provider.protocol === "api_key" ? "Continue with API key" : "Continue with SSO"}</a>`,
     )
     .join("");
   return page(
     "Sign in",
-    `<h1>Sign in to SubKit</h1><p class="muted">Choose how to authenticate this authorization request.</p><ul class="providers">${links}</ul>`,
+    `<h1>Sign in to SubKit</h1><p class="muted">Choose how to authenticate this authorization request.</p><div class="provider-stack">${links}</div>`,
   );
 }
 

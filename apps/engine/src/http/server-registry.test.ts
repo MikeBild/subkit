@@ -24,22 +24,9 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
     expect(names(auth)).toEqual(["mcp_oauth", "portal_token", "api_key"]);
   });
 
-  test("configured token-bridge and OIDC adapters are registered by id", () => {
+  test("configured OIDC adapters are registered by id", () => {
     const auth = authWith([
       { protocol: "api_key", id: "api-key", label: "SubKit API key" },
-      {
-        protocol: "token_bridge",
-        id: "workforce",
-        label: "Workforce",
-        login_url: "https://login.example.com/subkit",
-        issuer_url: "https://issuer.example.com",
-        audience: "subkit",
-        jwks_url: "https://issuer.example.com/jwks",
-        tenant_slug: "default",
-        subject_claim: "sub",
-        email_claim: "email",
-        email_verified_claim: "email_verified",
-      },
       {
         protocol: "oidc",
         id: "partner",
@@ -51,7 +38,7 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
         tenant_slug: "default",
       },
     ]);
-    expect(names(auth)).toEqual(["mcp_oauth", "portal_token", "api_key", "workforce", "partner"]);
+    expect(names(auth)).toEqual(["mcp_oauth", "portal_token", "api_key", "partner"]);
   });
 
   test("disabling MCP OAuth drops only its bearer adapter", () => {

@@ -58,34 +58,6 @@ async function writeOidcConfig(issuerUrl: string, clientId: string): Promise<voi
   });
 }
 
-async function writeTokenBridgeConfig(): Promise<void> {
-  const file = join(configDir, "subkit.config.json");
-  await writeFile(
-    file,
-    JSON.stringify({
-      auth: {
-        providers: [
-          { protocol: "api_key", id: "api-key", label: "SubKit API key" },
-          {
-            protocol: "token_bridge",
-            id: "test-bridge",
-            label: "Test bridge",
-            login_url: `${mock.url}/login`,
-            issuer_url: mock.url,
-            audience: CLIENT_ID,
-            jwks_url: `${mock.url}/jwks`,
-            tenant_slug: "default",
-          },
-        ],
-      },
-    }),
-  );
-  await loadConfig({
-    env: { DATABASE_URL: testDb.url, NODE_ENV: "test" },
-    configPathOverride: file,
-  });
-}
-
 async function postIdentity(body: unknown): Promise<Response> {
   return app.request(ENDPOINT, {
     method: "POST",
@@ -156,36 +128,17 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
       identity_token: identityToken,
     });
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { api_key: string; user_id: string };
+    const json = (await res.json()) as { api_key: string; principal_id: string };
     expect(json.api_key.length).toBeGreaterThan(0);
 
-    const [row] = await testDb.db.select().from(users).where(eq(users.id, json.user_id));
+    const [row] = await testDb.db.select().from(users).where(eq(users.id, json.principal_id));
     expect(row?.email).toBe("user-1@example.test");
     const [identity] = await testDb.db
       .select()
       .from(userIdentities)
-      .where(eq(userIdentities.user_id, json.user_id));
+      .where(eq(userIdentities.user_id, json.principal_id));
     expect(identity?.provider_id).toBe("test-identity");
     expect(identity?.subject).toBe("user-1");
-  });
-
-  test("token bridge adapter uses the same generic exchange route", async () => {
-    await writeTokenBridgeConfig();
-    const identityToken = await mock.signIdToken({
-      sub: "bridge-user",
-      email: "bridge-user@example.test",
-      email_verified: true,
-    });
-    const res = await postIdentity({ provider_id: "test-bridge", identity_token: identityToken });
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as { api_key: string; user_id: string };
-    expect(json.api_key.length).toBeGreaterThan(0);
-    const [identity] = await testDb.db
-      .select()
-      .from(userIdentities)
-      .where(eq(userIdentities.user_id, json.user_id));
-    expect(identity?.provider_id).toBe("test-bridge");
-    expect(identity?.subject).toBe("bridge-user");
   });
 
   test("unknown provider id is rejected with 403", async () => {
@@ -231,10 +184,10 @@ describe("POST /v1/identity/sessions — account-takeover guards", () => {
     });
     const res = await postIdentity({ provider_id: "test-identity", identity_token: id_token });
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { user_id: string };
+    const json = (await res.json()) as { principal_id: string };
 
     // The attacker got their OWN account, not the admin's.
-    expect(json.user_id).not.toBe(admin.id);
+    expect(json.principal_id).not.toBe(admin.id);
     const [adminAfter] = await testDb.db.select().from(users).where(eq(users.id, admin.id));
     expect(adminAfter?.role).toBe("admin");
     const adminIdentities = await testDb.db

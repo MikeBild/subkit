@@ -11,7 +11,7 @@ import {
   readRequestSource,
   SYSTEM_TENANT_ID,
 } from "../../../audit/index.ts";
-import { createMcpOAuthProvider } from "../../../auth/index.ts";
+import { createMcpOAuthProvider, signLoginState } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { roles as rolesTable, sessions, tenants, users } from "../../../db/schema/index.ts";
 import { logger } from "../../../logging/index.ts";
@@ -154,16 +154,24 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       return u.toString();
     })();
     if (!sessionPayload) {
-      // Not logged in — redirect to OIDC login, then back here
+      // Not logged in — hand the provider-neutral login funnel one opaque
+      // state, just like the other product runtimes. Provider selection never
+      // receives or exposes the nested authorization URL.
       const loginUrl = new URL(`/v1/identity/login/start`, provider.getBaseUrl());
-      loginUrl.searchParams.set("redirect_to", externalAuthorizeUrl);
+      loginUrl.searchParams.set(
+        "login_state",
+        await signLoginState({ redirect_to: externalAuthorizeUrl }),
+      );
       return Response.redirect(loginUrl.toString(), 302);
     }
 
     // Confirm the session row is still live (not revoked since issue).
     if (!(await sessionIsLive(db, sessionPayload.session_id, sessionPayload.tenant_id))) {
       const loginUrl = new URL(`/v1/identity/login/start`, provider.getBaseUrl());
-      loginUrl.searchParams.set("redirect_to", externalAuthorizeUrl);
+      loginUrl.searchParams.set(
+        "login_state",
+        await signLoginState({ redirect_to: externalAuthorizeUrl }),
+      );
       return Response.redirect(loginUrl.toString(), 302);
     }
 

@@ -24,7 +24,8 @@ test("runtime auth remains provider-neutral with only generic browser routes", (
     `auth\\.(?:${["provider", "fire" + "base", "oidc"].join("|")})\\b|mcp_oauth\\.providers`,
   );
   expect(source).not.toMatch(concreteProvider);
-  expect(source).not.toMatch(/login\/(?:api-key|token-bridge)/i);
+  expect(source).not.toMatch(/login\/(?:api-key|oidc)/i);
+  expect(source).not.toContain(["token", "bridge"].join("_"));
   expect(source).not.toMatch(retiredAuthTree);
   expect(source).not.toContain("/v1/identity/sessions/oidc");
   expect(source).toContain("/v1/identity/login/start");
