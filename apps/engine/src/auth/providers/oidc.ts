@@ -19,13 +19,11 @@
 // from the payload after verification. This matches the production
 // guidance from docs/admins/rbac-and-roles.md.
 //
-// The migration `0016_p2_oidc_state.sql` adds:
-//   - `oidc_login_states`
-//   - `users.external_subject`
-//   - `sessions.token_sha256`
+// Provider subjects are persisted through the provider-neutral
+// `user_identities` relation; no protocol owns a column on `users`.
 
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, lt } from "drizzle-orm";
+import { eq, lt } from "drizzle-orm";
 import * as jose from "jose";
 import * as oauth from "openid-client";
 import { auditAwait } from "../../audit/audit.ts";
@@ -34,6 +32,7 @@ import { getConfig } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { oidcLoginStates, sessions, tenants, users } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { resolveProviderIdentity } from "../identity-link.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
 const SESSION_COOKIE = "subkit_session";
@@ -44,10 +43,14 @@ const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const JWS_ALG = "HS256";
 
 export interface OidcProviderOptions {
+  providerId?: string;
+  sessionAbsoluteTtlMs?: number;
   issuerUrl?: string;
   clientId?: string;
   clientSecret?: string;
+  scopes?: string;
   redirectUri?: string;
+  tenantSlug?: string;
   db?: Db;
   sessionSecret?: Uint8Array;
 }
@@ -122,11 +125,12 @@ async function loadConfig(
 async function signSessionCookie(
   secret: Uint8Array,
   payload: { session_id: string; user_id: string; tenant_id: string },
+  absoluteTtlMs = SESSION_ABSOLUTE_TTL_MS,
 ): Promise<string> {
   return await new jose.SignJWT(payload)
     .setProtectedHeader({ alg: JWS_ALG })
     .setIssuedAt()
-    .setExpirationTime(Math.floor((Date.now() + SESSION_ABSOLUTE_TTL_MS) / 1000))
+    .setExpirationTime(Math.floor((Date.now() + absoluteTtlMs) / 1000))
     .sign(secret);
 }
 
@@ -146,8 +150,8 @@ async function verifySessionCookie(
   }
 }
 
-function buildCookieHeader(jwt: string): string {
-  const maxAge = Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000);
+function buildCookieHeader(jwt: string, absoluteTtlMs = SESSION_ABSOLUTE_TTL_MS): string {
+  const maxAge = Math.floor(absoluteTtlMs / 1000);
   const secure = process.env.NODE_ENV !== "development" ? " Secure;" : "";
   return `${SESSION_COOKIE}=${encodeURIComponent(
     jwt,
@@ -196,31 +200,34 @@ async function resolveTenantId(db: Db, slug: string | null): Promise<string | nu
 }
 
 export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider {
-  let oidcCfg: {
-    issuer_url: string;
-    client_id: string;
-    client_secret: string;
-    redirect_uri: string;
-  } = {
-    issuer_url: "",
-    client_id: "",
-    client_secret: "",
-    redirect_uri: "",
-  };
+  let configured:
+    | {
+        id: string;
+        issuer_url: string;
+        client_id: string;
+        client_secret: string;
+        scopes: string;
+        tenant_slug: string;
+      }
+    | undefined;
+  let configuredRedirectUri = "";
   try {
-    oidcCfg = getConfig().auth.oidc;
+    const config = getConfig();
+    configured = config.auth.providers.find((provider) => provider.protocol === "oidc");
+    configuredRedirectUri = `${config.server.public_base_url}/v1/identity/login/callback`;
   } catch {
     /* loader not initialised — unit tests pass values via opts */
   }
-  // v3.5: OIDC_* env reads removed — every leaf is in ConfigSchema
-  // (auth.oidc.*) and op-supplied opts win for per-call overrides.
-  // Operators who still set OIDC_* env vars get a warn at boot via
-  // RETIRED_ENV_KEYS.
-  const issuerUrl = opts.issuerUrl ?? oidcCfg.issuer_url ?? "";
-  const clientId = opts.clientId ?? oidcCfg.client_id ?? "";
-  const clientSecretInput = opts.clientSecret ?? oidcCfg.client_secret ?? undefined;
-  const redirectUri = opts.redirectUri ?? oidcCfg.redirect_uri ?? "";
+  const issuerUrl = opts.issuerUrl ?? configured?.issuer_url ?? "";
+  const clientId = opts.clientId ?? configured?.client_id ?? "";
+  const clientSecretInput = opts.clientSecret ?? configured?.client_secret ?? undefined;
+  const scopes = opts.scopes ?? configured?.scopes ?? "openid profile email";
+  const redirectUri = opts.redirectUri ?? configuredRedirectUri;
+  const configuredTenantSlug = opts.tenantSlug ?? configured?.tenant_slug ?? DEFAULT_TENANT_SLUG;
   const sessionSecret = deriveSessionSecret(opts.sessionSecret);
+  const providerId = opts.providerId?.trim() || configured?.id;
+  const adapterId = providerId ?? "oidc";
+  const sessionAbsoluteTtlMs = opts.sessionAbsoluteTtlMs ?? SESSION_ABSOLUTE_TTL_MS;
   const db = opts.db;
 
   function getExec(): Db {
@@ -228,7 +235,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
   }
 
   return {
-    name: "oidc",
+    name: adapterId,
     capabilities: {
       human: true,
       machine: false,
@@ -242,7 +249,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         return httpError(500, "oidc_not_configured", "oidc provider not configured");
       }
       const url = new URL(req.url);
-      const tenantSlug = url.searchParams.get("tenant");
+      const tenantSlug = url.searchParams.get("tenant") ?? configuredTenantSlug;
       const redirectTo = url.searchParams.get("redirect_to");
       const exec = getExec();
 
@@ -266,7 +273,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       const code_verifier = oauth.randomPKCECodeVerifier();
       const code_challenge = await oauth.calculatePKCECodeChallenge(code_verifier);
-      const state = oauth.randomState();
+      const state = providerId ? `${providerId}.${oauth.randomState()}` : oauth.randomState();
       const nonce = oauth.randomNonce();
 
       await exec.insert(oidcLoginStates).values({
@@ -280,7 +287,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       const authUrl = oauth.buildAuthorizationUrl(configuration, {
         redirect_uri: redirectUri,
-        scope: "openid profile email",
+        scope: scopes,
         state,
         nonce,
         code_challenge,
@@ -351,8 +358,8 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         // `req.url` is the engine's internal URL — behind a TLS-terminating
         // reverse proxy its scheme is `http`. openid-client derives the
         // token-exchange `redirect_uri` from the URL passed here, so it must
-        // carry the external scheme/host. The configured `auth.oidc.redirect_uri`
-        // IS that canonical value; reuse it with the inbound query so the token
+        // carry the external scheme/host. The provider-neutral callback URL is
+        // that canonical value; reuse it with the inbound query so the token
         // request's redirect_uri matches the one sent at the authorize step.
         const callbackUrl = new URL(redirectUri);
         callbackUrl.search = reqUrl.search;
@@ -377,49 +384,25 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         return httpError(401, "oidc_missing_sub", "id_token missing sub");
       }
       const rawEmail = (claims as { email?: unknown } | undefined)?.email;
+      const emailVerified =
+        (claims as { email_verified?: unknown } | undefined)?.email_verified === true;
       const email =
-        typeof rawEmail === "string" && rawEmail.length > 0
+        emailVerified && typeof rawEmail === "string" && rawEmail.length > 0
           ? rawEmail
-          : `${sub}@${new URL(issuerUrl).host}`;
-
-      // Upsert the user row keyed on (tenant_id, external_subject).
-      const existing = await exec
-        .select()
-        .from(users)
-        .where(and(eq(users.tenant_id, tenantId), eq(users.external_subject, sub)))
-        .limit(1);
-      let userRow = existing[0];
-      let createdUser = false;
-      if (!userRow) {
-        // Try to reuse an email-match row before creating a new user.
-        const byEmail = await exec
-          .select()
-          .from(users)
-          .where(and(eq(users.tenant_id, tenantId), eq(users.email, email)))
-          .limit(1);
-        if (byEmail[0]) {
-          const [updated] = await exec
-            .update(users)
-            .set({ external_subject: sub })
-            .where(eq(users.id, byEmail[0].id))
-            .returning();
-          userRow = updated;
-        } else {
-          const [created] = await exec
-            .insert(users)
-            .values({
-              tenant_id: tenantId,
-              email,
-              role: "member",
-              external_subject: sub,
-            })
-            .returning();
-          userRow = created;
-          createdUser = true;
-        }
-      }
-      if (!userRow) {
-        return httpError(500, "user_upsert_failed", "failed to resolve user row");
+          : `${adapterId}:${sub}@invalid`;
+      const {
+        user: userRow,
+        createdUser,
+        linkedIdentity,
+      } = await resolveProviderIdentity(exec, {
+        tenantId,
+        providerId: adapterId,
+        subject: sub,
+        email,
+        linkByEmail: emailVerified,
+      });
+      if (userRow.deleted_at !== null || userRow.status !== "active") {
+        return httpError(403, "user_inactive", "user is not active");
       }
 
       // Mint + persist a new session.
@@ -432,7 +415,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           tenant_id: tenantId,
           user_id: userRow.id,
           expires_at: new Date(now.getTime() + SESSION_SLIDING_TTL_MS),
-          absolute_expires_at: new Date(now.getTime() + SESSION_ABSOLUTE_TTL_MS),
+          absolute_expires_at: new Date(now.getTime() + sessionAbsoluteTtlMs),
           last_seen_at: now,
           token_sha256: tokenHash,
         })
@@ -441,11 +424,15 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         return httpError(500, "session_insert_failed", "failed to create session");
       }
 
-      const jwt = await signSessionCookie(sessionSecret, {
-        session_id: sessionRow.id,
-        user_id: userRow.id,
-        tenant_id: tenantId,
-      });
+      const jwt = await signSessionCookie(
+        sessionSecret,
+        {
+          session_id: sessionRow.id,
+          user_id: userRow.id,
+          tenant_id: tenantId,
+        },
+        sessionAbsoluteTtlMs,
+      );
 
       if (createdUser) {
         await auditAwait(
@@ -458,6 +445,21 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             resource_id: userRow.id,
             result: "success",
             metadata: { sub, email, source: "oidc_login" },
+          },
+          exec,
+        );
+      }
+      if (linkedIdentity) {
+        await auditAwait(
+          {
+            tenant_id: tenantId,
+            actor_type: "system",
+            actor_id: null,
+            action: AuditAction.USER_IDENTITY_LINKED,
+            resource_type: "user",
+            resource_id: userRow.id,
+            result: "success",
+            metadata: { source: adapterId, subject: sub, email },
           },
           exec,
         );
@@ -497,7 +499,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         status: 302,
         headers: {
           location: target,
-          "set-cookie": buildCookieHeader(jwt),
+          "set-cookie": buildCookieHeader(jwt, sessionAbsoluteTtlMs),
         },
       });
       return res;

@@ -42,7 +42,7 @@ export interface MockOidcHandle {
   ) => { code: string; callbackUrl: string };
   /**
    * Directly sign an id_token with the provider's key. Used by flows that
-   * accept a raw id_token (e.g. `POST /v1/identity/sessions/oidc`) instead
+   * accept an identity assertion at `POST /v1/identity/sessions` instead
    * of running the full code exchange. `issuer`/`audience` default to this
    * provider's issuer and `mock-client`; override to forge mismatches.
    */

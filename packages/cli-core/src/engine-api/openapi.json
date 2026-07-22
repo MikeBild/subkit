@@ -10,7 +10,22 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "API key issued via /v1/identity/api-keys"
+        "description": "SubKit API key or an OAuth 2.1 access token issued by the MCP authorization server."
+      },
+      "oauth2": {
+        "type": "oauth2",
+        "description": "OAuth 2.1 authorization-code flow with PKCE. Browser login uses configured api_key, token_bridge, or OIDC adapters.",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "/v1/oauth/authorize",
+            "tokenUrl": "/v1/oauth/token",
+            "scopes": {
+              "mcp:read": "Read published content, resources, and product statistics",
+              "mcp:authoring": "Create drafts, revisions, and previews",
+              "mcp:admin": "Publish releases and administer access"
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -2872,10 +2887,18 @@
       "AuthProvider": {
         "type": "object",
         "properties": {
-          "type": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "token_bridge",
+              "oidc"
+            ]
+          },
+          "id": {
             "type": "string"
           },
-          "name": {
+          "label": {
             "type": "string"
           },
           "login_url": {
@@ -2888,11 +2911,12 @@
           }
         },
         "required": [
-          "type",
-          "name"
+          "protocol",
+          "id",
+          "label"
         ]
       },
-      "SessionsOidcResponse": {
+      "IdentitySessionResponse": {
         "type": "object",
         "properties": {
           "api_key": {
@@ -2906,7 +2930,7 @@
             "type": "string",
             "format": "uuid"
           },
-          "sub": {
+          "email": {
             "type": "string"
           }
         },
@@ -2914,24 +2938,24 @@
           "api_key",
           "user_id",
           "tenant_id",
-          "sub"
+          "email"
         ]
       },
-      "SessionsOidcBody": {
+      "IdentitySessionBody": {
         "type": "object",
         "properties": {
-          "id_token": {
+          "provider_id": {
             "type": "string",
             "minLength": 1
           },
-          "issuer": {
+          "identity_token": {
             "type": "string",
-            "format": "uri"
+            "minLength": 1
           }
         },
         "required": [
-          "id_token",
-          "issuer"
+          "provider_id",
+          "identity_token"
         ]
       },
       "OAuthClientListResponse": {
@@ -18902,17 +18926,17 @@
         }
       }
     },
-    "/v1/identity/sessions/oidc": {
+    "/v1/identity/sessions": {
       "post": {
         "tags": [
           "identity"
         ],
-        "summary": "Exchange an OIDC id_token for a personal subkit API key",
+        "summary": "Exchange a configured identity assertion for a personal SubKit API key",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SessionsOidcBody"
+                "$ref": "#/components/schemas/IdentitySessionBody"
               }
             }
           }
@@ -18923,13 +18947,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionsOidcResponse"
+                  "$ref": "#/components/schemas/IdentitySessionResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Unsupported provider protocol or malformed request",
             "content": {
               "application/json": {
                 "schema": {
@@ -18939,7 +18963,7 @@
             }
           },
           "401": {
-            "description": "Invalid id_token",
+            "description": "Invalid identity assertion",
             "content": {
               "application/json": {
                 "schema": {
@@ -18949,7 +18973,7 @@
             }
           },
           "403": {
-            "description": "OIDC login not configured, or issuer not allow-listed",
+            "description": "Provider not configured or identity is not allowed",
             "content": {
               "application/json": {
                 "schema": {
@@ -30907,7 +30931,7 @@
           "diagnostics"
         ],
         "summary": "Operator-facing setup validation for live engine configuration",
-        "description": "Returns the GLOBAL config snapshot only — tenant overlays are not represented here. Operators reading this expecting per-tenant `auth.firebase.*` (or any other tenant-scope leaf) should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins can validate the engine's bootstrap configuration without a tenant context.",
+        "description": "Returns the GLOBAL config snapshot only — tenant overlays are not represented here. Operators reading this expecting tenant-scoped settings should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins can validate the engine's bootstrap configuration without a tenant context.",
         "security": [
           {
             "bearerAuth": []

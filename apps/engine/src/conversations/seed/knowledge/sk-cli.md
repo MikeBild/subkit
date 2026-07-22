@@ -60,8 +60,8 @@ The file is written `0600`. A signed-out profile drops `api_key` entirely (rathe
 `sk login` — authenticate against an engine and save the profile. Flags select the method:
 - `--api-key <key>` — scripted API-key login (skips device flow).
 - `--portal-token <token>` — authenticate as a portal-token principal (locks the profile to `portal_locked`).
-- `--issuer-url`, `--client-id`, `--scope` — OIDC device flow overrides.
-- With no `--api-key`, login discovers providers and falls back to the OIDC device flow or browser (Firebase/SSO) login.
+- `--client-id`, `--scope` — client metadata for a configured OIDC device-flow adapter; the issuer and provider id always come from engine discovery.
+- With no `--api-key`, login discovers configured adapters and falls back to an OIDC device flow or browser token bridge.
 
 `sk logout` — drop the active profile's credentials.
 

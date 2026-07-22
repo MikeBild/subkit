@@ -89,15 +89,39 @@ docker exec subkit sk init \
 > docker logs subkit 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
 > ```
 
-> **Authentication defaults to the local `subkit` provider** — people are added
-> by admin invite and authenticate with engine-issued API keys; no external
-> identity provider is involved (that's the [teammate flow](#add-a-teammate-multi-user)
-> below). To switch the whole engine to SSO via Firebase, set the provider and
-> restart:
-> ```bash
-> docker exec subkit sk settings set auth.provider '"firebase"' --force
-> docker restart subkit
-> ```
+> **Authentication defaults to the `api_key` adapter** — people are added by
+> admin invite and authenticate with engine-issued API keys. Configure external
+> identity by adding named `token_bridge` or `oidc` records to
+> `auth.providers` in `subkit.config.json`, then restart. No provider-specific
+> setting or route is required.
+
+For example, a hosted JWT bridge with a nested verification claim is only a
+configuration record:
+
+```json
+{
+  "auth": {
+    "providers": [
+      { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
+      {
+        "protocol": "token_bridge",
+        "id": "workforce-bridge",
+        "label": "Workforce bridge",
+        "login_url": "https://login.example.com/subkit/",
+        "issuer_url": "https://issuer.example.com",
+        "audience": "subkit",
+        "jwks_url": "https://issuer.example.com/.well-known/jwks.json",
+        "email_verified_claim": "user_metadata.email_verified",
+        "tenant_slug": "default"
+      }
+    ]
+  }
+}
+```
+
+The only browser endpoints remain `/v1/identity/login/start`,
+`/v1/identity/login/callback`, and `/v1/identity/logout` regardless of adapter
+id or vendor.
 
 Verify:
 

@@ -23,7 +23,7 @@ const FILE_TO_SLUG: Record<string, string> = {
   "sk-bootstrap.ts": "sk-bootstrap",
   "providers.ts": "identity-providers",
   "login.ts": "identity-login",
-  "sessions-oidc.ts": "identity-sessions-oidc",
+  "sessions.ts": "identity-sessions",
 };
 
 // R6-S5: top-level routes that the carve-out also covers (health,
@@ -103,7 +103,7 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
       "identity-login",
       "identity-permissions",
       "identity-providers",
-      "identity-sessions-oidc",
+      "identity-sessions",
       "metrics",
       "sk-bootstrap",
       "whoami",

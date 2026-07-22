@@ -151,6 +151,7 @@ function classify(inner: z.ZodTypeAny): { kind: LeafKind; enumValues?: string[] 
 
 function walk(schema: z.ZodTypeAny, prefix: string[], out: ConfigLeaf[]): void {
   const { inner, nullable, meta, description } = unwrap(schema);
+  if (meta.structural) return;
   const def = (inner as { def?: { type?: string; shape?: Record<string, z.ZodTypeAny> } }).def;
 
   if (def?.type === "object" && def.shape) {

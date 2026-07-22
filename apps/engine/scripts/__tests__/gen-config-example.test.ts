@@ -1,10 +1,9 @@
 // Determinism + secret-safety gate for the config-example generator.
 //
 // (1) Output is byte-stable across two runs.
-// (2) Every leaf marked `secret: true` in ConfigSchema is rendered as
-//     the empty string in the example file. A populated example with a
-//     placeholder secret would leak into operator setups via copy-paste
-//     and end up in version control.
+// (2) Every scalar leaf marked `secret: true` in ConfigSchema is rendered
+//     as the empty string. Structured secret-bearing leaves may retain
+//     non-secret defaults, but every credential-shaped field must be empty.
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -28,6 +27,24 @@ function readDeep(source: unknown, leafPath: string[]): unknown {
   return cursor;
 }
 
+function expectCredentialFieldsEmpty(source: unknown, path: string): void {
+  if (Array.isArray(source)) {
+    source.forEach((value, index) => {
+      expectCredentialFieldsEmpty(value, `${path}[${index}]`);
+    });
+    return;
+  }
+  if (typeof source !== "object" || source === null) return;
+  for (const [key, value] of Object.entries(source)) {
+    const fieldPath = `${path}.${key}`;
+    if (/(?:secret|password|token|credential|private[_-]?key)$/i.test(key)) {
+      expect(value, `${fieldPath} must default to empty string`).toBe("");
+      continue;
+    }
+    expectCredentialFieldsEmpty(value, fieldPath);
+  }
+}
+
 describe("gen-config-example", () => {
   test("output is byte-stable across two runs", () => {
     const a = runOnce();
@@ -35,7 +52,7 @@ describe("gen-config-example", () => {
     expect(a).toBe(b);
   });
 
-  test("every secret leaf renders as the empty string", () => {
+  test("every secret leaf renders without credential material", () => {
     const out = runOnce();
     const parsed = JSON.parse(out) as unknown;
     const secrets = listConfigLeaves().filter((l) => l.meta.secret);
@@ -53,5 +70,8 @@ describe("gen-config-example", () => {
       }
       expect(value, `${leaf.path.join(".")} must default to empty string`).toBe("");
     }
+    const authProviders = readDeep(parsed, ["auth", "providers"]);
+    expect(Array.isArray(authProviders)).toBe(true);
+    expectCredentialFieldsEmpty(authProviders, "auth.providers");
   });
 });

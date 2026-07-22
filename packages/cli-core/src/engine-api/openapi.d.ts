@@ -2436,7 +2436,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/identity/sessions/oidc": {
+    "/v1/identity/sessions": {
         parameters: {
             query?: never;
             header?: never;
@@ -2445,7 +2445,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Exchange an OIDC id_token for a personal subkit API key */
+        /** Exchange a configured identity assertion for a personal SubKit API key */
         post: {
             parameters: {
                 query?: never;
@@ -2455,7 +2455,7 @@ export interface paths {
             };
             requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["SessionsOidcBody"];
+                    "application/json": components["schemas"]["IdentitySessionBody"];
                 };
             };
             responses: {
@@ -2465,10 +2465,10 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["SessionsOidcResponse"];
+                        "application/json": components["schemas"]["IdentitySessionResponse"];
                     };
                 };
-                /** @description Bad request */
+                /** @description Unsupported provider protocol or malformed request */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2477,7 +2477,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Invalid id_token */
+                /** @description Invalid identity assertion */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2486,7 +2486,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description OIDC login not configured, or issuer not allow-listed */
+                /** @description Provider not configured or identity is not allowed */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -12958,7 +12958,7 @@ export interface paths {
         };
         /**
          * Operator-facing setup validation for live engine configuration
-         * @description Returns the GLOBAL config snapshot only — tenant overlays are not represented here. Operators reading this expecting per-tenant `auth.firebase.*` (or any other tenant-scope leaf) should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins can validate the engine's bootstrap configuration without a tenant context.
+         * @description Returns the GLOBAL config snapshot only — tenant overlays are not represented here. Operators reading this expecting tenant-scoped settings should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins can validate the engine's bootstrap configuration without a tenant context.
          */
         get: {
             parameters: {
@@ -13958,25 +13958,26 @@ export interface components {
             providers: components["schemas"]["AuthProvider"][];
         };
         AuthProvider: {
-            type: string;
-            name: string;
+            /** @enum {string} */
+            protocol: "api_key" | "token_bridge" | "oidc";
+            id: string;
+            label: string;
             /** Format: uri */
             login_url?: string;
             /** Format: uri */
             issuer?: string;
         };
-        SessionsOidcResponse: {
+        IdentitySessionResponse: {
             api_key: string;
             /** Format: uuid */
             user_id: string;
             /** Format: uuid */
             tenant_id: string;
-            sub: string;
+            email: string;
         };
-        SessionsOidcBody: {
-            id_token: string;
-            /** Format: uri */
-            issuer: string;
+        IdentitySessionBody: {
+            provider_id: string;
+            identity_token: string;
         };
         OAuthClientListResponse: {
             items: components["schemas"]["OAuthClient"][];

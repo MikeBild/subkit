@@ -110,6 +110,13 @@ function main(): void {
     lines.push(renderSection(section, leaves));
   }
 
+  lines.push(
+    "## Structural settings",
+    "",
+    "`auth.providers` is the single provider-neutral auth list and is edited in `subkit.config.json`, not through the scalar settings API. Records use `protocol: api_key`, `token_bridge`, or `oidc`; one API-key adapter and multiple named bridge/OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. JWT bridges map `subject_claim`, `email_claim`, and `email_verified_claim`; safe dotted paths are accepted, defaults are `sub`, `email`, and `email_verified`, and verification must resolve to boolean `true`.",
+    "",
+  );
+
   process.stdout.write(`${lines.join("\n").trimEnd()}\n`);
 }
 

@@ -85,15 +85,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "llm.critic.max_consecutive_rejections": "Critic max consecutive rejections",
 
   // ── Authentication ─────────────────────────────────────────────
-  "auth.provider": "Identity provider (subkit | firebase | oidc)",
-  "auth.firebase.tenant_slug": "Firebase tenant slug",
-  "auth.oidc.issuer_url": "OIDC issuer URL",
-  "auth.oidc.client_id": "OIDC client ID",
-  "auth.oidc.client_secret": "OIDC client secret",
-  "auth.oidc.redirect_uri": "OIDC redirect URI",
   "auth.session.secret": "Session signing secret",
-  "auth.firebase.project_id": "Firebase project ID",
-  "auth.firebase.login_url": "Firebase login URL",
   "auth.mcp_oauth.enabled": "MCP OAuth server enabled",
   "auth.mcp_oauth.dynamic_registration_enabled": "MCP OAuth dynamic client registration",
   "auth.mcp_oauth.access_token_ttl_seconds": "MCP OAuth access token TTL (seconds)",
