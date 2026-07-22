@@ -130,6 +130,15 @@ afterEach(async () => {
 });
 
 describe("POST /v1/identity/sessions — configured provider boundary", () => {
+  test("only the exact provider-neutral route exists", async () => {
+    const res = await app.request(`${ENDPOINT}/oidc`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider_id: "test-identity", identity_token: "unused" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
   test("OIDC adapter: configured issuer + audience mints a key and creates the user", async () => {
     const identityToken = await mock.signIdToken({
       sub: "user-1",
