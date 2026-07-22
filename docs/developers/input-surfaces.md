@@ -200,6 +200,11 @@ There is no argument on any tool, and no `_meta` flag a model-driven client can 
 
 The sk engine is a full OAuth 2.1 authorization server and resource server for `/mcp`. This lets OAuth-only clients — including the ChatGPT custom connector, Claude.ai, and Cursor — authenticate without a static API key.
 
+Every issued MCP access token is RFC 8707-bound to this deployment's canonical
+`/mcp` resource. When `server.public_base_url` is configured, a token with a
+missing or different resource audience is rejected; there is no audience-less
+compatibility path.
+
 **Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this SubKit deployment. Provider ids and labels are deployment-owned values, never engine modes.
 
 The visible state machine is the common `mcp-auth-v2` contract. Authorize
