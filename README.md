@@ -76,6 +76,9 @@ eight-hour/24-hour browser sessions, logout and account switching. Revoking a
 refresh token invalidates its complete token family, including associated
 access tokens; revoking an access token invalidates that token alone. See
 [Input surfaces](docs/developers/input-surfaces.md#mcp-oauth-21-chatgpt--claudeai--cursor).
+Issued access tokens are bound to the exact `/mcp` resource with RFC 8707;
+tokens without that audience are rejected rather than accepted through a
+compatibility path.
 The browser contract is the same independent `mcp-auth-v2` implementation used
 by WikiKit and ContentKit: **Continue with SSO** is always first and
 **Continue with API key** second, configured labels never rewrite those

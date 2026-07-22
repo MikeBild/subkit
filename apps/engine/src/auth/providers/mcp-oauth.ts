@@ -185,17 +185,10 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
       }
 
       // ── RFC 8707 resource (audience) validation ────────────────────────
-      // Tokens from RFC 8707-compliant clients carry a `resource` column
-      // that names the protected resource they were issued for. A mismatch
-      // means the token was issued for a different server and is being
-      // replayed here — reject it.
-      //
-      // Tokens issued before this column was populated carry null (legacy).
-      // Accept them and trace at DEBUG — this fires on EVERY request for every
-      // pre-RFC-8707 token, so a WARN here floods the operator log and buries
-      // the genuine `audience_mismatch` denial below. Debug keeps the signal
-      // available without the noise; a token-`resource` backfill is the durable
-      // fix that lets the check later be enforced strictly.
+      // Every accepted token must name this protected resource. A missing or
+      // different value means the token cannot be proven to have been issued
+      // for this server and is rejected; there is no compatibility path for
+      // audience-less tokens.
       //
       // Skip the check entirely when `server.public_base_url` is empty or
       // when config has not yet been initialised (test environment, startup
@@ -209,17 +202,9 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
       if (baseUrl) {
         const expected = canonicalizeResourceUri(`${baseUrl}/mcp`);
         if (row.resource === null) {
-          // TODO(mcp-spec): backfill the `resource` column on pre-RFC-8707
-          // tokens, then remove this legacy branch so audience validation is
-          // enforced strictly (MCP 2025-11-25 auth: servers MUST reject tokens
-          // not issued for them). Until every live token carries a resource,
-          // hard-enforcing here would lock out valid legacy sessions.
-          logger.debug({
-            module: "auth",
-            action: "mcp_oauth.audience_legacy_null",
-            msg: "accepting legacy token with null resource (audience unverified)",
-            token_id: row.id,
-          });
+          recordAuthFailure(ip);
+          log.auth.denied({ provider: "mcp_oauth", reason: "audience_missing", token_id: row.id });
+          return null;
         } else if (canonicalizeResourceUri(row.resource) !== expected) {
           recordAuthFailure(ip);
           log.auth.denied({ provider: "mcp_oauth", reason: "audience_mismatch", token_id: row.id });

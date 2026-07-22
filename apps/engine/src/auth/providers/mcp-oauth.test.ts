@@ -74,7 +74,7 @@ async function seedAccessToken(opts?: {
   userIdOverride?: string;
   expiresAt?: Date;
   revokedAt?: Date;
-  /** RFC 8707 resource indicator. Omit to use the DB default (null = legacy token). */
+  /** RFC 8707 resource indicator. Omit only in tests that do not enable audience validation. */
   resource?: string | null;
 }): Promise<{ plaintext: string; tokenId: string }> {
   const clientId = await seedClient();
@@ -93,8 +93,8 @@ async function seedAccessToken(opts?: {
       scope: opts?.scope ?? "mcp:read",
       expires_at: expiresAt,
       revoked_at: opts?.revokedAt ?? null,
-      // resource: null is the default (legacy token); callers pass a string
-      // to test RFC 8707 audience validation.
+      // resource: null is the DB default; audience-validation tests pass an
+      // explicit value unless they are asserting fail-closed behavior.
       ...(opts?.resource !== undefined ? { resource: opts.resource } : {}),
     })
     .returning({ id: mcpOauthAccessTokens.id });
@@ -306,13 +306,11 @@ describe("createMcpOAuthAuthProvider — audience validation", () => {
     expect(principal).toBeNull();
   });
 
-  test("accepts legacy token with null resource and does not reject", async () => {
-    // resource: null → legacy token issued before RFC 8707 enforcement
+  test("rejects a token with null resource", async () => {
     const { plaintext } = await seedAccessToken({ resource: null });
     const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
     const principal = await provider.resolve(makeRequest(plaintext));
-    // Must resolve (with a logged warn) — never rejected
-    expect(principal).not.toBeNull();
+    expect(principal).toBeNull();
   });
 
   test("skips audience check when base_url is empty (no rejection)", async () => {
