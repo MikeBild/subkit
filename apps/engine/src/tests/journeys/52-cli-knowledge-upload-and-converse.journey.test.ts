@@ -217,6 +217,7 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
       tmpFile,
       "--title",
       "Acme Charges API Docs",
+      "--json",
     ]);
     const body = JSON.parse(extractLastJson(stdout)) as {
       id: string;

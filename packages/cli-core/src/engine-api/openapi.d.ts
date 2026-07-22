@@ -17659,7 +17659,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Revoked */
+            /** @description Revoked; a refresh token invalidates its family and associated access tokens */
             200: {
                 headers: {
                     [name: string]: unknown;

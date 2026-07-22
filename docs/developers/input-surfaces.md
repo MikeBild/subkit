@@ -285,7 +285,9 @@ sequenceDiagram
 8. Client exchanges the code at `POST /v1/oauth/token` (form-encoded, `grant_type=authorization_code`). Response: `{ access_token: "wf_mcp_...", refresh_token: "wf_mcr_...", token_type: "bearer", expires_in: 3600 }`.
 9. Client uses `Authorization: Bearer wf_mcp_...` on subsequent `POST /mcp` calls.
 10. Client refreshes at `POST /v1/oauth/token` (`grant_type=refresh_token`). Refresh tokens rotate on every use; replaying a rotated token revokes the whole chain.
-11. Client revokes at `POST /v1/oauth/revoke`.
+11. Client revokes at `POST /v1/oauth/revoke`. Revoking a refresh token
+    invalidates its complete rotation family and every associated access token;
+    revoking an access token invalidates that access token alone.
 
 **Scopes.**
 
@@ -325,7 +327,7 @@ Add to `.cursor/mcp.json`:
 ```
 Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthenticated request and opens the browser-based consent flow.
 
-**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Login state is short-lived and signed; account switching revokes the old session. Browser sessions have an eight-hour sliding limit and a 24-hour absolute lifetime cap. Refresh tokens rotate on every use and replay of a rotated token revokes the full chain. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
+**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Login state is short-lived and signed; account switching revokes the old session. Browser sessions have an eight-hour sliding limit and a 24-hour absolute lifetime cap. Refresh tokens rotate on every use; replay or explicit revocation of a refresh token revokes the full family and its access tokens. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
 
 ---
 
