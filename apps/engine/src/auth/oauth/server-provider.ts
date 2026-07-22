@@ -631,6 +631,42 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     };
   }
 
+  async function revokeRefreshTokenFamily(refreshId: string, now: Date): Promise<void> {
+    // UNION prevents the bidirectional rotation walk from cycling indefinitely.
+    await db.execute(sql`
+      WITH RECURSIVE chain AS (
+        SELECT id, rotated_to_id
+        FROM mcp_oauth_refresh_tokens
+        WHERE id = ${refreshId}
+        UNION
+        SELECT r.id, r.rotated_to_id
+        FROM mcp_oauth_refresh_tokens r
+        INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
+        WHERE r.revoked_at IS NULL
+      )
+      UPDATE mcp_oauth_refresh_tokens
+      SET revoked_at = ${now}
+      WHERE id IN (SELECT id FROM chain)
+        AND revoked_at IS NULL
+    `);
+
+    await db.execute(sql`
+      WITH RECURSIVE chain AS (
+        SELECT id, rotated_to_id
+        FROM mcp_oauth_refresh_tokens
+        WHERE id = ${refreshId}
+        UNION
+        SELECT r.id, r.rotated_to_id
+        FROM mcp_oauth_refresh_tokens r
+        INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
+      )
+      UPDATE mcp_oauth_access_tokens
+      SET revoked_at = ${now}
+      WHERE refresh_token_id IN (SELECT id FROM chain)
+        AND revoked_at IS NULL
+    `);
+  }
+
   // ── revokeToken ─────────────────────────────────────────────────────────────
   async function revokeToken(token: string, requestSource = "api"): Promise<void> {
     const tokenHash = sha256Hex(token);
@@ -688,10 +724,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       .limit(1);
     const refreshRow = refreshRows[0];
     if (refreshRow) {
-      await db
-        .update(mcpOauthRefreshTokens)
-        .set({ revoked_at: now })
-        .where(eq(mcpOauthRefreshTokens.id, refreshRow.id));
+      await revokeRefreshTokenFamily(refreshRow.id, now);
       await auditAwait(
         {
           tenant_id: refreshRow.tenant_id,
@@ -714,10 +747,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
   }
 
   // ── revokeChain (internal) ──────────────────────────────────────────────────
-  // Revokes the entire refresh-token chain when a replayed/rotated token is
-  // detected. Uses a bidirectional WITH RECURSIVE CTE to walk rotated_to_id
-  // forward to root and forward to all descendants, then bulk-revokes every
-  // refresh-token node and every access token in the chain.
+  // Revokes the entire refresh-token chain when a replayed/rotated token is detected.
   // actor_type is "system" — replay-triggered revocation is system-initiated (S10b).
   async function revokeChain(
     refreshId: string,
@@ -725,45 +755,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     userId: string,
     now: Date,
   ): Promise<void> {
-    // Bulk-revoke all refresh tokens in the chain via recursive CTE.
-    // UNION (not UNION ALL) is required here — the bidirectional walk
-    // (rotated_to_id forward + backward) would otherwise cycle infinitely
-    // since each direction re-discovers the other. UNION deduplicates so
-    // the recursion terminates once no new distinct (id, rotated_to_id)
-    // rows are added.
-    await db.execute(sql`
-      WITH RECURSIVE chain AS (
-        SELECT id, rotated_to_id
-        FROM mcp_oauth_refresh_tokens
-        WHERE id = ${refreshId}
-        UNION
-        SELECT r.id, r.rotated_to_id
-        FROM mcp_oauth_refresh_tokens r
-        INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
-        WHERE r.revoked_at IS NULL
-      )
-      UPDATE mcp_oauth_refresh_tokens
-      SET revoked_at = ${now}
-      WHERE id IN (SELECT id FROM chain)
-        AND revoked_at IS NULL
-    `);
-
-    // Revoke all access tokens associated with any token in the chain.
-    await db.execute(sql`
-      WITH RECURSIVE chain AS (
-        SELECT id, rotated_to_id
-        FROM mcp_oauth_refresh_tokens
-        WHERE id = ${refreshId}
-        UNION
-        SELECT r.id, r.rotated_to_id
-        FROM mcp_oauth_refresh_tokens r
-        INNER JOIN chain c ON r.id = c.rotated_to_id OR c.id = r.rotated_to_id
-      )
-      UPDATE mcp_oauth_access_tokens
-      SET revoked_at = ${now}
-      WHERE refresh_token_id IN (SELECT id FROM chain)
-        AND revoked_at IS NULL
-    `);
+    await revokeRefreshTokenFamily(refreshId, now);
 
     await auditAwait(
       {

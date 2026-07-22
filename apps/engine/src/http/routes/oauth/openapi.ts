@@ -130,7 +130,12 @@ export function registerRawMcpAuthOpenApi(app: OpenAPIHono<AppEnv>): void {
     "/v1/oauth/revoke",
     "revokeOAuthToken",
     "Revoke an OAuth token family",
-    { 200: { description: "Revoked" }, ...errors },
+    {
+      200: {
+        description: "Revoked; a refresh token invalidates its family and associated access tokens",
+      },
+      ...errors,
+    },
     { body: form },
   );
   register(
