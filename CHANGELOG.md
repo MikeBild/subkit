@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] – 2026-07-22
+
+### Fixed
+- Pin the assertion exchange to the exact provider-neutral
+  `POST /v1/identity/sessions` boundary and reject nested protocol or provider
+  route variants with `404`.
+- Add an HTTP regression test that prevents retired fixed-route dispatch from
+  returning through the generic exchange handler.
+
 ## [2.0.1] – 2026-07-22
 
 ### Fixed
