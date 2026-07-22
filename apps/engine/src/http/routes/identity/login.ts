@@ -222,6 +222,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
   const finishOidc = async (c: Context<AppEnv>) => {
     const state = c.req.query("state") ?? "";
     const providerId = state.includes(".") ? state.slice(0, state.indexOf(".")) : "";
+    if (!providerId) return c.json({ code: "invalid_state" }, 400);
     const selected = oidcProviders().find((provider) => provider.id === providerId);
     if (!selected) return c.json({ code: "provider_not_found" }, 404);
     const handler = oidcProvider(selected, c.get("db"));
