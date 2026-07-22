@@ -130,6 +130,12 @@ afterEach(async () => {
 });
 
 describe("POST /v1/identity/sessions — configured provider boundary", () => {
+  test("the generic browser callback rejects missing state as input, not as a missing route", async () => {
+    const res = await app.request("http://127.0.0.1/v1/identity/login/callback");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ code: "invalid_state" });
+  });
+
   test("only the exact provider-neutral route exists", async () => {
     const res = await app.request(`${ENDPOINT}/oidc`, {
       method: "POST",

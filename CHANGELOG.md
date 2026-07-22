@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] – 2026-07-22
+
+### Fixed
+- Return `400 invalid_state` from the generic browser callback when its signed
+  state is missing, distinguishing malformed input from an unregistered route.
+- Extend the HTTP boundary regression suite to prove the shared generic
+  callback exists independently of any configured provider id.
+
 ## [2.0.2] – 2026-07-22
 
 ### Fixed
