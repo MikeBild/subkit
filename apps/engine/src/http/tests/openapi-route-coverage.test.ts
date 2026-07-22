@@ -58,7 +58,9 @@ const EXCLUDED_ROUTES = new Set<string>([
   // (`GET /v1/tool-approvals/decide`, the portal *page*, IS documented;
   // only the form's POST target is excluded here.)
   "GET /v1/identity/login/start",
+  "POST /v1/identity/login/start",
   "GET /v1/identity/login/callback",
+  "POST /v1/identity/login/callback",
   "POST /v1/identity/logout",
   "POST /v1/tool-approvals/decide",
   // Inbound webhook receivers: request shape is dictated by the external

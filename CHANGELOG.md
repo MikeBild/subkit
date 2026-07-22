@@ -4,6 +4,44 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] – 2026-07-22
+
+### Added
+- Add one provider-neutral `auth.providers` list that can offer one user-owned
+  API-key adapter plus multiple named token-bridge and OIDC adapters.
+- Add the common `mcp-auth-v1` sign-in/consent card with the SubKit `sk` badge,
+  account switching/logout and an OAuth 2.1 OpenAPI security scheme.
+- Add configurable subject, email and email-verification claim paths for
+  standards-based JWT bridges, so adapters with nested claims need no product
+  code branch.
+
+### Changed
+- Remove the parallel `auth.provider`, `auth.firebase.*`, `auth.oidc.*`, and
+  MCP-only provider list. Discovery, browser login and bearer verification now
+  consume the same structural list, with no legacy parser or route aliases.
+- Store external identities in the provider-neutral `user_identities` relation
+  and remove the protocol-specific subject columns from `users`.
+- Make CLI discovery consume only `{protocol,id,label}` plus protocol metadata,
+  and replace the protocol-specific session exchange with
+  `POST /v1/identity/sessions` using `{provider_id,identity_token}`.
+- Treat `auth.providers` as structural boot configuration rather than a scalar
+  Settings/API or environment-override leaf; changing adapters requires a
+  canonical config update and restart.
+
+### Removed
+- Remove the former provider-specific config trees and subject columns without
+  aliases or runtime migration logic. External users authenticate again to
+  create a binding under the configured provider id.
+- Bind browser sessions to an eight-hour sliding limit and 24-hour absolute
+  cap, with persisted revocation/expiry checks at consent render and submit.
+- Limit every consent grant to client request ∩ server support ∩ current RBAC;
+  `mcp:read` is mandatory and never silently substituted.
+
+### Security
+- Sign short-lived login state, require same-origin return targets, validate
+  all form boundaries with Zod, audit session issue/revoke, and reject duplicate
+  provider ids or explicitly unverified external identities.
+
 ## [1.23.3] – 2026-07-21
 
 ### Fixed

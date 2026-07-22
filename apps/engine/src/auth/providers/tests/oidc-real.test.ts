@@ -21,7 +21,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, sessions, tenants, users } from "../../../db/schema/index.ts";
+import { auditLog, sessions, tenants, userIdentities, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createOidcProvider } from "../oidc.ts";
@@ -277,11 +277,17 @@ describe("oidc provider — real flow", () => {
     );
     expect(principal).toBeNull();
 
-    // The user row should still exist.
+    // The provider-neutral identity binding and user row should still exist.
+    const identities = await testDb.db
+      .select()
+      .from(userIdentities)
+      .where(and(eq(userIdentities.tenant_id, tenantId), eq(userIdentities.subject, "revoke-sub")));
+    expect(identities).toHaveLength(1);
+    if (!identities[0]) throw new Error("provider binding missing");
     const userRows = await testDb.db
       .select()
       .from(users)
-      .where(and(eq(users.tenant_id, tenantId), eq(users.external_subject, "revoke-sub")));
+      .where(eq(users.id, identities[0].user_id));
     expect(userRows.length).toBe(1);
   });
 });

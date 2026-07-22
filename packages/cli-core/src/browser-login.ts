@@ -1,23 +1,24 @@
-// Browser-based login flow for Firebase Auth (and other browser-redirect providers).
+// Provider-neutral browser login flow for externally hosted token bridges.
 //
 // Flow:
 //   1. Start a temporary HTTP server on a random localhost port
 //   2. Open the provider's login URL with callback_port + state params
-//   3. User authenticates in the browser (e.g., Google sign-in via Firebase)
-//   4. Provider login page redirects to localhost with id_token + issuer
-//   5. Exchange id_token at POST /v1/identity/sessions/oidc
+//   3. User authenticates with the configured deployment adapter
+//   4. The bridge redirects to localhost with an identity assertion
+//   5. Exchange it at POST /v1/identity/sessions using the configured provider id
 //   6. Return the API key
 //
-// This replaces the device flow for providers that don't support RFC 8628
-// (like Firebase Auth).
+// This complements RFC 8628 for token-bridge adapters.
 
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 export interface BrowserLoginOptions {
-  /** The URL of the login page (e.g., https://subkit-auth-prod.web.app) */
+  /** Configured provider id returned by GET /v1/identity/providers. */
+  provider_id: string;
+  /** The URL of the deployment-owned login bridge. */
   login_url: string;
-  /** The subkit engine URL to exchange the id_token */
+  /** The SubKit engine URL used for the assertion exchange. */
   engine_url: string;
   /** Optional: override the localhost port (default: random) */
   port?: number;
@@ -33,7 +34,6 @@ export interface BrowserLoginResult {
   api_key: string;
   user_id: string;
   tenant_id: string;
-  sub: string;
   email: string;
 }
 
@@ -64,9 +64,7 @@ export async function runBrowserLogin(opts: BrowserLoginOptions): Promise<Browse
         return;
       }
 
-      const idToken = url.searchParams.get("id_token");
-      const issuer = url.searchParams.get("issuer");
-      const email = url.searchParams.get("email") ?? "";
+      const identityToken = url.searchParams.get("identity_token");
       const returnedState = url.searchParams.get("state");
 
       if (returnedState !== state) {
@@ -75,18 +73,21 @@ export async function runBrowserLogin(opts: BrowserLoginOptions): Promise<Browse
         return;
       }
 
-      if (!idToken || !issuer) {
+      if (!identityToken) {
         res.writeHead(400);
-        res.end("Missing id_token or issuer in callback.");
+        res.end("Missing identity_token in callback.");
         return;
       }
 
-      // Exchange the id_token at the engine
+      // Exchange the provider assertion at the engine.
       try {
-        const exchangeRes = await fetchFn(`${opts.engine_url}/v1/identity/sessions/oidc`, {
+        const exchangeRes = await fetchFn(`${opts.engine_url}/v1/identity/sessions`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "User-Agent": "sk-cli/0.0.1" },
-          body: JSON.stringify({ id_token: idToken, issuer }),
+          body: JSON.stringify({
+            provider_id: opts.provider_id,
+            identity_token: identityToken,
+          }),
         });
 
         if (!exchangeRes.ok) {
@@ -103,14 +104,14 @@ export async function runBrowserLogin(opts: BrowserLoginOptions): Promise<Browse
           api_key: string;
           user_id: string;
           tenant_id: string;
-          sub: string;
+          email: string;
         };
 
         res.writeHead(200, { "Content-Type": "text/html" });
-        res.end(successPage(email));
+        res.end(successPage(data.email));
         resolved = true;
         cleanup();
-        resolve({ ...data, email });
+        resolve(data);
       } catch (err) {
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end(errorPage("Login failed", err instanceof Error ? err.message : String(err)));
@@ -143,6 +144,7 @@ export async function runBrowserLogin(opts: BrowserLoginOptions): Promise<Browse
 
       const callbackPort = addr.port;
       const loginUrl = new URL(opts.login_url);
+      loginUrl.searchParams.set("identity_provider", opts.provider_id);
       loginUrl.searchParams.set("callback_port", String(callbackPort));
       loginUrl.searchParams.set("state", state);
 

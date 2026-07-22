@@ -153,134 +153,30 @@ export async function permittedMcpScopes(
 // (authorize render AND decision submit) must re-read the session row.
 export async function sessionIsLive(db: Db, sessionId: string, tenantId: string): Promise<boolean> {
   const rows = await db
-    .select({ revoked_at: sessions.revoked_at })
+    .select({
+      revoked_at: sessions.revoked_at,
+      expires_at: sessions.expires_at,
+      last_seen_at: sessions.last_seen_at,
+      absolute_expires_at: sessions.absolute_expires_at,
+    })
     .from(sessions)
     .where(and(eq(sessions.id, sessionId), eq(sessions.tenant_id, tenantId)))
     .limit(1);
   const row = rows[0];
-  return row != null && row.revoked_at == null;
-}
+  if (!row || row.revoked_at) return false;
 
-// HTML for the consent page
-export function renderConsentPage(opts: {
-  clientName: string;
-  tenantName: string;
-  userEmail: string;
-  // The full RBAC-permitted ceiling the operator may grant (read ⊆ authoring ⊆ admin
-  // is NOT assumed — each is offered independently based on the role's permissions).
-  offeredScopes: string[];
-  // Subset of offeredScopes rendered pre-checked (always includes mcp:read).
-  preChecked: string[];
-  csrfToken: string;
-  state: string;
-  clientId: string;
-  redirectUri: string;
-  resource: string;
-}): string {
-  const scopeLabels: Record<string, string> = {
-    "mcp:read": "Read-only access to MCP tools and workflows",
-    "mcp:authoring": "Access conversation authoring tools via MCP",
-    "mcp:admin": "Full administrative access via MCP",
-  };
-  const preCheckedSet = new Set(opts.preChecked);
-  const scopeItems = opts.offeredScopes
-    .map((s) => {
-      const label = scopeLabels[s] ?? s;
-      const value = escapeHtml(s);
-      const checked = preCheckedSet.has(s) ? " checked" : "";
-      if (s === "mcp:read") {
-        // mcp:read is the always-granted baseline: render checked + disabled so
-        // the operator cannot opt out of it. A disabled checkbox does not submit,
-        // so pair it with a hidden input that always posts the value.
-        return `<li><label class="scope-row"><input type="checkbox" name="scope" value="${value}" checked disabled><span class="scope-text"><span class="scope-name">${value}</span><span class="scope-desc">${escapeHtml(
-          label,
-        )}</span></span></label><input type="hidden" name="scope" value="${value}"></li>`;
-      }
-      return `<li><label class="scope-row"><input type="checkbox" name="scope" value="${value}"${checked}><span class="scope-text"><span class="scope-name">${value}</span><span class="scope-desc">${escapeHtml(
-        label,
-      )}</span></span></label></li>`;
-    })
-    .join("");
+  const now = Date.now();
+  if (row.absolute_expires_at && row.absolute_expires_at.getTime() <= now) return false;
+  if (row.last_seen_at && now - row.last_seen_at.getTime() > 8 * 60 * 60 * 1000) return false;
+  if (!row.last_seen_at && row.expires_at.getTime() <= now) return false;
 
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Authorize access — sk</title>
-  <style>
-    :root { color-scheme: light; }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; padding: 24px;
-      display: flex; align-items: center; justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: #f4f5f7; color: #1f2328;
-    }
-    .card {
-      background: #fff; width: 100%; max-width: 420px;
-      border: 1px solid #e3e5e9; border-radius: 14px;
-      box-shadow: 0 10px 30px rgba(20, 24, 33, .08);
-      padding: 32px;
-    }
-    .brand {
-      display: flex; align-items: center; justify-content: center;
-      width: 42px; height: 42px; border-radius: 11px;
-      background: #1f2328; color: #fff;
-      font-weight: 700; font-size: 19px; letter-spacing: -.03em;
-      margin: 0 0 20px;
-    }
-    h1 { font-size: 1.2rem; line-height: 1.3; margin: 0 0 8px; }
-    p { margin: 0 0 10px; line-height: 1.5; }
-    .muted { color: #6a7280; font-size: .9rem; }
-    .strong { font-weight: 600; }
-    ul.scopes { list-style: none; margin: 18px 0 4px; padding: 0; }
-    ul.scopes li {
-      padding: 12px 14px; margin-bottom: 8px;
-      background: #f7f8fa; border: 1px solid #ebedf0; border-radius: 9px;
-    }
-    .scope-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
-    .scope-row input[type="checkbox"] { margin-top: 2px; flex: none; }
-    .scope-text { display: flex; flex-direction: column; gap: 2px; }
-    .scope-name { font-weight: 600; font-size: .92rem; }
-    .scope-desc { color: #6a7280; font-size: .85rem; }
-    .actions { display: flex; gap: 10px; margin-top: 22px; }
-    button {
-      flex: 1; padding: 11px 18px; font-size: .95rem; font-weight: 600;
-      cursor: pointer; border-radius: 9px; border: 1px solid transparent;
-      font-family: inherit;
-    }
-    .approve { background: #1f6feb; color: #fff; }
-    .approve:hover { background: #1a60d0; }
-    .deny { background: #fff; color: #1f2328; border-color: #d6d9de; }
-    .deny:hover { background: #f4f5f7; }
-    .footer { margin-top: 20px; color: #99a0aa; font-size: .78rem; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="brand">sk</div>
-    <h1>Authorize access</h1>
-    <p><span class="strong">${escapeHtml(opts.clientName)}</span> is requesting access to your
-    <span class="strong">${escapeHtml(opts.tenantName)}</span> workspace.</p>
-    <p class="muted">Signed in as ${escapeHtml(opts.userEmail)}</p>
-    <p class="muted">It will be able to:</p>
-    <form method="POST" action="/v1/oauth/authorize/decision">
-      <ul class="scopes">${scopeItems}</ul>
-      <input type="hidden" name="csrf_token" value="${escapeHtml(opts.csrfToken)}">
-      <input type="hidden" name="client_id" value="${escapeHtml(opts.clientId)}">
-      <input type="hidden" name="redirect_uri" value="${escapeHtml(opts.redirectUri)}">
-      <input type="hidden" name="resource" value="${escapeHtml(opts.resource)}">
-      <input type="hidden" name="state" value="${escapeHtml(opts.state)}">
-      <div class="actions">
-        <button type="submit" name="decision" value="deny" class="deny">Deny</button>
-        <button type="submit" name="decision" value="approve" class="approve">Approve</button>
-      </div>
-    </form>
-    <div class="footer">subkit MCP · OAuth 2.1</div>
-  </div>
-</body>
-</html>`;
+  // Keep the sliding window alive only after the persisted session has passed
+  // every revocation and expiry check. The absolute cap is never extended.
+  await db
+    .update(sessions)
+    .set({ last_seen_at: new Date(now), expires_at: new Date(now + 8 * 60 * 60 * 1000) })
+    .where(and(eq(sessions.id, sessionId), eq(sessions.tenant_id, tenantId)));
+  return true;
 }
 
 export function escapeHtml(s: string): string {
@@ -352,7 +248,7 @@ export const RevokeRequestSchema = z.object({
 
 export const DecisionRequestSchema = z.object({
   csrf_token: z.string().default(""),
-  decision: z.string().optional(),
+  decision: z.enum(["approve", "deny", "switch_account"]),
   client_id: z.string().default(""),
   redirect_uri: z.string().default(""),
   resource: z.string().default(""),

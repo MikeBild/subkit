@@ -2,7 +2,7 @@
 //
 // Wraps `openid-client.discovery` so the same insecure-HTTP allowance
 // used by the rest of the engine also works for verify-only flows
-// (e.g. `POST /v1/identity/sessions/oidc`). The exported functions are
+// (e.g. the OIDC branch of `POST /v1/identity/sessions`). The exported functions are
 // side-effect-free except for a per-process in-memory cache that is
 // keyed by issuer URL. Tests can flush the cache between runs.
 

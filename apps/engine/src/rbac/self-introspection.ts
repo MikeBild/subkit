@@ -26,8 +26,8 @@ export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   "identity-providers",
   // POST /v1/identity/login (issues a session — auth side, not RBAC side)
   "identity-login",
-  // POST /v1/identity/sessions/oidc (browser-flow OIDC callback)
-  "identity-sessions-oidc",
+  // POST /v1/identity/sessions (provider assertion exchange)
+  "identity-sessions",
   // GET /healthz, /v1/health (liveness, no auth needed)
   "health",
   // GET /metrics (prometheus, gated by auth-middleware-only)

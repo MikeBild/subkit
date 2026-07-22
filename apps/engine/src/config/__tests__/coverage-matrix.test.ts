@@ -42,8 +42,6 @@ const BOOT_ONLY_LEAVES = new Set<string>([
   "server.public_base_url",
   "database.url",
   "auth.session.secret",
-  // bootstrap-only — auth/providers/oidc.ts reads via .auth.oidc destructure
-  // already covered by `getConfig().auth.oidc` match below
 ]);
 
 // readEnv() in llm/core/model-init.ts wires every entry in

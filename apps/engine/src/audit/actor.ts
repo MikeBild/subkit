@@ -2,8 +2,7 @@
 // `actor_type` taxonomy.
 //
 // The audit_log schema admits three actor_type values:
-//   - "user"           — a human-backed principal (Firebase / Cognito /
-//                        portal-token user).
+//   - "user"           — a human-backed identity or portal-token principal.
 //   - "system_account" — a service account row with a principal id.
 //   - "system"         — actor-less machine emit (cron sweeps, engine
 //                        boot, migrations). Carries `actor_id: null`.

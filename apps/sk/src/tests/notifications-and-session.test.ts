@@ -175,7 +175,7 @@ describe("/session slash (M12)", () => {
       tenant_slug: "acme",
       email: "u@a.test",
       role_name: "admin",
-      provider: "firebase",
+      provider: "workforce",
     }));
     const client = { issuePortalToken, whoami } as unknown as EngineClient;
     const openedPanes: unknown[] = [];
@@ -220,7 +220,7 @@ describe("/session slash (M12)", () => {
       tenant_slug: "acme",
       email: "u@a.test",
       role_name: "admin",
-      provider: "firebase",
+      provider: "workforce",
     }));
     const client = { issuePortalToken, whoami } as unknown as EngineClient;
     const out = await handleSlash("session", ["wf-9"], makeCtx(client));
@@ -242,7 +242,7 @@ describe("/session slash (M12)", () => {
         tenant_slug: "acme",
         email: null,
         role_name: null,
-        provider: "firebase",
+        provider: "workforce",
       })),
     } as unknown as EngineClient;
     const out = await handleSlash("session", ["wf-bad"], makeCtx(client));

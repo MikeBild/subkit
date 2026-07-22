@@ -7,6 +7,7 @@ export interface FieldMeta {
   secret?: boolean;
   scope?: FieldScope;
   requiresRestart?: boolean;
+  structural?: boolean;
   [extra: string]: unknown;
 }
 
@@ -245,6 +246,112 @@ const LlmSection = z
   .prefault({})
   .describe("LLM configuration");
 
+const AuthProviders = z
+  .array(
+    z.discriminatedUnion("protocol", [
+      z.object({
+        protocol: z.literal("api_key"),
+        id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+        label: z.string().min(1).max(120),
+      }),
+      z.object({
+        protocol: z.literal("token_bridge"),
+        id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+        label: z.string().min(1).max(120),
+        login_url: z.url().refine(
+          (value) => {
+            const url = new URL(value);
+            return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
+          },
+          {
+            message: "token bridge login_url must use HTTPS outside localhost",
+          },
+        ),
+        issuer_url: z.url().refine(
+          (value) => {
+            const url = new URL(value);
+            return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
+          },
+          {
+            message: "token bridge issuer_url must use HTTPS outside localhost",
+          },
+        ),
+        audience: z.string().min(1),
+        jwks_url: z.url().refine(
+          (value) => {
+            const url = new URL(value);
+            return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
+          },
+          {
+            message: "token bridge jwks_url must use HTTPS outside localhost",
+          },
+        ),
+        tenant_slug: z.string().min(1).default("default"),
+        subject_claim: z
+          .string()
+          .regex(/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/)
+          .default("sub"),
+        email_claim: z
+          .string()
+          .regex(/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/)
+          .default("email"),
+        email_verified_claim: z
+          .string()
+          .regex(/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/)
+          .default("email_verified"),
+      }),
+      z.object({
+        protocol: z.literal("oidc"),
+        id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+        label: z.string().min(1).max(120),
+        issuer_url: z.url().refine(
+          (value) => {
+            const url = new URL(value);
+            return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
+          },
+          {
+            message: "OIDC issuer_url must use HTTPS outside localhost",
+          },
+        ),
+        client_id: z.string().min(1),
+        client_secret: z
+          .string()
+          .default("")
+          .meta(global({ secret: true })),
+        scopes: z.string().default("openid profile email"),
+        tenant_slug: z.string().min(1).default("default"),
+      }),
+    ]),
+  )
+  .superRefine((providers, ctx) => {
+    const seen = new Set<string>();
+    let apiKeyConfigured = false;
+    providers.forEach((provider, index) => {
+      if (seen.has(provider.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [index, "id"],
+          message: "Auth provider ids must be unique",
+        });
+      }
+      seen.add(provider.id);
+      if (provider.protocol === "api_key") {
+        if (apiKeyConfigured) {
+          ctx.addIssue({
+            code: "custom",
+            path: [index, "protocol"],
+            message: "Auth may contain only one api_key provider",
+          });
+        }
+        apiKeyConfigured = true;
+      }
+    });
+  })
+  .min(1)
+  .default([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }])
+  .describe("Provider-neutral browser and bearer authentication adapters.")
+  .meta(global({ requiresRestart: true, secret: true, structural: true }));
+
 const McpOAuthSection = z
   .object({
     enabled: z
@@ -281,33 +388,13 @@ const McpOAuthSection = z
       .describe("OAuth scopes advertised in the authorization server metadata.")
       .meta(global()),
   })
+  .strict()
   .prefault({})
   .describe("MCP OAuth 2.1 authorization + resource server");
 
 const AuthSection = z
   .object({
-    provider: z
-      .enum(["subkit", "firebase", "oidc"])
-      .default("subkit")
-      .describe(
-        "Human identity provider: 'subkit' (local admin-invite), 'firebase' (Firebase ID tokens), or 'oidc' (generic OIDC). Machine auth (API keys, portal, MCP OAuth) is always available.",
-      )
-      .meta(global({ requiresRestart: true })),
-    oidc: z
-      .object({
-        issuer_url: optionalUrl.default("").meta(global({ requiresRestart: true })),
-        client_id: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
-        client_secret: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true, secret: true })),
-        redirect_uri: optionalUrl.default("").meta(global({ requiresRestart: true })),
-      })
-      .prefault({})
-      .describe("Generic OIDC provider"),
+    providers: AuthProviders,
     session: z
       .object({
         secret: z
@@ -320,23 +407,9 @@ const AuthSection = z
       })
       .prefault({})
       .describe("Session signing"),
-    firebase: z
-      .object({
-        project_id: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
-        login_url: optionalUrl.default("").meta(global({ requiresRestart: true })),
-        tenant_slug: z
-          .string()
-          .default("default")
-          .describe("Tenant slug that Firebase-authenticated users are mapped into.")
-          .meta(global({ requiresRestart: true })),
-      })
-      .prefault({})
-      .describe("Firebase authentication"),
     mcp_oauth: McpOAuthSection,
   })
+  .strict()
   .prefault({})
   .describe("Authentication");
 

@@ -64,6 +64,17 @@ a 50 MiB limit and use document metadata to seed the connector base URL and auth
 [connector guide](docs/concepts/connectors.md#openapi-connector-import) includes setup commands,
 credential guidance, and the separate live-discovery limits.
 
+Remote MCP clients use the built-in OAuth 2.1 authorization-code/PKCE bridge.
+Its common `sk` browser card is configured only by the provider-neutral
+`auth.providers` list, which can contain one API-key adapter and multiple named
+`token_bridge` and `oidc` adapters. Provider products are deployment values;
+JWT bridges can map safe dotted subject, email and verification claim paths,
+while OIDC adapters use discovery and Authorization Code + PKCE. The same list drives discovery, browser login and
+bearer verification. Consent is limited to the scopes the client actually
+requested and the user's current RBAC, with mandatory `mcp:read`, revocable
+eight-hour/24-hour browser sessions, logout and account switching. See
+[Input surfaces](docs/developers/input-surfaces.md#mcp-oauth-21-chatgpt--claudeai--cursor).
+
 Operators can measure how the product is actually used without collecting content:
 opt-in, tenant-scoped usage reports cover canonical HTTP routes, Chat turns, Conversation
 streams, and MCP JSON-RPC/session/capacity behavior. Actor and session identities are

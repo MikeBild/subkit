@@ -74,20 +74,15 @@
     }
   },
   "auth": {
-    "provider": "subkit",
-    "oidc": {
-      "issuer_url": "",
-      "client_id": "",
-      "client_secret": "",
-      "redirect_uri": ""
-    },
+    "providers": [
+      {
+        "protocol": "api_key",
+        "id": "api-key",
+        "label": "SubKit API key"
+      }
+    ],
     "session": {
       "secret": ""
-    },
-    "firebase": {
-      "project_id": "",
-      "login_url": "",
-      "tenant_slug": "default"
     },
     "mcp_oauth": {
       "enabled": true,
