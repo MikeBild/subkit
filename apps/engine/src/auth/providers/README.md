@@ -9,7 +9,6 @@ Supported protocols:
 | Protocol | Adapter | Purpose |
 |---|---|---|
 | `api_key` | `api-key.ts` | User and machine API keys |
-| `token_bridge` | `token-bridge.ts` | Signed JWT assertions from an external hosted login bridge |
 | `oidc` | `oidc.ts` | Authorization-code + PKCE and session cookies |
 
 `portal_token` remains an always-on product credential and `mcp_oauth` is
@@ -17,19 +16,17 @@ registered when the MCP OAuth server is enabled. They are not interactive
 browser providers and therefore are not entries in `auth.providers`.
 
 The same `auth.providers` list drives provider discovery, the generic browser
-routes, MCP OAuth login, and bearer verification. Multiple bridge and OIDC
-records may coexist; provider IDs and labels are deployment choices. The only
+routes, MCP OAuth login, and bearer verification. Multiple direct OIDC records
+may coexist; each client, secret, callback and session belongs to this SubKit
+deployment. Provider IDs and labels are deployment choices. The only
 browser routes are:
 
 - `GET|POST /v1/identity/login/start`
-- `GET|POST /v1/identity/login/callback`
+- `GET /v1/identity/login/callback`
 - `POST /v1/identity/logout`
 
-JWT bridges map `subject_claim`, `email_claim`, and
-`email_verified_claim`; each accepts a safe dotted path and defaults to
-`sub`, `email`, and `email_verified`. This covers flat and nested token layouts
-without a vendor branch. Email verification must still resolve to boolean
-`true`.
+OIDC assertion exchange validates discovered issuer metadata, the configured
+client audience and verified email before resolving the SubKit identity.
 
 To add an authentication mechanism, implement one of the existing protocol
 adapters or introduce a new protocol deliberately. Do not add vendor-specific

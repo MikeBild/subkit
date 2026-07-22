@@ -3,7 +3,7 @@
 > **Reading time:** ~12 min
 > **Audience:** Engineers integrating with sk, operators configuring surfaces
 
-**Meet your team where they already work — without re-implementing access control per channel.** A developer lives in a terminal. An analyst lives in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant wants to call a workflow directly. sk gives each of them a native door, and every door opens onto the *same* governed engine: one RBAC model, one Audit Log, one identity envelope (`tenant_id`, `actor_id`, `request_source`, `trace_id`). Adopting sk never forces a tooling migration, and security never forks per surface.
+**Meet your team where they already work—with one governed engine and one common MCP auth contract.** A developer lives in a terminal. An analyst lives in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant wants to call a workflow directly. sk gives each of them a native door, and every door opens onto the *same* governed engine: one RBAC model, one Audit Log, one identity envelope (`tenant_id`, `actor_id`, `request_source`, `trace_id`). Adopting sk never forces a tooling migration, and security never forks per surface.
 
 ## Surfaces at a glance
 
@@ -40,9 +40,9 @@ flowchart LR
     Gate --> Engine
 ```
 
-For system-wide context — where external AI clients cross the MCP OAuth bridge and other surfaces enter directly — see the architecture overview:
+For system-wide context — where external AI clients cross SubKit's MCP OAuth boundary and other surfaces enter directly — see the architecture overview:
 
-![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the MCP OAuth bridge; other surfaces enter directly.](../concepts/overview.png)
+![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the product-local MCP OAuth boundary; other surfaces enter directly.](../concepts/overview.png)
 
 *Source: [`overview.drawio`](../concepts/overview.drawio).*
 
@@ -200,7 +200,14 @@ There is no argument on any tool, and no `_meta` flag a model-driven client can 
 
 The sk engine is a full OAuth 2.1 authorization server and resource server for `/mcp`. This lets OAuth-only clients — including the ChatGPT custom connector, Claude.ai, and Cursor — authenticate without a static API key.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named `token_bridge` and `oidc` adapters. Provider ids and labels are deployment-owned values, never engine modes.
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this SubKit deployment. Provider ids and labels are deployment-owned values, never engine modes.
+
+The visible state machine is the common `mcp-auth-v2` contract. Authorize
+redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser
+always renders **Continue with SSO** before **Continue with API key** and does
+not expose the configured provider label. The consent, account-switch and
+logout screens use the same layout and security headers as WikiKit and
+ContentKit while retaining SubKit branding and RBAC.
 
 ```json
 {
@@ -210,16 +217,6 @@ The sk engine is a full OAuth 2.1 authorization server and resource server for `
           "protocol": "api_key",
           "id": "api-key",
           "label": "SubKit API key"
-        },
-        {
-          "protocol": "token_bridge",
-          "id": "workforce",
-          "label": "Workforce sign-in",
-          "login_url": "https://login.example.com/subkit/",
-          "issuer_url": "https://issuer.example.com",
-          "audience": "subkit",
-          "jwks_url": "https://issuer.example.com/.well-known/jwks.json",
-          "tenant_slug": "default"
         },
         {
           "protocol": "oidc",
@@ -238,9 +235,11 @@ Register `${server.public_base_url}/v1/identity/login/callback` as every OIDC
 adapter's redirect URI. Every adapter uses only the generic `login/start`,
 `login/callback`, and `logout` routes.
 
-The CLI discovers the same list through `GET /v1/identity/providers`. A
-token-bridge or device-flow result is exchanged at `POST /v1/identity/sessions`
+The CLI discovers the same list through `GET /v1/identity/providers`. An OIDC
+device-flow result is exchanged at `POST /v1/identity/sessions`
 with `{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
+The response is exactly `{api_key,principal_id,context_id,email}`;
+`context_id` is the SubKit tenant id.
 The exchange never accepts an arbitrary issuer URL and has no protocol- or
 vendor-specific route alias.
 
@@ -266,7 +265,7 @@ sequenceDiagram
     C->>E: POST /v1/oauth/register (DCR, RFC 7591)
     E-->>C: { client_id, client_secret? }
     C->>U: 302 to /v1/oauth/authorize?code_challenge=...
-    U->>E: selected API-key, token-bridge or OIDC adapter + consent
+    U->>E: selected API-key or OIDC adapter + consent
     E-->>U: 302 to redirect_uri?code=...&state=...
     U-->>C: deliver code
     C->>E: POST /v1/oauth/token (code + verifier)

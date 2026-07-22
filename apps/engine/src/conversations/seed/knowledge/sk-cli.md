@@ -61,7 +61,7 @@ The file is written `0600`. A signed-out profile drops `api_key` entirely (rathe
 - `--api-key <key>` — scripted API-key login (skips device flow).
 - `--portal-token <token>` — authenticate as a portal-token principal (locks the profile to `portal_locked`).
 - `--client-id`, `--scope` — client metadata for a configured OIDC device-flow adapter; the issuer and provider id always come from engine discovery.
-- With no `--api-key`, login discovers configured adapters and falls back to an OIDC device flow or browser token bridge.
+- With no `--api-key`, login discovers a configured direct OIDC adapter and uses its device flow.
 
 `sk logout` — drop the active profile's credentials.
 

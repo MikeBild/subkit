@@ -6,11 +6,6 @@
 // Modules live as flat files under `packages/cli-core/src/` and are
 // imported via the `@cli-core/*` path alias (see tsconfig.json).
 
-export {
-  type BrowserLoginOptions,
-  type BrowserLoginResult,
-  runBrowserLogin,
-} from "./browser-login.ts";
 export { osc52Copy, ringBell } from "./clipboard.ts";
 export {
   type DeviceFlowOptions,

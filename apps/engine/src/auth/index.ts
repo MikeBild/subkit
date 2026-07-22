@@ -11,5 +11,4 @@ export * from "./providers/api-key.ts";
 export * from "./providers/mcp-oauth.ts";
 export * from "./providers/oidc.ts";
 export * from "./providers/portal-token.ts";
-export * from "./providers/token-bridge.ts";
 export * from "./types.ts";

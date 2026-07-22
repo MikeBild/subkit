@@ -12,28 +12,29 @@ import type { AppEnv } from "../../openapi.ts";
 
 const ProviderEntry = z
   .object({
-    protocol: z.enum(["api_key", "token_bridge", "oidc"]),
+    protocol: z.enum(["api_key", "oidc"]),
     id: z.string(),
-    label: z.string(),
-    login_url: z.string().url().optional(),
+    label: z.enum(["SSO", "API key"]),
     issuer: z.string().url().optional(),
   })
+  .strict()
   .openapi("AuthProvider");
 
 const ProvidersResponse = z
   .object({
     providers: z.array(ProviderEntry),
   })
+  .strict()
   .openapi("ProvidersResponse");
 
 const route = createRoute({
   method: "get",
   path: "/v1/identity/providers",
-  tags: ["identity"],
-  summary: "List available authentication providers",
+  tags: ["MCP authentication"],
+  summary: "List available MCP authentication methods",
   responses: {
     200: {
-      description: "OK",
+      description: "Canonical SSO-first method matrix",
       content: { "application/json": { schema: ProvidersResponse } },
     },
   },
@@ -42,28 +43,16 @@ const route = createRoute({
 export function registerProvidersRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
     const { getConfig } = await import("../../../config/loader.ts");
-    const providers: z.infer<typeof ProviderEntry>[] = getConfig().auth.providers.map(
-      (provider) => {
-        if (provider.protocol === "api_key") {
-          return { protocol: provider.protocol, id: provider.id, label: provider.label };
-        }
-        if (provider.protocol === "token_bridge") {
-          return {
-            protocol: provider.protocol,
-            id: provider.id,
-            label: provider.label,
-            login_url: provider.login_url,
-            issuer: provider.issuer_url,
-          };
-        }
-        return {
-          protocol: provider.protocol,
-          id: provider.id,
-          label: provider.label,
-          issuer: provider.issuer_url,
-        };
-      },
-    );
+    const providers: z.infer<typeof ProviderEntry>[] = [...getConfig().auth.providers]
+      .sort(
+        (left, right) => Number(left.protocol === "api_key") - Number(right.protocol === "api_key"),
+      )
+      .map((provider) => ({
+        protocol: provider.protocol,
+        id: provider.id,
+        label: provider.protocol === "api_key" ? "API key" : "SSO",
+        ...(provider.protocol === "oidc" ? { issuer: provider.issuer_url } : {}),
+      }));
 
     return c.json({ providers }, 200);
   });

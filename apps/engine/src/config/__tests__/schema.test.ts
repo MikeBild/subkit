@@ -64,22 +64,12 @@ describe("ConfigSchema", () => {
     expect(r.data.tenants?.["tenant-b"]?.tokens?.monthly_budget).toBe(50_000);
   });
 
-  test("auth accepts one provider-neutral list with bridge claim mapping and OIDC", () => {
+  test("auth accepts one product-local list with API key and OIDC", () => {
     const result = ConfigSchema.safeParse({
       database: { url: "postgres://x" },
       auth: {
         providers: [
           { protocol: "api_key", id: "api-key", label: "SubKit API key" },
-          {
-            protocol: "token_bridge",
-            id: "workforce-bridge",
-            label: "Workforce bridge",
-            login_url: "https://auth.example.test/subkit",
-            issuer_url: "https://issuer.example.test/project",
-            audience: "project",
-            jwks_url: "https://issuer.example.test/keys",
-            email_verified_claim: "user_metadata.email_verified",
-          },
           {
             protocol: "oidc",
             id: "workforce-oidc",
@@ -94,14 +84,8 @@ describe("ConfigSchema", () => {
     if (!result.success) return;
     expect(result.data.auth.providers.map((provider) => provider.protocol)).toEqual([
       "api_key",
-      "token_bridge",
       "oidc",
     ]);
-    const bridge = result.data.auth.providers[1];
-    expect(bridge?.protocol).toBe("token_bridge");
-    if (bridge?.protocol === "token_bridge") {
-      expect(bridge.email_verified_claim).toBe("user_metadata.email_verified");
-    }
   });
 
   test("auth rejects duplicate named OIDC provider ids", () => {

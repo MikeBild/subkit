@@ -188,7 +188,10 @@ describe("consent denial", () => {
     );
 
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toContain("/v1/identity/login/start");
+    const loginLocation = new URL(res.headers.get("location") ?? "");
+    expect(loginLocation.pathname).toBe("/v1/identity/login/start");
+    expect(loginLocation.searchParams.get("login_state")).toBeTruthy();
+    expect(loginLocation.searchParams.has("redirect_to")).toBe(false);
   });
 });
 

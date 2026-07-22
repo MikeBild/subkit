@@ -12,7 +12,7 @@
 // catch silent drift.
 
 import { mkdtempSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,13 +43,14 @@ async function run(): Promise<void> {
     throw new Error(`engine /openapi.json returned ${res.status}`);
   }
   const doc = (await res.json()) as { info?: { version?: string } };
-  // Pin the version field to a stable placeholder so the committed
-  // snapshot does not drift between local builds (which embed the
-  // package.json version via BUILD_VERSION) and CI (which runs the
-  // script without a stamped version, falling back to "0.0.0-dev").
-  // The client doesn't consume this field — pinning keeps
-  // `check:openapi-drift` honest about real surface changes.
-  if (doc.info) doc.info.version = "0.0.0-dev";
+  // The committed contract describes the repository release, while a running
+  // binary still reports its independently embedded BUILD_VERSION. Using the
+  // root package version keeps the checked-in OpenAPI artifact deterministic
+  // and makes a release bump visible to docs and downstream generators.
+  const packageJson = JSON.parse(await readFile(resolve(__dirname, "../package.json"), "utf8")) as {
+    version: string;
+  };
+  if (doc.info) doc.info.version = packageJson.version;
   const pretty = `${JSON.stringify(doc, null, 2)}\n`;
   await writeFile(jsonPath, pretty, "utf8");
   console.log(`wrote ${jsonPath}`);

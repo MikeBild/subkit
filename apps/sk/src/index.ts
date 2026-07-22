@@ -10,7 +10,7 @@
 
 import * as prompts from "@clack/prompts";
 import { exitCodeFor, isEngineError, wasReported } from "@cli-core/errors";
-import { runBrowserLogin, runDeviceFlow } from "@cli-core/index.ts";
+import { runDeviceFlow } from "@cli-core/index.ts";
 import { notifyIfUpdateAvailable } from "@cli-core/update-notifier.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { type CommandDef, defineCommand, runCommand, type SubCommandsDef, showUsage } from "citty";
@@ -163,10 +163,9 @@ const loginCommand = defineCommand({
 
     // Path 3: Discover providers from the engine and use the best available method.
     interface AuthProvider {
-      protocol: "api_key" | "token_bridge" | "oidc";
+      protocol: "api_key" | "oidc";
       id: string;
       label: string;
-      login_url?: string;
       issuer?: string;
     }
     let providers: AuthProvider[] = [];
@@ -191,7 +190,7 @@ const loginCommand = defineCommand({
           options: providers.map((p) => ({
             value: p.id,
             label: p.label,
-            hint: p.login_url ?? p.issuer ?? "",
+            hint: p.issuer ?? "",
           })),
         });
         if (prompts.isCancel(selected)) {
@@ -199,43 +198,6 @@ const loginCommand = defineCommand({
           return;
         }
         provider = providers.find((p) => p.id === selected)!;
-      }
-
-      if (provider.protocol === "token_bridge" && provider.login_url) {
-        process.stdout.write(`sk: signing in via ${provider.label}...\n`);
-        try {
-          const result = await runBrowserLogin({
-            provider_id: provider.id,
-            login_url: provider.login_url,
-            engine_url: engineUrl,
-          });
-          saveProfile({
-            name: profileName,
-            engine_url: engineUrl,
-            api_key: result.api_key,
-            active_tenant_id: result.tenant_id,
-          });
-          await recordPersonaHint(
-            new EngineClient({
-              engine_url: engineUrl,
-              api_key: result.api_key,
-              tenant: result.tenant_id,
-            }),
-            profileName,
-            engineUrl,
-            result.api_key,
-            result.tenant_id,
-          );
-          process.stdout.write(
-            `sk: signed in as ${result.email || result.user_id} — profile '${profileName}' saved\n`,
-          );
-          return;
-        } catch (err) {
-          process.stderr.write(
-            `sk: login failed: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
-          process.exit(2);
-        }
       }
 
       // OIDC device flow provider
@@ -259,7 +221,7 @@ const loginCommand = defineCommand({
             engine_url: engineUrl,
             scope,
           });
-          const activeTenant = tenant ?? result.tenant_id ?? null;
+          const activeTenant = tenant ?? result.context_id ?? null;
           saveProfile({
             name: profileName,
             engine_url: engineUrl,
@@ -278,7 +240,7 @@ const loginCommand = defineCommand({
             activeTenant,
           );
           process.stdout.write(
-            `sk: signed in as ${result.email || result.user_id} — profile '${profileName}' saved\n`,
+            `sk: signed in as ${result.email || result.principal_id} — profile '${profileName}' saved\n`,
           );
           return;
         } catch (err) {
@@ -490,7 +452,7 @@ async function runOnboarding(engineUrl: string): Promise<boolean> {
     return Boolean(resolveProfile().api_key);
   }
 
-  // Identity provider — discovery selects the configured bridge or OIDC device flow.
+  // Identity provider — discovery selects the configured direct OIDC device flow.
   await runCommand(loginCommand, { rawArgs: ["--engine-url", engineUrl] });
   return Boolean(resolveProfile().api_key);
 }

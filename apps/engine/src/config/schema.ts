@@ -255,52 +255,6 @@ const AuthProviders = z
         label: z.string().min(1).max(120),
       }),
       z.object({
-        protocol: z.literal("token_bridge"),
-        id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
-        label: z.string().min(1).max(120),
-        login_url: z.url().refine(
-          (value) => {
-            const url = new URL(value);
-            return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
-          },
-          {
-            message: "token bridge login_url must use HTTPS outside localhost",
-          },
-        ),
-        issuer_url: z.url().refine(
-          (value) => {
-            const url = new URL(value);
-            return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
-          },
-          {
-            message: "token bridge issuer_url must use HTTPS outside localhost",
-          },
-        ),
-        audience: z.string().min(1),
-        jwks_url: z.url().refine(
-          (value) => {
-            const url = new URL(value);
-            return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
-          },
-          {
-            message: "token bridge jwks_url must use HTTPS outside localhost",
-          },
-        ),
-        tenant_slug: z.string().min(1).default("default"),
-        subject_claim: z
-          .string()
-          .regex(/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/)
-          .default("sub"),
-        email_claim: z
-          .string()
-          .regex(/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/)
-          .default("email"),
-        email_verified_claim: z
-          .string()
-          .regex(/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/)
-          .default("email_verified"),
-      }),
-      z.object({
         protocol: z.literal("oidc"),
         id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
         label: z.string().min(1).max(120),

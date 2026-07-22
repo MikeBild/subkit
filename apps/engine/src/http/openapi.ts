@@ -86,7 +86,7 @@ export const SECURITY_SCHEMES = {
   oauth2: {
     type: "oauth2" as const,
     description:
-      "OAuth 2.1 authorization-code flow with PKCE. Browser login uses configured api_key, token_bridge, or OIDC adapters.",
+      "OAuth 2.1 authorization-code flow with PKCE. Browser login uses product-local API-key or direct OIDC adapters.",
     flows: {
       authorizationCode: {
         authorizationUrl: "/v1/oauth/authorize",

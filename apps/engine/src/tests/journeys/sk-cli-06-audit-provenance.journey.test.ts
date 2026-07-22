@@ -140,13 +140,13 @@ describe("journey: sk-cli audit provenance", () => {
       body: JSON.stringify({ provider_id: "journey-identity", identity_token: idToken }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { user_id: string; api_key: string };
+    const body = (await res.json()) as { principal_id: string; api_key: string };
     expect(body.api_key.startsWith("wf_")).toBe(true);
 
-    const loggedIn = await auditRowsByAction("user.logged_in", body.user_id);
+    const loggedIn = await auditRowsByAction("user.logged_in", body.principal_id);
     expect(loggedIn.length).toBeGreaterThanOrEqual(1);
 
-    const skCliLogin = await auditRowsByAction("sk_cli.login", body.user_id);
+    const skCliLogin = await auditRowsByAction("sk_cli.login", body.principal_id);
     expect(skCliLogin.length).toBe(1);
     const metadata = skCliLogin[0]?.metadata as { user_agent?: string };
     expect(metadata?.user_agent).toBe("sk-cli/0.0.1");
@@ -163,8 +163,8 @@ describe("journey: sk-cli audit provenance", () => {
       body: JSON.stringify({ provider_id: "journey-identity", identity_token: idToken }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { user_id: string };
-    const skCliLogin = await auditRowsByAction("sk_cli.login", body.user_id);
+    const body = (await res.json()) as { principal_id: string };
+    const skCliLogin = await auditRowsByAction("sk_cli.login", body.principal_id);
     expect(skCliLogin.length).toBe(1);
   });
 });

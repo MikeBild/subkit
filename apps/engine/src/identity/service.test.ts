@@ -450,8 +450,8 @@ describe("JIT provisioning — happy path (scenario 3)", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       api_key: string;
-      user_id: string;
-      tenant_id: string;
+      principal_id: string;
+      context_id: string;
     };
     expect(body.api_key).toMatch(/^wf_live_/);
 
@@ -472,7 +472,7 @@ describe("JIT provisioning — happy path (scenario 3)", () => {
     const auditRows = await httpCtx.db
       .select()
       .from(auditLog)
-      .where(eq(auditLog.actor_id, body.user_id));
+      .where(eq(auditLog.actor_id, body.principal_id));
     const actions = auditRows.map((r) => r.action);
     expect(actions).toContain("session.issued");
     expect(actions).toContain("user.logged_in");

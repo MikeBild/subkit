@@ -21,26 +21,13 @@ describe("GET /v1/identity/providers", () => {
     const data = (await res.json()) as {
       providers: { protocol: string; id: string; label: string }[];
     };
-    expect(data.providers).toEqual([apiKeyProvider]);
+    expect(data.providers).toEqual([{ protocol: "api_key", id: "api-key", label: "API key" }]);
   });
 
-  test("returns every configured adapter without provider-specific fields", async () => {
+  test("returns every configured adapter with only protocol-neutral connection metadata", async () => {
     await loadAuthProvidersForTest(
       [
         apiKeyProvider,
-        {
-          protocol: "token_bridge",
-          id: "workforce",
-          label: "Workforce",
-          login_url: "https://login.example.com/subkit",
-          issuer_url: "https://issuer.example.com",
-          audience: "subkit",
-          jwks_url: "https://issuer.example.com/jwks",
-          tenant_slug: "default",
-          subject_claim: "sub",
-          email_claim: "email",
-          email_verified_claim: "email_verified",
-        },
         {
           protocol: "oidc",
           id: "partner",
@@ -62,17 +49,18 @@ describe("GET /v1/identity/providers", () => {
         protocol: string;
         id: string;
         label: string;
-        login_url?: string;
         issuer?: string;
       }[];
     };
-    expect(data.providers.map((provider) => provider.protocol)).toEqual([
-      "api_key",
-      "token_bridge",
-      "oidc",
+    expect(data.providers).toEqual([
+      {
+        protocol: "oidc",
+        id: "partner",
+        label: "SSO",
+        issuer: "https://partner.example.com",
+      },
+      { protocol: "api_key", id: "api-key", label: "API key" },
     ]);
-    expect(data.providers[1]?.login_url).toBe("https://login.example.com/subkit");
-    expect(data.providers[2]?.issuer).toBe("https://partner.example.com");
   });
 
   test("does not require authentication", async () => {
