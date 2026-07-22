@@ -90,13 +90,12 @@ docker exec subkit sk init \
 > ```
 
 > **Authentication defaults to the `api_key` adapter** — people are added by
-> admin invite and authenticate with engine-issued API keys. Configure external
-> identity by adding named `token_bridge` or `oidc` records to
+> admin invite and authenticate with engine-issued API keys. Configure direct
+> OIDC by adding named `oidc` records to
 > `auth.providers` in `subkit.config.json`, then restart. No provider-specific
 > setting or route is required.
 
-For example, a hosted JWT bridge with a nested verification claim is only a
-configuration record:
+For example, a SubKit-owned direct OIDC client is one configuration record:
 
 ```json
 {
@@ -104,14 +103,13 @@ configuration record:
     "providers": [
       { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
       {
-        "protocol": "token_bridge",
-        "id": "workforce-bridge",
-        "label": "Workforce bridge",
-        "login_url": "https://login.example.com/subkit/",
-        "issuer_url": "https://issuer.example.com",
-        "audience": "subkit",
-        "jwks_url": "https://issuer.example.com/.well-known/jwks.json",
-        "email_verified_claim": "user_metadata.email_verified",
+        "protocol": "oidc",
+        "id": "workforce-oidc",
+        "label": "Workforce OIDC",
+        "issuer_url": "https://identity.example.com",
+        "client_id": "<subkit-client-id>",
+        "client_secret": "<subkit-client-secret>",
+        "scopes": "openid profile email",
         "tenant_slug": "default"
       }
     ]
@@ -122,6 +120,14 @@ configuration record:
 The only browser endpoints remain `/v1/identity/login/start`,
 `/v1/identity/login/callback`, and `/v1/identity/logout` regardless of adapter
 id or vendor.
+
+The chooser is deliberately not vendor-configurable: `mcp-auth-v2` always
+shows **Continue with SSO** first and **Continue with API key** second. Provider
+ids remain opaque deployment configuration, discovery returns canonical
+labels (`SSO`, `API key`), and assertion exchange uses only
+`POST /v1/identity/sessions` with the shared
+`{provider_id,identity_token}` → `{api_key,principal_id,context_id,email}`
+contract.
 
 Verify:
 

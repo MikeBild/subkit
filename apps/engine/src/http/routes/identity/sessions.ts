@@ -7,7 +7,6 @@ import { eq } from "drizzle-orm";
 import * as jose from "jose";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import {
-  createTokenBridgeProvider,
   IdentityLinkConflictError,
   type ResolvedPrincipal,
   resolveProviderIdentity,
@@ -25,35 +24,37 @@ import { ErrorSchema } from "./schemas.ts";
 
 type ProviderConfig = Config["auth"]["providers"][number];
 type OidcConfig = Extract<ProviderConfig, { protocol: "oidc" }>;
-type TokenBridgeConfig = Extract<ProviderConfig, { protocol: "token_bridge" }>;
 
 const SessionBody = z
   .object({
     provider_id: z.string().min(1),
     identity_token: z.string().min(1),
   })
-  .openapi("IdentitySessionBody");
+  .strict()
+  .openapi("IdentitySessionRequest");
 
 const SessionResponse = z
   .object({
     api_key: z.string(),
-    user_id: z.string().uuid(),
-    tenant_id: z.string().uuid(),
+    principal_id: z.string(),
+    context_id: z.string().nullable(),
     email: z.string(),
   })
+  .strict()
   .openapi("IdentitySessionResponse");
 
 const route = createRoute({
   method: "post",
   path: "/v1/identity/sessions",
-  tags: ["identity"],
-  summary: "Exchange a configured identity assertion for a personal SubKit API key",
+  operationId: "createIdentitySession",
+  tags: ["MCP authentication"],
+  summary: "Exchange a configured identity assertion for a scoped API key",
   request: {
-    body: { content: { "application/json": { schema: SessionBody } } },
+    body: { required: true, content: { "application/json": { schema: SessionBody } } },
   },
   responses: {
     200: {
-      description: "OK",
+      description: "Scoped product session",
       content: { "application/json": { schema: SessionResponse } },
     },
     400: {
@@ -176,30 +177,6 @@ async function resolveOidcAssertion(
   };
 }
 
-async function resolveBridgeAssertion(
-  db: Db,
-  provider: TokenBridgeConfig,
-  identityToken: string,
-): Promise<ResolvedPrincipal> {
-  const principal = await createTokenBridgeProvider({
-    db,
-    providerId: provider.id,
-    issuer: provider.issuer_url,
-    audience: provider.audience,
-    jwksUrl: provider.jwks_url,
-    tenantSlug: provider.tenant_slug,
-    subjectClaim: provider.subject_claim,
-    emailClaim: provider.email_claim,
-    emailVerifiedClaim: provider.email_verified_claim,
-  }).resolve(
-    new Request("http://127.0.0.1/v1/identity/sessions", {
-      headers: { authorization: `Bearer ${identityToken}` },
-    }),
-  );
-  if (principal?.kind !== "user") throw new UnauthorizedError("identity assertion rejected");
-  return principal;
-}
-
 export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
     const db = c.get("db");
@@ -210,14 +187,7 @@ export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError("api_key does not accept identity assertions");
     }
 
-    const resolved =
-      provider.protocol === "token_bridge"
-        ? {
-            principal: await resolveBridgeAssertion(db, provider, body.identity_token),
-            subject: undefined,
-            issuer: provider.issuer_url,
-          }
-        : await resolveOidcAssertion(db, provider, body.identity_token);
+    const resolved = await resolveOidcAssertion(db, provider, body.identity_token);
     const principal = resolved.principal;
     const issued = await identity.issueApiKey(
       {
@@ -283,8 +253,8 @@ export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
     return c.json(
       {
         api_key: issued.plaintext,
-        user_id: principal.id,
-        tenant_id: principal.tenant_id,
+        principal_id: principal.id,
+        context_id: principal.tenant_id,
         email: principal.email ?? "",
       },
       200,

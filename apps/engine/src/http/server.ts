@@ -15,7 +15,6 @@ import { createApiKeyProvider } from "../auth/providers/api-key.ts";
 import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
 import { createOidcProvider } from "../auth/providers/oidc.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
-import { createTokenBridgeProvider } from "../auth/providers/token-bridge.ts";
 import { AuthProviderRegistry } from "../auth/registry.ts";
 import { ChatAdapterRegistry } from "../chat/registry.ts";
 import { getConfig } from "../config/loader.ts";
@@ -157,22 +156,7 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
   reg.register(createApiKeyProvider(db ? { db } : {}));
   registered.push("api_key");
   for (const provider of providerConfigs) {
-    if (provider.protocol === "token_bridge") {
-      reg.register(
-        createTokenBridgeProvider({
-          providerId: provider.id,
-          issuer: provider.issuer_url,
-          audience: provider.audience,
-          jwksUrl: provider.jwks_url,
-          tenantSlug: provider.tenant_slug,
-          subjectClaim: provider.subject_claim,
-          emailClaim: provider.email_claim,
-          emailVerifiedClaim: provider.email_verified_claim,
-          ...(db ? { db } : {}),
-        }),
-      );
-      registered.push(provider.id);
-    } else if (provider.protocol === "oidc") {
+    if (provider.protocol === "oidc") {
       reg.register(
         createOidcProvider({
           providerId: provider.id,
@@ -388,8 +372,8 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerMcpHttpRoutes(app);
 
   // OpenAPI document
-  app.doc("/openapi.json", {
-    openapi: "3.0.0",
+  app.doc31("/openapi.json", {
+    openapi: "3.1.0",
     info: OPENAPI_INFO,
   });
 

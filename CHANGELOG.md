@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] – 2026-07-22
+
+### Added
+- Publish and test the exact common MCP-auth OpenAPI operation set, schema
+  names, safe SSO-first provider discovery and assertion exchange contract.
+
+### Changed
+- Make API-key and direct OIDC the complete SubKit-owned MCP authentication
+  model. SubKit owns every OIDC client, secret, callback, session and tenant
+  mapping; no shared cross-product authentication runtime is supported.
+- Upgrade every SubKit login and consent page to `mcp-auth-v2`, the exact
+  shared style hash, fixed `Continue with SSO` then `Continue with API key`
+  actions, and an opaque `login_state` authorize handoff.
+- Align provider discovery, OpenAPI tags/descriptions, CLI consumers, README,
+  source docs and generated `llms.txt`/`llms-full.txt` with WikiKit and
+  ContentKit while retaining independent tenants, RBAC, data and deployment.
+- Publish the generated engine contract as OpenAPI 3.1 with strict common
+  provider-discovery and identity-session schemas.
+
+### Removed
+- Remove the hosted assertion-adapter protocol, CLI browser handoff and POST
+  callback surface.
+- Replace the SubKit-only session response fields `user_id` and `tenant_id`
+  with the common `principal_id` and `context_id` fields. No response aliases,
+  provider-named routes or compatibility parsing remain.
+
 ## [2.0.4] – 2026-07-22
 
 ### Changed
@@ -41,12 +67,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 - Add one provider-neutral `auth.providers` list that can offer one user-owned
-  API-key adapter plus multiple named token-bridge and OIDC adapters.
+  API-key adapter plus multiple named direct OIDC adapters.
 - Add the common `mcp-auth-v1` sign-in/consent card with the SubKit `sk` badge,
   account switching/logout and an OAuth 2.1 OpenAPI security scheme.
-- Add configurable subject, email and email-verification claim paths for
-  standards-based JWT bridges, so adapters with nested claims need no product
-  code branch.
+- Apply discovered issuer, configured audience and verified-email policy to
+  direct OIDC adapters without a product-specific provider branch.
 
 ### Changed
 - Remove the parallel provider-specific auth trees and

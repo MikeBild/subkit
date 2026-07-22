@@ -25,8 +25,8 @@ export interface DeviceFlowOptions {
 
 export interface DeviceFlowResult {
   api_key: string;
-  user_id: string;
-  tenant_id: string;
+  principal_id: string;
+  context_id: string | null;
   email: string;
 }
 
