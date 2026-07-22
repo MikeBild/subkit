@@ -743,6 +743,31 @@ describe("audit log entries — token lifecycle (HTTP layer)", () => {
       );
     expect(rows.length).toBeGreaterThanOrEqual(1);
   });
+
+  test("revoking a refresh token rejects its associated access token at /mcp", async () => {
+    const { access_token, refresh_token } = await runFullOAuthFlow({
+      redirectUri: "https://refresh-family-revoked.example.com/cb",
+      label: "RefreshFamilyRevoked",
+    });
+
+    const revokeRes = await fetch(`${ctx.baseUrl}/v1/oauth/revoke`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: refresh_token }).toString(),
+    });
+    expect(revokeRes.status).toBe(200);
+
+    const mcpRes = await fetch(`${ctx.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "initialize", id: 1 }),
+    });
+    expect(mcpRes.status).toBe(401);
+  });
 });
 
 // ─── Consent form structure ──────────────────────────────────────────────────

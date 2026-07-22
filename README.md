@@ -72,7 +72,9 @@ session, tenant mapping and deployment; no shared cross-product login component
 exists. OIDC uses discovery and Authorization Code + PKCE. The same list drives discovery, browser login and
 bearer verification. Consent is limited to the scopes the client actually
 requested and the user's current RBAC, with mandatory `mcp:read`, revocable
-eight-hour/24-hour browser sessions, logout and account switching. See
+eight-hour/24-hour browser sessions, logout and account switching. Revoking a
+refresh token invalidates its complete token family, including associated
+access tokens; revoking an access token invalidates that token alone. See
 [Input surfaces](docs/developers/input-surfaces.md#mcp-oauth-21-chatgpt--claudeai--cursor).
 The browser contract is the same independent `mcp-auth-v2` implementation used
 by WikiKit and ContentKit: **Continue with SSO** is always first and

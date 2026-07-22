@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] – 2026-07-22
+
+### Fixed
+- Revoke the complete refresh-token family, including every associated access
+  token, when a client explicitly revokes a refresh token. Replay-triggered and
+  explicit family revocation now use the same transactional persistence path
+  while retaining their distinct audit actors and reasons.
+
 ## [3.0.0] – 2026-07-22
 
 ### Added
