@@ -53,6 +53,15 @@ export const ElicitResultSchema = z.object({
 export type ElicitationResult = z.infer<typeof ElicitResultSchema>;
 
 /**
+ * A `cancel` that arrives faster than any human could have read the form
+ * means the client auto-cancelled without rendering it (observed in the
+ * wild: clients that advertise `elicitation` but refuse mid-turn UI).
+ * Such a cancel is a transport verdict, not a human decision — callers
+ * must fall back (portal / retry) instead of recording `user_cancelled`.
+ */
+export const FORM_FAST_CANCEL_MS = 2_000;
+
+/**
  * Thrown when a tool asks the bridge for a capability the connected
  * client did not advertise. Callers catch this and fall back to the
  * DB-pause path.

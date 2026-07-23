@@ -565,7 +565,7 @@ export async function resolveElicitation(
     decided_by: string | null;
     /** Persisted verbatim to `decision_reason`. Carries a machine code —
      *  a stable token, not free prose (e.g. `user_declined`,
-     *  `user_cancelled`, `oauth_timeout`, `elicitation_transport_failed`,
+     *  `user_cancelled`, `oauth_timeout`,
      *  `oauth_authorization_declined`, `approval_expired`). Consumers may
      *  switch on it. */
     reason?: string;

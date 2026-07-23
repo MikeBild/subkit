@@ -75,7 +75,7 @@ export const conversationElicitations = pgTable(
     decided_at: timestamp("decided_at", { withTimezone: true }),
     // Machine-code decision token — a stable string, not free prose.
     // `resolveElicitation` stores codes like `user_declined`,
-    // `user_cancelled`, `oauth_timeout`, `elicitation_transport_failed`,
+    // `user_cancelled`, `oauth_timeout`,
     // or `superseded_by_new_elicitation` here so the resolution path
     // stays auditable and consumers can switch on it.
     decision_reason: text("decision_reason"),

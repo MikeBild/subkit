@@ -29,11 +29,11 @@ describe("summarizeToolFailure", () => {
     expect(
       summarizeToolFailure({
         ok: false,
-        error_code: "elicitation_transport_failed",
+        error_code: "oauth_elicitation_transport_failed",
         message: "The MCP elicitation request failed in transit.",
       }),
     ).toEqual({
-      error_code: "elicitation_transport_failed",
+      error_code: "oauth_elicitation_transport_failed",
       error: "The MCP elicitation request failed in transit.",
     });
   });

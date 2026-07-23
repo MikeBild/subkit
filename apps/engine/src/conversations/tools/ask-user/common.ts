@@ -30,7 +30,7 @@ import {
   isDraftCredentialSetupAuthType,
   mintDraftCredentialSetupUrl,
 } from "../../draft-credential-setup.ts";
-import { ElicitationUnsupportedError } from "../../elicitation-bridge.ts";
+import { ElicitationUnsupportedError, FORM_FAST_CANCEL_MS } from "../../elicitation-bridge.ts";
 import {
   createElicitation,
   createNativeElicitation,
@@ -39,7 +39,7 @@ import {
 } from "../../elicitations.ts";
 import { applyElicitationOutcome } from "../../persistence/apply-outcome.ts";
 import { alreadyResolved, resolveAndError } from "../elicitation-resolve.ts";
-import { ELICITATION_TRANSPORT_FAILED, INVALID_ELICIT_RESPONSE } from "../error-codes.ts";
+import { INVALID_ELICIT_RESPONSE } from "../error-codes.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
 import {
   type FormBridgeToolName,
@@ -283,10 +283,12 @@ export async function pauseForUserInput(
         ctx.db,
       );
       try {
+        const sentAt = Date.now();
         let result = await bridge.elicitForm({
           message: mapped.message,
           requestedSchema: mapped.requestedSchema,
         });
+        let roundtripMs = Date.now() - sentAt;
         let mappedOutput =
           result.action === "accept"
             ? mapElicitResultToAskUserOutput(
@@ -303,10 +305,12 @@ export async function pauseForUserInput(
           const verdict = validateElicitationAnswer(p.tool_name, p.input, mappedOutput);
           if (!verdict.ok) {
             const errText = verdict.field_errors.map((e) => `${e.name}: ${e.message}`).join("; ");
+            const retrySentAt = Date.now();
             result = await bridge.elicitForm({
               message: `${mapped.message}\n\nThe previous answer was invalid — ${errText}. Please correct and resubmit.`,
               requestedSchema: mapped.requestedSchema,
             });
+            roundtripMs = Date.now() - retrySentAt;
             mappedOutput =
               result.action === "accept"
                 ? mapElicitResultToAskUserOutput(
@@ -400,6 +404,35 @@ export async function pauseForUserInput(
             data: { elicitation_id: row.id },
           });
         }
+        // A `cancel` that came back faster than a human could have read
+        // the form is the client auto-cancelling without rendering it — a
+        // transport verdict, not a decision. Demote to the portal DB-pause
+        // (row stays pending, draft survives) instead of recording a
+        // cancellation nobody made. `decline` is always honored: every
+        // client UI renders it as an explicit human "no".
+        if (result.action === "cancel" && roundtripMs < FORM_FAST_CANCEL_MS) {
+          await demoteElicitationToPortal(ctx.tenant_id, row.id, ctx.db);
+          logger.warn({
+            module: "conversation",
+            action: "elicitation.form_fast_cancel_demoted",
+            msg: "client cancelled the form faster than a human could render it — demoting to DB-pause",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            elicitation_id: row.id,
+            tool_name: p.tool_name,
+            elapsed_ms: roundtripMs,
+          });
+          return {
+            ok: true,
+            data: { status: "awaiting_input", elicitation_id: row.id },
+            pause: {
+              tool_name: p.tool_name,
+              summary: p.summary,
+              elicitation_id: row.id,
+              input: p.input,
+            },
+          };
+        }
         return resolveAndError(ctx, row.id, {
           reason: result.action === "decline" ? "user_declined" : "user_cancelled",
           errorCode: result.action === "decline" ? "user_declined" : "user_cancelled",
@@ -444,36 +477,34 @@ export async function pauseForUserInput(
           };
         }
         // Non-`ElicitationUnsupportedError` — a generic transport /
-        // timeout failure (client disconnected, never answered). The
-        // elicitation row is pending and the conversation is wedged in
-        // `awaiting_input`. Resolve the row `cancelled` and flip the
-        // conversation back to `active` so the loop is not stuck, then
-        // return a structured error instead of re-throwing.
+        // timeout failure (client disconnected, never answered). A
+        // transport break is NOT a decision: the operator never saw or
+        // answered anything, so destroying the row would throw away their
+        // in-flight work (the draft) over a network hiccup. Demote the
+        // row to the portal DB-pause instead — it stays `pending`, the
+        // conversation stays `awaiting_input`, and the answer can still
+        // arrive via the portal or a later poll re-delivery.
+        await demoteElicitationToPortal(ctx.tenant_id, row.id, ctx.db);
         logger.warn({
           module: "conversation",
-          action: "elicitation.bridge_transport_failed",
-          msg: "MCP elicitation transport failed — resolving row cancelled and unwedging the conversation",
+          action: "elicitation.bridge_transport_demoted",
+          msg: "MCP elicitation transport failed — demoting to DB-pause; row stays pending and answerable",
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
           elicitation_id: row.id,
           tool_name: p.tool_name,
           error: err instanceof Error ? err.message : String(err),
         });
-        // Resolve the row `cancelled` AND flip the conversation back to
-        // `active` as one atomic unit so a partial failure cannot leave
-        // the conversation wedged. A lost race (a concurrent
-        // `respondElicitation` already resolved this row) returns
-        // `already_resolved` — the conversation is no longer wedged, so
-        // `resolveAndError` reports that rather than the transport failure.
-        return resolveAndError(ctx, row.id, {
-          reason: ELICITATION_TRANSPORT_FAILED,
-          errorCode: ELICITATION_TRANSPORT_FAILED,
-          message:
-            "The MCP elicitation request failed in transit — the client may have disconnected or did not answer. The conversation is no longer waiting on input; ask the user again if their answer is still needed.",
-          transport: "failed",
-          status: "transport_failed",
-          data: { elicitation_id: row.id },
-        });
+        return {
+          ok: true,
+          data: { status: "awaiting_input", elicitation_id: row.id },
+          pause: {
+            tool_name: p.tool_name,
+            summary: p.summary,
+            elicitation_id: row.id,
+            input: p.input,
+          },
+        };
       }
     }
   }
