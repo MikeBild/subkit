@@ -10,6 +10,7 @@ import {
   IdentityLinkConflictError,
   type ResolvedPrincipal,
   resolveProviderIdentity,
+  SignupDisabledError,
 } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { Config } from "../../../config/schema.ts";
@@ -18,7 +19,7 @@ import { tenants } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
 import { type DiscoveryDoc, fetchDiscovery } from "../../../identity/index.ts";
 import { logger } from "../../../logging/index.ts";
-import { BadRequestError, ForbiddenError, UnauthorizedError } from "../../errors.ts";
+import { BadRequestError, ForbiddenError, HttpError, UnauthorizedError } from "../../errors.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { ErrorSchema } from "./schemas.ts";
 
@@ -144,8 +145,12 @@ async function resolveOidcAssertion(
       subject,
       email: accountEmail,
       linkByEmail: email !== null,
+      allowCreate: getConfig().auth.enable_signup,
     });
   } catch (error) {
+    if (error instanceof SignupDisabledError) {
+      throw new HttpError(403, "access_denied", error.message);
+    }
     if (error instanceof IdentityLinkConflictError) throw new ForbiddenError(error.message);
     throw error;
   }

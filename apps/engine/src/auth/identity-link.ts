@@ -9,12 +9,21 @@ export class IdentityLinkConflictError extends Error {
   }
 }
 
+export class SignupDisabledError extends Error {
+  constructor() {
+    super("signups are disabled and this identity matches no existing account");
+    this.name = "SignupDisabledError";
+  }
+}
+
 export interface ResolveProviderIdentityOptions {
   tenantId: string;
   providerId: string;
   subject: string;
   email: string;
   linkByEmail: boolean;
+  /** When false, only existing users may resolve — never JIT-provision a new users row. */
+  allowCreate: boolean;
 }
 
 /**
@@ -70,6 +79,9 @@ export async function resolveProviderIdentity(
         )[0]
       : undefined;
     let createdUser = false;
+    if (!user && !options.allowCreate) {
+      throw new SignupDisabledError();
+    }
     if (!user) {
       [user] = await tx
         .insert(users)
