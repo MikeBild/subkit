@@ -49,6 +49,7 @@ import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import { assembleCatalog, DEFAULT_PALETTE_LIMIT, TOOL_PREFIX } from "./catalog-budget.ts";
+import { ELICITATION_FORM_TIMEOUT_MS } from "./conversation-native-elicitation.ts";
 import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversations.ts";
 import { buildResultEnvelope } from "./held-preview.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
@@ -411,6 +412,11 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           ...(formElicitationCapable || urlElicitationCapable
             ? {
                 nativeElicitation: {
+                  // No `signal: extra.signal` here: delivery is detached
+                  // from the originating `tools/call` (the poll returns
+                  // immediately while the form round-trip stays pending),
+                  // so tying it to the dying request's abort signal would
+                  // kill the form the moment the poll response is written.
                   ...(formElicitationCapable
                     ? {
                         elicitForm: async (params) =>
@@ -420,7 +426,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
                               params: { mode: "form", ...params },
                             },
                             McpElicitResultSchema,
-                            { signal: extra.signal },
+                            { timeout: ELICITATION_FORM_TIMEOUT_MS },
                           ),
                       }
                     : {}),
@@ -435,7 +441,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
                             const result = await server.request(
                               { method: "elicitation/create", params },
                               McpElicitResultSchema,
-                              { signal: extra.signal },
+                              { timeout: ELICITATION_FORM_TIMEOUT_MS },
                             );
                             if (result.action !== "accept") unregister();
                             return result;

@@ -9,9 +9,15 @@
 //      continuation, structured error_code.
 //   3. No bridge → DB-pause fallback (returns a `pause`, row pending).
 //   4. Bridge present, non-ElicitationUnsupportedError transport
-//      failure → row resolved cancelled with reason
-//      `elicitation_transport_failed`, conversation flipped back to
-//      active, structured `elicitation_transport_failed` error.
+//      failure → NON-DESTRUCTIVE demote to the portal DB-pause: row
+//      stays pending (protocol_native flipped false), conversation
+//      stays awaiting_input, and the tool returns the same
+//      pause envelope the DB-pause path does.
+//   5. Fast-cancel heuristic: a `cancel` arriving faster than
+//      FORM_FAST_CANCEL_MS is the client auto-cancelling without
+//      rendering the form → demote to portal (non-destructive). A
+//      cancel at/after the threshold is a genuine human cancel
+//      (destructive, unchanged); `decline` is ALWAYS honored.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
@@ -20,7 +26,7 @@ import { conversationElicitations, conversations, tenants } from "../../db/schem
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import type { ElicitationBridge, ElicitationResult } from "../elicitation-bridge.ts";
-import { ElicitationUnsupportedError } from "../elicitation-bridge.ts";
+import { ElicitationUnsupportedError, FORM_FAST_CANCEL_MS } from "../elicitation-bridge.ts";
 import { pauseForUserInput } from "../tools/ask-user/common.ts";
 import { INVALID_ELICIT_RESPONSE } from "../tools/error-codes.ts";
 import type { ToolContext } from "../tools/index.ts";
@@ -60,8 +66,8 @@ async function freshConversation(): Promise<string> {
 function makeBridge(
   behaviour:
     | { kind: "accept"; content: Record<string, unknown> }
-    | { kind: "decline" }
-    | { kind: "cancel" }
+    | { kind: "decline"; delayMs?: number }
+    | { kind: "cancel"; delayMs?: number }
     | { kind: "throw"; error: Error },
 ): ElicitationBridge {
   const elicitForm = async (): Promise<ElicitationResult> => {
@@ -69,8 +75,10 @@ function makeBridge(
       case "accept":
         return { action: "accept", content: behaviour.content };
       case "decline":
+        if (behaviour.delayMs) await Bun.sleep(behaviour.delayMs);
         return { action: "decline" };
       case "cancel":
+        if (behaviour.delayMs) await Bun.sleep(behaviour.delayMs);
         return { action: "cancel" };
       case "throw":
         throw behaviour.error;
@@ -197,9 +205,12 @@ describe("pauseForUserInput — MCP-native form elicitation (capable client)", (
     expect(rows[0]!.decision_reason).toBe("user_declined");
   });
 
-  test("cancel → row resolved cancelled (user_cancelled), structured error", async () => {
+  test("cancel (after the fast-cancel window) → row resolved cancelled (user_cancelled), structured error", async () => {
     const conversation_id = await freshConversation();
-    const bridge = makeBridge({ kind: "cancel" });
+    // A genuine human cancel takes longer than FORM_FAST_CANCEL_MS — an
+    // instant cancel would be treated as the client never rendering the
+    // form (see the fast-cancel describe below).
+    const bridge = makeBridge({ kind: "cancel", delayMs: FORM_FAST_CANCEL_MS + 100 });
     const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
       tool_name: "ask_user_text",
       summary: "Secret?",
@@ -275,7 +286,11 @@ describe("pauseForUserInput — DB-pause fallback (no bridge)", () => {
 });
 
 describe("pauseForUserInput — bridge transport failure", () => {
-  test("non-ElicitationUnsupportedError throw → row cancelled, conversation unwedged, structured error", async () => {
+  test("non-ElicitationUnsupportedError throw → NON-DESTRUCTIVE demote: row stays pending, conversation stays awaiting_input, pause returned", async () => {
+    // A transport break is NOT a decision — the operator never saw or
+    // answered anything. Destroying the row would throw away their
+    // in-flight work over a network hiccup, so the row is demoted to the
+    // portal DB-pause instead and stays answerable.
     const conversation_id = await freshConversation();
     const bridge = makeBridge({ kind: "throw", error: new Error("client disconnected") });
     const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
@@ -284,28 +299,33 @@ describe("pauseForUserInput — bridge transport failure", () => {
       input: { question: "What is your name?" },
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error_code).toBe("elicitation_transport_failed");
-      // No `pause` — an external MCP client cannot resume a DB-pause.
-      expect(result.pause).toBeUndefined();
+    // Same shape as the ElicitationUnsupportedError arm: an ok pause.
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.pause).toBeDefined();
+      expect(result.pause?.tool_name).toBe("ask_user_text");
+      expect(result.data).toEqual({
+        status: "awaiting_input",
+        elicitation_id: result.pause!.elicitation_id,
+      });
     }
-    // The conversation is no longer wedged in awaiting_input.
-    expect(await readConversationStatus(conversation_id)).toBe("active");
+    // The conversation STAYS awaiting_input — the answer can still
+    // arrive via the portal or a later poll re-delivery.
+    expect(await readConversationStatus(conversation_id)).toBe("awaiting_input");
     const rows = await readElicitation(conversation_id);
-    expect(rows[0]!.status).toBe("cancelled");
-    expect(rows[0]!.decision_reason).toBe("elicitation_transport_failed");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("pending");
+    // Demoted in place: it now resumes via a portal POST.
+    expect(rows[0]!.protocol_native).toBe(false);
+    if (result.ok) expect(result.pause?.elicitation_id).toBe(rows[0]!.id);
 
-    // The resolve audit row records the tri-state: a bridge round-trip
-    // that broke in transit is `APPROVAL_REJECTED` with
-    // `surface: mcp_elicitation` and `elicitation_transport: failed`
-    // (docs/developers/tool-palette.md — transport failure ≠ a governance
-    // decision the operator made).
-    const audit = await readResolveAudit(rows[0]!.id, "approval.rejected");
-    expect(audit).toBeDefined();
-    const meta = audit!.metadata as Record<string, unknown>;
-    expect(meta.surface).toBe("mcp_elicitation");
-    expect(meta.elicitation_transport).toBe("failed");
+    // Audit honesty: the demote emits ELICITATION_DEMOTED_TO_PORTAL …
+    const demoteAudit = await readResolveAudit(rows[0]!.id, "elicitation.demoted_to_portal");
+    expect(demoteAudit).toBeDefined();
+    expect(demoteAudit!.tenant_id).toBe(tenant_id);
+    // … and does NOT record a governance rejection nobody made.
+    const rejectedAudit = await readResolveAudit(rows[0]!.id, "approval.rejected");
+    expect(rejectedAudit).toBeUndefined();
   });
 
   test("ElicitationUnsupportedError throw → falls back to a DB-pause on the existing row", async () => {
@@ -378,6 +398,83 @@ describe("pauseForUserInput — bridge transport failure", () => {
     expect(demoteAudit).toBeDefined();
     expect(demoteAudit!.resource_id).toBe(originalRowId);
     expect(demoteAudit!.tenant_id).toBe(tenant_id);
+  });
+});
+
+describe("pauseForUserInput — fast-cancel heuristic", () => {
+  test("instant cancel (< FORM_FAST_CANCEL_MS) → NON-DESTRUCTIVE demote to portal DB-pause", async () => {
+    // A cancel that comes back faster than a human could have read the
+    // form is the client auto-cancelling without rendering it — a
+    // transport verdict, not a decision.
+    const conversation_id = await freshConversation();
+    const bridge = makeBridge({ kind: "cancel" });
+    const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
+      tool_name: "ask_user_text",
+      summary: "What is your name?",
+      input: { question: "What is your name?" },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.pause).toBeDefined();
+      expect(result.data).toEqual({
+        status: "awaiting_input",
+        elicitation_id: result.pause!.elicitation_id,
+      });
+    }
+    expect(await readConversationStatus(conversation_id)).toBe("awaiting_input");
+    const rows = await readElicitation(conversation_id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("pending");
+    expect(rows[0]!.protocol_native).toBe(false);
+
+    // The demote audit exists; no governance rejection was recorded.
+    const demoteAudit = await readResolveAudit(rows[0]!.id, "elicitation.demoted_to_portal");
+    expect(demoteAudit).toBeDefined();
+    const rejectedAudit = await readResolveAudit(rows[0]!.id, "approval.rejected");
+    expect(rejectedAudit).toBeUndefined();
+  });
+
+  test("cancel after the fast-cancel window → genuine human cancel: destructive resolution", async () => {
+    const conversation_id = await freshConversation();
+    const bridge = makeBridge({ kind: "cancel", delayMs: FORM_FAST_CANCEL_MS + 100 });
+    const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
+      tool_name: "ask_user_text",
+      summary: "What is your name?",
+      input: { question: "What is your name?" },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error_code).toBe("user_cancelled");
+      expect(result.pause).toBeUndefined();
+    }
+    expect(await readConversationStatus(conversation_id)).toBe("active");
+    const rows = await readElicitation(conversation_id);
+    expect(rows[0]!.status).toBe("cancelled");
+    expect(rows[0]!.decision_reason).toBe("user_cancelled");
+  });
+
+  test("instant decline is STILL honored — decline is always a human decision", async () => {
+    // Every client UI renders decline as an explicit human "no", so the
+    // fast-cancel heuristic must never apply to it.
+    const conversation_id = await freshConversation();
+    const bridge = makeBridge({ kind: "decline" });
+    const result = await pauseForUserInput(buildCtx(conversation_id, bridge), {
+      tool_name: "ask_user_text",
+      summary: "What is your name?",
+      input: { question: "What is your name?" },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error_code).toBe("user_declined");
+      expect(result.pause).toBeUndefined();
+    }
+    expect(await readConversationStatus(conversation_id)).toBe("active");
+    const rows = await readElicitation(conversation_id);
+    expect(rows[0]!.status).toBe("cancelled");
+    expect(rows[0]!.decision_reason).toBe("user_declined");
   });
 });
 

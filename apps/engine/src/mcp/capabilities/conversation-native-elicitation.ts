@@ -1,8 +1,9 @@
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import type {
-  ElicitationResult,
-  ElicitFormParams,
-  ElicitOobParams,
+import {
+  type ElicitationResult,
+  type ElicitFormParams,
+  type ElicitOobParams,
+  FORM_FAST_CANCEL_MS,
 } from "../../conversations/elicitation-bridge.ts";
 import {
   acknowledgeNativeUrlElicitation,
@@ -24,6 +25,38 @@ export interface NativeElicitationTransport {
   elicitForm?: (params: ElicitFormParams) => Promise<ElicitationResult>;
   elicitUrl?: (params: ElicitOobParams & { mode: "url" }) => Promise<ElicitationResult>;
 }
+
+/**
+ * How long a wire `elicitation/create` stays pending, and therefore how
+ * long the client-rendered form can still be answered. Agentic clients
+ * (Claude Code) render a mid-turn elicitation only AFTER their own agent
+ * turn completes — minutes, not seconds — so the SDK's 60s default
+ * guarantees a timeout there. Delivery is non-blocking (the poll call
+ * returns immediately); this bound only caps the detached round-trip so
+ * an abandoned form eventually releases its delivery lease for a fresh
+ * re-prompt.
+ */
+export const ELICITATION_FORM_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Delivery-lease window for a wire elicitation. Slightly longer than the
+ * round-trip timeout so the in-flight request always settles (and
+ * releases the lease itself) before a concurrent poll can claim the row
+ * and put a SECOND live form in front of the operator.
+ */
+export const ELICITATION_DELIVERY_LEASE_MS = ELICITATION_FORM_TIMEOUT_MS + 15_000;
+
+/**
+ * How long the poll call is held open after firing `elicitation/create`.
+ * Clients accept an elicitation only in the context of an active request
+ * and auto-cancel "unsolicited" ones (observed: Claude Code cancels in
+ * ~16ms when the request lands after the tool result was written, but
+ * queues the same request for its end-of-turn form UI when it lands
+ * while the call is in flight). The grace keeps the call open just long
+ * enough for the elicitation to reach the client inside that window —
+ * it never waits for the human answer.
+ */
+export const ELICITATION_DELIVERY_GRACE_MS = 1_000;
 
 export interface NativeDeliveryResult {
   isError: boolean;
@@ -100,6 +133,7 @@ export async function deliverPendingNativeElicitationCore(p: {
       tenant_id: p.principal.tenant_id,
       conversation_id: p.pending.conversation_id,
       id: p.pending.id,
+      lease_ms: ELICITATION_DELIVERY_LEASE_MS,
     },
     p.db,
   );
@@ -112,76 +146,10 @@ export async function deliverPendingNativeElicitationCore(p: {
     });
   }
 
-  try {
-    let result: ElicitationResult;
-    let output: unknown;
-    if (
-      urlElicitation &&
-      (p.pending.delivery_last_error === "url_completed" ||
-        p.pending.delivery_last_error === "url_failed")
-    ) {
-      result = {
-        action: p.pending.delivery_last_error === "url_completed" ? "accept" : "cancel",
-      };
-      output = result.action === "accept" ? { confirmed: true } : null;
-    } else if (urlElicitation) {
-      if (!elicitUrl) return null;
-      result = await elicitUrl({
-        mode: "url",
-        message: urlElicitation.message,
-        url: urlElicitation.url,
-        elicitationId: p.pending.id,
-      });
-      if (result.action === "accept") {
-        await acknowledgeNativeUrlElicitation(
-          {
-            tenant_id: p.principal.tenant_id,
-            id: p.pending.id,
-            lease_id: claim.lease_id,
-          },
-          p.db,
-        );
-        return successText({
-          status: "input_required",
-          conversation_id: p.pending.conversation_id,
-          phase: "external_interaction_pending",
-          pending_elicitation_id: p.pending.id,
-        });
-      }
-      output = null;
-    } else {
-      if (!formMapping || !elicitForm) return null;
-      result = await elicitForm({
-        message: formMapping.message,
-        requestedSchema: formMapping.requestedSchema,
-      });
-      output =
-        result.action === "accept"
-          ? mapElicitResultToAskUserOutput(toolName, p.pending.input, result.content)
-          : null;
-    }
-
-    if (
-      !urlElicitation &&
-      formMapping &&
-      elicitForm &&
-      result.action === "accept" &&
-      output !== null
-    ) {
-      const verdict = validateElicitationAnswer(toolName, p.pending.input, output);
-      if (!verdict.ok) {
-        const detail = verdict.field_errors.map((e) => `${e.name}: ${e.message}`).join("; ");
-        result = await elicitForm({
-          message: `${formMapping.message}\n\nThe previous answer was invalid — ${detail}. Please correct and resubmit.`,
-          requestedSchema: formMapping.requestedSchema,
-        });
-        output =
-          result.action === "accept"
-            ? mapElicitResultToAskUserOutput(toolName, p.pending.input, result.content)
-            : null;
-      }
-    }
-
+  const stageAnswerAndResume = async (
+    result: ElicitationResult,
+    output: unknown,
+  ): Promise<NativeDeliveryResult> => {
     const staged = await stageElicitationAnswer(
       {
         tenant_id: p.principal.tenant_id,
@@ -234,32 +202,146 @@ export async function deliverPendingNativeElicitationCore(p: {
       elicitation_action: result.action,
     });
     return resumed;
-  } catch (err) {
-    await releaseNativeElicitationDelivery(
-      {
-        tenant_id: p.principal.tenant_id,
-        id: p.pending.id,
-        lease_id: claim.lease_id,
-        error_code: "transport_failed",
-      },
-      p.db,
+  };
+
+  // Replay arm — a URL interaction already finished out-of-band; there is
+  // no wire round-trip left, so resolve synchronously.
+  if (
+    urlElicitation &&
+    (p.pending.delivery_last_error === "url_completed" ||
+      p.pending.delivery_last_error === "url_failed")
+  ) {
+    const result: ElicitationResult = {
+      action: p.pending.delivery_last_error === "url_completed" ? "accept" : "cancel",
+    };
+    return await stageAnswerAndResume(
+      result,
+      result.action === "accept" ? { confirmed: true } : null,
     );
-    logger.warn({
-      module: "mcp",
-      action: "mcp.elicitation.native_transport_failed",
-      msg: "native MCP elicitation failed; pending row remains retryable",
-      tenant_id: p.principal.tenant_id,
-      conversation_id: p.pending.conversation_id,
-      elicitation_id: p.pending.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return successText({
-      status: "input_required",
-      conversation_id: p.pending.conversation_id,
-      pending_elicitation_id: p.pending.id,
-      error_code: "elicitation_transport_failed",
-    });
   }
+
+  // Wire arm — NON-BLOCKING. The `elicitation/create` round-trip must not
+  // hold this `tools/call` open: agentic clients (Claude Code) render the
+  // form only after their own agent turn completes, and their turn cannot
+  // complete while this call blocks — a deadlock the old awaiting shape
+  // always lost to the request timeout. Fire the round-trip, let a
+  // detached continuation stage the answer and resume the conversation
+  // when it lands, and hand `input_required` back immediately so the
+  // client's turn can end and the human can actually see the form.
+  const sentAt = Date.now();
+  const delivery = (async () => {
+    try {
+      let result: ElicitationResult;
+      let output: unknown;
+      if (urlElicitation) {
+        if (!elicitUrl) return;
+        result = await elicitUrl({
+          mode: "url",
+          message: urlElicitation.message,
+          url: urlElicitation.url,
+          elicitationId: p.pending.id,
+        });
+        if (result.action === "accept") {
+          await acknowledgeNativeUrlElicitation(
+            {
+              tenant_id: p.principal.tenant_id,
+              id: p.pending.id,
+              lease_id: claim.lease_id,
+            },
+            p.db,
+          );
+          return;
+        }
+        output = null;
+      } else {
+        if (!formMapping || !elicitForm) return;
+        result = await elicitForm({
+          message: formMapping.message,
+          requestedSchema: formMapping.requestedSchema,
+        });
+        // A cancel faster than a human could read the form is the client
+        // auto-cancelling without rendering — a transport verdict, not a
+        // decision. Release the lease so a later poll re-prompts.
+        if (result.action === "cancel" && Date.now() - sentAt < FORM_FAST_CANCEL_MS) {
+          await releaseNativeElicitationDelivery(
+            {
+              tenant_id: p.principal.tenant_id,
+              id: p.pending.id,
+              lease_id: claim.lease_id,
+              error_code: "form_fast_cancel",
+            },
+            p.db,
+          );
+          logger.warn({
+            module: "mcp",
+            action: "mcp.elicitation.form_fast_cancel",
+            msg: "client cancelled the form faster than a human could render it — treating as undelivered, row remains retryable",
+            tenant_id: p.principal.tenant_id,
+            conversation_id: p.pending.conversation_id,
+            elicitation_id: p.pending.id,
+            elapsed_ms: Date.now() - sentAt,
+          });
+          return;
+        }
+        output =
+          result.action === "accept"
+            ? mapElicitResultToAskUserOutput(toolName, p.pending.input, result.content)
+            : null;
+        if (result.action === "accept" && output !== null) {
+          const verdict = validateElicitationAnswer(toolName, p.pending.input, output);
+          if (!verdict.ok) {
+            const detail = verdict.field_errors.map((e) => `${e.name}: ${e.message}`).join("; ");
+            result = await elicitForm({
+              message: `${formMapping.message}\n\nThe previous answer was invalid — ${detail}. Please correct and resubmit.`,
+              requestedSchema: formMapping.requestedSchema,
+            });
+            output =
+              result.action === "accept"
+                ? mapElicitResultToAskUserOutput(toolName, p.pending.input, result.content)
+                : null;
+          }
+        }
+      }
+      await stageAnswerAndResume(result, output);
+    } catch (err) {
+      await releaseNativeElicitationDelivery(
+        {
+          tenant_id: p.principal.tenant_id,
+          id: p.pending.id,
+          lease_id: claim.lease_id,
+          error_code: "transport_failed",
+        },
+        p.db,
+      );
+      logger.warn({
+        module: "mcp",
+        action: "mcp.elicitation.native_transport_failed",
+        msg: "native MCP elicitation failed; pending row remains retryable",
+        tenant_id: p.principal.tenant_id,
+        conversation_id: p.pending.conversation_id,
+        elicitation_id: p.pending.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+
+  // Hold the poll open for a short grace so the `elicitation/create`
+  // reaches the client while this call is still in flight — never for
+  // the human's answer. If the round-trip settles inside the grace (an
+  // instant auto-cancel, a lightning-fast answer), the continuation has
+  // already done its work; either way the poll returns promptly so the
+  // client's agent turn can end and the operator can see the form.
+  await Promise.race([
+    delivery,
+    new Promise<void>((resolve) => setTimeout(resolve, ELICITATION_DELIVERY_GRACE_MS)),
+  ]);
+
+  return successText({
+    status: "input_required",
+    conversation_id: p.pending.conversation_id,
+    phase: "awaiting_human_input",
+    pending_elicitation_id: p.pending.id,
+  });
 }
 
 function successText(obj: unknown): NativeDeliveryResult {

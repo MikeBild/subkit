@@ -16,6 +16,7 @@ import { errorFields, logger } from "../logging/logger.ts";
 import { buildOperatorHealthSummary } from "../operator/health-digest.ts";
 import { can } from "../rbac/evaluator.ts";
 import { registerCompletionCapability } from "./capabilities/completion.ts";
+import { ELICITATION_FORM_TIMEOUT_MS } from "./capabilities/conversation-native-elicitation.ts";
 import { deliverPendingNativeElicitation } from "./capabilities/conversations.ts";
 import { registerPromptsCapability } from "./capabilities/prompts.ts";
 import { registerResourcesCapability } from "./capabilities/resources.ts";
@@ -199,6 +200,7 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
                 await server.request(
                   { method: "elicitation/create", params: { mode: "form", ...params } },
                   McpElicitResultSchema,
+                  { timeout: ELICITATION_FORM_TIMEOUT_MS },
                 ),
             }
           : {}),
@@ -219,6 +221,7 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
                       },
                     },
                     McpElicitResultSchema,
+                    { timeout: ELICITATION_FORM_TIMEOUT_MS },
                   );
                   if (result.action !== "accept") unregister();
                   return result;

@@ -146,14 +146,26 @@ The complete MCP conversation cluster is `conversation_start`, `conversation_app
 > The next `conversation_get` or `tasks/get` on a client advertising
 > `elicitation` atomically leases that row and emits a real server→client
 > `elicitation/create`: form mode for primitive questions/approvals and URL mode
-> for OAuth or credential setup. A form answer is stamped as
-> `human/in_band_elicitation`, queued, and resumes the same conversation. URL
+> for OAuth or credential setup. Delivery is **non-blocking**: the poll holds
+> the call open only for a ~1 s delivery grace (so the request reaches the
+> client inside an active call — clients auto-cancel "unsolicited"
+> elicitations) and then returns `input_required` immediately. Agentic clients
+> (Claude Code) render the form only after their own agent turn completes —
+> a poll that blocked on the answer could therefore never be answered in time.
+> The round-trip itself stays pending for up to five minutes; a form answer is
+> stamped as `human/in_band_elicitation`, staged by a detached continuation,
+> and resumes the same conversation with no poll in flight. A `cancel`
+> arriving faster than a human could render the form is treated as an
+> undelivered form (the client auto-cancelled), not a decision — the row
+> stays pending and a later poll re-prompts. URL
 > acceptance only acknowledges navigation; the credential/OAuth callback marks
 > the persisted row complete and emits `notifications/elicitation/complete`
 > before the next poll resumes it. Tasks clients retain the same task id. A
-> short DB lease prevents duplicate
+> DB lease slightly longer than the round-trip timeout prevents duplicate
 > dialogs across concurrent polls and expires after a disconnect so another
-> replica can retry. Ordinary questions still have the explicit
+> replica can retry. A transport break never destroys the row: the pending
+> elicitation survives (demoted to the portal DB-pause on live-bridge
+> surfaces) and the in-flight draft with it. Ordinary questions still have the explicit
 > `conversation_respond_elicitation` fallback on clients without elicitation;
 > approval-bearing rows remain human-only and cannot be answered by a model.
 
