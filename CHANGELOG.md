@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] – 2026-07-23
+
+### Added
+
+- Render every browser-facing sign-in failure in the MCP login funnel —
+  denied grants, unknown/expired/consumed login states, identity-provider
+  errors, code-exchange failures and the expired consent CSRF window — as a
+  "Sign-in failed" page in the shared `mcp-auth-v2` template with a
+  "Sign in again" retry entry. JSON error bodies remain for token/register/API
+  endpoints and for clients sending `Accept: application/json`.
+- Finish the RFC 6749 dance with `error=access_denied` at the validated,
+  registered client `redirect_uri` when a grant denial or consent CSRF timeout
+  would otherwise leave a waiting MCP OAuth client hanging.
+
+### Changed
+
+- Switch the common auth-UI primary action tokens to the neutral ink
+  (`--primary:#1f2328`, hover `#000`) across login, consent and error pages.
+- Consolidate browser-session TTLs on the single shared source (8-hour
+  sliding, 24-hour absolute); the OIDC provider's 30-day absolute default is
+  removed.
+
 ## [4.0.2] – 2026-07-23
 
 ### Changed
