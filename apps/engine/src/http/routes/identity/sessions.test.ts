@@ -105,6 +105,28 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
   test("the generic browser callback rejects missing state as input, not as a missing route", async () => {
     const res = await app.request("http://127.0.0.1/v1/identity/login/callback");
     expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain("This sign-in attempt expired or was already used.");
+    expect(html).toContain('href="/v1/identity/login/start"');
+    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
+  });
+
+  test("the browser login funnel start without a valid login_state renders the HTML error page", async () => {
+    const res = await app.request("http://127.0.0.1/v1/identity/login/start");
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain('href="/v1/identity/login/start"');
+  });
+
+  test("the generic browser callback still answers JSON when the client asks for it", async () => {
+    const res = await app.request("http://127.0.0.1/v1/identity/login/callback", {
+      headers: { accept: "application/json" },
+    });
+    expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ code: "invalid_state" });
   });
 
