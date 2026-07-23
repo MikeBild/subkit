@@ -52,6 +52,8 @@ export const STATE_ERROR_MESSAGE =
   "This sign-in attempt expired or was already used. Please sign in again.";
 export const GRANT_DENIED_MESSAGE =
   "Your account is not authorized for SubKit. Contact the operator.";
+export const AUTHORIZE_INVALID_MESSAGE =
+  "This authorization request is invalid. Return to the application and start the sign-in again.";
 
 export function renderErrorPage(title: string, message: string, retryHref: string): string {
   return page(
