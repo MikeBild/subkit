@@ -16,10 +16,6 @@ export const OAUTH_AUTHORIZATION_DECLINED = "oauth_authorization_declined";
  *  transit; the authorization state row is still live for a retry. */
 export const OAUTH_ELICITATION_TRANSPORT_FAILED = "oauth_elicitation_transport_failed";
 
-/** A generic `ask_user_*` MCP elicitation failed in transit (client
- *  disconnected or never answered). */
-export const ELICITATION_TRANSPORT_FAILED = "elicitation_transport_failed";
-
 /** The elicitation was already resolved through another channel — a
  *  concurrent `respondElicitation` won the race. */
 export const ELICITATION_ALREADY_RESOLVED = "elicitation_already_resolved";

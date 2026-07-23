@@ -426,7 +426,7 @@ must not be conflated:
 | Fact | Values | Records |
 |---|---|---|
 | `action` | `APPROVAL_APPROVED` · `APPROVAL_REJECTED` | the *governance decision* |
-| `decision_reason` | `user_declined`, `oauth_timeout`, `elicitation_transport_failed`, … | machine code behind a cancel |
+| `decision_reason` | `user_declined`, `oauth_timeout`, `oauth_elicitation_transport_failed`, … | machine code behind a cancel |
 | `elicitation_transport` | `succeeded` · `failed` | whether a `protocol_native` bridge round-trip *delivered* — not whether it was approved |
 
 Crucially, `elicitation_transport: "succeeded"` can coexist with a `cancelled`
@@ -435,6 +435,15 @@ acknowledge an OAuth authorization, succeeded *as transport* but rejected *as a
 decision*. An audit query for "successful elicitations" must therefore filter on
 `action` / `decision_reason`, not on `elicitation_transport` — equating transport
 success with approval double-counts every declined-but-delivered prompt.
+
+A broken transport is *not* a decision at all: when an `ask_user_*` bridge
+round-trip fails in transit (or a client auto-cancels the form faster than a
+human could render it), the row is **demoted to the portal DB-pause** — it
+stays `pending`, the conversation stays `awaiting_input`, and the audit trail
+records `ELICITATION_DEMOTED_TO_PORTAL`, never `APPROVAL_REJECTED`. Only the
+OAuth OOB flow resolves its approval handle on transport failure
+(`oauth_elicitation_transport_failed`), because its state row survives
+independently and a retried `authenticate_oauth` resumes the same flow.
 
 ### Secret answers never transit the transcript or LLM context
 
