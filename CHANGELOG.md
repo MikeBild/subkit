@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] – 2026-07-23
+
+### Changed
+
+- Keep subject-only OIDC identities supported while returning only a
+  provider-verified email from the provider-neutral identity-session exchange.
+
+### Removed
+
+- Stop exposing the internal synthetic `@invalid` account address through the
+  public session response. The common `email` field is now `string | null`.
+
 ## [3.0.2] – 2026-07-22
 
 ### Security

@@ -14108,7 +14108,7 @@ export interface components {
             api_key: string;
             principal_id: string;
             context_id: string | null;
-            email: string;
+            email: string | null;
         };
         IdentitySessionRequest: {
             provider_id: string;

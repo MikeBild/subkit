@@ -184,10 +184,11 @@ describe("POST /v1/identity/sessions — account-takeover guards", () => {
     });
     const res = await postIdentity({ provider_id: "test-identity", identity_token: id_token });
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { principal_id: string };
+    const json = (await res.json()) as { principal_id: string; email: string | null };
 
     // The attacker got their OWN account, not the admin's.
     expect(json.principal_id).not.toBe(admin.id);
+    expect(json.email).toBeNull();
     const [adminAfter] = await testDb.db.select().from(users).where(eq(users.id, admin.id));
     expect(adminAfter?.role).toBe("admin");
     const adminIdentities = await testDb.db
