@@ -30,7 +30,13 @@ import {
   signCsrfToken,
   verifyCsrfToken,
 } from "./shared.ts";
-import { authHtmlResponse, renderConsentPage } from "./ui.ts";
+import {
+  authHtmlResponse,
+  renderConsentPage,
+  renderErrorPage,
+  SIGN_IN_FAILED_TITLE,
+  STATE_ERROR_MESSAGE,
+} from "./ui.ts";
 
 export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
   // ── Authorization endpoint ─────────────────────────────────────────────────
@@ -319,8 +325,27 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       csrfPayload.client_id !== clientId ||
       csrfPayload.redirect_uri !== redirectUri
     ) {
-      return c.json(
-        { error: "invalid_request", error_description: "CSRF verification failed" },
+      if ((c.req.header("accept") ?? "").includes("application/json")) {
+        return c.json(
+          { error: "invalid_request", error_description: "CSRF verification failed" },
+          400,
+        );
+      }
+      // Typical browser cause: the consent page sat open past the 5-minute
+      // CSRF window. When the waiting OAuth client is validated-known,
+      // complete the RFC 6749 dance with error=access_denied so MCP clients
+      // do not hang; otherwise render the shared HTML error page.
+      if (clientId && redirectUri) {
+        const staleClient = await createMcpOAuthProvider({
+          db,
+          config: getConfig(),
+        }).getClient(clientId);
+        if (staleClient?.redirect_uris.includes(redirectUri)) {
+          return buildErrorRedirect(redirectUri, "access_denied", stateParam || null);
+        }
+      }
+      return authHtmlResponse(
+        renderErrorPage(SIGN_IN_FAILED_TITLE, STATE_ERROR_MESSAGE, "/v1/identity/login/start"),
         400,
       );
     }

@@ -1,8 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { authHtmlResponse, renderConsentPage, renderProviderChoice } from "./ui.ts";
+import {
+  authHtmlResponse,
+  GRANT_DENIED_MESSAGE,
+  renderConsentPage,
+  renderErrorPage,
+  renderProviderChoice,
+  SIGN_IN_FAILED_TITLE,
+  STATE_ERROR_MESSAGE,
+} from "./ui.ts";
 
-const COMMON_STYLE_SHA256 = "61333cf68d1c955484e7c8fd1e5b68ad9ff4caf9e99799493f868bd19dcb9e64";
+const COMMON_STYLE_SHA256 = "fb9d19063e79757a73139720508cf27207214b98405e156bab894bad85796a0c";
 
 describe("common MCP auth UI contract", () => {
   test("is branded, escaped, script-free and request-bounded", () => {
@@ -40,5 +48,48 @@ describe("common MCP auth UI contract", () => {
     expect(html).not.toContain("Continue with Continue with");
     const styles = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
     expect(createHash("sha256").update(styles).digest("hex")).toBe(COMMON_STYLE_SHA256);
+  });
+
+  test("tokens pin the neutral ink primary with black hover", () => {
+    const html = renderProviderChoice([]);
+    expect(html).toContain("--primary:#1f2328;--primary-hover:#000");
+    expect(html).not.toContain("#1f6feb");
+  });
+
+  test("error page renders inside the shared template with a retry entry point", () => {
+    const html = renderErrorPage(
+      SIGN_IN_FAILED_TITLE,
+      STATE_ERROR_MESSAGE,
+      "/v1/identity/login/start",
+    );
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(
+      "This sign-in attempt expired or was already used. Please sign in again.",
+    );
+    expect(html).toContain('href="/v1/identity/login/start"');
+    expect(html).toContain(">Sign in again</a>");
+    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
+    expect(html).toContain('name="mcp-auth-ui-contract" content="2"');
+    const styles = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+    expect(createHash("sha256").update(styles).digest("hex")).toBe(COMMON_STYLE_SHA256);
+    const response = authHtmlResponse(html, 400);
+    expect(response.status).toBe(400);
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
+  });
+
+  test("error page escapes hostile input and keeps the grant-denied copy verbatim", () => {
+    const html = renderErrorPage(
+      SIGN_IN_FAILED_TITLE,
+      GRANT_DENIED_MESSAGE,
+      "/v1/identity/login/start",
+    );
+    expect(html).toContain("Your account is not authorized for SubKit. Contact the operator.");
+    const hostile = renderErrorPage(
+      "<script>x</script>",
+      "<img src=x>",
+      "/v1/identity/login/start",
+    );
+    expect(hostile).not.toContain("<script>x</script>");
+    expect(hostile).not.toContain("<img src=x>");
   });
 });

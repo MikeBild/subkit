@@ -17,7 +17,14 @@ import { getConfig } from "../../../config/loader.ts";
 import type { Db } from "../../../db/client.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { parseFormBody } from "../oauth/shared.ts";
-import { authHtmlResponse, renderApiKeyLogin, renderProviderChoice } from "../oauth/ui.ts";
+import {
+  authHtmlResponse,
+  renderApiKeyLogin,
+  renderErrorPage,
+  renderProviderChoice,
+  SIGN_IN_FAILED_TITLE,
+  STATE_ERROR_MESSAGE,
+} from "../oauth/ui.ts";
 
 const ApiKeyFormSchema = z.object({
   provider: z.string().min(1),
@@ -50,11 +57,29 @@ function safeRedirect(raw: string): string | null {
   return isSafeBrowserRedirect(raw, getConfig().server.public_base_url) ? raw : null;
 }
 
+function wantsJson(c: Context<AppEnv>): boolean {
+  return (c.req.header("accept") ?? "").includes("application/json");
+}
+
+// Browser GET errors render the shared HTML template; JSON stays reserved
+// for clients that explicitly Accept: application/json.
+function browserStateError(
+  c: Context<AppEnv>,
+  status: 400 | 404,
+  code: string,
+  retryHref = "/v1/identity/login/start",
+): Response {
+  if (wantsJson(c)) return c.json({ code }, status);
+  return authHtmlResponse(
+    renderErrorPage(SIGN_IN_FAILED_TITLE, STATE_ERROR_MESSAGE, retryHref),
+    status,
+  );
+}
+
 function oidcProvider(config: OidcConfig, db: Db) {
   return createOidcProvider({
     db,
     providerId: config.id,
-    sessionAbsoluteTtlMs: 24 * 60 * 60 * 1000,
     issuerUrl: config.issuer_url,
     clientId: config.client_id,
     clientSecret: config.client_secret,
@@ -73,7 +98,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
       const state = existingState ?? "";
       const loginState = await verifyLoginState(state);
       const redirectTo = safeRedirect(String(loginState?.redirect_to ?? ""));
-      if (!redirectTo) return c.json({ code: "invalid_state" }, 400);
+      if (!redirectTo) return browserStateError(c, 400, "invalid_state");
       const base = getConfig().server.public_base_url;
       const choices = providers().map((provider) => ({
         id: provider.id,
@@ -90,16 +115,23 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const state = existingState ?? "";
     const loginState = await verifyLoginState(state);
-    if (!loginState) return c.json({ code: "invalid_state" }, 400);
+    if (!loginState) return browserStateError(c, 400, "invalid_state");
     const selected = providers().find((provider) => provider.id === selectedId);
-    if (!selected) return c.json({ code: "provider_not_found" }, 404);
+    if (!selected) {
+      return browserStateError(
+        c,
+        404,
+        "provider_not_found",
+        `/v1/identity/login/start?login_state=${encodeURIComponent(state)}`,
+      );
+    }
 
     if (selected.protocol === "api_key") {
       return authHtmlResponse(renderApiKeyLogin("/v1/identity/login/start", selected.id, state));
     }
 
     const redirectTo = safeRedirect(String(loginState.redirect_to ?? ""));
-    if (!redirectTo) return c.json({ code: "invalid_state" }, 400);
+    if (!redirectTo) return browserStateError(c, 400, "invalid_state");
     const target = new URL(c.req.url);
     target.searchParams.set("redirect_to", redirectTo);
     const handler = oidcProvider(selected, c.get("db"));
@@ -144,9 +176,9 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
   const finishOidc = async (c: Context<AppEnv>) => {
     const state = c.req.query("state") ?? "";
     const providerId = state.includes(".") ? state.slice(0, state.indexOf(".")) : "";
-    if (!providerId) return c.json({ code: "invalid_state" }, 400);
+    if (!providerId) return browserStateError(c, 400, "invalid_state");
     const selected = oidcProviders().find((provider) => provider.id === providerId);
-    if (!selected) return c.json({ code: "provider_not_found" }, 404);
+    if (!selected) return browserStateError(c, 404, "provider_not_found");
     const handler = oidcProvider(selected, c.get("db"));
     return handler.finishLogin?.(c.req.raw) ?? c.json({ code: "not_supported" }, 500);
   };

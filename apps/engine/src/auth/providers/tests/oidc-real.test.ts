@@ -21,7 +21,14 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, sessions, tenants, userIdentities, users } from "../../../db/schema/index.ts";
+import {
+  auditLog,
+  oidcLoginStates,
+  sessions,
+  tenants,
+  userIdentities,
+  users,
+} from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createOidcProvider } from "../oidc.ts";
@@ -289,5 +296,98 @@ describe("oidc provider — real flow", () => {
       .from(users)
       .where(eq(users.id, identities[0].user_id));
     expect(userRows.length).toBe(1);
+  });
+});
+
+describe("oidc provider — browser error pages", () => {
+  async function startAndGetState(provider: ReturnType<typeof buildProvider>): Promise<string> {
+    const startRes = await provider.startLogin!(
+      new Request("http://127.0.0.1:0/v1/identity/login/start?tenant=oidc-real"),
+    );
+    expect(startRes.status).toBe(302);
+    const authorizeUrl = new URL(startRes.headers.get("location") ?? "");
+    const state = authorizeUrl.searchParams.get("state") ?? "";
+    expect(state.length).toBeGreaterThan(0);
+    return state;
+  }
+
+  test("unknown state renders the shared HTML error page with a fresh entry point", async () => {
+    const provider = buildProvider();
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=does-not-exist&code=whatever`),
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(
+      "This sign-in attempt expired or was already used. Please sign in again.",
+    );
+    expect(html).toContain('href="/v1/identity/login/start"');
+    expect(html).toContain(">Sign in again</a>");
+    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
+  });
+
+  test("unknown state keeps the JSON contract for Accept: application/json", async () => {
+    const provider = buildProvider();
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=does-not-exist&code=whatever`, {
+        headers: { accept: "application/json" },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("application/json");
+    expect(await res.json()).toEqual({ code: "unknown_state", message: "state not recognised" });
+  });
+
+  test("expired state renders the shared HTML error page", async () => {
+    const provider = buildProvider();
+    const state = await startAndGetState(provider);
+    await testDb.db
+      .update(oidcLoginStates)
+      .set({ expires_at: new Date(TEST_NOW_MS - 1_000) })
+      .where(eq(oidcLoginStates.state, state));
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=${encodeURIComponent(state)}&code=whatever`),
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(
+      "This sign-in attempt expired or was already used. Please sign in again.",
+    );
+  });
+
+  test("IdP access_denied renders the not-authorized page", async () => {
+    const provider = buildProvider();
+    const state = await startAndGetState(provider);
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=${encodeURIComponent(state)}&error=access_denied`),
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain("Your account is not authorized for SubKit. Contact the operator.");
+    expect(html).toContain(">Sign in again</a>");
+  });
+
+  test("code-exchange failure renders HTML and retries at the safe authorize re-entry", async () => {
+    const provider = buildProvider();
+    const state = await startAndGetState(provider);
+    const reentry = "/v1/oauth/authorize?client_id=demo";
+    await testDb.db
+      .update(oidcLoginStates)
+      .set({ redirect_to: reentry })
+      .where(eq(oidcLoginStates.state, state));
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=${encodeURIComponent(state)}&code=bogus-code`),
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(`href="${reentry}"`);
   });
 });
