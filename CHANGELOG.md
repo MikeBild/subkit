@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] – 2026-07-23
+
+### Changed
+
+- **BREAKING**: SSO sign-ins no longer auto-provision new accounts by default.
+  The new `auth.enable_signup` setting (default `false`) gates JIT user
+  creation on both the browser OIDC login and the headless
+  `POST /v1/identity/sessions` exchange. With signups disabled, an identity
+  that matches neither an existing identity link nor (via provider-verified
+  email) an existing user is rejected: browsers get the styled
+  "not authorized" page (or an RFC 6749 `error=access_denied` redirect when a
+  registered OAuth client is waiting), the sessions API answers
+  `403 access_denied`. Existing users and identity links keep signing in
+  unchanged; verified-email linking to existing accounts stays allowed.
+  Restore the previous behavior with `sk settings set auth.enable_signup true`.
+
+### Fixed
+
+- The browser OIDC callback now answers an unknown provider prefix in `state`
+  with the same 400 invalid-state contract (styled error page) as every other
+  malformed state instead of 404.
+- Browser-facing `GET /v1/oauth/authorize` failures that must not redirect to
+  the client (unknown `client_id`, unregistered `redirect_uri`, malformed
+  parameters) render the shared styled 400 HTML error page, matching the other
+  product runtimes; JSON bodies remain for `Accept: application/json`.
+
 ## [4.1.0] – 2026-07-23
 
 ### Added
