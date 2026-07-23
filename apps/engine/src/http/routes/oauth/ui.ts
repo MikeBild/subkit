@@ -5,7 +5,7 @@ import { escapeHtml } from "./shared.ts";
 const AUTH_CONTRACT = "mcp-auth-v2";
 
 const TOKENS = `
-  :root{color-scheme:light;--bg:#f4f5f7;--card:#fff;--ink:#1f2328;--muted:#6a7280;--line:#e3e5e9;--soft:#f7f8fa;--primary:#1f6feb;--primary-hover:#1a60d0}
+  :root{color-scheme:light;--bg:#f4f5f7;--card:#fff;--ink:#1f2328;--muted:#6a7280;--line:#e3e5e9;--soft:#f7f8fa;--primary:#1f2328;--primary-hover:#000}
   *{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
   .card{background:var(--card);width:100%;max-width:420px;border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(20,24,33,.08);padding:32px}
   .brand{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:11px;background:var(--ink);color:#fff;font-weight:700;font-size:18px;letter-spacing:-.03em;margin:0 0 20px}
@@ -45,6 +45,19 @@ export function authHtmlResponse(html: string, status = 200): Response {
       "referrer-policy": "no-referrer",
     },
   });
+}
+
+export const SIGN_IN_FAILED_TITLE = "Sign-in failed";
+export const STATE_ERROR_MESSAGE =
+  "This sign-in attempt expired or was already used. Please sign in again.";
+export const GRANT_DENIED_MESSAGE =
+  "Your account is not authorized for SubKit. Contact the operator.";
+
+export function renderErrorPage(title: string, message: string, retryHref: string): string {
+  return page(
+    title,
+    `<h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(message)}</p><div class="actions"><a class="button approve" href="${escapeHtml(retryHref)}">Sign in again</a></div>`,
+  );
 }
 
 export interface LoginProviderChoice {

@@ -11,8 +11,8 @@
 //
 // `resolve()` is the middleware-side surface. It reads the signed
 // `subkit_session` cookie, verifies the JWS, loads the `sessions` row,
-// enforces sliding (8 h) + absolute (30 d) TTLs, and returns a
-// populated ResolvedPrincipal.
+// enforces the shared browser-session sliding (8 h) + absolute (24 h)
+// TTLs, and returns a populated ResolvedPrincipal.
 //
 // All HTTP cookies carry a JWS signed by the env-derived session
 // secret, never the plaintext session id. The session id is extracted
@@ -31,20 +31,27 @@ import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { oidcLoginStates, sessions, tenants, users } from "../../db/schema/index.ts";
+import {
+  authHtmlResponse,
+  GRANT_DENIED_MESSAGE,
+  renderErrorPage,
+  SIGN_IN_FAILED_TITLE,
+  STATE_ERROR_MESSAGE,
+} from "../../http/routes/oauth/ui.ts";
 import { logger } from "../../logging/logger.ts";
+import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
 import { resolveProviderIdentity } from "../identity-link.ts";
+import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
 const SESSION_COOKIE = "subkit_session";
 const DEFAULT_TENANT_SLUG = "default";
 const LOGIN_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
-const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const JWS_ALG = "HS256";
+const LOGIN_START_PATH = "/v1/identity/login/start";
 
 export interface OidcProviderOptions {
   providerId?: string;
-  sessionAbsoluteTtlMs?: number;
   issuerUrl?: string;
   clientId?: string;
   clientSecret?: string;
@@ -125,12 +132,11 @@ async function loadConfig(
 async function signSessionCookie(
   secret: Uint8Array,
   payload: { session_id: string; user_id: string; tenant_id: string },
-  absoluteTtlMs = SESSION_ABSOLUTE_TTL_MS,
 ): Promise<string> {
   return await new jose.SignJWT(payload)
     .setProtectedHeader({ alg: JWS_ALG })
     .setIssuedAt()
-    .setExpirationTime(Math.floor((Date.now() + absoluteTtlMs) / 1000))
+    .setExpirationTime(Math.floor((Date.now() + SESSION_ABSOLUTE_TTL_MS) / 1000))
     .sign(secret);
 }
 
@@ -150,8 +156,8 @@ async function verifySessionCookie(
   }
 }
 
-function buildCookieHeader(jwt: string, absoluteTtlMs = SESSION_ABSOLUTE_TTL_MS): string {
-  const maxAge = Math.floor(absoluteTtlMs / 1000);
+function buildCookieHeader(jwt: string): string {
+  const maxAge = Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000);
   const secure = process.env.NODE_ENV !== "development" ? " Secure;" : "";
   return `${SESSION_COOKIE}=${encodeURIComponent(
     jwt,
@@ -167,6 +173,55 @@ function httpError(status: number, code: string, message: string): Response {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+function wantsJson(req: Request): boolean {
+  return (req.headers.get("accept") ?? "").includes("application/json");
+}
+
+// Browser-funnel error: humans get the shared HTML template, JSON stays
+// available for clients that explicitly Accept: application/json.
+function browserError(
+  req: Request,
+  status: number,
+  code: string,
+  message: string,
+  pageMessage: string,
+  retryHref: string,
+): Response {
+  if (wantsJson(req)) return httpError(status, code, message);
+  return authHtmlResponse(renderErrorPage(SIGN_IN_FAILED_TITLE, pageMessage, retryHref), status);
+}
+
+// When the pending login belongs to a waiting MCP OAuth client, finish the
+// RFC 6749 dance with error=access_denied at the client's registered
+// redirect_uri so the client does not hang on a dead-end HTML page.
+async function redirectDenialToClient(
+  exec: Db,
+  redirectTo: string | null,
+): Promise<Response | null> {
+  if (!redirectTo) return null;
+  try {
+    const authorizeUrl = new URL(redirectTo);
+    if (!authorizeUrl.pathname.endsWith("/v1/oauth/authorize")) return null;
+    const clientId = authorizeUrl.searchParams.get("client_id");
+    const clientRedirect = authorizeUrl.searchParams.get("redirect_uri");
+    if (!clientId || !clientRedirect) return null;
+    const client = await createMcpOAuthProvider({ db: exec, config: getConfig() }).getClient(
+      clientId,
+    );
+    if (!client?.redirect_uris.includes(clientRedirect)) return null;
+    const target = new URL(clientRedirect);
+    target.searchParams.set("error", "access_denied");
+    const clientState = authorizeUrl.searchParams.get("state");
+    if (clientState) target.searchParams.set("state", clientState);
+    return new Response(null, {
+      status: 302,
+      headers: { location: target.toString(), "cache-control": "no-store" },
+    });
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -227,7 +282,6 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
   const sessionSecret = deriveSessionSecret(opts.sessionSecret);
   const providerId = opts.providerId?.trim() || configured?.id;
   const adapterId = providerId ?? "oidc";
-  const sessionAbsoluteTtlMs = opts.sessionAbsoluteTtlMs ?? SESSION_ABSOLUTE_TTL_MS;
   const db = opts.db;
 
   function getExec(): Db {
@@ -304,7 +358,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const reqUrl = new URL(req.url);
       const state = reqUrl.searchParams.get("state");
       if (!state) {
-        return httpError(400, "missing_state", "state parameter missing");
+        return browserError(
+          req,
+          400,
+          "missing_state",
+          "state parameter missing",
+          STATE_ERROR_MESSAGE,
+          LOGIN_START_PATH,
+        );
       }
       const exec = getExec();
 
@@ -330,11 +391,62 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       });
 
       if (!pending) {
-        return httpError(400, "unknown_state", "state not recognised");
+        return browserError(
+          req,
+          400,
+          "unknown_state",
+          "state not recognised",
+          STATE_ERROR_MESSAGE,
+          LOGIN_START_PATH,
+        );
       }
+      const retryHref =
+        pending.redirect_to && isSafeRedirect(pending.redirect_to, redirectUri)
+          ? pending.redirect_to
+          : LOGIN_START_PATH;
       if (pending.expires_at.getTime() < Date.now()) {
-        return httpError(400, "expired_state", "login state expired");
+        return browserError(
+          req,
+          400,
+          "expired_state",
+          "login state expired",
+          STATE_ERROR_MESSAGE,
+          retryHref,
+        );
       }
+
+      // The IdP answered with an error instead of a code — most commonly
+      // access_denied when the account holds no grant for this product.
+      const idpError = reqUrl.searchParams.get("error");
+      if (idpError) {
+        logger.warn({
+          module: "auth",
+          action: "oidc.provider_error",
+          msg: "identity provider returned an authorization error",
+          error: idpError,
+        });
+        if (idpError === "access_denied") {
+          const clientRedirect = await redirectDenialToClient(exec, pending.redirect_to);
+          if (clientRedirect) return clientRedirect;
+          return browserError(
+            req,
+            403,
+            "access_denied",
+            "the identity provider denied the grant",
+            GRANT_DENIED_MESSAGE,
+            retryHref,
+          );
+        }
+        return browserError(
+          req,
+          502,
+          "oidc_provider_error",
+          `identity provider returned ${idpError}`,
+          STATE_ERROR_MESSAGE,
+          retryHref,
+        );
+      }
+
       if (!pending.tenant_id) {
         return httpError(400, "tenant_missing", "pending login missing tenant");
       }
@@ -375,7 +487,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           msg: "authorization code grant failed",
           error: err instanceof Error ? err.message : String(err),
         });
-        return httpError(401, "oidc_code_exchange_failed", "token exchange failed");
+        return browserError(
+          req,
+          401,
+          "oidc_code_exchange_failed",
+          "token exchange failed",
+          STATE_ERROR_MESSAGE,
+          retryHref,
+        );
       }
 
       const claims = tokens.claims();
@@ -402,7 +521,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         linkByEmail: emailVerified,
       });
       if (userRow.deleted_at !== null || userRow.status !== "active") {
-        return httpError(403, "user_inactive", "user is not active");
+        return browserError(
+          req,
+          403,
+          "user_inactive",
+          "user is not active",
+          GRANT_DENIED_MESSAGE,
+          retryHref,
+        );
       }
 
       // Mint + persist a new session.
@@ -415,7 +541,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           tenant_id: tenantId,
           user_id: userRow.id,
           expires_at: new Date(now.getTime() + SESSION_SLIDING_TTL_MS),
-          absolute_expires_at: new Date(now.getTime() + sessionAbsoluteTtlMs),
+          absolute_expires_at: new Date(now.getTime() + SESSION_ABSOLUTE_TTL_MS),
           last_seen_at: now,
           token_sha256: tokenHash,
         })
@@ -424,15 +550,11 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         return httpError(500, "session_insert_failed", "failed to create session");
       }
 
-      const jwt = await signSessionCookie(
-        sessionSecret,
-        {
-          session_id: sessionRow.id,
-          user_id: userRow.id,
-          tenant_id: tenantId,
-        },
-        sessionAbsoluteTtlMs,
-      );
+      const jwt = await signSessionCookie(sessionSecret, {
+        session_id: sessionRow.id,
+        user_id: userRow.id,
+        tenant_id: tenantId,
+      });
 
       if (createdUser) {
         await auditAwait(
@@ -499,7 +621,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         status: 302,
         headers: {
           location: target,
-          "set-cookie": buildCookieHeader(jwt, sessionAbsoluteTtlMs),
+          "set-cookie": buildCookieHeader(jwt),
         },
       });
       return res;
