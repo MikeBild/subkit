@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1] – 2026-07-23
+
+### Changed
+
+- Remove concrete production references from connector templates, workflow
+  fixtures and the retrieval golden set, with a guard test preventing their
+  reintroduction into the public repository.
+
 ## [4.0.0] – 2026-07-23
 
 ### Changed
