@@ -65,10 +65,13 @@ describe("POST /mcp unauthenticated challenge", () => {
     });
 
     expect(res.status).toBe(401);
-    const challenge = res.headers.get("www-authenticate") ?? "";
-    expect(challenge).toContain("Bearer");
-    expect(challenge).toContain("resource_metadata=");
-    expect(challenge).toContain('scope="mcp:read"');
+    // Exact header: the challenge must advertise the FULL supported scope
+    // set (identical to the RFC 8414 discovery document), or MCP clients
+    // only ever request mcp:read and the consent screen never offers the
+    // authoring/admin scopes.
+    expect(res.headers.get("www-authenticate")).toBe(
+      'Bearer resource_metadata="https://test.example.com/.well-known/oauth-protected-resource", scope="mcp:read mcp:authoring mcp:admin"',
+    );
   });
 });
 

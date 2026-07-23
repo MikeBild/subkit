@@ -22,6 +22,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The 401 `WWW-Authenticate` challenge on `/mcp` now advertises the full
+  supported scope set (`mcp:read mcp:authoring mcp:admin`, identical to the
+  RFC 8414 discovery document) instead of only `mcp:read`, so MCP clients
+  request — and the consent screen can offer — the authoring and admin scopes.
 - The browser OIDC callback now answers an unknown provider prefix in `state`
   with the same 400 invalid-state contract (styled error page) as every other
   malformed state instead of 404.

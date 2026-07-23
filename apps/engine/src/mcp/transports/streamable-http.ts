@@ -564,14 +564,23 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
 
     if (!c.get("principal")) {
       let baseUrl = "";
+      // Advertise the FULL supported scope set (same source as the RFC 8414
+      // discovery document) — clients derive their authorization request from
+      // this challenge, and a read-only scope here would hide the authoring
+      // and admin checkboxes from the consent screen.
+      let scopes = "mcp:read";
       try {
-        baseUrl = getConfig().server.public_base_url;
+        const config = getConfig();
+        baseUrl = config.server.public_base_url;
+        if (config.auth.mcp_oauth.scopes_supported.length > 0) {
+          scopes = config.auth.mcp_oauth.scopes_supported.join(" ");
+        }
       } catch {
         /* config not loaded yet — degrade gracefully */
       }
       const wwwAuth = baseUrl
-        ? `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource", scope="mcp:read"`
-        : 'Bearer scope="mcp:read"';
+        ? `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource", scope="${scopes}"`
+        : `Bearer scope="${scopes}"`;
       throw new UnauthorizedError("missing_or_invalid_credentials", wwwAuth);
     }
     const principal = requireAuth(c);
