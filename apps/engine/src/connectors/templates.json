@@ -6919,7 +6919,7 @@
       "rate_limits": null
     },
     "operator_quirks": {
-      "site_url_encoding": "Search Console paths require the full property URL as a URL-encoded path segment, e.g. https%3A%2F%2Fwww.mikebild.dev%2F.",
+      "site_url_encoding": "Search Console paths require the full property URL as a URL-encoded path segment, e.g. https%3A%2F%2Fwww.example.com%2F.",
       "property_access": "The authenticated Google account must have access to the exact Search Console property; URL-prefix properties include the trailing slash.",
       "search_analytics": "searchAnalytics.query uses a POST body with startDate, endDate, dimensions, rowLimit, and optional dimensionFilterGroups."
     },

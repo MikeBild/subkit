@@ -368,11 +368,11 @@
   },
   "google-search-console-basics": {
     "title": "Google Search Console API Basics",
-    "body": "Authenticate via OAuth 2.0 with the webmasters.readonly scope. All requests go to https://searchconsole.googleapis.com. The full Search Console property URL is passed as a URL-encoded path segment, e.g. https%3A%2F%2Fwww.mikebild.dev%2F.",
+    "body": "Authenticate via OAuth 2.0 with the webmasters.readonly scope. All requests go to https://searchconsole.googleapis.com. The full Search Console property URL is passed as a URL-encoded path segment, e.g. https%3A%2F%2Fwww.example.com%2F.",
     "examples": [
       "GET /webmasters/v3/sites — list Search Console properties visible to the authenticated account",
-      "GET /webmasters/v3/sites/https%3A%2F%2Fwww.mikebild.dev%2F/sitemaps — list submitted sitemaps for the property",
-      "POST /webmasters/v3/sites/https%3A%2F%2Fwww.mikebild.dev%2F/searchAnalytics/query — query clicks, impressions, CTR, and position"
+      "GET /webmasters/v3/sites/https%3A%2F%2Fwww.example.com%2F/sitemaps — list submitted sitemaps for the property",
+      "POST /webmasters/v3/sites/https%3A%2F%2Fwww.example.com%2F/searchAnalytics/query — query clicks, impressions, CTR, and position"
     ],
     "best_practices": [
       "Use the exact Search Console property URL including trailing slash for URL-prefix properties",
