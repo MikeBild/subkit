@@ -202,7 +202,7 @@ describe("DELETE /v1/oauth/clients/{client_id}", () => {
     // Try to authorize with the disabled client
     const res = await fetch(
       `${ctx.baseUrl}/v1/oauth/authorize?client_id=${clientId}&redirect_uri=https://example.com/callback&response_type=code&code_challenge=abc&code_challenge_method=S256`,
-      { redirect: "manual" },
+      { redirect: "manual", headers: { accept: "application/json" } },
     );
     // The provider's getClient filters isNull(disabled_at), so an unknown/disabled client
     // returns 400 invalid_client.

@@ -72,7 +72,7 @@ describe("GET /v1/oauth/authorize", () => {
     expect(res.status).toBe(400);
   });
 
-  test("unknown client_id returns 400", async () => {
+  test("unknown client_id returns the styled 400 HTML error page for browsers", async () => {
     const res = await fetch(
       authorizeUrl({
         client_id: "nonexistentclientid1234",
@@ -83,11 +83,29 @@ describe("GET /v1/oauth/authorize", () => {
       }),
     );
     expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
+  });
+
+  test("unknown client_id keeps the 400 JSON contract for Accept: application/json", async () => {
+    const res = await fetch(
+      authorizeUrl({
+        client_id: "nonexistentclientid1234",
+        redirect_uri: "https://client.example.com/cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+      }),
+      { headers: { accept: "application/json" } },
+    );
+    expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("invalid_client");
   });
 
-  test("unregistered redirect_uri returns 400 (open-redirect guard)", async () => {
+  test("unregistered redirect_uri returns 400 HTML for browsers (open-redirect guard)", async () => {
     const clientId = await registerClient();
     const res = await fetch(
       authorizeUrl({
@@ -97,6 +115,24 @@ describe("GET /v1/oauth/authorize", () => {
         code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
       }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+  });
+
+  test("unregistered redirect_uri keeps the 400 JSON contract for Accept: application/json", async () => {
+    const clientId = await registerClient();
+    const res = await fetch(
+      authorizeUrl({
+        client_id: clientId,
+        redirect_uri: "https://attacker.example.com/steal",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+      }),
+      { headers: { accept: "application/json" } },
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
