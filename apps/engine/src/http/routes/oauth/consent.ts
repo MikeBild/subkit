@@ -5,6 +5,7 @@
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import type { Context } from "hono";
 import {
   AuditAction,
   auditAwait,
@@ -31,6 +32,7 @@ import {
   verifyCsrfToken,
 } from "./shared.ts";
 import {
+  AUTHORIZE_INVALID_MESSAGE,
   authHtmlResponse,
   renderConsentPage,
   renderErrorPage,
@@ -38,15 +40,29 @@ import {
   STATE_ERROR_MESSAGE,
 } from "./ui.ts";
 
+// Authorize-endpoint failures that must NOT redirect to the (unvalidated)
+// client render the shared HTML error page for browsers; JSON stays reserved
+// for clients that explicitly Accept: application/json.
+function authorizeBrowserError(
+  c: Context<AppEnv>,
+  error: string,
+  errorDescription: string,
+): Response {
+  if ((c.req.header("accept") ?? "").includes("application/json")) {
+    return c.json({ error, error_description: errorDescription }, 400);
+  }
+  return authHtmlResponse(
+    renderErrorPage(SIGN_IN_FAILED_TITLE, AUTHORIZE_INVALID_MESSAGE, "/v1/identity/login/start"),
+    400,
+  );
+}
+
 export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
   // ── Authorization endpoint ─────────────────────────────────────────────────
   app.get("/v1/oauth/authorize", async (c) => {
     const q = AuthorizeQuerySchema.safeParse(c.req.query());
     if (!q.success) {
-      return c.json(
-        { error: "invalid_request", error_description: "invalid authorize parameters" },
-        400,
-      );
+      return authorizeBrowserError(c, "invalid_request", "invalid authorize parameters");
     }
     const clientId = q.data.client_id;
     const redirectUri = q.data.redirect_uri;
@@ -78,7 +94,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
-      return c.json({ error: "invalid_client", error_description: "unknown client_id" }, 400);
+      return authorizeBrowserError(c, "invalid_client", "unknown client_id");
     }
 
     // Exact redirect_uri match — open-redirect critical guard
@@ -100,10 +116,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
-      return c.json(
-        { error: "invalid_request", error_description: "redirect_uri not registered" },
-        400,
-      );
+      return authorizeBrowserError(c, "invalid_request", "redirect_uri not registered");
     }
 
     if (responseType !== "code") {
