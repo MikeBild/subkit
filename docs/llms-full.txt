@@ -5990,7 +5990,8 @@ adapter's redirect URI. Every adapter uses only the generic `login/start`,
 The CLI discovers the same list through `GET /v1/identity/providers`. An OIDC
 device-flow result is exchanged at `POST /v1/identity/sessions`
 with `{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
-The response is exactly `{api_key,principal_id,context_id,email}`;
+The response is exactly `{api_key,principal_id,context_id,email}`; `email` is
+nullable and contains only a provider-verified address;
 `context_id` is the SubKit tenant id.
 The exchange never accepts an arbitrary issuer URL and has no protocol- or
 vendor-specific route alias.
@@ -6322,7 +6323,8 @@ ids remain opaque deployment configuration, discovery returns canonical
 labels (`SSO`, `API key`), and assertion exchange uses only
 `POST /v1/identity/sessions` with the shared
 `{provider_id,identity_token}` → `{api_key,principal_id,context_id,email}`
-contract.
+contract. The immutable OIDC `sub` is required; `email` is nullable and
+contains only a provider-verified address.
 
 Verify:
 

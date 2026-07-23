@@ -127,7 +127,8 @@ ids remain opaque deployment configuration, discovery returns canonical
 labels (`SSO`, `API key`), and assertion exchange uses only
 `POST /v1/identity/sessions` with the shared
 `{provider_id,identity_token}` → `{api_key,principal_id,context_id,email}`
-contract.
+contract. The immutable OIDC `sub` is required; `email` is nullable and
+contains only a provider-verified address.
 
 Verify:
 
