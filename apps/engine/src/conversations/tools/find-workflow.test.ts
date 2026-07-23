@@ -11,8 +11,8 @@ import { summarize } from "./find-workflow.ts";
 
 const base = {
   id: "11111111-1111-4111-8111-111111111111",
-  slug: "mikebild-dev-daily-report",
-  name: "mikebild.dev Contentkit Status Report",
+  slug: "example-site-daily-report",
+  name: "Example-Site Status Report",
   current_version: 3,
 };
 
@@ -20,13 +20,13 @@ describe("find_workflow description precedence", () => {
   test("row description wins over a stale definition description", () => {
     const out = summarize({
       ...base,
-      description: "Manueller Contentkit-Statusreport für https://www.mikebild.dev.",
+      description: "Manueller Statusreport für https://www.example.com.",
       definition: {
         description: "STALE: GitHub-Repo-Status + Sitemap via browserless + E-Mail.",
-        steps: [{ id: "contentkit_ready", kind: "request", connector_id: "c1" }],
+        steps: [{ id: "site_ready", kind: "request", connector_id: "c1" }],
       },
     });
-    expect(out.description).toBe("Manueller Contentkit-Statusreport für https://www.mikebild.dev.");
+    expect(out.description).toBe("Manueller Statusreport für https://www.example.com.");
   });
 
   test("falls back to the definition description when the row description is absent", () => {
