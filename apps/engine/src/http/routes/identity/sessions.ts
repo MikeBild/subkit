@@ -38,7 +38,7 @@ const SessionResponse = z
     api_key: z.string(),
     principal_id: z.string(),
     context_id: z.string().nullable(),
-    email: z.string(),
+    email: z.string().nullable(),
   })
   .strict()
   .openapi("IdentitySessionResponse");
@@ -87,7 +87,12 @@ async function resolveOidcAssertion(
   db: Db,
   provider: OidcConfig,
   identityToken: string,
-): Promise<{ principal: ResolvedPrincipal; subject: string; issuer: string }> {
+): Promise<{
+  principal: ResolvedPrincipal;
+  subject: string;
+  issuer: string;
+  email: string | null;
+}> {
   let discovery: DiscoveryDoc;
   try {
     discovery = await fetchDiscovery(new URL(provider.issuer_url));
@@ -124,11 +129,11 @@ async function resolveOidcAssertion(
 
   const subject = typeof claims.sub === "string" ? claims.sub : "";
   if (!subject) throw new UnauthorizedError("identity assertion missing subject");
-  const emailVerified = claims.email_verified === true;
   const email =
-    emailVerified && typeof claims.email === "string" && claims.email.trim()
+    claims.email_verified === true && typeof claims.email === "string" && claims.email.trim()
       ? claims.email.trim().toLowerCase()
-      : `${provider.id}:${subject}@invalid`;
+      : null;
+  const accountEmail = email ?? `${provider.id}:${subject}@invalid`;
   const resolvedTenantId = await tenantId(db, provider.tenant_slug);
 
   let resolved: Awaited<ReturnType<typeof resolveProviderIdentity>>;
@@ -137,8 +142,8 @@ async function resolveOidcAssertion(
       tenantId: resolvedTenantId,
       providerId: provider.id,
       subject,
-      email,
-      linkByEmail: emailVerified,
+      email: accountEmail,
+      linkByEmail: email !== null,
     });
   } catch (error) {
     if (error instanceof IdentityLinkConflictError) throw new ForbiddenError(error.message);
@@ -158,7 +163,7 @@ async function resolveOidcAssertion(
         resource_type: "user",
         resource_id: user.id,
         result: "success",
-        metadata: { source: provider.id, subject, email },
+        metadata: { source: provider.id, subject, email: accountEmail },
       },
       db,
     );
@@ -174,6 +179,7 @@ async function resolveOidcAssertion(
     },
     subject,
     issuer: discovery.issuer,
+    email,
   };
 }
 
@@ -255,7 +261,7 @@ export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
         api_key: issued.plaintext,
         principal_id: principal.id,
         context_id: principal.tenant_id,
-        email: principal.email ?? "",
+        email: resolved.email,
       },
       200,
     );

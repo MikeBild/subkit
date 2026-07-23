@@ -152,7 +152,7 @@ describe("openapi route coverage", () => {
         api_key: { type: "string" },
         principal_id: { type: "string" },
         context_id: { type: ["string", "null"] },
-        email: { type: "string" },
+        email: { type: ["string", "null"] },
       },
       required: ["api_key", "principal_id", "context_id", "email"],
       additionalProperties: false,

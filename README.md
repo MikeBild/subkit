@@ -85,6 +85,8 @@ by WikiKit and ContentKit: **Continue with SSO** is always first and
 actions, and authorize hands off only an opaque `login_state`. Provider
 discovery and assertion exchange use the generic `/v1/identity/providers` and
 `/v1/identity/sessions` endpoints; no provider-named or legacy route exists.
+OIDC requires the immutable `sub`; email is optional, retained only when the
+provider marks it verified, and returned as `null` otherwise.
 
 Operators can measure how the product is actually used without collecting content:
 opt-in, tenant-scoped usage reports cover canonical HTTP routes, Chat turns, Conversation
