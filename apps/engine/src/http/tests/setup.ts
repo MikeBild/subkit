@@ -45,10 +45,14 @@ export { _resetConfigForTests };
 export async function loadAuthProvidersForTest(
   providers: Config["auth"]["providers"],
   databaseUrl = "postgres://placeholder/http-test",
+  opts: { enableSignup?: boolean } = {},
 ): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "sk-auth-providers-test-"));
   const file = join(dir, "subkit.config.json");
-  await writeFile(file, JSON.stringify({ auth: { providers } }));
+  // The JIT scenarios in the identity suites predate the auth.enable_signup
+  // gate (production default false); gate coverage opts out explicitly.
+  const enable_signup = opts.enableSignup ?? true;
+  await writeFile(file, JSON.stringify({ auth: { providers, enable_signup } }));
   await loadConfig({
     env: { DATABASE_URL: databaseUrl, NODE_ENV: "test" },
     configPathOverride: file,

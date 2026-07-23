@@ -81,6 +81,7 @@
         "label": "SubKit API key"
       }
     ],
+    "enable_signup": false,
     "session": {
       "secret": ""
     },

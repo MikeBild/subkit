@@ -50,6 +50,9 @@ function buildProvider() {
     clientId: CLIENT_ID,
     clientSecret: "mock-secret",
     redirectUri: REDIRECT_URI,
+    // Each case logs in with a fresh subject; the signup gate itself is
+    // covered in oidc-real.test.ts.
+    enableSignup: true,
   });
 }
 

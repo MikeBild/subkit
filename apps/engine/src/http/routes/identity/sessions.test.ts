@@ -36,7 +36,11 @@ let defaultTenantId = "";
 const CLIENT_ID = "mock-client";
 const ENDPOINT = "http://127.0.0.1/v1/identity/sessions";
 
-async function writeOidcConfig(issuerUrl: string, clientId: string): Promise<void> {
+async function writeOidcConfig(
+  issuerUrl: string,
+  clientId: string,
+  opts: { enableSignup?: boolean } = {},
+): Promise<void> {
   const file = join(configDir, "subkit.config.json");
   const providers = issuerUrl
     ? [
@@ -51,7 +55,10 @@ async function writeOidcConfig(issuerUrl: string, clientId: string): Promise<voi
         },
       ]
     : [{ protocol: "api_key", id: "api-key", label: "SubKit API key" }];
-  await writeFile(file, JSON.stringify({ auth: { providers } }));
+  // Most cases exercise the JIT path; the signup-gate suite flips this to the
+  // production default (false) explicitly.
+  const enable_signup = opts.enableSignup ?? true;
+  await writeFile(file, JSON.stringify({ auth: { providers, enable_signup } }));
   await loadConfig({
     env: { DATABASE_URL: testDb.url, NODE_ENV: "test" },
     configPathOverride: file,
@@ -120,6 +127,24 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
     const html = await res.text();
     expect(html).toContain("<h1>Sign-in failed</h1>");
     expect(html).toContain('href="/v1/identity/login/start"');
+  });
+
+  test("the generic browser callback rejects an unknown state provider prefix as 400 invalid state", async () => {
+    const res = await app.request("http://127.0.0.1/v1/identity/login/callback?state=zz.bogus");
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain("This sign-in attempt expired or was already used.");
+    expect(html).toContain('href="/v1/identity/login/start"');
+  });
+
+  test("the generic browser callback answers the unknown provider prefix as 400 JSON on request", async () => {
+    const res = await app.request("http://127.0.0.1/v1/identity/login/callback?state=zz.bogus", {
+      headers: { accept: "application/json" },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ code: "provider_not_found" });
   });
 
   test("the generic browser callback still answers JSON when the client asks for it", async () => {
@@ -245,5 +270,98 @@ describe("POST /v1/identity/sessions — account-takeover guards", () => {
     });
     const res = await postIdentity({ provider_id: "test-identity", identity_token: id_token });
     expect(res.status).toBe(403);
+  });
+});
+
+describe("POST /v1/identity/sessions — auth.enable_signup gate", () => {
+  test("signup disabled: unknown identity is refused with 403 access_denied and no user row", async () => {
+    await writeOidcConfig(mock.url, CLIENT_ID, { enableSignup: false });
+    const id_token = await mock.signIdToken({
+      sub: "gate-sessions-new",
+      email: "gate-sessions-new@example.test",
+      email_verified: true,
+    });
+    const res = await postIdentity({ provider_id: "test-identity", identity_token: id_token });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("access_denied");
+
+    const rows = await testDb.db
+      .select()
+      .from(users)
+      .where(eq(users.email, "gate-sessions-new@example.test"));
+    expect(rows).toHaveLength(0);
+  });
+
+  test("signup disabled: an existing user_identities link still mints a key", async () => {
+    const [existing] = await testDb.db
+      .insert(users)
+      .values({
+        tenant_id: defaultTenantId,
+        email: "gate-sessions-linked@example.test",
+        role: "member",
+      })
+      .returning();
+    if (!existing) throw new Error("seed user failed");
+    await testDb.db.insert(userIdentities).values({
+      tenant_id: defaultTenantId,
+      user_id: existing.id,
+      provider_id: "test-identity",
+      subject: "gate-sessions-linked",
+      email: existing.email,
+    });
+
+    await writeOidcConfig(mock.url, CLIENT_ID, { enableSignup: false });
+    const id_token = await mock.signIdToken({
+      sub: "gate-sessions-linked",
+      email: "gate-sessions-linked@example.test",
+      email_verified: true,
+    });
+    const res = await postIdentity({ provider_id: "test-identity", identity_token: id_token });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { principal_id: string };
+    expect(json.principal_id).toBe(existing.id);
+  });
+
+  test("signup disabled: a verified email still links an EXISTING user without creating one", async () => {
+    const [existing] = await testDb.db
+      .insert(users)
+      .values({
+        tenant_id: defaultTenantId,
+        email: "gate-sessions-email@example.test",
+        role: "member",
+      })
+      .returning();
+    if (!existing) throw new Error("seed user failed");
+
+    await writeOidcConfig(mock.url, CLIENT_ID, { enableSignup: false });
+    const id_token = await mock.signIdToken({
+      sub: "gate-sessions-email-sub",
+      email: "gate-sessions-email@example.test",
+      email_verified: true,
+    });
+    const res = await postIdentity({ provider_id: "test-identity", identity_token: id_token });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { principal_id: string };
+    expect(json.principal_id).toBe(existing.id);
+    const rows = await testDb.db
+      .select()
+      .from(users)
+      .where(eq(users.email, "gate-sessions-email@example.test"));
+    expect(rows).toHaveLength(1);
+  });
+
+  test("signup enabled: a brand-new identity still provisions a member (previous behavior)", async () => {
+    await writeOidcConfig(mock.url, CLIENT_ID, { enableSignup: true });
+    const id_token = await mock.signIdToken({
+      sub: "gate-sessions-jit",
+      email: "gate-sessions-jit@example.test",
+      email_verified: true,
+    });
+    const res = await postIdentity({ provider_id: "test-identity", identity_token: id_token });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { principal_id: string };
+    const [row] = await testDb.db.select().from(users).where(eq(users.id, json.principal_id));
+    expect(row?.role).toBe("member");
   });
 });
