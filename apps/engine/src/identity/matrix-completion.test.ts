@@ -145,6 +145,7 @@ describe("concurrent JIT first-login", () => {
         subject: sub,
         email,
         linkByEmail: true,
+        allowCreate: true,
       });
 
     const [a, b] = await Promise.all([resolve(), resolve()]);

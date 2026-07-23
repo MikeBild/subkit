@@ -28,7 +28,7 @@ import * as jose from "jose";
 import * as oauth from "openid-client";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { getConfig } from "../../config/loader.ts";
+import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { oidcLoginStates, sessions, tenants, users } from "../../db/schema/index.ts";
 import {
@@ -40,7 +40,7 @@ import {
 } from "../../http/routes/oauth/ui.ts";
 import { logger } from "../../logging/logger.ts";
 import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
-import { resolveProviderIdentity } from "../identity-link.ts";
+import { resolveProviderIdentity, SignupDisabledError } from "../identity-link.ts";
 import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
@@ -60,6 +60,8 @@ export interface OidcProviderOptions {
   tenantSlug?: string;
   db?: Db;
   sessionSecret?: Uint8Array;
+  /** Test-only override for auth.enable_signup; production reads the live config. */
+  enableSignup?: boolean;
 }
 
 function sha256Hex(value: string): string {
@@ -288,6 +290,13 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
     return db ?? getDb();
   }
 
+  // Read at call time so `sk settings set auth.enable_signup …` applies
+  // without a restart; the secure default (false) covers uninitialised loaders.
+  function signupEnabled(): boolean {
+    if (opts.enableSignup !== undefined) return opts.enableSignup;
+    return isConfigLoaded() ? getConfig().auth.enable_signup : false;
+  }
+
   return {
     name: adapterId,
     capabilities: {
@@ -509,17 +518,44 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         emailVerified && typeof rawEmail === "string" && rawEmail.length > 0
           ? rawEmail
           : `${adapterId}:${sub}@invalid`;
-      const {
-        user: userRow,
-        createdUser,
-        linkedIdentity,
-      } = await resolveProviderIdentity(exec, {
-        tenantId,
-        providerId: adapterId,
-        subject: sub,
-        email,
-        linkByEmail: emailVerified,
-      });
+      let userRow: Awaited<ReturnType<typeof resolveProviderIdentity>>["user"];
+      let createdUser: boolean;
+      let linkedIdentity: boolean;
+      try {
+        ({
+          user: userRow,
+          createdUser,
+          linkedIdentity,
+        } = await resolveProviderIdentity(exec, {
+          tenantId,
+          providerId: adapterId,
+          subject: sub,
+          email,
+          linkByEmail: emailVerified,
+          allowCreate: signupEnabled(),
+        }));
+      } catch (err) {
+        if (err instanceof SignupDisabledError) {
+          logger.warn({
+            module: "auth",
+            action: "oidc.signup_disabled",
+            msg: "SSO login rejected — signups disabled and identity matches no existing account",
+            provider_id: adapterId,
+            subject: sub,
+          });
+          const clientRedirect = await redirectDenialToClient(exec, pending.redirect_to);
+          if (clientRedirect) return clientRedirect;
+          return browserError(
+            req,
+            403,
+            "access_denied",
+            "signups are disabled and this identity matches no existing account",
+            GRANT_DENIED_MESSAGE,
+            retryHref,
+          );
+        }
+        throw err;
+      }
       if (userRow.deleted_at !== null || userRow.status !== "active") {
         return browserError(
           req,

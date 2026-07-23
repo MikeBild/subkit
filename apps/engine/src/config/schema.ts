@@ -349,6 +349,13 @@ const McpOAuthSection = z
 const AuthSection = z
   .object({
     providers: AuthProviders,
+    enable_signup: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Allow first-time SSO sign-ins to auto-provision a new member account (JIT signup). When false, unknown identities are rejected with access_denied; existing users and links keep working.",
+      )
+      .meta(global()),
     session: z
       .object({
         secret: z
