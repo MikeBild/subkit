@@ -177,8 +177,10 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     const state = c.req.query("state") ?? "";
     const providerId = state.includes(".") ? state.slice(0, state.indexOf(".")) : "";
     if (!providerId) return browserStateError(c, 400, "invalid_state");
+    // An unknown provider prefix means the state cannot be ours — same
+    // 400 invalid-state contract as every other malformed callback state.
     const selected = oidcProviders().find((provider) => provider.id === providerId);
-    if (!selected) return browserStateError(c, 404, "provider_not_found");
+    if (!selected) return browserStateError(c, 400, "provider_not_found");
     const handler = oidcProvider(selected, c.get("db"));
     return handler.finishLogin?.(c.req.raw) ?? c.json({ code: "not_supported" }, 500);
   };
