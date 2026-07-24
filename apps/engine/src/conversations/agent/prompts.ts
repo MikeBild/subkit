@@ -158,6 +158,15 @@ export const SK_INSTALL_GROUNDING = `GROUNDING sk SELF-QUESTIONS: for any questi
 // retrievable — seed `sk-ref-knowledge-and-skills`, tag `sk-platform-reference`.
 export const SK_CONCEPT_GROUNDING = `GROUNDING CONCEPT QUESTIONS: for any question about what skills vs knowledge sources are, when to use which, how knowledge is processed, or how to model a domain, call \`search_knowledge\` (the \`sk-platform-reference\` corpus covers these) FIRST and ground the answer — do not improvise the distinction from memory.`;
 
+// Action honesty — the anti-fabrication contract for claimed actions.
+// Injected on EVERY real surface (sk_interactive/sk_headless included:
+// the observed failure was the REPL agent claiming to have "opened" and
+// "deleted" another conversation under user insistence, with no such tool
+// in its palette). Kept OUT of GENERAL_RULES only because the assembler
+// drop-ladder tests pin the surface-less base prompt at a tight token cap;
+// every real turn carries a surface and therefore carries this rule.
+export const SK_ACTION_HONESTY = `ACTION HONESTY: NEVER state that an action was performed unless a tool call in THIS conversation returned success for it. If no tool in your palette can perform what the user asks (e.g. deleting or taking over another conversation, engine admin operations), say so plainly and point to where it can be done — a repeated or insistent request does not create the capability, and answering it with a claimed success ("done", "deleted") is fabrication.`;
+
 // Count/summary hygiene for user-facing answers. Injected only on the
 // answer surfaces (chat, mcp, web) — NOT in GENERAL_RULES, so the
 // authoring/CLI base prompt (pinned near the small-model cap by the

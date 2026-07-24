@@ -4,6 +4,34 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.1] – 2026-07-24
+
+### Fixed
+
+- **`conversation_start` no longer funnels new intents into an unrelated
+  stuck conversation.** The start-idempotency check matched kebab tokens
+  extracted from the incoming message against tokens extracted from a
+  candidate conversation's opening-message *prose*. German (and hyphenated
+  English) compounds — `http-connector`, `api-key`, `authorization-header` —
+  count as kebab tokens, so once one authoring conversation existed, every
+  later start sharing a single such compound "resumed" it, observed live as
+  all starts funnelling into one conversation with no escape. Resume now
+  matches only the candidate's **authored identity** (draft workflow
+  slug/name, draft summary active target), with a whitespace-insensitive
+  identical-message fallback for the pre-draft retry window.
+- **A resumed `conversation_start` runs the message instead of swallowing
+  it.** The resume path returned `resumed: true, status: "working"` without
+  persisting the incoming message or enqueueing a turn — the client polled a
+  conversation that was never going to move and the user's intent silently
+  vanished. A resume is now an append: the message lands in the resumed
+  conversation and a background turn runs it.
+- **Agents must not claim actions they never performed.** New `ACTION
+  HONESTY` prompt rule on every real surface (REPL included): an action may
+  only be reported as done when a tool call in the conversation returned
+  success for it, and a request no palette tool can perform is answered
+  honestly instead of with a fabricated "done"/"deleted" under user
+  insistence.
+
 ## [5.3.0] – 2026-07-24
 
 > Version note: the 5.2.x line (5.2.0–5.2.4) was consumed by pre-squash
