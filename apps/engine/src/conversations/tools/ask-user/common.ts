@@ -118,6 +118,13 @@ async function secretElicitationBlockedOverMcp(
           `Enter the ${authType} credential for ${label}. ` +
           "After submission the connector draft will be probed before it is saved.",
         setup_url: grant.url,
+        // Model-facing relay instruction, mirroring the approval_url note so
+        // a UI-less MCP client surfaces the link instead of paraphrasing it.
+        note:
+          `Present this secure setup link to the operator verbatim, as a bare URL on its own line: ${grant.url} ` +
+          `It expires at ${grant.expires_at.toISOString()} and is single-use. ` +
+          "The operator enters the credential there; then call probe_connector_draft. " +
+          "Do NOT ask them to paste the secret in chat.",
         conversation_id: ctx.conversation_id,
         connector_slug: connector.slug ?? null,
         auth_type: authType,
