@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.1] – 2026-07-24
+
+### Fixed
+
+- **Scope-less OAuth clients are no longer pinned to read-only.** Clients that
+  omit the `scope` parameter (ChatGPT sends none — neither at dynamic client
+  registration nor at authorize time) were hard-defaulted to `mcp:read`, so
+  the consent screen could never offer authoring or admin regardless of the
+  operator's role. Per RFC 6749 §3.3 the authorize endpoint now falls back to
+  the client's registered scope set, and DCR without a `scope` field registers
+  the full supported set. Offering is not granting: the role intersection and
+  the consent checkboxes remain the gate, and `mcp:read` stays the only
+  pre-checked box.
+
 ## [5.1.0] – 2026-07-24
 
 ### Fixed

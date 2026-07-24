@@ -143,9 +143,12 @@ describe("registerClient", () => {
     expect(result.grant_types).toContain("refresh_token");
   });
 
-  test("default scope is mcp:read when not provided", async () => {
+  test("default scope is the full supported set when not provided", async () => {
     const result = await provider.registerClient({ redirect_uris: [REDIRECT_URI] });
-    expect(result.scope).toBe("mcp:read");
+    const scopes = result.scope.split(" ");
+    expect(scopes).toContain("mcp:read");
+    expect(scopes).toContain("mcp:authoring");
+    expect(scopes).toContain("mcp:admin");
   });
 
   test("registerClient writes a mcp_oauth.client_registered audit row", async () => {

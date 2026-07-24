@@ -69,7 +69,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const responseType = q.data.response_type;
     const codeChallenge = q.data.code_challenge;
     const codeChallengeMethod = q.data.code_challenge_method;
-    const scope = q.data.scope ?? "mcp:read";
+    const scopeParam = q.data.scope;
     const resource = q.data.resource ?? "";
     const state = q.data.state ?? "";
 
@@ -223,9 +223,12 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     } catch {
       /* not yet loaded */
     }
-    // Default scope before role intersection — a request with no scope param
-    // starts at "mcp:read" before being narrowed by the role check.
-    const requestedScope = scope || "mcp:read";
+    // RFC 6749 §3.3 — a request with no scope param falls back to the client's
+    // REGISTERED scope set, not a hard "mcp:read": scope-less clients (ChatGPT
+    // omits the param entirely) can then still be OFFERED authoring/admin.
+    // Offering is not granting — the role intersection below and the consent
+    // checkboxes remain the gate, and mcp:read stays the only pre-checked box.
+    const requestedScope = scopeParam ?? (client.scope || "mcp:read");
     // A token can never carry a scope its owner's role lacks.
     // Prefer the custom-role name from the roles table; fall back to the
     // legacy enum column so built-in roles without a roles row still resolve.
