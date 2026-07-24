@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { getConfig, setConfigKey } from "../../config/loader.ts";
 import {
   apiKeys,
   auditLog,
@@ -257,5 +258,61 @@ describe("cleanup write tools in the conversation loop", () => {
     expect(claimedApproval?.granted_at).not.toBeNull();
     expect(claimedApproval?.consumed_at).not.toBeNull();
     expect(await countAudit(AuditAction.APPROVAL_APPROVED, approvalId)).toBe(1);
+  });
+
+  test("a universal-carrier confirm surfaces the approval portal link when a public base URL is set", async () => {
+    // The out-of-band approval link is the ONLY channel a UI-less MCP client
+    // has to answer a policy confirmation. It is minted only when the engine
+    // has a public base URL; set one for this case and restore it after so the
+    // rest of the suite keeps its default.
+    const prevBaseUrl = getConfig().server.public_base_url;
+    await setConfigKey("server.public_base_url", "https://engine.example", { force: true });
+    try {
+      const [apiKey] = await ctx.testDb.db
+        .insert(apiKeys)
+        .values({
+          tenant_id: ctx.tenant_id,
+          user_id: ctx.user_id,
+          prefix: "sk_link_surface",
+          token_sha256: "sha256-link-surface",
+          scopes: [],
+        })
+        .returning();
+      const conversation = await createConversationWithTurn(
+        { tenant_id: ctx.tenant_id, actor_id: ctx.user_id },
+        ctx.testDb.db,
+      );
+      getMockProvider().setConversePlan(conversation.conversation.id, [
+        { tool: "revoke_api_key", args: { id: apiKey!.id } },
+      ]);
+
+      const first = await appendMessageWithTurn(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id: conversation.conversation.id,
+          actor_id: ctx.user_id,
+          principal: testPrincipal(),
+          message: "revoke that api key",
+        },
+        ctx.testDb.db,
+      );
+      expect(first.result.status).toBe("awaiting_input");
+      const elicitationId = first.result.pending_elicitation_id!;
+      expect(elicitationId).toBeTruthy();
+
+      // The link lands on the elicitation input, so it flows out on the
+      // `elicit_request` frame the client renders (and routes url-mode delivery).
+      const [row] = await ctx.testDb.db
+        .select({ input: conversationElicitations.input })
+        .from(conversationElicitations)
+        .where(eq(conversationElicitations.id, elicitationId))
+        .limit(1);
+      const input = row?.input as { approval_url?: string; commit_intent?: { kind?: string } };
+      expect(input?.commit_intent?.kind).toBe("execute_confirmed_tool_call");
+      expect(input?.approval_url).toContain("/v1/tool-approvals/decide");
+      expect(input?.approval_url).toContain("grant=skag_");
+    } finally {
+      await setConfigKey("server.public_base_url", prevBaseUrl ?? "", { force: true });
+    }
   });
 });

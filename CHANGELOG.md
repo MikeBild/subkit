@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0] – 2026-07-24
+
+### Added
+
+- **Policy confirmations are answerable from an MCP client that cannot render
+  an in-band form.** When the confirm gate mints an approval, it now surfaces
+  the single-use approval-portal link (`approval_url`) on the paused
+  elicitation and in the model-facing tool result, so an agent can hand the
+  operator a bare browser URL. Opening the link is already authorized — the
+  one-shot grant *is* the authorization, no sign-in — exactly as the
+  credential-setup portal already works. A url-capable client receives the
+  confirmation as a native URL-mode elicitation; a form-capable client keeps
+  the rich confirm form unchanged.
+- **The approval portal now reactivates the conversation it gates.** Deciding
+  a policy confirmation through `/v1/tool-approvals/decide` marks the paired
+  conversation elicitation settled and nudges the polling MCP client, so its
+  next Tasks poll replays the decision and resumes the turn — the harness then
+  claims the granted approval and performs the tool. Previously a granted
+  approval left its conversation stranded in `awaiting_input` until the
+  15-minute expiry sweep abandoned it.
+
+### Changed
+
+- **A full authoring conversation now degrades by auto-compaction instead of a
+  hard `LlmContextTooLarge`.** On crossing the model's usable context window,
+  the loop pre-flight compacts the conversation once and retries; only if it
+  still cannot fit (or there was nothing left to collapse) does it raise the
+  typed error. The draft workflow lives in draft snapshots, not the chat
+  turns, so collapsing history never loses the in-progress build.
+
 ## [5.3.1] – 2026-07-24
 
 ### Fixed

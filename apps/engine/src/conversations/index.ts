@@ -34,6 +34,7 @@ export {
 export {
   claimDraftCredentialNativeUrlElicitation,
   completeDraftCredentialNativeUrlElicitation,
+  markApprovalElicitationsComplete,
   markConnectorNativeUrlElicitationsComplete,
   releaseDraftCredentialNativeUrlElicitation,
 } from "./native-url-elicitation.ts";
