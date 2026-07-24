@@ -969,6 +969,12 @@ export function wrapOne(
           // the harness claims and replays. A tool whose resume depended on the
           // model re-issuing had no gate at all.
           let policyCommitIntent = buildPolicyGateCommitIntent(inner.name, rawArgs);
+          // The one-shot browser link a human opens to grant this pause when
+          // their MCP client cannot render an in-band confirmation form. Minted
+          // by `requestApproval` below; stays null for the shape-specific
+          // carriers (save/delete/…) whose approval the commit path mints, and
+          // when the engine has no configured `server.public_base_url`.
+          let policyApprovalUrl: string | null = null;
           if (!policyCommitIntent) {
             // Same principal `checkToolPermission` gates on, resolved the same
             // way — so the id this approval is bound to is the id the harness
@@ -990,11 +996,17 @@ export function wrapOne(
             } else {
               const approvalId = crypto.randomUUID();
               try {
-                await requestApproval({
+                const requested = await requestApproval({
                   db,
                   principal,
                   approval_id: approvalId,
                   tool: inner.name,
+                  // `surface`/`via` stay "chat" on EVERY conversation surface,
+                  // including MCP: the harness — not the MCP client — performs the
+                  // gated call on resume, and `auto-persist.ts` claims the approval
+                  // with `surface: "chat"`. `consumeApproval` matches surface in its
+                  // CAS, so minting any other surface here would make the claim miss
+                  // and the approved write silently never run.
                   surface: "chat",
                   via: "chat",
                   // The rule the resolver actually enforced, verbatim.
@@ -1005,6 +1017,7 @@ export function wrapOne(
                       : null,
                   args: rawArgs,
                 });
+                policyApprovalUrl = requested.approval_url;
                 policyCommitIntent = buildConfirmedToolCallIntent(inner.name, approvalId);
               } catch (err) {
                 // A handle we could not persist is a handle nobody can claim.
@@ -1072,6 +1085,14 @@ export function wrapOne(
             ...confirmationMetadataForTool(inner.name, rawArgs),
             ...(pendingOutput ? { pending_output: pendingOutput } : {}),
             ...(policyCommitIntent ? { commit_intent: policyCommitIntent } : {}),
+            // The out-of-band approval link. Unlike `commit_intent`, this is a
+            // bare browser URL the human is meant to open — not an approval
+            // handle — so it stays in `operatorInput` and reaches every
+            // envelope that leaves this process. It routes url-capable MCP
+            // clients to `elicitation/create` url-mode (see `pendingUrlElicitation`)
+            // and is the only channel a client with no elicitation UI has to
+            // reach the confirmation at all.
+            ...(policyApprovalUrl ? { approval_url: policyApprovalUrl } : {}),
             ...(hasConnectorDeleteDependents
               ? {
                   dependents: connectorDeleteDependents,
@@ -1128,8 +1149,13 @@ export function wrapOne(
             status: "awaiting_confirmation" as const,
             policy_mode: resolvedMode,
             elicitation_id: elicitation.id,
+            ...(policyApprovalUrl ? { approval_url: policyApprovalUrl } : {}),
             note: policyCommitIntent
-              ? `policy_confirm_required — nothing ran. The operator must answer the emitted ask_user_confirm; the engine performs ${inner.name} itself once they approve. You do NOT re-issue this call, and you cannot approve on their behalf.`
+              ? `policy_confirm_required — nothing ran. The operator must answer the emitted ask_user_confirm; the engine performs ${inner.name} itself once they approve. You do NOT re-issue this call, and you cannot approve on their behalf.${
+                  policyApprovalUrl
+                    ? ` If the operator has no way to answer the confirmation in their client, present this approval link to them verbatim on its own line as a bare URL — opening it in a browser is already authorized (the single-use link is the authorization; no sign-in): ${policyApprovalUrl}`
+                    : ""
+                }`
               : `policy_confirm_required — nothing ran, and this turn has no way to release ${inner.name}: no approval handle could be opened for it. Tell the user the action must be performed from an authenticated session.`,
           };
           await updateToolCallOutput(db, toolCallId, output);
