@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.2] – 2026-07-24
+
+### Fixed
+
+- **You can now create a second, scope-isolated connector on a base URL that
+  already has one.** Creating a separate connector (e.g. a read/write key
+  alongside an admin key) on an upstream that already had a saved connector
+  was impossible over MCP: connector authoring deduplicated on the base URL
+  and returned the existing connector, so a fresh draft was never started and
+  the secure credential setup-link flow — which requires a fresh, unsaved
+  draft — was never reached. The request dead-ended on a prose question and
+  nothing was persisted. A distinct connector *name* is not the signal to
+  fork (that is the normal re-describe case, which reuse deliberately
+  protects so cached credentials are not lost). Connector authoring now takes
+  an explicit `force_new` flag: the default stays credential-preserving, and
+  `force_new: true` mints an independent draft on the same URL. The connector
+  creation guidance documents it, and the setup-link elicitation now carries
+  a relay instruction so a form-less MCP client surfaces the link verbatim.
+
 ## [5.4.1] – 2026-07-24
 
 ### Fixed
