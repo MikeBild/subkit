@@ -24,6 +24,12 @@ const inputSchema = z
     name: z.string().min(1).optional(),
     /** Selects base_url_options by environment label (e.g. "eu", "sandbox"). */
     base_url_environment: z.string().optional(),
+    force_new: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true only when the operator explicitly wants a SEPARATE connector on a base_url that already has one. Skips URL reuse and mints an independent draft.",
+      ),
   })
   .openapi("StartConnectorFromTemplateToolInput");
 
@@ -71,6 +77,8 @@ export const startConnectorFromTemplateTool: ConversationTool = {
       environment: args.environment,
       base_url: resolvedBaseUrl,
       driver: enriched.driver,
+      // Explicit operator request for a separate connector on this URL.
+      ...(args.force_new ? { force_new: true } : {}),
       db: ctx.db,
     });
     if (reuseEnvelope) {
