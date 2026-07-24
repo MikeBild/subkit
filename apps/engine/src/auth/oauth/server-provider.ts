@@ -111,7 +111,11 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const clientId = randomBytes(16).toString("hex");
     const grantTypes = input.grant_types ?? ["authorization_code", "refresh_token"];
     // Deduplicate scope tokens: split on whitespace, drop empties, unique, rejoin.
-    const rawScope = input.scope ?? "mcp:read";
+    // DCR without a scope field registers the FULL supported set — the client
+    // row is the RFC 6749 §3.3 fallback at authorize time, so a hard mcp:read
+    // here would pin scope-less clients (ChatGPT) to read-only forever. Role
+    // intersection and consent checkboxes still clamp every issued token.
+    const rawScope = input.scope ?? (cfg.scopes_supported.join(" ") || "mcp:read");
     const scope = [...new Set(rawScope.split(/\s+/).filter(Boolean))].join(" ");
     const requestSource = input.requestSource ?? "api";
 
