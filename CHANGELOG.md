@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.1] – 2026-07-24
+
+### Fixed
+
+- **MCP clients (claude.ai, ChatGPT) no longer have to re-authenticate every
+  hour.** A refreshed OAuth access token was minted without its audience
+  (`resource`) because the refresh-token table had no column to carry it
+  forward. The resource server rejects an audience-less token as
+  `audience_missing` whenever a public base URL is configured, so the very
+  next `/mcp` call after a refresh returned 401 and the client fell back to a
+  full re-authorization — roughly hourly, matching the access-token TTL. The
+  audience now rides on the refresh token and is copied onto every rotated
+  access token, so a client stays connected for the full 30-day refresh
+  lifetime. Adds a `resource` column to `mcp_oauth_refresh_tokens` (migration
+  0029) and propagates the audience through the code-exchange and both
+  rotation inserts in the OAuth server provider.
+
 ## [5.4.0] – 2026-07-24
 
 ### Added

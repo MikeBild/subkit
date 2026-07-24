@@ -104,6 +104,12 @@ export const mcpOauthRefreshTokens = pgTable(
     prefix: text("prefix").notNull(),
     token_sha256: text("token_sha256").notNull(),
     scope: text("scope").notNull(),
+    // RFC 8707 audience, carried the length of the rotation chain. The resource
+    // server rejects an access token whose `resource` is NULL once a public
+    // base URL is configured, and a rotated access token can only copy the
+    // audience forward if the refresh token it rotates from holds it — so the
+    // audience must live here, mirroring `mcpOauthAccessTokens.resource`.
+    resource: text("resource"),
     rotated_to_id: uuid("rotated_to_id").references((): AnyPgColumn => mcpOauthRefreshTokens.id),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),

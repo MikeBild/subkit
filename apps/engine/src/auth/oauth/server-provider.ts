@@ -345,7 +345,10 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const accessExpiresAt = new Date(now.getTime() + cfg.access_token_ttl_seconds * 1000);
     const refreshExpiresAt = new Date(now.getTime() + cfg.refresh_token_ttl_seconds * 1000);
 
-    // Insert refresh token first (access token FK)
+    // Insert refresh token first (access token FK). The audience rides on the
+    // refresh token too so every rotation down the chain can copy it forward
+    // onto the new access token — otherwise the resource server rejects the
+    // rotated token as `audience_missing`.
     const [refreshRow] = await db
       .insert(mcpOauthRefreshTokens)
       .values({
@@ -355,6 +358,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         prefix: refresh.prefix,
         token_sha256: refresh.hash,
         scope: codeRow.scope,
+        resource: codeRow.resource ?? null,
         expires_at: refreshExpiresAt,
       })
       .returning({ id: mcpOauthRefreshTokens.id });
@@ -547,6 +551,8 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
             prefix: newRefresh.prefix,
             token_sha256: newRefresh.hash,
             scope: grantedScope,
+            // Carry the audience forward so the NEXT rotation can too.
+            resource: refreshRow.resource ?? null,
             expires_at: newRefreshExpiresAt,
           })
           .returning({ id: mcpOauthRefreshTokens.id });
@@ -581,6 +587,10 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
           prefix: newAccess.prefix,
           token_sha256: newAccess.hash,
           scope: grantedScope,
+          // THE fix: a rotated access token must carry the same audience the
+          // code-exchange token had, or the resource server rejects it as
+          // `audience_missing` and the client is forced to re-authenticate.
+          resource: refreshRow.resource ?? null,
           refresh_token_id: newRefreshRow.id,
           expires_at: newAccessExpiresAt,
         });
