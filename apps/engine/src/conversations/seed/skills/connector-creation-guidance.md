@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, connector, onboarding]
-version: 8
+version: 9
 ---
 
 # Connector Creation Guidance
@@ -38,6 +38,16 @@ save_workflow  ◄──  author_workflow  ◄──  test_connector  ◄──�
 | 4. test_connector | `probe_connector_draft` | `connector_probed` AND (on green probe) `connector_persisted` — the probe tool calls `saveConnectorAtomic` inline; no separate save call |
 | 5. author_workflow | `author_workflow` (one call generates + evaluates the complete draft — the grounded pipeline builder). `edit_workflow_patch` is THE editor for targeted findings (path fix, repaired expression, limit change) afterwards | `workflow_inspected` → `workflow_validated` → `workflow_previewed` |
 | 6. save_workflow | `dry_run_workflow` (holds writes; auto-commits on a clean preview with a passing judge verdict) | `workflow_previewed` AND (on green, judged preview) `workflow_persisted` |
+
+**Separate connector on a URL that already has one.** When `start_connector_*`
+short-circuits with `reused_existing`, that is the default credential-preserving
+behaviour — a differing name is NOT enough to override it. If the operator
+explicitly wants an INDEPENDENT connector on the same `base_url` (e.g.
+scope-isolated credentials — a read/write key alongside an admin key), call the
+same start tool again with `force_new: true`. That skips reuse and mints a fresh
+draft with its own credential; the existing connector is untouched. Only set it
+on an explicit "separate/second connector" request — never to work around a
+reuse you merely didn't expect.
 
 `config.oauth` is **never** written by hand on the draft — it is owned by the
 template snapshot and the OAuth2 client at mint time. `update_connector_draft`
@@ -204,6 +214,14 @@ came back 401/403):
 1. Run **exactly one** `ask_user_form` with one entry of
    `type: "password", sensitive: true`. Do NOT prose-ask "What's your token?"
    in chat — the masked form IS the prompt.
+   - **Over MCP (a client that renders no inline form or confirm dialog):**
+     fire that same single `ask_user_form({ password, sensitive: true })`
+     anyway. Against a fresh, unsaved static-auth draft the harness converts
+     it into a secure **setup link** — a one-time `setup_url` surfaced to you
+     as text. Relay that URL and its expiry to the operator; they submit the
+     secret on the portal page and the draft binds it. Never fall back to
+     prose-asking the token or asking the operator to paste it in chat: over
+     MCP a prose question just parks and nothing persists.
 2. **Bearer / header / query / basic / aws_sigv4:** the form value lands on
    the connector draft via the credential cache. No `commit_intent` — the
    subsequent `probe_connector_draft` will read the cached credential, run

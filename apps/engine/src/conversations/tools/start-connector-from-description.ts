@@ -31,6 +31,12 @@ const inputSchema = z
     auth_type: z
       .enum(["none", "header", "query", "bearer", "basic", "oauth2", "aws_sigv4"])
       .optional(),
+    force_new: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true only when the operator explicitly wants a SEPARATE connector on a base_url that already has one (e.g. a distinct credential scope). Skips URL reuse and mints an independent draft.",
+      ),
   })
   .openapi("StartConnectorFromDescriptionToolInput");
 
@@ -56,6 +62,10 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
       environment: args.environment,
       base_url: args.base_url,
       ...(args.driver ? { driver: args.driver } : {}),
+      // `force_new` is the operator's explicit "I want a SEPARATE connector
+      // on this URL" signal (e.g. a scope-isolated credential). A differing
+      // name alone is the normal re-describe case and still reuses.
+      ...(args.force_new ? { force_new: true } : {}),
       db: ctx.db,
     });
     if (reuseEnvelope) {
