@@ -34,7 +34,10 @@ import {
 } from "../queue/handlers/ingest-knowledge.ts";
 import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
 import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
-import { runConnectorReauthScanForTenant } from "./connector-reauth-scan-runner.ts";
+import {
+  runConnectorReauthScanForTenant,
+  runOAuth2RefreshKeepAliveForTenant,
+} from "./connector-reauth-scan-runner.ts";
 import { parseCronExpression } from "./cron.ts";
 import { runElicitationExpiry } from "./elicitation-expiry-runner.ts";
 import { runEndpointContractScanForTenant } from "./endpoint-contract-scan-runner.ts";
@@ -977,6 +980,12 @@ export class SchedulerReconciler {
    * and an operator notification is emitted — exactly once per
    * false→true transition (dedup guard inside markConnectorNeedsReauth).
    *
+   * The same claim also drives the oauth2 refresh keep-alive sweep
+   * (`runOAuth2RefreshKeepAliveForTenant`): multi-day-idle credentials
+   * get a proactive `connector.refresh-oauth` job so their refresh
+   * tokens don't die of IdP idle-expiry. It runs after the probe scan
+   * so connectors flagged this hour are excluded the same hour.
+   *
    * Same microsecond-safe range-based UPDATE claim pattern as the drift
    * scan: the predicate uses `< cutoff` / `IS NULL` so sub-millisecond
    * microseconds in the stored timestamp never cause a missed claim.
@@ -1006,6 +1015,17 @@ export class SchedulerReconciler {
           module: "scheduler",
           action: "connector_reauth_scan_failed",
           msg: "connector re-auth scan threw for tenant — continuing with the rest",
+          tenant_id: tenant.id,
+          ...errorFields(err),
+        });
+      }
+      try {
+        await runOAuth2RefreshKeepAliveForTenant(tenant.id, now, this.opts.db, this.opts.boss);
+      } catch (err) {
+        logger.error({
+          module: "scheduler",
+          action: "oauth2_keepalive_failed",
+          msg: "oauth2 refresh keep-alive sweep threw for tenant — continuing with the rest",
           tenant_id: tenant.id,
           ...errorFields(err),
         });
