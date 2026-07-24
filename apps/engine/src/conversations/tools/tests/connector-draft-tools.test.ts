@@ -263,6 +263,71 @@ describe("connector draft tools", () => {
     expect(data.connector.slug).toBe("saved-appsync");
   });
 
+  test("force_new mints a SEPARATE draft on a base_url that already has a connector", async () => {
+    // Reproduces conv 008e8a88: the operator already has an admin-scoped
+    // connector on an upstream and explicitly wants a SECOND,
+    // scope-isolated connector (its own credential) on the SAME base_url.
+    // Without `force_new`, URL dedup traps the request on the existing row
+    // (correct default — it preserves creds when the same connector is
+    // merely re-described). With `force_new: true` the operator's explicit
+    // "separate connector" intent wins: a fresh draft is minted, the
+    // existing connector is untouched.
+    const toolCtx = await createToolCtx();
+    const { createConnector, listConnectors } = await import("../../../connectors/service.ts");
+    const admin = await createConnector(
+      {
+        tenant_id: toolCtx.base.tenant_id,
+        input: {
+          name: "contentkit-admin",
+          driver: "http",
+          environment: "prod",
+          base_url: "https://contentkit-api.example.dev",
+          auth_type: "bearer",
+          config: {},
+        },
+        actor_id: null,
+      },
+      toolCtx.base.db,
+    );
+
+    // Sanity: without force_new, the same URL short-circuits to reuse.
+    const reused = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "contentkit-radar-prod",
+      base_url: "https://contentkit-api.example.dev",
+      environment: "prod",
+      auth_type: "bearer",
+    });
+    expect((reused.data as { reused_existing?: boolean }).reused_existing).toBe(true);
+
+    // With force_new, a genuinely fresh draft is created instead.
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "contentkit-radar-prod",
+      base_url: "https://contentkit-api.example.dev",
+      environment: "prod",
+      auth_type: "bearer",
+      force_new: true,
+    });
+    expect(started.ok).toBe(true);
+    expect((started.data as { reused_existing?: boolean }).reused_existing).toBeUndefined();
+
+    // The draft carries the new identity, not the admin connector's.
+    const inspected = await inspectConnectorDraftTool.execute(toolCtx.base, {});
+    const draftConnector = (inspected.data as { connector: { name: string; slug: string } })
+      .connector;
+    expect(draftConnector.name).toBe("contentkit-radar-prod");
+    expect(draftConnector.slug).toBe("contentkit-radar-prod");
+
+    // The existing admin connector is untouched (draft is not yet saved).
+    const { rows: saved } = await listConnectors(
+      toolCtx.base.tenant_id,
+      { environment: "prod" },
+      toolCtx.base.db,
+    );
+    expect(saved).toHaveLength(1);
+    expect(saved[0]?.id).toBe(admin.id);
+    expect(saved[0]?.slug).toBe("contentkit-admin");
+  });
+
   test("URL match still wins when LLM mis-guesses auth_type as aws_sigv4", async () => {
     // Reproduces the regression in session 3f81fb2a. The LLM sees an
     // AppSync hostname and unconditionally guesses `aws_sigv4`. URL
