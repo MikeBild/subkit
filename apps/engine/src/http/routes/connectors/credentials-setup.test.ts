@@ -132,6 +132,13 @@ describe("GET /v1/connectors/{id}/credentials/setup?grant=…", () => {
     const html = await res.text();
     expect(html).toContain('name="token"');
     expect(html).toContain(`value="${token}"`);
+    // The page must name the external service on the heading, the explainer,
+    // and the secret field — operators must not read it as a sign-in page.
+    expect(html).toContain("Reconnect Mock Setup Bearer");
+    expect(html).toContain("API token / bearer token issued by Mock Setup Bearer");
+    expect(html).toContain("not a sign-in for this page");
+    // The plaintext grant appears EXACTLY once: the hidden form field.
+    expect(html.split(token).length - 1).toBe(1);
 
     // Grant row must still exist — GET validates only, never consumes.
     expect(await getGrantRow(token)).not.toBeNull();
@@ -158,7 +165,8 @@ describe("GET /v1/connectors/{id}/credentials/setup?grant=…", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.text();
-    expect(body).toContain("expired");
+    // "Setup link", not "Sign-in link" — this page never was a sign-in.
+    expect(body).toContain("Setup link expired");
   });
 });
 
@@ -378,7 +386,11 @@ describe("unsaved connector draft credential setup", () => {
 
     const form = await fetch(setupUrl);
     expect(form.status).toBe(200);
-    expect(await form.text()).toContain('name="token"');
+    const formHtml = await form.text();
+    expect(formHtml).toContain('name="token"');
+    // Draft flow is a first-time connect, not a reauth.
+    expect(formHtml).toContain("Connect Cloudflare Journey");
+    expect(formHtml).toContain("API token / bearer token issued by Cloudflare Journey");
 
     const submitted = await fetch(
       `${server.baseUrl}/v1/connector-drafts/${conversation.id}/credentials/setup`,
