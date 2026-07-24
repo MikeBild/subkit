@@ -5,15 +5,16 @@
 //   * `refreshIfStale(db, tenant, row, credential)` — synchronous path
 //     used from inside the HTTP driver right before a request goes
 //     out. If the access token is within REFRESH_LEAD_MS of expiry, we
-//     refresh inline (so the outgoing request definitely has a fresh
-//     token) AND enqueue a background job for observability. The
-//     inline refresh is the real one; the queue job is a no-op if the
-//     token is already fresh.
+//     refresh inline so the outgoing request definitely has a fresh
+//     token.
 //
 //   * `registerOAuth2RefreshHandler(boss, db)` — pg-boss worker for
-//     the `connector.refresh-oauth` queue. Other components (e.g. a
-//     scheduled reaper) can enqueue jobs to proactively rotate tokens
-//     without waiting for a request.
+//     the `connector.refresh-oauth` queue. Its producer is the
+//     scheduler's hourly keep-alive sweep
+//     (`runOAuth2RefreshKeepAliveForTenant` in
+//     scheduler/connector-reauth-scan-runner.ts), which enqueues one
+//     job per multi-day-idle credential so refresh tokens don't die
+//     of IdP idle-expiry while a connector sees no traffic.
 //
 // The synchronous inline path is chosen because round-tripping through
 // pg-boss takes longer than the refresh itself in the common case,
@@ -40,7 +41,7 @@ import {
 
 export const REFRESH_LEAD_MS = 60_000;
 
-interface RefreshOAuthJob {
+export interface RefreshOAuthJob {
   tenant_id: string;
   credential_id: string;
 }
@@ -345,7 +346,7 @@ export async function registerOAuth2RefreshHandler(opts: {
   return workerId;
 }
 
-async function handleRefreshJob(db: Db, data: RefreshOAuthJob): Promise<void> {
+export async function handleRefreshJob(db: Db, data: RefreshOAuthJob): Promise<void> {
   // tenant-filter:exempt — background refresh sweeps every tenant
   const rows = await db
     .select()
