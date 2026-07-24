@@ -1829,6 +1829,13 @@ or replayed to the model, and any credential slot in a tool argument is scrubbed
 the same boundary — the raw value only ever exists in memory on its way to the
 encrypted vault.
 
+**The portal-setup link needs no sign-in.** The link itself is the authorization:
+a single-use grant token minted from your chat session, valid for a few minutes
+and burned on submit — so the page never asks you to log in to sk. What the form
+does ask for is the credential issued by the external service the connector
+targets (its API key, token, or password), because that secret exists only on
+the external service's side and cannot be derived from any sk or SSO identity.
+
 **End-User Credentials** extend this for multi-user scenarios: an individual user
 supplies their own credentials, and the platform acts as that user when executing
 on their behalf — proper delegation, not credential sharing.

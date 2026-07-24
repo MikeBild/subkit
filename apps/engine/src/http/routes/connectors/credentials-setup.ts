@@ -200,21 +200,24 @@ const draftCredentialSetupSubmitRoute = createRoute({
   },
 });
 
-const AUTH_TYPE_FIELD_HTML: Record<string, string> = {
-  bearer:
-    '<label>API token / bearer token<br /><input type="password" name="token" required autocomplete="off" autofocus /></label>',
-  basic:
-    '<label>Username<br /><input type="text" name="username" required autocomplete="off" autofocus /></label>' +
-    '<label>Password<br /><input type="password" name="password" required autocomplete="off" /></label>',
-  header:
+// Per-auth_type form fields, parameterized with the (pre-escaped) connector
+// label so every secret field names the external service that issued it —
+// operators otherwise misread the form as a sign-in for this page.
+const AUTH_TYPE_FIELD_HTML: Record<string, (safeName: string) => string> = {
+  bearer: (safeName) =>
+    `<label>API token / bearer token issued by ${safeName}<br /><input type="password" name="token" required autocomplete="off" autofocus /></label>`,
+  basic: (safeName) =>
+    `<label>Username for ${safeName}<br /><input type="text" name="username" required autocomplete="off" autofocus /></label>` +
+    `<label>Password for ${safeName}<br /><input type="password" name="password" required autocomplete="off" /></label>`,
+  header: (safeName) =>
     '<label>Header name<br /><input type="text" name="header_name" required autocomplete="off" autofocus /></label>' +
-    '<label>Header value<br /><input type="password" name="header_value" required autocomplete="off" /></label>',
-  query:
+    `<label>Header value issued by ${safeName}<br /><input type="password" name="header_value" required autocomplete="off" /></label>`,
+  query: (safeName) =>
     '<label>Query parameter name<br /><input type="text" name="query_name" required autocomplete="off" autofocus /></label>' +
-    '<label>Query parameter value<br /><input type="password" name="query_value" required autocomplete="off" /></label>',
-  aws_sigv4:
-    '<label>Access key ID<br /><input type="text" name="access_key_id" required autocomplete="off" autofocus /></label>' +
-    '<label>Secret access key<br /><input type="password" name="secret_access_key" required autocomplete="off" /></label>' +
+    `<label>Query parameter value issued by ${safeName}<br /><input type="password" name="query_value" required autocomplete="off" /></label>`,
+  aws_sigv4: (safeName) =>
+    `<label>Access key ID for ${safeName}<br /><input type="text" name="access_key_id" required autocomplete="off" autofocus /></label>` +
+    `<label>Secret access key for ${safeName}<br /><input type="password" name="secret_access_key" required autocomplete="off" /></label>` +
     '<label>Session token (optional)<br /><input type="password" name="session_token" autocomplete="off" /></label>',
 };
 
@@ -228,18 +231,20 @@ function buildCredentialSetupFormHtml(opts: {
   label: string;
   auth_type: string;
   grant: string;
+  mode: "connect" | "reconnect";
 }): string {
   const { auth_type, grant } = opts;
   const safeAction = escapeHtml(opts.action);
   const safeName = escapeHtml(opts.label);
   const safeGrant = escapeHtml(grant);
-  const fields = AUTH_TYPE_FIELD_HTML[auth_type] ?? "";
+  const fields = AUTH_TYPE_FIELD_HTML[auth_type]?.(safeName) ?? "";
+  const heading = opts.mode === "connect" ? `Connect ${safeName}` : `Reconnect ${safeName}`;
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reconnect ${safeName}</title>
+  <title>${heading}</title>
   <style>
     body { font-family: system-ui, sans-serif; background: #fafafa; color: #111; }
     main { max-width: 480px; margin: 96px auto; padding: 32px; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
@@ -252,8 +257,8 @@ function buildCredentialSetupFormHtml(opts: {
 </head>
 <body>
   <main>
-    <h1>Reconnect ${safeName}</h1>
-    <p class="sub">Enter the new credential below. This link is single-use and expires shortly.</p>
+    <h1>${heading}</h1>
+    <p class="sub">Paste the credential issued by ${safeName} below — the secret from that service, not a sign-in for this page. No login is needed here: opening this single-use link from your chat already authorized it. The secret is stored encrypted and never shared with the assistant.</p>
     <form method="POST" action="${safeAction}">
       <input type="hidden" name="grant" value="${safeGrant}" />
       ${fields}
@@ -276,7 +281,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!validated) {
       const { html, status } = buildCallbackPageHtml({
         kind: "error",
-        title: "Sign-in link expired",
+        title: "Setup link expired",
         message:
           "This credential-setup link was already used or has expired — ask the assistant for a fresh link.",
       });
@@ -287,6 +292,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       label: validated.connector_label,
       auth_type: validated.auth_type,
       grant,
+      mode: "connect",
     });
     return c.body(html, 200, { "content-type": "text/html; charset=utf-8" });
   });
@@ -302,7 +308,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!validated) {
       const { html, status } = buildCallbackPageHtml({
         kind: "error",
-        title: "Sign-in link expired",
+        title: "Setup link expired",
         message:
           "This credential-setup link was already used or has expired — ask the assistant for a fresh link.",
       });
@@ -366,7 +372,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       if (!(await claimDraftCredentialNativeUrlElicitation(claim, db))) {
         const { html, status } = buildCallbackPageHtml({
           kind: "error",
-          title: "Sign-in link expired",
+          title: "Setup link expired",
           message: "This credential-setup link has already been used.",
         });
         return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
@@ -444,7 +450,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       });
       const { html, status } = buildCallbackPageHtml({
         kind: "error",
-        title: "Sign-in link expired",
+        title: "Setup link expired",
         message:
           "This credential-setup link was already used or has expired — ask the assistant for a fresh link.",
       });
@@ -471,6 +477,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       label: connector.display_name || connector.slug,
       auth_type: connector.auth_type,
       grant,
+      mode: "reconnect",
     });
     return c.body(html, 200, { "content-type": "text/html; charset=utf-8" });
   });
@@ -489,7 +496,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!grant) {
       const { html, status } = buildCallbackPageHtml({
         kind: "error",
-        title: "Missing sign-in link token",
+        title: "Missing setup link token",
         message: "This form was opened without a valid link — ask the assistant for a fresh one.",
       });
       return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
@@ -506,7 +513,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       });
       const { html, status } = buildCallbackPageHtml({
         kind: "error",
-        title: "Sign-in link expired",
+        title: "Setup link expired",
         message:
           "This credential-setup link was already used or has expired — ask the assistant for a fresh link.",
       });
