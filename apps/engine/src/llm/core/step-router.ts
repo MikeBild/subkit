@@ -347,6 +347,12 @@ function activeToolsForStage(
   hasPersistedWorkflow: boolean,
 ): string[] | undefined {
   const names = Object.keys(toolsByName);
+  const activeAuthoringResource =
+    stage?.startsWith("connector_") && stage !== "connector_persisted"
+      ? "connector"
+      : stage?.startsWith("workflow_") && stage !== "workflow_persisted"
+        ? "workflow"
+        : null;
   // True whenever no persisted workflow is bound on the conversation —
   // tools flagged `requires_persisted_workflow` must be dropped from
   // the palette regardless of stage. The forced-tool invariant (below)
@@ -375,6 +381,13 @@ function activeToolsForStage(
       }
       const t = toolsByName[n];
       if (!t) return false;
+      if (
+        activeAuthoringResource &&
+        t.authoring_resource &&
+        t.authoring_resource !== activeAuthoringResource
+      ) {
+        return false;
+      }
       // Drop tools that contractually need a persisted workflow id
       // when none is bound. Survives only when the operator
       // explicitly forces one (handled above).

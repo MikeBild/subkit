@@ -7,6 +7,7 @@ export interface FieldMeta {
   secret?: boolean;
   scope?: FieldScope;
   requiresRestart?: boolean;
+  structural?: boolean;
   [extra: string]: unknown;
 }
 
@@ -245,6 +246,66 @@ const LlmSection = z
   .prefault({})
   .describe("LLM configuration");
 
+const AuthProviders = z
+  .array(
+    z.discriminatedUnion("protocol", [
+      z.object({
+        protocol: z.literal("api_key"),
+        id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+        label: z.string().min(1).max(120),
+      }),
+      z.object({
+        protocol: z.literal("oidc"),
+        id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/),
+        label: z.string().min(1).max(120),
+        issuer_url: z.url().refine(
+          (value) => {
+            const url = new URL(value);
+            return url.protocol === "https:" || ["127.0.0.1", "localhost"].includes(url.hostname);
+          },
+          {
+            message: "OIDC issuer_url must use HTTPS outside localhost",
+          },
+        ),
+        client_id: z.string().min(1),
+        client_secret: z
+          .string()
+          .default("")
+          .meta(global({ secret: true })),
+        scopes: z.string().default("openid profile email"),
+        tenant_slug: z.string().min(1).default("default"),
+      }),
+    ]),
+  )
+  .superRefine((providers, ctx) => {
+    const seen = new Set<string>();
+    let apiKeyConfigured = false;
+    providers.forEach((provider, index) => {
+      if (seen.has(provider.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [index, "id"],
+          message: "Auth provider ids must be unique",
+        });
+      }
+      seen.add(provider.id);
+      if (provider.protocol === "api_key") {
+        if (apiKeyConfigured) {
+          ctx.addIssue({
+            code: "custom",
+            path: [index, "protocol"],
+            message: "Auth may contain only one api_key provider",
+          });
+        }
+        apiKeyConfigured = true;
+      }
+    });
+  })
+  .min(1)
+  .default([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }])
+  .describe("Provider-neutral browser and bearer authentication adapters.")
+  .meta(global({ requiresRestart: true, secret: true, structural: true }));
+
 const McpOAuthSection = z
   .object({
     enabled: z
@@ -281,33 +342,20 @@ const McpOAuthSection = z
       .describe("OAuth scopes advertised in the authorization server metadata.")
       .meta(global()),
   })
+  .strict()
   .prefault({})
   .describe("MCP OAuth 2.1 authorization + resource server");
 
 const AuthSection = z
   .object({
-    provider: z
-      .enum(["subkit", "firebase", "oidc"])
-      .default("subkit")
+    providers: AuthProviders,
+    enable_signup: z
+      .boolean()
+      .default(false)
       .describe(
-        "Human identity provider: 'subkit' (local admin-invite), 'firebase' (Firebase ID tokens), or 'oidc' (generic OIDC). Machine auth (API keys, portal, MCP OAuth) is always available.",
+        "Allow first-time SSO sign-ins to auto-provision a new member account (JIT signup). When false, unknown identities are rejected with access_denied; existing users and links keep working.",
       )
-      .meta(global({ requiresRestart: true })),
-    oidc: z
-      .object({
-        issuer_url: optionalUrl.default("").meta(global({ requiresRestart: true })),
-        client_id: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
-        client_secret: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true, secret: true })),
-        redirect_uri: optionalUrl.default("").meta(global({ requiresRestart: true })),
-      })
-      .prefault({})
-      .describe("Generic OIDC provider"),
+      .meta(global()),
     session: z
       .object({
         secret: z
@@ -320,23 +368,9 @@ const AuthSection = z
       })
       .prefault({})
       .describe("Session signing"),
-    firebase: z
-      .object({
-        project_id: z
-          .string()
-          .default("")
-          .meta(global({ requiresRestart: true })),
-        login_url: optionalUrl.default("").meta(global({ requiresRestart: true })),
-        tenant_slug: z
-          .string()
-          .default("default")
-          .describe("Tenant slug that Firebase-authenticated users are mapped into.")
-          .meta(global({ requiresRestart: true })),
-      })
-      .prefault({})
-      .describe("Firebase authentication"),
     mcp_oauth: McpOAuthSection,
   })
+  .strict()
   .prefault({})
   .describe("Authentication");
 
@@ -530,6 +564,36 @@ const AnalyticsSection = z
   .prefault({})
   .describe("Config-driven product analytics (disabled by default; zero external calls when off)");
 
+const UsageSection = z
+  .object({
+    enabled: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Persist privacy-safe, tenant-scoped product usage events locally. Disabled by default; requires hmac_secret when enabled.",
+      )
+      .meta(global()),
+    hmac_secret: z
+      .string()
+      .default("")
+      .describe(
+        "Product-local HMAC secret for actor and session pseudonyms. Set at least 32 characters before enabling usage telemetry.",
+      )
+      .meta(global({ secret: true })),
+    retention_days: z
+      .number()
+      .int()
+      .min(31)
+      .max(365)
+      .default(90)
+      .describe("Raw usage-event retention in days; aggregate reports may outlive raw rows.")
+      .meta(global()),
+  })
+  .prefault({})
+  .describe(
+    "Privacy-safe, product-internal usage measurement (local Postgres only; no content fields)",
+  );
+
 const ObservabilitySection = z
   .object({
     langfuse: z
@@ -556,6 +620,7 @@ const ObservabilitySection = z
       .prefault({})
       .describe("OpenTelemetry OTLP exporter"),
     analytics: AnalyticsSection,
+    usage: UsageSection,
     deployment_environment: z
       .string()
       .min(1)

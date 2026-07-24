@@ -90,7 +90,9 @@ describe("streamable-http transport guards", () => {
     });
 
     expect(res.status).toBe(401);
-    expect(res.headers.get("www-authenticate")).toContain('scope="mcp:read"');
+    expect(res.headers.get("www-authenticate")).toContain(
+      'scope="mcp:read mcp:authoring mcp:admin"',
+    );
   });
 
   test("rejects unsupported MCP-Protocol-Version with 400", async () => {

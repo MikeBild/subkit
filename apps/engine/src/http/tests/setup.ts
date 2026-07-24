@@ -9,10 +9,12 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type ServerType, serve } from "@hono/node-server";
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
+import type { Config } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -39,6 +41,23 @@ async function ensureConfigLoaded(): Promise<void> {
 }
 
 export { _resetConfigForTests };
+
+export async function loadAuthProvidersForTest(
+  providers: Config["auth"]["providers"],
+  databaseUrl = "postgres://placeholder/http-test",
+  opts: { enableSignup?: boolean } = {},
+): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), "sk-auth-providers-test-"));
+  const file = join(dir, "subkit.config.json");
+  // The JIT scenarios in the identity suites predate the auth.enable_signup
+  // gate (production default false); gate coverage opts out explicitly.
+  const enable_signup = opts.enableSignup ?? true;
+  await writeFile(file, JSON.stringify({ auth: { providers, enable_signup } }));
+  await loadConfig({
+    env: { DATABASE_URL: databaseUrl, NODE_ENV: "test" },
+    configPathOverride: file,
+  });
+}
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");

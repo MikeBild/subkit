@@ -3,10 +3,9 @@
 // `conversations/*` tools (`ask_user_*`, `authenticate_oauth`) collect
 // operator input. The contract allows a surface to offer an in-process
 // server→client `elicitation/create` round-trip instead of the DB-pause /
-// `respondElicitation` path — but NO surface currently constructs one:
-// MCP is portal-only for write approvals and uses the DB-pause path for
-// conversation elicitation, so the `elicitationBridge?` parameter is never
-// populated and every caller degrades to the DB-pause path.
+// `respondElicitation` path. MCP background turns persist first because the
+// queue worker has no live transport; `conversation_get` / `tasks/get` then
+// construct the bridge on the polling session and resume the same turn.
 //
 // The CONTRACT lives here, in `conversations/`, so a future concrete
 // implementation depends inward on this shape and `conversations/*` never
@@ -54,6 +53,15 @@ export const ElicitResultSchema = z.object({
 export type ElicitationResult = z.infer<typeof ElicitResultSchema>;
 
 /**
+ * A `cancel` that arrives faster than any human could have read the form
+ * means the client auto-cancelled without rendering it (observed in the
+ * wild: clients that advertise `elicitation` but refuse mid-turn UI).
+ * Such a cancel is a transport verdict, not a human decision — callers
+ * must fall back (portal / retry) instead of recording `user_cancelled`.
+ */
+export const FORM_FAST_CANCEL_MS = 2_000;
+
+/**
  * Thrown when a tool asks the bridge for a capability the connected
  * client did not advertise. Callers catch this and fall back to the
  * DB-pause path.
@@ -68,11 +76,9 @@ export class ElicitationUnsupportedError extends Error {
 }
 
 /**
- * The bridge contract a conversation tool depends on. No surface constructs
- * a concrete implementation today (MCP write approval is portal-only and MCP
- * conversation elicitation uses the DB-pause path) — callers receive
- * `undefined` and degrade accordingly. A future in-process surface would
- * `implement` this shape.
+ * The bridge contract a conversation tool depends on. MCP constructs it from
+ * the active Streamable HTTP session when a client advertises form and/or URL
+ * elicitation; unattended workers receive `undefined` and persist a pause.
  */
 export interface ElicitationBridge {
   /**

@@ -639,6 +639,234 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/stats/http": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** HTTP route usage, latency, bytes, and errors */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    traffic_class?: string | string[];
+                    operation?: string | string[];
+                    outcome?: string | string[];
+                    request_source?: string | string[];
+                    platform?: string | string[];
+                    response_mode?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Exact tenant-scoped usage report (no content or raw identifiers) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsUsageResponse"];
+                    };
+                };
+                /** @description Invalid window, traffic class, or grouping */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stats/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Chat turns, delivery modes, deduplication, and outcomes */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    traffic_class?: string | string[];
+                    operation?: string | string[];
+                    outcome?: string | string[];
+                    request_source?: string | string[];
+                    platform?: string | string[];
+                    response_mode?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Exact tenant-scoped usage report (no content or raw identifiers) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsUsageResponse"];
+                    };
+                };
+                /** @description Invalid window, traffic class, or grouping */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stats/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** MCP JSON-RPC, session, capacity, task, and SSE usage */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    traffic_class?: string | string[];
+                    operation?: string | string[];
+                    outcome?: string | string[];
+                    request_source?: string | string[];
+                    platform?: string | string[];
+                    response_mode?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Exact tenant-scoped usage report (no content or raw identifiers) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsUsageResponse"];
+                    };
+                };
+                /** @description Invalid window, traffic class, or grouping */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stats/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversation calls, streaming completion, disconnects, and outcomes */
+        get: {
+            parameters: {
+                query: {
+                    bucket: "minute" | "hour" | "day" | "month" | "year";
+                    from: string;
+                    to?: string;
+                    tz?: string;
+                    traffic_class?: string | string[];
+                    operation?: string | string[];
+                    outcome?: string | string[];
+                    request_source?: string | string[];
+                    platform?: string | string[];
+                    response_mode?: string | string[];
+                    group_by?: string | string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Exact tenant-scoped usage report (no content or raw identifiers) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsUsageResponse"];
+                    };
+                };
+                /** @description Invalid window, traffic class, or grouping */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings": {
         parameters: {
             query?: never;
@@ -2179,7 +2407,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List available authentication providers */
+        /** List available MCP authentication methods */
         get: {
             parameters: {
                 query?: never;
@@ -2189,7 +2417,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
+                /** @description Canonical SSO-first method matrix */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2208,7 +2436,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/identity/sessions/oidc": {
+    "/v1/identity/sessions": {
         parameters: {
             query?: never;
             header?: never;
@@ -2217,58 +2445,196 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Exchange an OIDC id_token for a personal subkit API key */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["SessionsOidcBody"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["SessionsOidcResponse"];
-                    };
-                };
-                /** @description Bad request */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Invalid id_token */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description OIDC login not configured, or issuer not allow-listed */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
+        /** Exchange a configured identity assertion for a scoped API key */
+        post: operations["createIdentitySession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/oauth-protected-resource": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
+        /** Read MCP protected-resource metadata */
+        get: operations["getOAuthProtectedResource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/oauth-protected-resource/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read MCP protected-resource metadata */
+        get: operations["getMcpOAuthProtectedResource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/oauth-authorization-server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read OAuth authorization-server metadata */
+        get: operations["getOAuthAuthorizationServer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/oauth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a public OAuth client */
+        post: operations["registerOAuthClient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/oauth/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Start authorization-code login and consent */
+        get: operations["authorizeOAuthClient"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/oauth/authorize/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve or deny consent */
+        post: operations["decideOAuthConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/oauth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange or refresh OAuth tokens */
+        post: operations["exchangeOAuthToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/oauth/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke an OAuth token family */
+        post: operations["revokeOAuthToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/login/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show the SSO-first login chooser or start a selected method */
+        get: operations["startIdentityLogin"];
+        put?: never;
+        /** Authenticate the API-key login method */
+        post: operations["submitApiKeyLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/login/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Complete an OIDC login adapter */
+        get: operations["completeOidcLogin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the browser operator session */
+        post: operations["logoutIdentitySession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3257,13 +3623,22 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Created */
+                /** @description Existing workflow schedule updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleUpsertResponse"];
+                    };
+                };
+                /** @description Schedule created */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ScheduleEntry"];
+                        "application/json": components["schemas"]["ScheduleUpsertResponse"];
                     };
                 };
                 /** @description Invalid cron */
@@ -4223,7 +4598,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Import a connector draft from an API collection, HAR, OpenAPI/GraphQL spec, or curl command */
+        /**
+         * Import a connector draft from an API collection, HAR, OpenAPI/Google Discovery/GraphQL spec, or curl command
+         * @description URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit. Specification server and authentication metadata seed the draft.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -4934,6 +5312,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connectors/{id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Promote a connector and its credentials from DEV to PROD */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "idempotency-key": string;
+                };
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConnectorPromotionBody"];
+                };
+            };
+            responses: {
+                /** @description Moved or idempotently replayed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorPromotionResponse"];
+                    };
+                };
+                /** @description Copied */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorPromotionResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Promotion is not safe for the connector state */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connectors/{id}/call": {
         parameters: {
             query?: never;
@@ -5248,6 +5706,103 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connector-drafts/{id}/credentials/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Browser-openable credential form for an unsaved connector draft */
+        get: {
+            parameters: {
+                query: {
+                    grant: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK (HTML form) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Grant invalid, expired, or already used */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Submit a credential for an unsaved connector draft */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            /** @description Single-use HTML credential form submission. */
+            requestBody?: {
+                content: {
+                    "application/x-www-form-urlencoded": {
+                        grant?: string;
+                        token?: string;
+                        username?: string;
+                        password?: string;
+                        header_name?: string;
+                        header_value?: string;
+                        query_name?: string;
+                        query_value?: string;
+                        access_key_id?: string;
+                        secret_access_key?: string;
+                        session_token?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Credential staged for the draft probe */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Grant or credential input invalid */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
                     };
                 };
             };
@@ -12541,7 +13096,7 @@ export interface paths {
         };
         /**
          * Operator-facing setup validation for live engine configuration
-         * @description Returns the GLOBAL config snapshot only — tenant overlays are not represented here. Operators reading this expecting per-tenant `auth.firebase.*` (or any other tenant-scope leaf) should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins can validate the engine's bootstrap configuration without a tenant context.
+         * @description Returns the GLOBAL config snapshot only — tenant overlays are not represented here. Operators reading this expecting tenant-scoped settings should hit `GET /v1/settings?tenant=<id>` instead. This route is intentionally global so admins can validate the engine's bootstrap configuration without a tenant context.
          */
         get: {
             parameters: {
@@ -13187,6 +13742,134 @@ export interface components {
             code: string;
             count: number;
         };
+        StatsUsageResponse: {
+            /** @enum {string} */
+            schema_version: "subkit.usage-stats.v1";
+            /** @enum {string} */
+            surface: "http" | "chat" | "mcp" | "conversations";
+            /** @enum {string} */
+            bucket: "minute" | "hour" | "day" | "month" | "year";
+            tz: string;
+            from: string;
+            to: string;
+            truncated_at?: string;
+            traffic_class: ("organic" | "synthetic" | "internal")[];
+            groups: {
+                key: {
+                    [key: string]: string;
+                };
+                buckets: {
+                    calls: number;
+                    unique_actors: number;
+                    unique_sessions: number;
+                    failures: number;
+                    duration_ms: {
+                        measured: number;
+                        avg: number;
+                        p50: number;
+                        p95: number;
+                        p99: number;
+                        max: number;
+                    };
+                    bytes: {
+                        request: number;
+                        response: number;
+                    };
+                    streams: {
+                        completed: number;
+                        cancelled: number;
+                        errored: number;
+                    };
+                    ts: string;
+                }[];
+                totals: {
+                    calls: number;
+                    unique_actors: number;
+                    unique_sessions: number;
+                    failures: number;
+                    duration_ms: {
+                        measured: number;
+                        avg: number;
+                        p50: number;
+                        p95: number;
+                        p99: number;
+                        max: number;
+                    };
+                    bytes: {
+                        request: number;
+                        response: number;
+                    };
+                    streams: {
+                        completed: number;
+                        cancelled: number;
+                        errored: number;
+                    };
+                };
+            }[];
+            totals: {
+                calls: number;
+                unique_actors: number;
+                unique_sessions: number;
+                failures: number;
+                duration_ms: {
+                    measured: number;
+                    avg: number;
+                    p50: number;
+                    p95: number;
+                    p99: number;
+                    max: number;
+                };
+                bytes: {
+                    request: number;
+                    response: number;
+                };
+                streams: {
+                    completed: number;
+                    cancelled: number;
+                    errored: number;
+                };
+                by_outcome: {
+                    [key: string]: number;
+                };
+                success_ratio: {
+                    numerator: number;
+                    denominator: number;
+                    value: number | null;
+                };
+                surface_details: {
+                    sessions_initialized: number;
+                    sessions_closed: number;
+                    capacity_rejections: number;
+                    active_sessions_peak: number;
+                    sync_responses: number;
+                    async_responses: number;
+                    task_started: number;
+                };
+            };
+            semantic: {
+                /** @enum {string} */
+                value_state: "measured" | "zero" | "missing";
+                /** @enum {string} */
+                value_kind: "count";
+                /** @enum {string} */
+                unit: "calls";
+            };
+            quality: {
+                /** @enum {boolean} */
+                sampled: false;
+                /** @enum {string} */
+                unique_scope: "exact_window";
+                /** @enum {string} */
+                identity: "product_local_hmac";
+                /** @enum {boolean} */
+                content_captured: false;
+                retention_days: number;
+                duration_coverage: {
+                    numerator: number;
+                    denominator: number;
+                };
+            };
+        };
         SettingsListResponse: {
             items: components["schemas"]["SettingLeafEntry"][];
             diagnostics: {
@@ -13413,25 +14096,23 @@ export interface components {
             providers: components["schemas"]["AuthProvider"][];
         };
         AuthProvider: {
-            type: string;
-            name: string;
-            /** Format: uri */
-            login_url?: string;
+            /** @enum {string} */
+            protocol: "api_key" | "oidc";
+            id: string;
+            /** @enum {string} */
+            label: "SSO" | "API key";
             /** Format: uri */
             issuer?: string;
         };
-        SessionsOidcResponse: {
+        IdentitySessionResponse: {
             api_key: string;
-            /** Format: uuid */
-            user_id: string;
-            /** Format: uuid */
-            tenant_id: string;
-            sub: string;
+            principal_id: string;
+            context_id: string | null;
+            email: string | null;
         };
-        SessionsOidcBody: {
-            id_token: string;
-            /** Format: uri */
-            issuer: string;
+        IdentitySessionRequest: {
+            provider_id: string;
+            identity_token: string;
         };
         OAuthClientListResponse: {
             items: components["schemas"]["OAuthClient"][];
@@ -13666,7 +14347,7 @@ export interface components {
             max_llm_tokens_per_run: number | null;
             trigger: components["schemas"]["WorkflowTrigger"];
         };
-        WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"] | unknown;
+        WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"] | null;
         RequestTrigger: {
             /** @enum {string} */
             kind: "request";
@@ -13704,7 +14385,13 @@ export interface components {
             /** @enum {string} */
             execution_mode: "dev" | "prod";
             paused: boolean;
+            /** @description Persisted workflow input returned verbatim to workflow readers; credentials belong in connector credential storage. */
+            input?: unknown;
             created_at: string;
+        };
+        ScheduleUpsertResponse: components["schemas"]["ScheduleEntry"] & {
+            /** @enum {string} */
+            upsert_status: "created" | "updated";
         };
         ScheduleCreateBody: {
             /** Format: uuid */
@@ -13714,7 +14401,9 @@ export interface components {
             /** @enum {string} */
             execution_mode?: "dev" | "prod";
             paused?: boolean;
-            input?: unknown;
+            input?: string | number | boolean | null | unknown[] | {
+                [key: string]: unknown;
+            };
         };
         ScheduleUpdateBody: {
             cron?: string;
@@ -13722,7 +14411,9 @@ export interface components {
             /** @enum {string} */
             execution_mode?: "dev" | "prod";
             paused?: boolean;
-            input?: unknown;
+            input?: string | number | boolean | null | unknown[] | {
+                [key: string]: unknown;
+            };
         };
         ScheduleDeleteResponse: {
             id: string;
@@ -13820,7 +14511,7 @@ export interface components {
             error?: unknown;
             request_meta?: components["schemas"]["RequestMeta"];
         };
-        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | unknown;
+        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | null;
         HttpRequestMeta: {
             /** @enum {string} */
             driver: "http";
@@ -14124,7 +14815,8 @@ export interface components {
         };
         ConnectorSpecImportRequest: {
             /** @enum {string} */
-            source: "postman" | "har" | "openapi" | "graphql" | "graphql_introspection" | "curl";
+            source: "postman" | "har" | "openapi" | "google_discovery" | "graphql" | "graphql_introspection" | "curl";
+            /** @description Inline specification content or a source-specific URL/command. URL-fetched OpenAPI and Google Discovery documents are streamed with a 50 MiB limit; specification metadata seeds the connector draft. */
             content: string;
             headers?: {
                 [key: string]: string;
@@ -14173,8 +14865,7 @@ export interface components {
         };
         ConnectorTemplateListResponse: {
             items: {
-                /** @enum {number} */
-                version: 1;
+                version: number;
                 slug: string;
                 name: string;
                 /** @enum {string} */
@@ -14185,7 +14876,7 @@ export interface components {
                 oauth: components["schemas"]["ConnectorTemplateOAuth"];
                 default_skill: string | null;
                 /** @enum {string|null} */
-                ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
+                ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
                 ingestion_url: string | null;
                 icon: string;
                 description: string;
@@ -14268,9 +14959,15 @@ export interface components {
             /** @enum {string} */
             method: "GET" | "HEAD" | "POST";
             path: string;
-            expected_status?: number[];
+            expected_status?: [
+                number,
+                number
+            ];
             /** @default  */
             description: string;
+            headers?: {
+                [key: string]: string;
+            };
         } | null;
         ConnectorTemplateCredentialHint: {
             field: string;
@@ -14369,8 +15066,7 @@ export interface components {
             template: string;
         };
         ConnectorTemplateRow: {
-            /** @enum {number} */
-            version: 1;
+            version: number;
             slug: string;
             name: string;
             /** @enum {string} */
@@ -14381,7 +15077,7 @@ export interface components {
             oauth: components["schemas"]["ConnectorTemplateOAuth"];
             default_skill: string | null;
             /** @enum {string|null} */
-            ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
+            ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
             ingestion_url: string | null;
             icon: string;
             description: string;
@@ -14425,8 +15121,7 @@ export interface components {
             source: "tenant";
         };
         ConnectorTemplateCreateBody: {
-            /** @enum {number} */
-            version: 1;
+            version: number;
             slug: string;
             name: string;
             /** @enum {string} */
@@ -14437,7 +15132,7 @@ export interface components {
             oauth: components["schemas"]["ConnectorTemplateOAuth"];
             default_skill: string | null;
             /** @enum {string|null} */
-            ingestion_source: "openapi" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
+            ingestion_source: "openapi" | "google_discovery" | "markdown" | "llms_txt" | "html" | "graphql" | "postgres" | "wsdl" | "grpc_reflection" | "asyncapi" | "caldav_discovery" | "unsupported" | null;
             ingestion_url: string | null;
             icon: string;
             description: string;
@@ -14647,6 +15342,35 @@ export interface components {
         };
         /** @enum {string} */
         ProbeErrorCode: "credential_missing" | "credential_invalid" | "credential_expired" | "scope_insufficient" | "remote_api_disabled" | "remote_resource_not_found" | "unknown_upstream_error";
+        ConnectorPromotionResponse: {
+            /** @enum {string} */
+            strategy: "copy" | "move";
+            /** Format: uuid */
+            source_connector_id: string;
+            /** Format: uuid */
+            target_connector_id: string;
+            /** @enum {string} */
+            source_environment: "dev";
+            /** @enum {string} */
+            target_environment: "prod";
+            source_retained: boolean;
+            credential_mappings: {
+                /** @enum {string} */
+                mode: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4" | "token_mint" | "oauth2_client" | "oauth2_private_key";
+                /** Format: uuid */
+                source_credential_id: string;
+                /** Format: uuid */
+                target_credential_id: string;
+            }[];
+            idempotent_replay: boolean;
+            audit_log_ids: string[];
+        };
+        ConnectorPromotionBody: {
+            /** @enum {string} */
+            target_environment: "prod";
+            /** @enum {string} */
+            strategy: "copy" | "move";
+        };
         ConnectorCallResponse: {
             status: number;
             headers: {
@@ -14805,7 +15529,7 @@ export interface components {
         };
         ConnectorDocsIngestBody: {
             /** @enum {string} */
-            source_type: "openapi" | "markdown" | "llms_txt";
+            source_type: "openapi" | "google_discovery" | "markdown" | "llms_txt";
             /** Format: uri */
             url?: string;
             content?: string;
@@ -16596,4 +17320,565 @@ export interface components {
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+    createIdentitySession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentitySessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Scoped product session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentitySessionResponse"];
+                };
+            };
+            /** @description Unsupported provider protocol or malformed request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Invalid identity assertion */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Provider not configured or identity is not allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getOAuthProtectedResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    getMcpOAuthProtectedResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    getOAuthAuthorizationServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    registerOAuthClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    redirect_uris: string[];
+                    client_name?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Client registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity assertion rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity or requested access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    authorizeOAuthClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Login or consent HTML */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Redirect */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity assertion rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity or requested access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    decideOAuthConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OAuth redirect */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity assertion rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity or requested access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    exchangeOAuthToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Tokens */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity assertion rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity or requested access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    revokeOAuthToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Revoked; a refresh token invalidates its family and associated access tokens */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity assertion rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity or requested access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    startIdentityLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Login HTML */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Provider redirect */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity assertion rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity or requested access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    submitApiKeyLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Consent HTML */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity assertion rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity or requested access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    completeOidcLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Consent HTML */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Redirect */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity assertion rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Identity or requested access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    logoutIdentitySession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logged out */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Completed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+}

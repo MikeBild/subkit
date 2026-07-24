@@ -30,6 +30,7 @@ export const TemplateAuthTypeEnum = z.enum([
 
 export const TemplateIngestionSourceEnum = z.enum([
   "openapi",
+  "google_discovery",
   "markdown",
   "llms_txt",
   "html",
@@ -68,6 +69,54 @@ export const InlineSchemaSchema = z
   .openapi("ConnectorTemplateInlineSchema");
 export type InlineSchema = z.infer<typeof InlineSchemaSchema>;
 
+const PROBE_HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const PROBE_RESERVED_HEADER_NAMES = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "host",
+  "content-length",
+  "transfer-encoding",
+  "connection",
+  "upgrade",
+]);
+const PROBE_AUTH_HEADER_PART_RE = /(?:^|[-_])(api[-_]?key|token|secret|credential|auth)(?:$|[-_])/i;
+
+export const ProbeHeadersSchema = z
+  .record(
+    z.string().max(128).regex(PROBE_HEADER_NAME_RE),
+    z
+      .string()
+      .min(1)
+      .max(1024)
+      .refine((value) => !/[\r\n]/.test(value), "header values cannot contain CR or LF"),
+  )
+  .superRefine((headers, ctx) => {
+    const entries = Object.entries(headers);
+    if (entries.length > 16) {
+      ctx.addIssue({ code: "custom", message: "probe headers are limited to 16 entries" });
+    }
+    let totalBytes = 0;
+    for (const [name, value] of entries) {
+      const normalized = name.toLowerCase();
+      totalBytes += new TextEncoder().encode(`${name}:${value}\r\n`).byteLength;
+      if (
+        PROBE_RESERVED_HEADER_NAMES.has(normalized) ||
+        PROBE_AUTH_HEADER_PART_RE.test(normalized)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: [name],
+          message: `probe header "${name}" is reserved for transport or saved credentials`,
+        });
+      }
+    }
+    if (totalBytes > 8192) {
+      ctx.addIssue({ code: "custom", message: "probe headers are limited to 8192 bytes" });
+    }
+  });
+
 export const ProbeEndpointSchema = z
   .object({
     method: z.enum(["GET", "HEAD", "POST"]),
@@ -82,6 +131,7 @@ export const ProbeEndpointSchema = z
      *  alongside the auth-flows feature. */
     expected_status: z.tuple([z.number().int().positive(), z.number().int().positive()]).optional(),
     description: z.string().default(""),
+    headers: ProbeHeadersSchema.optional(),
   })
   .openapi("ConnectorTemplateProbeEndpoint");
 export type ProbeEndpoint = z.infer<typeof ProbeEndpointSchema>;
@@ -326,7 +376,10 @@ export type ConnectorRecipe = z.infer<typeof ConnectorRecipeSchema>;
 
 export const ConnectorTemplateSchema = z
   .object({
-    version: z.literal(1),
+    /** Monotonic per-template revision. Bump when built-in defaults or
+     *  ingestion behavior changes so saved connectors retain auditable
+     *  provenance against the catalog revision they were created from. */
+    version: z.number().int().positive(),
     slug: z
       .string()
       .min(1)

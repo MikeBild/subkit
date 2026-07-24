@@ -135,6 +135,8 @@ The trigger is recorded in every Execution and every Audit Log entry alongside t
 
 All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
 
+**Schedule resource upserts.** `POST /v1/schedules` is an upsert on `(tenant_id, workflow_id)`. A new row returns 201 with `upsert_status: "created"` and audits `schedule.created`; replacing the existing workflow schedule returns 200 with `upsert_status: "updated"` and audits `schedule.updated`. The persisted JSON `input`—including arrays, scalars, and `null`—is returned by create/update responses and by `GET /v1/schedules`, so the catalog shows the exact payload that unattended runs receive.
+
 **Webhook trigger, exactly.** Two facts trip up authors; both are grounded in `apps/engine/src/webhooks/inbound/service.ts`:
 
 - **`verify` is not the stored verifier.** `stripe-signature` → stored `verifier = "stripe"`; `github-hmac` → `"github"`; `none` → `"standard"` with `native_verifier_config.skip = true`. The stored `verifier` column is always one of `standard` / `github` / `stripe` — never `none`. A row whose `verifier` is set to `none` (or anything unrecognized) is denied at ingress with `unknown_verifier` / 401.
@@ -191,7 +193,7 @@ flowchart LR
 
 *No autonomous repair in production. The loop runs through a human gate. The compounding effect — each run improving the next — comes from operator-reviewed drift repair feeding back into authoring.*
 
-The engine monitors active Connectors for schema drift. Drift is detected from execution results — when a Step receives a response that does not match the recorded schema for that endpoint, the engine classifies it as drift and initiates the repair process. Detection is passive: no polling, no scheduled checks, just observation of what actually runs.
+The engine monitors active Connectors for schema drift from real execution results. Successful response evidence is accumulated per endpoint, Workflow, and Step; optional field absence is compatible, while incompatible type changes are proactive drift. Missing paths, validation failures, and endpoint removals remain reactive signals from the affected run. Detection is passive: no vendor polling, just observation of what actually executes plus the scheduled comparison of recorded evidence.
 
 When drift is detected, the self-healing loop analyzes the failure, consults the Connector's latest documentation, and proposes the smallest change that would make the Step work again. The proposal is validated by dry-running it against recorded Execution Fixtures — samples of past successful inputs and outputs. This validation step distinguishes a plausible repair from one that would introduce new failures.
 

@@ -10,7 +10,7 @@
       "audience": "concepts",
       "path": "docs/concepts/connectors.md",
       "title": "Connectors & Integration",
-      "summary": "Outcome: authenticate an external system once, reuse it across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log."
+      "summary": "Outcome: authenticate external systems—including built-in Cloudflare and Firebase/Firestore—once, reuse them across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log."
     },
     {
       "audience": "concepts",
@@ -82,7 +82,7 @@
       "audience": "operators",
       "path": "docs/operators/observability.md",
       "title": "Observability & Resource Limits",
-      "summary": "See every run, catch drift before it costs you."
+      "summary": "See every run, understand content-free product usage, and catch drift before it costs you."
     },
     {
       "audience": "operators",
@@ -202,7 +202,7 @@
       "audience": "developers",
       "path": "docs/developers/input-surfaces.md",
       "title": "Input Surfaces",
-      "summary": "Meet your team where they already work — without re-implementing access control per channel."
+      "summary": "Meet your team where they already work—with one governed engine and one common MCP auth contract."
     },
     {
       "audience": "developers",

@@ -34,6 +34,8 @@ describe("connector templates", () => {
     expect(slugs).toContain("jira");
     expect(slugs).toContain("salesforce");
     expect(slugs).toContain("supabase");
+    expect(slugs).toContain("cloudflare");
+    expect(slugs).toContain("firebase");
     const openapi = rows.filter((r) => r.ingestion_source === "openapi");
     expect(openapi.length).toBeGreaterThanOrEqual(20);
   });
@@ -50,7 +52,7 @@ describe("connector templates", () => {
   test("every template carries the new enriched fields with valid shape", () => {
     const rows = loadBuiltinTemplates();
     for (const row of rows) {
-      expect(row.version).toBe(1);
+      expect(row.version).toBeGreaterThanOrEqual(1);
       if (row.url_pattern !== null) {
         expect(() => new RegExp(row.url_pattern as string)).not.toThrow();
       }

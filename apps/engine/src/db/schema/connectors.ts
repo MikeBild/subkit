@@ -242,6 +242,31 @@ export const connectorEnvironments = pgTable(
   ],
 );
 
+// ----- connector_promotions ------------------------------------------------
+
+export const connectorPromotions = pgTable(
+  "connector_promotions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    idempotency_key_hash: text("idempotency_key_hash").notNull(),
+    request_fingerprint: text("request_fingerprint").notNull(),
+    source_connector_id: uuid("source_connector_id").notNull(),
+    target_connector_id: uuid("target_connector_id").notNull(),
+    strategy: text("strategy").notNull(),
+    response: jsonb("response").$type<Record<string, unknown>>().notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("connector_promotions_tenant_idempotency_key").on(
+      t.tenant_id,
+      t.idempotency_key_hash,
+    ),
+    index("connector_promotions_source_idx").on(t.tenant_id, t.source_connector_id),
+    index("connector_promotions_target_idx").on(t.tenant_id, t.target_connector_id),
+  ],
+);
+
 // ----- credentials ----------------------------------------------------------
 
 export const credentials = pgTable(
@@ -332,13 +357,24 @@ export const schemaVersions = pgTable(
       .notNull()
       .references(() => connectors.id, { onDelete: "cascade" }),
     endpoint_key: text("endpoint_key").notNull(),
+    workflow_id: uuid("workflow_id"),
+    step_id: text("step_id"),
     schema: jsonb("schema").notNull(),
+    observed_schema: jsonb("observed_schema"),
     seen_at: timestamp("seen_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
     index("schema_versions_connector_endpoint_seen_idx").on(
       t.connector_id,
       t.endpoint_key,
+      t.seen_at,
+    ),
+    index("schema_versions_provenance_seen_idx").on(
+      t.tenant_id,
+      t.connector_id,
+      t.endpoint_key,
+      t.workflow_id,
+      t.step_id,
       t.seen_at,
     ),
   ],

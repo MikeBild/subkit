@@ -81,7 +81,9 @@ sk connectors create \
   --name stripe-prod
 ```
 
-Pick from 55 connector templates — see [docs/concepts/connectors.md](../concepts/connectors.md) for how templates, drivers, and credentials work together.
+Pick from 57 connector templates — including Cloudflare and Firebase/Firestore. See
+[docs/concepts/connectors.md](../concepts/connectors.md) for how templates, drivers, and
+credentials work together.
 
 ## 5. You're operational
 

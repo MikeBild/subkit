@@ -29,7 +29,7 @@ import {
   registerConversationAbort,
   unregisterConversationAbort,
 } from "../../conversations/abort.ts";
-import { MODEL_RELAYED_ANSWER } from "../../conversations/answer-actor.ts";
+import { humanInBandAnswer, MODEL_RELAYED_ANSWER } from "../../conversations/answer-actor.ts";
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
@@ -40,6 +40,7 @@ import {
   setMcpTaskFailure,
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
+import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { withJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_QUEUE, type ConversationRunTurnJob } from "../queues.ts";
 import { planProviderLimitPark } from "./provider-limit-park.ts";
@@ -48,6 +49,13 @@ export interface RegisterConversationRunTurnOptions {
   boss: PgBoss;
   db: Db;
 }
+
+const NATIVE_ELICITATION_CANCELLATION_REASONS = new Set([
+  "user_declined",
+  "user_cancelled",
+  "external_interaction_failed",
+  "invalid_elicit_response",
+]);
 
 /**
  * Read the user message text for THIS turn by its
@@ -180,8 +188,16 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
           // approval-bearing elicitation never reaches here — the MCP tool
           // refuses it — and if one ever did, the claim would answer
           // `approval_not_granted`.
-          answer_actor: MODEL_RELAYED_ANSWER,
+          answer_actor:
+            data.answer_channel === "mcp_native"
+              ? humanInBandAnswer(data.principal)
+              : MODEL_RELAYED_ANSWER,
           output: elicitation.output,
+          ...(data.answer_channel === "mcp_native" &&
+          data.reason &&
+          NATIVE_ELICITATION_CANCELLATION_REASONS.has(data.reason)
+            ? { resolution_status: "cancelled" as const }
+            : {}),
           // The resumed runLoop runs on the MCP surface — without this the
           // inner confirm gate and prompt variants would treat the resumed
           // turn as a default (chat-capable) one and pause enumerated
@@ -224,6 +240,20 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
 
     // (g) Success — persist the terminal CallToolResult envelope.
     await setMcpTaskResult(data.tenant_id, data.mcp_task_id, toEnvelope(outcome), db);
+    recordUsageEvent(db, {
+      tenantId: data.tenant_id,
+      surface: "conversations",
+      operation: "mcp/turn",
+      method: "EVENT",
+      outcome: "success",
+      requestSource: task.request_source,
+      actorId: task.actor_id,
+      sessionId: data.conversation_id,
+      durationMs: Date.now() - started,
+      platform: "http",
+      responseMode: "async",
+      taskPhase: outcome.result.status === "awaiting_input" ? "input_required" : "completed",
+    });
     log.queue.job.completed({
       msg: "conversation.run-turn job completed",
       queue: CONVERSATION_RUN_TURN_QUEUE,
@@ -271,6 +301,20 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
         },
         db,
       );
+      recordUsageEvent(db, {
+        tenantId: data.tenant_id,
+        surface: "conversations",
+        operation: "mcp/turn",
+        method: "EVENT",
+        outcome: "success",
+        requestSource: task.request_source,
+        actorId: task.actor_id,
+        sessionId: data.conversation_id,
+        durationMs: Date.now() - started,
+        platform: "http",
+        responseMode: "async",
+        taskPhase: "input_required",
+      });
       log.queue.job.completed({
         msg: "conversation.run-turn elicitation answer failed validation — row stays pending",
         queue: CONVERSATION_RUN_TURN_QUEUE,
@@ -324,6 +368,20 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
     }
     const failureReason = err instanceof Error ? err.message : String(err);
     await setMcpTaskFailure(data.tenant_id, data.mcp_task_id, failureReason, db);
+    recordUsageEvent(db, {
+      tenantId: data.tenant_id,
+      surface: "conversations",
+      operation: "mcp/turn",
+      method: "EVENT",
+      outcome: "server_error",
+      requestSource: task.request_source,
+      actorId: task.actor_id,
+      sessionId: data.conversation_id,
+      durationMs: Date.now() - started,
+      platform: "http",
+      responseMode: "async",
+      taskPhase: "failed",
+    });
     await auditAwait(
       {
         tenant_id: data.tenant_id,

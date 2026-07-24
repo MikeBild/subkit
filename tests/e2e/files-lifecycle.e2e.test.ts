@@ -287,15 +287,19 @@ describe("E13: conversation fork preserves files", () => {
     expectSuccess(uploadResult, "E13 upload");
     const fid = parseJson<{ id: string }>(uploadResult).id;
 
-    // Create source conversation via headless.
-    const convResult = await cli(["--p", "hello", "--output", "json"], {
-      env,
-      persona: "admin",
-      timeout: 30_000,
+    // Use the conversation API directly because this case verifies fork/file-link behavior, not CLI boot.
+    const adminKey = env.personas.admin.apiKey;
+    const createRes = await fetch(`${env.baseUrl}/v1/conversations`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${adminKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ initial_message: "hello" }),
     });
-    expectSuccess(convResult, "E13 create conversation");
-    const convData = parseJson<{ session_id: string }>(convResult);
-    const sourceConvId = convData.session_id;
+    expect(createRes.status).toBe(201);
+    const createBody = (await createRes.json()) as { conversation: { id: string } };
+    const sourceConvId = createBody.conversation.id;
 
     // Link file to source conversation.
     const linkResult = await cli(["files", "link", fid, "--to", `conversation:${sourceConvId}`], {
@@ -316,7 +320,6 @@ describe("E13: conversation fork preserves files", () => {
     // Fetch the source conversation to pick an anchor message id —
     // the fork-from-message route copies the head of the source chain
     // up to and including the anchor.
-    const adminKey = env.personas.admin.apiKey;
     const detailRes = await fetch(`${env.baseUrl}/v1/conversations/${sourceConvId}`, {
       headers: { authorization: `Bearer ${adminKey}` },
     });

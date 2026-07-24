@@ -67,6 +67,7 @@ function memberAllows(name: string): boolean {
   if (name === "api_key:write") return false;
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;
+  if (name === "connector:promote") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
   if (name === "discovery:approve") return false;
   // stats:read exposes cross-workflow operational posture (failure

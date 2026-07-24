@@ -110,6 +110,15 @@ function main(): void {
     lines.push(renderSection(section, leaves));
   }
 
+  lines.push(
+    "## Structural settings",
+    "",
+    "`auth.providers` is the single SubKit-local auth list and is edited in `subkit.config.json`, not through the scalar settings API. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. Each OIDC client, optional secret, callback, session and tenant mapping belongs to this SubKit deployment.",
+    "",
+    "Configured labels are diagnostic metadata only. The common `mcp-auth-v2` surface derives its two user actions from protocol and always presents `Continue with SSO` before `Continue with API key`. Discovery exposes the canonical labels `SSO` and `API key`; no provider-specific route or parallel configuration tree is accepted.",
+    "",
+  );
+
   process.stdout.write(`${lines.join("\n").trimEnd()}\n`);
 }
 

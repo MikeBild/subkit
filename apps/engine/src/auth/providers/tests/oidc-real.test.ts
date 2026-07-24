@@ -21,7 +21,14 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, sessions, tenants, users } from "../../../db/schema/index.ts";
+import {
+  auditLog,
+  oidcLoginStates,
+  sessions,
+  tenants,
+  userIdentities,
+  users,
+} from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createOidcProvider } from "../oidc.ts";
@@ -56,13 +63,16 @@ afterAll(async () => {
   if (testDb) await testDb.cleanup();
 });
 
-function buildProvider() {
+function buildProvider(overrides: { enableSignup?: boolean } = {}) {
   return createOidcProvider({
     db: testDb.db,
     issuerUrl: mock.url,
     clientId: CLIENT_ID,
     clientSecret: "mock-secret",
     redirectUri: REDIRECT_URI,
+    // Most cases exercise the JIT path; the signup-gate suite below
+    // covers the production default (false) explicitly.
+    enableSignup: overrides.enableSignup ?? true,
   });
 }
 
@@ -277,11 +287,216 @@ describe("oidc provider — real flow", () => {
     );
     expect(principal).toBeNull();
 
-    // The user row should still exist.
+    // The provider-neutral identity binding and user row should still exist.
+    const identities = await testDb.db
+      .select()
+      .from(userIdentities)
+      .where(and(eq(userIdentities.tenant_id, tenantId), eq(userIdentities.subject, "revoke-sub")));
+    expect(identities).toHaveLength(1);
+    if (!identities[0]) throw new Error("provider binding missing");
     const userRows = await testDb.db
       .select()
       .from(users)
-      .where(and(eq(users.tenant_id, tenantId), eq(users.external_subject, "revoke-sub")));
+      .where(eq(users.id, identities[0].user_id));
     expect(userRows.length).toBe(1);
+  });
+});
+
+describe("oidc provider — auth.enable_signup gate", () => {
+  async function loginAttempt(
+    provider: ReturnType<typeof buildProvider>,
+    claims: { sub: string; email: string; email_verified?: boolean },
+  ): Promise<Response> {
+    const startRes = await provider.startLogin!(
+      new Request("http://127.0.0.1:0/v1/identity/login/start?tenant=oidc-real"),
+    );
+    const authorizeUrl = new URL(startRes.headers.get("location") ?? "");
+    const state = authorizeUrl.searchParams.get("state") ?? "";
+    // The mock must stash the nonce for the eventual id_token.
+    await fetch(authorizeUrl.toString(), { redirect: "manual" });
+    const issued = mock.issueFor(claims, { state, redirect_uri: REDIRECT_URI });
+    return provider.finishLogin!(new Request(issued.callbackUrl));
+  }
+
+  test("signup disabled: unknown identity is rejected with the not-authorized page and no user row", async () => {
+    const provider = buildProvider({ enableSignup: false });
+    const res = await loginAttempt(provider, {
+      sub: "gate-new-sub",
+      email: "gate-new@test.local",
+    });
+    expect(res.status).toBe(403);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain("Your account is not authorized for SubKit. Contact the operator.");
+
+    const created = await testDb.db
+      .select()
+      .from(users)
+      .where(and(eq(users.tenant_id, tenantId), eq(users.email, "gate-new@test.local")));
+    expect(created).toHaveLength(0);
+    const identities = await testDb.db
+      .select()
+      .from(userIdentities)
+      .where(
+        and(eq(userIdentities.tenant_id, tenantId), eq(userIdentities.subject, "gate-new-sub")),
+      );
+    expect(identities).toHaveLength(0);
+  });
+
+  test("signup disabled is the default when neither opts nor config provide a value", async () => {
+    const provider = createOidcProvider({
+      db: testDb.db,
+      issuerUrl: mock.url,
+      clientId: CLIENT_ID,
+      clientSecret: "mock-secret",
+      redirectUri: REDIRECT_URI,
+    });
+    const res = await loginAttempt(provider, {
+      sub: "gate-default-sub",
+      email: "gate-default@test.local",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("signup disabled: an existing user_identities link keeps signing in", async () => {
+    // Provision once with signups enabled …
+    const first = await loginAttempt(buildProvider({ enableSignup: true }), {
+      sub: "gate-existing-sub",
+      email: "gate-existing@test.local",
+    });
+    expect(first.status).toBe(302);
+    // … then the same identity logs in fine with signups disabled.
+    const second = await loginAttempt(buildProvider({ enableSignup: false }), {
+      sub: "gate-existing-sub",
+      email: "gate-existing@test.local",
+    });
+    expect(second.status).toBe(302);
+    expect(second.headers.get("set-cookie")).toContain("subkit_session=");
+  });
+
+  test("signup disabled: a verified email still links to an EXISTING user without creating one", async () => {
+    const [seeded] = await testDb.db
+      .insert(users)
+      .values({ tenant_id: tenantId, email: "gate-linkable@test.local", role: "member" })
+      .returning();
+    if (!seeded) throw new Error("seed linkable user failed");
+
+    const res = await loginAttempt(buildProvider({ enableSignup: false }), {
+      sub: "gate-linkable-sub",
+      email: "gate-linkable@test.local",
+      email_verified: true,
+    });
+    expect(res.status).toBe(302);
+
+    const identities = await testDb.db
+      .select()
+      .from(userIdentities)
+      .where(
+        and(
+          eq(userIdentities.tenant_id, tenantId),
+          eq(userIdentities.subject, "gate-linkable-sub"),
+        ),
+      );
+    expect(identities).toHaveLength(1);
+    expect(identities[0]?.user_id).toBe(seeded.id);
+    const rows = await testDb.db
+      .select()
+      .from(users)
+      .where(and(eq(users.tenant_id, tenantId), eq(users.email, "gate-linkable@test.local")));
+    expect(rows).toHaveLength(1);
+  });
+});
+
+describe("oidc provider — browser error pages", () => {
+  async function startAndGetState(provider: ReturnType<typeof buildProvider>): Promise<string> {
+    const startRes = await provider.startLogin!(
+      new Request("http://127.0.0.1:0/v1/identity/login/start?tenant=oidc-real"),
+    );
+    expect(startRes.status).toBe(302);
+    const authorizeUrl = new URL(startRes.headers.get("location") ?? "");
+    const state = authorizeUrl.searchParams.get("state") ?? "";
+    expect(state.length).toBeGreaterThan(0);
+    return state;
+  }
+
+  test("unknown state renders the shared HTML error page with a fresh entry point", async () => {
+    const provider = buildProvider();
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=does-not-exist&code=whatever`),
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(
+      "This sign-in attempt expired or was already used. Please sign in again.",
+    );
+    expect(html).toContain('href="/v1/identity/login/start"');
+    expect(html).toContain(">Sign in again</a>");
+    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
+  });
+
+  test("unknown state keeps the JSON contract for Accept: application/json", async () => {
+    const provider = buildProvider();
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=does-not-exist&code=whatever`, {
+        headers: { accept: "application/json" },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("application/json");
+    expect(await res.json()).toEqual({ code: "unknown_state", message: "state not recognised" });
+  });
+
+  test("expired state renders the shared HTML error page", async () => {
+    const provider = buildProvider();
+    const state = await startAndGetState(provider);
+    await testDb.db
+      .update(oidcLoginStates)
+      .set({ expires_at: new Date(TEST_NOW_MS - 1_000) })
+      .where(eq(oidcLoginStates.state, state));
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=${encodeURIComponent(state)}&code=whatever`),
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(
+      "This sign-in attempt expired or was already used. Please sign in again.",
+    );
+  });
+
+  test("IdP access_denied renders the not-authorized page", async () => {
+    const provider = buildProvider();
+    const state = await startAndGetState(provider);
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=${encodeURIComponent(state)}&error=access_denied`),
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain("Your account is not authorized for SubKit. Contact the operator.");
+    expect(html).toContain(">Sign in again</a>");
+  });
+
+  test("code-exchange failure renders HTML and retries at the safe authorize re-entry", async () => {
+    const provider = buildProvider();
+    const state = await startAndGetState(provider);
+    const reentry = "/v1/oauth/authorize?client_id=demo";
+    await testDb.db
+      .update(oidcLoginStates)
+      .set({ redirect_to: reentry })
+      .where(eq(oidcLoginStates.state, state));
+    const res = await provider.finishLogin!(
+      new Request(`${REDIRECT_URI}?state=${encodeURIComponent(state)}&code=bogus-code`),
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(`href="${reentry}"`);
   });
 });

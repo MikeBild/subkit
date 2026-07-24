@@ -7,12 +7,17 @@
 
 import { VERSION } from "@cli-core/version.ts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { ElicitResultSchema as McpElicitResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import { listElicitationsForConversation } from "../conversations/elicitations.ts";
+import { registerNativeUrlElicitationCompletion } from "../conversations/native-url-elicitation.ts";
 import type { Db } from "../db/client.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { buildOperatorHealthSummary } from "../operator/health-digest.ts";
 import { can } from "../rbac/evaluator.ts";
 import { registerCompletionCapability } from "./capabilities/completion.ts";
+import { ELICITATION_FORM_TIMEOUT_MS } from "./capabilities/conversation-native-elicitation.ts";
+import { deliverPendingNativeElicitation } from "./capabilities/conversations.ts";
 import { registerPromptsCapability } from "./capabilities/prompts.ts";
 import { registerResourcesCapability } from "./capabilities/resources.ts";
 import { registerToolsCapability } from "./capabilities/tools.ts";
@@ -171,6 +176,66 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
       ...(instructions ? { instructions } : {}),
     },
   );
+
+  taskStore.setInputRequiredHandler(async (task) => {
+    const capabilities = server.getClientCapabilities()?.elicitation;
+    const formCapable =
+      capabilities !== undefined &&
+      (capabilities.form !== undefined || capabilities.url === undefined);
+    const urlCapable = capabilities?.url !== undefined;
+    if (!formCapable && !urlCapable) return false;
+    const pending = (
+      await listElicitationsForConversation(principal.tenant_id, task.conversation_id, db)
+    ).find((row) => row.status === "pending");
+    if (!pending) return false;
+    await deliverPendingNativeElicitation({
+      db,
+      principal,
+      pending,
+      reuse_task_id: task.id,
+      nativeElicitation: {
+        ...(formCapable
+          ? {
+              elicitForm: async (params) =>
+                await server.request(
+                  { method: "elicitation/create", params: { mode: "form", ...params } },
+                  McpElicitResultSchema,
+                  { timeout: ELICITATION_FORM_TIMEOUT_MS },
+                ),
+            }
+          : {}),
+        ...(urlCapable
+          ? {
+              elicitUrl: async (params) => {
+                const unregister = registerNativeUrlElicitationCompletion(
+                  params.elicitationId,
+                  server.createElicitationCompletionNotifier(params.elicitationId),
+                );
+                try {
+                  const result = await server.request(
+                    {
+                      method: "elicitation/create",
+                      params: {
+                        ...params,
+                        _meta: { "io.modelcontextprotocol/related-task": { taskId: task.id } },
+                      },
+                    },
+                    McpElicitResultSchema,
+                    { timeout: ELICITATION_FORM_TIMEOUT_MS },
+                  );
+                  if (result.action !== "accept") unregister();
+                  return result;
+                } catch (err) {
+                  unregister();
+                  throw err;
+                }
+              },
+            }
+          : {}),
+      },
+    });
+    return true;
+  });
 
   registerToolsCapability({ server, db, principal, transport });
   registerResourcesCapability({ server, db, principal });

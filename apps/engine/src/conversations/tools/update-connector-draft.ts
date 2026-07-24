@@ -143,6 +143,7 @@ export const updateConnectorDraftTool: ConversationTool = {
     "Update fields on the current connector draft. Use this after each user answer so the operator can inspect the evolving connector before probing or saving. `config` carries driver options only; `config.oauth` and `config.aws_sigv4` are template-owned and rejected here. Credentials never go in `config` — use `ask_user_form` + `save_connector_draft({credential})`.",
   inputSchema,
   category: "draft_write",
+  authoring_resource: "connector",
   requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);

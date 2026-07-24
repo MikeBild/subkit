@@ -209,7 +209,10 @@ describe("start_connector_from_description — template binding", () => {
 
     const result = await askUserFormTool.execute(toolCtx.base, {
       question: "Enter your Zephyr API key",
-      fields: [{ name: "api_key", label: "API key", type: "password" }],
+      fields: [
+        { name: "api_key", label: "API key", type: "password" },
+        { name: "access_key", label: "Access key", type: "password" },
+      ],
     });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected mismatch");

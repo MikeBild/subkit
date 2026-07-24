@@ -20,10 +20,17 @@
 // existing approval pause, so the pause contract stays compatible.
 
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { auditAwait } from "../../../audit/audit.ts";
+import { AuditAction } from "../../../audit/types.ts";
 import { logger } from "../../../logging/logger.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { humanInBandAnswer } from "../../answer-actor.ts";
-import { ElicitationUnsupportedError } from "../../elicitation-bridge.ts";
+import {
+  DRAFT_CREDENTIAL_SETUP_KIND,
+  isDraftCredentialSetupAuthType,
+  mintDraftCredentialSetupUrl,
+} from "../../draft-credential-setup.ts";
+import { ElicitationUnsupportedError, FORM_FAST_CANCEL_MS } from "../../elicitation-bridge.ts";
 import {
   createElicitation,
   createNativeElicitation,
@@ -32,7 +39,7 @@ import {
 } from "../../elicitations.ts";
 import { applyElicitationOutcome } from "../../persistence/apply-outcome.ts";
 import { alreadyResolved, resolveAndError } from "../elicitation-resolve.ts";
-import { ELICITATION_TRANSPORT_FAILED, INVALID_ELICIT_RESPONSE } from "../error-codes.ts";
+import { INVALID_ELICIT_RESPONSE } from "../error-codes.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
 import {
   type FormBridgeToolName,
@@ -72,11 +79,11 @@ export function scrubAskUserPayload<T extends { summary: string; input: unknown 
  * the loop folds `next_best_actions` into `prior_failures` and the model
  * re-routes without ever surfacing the secret prompt to the user.
  */
-function secretElicitationBlockedOverMcp(
+async function secretElicitationBlockedOverMcp(
   ctx: ToolContext,
   p: { tool_name: AskUserToolName; summary: string },
   hit: SecretElicitationHit,
-): ToolResult {
+): Promise<ToolResult> {
   logger.warn({
     module: "conversation",
     action: "ask_user.secret_elicitation_blocked",
@@ -87,21 +94,74 @@ function secretElicitationBlockedOverMcp(
     reason: hit.reason,
     field: hit.field,
   });
+  const connector = ctx.getDraft().connector;
+  const authType = connector?.auth_type ?? "none";
+  if (connector && !connector.saved_connector_id && isDraftCredentialSetupAuthType(authType)) {
+    const grant = mintDraftCredentialSetupUrl(ctx.conversation_id);
+    if (!grant.ok) {
+      return {
+        ok: false,
+        error_code: grant.error,
+        message:
+          "The engine has no public origin for secure credential entry. Configure server.public_base_url or SUBKIT_PUBLIC_BASE_URL, then request the credential again.",
+        next_best_actions: [p.tool_name],
+      };
+    }
+    const label = connector.name ?? connector.slug ?? "connector";
+    const routed = await pauseForUserInput(ctx, {
+      tool_name: "ask_user_confirm",
+      summary: `Enter the credential for ${label} in the secure setup flow.`,
+      input: {
+        kind: DRAFT_CREDENTIAL_SETUP_KIND,
+        question: "Complete the secure credential setup, then return to this client.",
+        summary:
+          `Enter the ${authType} credential for ${label}. ` +
+          "After submission the connector draft will be probed before it is saved.",
+        setup_url: grant.url,
+        conversation_id: ctx.conversation_id,
+        connector_slug: connector.slug ?? null,
+        auth_type: authType,
+        single_use: true,
+        expires_at: grant.expires_at.toISOString(),
+        next_best_actions: ["probe_connector_draft"],
+      },
+    });
+    if (routed.ok && routed.pause) {
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: ctx.engineClient.context.actor_type ?? (ctx.actor_id ? "user" : "system"),
+          actor_id: ctx.actor_id,
+          action: AuditAction.CONNECTOR_CREDENTIAL_GRANT_ISSUED,
+          resource_type: "conversation",
+          resource_id: ctx.conversation_id,
+          result: "success",
+          metadata: {
+            draft_only: true,
+            auth_type: authType,
+            connector_slug: connector.slug ?? null,
+            elicitation_id: routed.pause.elicitation_id,
+          },
+        },
+        ctx.db,
+      );
+    }
+    return routed;
+  }
   const message =
     "A secret (API key / token / password) must never be requested as chat text over MCP — " +
     "route credential entry to the secure flow instead. " +
-    "To repair a saved connector whose credential is dead, call request_connector_reauth: it returns " +
-    "a one-time OAuth sign-in URL for OAuth2 connectors, or a secure credential-setup URL " +
-    "(method: portal_setup) for basic/bearer/header/query connectors — present that URL verbatim for " +
-    "the user to open. For an OAuth2 connector being authored, use authenticate_oauth. " +
-    "For a brand-new connector, save the connector first (save_connector_draft), then call " +
-    "request_connector_reauth to mint a secure setup URL. " +
+    "To repair a saved connector whose credential is dead, call request_connector_reauth: it starts " +
+    "a native URL-mode sign-in or credential-setup flow without returning the URL as model text. " +
+    "For an OAuth2 connector being authored, use authenticate_oauth. " +
+    "For a brand-new static-credential connector, start and validate the connector draft first, " +
+    "then request the credential again so the secure draft setup flow can be opened. " +
     "Do NOT ask the user to paste the secret in chat.";
   return {
     ok: false,
     error_code: "secret_elicitation_blocked",
     message,
-    next_best_actions: ["request_connector_reauth", "authenticate_oauth", "save_connector_draft"],
+    next_best_actions: ["request_connector_reauth", "authenticate_oauth"],
     data: { error_code: "secret_elicitation_blocked", reason: hit.reason, field: hit.field },
   };
 }
@@ -122,7 +182,7 @@ export async function pauseForUserInput(
   // refused and routed to the secure flow (portal-setup URL / OAuth).
   if (ctx.surface === "mcp") {
     const secret = detectSecretElicitation(p.tool_name, p.input);
-    if (secret) return secretElicitationBlockedOverMcp(ctx, p, secret);
+    if (secret) return await secretElicitationBlockedOverMcp(ctx, p, secret);
   }
   // ── MCP-native form elicitation ────────────────────────────────────
   // Take the in-process bridge when: the client advertised the
@@ -223,10 +283,12 @@ export async function pauseForUserInput(
         ctx.db,
       );
       try {
+        const sentAt = Date.now();
         let result = await bridge.elicitForm({
           message: mapped.message,
           requestedSchema: mapped.requestedSchema,
         });
+        let roundtripMs = Date.now() - sentAt;
         let mappedOutput =
           result.action === "accept"
             ? mapElicitResultToAskUserOutput(
@@ -243,10 +305,12 @@ export async function pauseForUserInput(
           const verdict = validateElicitationAnswer(p.tool_name, p.input, mappedOutput);
           if (!verdict.ok) {
             const errText = verdict.field_errors.map((e) => `${e.name}: ${e.message}`).join("; ");
+            const retrySentAt = Date.now();
             result = await bridge.elicitForm({
               message: `${mapped.message}\n\nThe previous answer was invalid — ${errText}. Please correct and resubmit.`,
               requestedSchema: mapped.requestedSchema,
             });
+            roundtripMs = Date.now() - retrySentAt;
             mappedOutput =
               result.action === "accept"
                 ? mapElicitResultToAskUserOutput(
@@ -340,6 +404,35 @@ export async function pauseForUserInput(
             data: { elicitation_id: row.id },
           });
         }
+        // A `cancel` that came back faster than a human could have read
+        // the form is the client auto-cancelling without rendering it — a
+        // transport verdict, not a decision. Demote to the portal DB-pause
+        // (row stays pending, draft survives) instead of recording a
+        // cancellation nobody made. `decline` is always honored: every
+        // client UI renders it as an explicit human "no".
+        if (result.action === "cancel" && roundtripMs < FORM_FAST_CANCEL_MS) {
+          await demoteElicitationToPortal(ctx.tenant_id, row.id, ctx.db);
+          logger.warn({
+            module: "conversation",
+            action: "elicitation.form_fast_cancel_demoted",
+            msg: "client cancelled the form faster than a human could render it — demoting to DB-pause",
+            tenant_id: ctx.tenant_id,
+            conversation_id: ctx.conversation_id,
+            elicitation_id: row.id,
+            tool_name: p.tool_name,
+            elapsed_ms: roundtripMs,
+          });
+          return {
+            ok: true,
+            data: { status: "awaiting_input", elicitation_id: row.id },
+            pause: {
+              tool_name: p.tool_name,
+              summary: p.summary,
+              elicitation_id: row.id,
+              input: p.input,
+            },
+          };
+        }
         return resolveAndError(ctx, row.id, {
           reason: result.action === "decline" ? "user_declined" : "user_cancelled",
           errorCode: result.action === "decline" ? "user_declined" : "user_cancelled",
@@ -384,36 +477,34 @@ export async function pauseForUserInput(
           };
         }
         // Non-`ElicitationUnsupportedError` — a generic transport /
-        // timeout failure (client disconnected, never answered). The
-        // elicitation row is pending and the conversation is wedged in
-        // `awaiting_input`. Resolve the row `cancelled` and flip the
-        // conversation back to `active` so the loop is not stuck, then
-        // return a structured error instead of re-throwing.
+        // timeout failure (client disconnected, never answered). A
+        // transport break is NOT a decision: the operator never saw or
+        // answered anything, so destroying the row would throw away their
+        // in-flight work (the draft) over a network hiccup. Demote the
+        // row to the portal DB-pause instead — it stays `pending`, the
+        // conversation stays `awaiting_input`, and the answer can still
+        // arrive via the portal or a later poll re-delivery.
+        await demoteElicitationToPortal(ctx.tenant_id, row.id, ctx.db);
         logger.warn({
           module: "conversation",
-          action: "elicitation.bridge_transport_failed",
-          msg: "MCP elicitation transport failed — resolving row cancelled and unwedging the conversation",
+          action: "elicitation.bridge_transport_demoted",
+          msg: "MCP elicitation transport failed — demoting to DB-pause; row stays pending and answerable",
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
           elicitation_id: row.id,
           tool_name: p.tool_name,
           error: err instanceof Error ? err.message : String(err),
         });
-        // Resolve the row `cancelled` AND flip the conversation back to
-        // `active` as one atomic unit so a partial failure cannot leave
-        // the conversation wedged. A lost race (a concurrent
-        // `respondElicitation` already resolved this row) returns
-        // `already_resolved` — the conversation is no longer wedged, so
-        // `resolveAndError` reports that rather than the transport failure.
-        return resolveAndError(ctx, row.id, {
-          reason: ELICITATION_TRANSPORT_FAILED,
-          errorCode: ELICITATION_TRANSPORT_FAILED,
-          message:
-            "The MCP elicitation request failed in transit — the client may have disconnected or did not answer. The conversation is no longer waiting on input; ask the user again if their answer is still needed.",
-          transport: "failed",
-          status: "transport_failed",
-          data: { elicitation_id: row.id },
-        });
+        return {
+          ok: true,
+          data: { status: "awaiting_input", elicitation_id: row.id },
+          pause: {
+            tool_name: p.tool_name,
+            summary: p.summary,
+            elicitation_id: row.id,
+            input: p.input,
+          },
+        };
       }
     }
   }

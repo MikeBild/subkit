@@ -3,7 +3,7 @@
 > **Reading time:** ~12 min
 > **Audience:** Engineers integrating with sk, operators configuring surfaces
 
-**Meet your team where they already work — without re-implementing access control per channel.** A developer lives in a terminal. An analyst lives in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant wants to call a workflow directly. sk gives each of them a native door, and every door opens onto the *same* governed engine: one RBAC model, one Audit Log, one identity envelope (`tenant_id`, `actor_id`, `request_source`, `trace_id`). Adopting sk never forces a tooling migration, and security never forks per surface.
+**Meet your team where they already work—with one governed engine and one common MCP auth contract.** A developer lives in a terminal. An analyst lives in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant wants to call a workflow directly. sk gives each of them a native door, and every door opens onto the *same* governed engine: one RBAC model, one Audit Log, one identity envelope (`tenant_id`, `actor_id`, `request_source`, `trace_id`). Adopting sk never forces a tooling migration, and security never forks per surface.
 
 ## Surfaces at a glance
 
@@ -40,9 +40,9 @@ flowchart LR
     Gate --> Engine
 ```
 
-For system-wide context — where external AI clients cross the MCP OAuth bridge and other surfaces enter directly — see the architecture overview:
+For system-wide context — where external AI clients cross SubKit's MCP OAuth boundary and other surfaces enter directly — see the architecture overview:
 
-![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the MCP OAuth bridge; other surfaces enter directly.](../concepts/overview.png)
+![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the product-local MCP OAuth boundary; other surfaces enter directly.](../concepts/overview.png)
 
 *Source: [`overview.drawio`](../concepts/overview.drawio).*
 
@@ -88,6 +88,8 @@ The normal guided flow does not expose conversational force bypasses for these t
 
 **Resource references.** Inside a Conversation, users mention platform resources directly with `@connector` and `@skill` syntax, grounding AI proposals in the specific Connectors and Skills the tenant has configured.
 
+**Connector promotion.** Admins can ask the conversation to promote a connector, or call `sk connectors promote <id> --to prod --strategy copy|move`. Both reach the same tenant-scoped promotion service and require `connector:promote`. The CLI generates and prints an idempotency key when one is omitted; `move` also requires an interactive confirmation unless `--yes` is supplied.
+
 **Headless mode.** When stdin is not a TTY, the sk CLI runs without interactive prompts — enabling scripted workflows, CI pipeline integration, and automated testing where no human is at the terminal.
 
 **Outbound network from CLI startup.** The welcome banner can pull a one-line "what's new" headline from a remote JSON endpoint on REPL start, but the **default posture is opt-in**. With `SK_WHATS_NEW_URL` unset, no network call fires and the resolver renders the bundled `CHANGELOG.md` head. Operators who want the upstream feed set `SK_WHATS_NEW_URL=<url>` (recommended: `https://updates.subkit.dev/whats-new.json`); the fetch is async, 3-second timeout, 24-hour on-disk cache at `~/.sk/whats-new-cache.json`, identifies itself with a `User-Agent: sk-cli/<version>` header, and the JSON payload is Zod-validated (`{ headline: string }`, strict — unknown keys reject) before any string reaches the banner. The request carries no auth and no tenant identifier. The opt-out sentinels (`""`, `"disabled"`, `"off"`, `"0"`) remain compatible with operators who inherited a populated default and want to disable explicitly. All headline strings (cache, remote, CHANGELOG) pass through `sanitizeHeadline` which strips ANSI escapes and control bytes and truncates to 80 chars before render. After three consecutive remote-fetch failures (including Zod parse failures) the resolver opens a 7-day circuit breaker: subsequent REPL boots skip the network call entirely until the breaker re-arms or a future success resets it.
@@ -105,6 +107,7 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 | **Schema-first** | Request/response shapes are Zod schemas; the OpenAPI 3.1 spec is generated from them, never hand-written — so the spec is always accurate and generated clients always match the implementation. |
 | **Conversation state** | Conversation responses expose the authoring state machine directly — `authoring_mode`, `authoring_stage`, active target metadata, checkpoint statuses, stale checkpoints, `next_required_action`, persisted resources, latest execution / diagnosis references. Clients never reconstruct progress from free-form text. |
 | **Consistency** | Pagination, filtering, and sorting follow the same conventions across all list endpoints. Learn the pattern once, apply it everywhere. |
+| **Promotion** | `POST /v1/connectors/{id}/promote` promotes DEV to PROD with explicit `copy` or `move` semantics, a required `Idempotency-Key`, admin-only RBAC, and connector/credential audit ids in the response. |
 | **Discoverability** | OpenAPI spec served at `/openapi.json`; interactive Scalar UI at `/docs`. Both available to any authenticated client. |
 | **LLM grounding** | The engine publishes its own docs in the [llms-txt](https://llmstxt.org) format, unauthenticated, as `text/markdown`: `GET /llms.txt` (a robots.txt-style index) and `GET /llms-full.txt` (the full docs in one fetch). Point an MCP client or model at these to ground it on auth, error-code semantics, and conventions in prose the bare schema can't express. |
 
@@ -137,17 +140,57 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 The complete MCP conversation cluster is `conversation_start`, `conversation_append`, `conversation_get`, `conversation_respond_elicitation`, and `conversation_commit` — the session orchestration an AI client uses to open, drive, resolve elicitations on, and commit an authoring conversation. See [Tool palette → MCP session and confirmation tools](./tool-palette.md#mcp-session-and-confirmation-tools) for each tool's role.
 >
-> **Elicitation over MCP is always the DB-pause path.** No in-process elicitation bridge exists on any surface: an `ask_user_*` / `authenticate_oauth` inserts a pending `conversation_elicitations` row, sets the conversation to `awaiting_input`, and the turn ends. The task then derives `input_required`; the client reads the pending form via `conversation_get` (or `tasks/get`) and resolves it with `conversation_respond_elicitation`, which enqueues the next turn. (Write approvals never elicit at all — they wait at their `approval_url`.)
+> **Persisted-to-native MCP elicitation.** Background workers have no live MCP
+> session, so an `ask_user_*`, conversation approval, or browser authorization
+> first persists a pending `conversation_elicitations` row and ends the turn.
+> The next `conversation_get` or `tasks/get` on a client advertising
+> `elicitation` atomically leases that row and emits a real server→client
+> `elicitation/create`: form mode for primitive questions/approvals and URL mode
+> for OAuth or credential setup. Delivery is **non-blocking**: the poll holds
+> the call open only for a ~1 s delivery grace (so the request reaches the
+> client inside an active call — clients auto-cancel "unsolicited"
+> elicitations) and then returns `input_required` immediately. Agentic clients
+> (Claude Code) render the form only after their own agent turn completes —
+> a poll that blocked on the answer could therefore never be answered in time.
+> The round-trip itself stays pending for up to five minutes; a form answer is
+> stamped as `human/in_band_elicitation`, staged by a detached continuation,
+> and resumes the same conversation with no poll in flight. A `cancel`
+> arriving faster than a human could render the form is treated as an
+> undelivered form (the client auto-cancelled), not a decision — the row
+> stays pending and a later poll re-prompts. URL
+> acceptance only acknowledges navigation; the credential/OAuth callback marks
+> the persisted row complete and emits `notifications/elicitation/complete`
+> before the next poll resumes it. Tasks clients retain the same task id. A
+> DB lease slightly longer than the round-trip timeout prevents duplicate
+> dialogs across concurrent polls and expires after a disconnect so another
+> replica can retry. A transport break never destroys the row: the pending
+> elicitation survives (demoted to the portal DB-pause on live-bridge
+> surfaces) and the in-flight draft with it. Ordinary questions still have the explicit
+> `conversation_respond_elicitation` fallback on clients without elicitation;
+> approval-bearing rows remain human-only and cannot be answered by a model.
+
+Static credentials are intentionally not transported in MCP form-elicitation
+payloads. For a new unsaved bearer/basic/header/query/AWS-SigV4 connector, the
+worker mints a single-use URL capability bound to the conversation draft. The
+credential submission remains process-local until an authenticated green probe
+atomically writes the connector and encrypted credential. This avoids the
+invalid lifecycle “save to obtain an id, but probe before save”. The native `sk`
+surface continues to use its masked in-terminal form.
 
 **Governance.** All MCP calls are subject to the same RBAC checks and Audit Log entries as direct API calls. There is no privileged back channel; identity and permissions are enforced identically regardless of which surface initiated the request.
 
-**Destructive-action flow.** Tenant writes (e.g. `delete_workflow`, `revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation authoring actions. One rule governs every write tool on every client: **an approval is granted by a human, out of band, through the approval portal.**
+**Destructive-action flow.** Tenant writes (e.g. `delete_workflow`, `revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation authoring actions. One rule governs every write tool on every client: **an approval is granted by a human, never by the model.**
 
-*Every client.* The first call returns a `needs_confirm` envelope — `{status: "needs_confirm", tool, pending_output, tool_call_id, approval_url}` — and an `approval.requested` audit row that persists the encrypted arguments and the `would_write` preview. The approval is minted UNGRANTED. A person opens `approval_url`, sees exactly what will be written, and grants or declines (`approval.granted` / `approval.declined`). Only then does `confirm_tool_call({tool, confirm_id})` succeed: the engine claims that single-use approval under a CAS, replays the arguments it already holds, emits `approval.approved`, and executes. Before the human decides, the same call answers `approval_not_granted`.
+*Standalone tool calls.* The first call returns a `needs_confirm` envelope — `{status: "needs_confirm", tool, pending_output, tool_call_id, approval_url}` — and an `approval.requested` audit row that persists the encrypted arguments and the `would_write` preview. The approval is minted UNGRANTED. A person opens `approval_url`, sees exactly what will be written, and grants or declines (`approval.granted` / `approval.declined`). Only then does `confirm_tool_call({tool, confirm_id})` succeed: the engine claims that single-use approval under a CAS, replays the arguments it already holds, emits `approval.approved`, and executes. Before the human decides, the same call answers `approval_not_granted`.
 
 `confirm_tool_call` is therefore a **trigger**, not a gate — it performs a call a human already approved and can approve nothing itself. It is offered to every client, with no capability-based refusal, because there is nothing left for one to protect.
 
-*Clients that advertise `elicitation`.* No different. The engine never issues an in-band `elicitation/create` for a write approval — production showed the responses are not human decisions (29 unanswered prompts, 0 fulfilled; the one client that answered auto-declined without a person ever seeing the prompt). Whatever capabilities a client advertises, the approval waits, ungranted, at its `approval_url`.
+*Conversation clients that advertise form elicitation.* A policy gate reached
+inside `conversation_*` is persisted by the worker and delivered by the next
+poll as `elicitation/create(mode: form)`. Only the active MCP session can supply
+the answer; it is recorded with human in-band provenance before the held call is
+claimed. Standalone tool calls still use the approval portal because they have
+no conversation/task pause to reattach to.
 
 There is no argument on any tool, and no `_meta` flag a model-driven client can set, that clears a confirmation gate. `_meta.sk_confirm` is the same trigger `confirm_tool_call` is, and fails the same way on an ungranted approval.
 
@@ -169,7 +212,54 @@ There is no argument on any tool, and no `_meta` flag a model-driven client can 
 
 The sk engine is a full OAuth 2.1 authorization server and resource server for `/mcp`. This lets OAuth-only clients — including the ChatGPT custom connector, Claude.ai, and Cursor — authenticate without a static API key.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`).
+Every issued MCP access token is RFC 8707-bound to this deployment's canonical
+`/mcp` resource. When `server.public_base_url` is configured, a token with a
+missing or different resource audience is rejected; there is no audience-less
+compatibility path.
+
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this SubKit deployment. Provider ids and labels are deployment-owned values, never engine modes.
+
+The visible state machine is the common `mcp-auth-v2` contract. Authorize
+redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser
+always renders **Continue with SSO** before **Continue with API key** and does
+not expose the configured provider label. The consent, account-switch and
+logout screens use the same layout and security headers as WikiKit and
+ContentKit while retaining SubKit branding and RBAC.
+
+```json
+{
+  "auth": {
+    "providers": [
+        {
+          "protocol": "api_key",
+          "id": "api-key",
+          "label": "SubKit API key"
+        },
+        {
+          "protocol": "oidc",
+          "id": "workforce-oidc",
+          "label": "Workforce OIDC",
+          "issuer_url": "https://identity.example.com",
+          "client_id": "<client-id>",
+          "client_secret": "<secret>"
+        }
+      ]
+  }
+}
+```
+
+Register `${server.public_base_url}/v1/identity/login/callback` as every OIDC
+adapter's redirect URI. Every adapter uses only the generic `login/start`,
+`login/callback`, and `logout` routes.
+
+The CLI discovers the same list through `GET /v1/identity/providers`. An OIDC
+device-flow result is exchanged at `POST /v1/identity/sessions`
+with `{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
+The response is exactly `{api_key,principal_id,context_id,email}`; `email` is
+nullable and contains only a provider-verified address;
+`context_id` is the SubKit tenant id.
+The exchange never accepts an arbitrary issuer URL and has no protocol- or
+vendor-specific route alias.
 
 **Discovery endpoints.**
 
@@ -193,7 +283,7 @@ sequenceDiagram
     C->>E: POST /v1/oauth/register (DCR, RFC 7591)
     E-->>C: { client_id, client_secret? }
     C->>U: 302 to /v1/oauth/authorize?code_challenge=...
-    U->>E: OIDC login + consent
+    U->>E: selected API-key or OIDC adapter + consent
     E-->>U: 302 to redirect_uri?code=...&state=...
     U-->>C: deliver code
     C->>E: POST /v1/oauth/token (code + verifier)
@@ -207,13 +297,15 @@ sequenceDiagram
 2. Client fetches `/.well-known/oauth-authorization-server` to get all endpoints.
 3. Client registers itself at `POST /v1/oauth/register` (dynamic client registration, RFC 7591). Returns `client_id` (and `client_secret` for confidential clients).
 4. Client redirects the user to `GET /v1/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&code_challenge=...&code_challenge_method=S256&scope=mcp:read&state=...`. PKCE S256 is mandatory; `plain` is rejected.
-5. If not logged in, the engine redirects to `/v1/identity/login/start` (OIDC). After login the user returns to the authorize page.
-6. The consent page shows the client name, tenant, and requested scopes. The user approves or denies.
+5. If not logged in, the engine redirects to `/v1/identity/login/start`, which shows the configured provider matrix. Every method creates the same revocable browser session.
+6. The common `sk` consent card shows the client name, tenant, and only requested scopes allowed by the current role. Read is mandatory; the user may reduce the grant, deny, log out, or switch accounts.
 7. On approval, the engine issues an authorization code and redirects to the client's `redirect_uri?code=...&state=...`.
 8. Client exchanges the code at `POST /v1/oauth/token` (form-encoded, `grant_type=authorization_code`). Response: `{ access_token: "wf_mcp_...", refresh_token: "wf_mcr_...", token_type: "bearer", expires_in: 3600 }`.
 9. Client uses `Authorization: Bearer wf_mcp_...` on subsequent `POST /mcp` calls.
 10. Client refreshes at `POST /v1/oauth/token` (`grant_type=refresh_token`). Refresh tokens rotate on every use; replaying a rotated token revokes the whole chain.
-11. Client revokes at `POST /v1/oauth/revoke`.
+11. Client revokes at `POST /v1/oauth/revoke`. Revoking a refresh token
+    invalidates its complete rotation family and every associated access token;
+    revoking an access token invalidates that access token alone.
 
 **Scopes.**
 
@@ -223,7 +315,7 @@ sequenceDiagram
 | `mcp:authoring` | authoring | Adds `conversation.*` authoring tools. |
 | `mcp:admin` | admin | Adds full `tenant.*` admin tools (subject to RBAC). |
 
-The scope granted at consent is the intersection of what the client requested and what the consenting user's role permits. A token can never carry a scope its owner lacks.
+The scope granted at consent is the intersection of what the client requested, what the server supports and what the consenting user's current role permits. An unrequested scope is never displayed or granted, including when a form is tampered with. A role/session downgrade is rechecked at decision time.
 
 **Connecting ChatGPT custom connector.**
 
@@ -253,7 +345,7 @@ Add to `.cursor/mcp.json`:
 ```
 Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthenticated request and opens the browser-based consent flow.
 
-**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Refresh tokens rotate on every use and replay of a rotated token revokes the full chain. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
+**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Login state is short-lived and signed; account switching revokes the old session. Browser sessions have an eight-hour sliding limit and a 24-hour absolute lifetime cap. Refresh tokens rotate on every use; replay or explicit revocation of a refresh token revokes the full family and its access tokens. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
 
 ---
 

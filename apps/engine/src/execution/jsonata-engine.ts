@@ -162,6 +162,48 @@ export interface ExprDeps {
   env: ReadonlyArray<string>;
 }
 
+export interface JSONataCallableFinding {
+  name: string;
+  position: number | undefined;
+  suggestion: string;
+}
+
+/** Bare calls parse successfully but cannot resolve against JSON workflow data. */
+export function findUnboundFunctionCalls(source: string): JSONataCallableFinding[] {
+  const expr = compile(source);
+  const ast = (expr as Expression & { ast?: () => unknown }).ast?.();
+  if (!ast || typeof ast !== "object") return [];
+
+  const findings: JSONataCallableFinding[] = [];
+  const seen = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    const node = value as Record<string, unknown>;
+    if (node.type === "function") {
+      const procedure = node.procedure as Record<string, unknown> | undefined;
+      const steps =
+        procedure?.type === "path" && Array.isArray(procedure.steps) ? procedure.steps : [];
+      const target =
+        steps.length === 1 ? (steps[0] as Record<string, unknown> | undefined) : undefined;
+      if (target?.type === "name" && typeof target.value === "string") {
+        const position = typeof target.position === "number" ? target.position : undefined;
+        const key = `${target.value}:${position ?? "unknown"}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          findings.push({ name: target.value, position, suggestion: `$${target.value}` });
+        }
+      }
+    }
+    for (const child of Object.values(node)) visit(child);
+  };
+  visit(ast);
+  return findings;
+}
+
 export function parseDeps(source: string): ExprDeps {
   const inputs = new Set<string>();
   const steps = new Set<string>();

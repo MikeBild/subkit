@@ -123,6 +123,30 @@ function matchesSelector(row: Record<string, unknown>, selector: string): boolea
   );
 }
 
+function hydratePersistedMessages(
+  session: SkSessionState,
+  messages: Array<{ id: string; role: string; parts: unknown[] }>,
+): SkSessionState {
+  let hydrated = session;
+  for (const message of messages) {
+    if (
+      message.role !== "user" &&
+      message.role !== "assistant" &&
+      message.role !== "system" &&
+      message.role !== "tool"
+    ) {
+      continue;
+    }
+    hydrated = applyTurnEvent(hydrated, {
+      type: "message",
+      role: message.role,
+      content: message.parts,
+      id: message.id,
+    });
+  }
+  return hydrated;
+}
+
 async function resolveResourceSelector(
   client: EngineClient,
   kind: "connector" | "workflow",
@@ -243,9 +267,10 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       conversation_id: null,
     };
   }
-  const session = initialSessionState(conversationId);
+  let session = initialSessionState(conversationId);
   const attachPaths = opts.attach ?? [];
   const hasAttach = attachPaths.length > 0;
+  let streamResponse: Response | null = null;
 
   try {
     if (!conversationId && connectorId) {
@@ -274,16 +299,16 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     return { exitCode: e.exit, session, conversation_id: conversationId };
   }
 
-  // Handle --resume: append a user message to an existing conversation.
-  // Otherwise create a new one with the prompt as `initial_message`.
-  // When `--attach` is set we always create-then-append so file
-  // links can be inserted between the two calls.
+  // Start the turn on its POST SSE response so completion cannot race a later replay subscription.
+  // When `--attach` is set we create first, link files, then append over SSE.
   try {
     if (conversationId) {
+      const detail = await client.getConversation(conversationId);
+      session = hydratePersistedMessages(session, detail.messages);
       if (hasAttach) {
         // Defer the append until after attachments are uploaded + linked.
       } else {
-        const appended = await client.appendConversationMessage(
+        streamResponse = await client.appendConversationMessageStream(
           conversationId,
           {
             message: resolved.prompt,
@@ -296,19 +321,15 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           "conversation.turn_events",
           {
             operation: "append_message",
-            response_status: appended.status,
-            events: appended.events,
+            transport: "sse",
           },
           traceContext(),
         );
       }
-    } else {
+    } else if (hasAttach) {
       const created = await client.createConversation(
         {
-          // With `--attach`, we skip the initial_message so the engine
-          // doesn't start a turn before file links exist. The prompt
-          // is appended after `attachFiles()` succeeds.
-          ...(hasAttach ? {} : { initial_message: resolved.prompt }),
+          // Skip initial_message so the engine cannot run before file links exist.
           ...(memory.content ? { memory: memory.content } : {}),
           ...(connectorId ? { connector_id: connectorId } : {}),
           ...(workflowId ? { workflow_id: workflowId } : {}),
@@ -345,6 +366,23 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       } catch {
         /* cache write is best-effort */
       }
+    } else {
+      streamResponse = await client.createConversationStream(
+        {
+          initial_message: resolved.prompt,
+          ...(memory.content ? { memory: memory.content } : {}),
+          ...(connectorId ? { connector_id: connectorId } : {}),
+          ...(workflowId ? { workflow_id: workflowId } : {}),
+          ...(settings.merged.model ? { model: settings.merged.model } : {}),
+          ...(opts.maxTurns !== undefined ? { step_budget: opts.maxTurns } : {}),
+        },
+        traceContext(),
+      );
+      debugLog(
+        "conversation.turn_events",
+        { operation: "create_conversation", transport: "sse" },
+        traceContext(),
+      );
     }
     if (conversationId) {
       try {
@@ -435,9 +473,8 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
           stderr.write(`sk: attached ${row.id} (${row.filename})${mention}\n`);
         }
       }
-      // Now that every file is linked, send the user prompt as the
-      // first message of the turn. The SSE stream below picks it up.
-      const appended = await client.appendConversationMessage(
+      // Now that every file is linked, start the first turn on the append response stream.
+      streamResponse = await client.appendConversationMessageStream(
         conversationId,
         {
           message: resolved.prompt,
@@ -450,8 +487,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         "conversation.turn_events",
         {
           operation: "append_message_after_attach",
-          response_status: appended.status,
-          events: appended.events,
+          transport: "sse",
         },
         traceContext(),
       );
@@ -480,29 +516,11 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     }
   }
 
-  // Now open the SSE stream and fold its frames into the session.
+  // Fold the POST SSE frames into the session.
   let streamState = session;
-  let streamResponse: Response;
-  try {
-    streamResponse = await client.streamConversation(conversationId, traceContext());
-  } catch (err) {
-    const e = sanitizeError(err);
-    debugLog(
-      "dialog.error",
-      {
-        input_kind: "prompt",
-        stage: "stream_open",
-        error: serializeDebugError(err),
-      },
-      traceContext(),
-    );
-    debugLog(
-      "dialog.turn_end",
-      { input_kind: "prompt", status: "error", exit_code: e.exit },
-      traceContext(),
-    );
-    stderr.write(`sk: stream open failed: ${e.message}\n`);
-    return { exitCode: e.exit, session, conversation_id: conversationId };
+  if (!streamResponse) {
+    stderr.write("sk: turn stream was not opened\n");
+    return { exitCode: 2, session, conversation_id: conversationId };
   }
 
   const verbose = isDebugVerbose();
@@ -513,6 +531,38 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       { event: frame.event, ...(verbose ? { raw_data: frame.data } : {}) },
       traceContext(),
     );
+    if (frame.event === "conversation_started") {
+      try {
+        const started = JSON.parse(frame.data) as {
+          conversation: { id: string; title: string | null; model: string | null };
+        };
+        conversationId = started.conversation.id;
+        session.conversationId = conversationId;
+        streamState.conversationId = conversationId;
+        const now = new Date().toISOString();
+        saveSessionMetadata({
+          conversation_id: conversationId,
+          engine_url: opts.profile.engine_url,
+          tenant_id: opts.profile.active_tenant_id,
+          title: started.conversation.title ?? null,
+          model: started.conversation.model ?? null,
+          created_at: now,
+          last_used_at: now,
+        });
+      } catch (err) {
+        debugLog(
+          "dialog.error",
+          {
+            input_kind: "prompt",
+            stage: "conversation_started_parse",
+            error: serializeDebugError(err),
+          },
+          traceContext(),
+        );
+      }
+      return true;
+    }
+    if (frame.event === "outcome") return false;
     let ev: TurnEvent;
     try {
       ev = JSON.parse(frame.data) as TurnEvent;
@@ -531,9 +581,9 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
         ssseParseErrorReported = true;
         stderr.write("sk: malformed SSE frame — see ~/.sk/debug.log for details\n");
       }
-      return;
+      return true;
     }
-    if (typeof ev.type !== "string") return;
+    if (typeof ev.type !== "string") return true;
     debugLog(
       "dialog.turn_event",
       verbose ? { event: ev } : { event_type: ev.type },
@@ -544,6 +594,11 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       writeLine(stdout, JSON.stringify(ev));
     }
     streamState = applyTurnEvent(streamState, ev);
+    // `completed` is the conversation protocol's terminal turn frame.
+    // Do not additionally wait for HTTP EOF: proxies and Hono's SSE adapter
+    // may keep the response alive even though the engine has finished.
+    if (ev.type === "completed") return false;
+    return true;
   });
   debugLog("sse.close", { final_status: streamState.status }, traceContext());
 

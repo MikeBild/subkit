@@ -7,11 +7,10 @@
 // GRANTED, undeclined, unexpired, unconsumed row.
 //
 // This is not a refinement of the old contract; it replaces its premise.
-// Production told us that MCP clients advertise the `elicitation` capability
-// at handshake and then never answer `elicitation/create` — every prompt timed
-// out, not one was ever fulfilled. So in-band elicitation is not a human
-// channel on MCP, and `confirm_tool_call`, which the MODEL calls, was never a
-// gate: it was a model relay wearing the costume of one. It is now a TRIGGER.
+// Production told us that inline MCP prompts were lost after backgrounding.
+// Conversation tasks now persist and reattach them to a live poll session;
+// only that fulfilled server→client request is human in-band provenance.
+// `confirm_tool_call`, which the MODEL calls, remains a trigger, never a gate.
 // It cannot approve anything, so it needs no capability-based refusal — every
 // client may call it, and it succeeds only if a human already said yes.
 //

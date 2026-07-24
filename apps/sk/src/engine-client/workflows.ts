@@ -13,7 +13,12 @@ export interface ScheduleEntry {
   timezone: string;
   execution_mode: "dev" | "prod";
   paused: boolean;
+  input: unknown;
   created_at: string;
+}
+
+export interface ScheduleUpsertResponse extends ScheduleEntry {
+  upsert_status: "created" | "updated";
 }
 
 export const workflowsMethods = {
@@ -95,7 +100,7 @@ export const workflowsMethods = {
       paused?: boolean;
       input?: unknown;
     },
-  ): Promise<ScheduleEntry> {
+  ): Promise<ScheduleUpsertResponse> {
     return this.request("POST", "/v1/schedules", body);
   },
 

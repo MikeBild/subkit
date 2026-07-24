@@ -4,6 +4,434 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.1] – 2026-07-24
+
+### Fixed
+
+- **Scope-less OAuth clients are no longer pinned to read-only.** Clients that
+  omit the `scope` parameter (ChatGPT sends none — neither at dynamic client
+  registration nor at authorize time) were hard-defaulted to `mcp:read`, so
+  the consent screen could never offer authoring or admin regardless of the
+  operator's role. Per RFC 6749 §3.3 the authorize endpoint now falls back to
+  the client's registered scope set, and DCR without a `scope` field registers
+  the full supported set. Offering is not granting: the role intersection and
+  the consent checkboxes remain the gate, and `mcp:read` stays the only
+  pre-checked box.
+
+## [5.1.0] – 2026-07-24
+
+### Fixed
+
+- **Native MCP elicitation survives real client rendering.** Form delivery over
+  `conversation_get` / `tasks/get` no longer blocks the poll on the human's
+  answer with the SDK's 60s default timeout — the root cause of the repeated
+  `elicitation_transport_failed` failures in Claude Code and Codex. The engine
+  now fires `elicitation/create`, holds the poll only for a ~1 s delivery
+  grace, returns `input_required` immediately, and stages the answer through a
+  detached continuation with a 5-minute round-trip window. Claude Code (which
+  renders MCP forms only after its agent turn completes) and slow human
+  answers in Codex now land reliably.
+- A transport break no longer destroys the pending elicitation: the row is
+  demoted to the portal DB-pause (audit `ELICITATION_DEMOTED_TO_PORTAL`,
+  never `APPROVAL_REJECTED`) and the in-flight authoring draft survives.
+- A form `cancel` arriving faster than a human could render it (a client
+  auto-cancel) is treated as an undelivered form and re-prompted, not
+  recorded as a human cancellation. Explicit declines are always honored.
+
+### Added
+
+- `tests/real-world/elicitation/` — an operator diagnostic that drives real
+  Claude Code and Codex CLIs in tmux sessions against a local engine and
+  captures terminal frames plus PNG screenshots per matrix cell (accept /
+  timeout / cancel). Not wired into CI.
+
+## [5.0.0] – 2026-07-23
+
+### Changed
+
+- **BREAKING**: SSO sign-ins no longer auto-provision new accounts by default.
+  The new `auth.enable_signup` setting (default `false`) gates JIT user
+  creation on both the browser OIDC login and the headless
+  `POST /v1/identity/sessions` exchange. With signups disabled, an identity
+  that matches neither an existing identity link nor (via provider-verified
+  email) an existing user is rejected: browsers get the styled
+  "not authorized" page (or an RFC 6749 `error=access_denied` redirect when a
+  registered OAuth client is waiting), the sessions API answers
+  `403 access_denied`. Existing users and identity links keep signing in
+  unchanged; verified-email linking to existing accounts stays allowed.
+  Restore the previous behavior with `sk settings set auth.enable_signup true`.
+
+### Fixed
+
+- The 401 `WWW-Authenticate` challenge on `/mcp` now advertises the full
+  supported scope set (`mcp:read mcp:authoring mcp:admin`, identical to the
+  RFC 8414 discovery document) instead of only `mcp:read`, so MCP clients
+  request — and the consent screen can offer — the authoring and admin scopes.
+- The browser OIDC callback now answers an unknown provider prefix in `state`
+  with the same 400 invalid-state contract (styled error page) as every other
+  malformed state instead of 404.
+- Browser-facing `GET /v1/oauth/authorize` failures that must not redirect to
+  the client (unknown `client_id`, unregistered `redirect_uri`, malformed
+  parameters) render the shared styled 400 HTML error page, matching the other
+  product runtimes; JSON bodies remain for `Accept: application/json`.
+
+## [4.1.0] – 2026-07-23
+
+### Added
+
+- Render every browser-facing sign-in failure in the MCP login funnel —
+  denied grants, unknown/expired/consumed login states, identity-provider
+  errors, code-exchange failures and the expired consent CSRF window — as a
+  "Sign-in failed" page in the shared `mcp-auth-v2` template with a
+  "Sign in again" retry entry. JSON error bodies remain for token/register/API
+  endpoints and for clients sending `Accept: application/json`.
+- Finish the RFC 6749 dance with `error=access_denied` at the validated,
+  registered client `redirect_uri` when a grant denial or consent CSRF timeout
+  would otherwise leave a waiting MCP OAuth client hanging.
+
+### Changed
+
+- Switch the common auth-UI primary action tokens to the neutral ink
+  (`--primary:#1f2328`, hover `#000`) across login, consent and error pages.
+- Consolidate browser-session TTLs on the single shared source (8-hour
+  sliding, 24-hour absolute); the OIDC provider's 30-day absolute default is
+  removed.
+
+## [4.0.2] – 2026-07-23
+
+### Changed
+
+- Remove concrete production references from connector templates, workflow
+  fixtures and the retrieval golden set, with a guard test preventing their
+  reintroduction into the public repository.
+
+## [4.0.0] – 2026-07-23
+
+### Changed
+
+- Keep subject-only OIDC identities supported while returning only a
+  provider-verified email from the provider-neutral identity-session exchange.
+
+### Removed
+
+- Stop exposing the internal synthetic `@invalid` account address through the
+  public session response. The common `email` field is now `string | null`.
+
+## [3.0.2] – 2026-07-22
+
+### Security
+- Reject MCP OAuth access tokens that do not carry an RFC 8707 `resource`
+  audience whenever the public product URL is configured. Audience-less tokens
+  have no compatibility path and cannot be replayed against the production MCP
+  resource.
+
+## [3.0.1] – 2026-07-22
+
+### Fixed
+- Revoke the complete refresh-token family, including every associated access
+  token, when a client explicitly revokes a refresh token. Replay-triggered and
+  explicit family revocation now use the same transactional persistence path
+  while retaining their distinct audit actors and reasons.
+
+## [3.0.0] – 2026-07-22
+
+### Added
+- Publish and test the exact common MCP-auth OpenAPI operation set, schema
+  names, safe SSO-first provider discovery and assertion exchange contract.
+
+### Changed
+- Make API-key and direct OIDC the complete SubKit-owned MCP authentication
+  model. SubKit owns every OIDC client, secret, callback, session and tenant
+  mapping; no shared cross-product authentication runtime is supported.
+- Upgrade every SubKit login and consent page to `mcp-auth-v2`, the exact
+  shared style hash, fixed `Continue with SSO` then `Continue with API key`
+  actions, and an opaque `login_state` authorize handoff.
+- Align provider discovery, OpenAPI tags/descriptions, CLI consumers, README,
+  source docs and generated `llms.txt`/`llms-full.txt` with WikiKit and
+  ContentKit while retaining independent tenants, RBAC, data and deployment.
+- Publish the generated engine contract as OpenAPI 3.1 with strict common
+  provider-discovery and identity-session schemas.
+
+### Removed
+- Remove the hosted assertion-adapter protocol, CLI browser handoff and POST
+  callback surface.
+- Replace the SubKit-only session response fields `user_id` and `tenant_id`
+  with the common `principal_id` and `context_id` fields. No response aliases,
+  provider-named routes or compatibility parsing remain.
+
+## [2.0.4] – 2026-07-22
+
+### Changed
+- Replace the last concrete identity-product example with deployment-owned
+  provider ids and protocol-only documentation, then regenerate agent docs.
+- Extend the architecture contract to reject concrete provider products in
+  browser-auth runtime and documentation.
+
+## [2.0.3] – 2026-07-22
+
+### Fixed
+- Return `400 invalid_state` from the generic browser callback when its signed
+  state is missing, distinguishing malformed input from an unregistered route.
+- Extend the HTTP boundary regression suite to prove the shared generic
+  callback exists independently of any configured provider id.
+
+## [2.0.2] – 2026-07-22
+
+### Fixed
+- Pin the assertion exchange to the exact provider-neutral
+  `POST /v1/identity/sessions` boundary and reject nested protocol or provider
+  route variants with `404`.
+- Add an HTTP regression test that prevents retired fixed-route dispatch from
+  returning through the generic exchange handler.
+
+## [2.0.1] – 2026-07-22
+
+### Fixed
+- Replace the last retired `auth.oidc` documentation shape with the canonical
+  `auth.providers` protocol list and regenerate agent-facing documentation.
+- Add a contract test that rejects the former parallel auth trees in both the
+  operator source and generated `llms-full.txt`.
+
+## [2.0.0] – 2026-07-22
+
+### Added
+- Add one provider-neutral `auth.providers` list that can offer one user-owned
+  API-key adapter plus multiple named direct OIDC adapters.
+- Add the common `mcp-auth-v1` sign-in/consent card with the SubKit `sk` badge,
+  account switching/logout and an OAuth 2.1 OpenAPI security scheme.
+- Apply discovered issuer, configured audience and verified-email policy to
+  direct OIDC adapters without a product-specific provider branch.
+
+### Changed
+- Remove the parallel provider-specific auth trees and
+  MCP-only provider list. Discovery, browser login and bearer verification now
+  consume the same structural list, with no legacy parser or route aliases.
+- Store external identities in the provider-neutral `user_identities` relation
+  and remove the protocol-specific subject columns from `users`.
+- Make CLI discovery consume only `{protocol,id,label}` plus protocol metadata,
+  and replace the protocol-specific session exchange with
+  `POST /v1/identity/sessions` using `{provider_id,identity_token}`.
+- Treat `auth.providers` as structural boot configuration rather than a scalar
+  Settings/API or environment-override leaf; changing adapters requires a
+  canonical config update and restart.
+
+### Removed
+- Remove the former provider-specific config trees and subject columns without
+  aliases or runtime migration logic. External users authenticate again to
+  create a binding under the configured provider id.
+- Bind browser sessions to an eight-hour sliding limit and 24-hour absolute
+  cap, with persisted revocation/expiry checks at consent render and submit.
+- Limit every consent grant to client request ∩ server support ∩ current RBAC;
+  `mcp:read` is mandatory and never silently substituted.
+
+### Security
+- Sign short-lived login state, require same-origin return targets, validate
+  all form boundaries with Zod, audit session issue/revoke, and reject duplicate
+  provider ids or explicitly unverified external identities.
+
+## [1.23.3] – 2026-07-21
+
+### Fixed
+- Reconcile completed MCP poll envelopes with the live elicitation state. Once an input prompt is
+  resolved or expires, `conversation_get` and `tasks/result` no longer replay its stale setup URL,
+  nested `awaiting_input` status, or retry suggestion from the persisted turn snapshot.
+
+### Tests
+- Model the full production credential-prompt turn envelope in the expiry integration test and
+  assert both MCP poll surfaces remove stale prompt data while preserving a genuinely live prompt.
+- Make the native-decline Streamable HTTP journey wait for the rejection audit to become readable,
+  rather than racing the transaction commit after observing a neighboring status change.
+
+## [1.23.2] – 2026-07-21
+
+### Fixed
+- Expire unanswered draft-credential setup elicitations when their single-use grant dies. The
+  scheduler now marks the elicitation `timeout`, reactivates the conversation transactionally,
+  back-fills the abandoned tool result, and lets both `conversation_get` and MCP Tasks leave
+  `input_required` so the operator can request a fresh secure prompt.
+
+### Tests
+- Cover the full expired-grant lifecycle against Postgres, the real `conversation_get` capability,
+  and the MCP TaskStore; also prove an unexpired grant and ordinary untimed prompts remain pending.
+
+## [1.23.1] – 2026-07-21
+
+### Fixed
+- Canonicalize a single sensitive Bearer credential field to `token` before opening the
+  credential prompt. Agents may now label or name that one field for the vendor without turning
+  a recoverable alias into an extra failed conversation turn; ambiguous multi-secret forms still
+  fail closed with the canonical field contract.
+- Put every static-auth credential field name directly in the `ask_user_form` tool description so
+  the authoring model receives the contract before its first call, not only after a rejection.
+
+### Tests
+- Reproduce the production Cloudflare draft using a vendor-specific Bearer field alias and prove
+  the persisted elicitation is normalized to the extractor's canonical `token` slot.
+
+## [1.23.0] – 2026-07-21
+
+### Added
+- Ship Cloudflare as a normal built-in connector template with scoped Bearer-token setup,
+  official OpenAPI ingestion, a credential probe, operator guidance, and read-only token,
+  zone, and DNS starter recipes.
+- Import Google REST Discovery documents inline or by URL with the same SSRF guard, full-body
+  deadline, and 50 MiB streaming limit as OpenAPI. Nested resources, method paths, schemas,
+  service roots, and OAuth/query-key hints now seed connector drafts and documentation chunks.
+
+### Changed
+- Upgrade the Firebase/Firestore built-in to template revision 2 and ingest the official
+  Firestore v1 Discovery document instead of incorrectly treating it as OpenAPI. Setup guidance
+  now distinguishes Google OAuth clients, Firebase ID tokens, and service-account JSON keys.
+- Allow monotonic positive built-in template revisions so connector provenance can identify
+  material catalog migrations.
+
+### Fixed
+- Remove the new static-credential connector deadlock: MCP URL elicitation can now collect a
+  bearer, basic, header, query, or AWS SigV4 credential for an unsaved draft before its mandatory
+  live probe; a green probe then persists the connector and encrypted credential atomically.
+- Reuse the original MCP task when `conversation_get` resumes a native elicitation, so accepted,
+  declined, and URL-completed prompts terminate the task that the client is polling.
+- Keep connector and workflow authoring tools structurally disjoint while a draft state machine is
+  active, preventing connector conversations from selecting workflow commit tools.
+- Stop prose ending in “bearer credential.” from being misclassified and cached as a bearer token.
+
+### Tests
+- Cover the full Streamable HTTP journey from an unsaved bearer connector through URL credential
+  input, queue resume, authenticated probe, connector save, and encrypted credential persistence.
+  Native elicitation tests now also fail when the resumed background task fails or never finishes.
+
+### Security
+- Document least-privilege Cloudflare tokens and explicit revocation of any credential exposed
+  through chat, logs, shell history, or source control; no operator credential is used by the
+  test or release pipeline.
+
+## [1.22.4] – 2026-07-21
+
+### Fixed
+- Stream URL-fetched OpenAPI documents with a 50 MiB hard limit, rejecting oversized
+  `Content-Length` values before reading and cancelling chunked bodies at the first byte over
+  budget. The fetch deadline now covers the complete response body instead of only headers.
+- Derive imported connector base URLs and authentication from OpenAPI `servers` and
+  `securitySchemes`, so the official Cloudflare spec produces
+  `https://api.cloudflare.com/client/v4` with Bearer authentication instead of the raw spec
+  host with no authentication.
+
+### Added
+- YAML support and real Cloudflare JSON/YAML regression coverage for OpenAPI connector imports.
+
+## [1.22.3] – 2026-07-21
+
+### Fixed
+- Persist native MCP `decline`, `cancel`, and failed external-interaction outcomes as
+  cancelled elicitations and record `approval.rejected` in both the immutable audit log and
+  structured runtime logs. The queue transport now carries an explicit decision state so
+  free-form reason text cannot alter governance semantics.
+
+### Added
+- Real Streamable HTTP regression coverage proving that a native client decline survives the
+  queue boundary as a cancelled decision with a rejected approval audit entry.
+
+## [1.22.2] – 2026-07-21
+
+### Fixed
+- Deliver conversation questions and governed write confirmations that were persisted by a
+  background worker as native MCP `elicitation/create` requests on `conversation_get` and
+  `tasks/get`. Answers now retain verified human provenance, Tasks reuse their original id,
+  and an expiring database lease prevents duplicate dialogs across concurrent polls.
+- Keep OAuth and credential-rotation URLs out of model-facing tool results. URL acceptance
+  is separated from external completion; successful callbacks persist completion and emit
+  `notifications/elicitation/complete` before the conversation can resume.
+- Preserve explicit form fallback for non-approval questions while continuing to reject
+  model-relayed answers for approval-bearing elicitations.
+
+### Added
+- Real Streamable HTTP, pg-boss, Tasks, form, URL, callback, and governed-write regression
+  coverage for the complete persisted MCP human-in-the-loop lifecycle.
+
+## [1.22.1] – 2026-07-21
+
+### Fixed
+- Give the GitHub-hosted TypeScript check a 4 GiB V8 heap. The complete generated
+  OpenAPI type graph exceeded Node's default ~2 GiB old-space limit even though
+  the typecheck itself was clean; release gates remain unchanged and fail closed.
+
+## [1.22.0] – 2026-07-20
+
+### Added
+- Opt-in, product-internal usage telemetry for canonical HTTP routes, Google Chat and other
+  Chat turns, Conversation calls/streams, and MCP JSON-RPC/session/task/capacity behavior.
+  Tenant-scoped actor/session identities use a dedicated product-local HMAC; the bounded
+  ledger cannot store messages, prompts, tool arguments/results, raw paths/query strings,
+  IPs, user agents, OAuth material, or plaintext dynamic identifiers.
+- `GET /v1/stats/http|chat|mcp|conversations` and matching
+  `sk stats http|chat|mcp|conversations` commands return exact full-window identities,
+  numerator/denominator ratios, stream outcomes, latency/byte coverage, retention quality,
+  traffic-class separation, and semantic measured/zero/missing states for Cockpit reports.
+- `observability.usage.enabled`, `hmac_secret`, and `retention_days` settings; telemetry is
+  disabled by default and raw rows expire after 90 days unless configured otherwise.
+
+## [1.21.1] – 2026-07-20
+
+### Fixed
+- Workflow validation now rejects bare JSONata calls such as `not(...)` in
+  branch predicates and suggests the runtime-compatible `$not(...)` form.
+- Successful connector responses now build a cumulative shape contract per
+  workflow step, preserving optional fields across executions instead of
+  misclassifying their absence as response-schema drift.
+- Proactive drift detection is scoped to the exact workflow and step that
+  produced the response evidence. Legacy unscoped observations and additive
+  response changes no longer create unsafe patch candidates; incompatible
+  type changes remain detectable.
+- Schema history retains the raw observed response shape alongside its
+  cumulative runtime contract, so migration previews remain evidence-based
+  without weakening drift detection.
+- Test-only audit draining can be scoped to its originating database, avoiding
+  ordering-dependent notification-suite timeouts from unrelated disposable
+  database writes.
+- E2E apps now bind their own PgBoss instance, so parallel disposable
+  databases cannot enqueue through or tear down a process-global queue runtime.
+- Fast MCP workflow calls can no longer start a progress poller after the run
+  has already settled, preventing leaked background queries; disposable test
+  databases terminate in-flight backends before awaiting pool drain.
+- OAuth credential polling is single-flight per database, uses idle pool
+  capacity only, and destroys a client whose bounded read stalls, so slow or
+  timed-out waits cannot exhaust the connection pool or block credential writes.
+- The E2E release gate runs every file in its own sequential worker process,
+  isolating process-global mock/config state and server teardown while each
+  app retains its own PgBoss instance.
+- Unit and integration gates run every file in a fresh sequential process,
+  preventing sessions, disposable pools, queue workers, catalog migrations,
+  and module globals from accumulating in a long-lived Bun runtime.
+- Elicitation outcome handling loads the conversation tool registry only when
+  replaying a confirmed tool call, removing a startup import cycle that could
+  expose an uninitialized `ask_user_choice` tool.
+- Headless CLI create, resume, and attachment turns consume their POST SSE
+  response directly and stop on `completed`, eliminating the replay-subscribe
+  race and indefinite waits on keep-alive transports.
+
+## [1.21.0] – 2026-07-20
+
+### Added
+- Admin-only, tenant-scoped connector promotion moves or copies a complete
+  DEV binding to PROD without secret re-entry. The transactional REST,
+  conversation, and CLI surfaces require idempotency, preserve explicit
+  source-retention semantics, and emit connector plus per-credential audit
+  events.
+- Static credentials are re-encrypted under fresh credential ids for copy;
+  move preserves OAuth refresh metadata, ciphertext/AAD bindings, health
+  state, and end-user credential ownership.
+
+### Fixed
+- Schedule catalog responses now include the persisted JSON input payload,
+  and create/update/list paths round-trip objects, arrays, scalars, and null.
+- Repeated `POST /v1/schedules` upserts return 200 with
+  `upsert_status: "updated"` and audit `schedule.updated`; only inserts return
+  201 and audit `schedule.created`.
+- Built-in Notion health probes send the required `Notion-Version` header,
+  including compatibility for connectors pinned to historical template
+  snapshots. Probe headers are bounded and cannot inject authentication,
+  cookie, or transport headers or shadow saved credential headers.
+
 ## [1.20.4] – 2026-07-19
 
 First shipped tag carrying the 1.20.3 changes: the v1.20.3 release build

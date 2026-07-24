@@ -294,6 +294,7 @@ export const authenticateOAuthTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_write",
+  authoring_resource: "connector",
   requires_skill: "oauth-flow",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);

@@ -115,10 +115,10 @@ function makeHarness(opts: {
     },
   });
 
-  const post = () =>
+  const post = (headers: Record<string, string> = {}) =>
     app.request("/v1/chat/google/events", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify({ type: "CARD_CLICKED" }),
     });
 
@@ -191,6 +191,15 @@ describe("POST /v1/chat/google/events — handleSyncInteraction contract", () =>
     expect(await res.json()).toEqual({ ok: true });
     expect(h.enqueued.length).toBe(1);
     expect(h.syncCalls.length).toBe(0);
+  });
+
+  test("verified synthetic canary classification reaches the queued event", async () => {
+    const h = makeHarness({ sync: async () => ({ handled: false }) });
+    const res = await h.post({ "x-subkit-traffic-class": "synthetic" });
+    expect(res.status).toBe(200);
+    expect(h.enqueued).toHaveLength(1);
+    expect(h.enqueued[0]?.event.traffic_class).toBe("synthetic");
+    expect(h.enqueued[0]?.event.raw).toEqual({});
   });
 });
 

@@ -156,6 +156,43 @@ describe("consent denial", () => {
     });
     expect(decisionRes.status).toBe(401);
   });
+
+  test("absolute session expiry forces a fresh browser login", async () => {
+    const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ redirect_uris: ["https://client.example.com/expired-cb"] }),
+    });
+    const { client_id: clientId } = (await regRes.json()) as { client_id: string };
+    const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
+    const jwt = await mintSessionCookie({
+      session_id: sessionId,
+      user_id: ctx.userId,
+      tenant_id: ctx.tenantId,
+    });
+    await db
+      .update(sessions)
+      .set({ absolute_expires_at: new Date(Date.now() - 1_000) }) // allow-wall-clock
+      .where(eq(sessions.id, sessionId));
+
+    const res = await fetch(
+      `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: "https://client.example.com/expired-cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        scope: "mcp:read",
+      })}`,
+      { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
+    );
+
+    expect(res.status).toBe(302);
+    const loginLocation = new URL(res.headers.get("location") ?? "");
+    expect(loginLocation.pathname).toBe("/v1/identity/login/start");
+    expect(loginLocation.searchParams.get("login_state")).toBeTruthy();
+    expect(loginLocation.searchParams.has("redirect_to")).toBe(false);
+  });
 });
 
 // ─── Scope intersection: member role cannot get mcp:admin ─────────────────
@@ -246,11 +283,9 @@ describe("scope intersection — role-based scope restriction", () => {
     expect(scopes).toContain("mcp:read");
   });
 
-  test("role downgrade between consent render and decision denies the grant", async () => {
-    // Member renders the consent page for mcp:authoring (a scope an
-    // enduser does NOT hold), is then downgraded to enduser, and clicks
-    // Approve. The decision handler re-intersects against the fresh role;
-    // the empty result must deny — no code, no token at the stale scope.
+  test("role downgrade between consent render and decision denies when the baseline is lost", async () => {
+    // Member renders read + authoring, is downgraded to enduser, and clicks
+    // Approve. The fresh role has no MCP baseline, so the grant is denied.
     const [user] = await db
       .insert(users)
       .values({ tenant_id: ctx.tenantId, email: "downgrade@test.local", role: "member" })
@@ -278,7 +313,7 @@ describe("scope intersection — role-based scope restriction", () => {
         response_type: "code",
         code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
-        scope: "mcp:authoring",
+        scope: "mcp:read mcp:authoring",
       })}`,
       { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
     );
@@ -303,7 +338,7 @@ describe("scope intersection — role-based scope restriction", () => {
         redirect_uri: "https://downgrade.example.com/cb",
         resource: "",
         state: "",
-        scope: "mcp:read",
+        scope: "mcp:read mcp:authoring",
         decision: "approve",
       }).toString(),
       redirect: "manual",
@@ -319,11 +354,8 @@ describe("scope intersection — role-based scope restriction", () => {
 // The HTTP layer uses the same db connection that the test DB uses (via
 // createHttpTestServer). Audit writes go to the test DB here.
 
-describe("scope selection — operator may grant above the client request", () => {
-  test("admin requesting only mcp:read is offered all scopes and may grant mcp:admin", async () => {
-    // ctx.userId is an admin. The client requests only mcp:read, but the
-    // consent page offers the operator's FULL role ceiling. The admin ticks
-    // mcp:admin; the issued token must carry it.
+describe("scope selection — client request is a hard ceiling", () => {
+  test("admin requesting only mcp:read cannot display or grant mcp:admin", async () => {
     const regRes = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -345,23 +377,20 @@ describe("scope selection — operator may grant above the client request", () =
         response_type: "code",
         code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
-        // Client asks for read only — operator can still choose more.
         scope: "mcp:read",
       })}`,
       { headers: { cookie: `subkit_session=${jwt}` }, redirect: "manual" },
     );
     expect(authRes.status).toBe(200);
     const html = await authRes.text();
-    // All three scopes are offered to an admin even though the client asked
-    // for read only.
     expect(html).toContain('value="mcp:read"');
-    expect(html).toContain('value="mcp:authoring"');
-    expect(html).toContain('value="mcp:admin"');
+    expect(html).not.toContain('value="mcp:authoring"');
+    expect(html).not.toContain('value="mcp:admin"');
 
     const csrfMatch = html.match(/name="csrf_token"\s+value="([^"]+)"/);
     const csrfToken = csrfMatch![1] as string;
 
-    // Operator selects read (baseline hidden input) + admin.
+    // A forged admin checkbox is ignored because it was never requested.
     const decisionRes = await fetch(`${ctx.baseUrl}/v1/oauth/authorize/decision`, {
       method: "POST",
       headers: {
@@ -391,7 +420,7 @@ describe("scope selection — operator may grant above the client request", () =
     const { scope } = (await tokenRes.json()) as { scope: string };
     const scopes = scope.split(" ");
     expect(scopes).toContain("mcp:read");
-    expect(scopes).toContain("mcp:admin");
+    expect(scopes).not.toContain("mcp:admin");
   });
 
   test("member tampering with a non-offered mcp:admin scope is clamped away", async () => {
@@ -464,11 +493,7 @@ describe("scope selection — operator may grant above the client request", () =
 });
 
 describe("scope intersection — member role requesting only mcp:admin", () => {
-  test("/authorize offers the member's role ceiling (read + authoring) and never mcp:admin", async () => {
-    // The consent page offers the operator's FULL role ceiling, independent of
-    // what the client requested. A member requesting only mcp:admin (which the
-    // role lacks) still sees a consent page — but it offers read + authoring
-    // (the member's actual ceiling) and never the unpermitted mcp:admin.
+  test("/authorize denies instead of substituting unrequested scopes", async () => {
     const [memberUser] = await db
       .insert(users)
       .values({
@@ -493,8 +518,7 @@ describe("scope intersection — member role requesting only mcp:admin", () => {
       tenant_id: ctx.tenantId,
     });
 
-    // Request ONLY mcp:admin — the role lacks it, so it is never offered, but
-    // the operator still sees their permitted ceiling rather than a denial.
+    // Request ONLY mcp:admin — the role lacks it and read was not requested.
     const res = await fetch(
       `${ctx.baseUrl}/v1/oauth/authorize?${new URLSearchParams({
         client_id: clientId,
@@ -509,13 +533,9 @@ describe("scope intersection — member role requesting only mcp:admin", () => {
         redirect: "manual",
       },
     );
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    // mcp:admin is never offered to a member.
-    expect(html).not.toContain('value="mcp:admin"');
-    // The member's role ceiling (read + authoring) IS offered as checkboxes.
-    expect(html).toContain('value="mcp:read"');
-    expect(html).toContain('value="mcp:authoring"');
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location") ?? "");
+    expect(location.searchParams.get("error")).toBe("access_denied");
   });
 });
 
@@ -722,6 +742,31 @@ describe("audit log entries — token lifecycle (HTTP layer)", () => {
         and(eq(auditLog.action, "mcp_oauth.token_revoked"), eq(auditLog.tenant_id, ctx.tenantId)),
       );
     expect(rows.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("revoking a refresh token rejects its associated access token at /mcp", async () => {
+    const { access_token, refresh_token } = await runFullOAuthFlow({
+      redirectUri: "https://refresh-family-revoked.example.com/cb",
+      label: "RefreshFamilyRevoked",
+    });
+
+    const revokeRes = await fetch(`${ctx.baseUrl}/v1/oauth/revoke`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: refresh_token }).toString(),
+    });
+    expect(revokeRes.status).toBe(200);
+
+    const mcpRes = await fetch(`${ctx.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer ${access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "initialize", id: 1 }),
+    });
+    expect(mcpRes.status).toBe(401);
   });
 });
 

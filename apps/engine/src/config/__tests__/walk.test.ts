@@ -29,7 +29,6 @@ describe("listConfigLeaves", () => {
       "llm.api_key",
       "llm.providers.anthropic.api_key",
       "auth.session.secret",
-      "auth.oidc.client_secret",
       "platform.slack.signing_secret",
       "storage.s3.access_key",
       "observability.langfuse.secret_key",
@@ -40,6 +39,10 @@ describe("listConfigLeaves", () => {
       expect(leaf, `leaf ${path} should exist`).toBeDefined();
       expect(leaf!.meta.secret, `${path} should be secret`).toBe(true);
     }
+  });
+
+  test("structural auth providers are not exposed as a scalar setting", () => {
+    expect(findLeafByPath("auth.providers")).toBeUndefined();
   });
 
   test("tenant-scoped leaves match the documented set", () => {

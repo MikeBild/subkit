@@ -7,7 +7,11 @@
 import { getIntrospectionQuery } from "graphql";
 import { getConfig } from "../config/loader.ts";
 import { getDriverFetch } from "./drivers/fetch-seam.ts";
-import { validateOutboundHeaders } from "./drivers/http.ts";
+import {
+  HttpRequestInvalidError,
+  readBodyCapped,
+  validateOutboundHeaders,
+} from "./drivers/http.ts";
 
 export interface FetchedSpec {
   content: string;
@@ -15,7 +19,9 @@ export interface FetchedSpec {
   fetched_from: string;
 }
 
-const MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8 MB
+export const API_SPEC_MAX_BYTES = 50 * 1024 * 1024;
+export const OPENAPI_SPEC_MAX_BYTES = API_SPEC_MAX_BYTES;
+export const GOOGLE_DISCOVERY_SPEC_MAX_BYTES = API_SPEC_MAX_BYTES;
 const TIMEOUT_MS = 15_000;
 
 function isPrivateHost(host: string): boolean {
@@ -39,7 +45,48 @@ export class SpecFetchError extends Error {
   }
 }
 
-async function fetchWithBudget(url: string, init: RequestInit): Promise<Response> {
+async function readSpecBody(
+  res: Response,
+  url: string,
+  kind: "OpenAPI" | "Google Discovery",
+  maxBytes: number,
+): Promise<string> {
+  try {
+    return await readBodyCapped(res, maxBytes, url);
+  } catch (err) {
+    if (err instanceof HttpRequestInvalidError) {
+      throw new SpecFetchError(
+        `${kind} spec exceeds ${maxBytes === API_SPEC_MAX_BYTES ? "50 MiB" : `${maxBytes} bytes`}`,
+        url,
+        res.status,
+      );
+    }
+    throw err;
+  }
+}
+
+export async function readOpenApiSpecBody(
+  res: Response,
+  url: string,
+  maxBytes = OPENAPI_SPEC_MAX_BYTES,
+): Promise<string> {
+  return await readSpecBody(res, url, "OpenAPI", maxBytes);
+}
+
+export async function readGoogleDiscoverySpecBody(
+  res: Response,
+  url: string,
+  maxBytes = GOOGLE_DISCOVERY_SPEC_MAX_BYTES,
+): Promise<string> {
+  return await readSpecBody(res, url, "Google Discovery", maxBytes);
+}
+
+interface BudgetedResponse {
+  response: Response;
+  release: () => void;
+}
+
+async function fetchWithBudget(url: string, init: RequestInit): Promise<BudgetedResponse> {
   const u = new URL(url);
   let allowPrivate = false;
   try {
@@ -60,10 +107,11 @@ async function fetchWithBudget(url: string, init: RequestInit): Promise<Response
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await getDriverFetch()(url, { ...init, signal: controller.signal });
-    return res;
-  } finally {
+    const response = await getDriverFetch()(url, { ...init, signal: controller.signal });
+    return { response, release: () => clearTimeout(timer) };
+  } catch (err) {
     clearTimeout(timer);
+    throw err;
   }
 }
 
@@ -71,27 +119,57 @@ export async function fetchOpenApiSpec(
   url: string,
   headers?: Record<string, string>,
 ): Promise<FetchedSpec> {
-  const res = await fetchWithBudget(url, { method: "GET", ...(headers ? { headers } : {}) });
-  if (!res.ok) {
-    throw new SpecFetchError(`OpenAPI fetch returned ${res.status}`, url, res.status);
+  const { response, release } = await fetchWithBudget(url, {
+    method: "GET",
+    ...(headers ? { headers } : {}),
+  });
+  try {
+    if (!response.ok) {
+      throw new SpecFetchError(`OpenAPI fetch returned ${response.status}`, url, response.status);
+    }
+    const content = await readOpenApiSpecBody(response, url);
+    return {
+      content,
+      content_type: response.headers.get("content-type") ?? "application/json",
+      fetched_from: url,
+    };
+  } finally {
+    release();
   }
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_SIZE_BYTES) {
-    throw new SpecFetchError(`OpenAPI spec exceeds 8 MB`, url, res.status);
+}
+
+export async function fetchGoogleDiscoverySpec(
+  url: string,
+  headers?: Record<string, string>,
+): Promise<FetchedSpec> {
+  const { response, release } = await fetchWithBudget(url, {
+    method: "GET",
+    ...(headers ? { headers } : {}),
+  });
+  try {
+    if (!response.ok) {
+      throw new SpecFetchError(
+        `Google Discovery fetch returned ${response.status}`,
+        url,
+        response.status,
+      );
+    }
+    const content = await readGoogleDiscoverySpecBody(response, url);
+    return {
+      content,
+      content_type: response.headers.get("content-type") ?? "application/json",
+      fetched_from: url,
+    };
+  } finally {
+    release();
   }
-  const content = new TextDecoder().decode(buf);
-  return {
-    content,
-    content_type: res.headers.get("content-type") ?? "application/json",
-    fetched_from: url,
-  };
 }
 
 export async function fetchGraphQLIntrospection(
   endpoint: string,
   headers?: Record<string, string>,
 ): Promise<FetchedSpec> {
-  const res = await fetchWithBudget(endpoint, {
+  const { response, release } = await fetchWithBudget(endpoint, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -100,20 +178,28 @@ export async function fetchGraphQLIntrospection(
     },
     body: JSON.stringify({ query: getIntrospectionQuery() }),
   });
-  if (!res.ok) {
-    throw new SpecFetchError(`GraphQL introspection returned ${res.status}`, endpoint, res.status);
+  try {
+    if (!response.ok) {
+      throw new SpecFetchError(
+        `GraphQL introspection returned ${response.status}`,
+        endpoint,
+        response.status,
+      );
+    }
+    const json = (await response.json()) as { data?: unknown; errors?: unknown };
+    if (!json.data) {
+      throw new SpecFetchError(
+        `GraphQL introspection returned no data (errors: ${JSON.stringify(json.errors ?? null)})`,
+        endpoint,
+        response.status,
+      );
+    }
+    return {
+      content: JSON.stringify(json),
+      content_type: "application/json",
+      fetched_from: endpoint,
+    };
+  } finally {
+    release();
   }
-  const json = (await res.json()) as { data?: unknown; errors?: unknown };
-  if (!json.data) {
-    throw new SpecFetchError(
-      `GraphQL introspection returned no data (errors: ${JSON.stringify(json.errors ?? null)})`,
-      endpoint,
-      res.status,
-    );
-  }
-  return {
-    content: JSON.stringify(json),
-    content_type: "application/json",
-    fetched_from: endpoint,
-  };
 }

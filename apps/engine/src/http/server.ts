@@ -10,8 +10,8 @@
 // in a per-test database and registry without touching env globals.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import type { PgBoss } from "pg-boss";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
-import { createFirebaseProvider } from "../auth/providers/firebase.ts";
 import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
 import { createOidcProvider } from "../auth/providers/oidc.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
@@ -67,7 +67,7 @@ import { registerLoginRoutes } from "./routes/identity/login.ts";
 import { registerEffectivePermissionsRoute } from "./routes/identity/permissions.ts";
 import { registerPortalTokenRoutes } from "./routes/identity/portal-tokens.ts";
 import { registerProvidersRoute } from "./routes/identity/providers.ts";
-import { registerSessionsOidcRoute } from "./routes/identity/sessions-oidc.ts";
+import { registerIdentitySessionsRoute } from "./routes/identity/sessions.ts";
 import { registerSkBootstrapRoute } from "./routes/identity/sk-bootstrap.ts";
 import { registerSystemAccountRoutes } from "./routes/identity/system-accounts.ts";
 import { registerTenantRoutes } from "./routes/identity/tenants.ts";
@@ -101,6 +101,9 @@ import { registerWorkflowRoutes } from "./routes/workflows.ts";
 
 export interface CreateAppOptions {
   db?: Db;
+  /** Bind a queue runtime to this app. Disposable test apps must inject
+   * their own instance so parallel databases cannot share the global boss. */
+  boss?: PgBoss;
   registry?: AuthProviderRegistry;
   chatRegistry?: ChatAdapterRegistry;
   /** Override for the chat-route enqueue callback. Default forwards to
@@ -132,15 +135,10 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
       /* loader not initialised — fall through to local defaults below */
     }
   }
-  // Machine/token auth (API keys, portal tokens) is ALWAYS available — it is
-  // the programmatic + agent surface and is orthogonal to who owns *human*
-  // identity. MCP OAuth stays gated on its own server feature flag. The human
-  // identity provider is selected by `auth.provider` and exactly one is
-  // registered: "subkit" (default) registers none — humans authenticate with
-  // engine-issued API keys provisioned via admin-invite; "firebase"/"oidc"
-  // register the matching external provider.
   const enableMcpOAuth = auth?.mcp_oauth.enabled ?? true;
-  const provider = auth?.provider ?? "subkit";
+  const providerConfigs = auth?.providers ?? [
+    { protocol: "api_key" as const, id: "api-key", label: "SubKit API key" },
+  ];
 
   const registered: string[] = [];
 
@@ -157,19 +155,27 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
   registered.push("portal_token");
   reg.register(createApiKeyProvider(db ? { db } : {}));
   registered.push("api_key");
-  if (provider === "oidc") {
-    reg.register(createOidcProvider(db ? { db } : {}));
-    registered.push("oidc");
-  } else if (provider === "firebase") {
-    reg.register(createFirebaseProvider(db ? { db } : {}));
-    registered.push("firebase");
+  for (const provider of providerConfigs) {
+    if (provider.protocol === "oidc") {
+      reg.register(
+        createOidcProvider({
+          providerId: provider.id,
+          issuerUrl: provider.issuer_url,
+          clientId: provider.client_id,
+          clientSecret: provider.client_secret,
+          scopes: provider.scopes,
+          tenantSlug: provider.tenant_slug,
+          ...(db ? { db } : {}),
+        }),
+      );
+      registered.push(provider.id);
+    }
   }
 
   logger.info({
     module: "auth",
     action: "registry.built",
     msg: "auth provider registry built",
-    human_provider: provider,
     providers: registered,
   });
 
@@ -261,6 +267,13 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
       await next();
     });
   }
+  if (opts.boss) {
+    const boundBoss = opts.boss;
+    app.use("*", async (c, next) => {
+      c.set("boss", boundBoss);
+      await next();
+    });
+  }
   app.use("*", authMiddleware(registry));
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
@@ -279,7 +292,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerApiKeyRoutes(app);
   registerPortalTokenRoutes(app);
   registerProvidersRoute(app);
-  registerSessionsOidcRoute(app);
+  registerIdentitySessionsRoute(app);
   registerLoginRoutes(app);
   registerMcpOAuthRoutes(app);
   // Authenticated admin surface for platform-global OAuth clients.
@@ -313,7 +326,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
       (async (job: AgentSessionAnalyzeJob) => {
         // Lazily resolved like chatEnqueue: boot order stays intact and
         // tests that don't start a boss inject their own stub.
-        await getBoss().send(AGENT_SESSION_ANALYZE_QUEUE, job);
+        await (opts.boss ?? getBoss()).send(AGENT_SESSION_ANALYZE_QUEUE, job);
       }),
   });
   registerDiscoveryRoutes(app);
@@ -339,7 +352,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
         // getBoss() is resolved lazily at request time so the engine
         // boot order (boss start → migrations → http listen) stays
         // intact; tests that don't start a boss don't hit this path.
-        await getBoss().send(CHAT_EVENT_QUEUE, job);
+        await (opts.boss ?? getBoss()).send(CHAT_EVENT_QUEUE, job);
       }),
   });
   registerChatWorkspaceRoutes(app, { registry: chatRegistry });
@@ -359,8 +372,8 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerMcpHttpRoutes(app);
 
   // OpenAPI document
-  app.doc("/openapi.json", {
-    openapi: "3.0.0",
+  app.doc31("/openapi.json", {
+    openapi: "3.1.0",
     info: OPENAPI_INFO,
   });
 
@@ -371,6 +384,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     "bearerAuth",
     SECURITY_SCHEMES.bearerAuth,
   );
+  app.openAPIRegistry.registerComponent("securitySchemes", "oauth2", SECURITY_SCHEMES.oauth2);
 
   // Scalar UI. The page loads the Scalar bundle from jsdelivr; scope a
   // Content-Security-Policy to this response so the API origin can't be

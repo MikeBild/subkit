@@ -2,12 +2,11 @@
 // decline a tool approval.
 //
 // WHY IT EXISTS. Production said, across the full journal retention: 29
-// `mcp.elicit.fallback` timeouts and not one fulfilled in-band elicitation,
-// ever. MCP clients advertise the `elicitation` capability at handshake and
-// then never answer `elicitation/create`. So in-band elicitation is not a
-// human channel on MCP, and `confirm_tool_call` — which the MODEL calls — was
-// never a gate. The human is reachable only through a browser. This module is
-// that browser link.
+// `mcp.elicit.fallback` timeouts and not one fulfilled in-band elicitation in
+// the old inline transport. Standalone tool calls therefore keep this durable
+// browser channel. Conversation tasks now reattach persisted prompts to a live
+// poll session and can prove `human/in_band_elicitation` provenance; they do
+// not use this portal when that native channel is available.
 //
 // TOKEN DISCIPLINE — the same primitive `connectors/credential-setup-grant.ts`
 // uses, deliberately not a second one:

@@ -3,6 +3,7 @@
 
 import { VERSION } from "@cli-core/version.ts";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import type { RequestSource, ServiceMetadata } from "../observability/service-metadata.ts";
@@ -21,6 +22,9 @@ export type AppEnv = {
     request_source: RequestSource;
     request_started_at: number;
     db: Db;
+    /** Request-local queue runtime. Tests bind an isolated PgBoss instance;
+     * production falls back to the process-wide engine singleton. */
+    boss?: PgBoss;
     principal?: ResolvedPrincipal;
     /**
      * Bound by the auth middleware once a principal resolves. Downstream
@@ -76,6 +80,23 @@ export const SECURITY_SCHEMES = {
   bearerAuth: {
     type: "http" as const,
     scheme: "bearer" as const,
-    description: "API key issued via /v1/identity/api-keys",
+    description:
+      "SubKit API key or an OAuth 2.1 access token issued by the MCP authorization server.",
+  },
+  oauth2: {
+    type: "oauth2" as const,
+    description:
+      "OAuth 2.1 authorization-code flow with PKCE. Browser login uses product-local API-key or direct OIDC adapters.",
+    flows: {
+      authorizationCode: {
+        authorizationUrl: "/v1/oauth/authorize",
+        tokenUrl: "/v1/oauth/token",
+        scopes: {
+          "mcp:read": "Read published content, resources, and product statistics",
+          "mcp:authoring": "Create drafts, revisions, and previews",
+          "mcp:admin": "Publish releases and administer access",
+        },
+      },
+    },
   },
 };

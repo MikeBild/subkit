@@ -8,6 +8,7 @@ import {
   compile,
   evaluate,
   extractAst,
+  findUnboundFunctionCalls,
   flattenBindings,
   formatError,
   JSONataError,
@@ -162,5 +163,18 @@ describe("extractAst", () => {
   test("returns null for an invalid expression", () => {
     const ast = extractAst("invalid syntax (");
     expect(ast).toBeNull();
+  });
+});
+
+describe("findUnboundFunctionCalls", () => {
+  test("finds bare calls that compile but cannot resolve at runtime", () => {
+    expect(findUnboundFunctionCalls("not(boolean(1))")).toEqual([
+      { name: "not", position: 3, suggestion: "$not" },
+      { name: "boolean", position: 11, suggestion: "$boolean" },
+    ]);
+  });
+
+  test("allows built-ins and bound function variables", () => {
+    expect(findUnboundFunctionCalls("($f := function($x) { $not($x) }; $f(false))")).toEqual([]);
   });
 });

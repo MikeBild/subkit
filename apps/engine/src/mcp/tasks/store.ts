@@ -57,6 +57,7 @@ export interface McpTaskRow {
   kind: "start" | "append" | "respond_elicitation";
   job_id: string | null;
   actor_id: string | null;
+  request_source: string;
   user_message_id: string | null;
   result: ConversationTurnEnvelope | null;
   failure_reason: string | null;
@@ -111,6 +112,32 @@ export async function setMcpTaskJobId(
     .update(mcpTasks)
     .set({ job_id, updated_at: new Date() })
     .where(and(eq(mcpTasks.tenant_id, tenant_id), eq(mcpTasks.id, task_id)));
+}
+
+/** Re-arm the same task after native input so Tasks clients keep one task id. */
+export async function rearmMcpTaskForNativeElicitation(
+  p: { tenant_id: string; task_id: string; actor_id: string | null },
+  db: Db,
+): Promise<boolean> {
+  const rows = await db
+    .update(mcpTasks)
+    .set({
+      kind: "respond_elicitation",
+      actor_id: p.actor_id,
+      user_message_id: null,
+      job_id: null,
+      result: null,
+      failure_reason: null,
+      cancelled_at: null,
+      phase: "awaiting_human_input",
+      last_action: "elicitation/create",
+      progress_step: null,
+      heartbeat_at: new Date(),
+      updated_at: new Date(),
+    })
+    .where(and(eq(mcpTasks.tenant_id, p.tenant_id), eq(mcpTasks.id, p.task_id)))
+    .returning({ id: mcpTasks.id });
+  return rows.length === 1;
 }
 
 /** Tenant-scoped read of a single task row. */
@@ -188,11 +215,19 @@ export async function setMcpTaskCancelled(
   tenant_id: string,
   task_id: string,
   db: Db,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const rows = await db
     .update(mcpTasks)
     .set({ cancelled_at: new Date(), updated_at: new Date() })
-    .where(and(eq(mcpTasks.tenant_id, tenant_id), eq(mcpTasks.id, task_id)));
+    .where(
+      and(
+        eq(mcpTasks.tenant_id, tenant_id),
+        eq(mcpTasks.id, task_id),
+        sql`${mcpTasks.cancelled_at} IS NULL`,
+      ),
+    )
+    .returning({ id: mcpTasks.id });
+  return rows.length > 0;
 }
 
 /**

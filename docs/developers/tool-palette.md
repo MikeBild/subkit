@@ -323,17 +323,14 @@ with `_meta.sk_confirm: true` + `_meta.sk_confirm_id: <tool_call_id>`. Both are 
 same trigger, and both fail with `approval_not_granted` until the human decides.
 There is no second door to bolt, because neither door opens by itself.
 
-**In-band elicitation is NOT a grant channel over MCP.** The engine never issues an
-`elicitation/create` confirmation for a write approval, whatever capabilities the
-client advertises. Production settled this: across the full journal retention,
-**29 `elicitation/create` timeouts and not one fulfilled prompt** — and the one
-client that did answer auto-declined without a human ever seeing the prompt. An
-in-band response over MCP is therefore never a verified human decision (an
-auto-accept would be a self-approval hole; an auto-decline killed writes a person
-still wanted). Every write approval takes the portal path above:
-`dispatchTool#gateConfirm` for a registry tool and `gateHeldWrites` for a
-`wf_<slug>` preview both mint the approval UNGRANTED and hand back the
-`approval_url` — the one channel where a person, and only a person, decides.
+**A fulfilled native elicitation is a human grant channel.** Conversation workers
+persist their confirmation and end the turn; a later `conversation_get` or
+`tasks/get` can only resolve it through the active MCP session's
+`elicitation/create(mode: form)` request. That delivery is leased, the answer is
+stamped `human/in_band_elicitation`, and only then may the harness grant and claim
+the held call. A model relay through `conversation_respond_elicitation` is still
+refused for approval-bearing rows. Standalone registry/workflow calls retain the
+approval-portal flow because they have no persisted conversation task to resume.
 
 **No path re-sends the arguments.** `confirm_tool_call` publishes no `arguments`
 property at all, and on the `_meta` path the dispatcher discards whatever the client
@@ -429,7 +426,7 @@ must not be conflated:
 | Fact | Values | Records |
 |---|---|---|
 | `action` | `APPROVAL_APPROVED` · `APPROVAL_REJECTED` | the *governance decision* |
-| `decision_reason` | `user_declined`, `oauth_timeout`, `elicitation_transport_failed`, … | machine code behind a cancel |
+| `decision_reason` | `user_declined`, `oauth_timeout`, `oauth_elicitation_transport_failed`, … | machine code behind a cancel |
 | `elicitation_transport` | `succeeded` · `failed` | whether a `protocol_native` bridge round-trip *delivered* — not whether it was approved |
 
 Crucially, `elicitation_transport: "succeeded"` can coexist with a `cancelled`
@@ -439,15 +436,27 @@ decision*. An audit query for "successful elicitations" must therefore filter on
 `action` / `decision_reason`, not on `elicitation_transport` — equating transport
 success with approval double-counts every declined-but-delivered prompt.
 
+A broken transport is *not* a decision at all: when an `ask_user_*` bridge
+round-trip fails in transit (or a client auto-cancels the form faster than a
+human could render it), the row is **demoted to the portal DB-pause** — it
+stays `pending`, the conversation stays `awaiting_input`, and the audit trail
+records `ELICITATION_DEMOTED_TO_PORTAL`, never `APPROVAL_REJECTED`. Only the
+OAuth OOB flow resolves its approval handle on transport failure
+(`oauth_elicitation_transport_failed`), because its state row survives
+independently and a retried `authenticate_oauth` resumes the same flow.
+
 ### Secret answers never transit the transcript or LLM context
 
 A connector credential the operator supplies never lands in the conversation
 transcript, a persisted tool-call row, or the model's replayed context:
 
-- **Over MCP** a secret-shaped elicitation is refused (`secret_elicitation_blocked`)
-  and degraded to URL-mode elicitation or the portal DB-pause; poll-based clients
-  mask the field because `conversation_get` relays the form's `type:"password"` /
-  `sensitive:true` markers verbatim.
+- **Over MCP** a secret-shaped form is never sent as `mode: form`. For an unsaved
+  bearer, basic, header, query, or AWS SigV4 connector draft, the engine converts
+  it to a single-use `mode: url` elicitation. Submission stages the value only for
+  the draft probe; a green probe atomically persists the connector and encrypted
+  credential. Saved connectors use the corresponding reauthentication URL flow.
+  Clients without URL elicitation can still expose the persisted setup action from
+  `conversation_get`, but the secret is never accepted through chat text.
 - When a secret **is** typed into the sanctioned CLI/web masked form, its answer
   value is projected to `***redacted***` at the single persist chokepoint
   (`resolveElicitation`), and credential subtrees in

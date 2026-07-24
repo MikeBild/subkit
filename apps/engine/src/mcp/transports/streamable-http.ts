@@ -39,6 +39,11 @@ import { UnauthorizedError } from "../../http/errors.ts";
 import { requireAuth } from "../../http/middleware/auth.ts";
 import type { AppEnv } from "../../http/openapi.ts";
 import { logger } from "../../logging/logger.ts";
+import {
+  recordUsageEvent,
+  type TrafficClass,
+  trafficClassFromHeader,
+} from "../../stats/usage-events.ts";
 import { now } from "../../utils/clock.ts";
 import { createMcpServer } from "../server.ts";
 import { validateMcpStreamableHttpRequest } from "./guards.ts";
@@ -110,6 +115,122 @@ export interface Session {
   // consumed hands its retain back after `STREAM_RETAIN_START_GRACE_MS`, so
   // `inFlight` can never latch above zero.
   inFlight: number;
+  /** Privacy-safe event context. Optional only for isolated lease-manager tests. */
+  usage?: {
+    db: import("../../db/client.ts").Db;
+    tenantId: string;
+    actorId: string;
+    trafficClass: TrafficClass;
+  };
+}
+
+interface McpRequestClass {
+  operation: string;
+  taskPhase?: "working" | "cancelled" | "none" | undefined;
+}
+
+const JSON_RPC_METHODS = new Set([
+  "initialize",
+  "ping",
+  "tools/list",
+  "tools/call",
+  "resources/list",
+  "resources/templates/list",
+  "resources/read",
+  "resources/subscribe",
+  "resources/unsubscribe",
+  "prompts/list",
+  "prompts/get",
+  "completion/complete",
+  "tasks/get",
+  "tasks/result",
+  "tasks/list",
+  "tasks/cancel",
+  "notifications/initialized",
+  "notifications/cancelled",
+  "notifications/progress",
+]);
+
+function toolClass(name: unknown): string {
+  if (typeof name !== "string") return "other";
+  if (name.startsWith("conversation_")) return "conversation";
+  if (name.includes("workflow")) return "workflow";
+  if (name.includes("knowledge") || name.includes("search_")) return "knowledge";
+  if (name.includes("connector") || name.includes("probe")) return "connector";
+  if (name.includes("execution") || name.startsWith("run_")) return "execution";
+  return "other";
+}
+
+async function classifyMcpRequest(request: Request): Promise<McpRequestClass> {
+  if (request.method === "GET") return { operation: "notifications/stream" };
+  if (request.method === "DELETE") return { operation: "session/close" };
+  if (request.method !== "POST") return { operation: "transport/other" };
+  try {
+    const value = (await request.clone().json()) as unknown;
+    if (Array.isArray(value)) return { operation: "jsonrpc/batch" };
+    if (!value || typeof value !== "object") return { operation: "jsonrpc/invalid" };
+    const envelope = value as { method?: unknown; params?: unknown };
+    const rawMethod = typeof envelope.method === "string" ? envelope.method : "";
+    const method = JSON_RPC_METHODS.has(rawMethod) ? rawMethod : "jsonrpc/other";
+    if (method === "tools/call") {
+      const params =
+        envelope.params && typeof envelope.params === "object"
+          ? (envelope.params as { name?: unknown; task?: unknown })
+          : {};
+      return {
+        operation: `tools/call:${toolClass(params.name)}`,
+        taskPhase: params.task === undefined ? "none" : "working",
+      };
+    }
+    if (method === "tasks/cancel") return { operation: method, taskPhase: "cancelled" };
+    return { operation: method };
+  } catch {
+    return { operation: "jsonrpc/invalid" };
+  }
+}
+
+function mcpOutcome(status: number): string {
+  if (status === 503) return "capacity_rejected";
+  if (status === 401 || status === 403) return "denied";
+  if (status === 404) return "not_found";
+  if (status >= 500) return "server_error";
+  if (status >= 400) return "client_error";
+  return "success";
+}
+
+function trackMcpUsageStream(
+  body: ReadableStream<Uint8Array>,
+  onEnd: (outcome: "completed" | "cancelled" | "errored", bytes: number) => void,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let bytes = 0;
+  let ended = false;
+  const finish = (outcome: "completed" | "cancelled" | "errored") => {
+    if (ended) return;
+    ended = true;
+    onEnd(outcome, bytes);
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          finish("completed");
+          controller.close();
+          return;
+        }
+        bytes += chunk.value.byteLength;
+        controller.enqueue(chunk.value);
+      } catch (err) {
+        finish("errored");
+        controller.error(err);
+      }
+    },
+    async cancel(reason) {
+      finish("cancelled");
+      await reader.cancel(reason);
+    },
+  });
 }
 
 // Stable key for the principal that owns a session. Ties the session to the
@@ -260,6 +381,22 @@ export function createSessionLeaseManager(): SessionLeaseManager {
     const session = sessions.get(sessionId);
     if (!session) return;
     sessions.delete(sessionId);
+    if (session.usage) {
+      recordUsageEvent(session.usage.db, {
+        tenantId: session.usage.tenantId,
+        surface: "mcp",
+        operation: "session/evicted",
+        method: "DELETE",
+        outcome: reason === "capacity" ? "capacity_rejected" : "cancelled",
+        trafficClass: session.usage.trafficClass,
+        requestSource: "mcp",
+        actorId: session.usage.actorId,
+        sessionId,
+        platform: "http",
+        responseMode: "none",
+        activeSessions: sessions.size,
+      });
+    }
     logger.info({
       module: "mcp",
       action: "mcp.session.evicted",
@@ -410,6 +547,8 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
   // `/mcp` is not part of the OpenAPI surface so we use the raw
   // `.all(path, handler)` signature.
   app.all("/mcp", async (c) => {
+    const requestStartedAt = now();
+    const requestClassPromise = classifyMcpRequest(c.req.raw);
     // When no principal resolved, emit the RFC 9728 resource_metadata discovery
     // header so OAuth-only clients (ChatGPT, Claude.ai, Cursor) can perform
     // the authorization server discovery handshake.
@@ -425,19 +564,83 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
 
     if (!c.get("principal")) {
       let baseUrl = "";
+      // Advertise the FULL supported scope set (same source as the RFC 8414
+      // discovery document) — clients derive their authorization request from
+      // this challenge, and a read-only scope here would hide the authoring
+      // and admin checkboxes from the consent screen.
+      let scopes = "mcp:read";
       try {
-        baseUrl = getConfig().server.public_base_url;
+        const config = getConfig();
+        baseUrl = config.server.public_base_url;
+        if (config.auth.mcp_oauth.scopes_supported.length > 0) {
+          scopes = config.auth.mcp_oauth.scopes_supported.join(" ");
+        }
       } catch {
         /* config not loaded yet — degrade gracefully */
       }
       const wwwAuth = baseUrl
-        ? `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource", scope="mcp:read"`
-        : 'Bearer scope="mcp:read"';
+        ? `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource", scope="${scopes}"`
+        : `Bearer scope="${scopes}"`;
       throw new UnauthorizedError("missing_or_invalid_credentials", wwwAuth);
     }
     const principal = requireAuth(c);
     const db = c.get("db");
     const sessionHeader = c.req.header("mcp-session-id");
+    const trafficClass = trafficClassFromHeader(c.req.header("x-subkit-traffic-class"));
+    const requestClass = await requestClassPromise;
+
+    const recordRequest = (args: {
+      status: number;
+      responseMode: "json" | "sse" | "none";
+      responseBytes?: number | undefined;
+      streamOutcome?: "completed" | "cancelled" | "errored" | "not_streamed" | undefined;
+      outcome?: string | undefined;
+      activeSessions?: number | undefined;
+    }) => {
+      const durationMs = now() - requestStartedAt;
+      const outcome = args.outcome ?? mcpOutcome(args.status);
+      recordUsageEvent(db, {
+        tenantId: principal.tenant_id,
+        surface: "mcp",
+        operation: requestClass.operation,
+        method: c.req.method,
+        outcome,
+        trafficClass,
+        requestSource: "mcp",
+        actorId: principal.id,
+        sessionId: sessionHeader ?? undefined,
+        statusCode: args.status,
+        durationMs,
+        requestBytes: Number(c.req.header("content-length") ?? "") || undefined,
+        responseBytes: args.responseBytes,
+        streamOutcome: args.streamOutcome,
+        platform: "http",
+        responseMode: args.responseMode,
+        taskPhase: requestClass.taskPhase,
+        activeSessions: args.activeSessions ?? sessions.size,
+      });
+      if (requestClass.operation === "tools/call:conversation") {
+        recordUsageEvent(db, {
+          tenantId: principal.tenant_id,
+          surface: "conversations",
+          operation: "mcp/call",
+          method: c.req.method,
+          outcome,
+          trafficClass,
+          requestSource: "mcp",
+          actorId: principal.id,
+          sessionId: sessionHeader ?? undefined,
+          statusCode: args.status,
+          durationMs,
+          requestBytes: Number(c.req.header("content-length") ?? "") || undefined,
+          responseBytes: args.responseBytes,
+          streamOutcome: args.streamOutcome,
+          platform: "http",
+          responseMode: args.responseMode,
+          taskPhase: requestClass.taskPhase,
+        });
+      }
+    };
 
     let session: Session | undefined;
     if (sessionHeader) {
@@ -459,6 +662,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
           session_id: sessionHeader,
           principal_id: principal.id,
         });
+        recordRequest({ status: 404, responseMode: "json", streamOutcome: "not_streamed" });
         return new Response(
           JSON.stringify({
             jsonrpc: "2.0",
@@ -483,6 +687,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
           session_id: sessionHeader,
           principal_id: principal.id,
         });
+        recordRequest({ status: 404, responseMode: "json", streamOutcome: "not_streamed" });
         return new Response(
           JSON.stringify({
             jsonrpc: "2.0",
@@ -516,6 +721,7 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
           principal_id: principal.id,
           tenant_id: principal.tenant_id,
         });
+        recordRequest({ status: 503, responseMode: "json", streamOutcome: "not_streamed" });
         return new Response(
           JSON.stringify({
             jsonrpc: "2.0",
@@ -582,6 +788,20 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
           registered = true;
           sessions.set(sid, lease);
           startSweeper();
+          recordUsageEvent(db, {
+            tenantId: principal.tenant_id,
+            surface: "mcp",
+            operation: "session/initialized",
+            method: "POST",
+            outcome: "success",
+            trafficClass,
+            requestSource: "mcp",
+            actorId: principal.id,
+            sessionId: sid,
+            platform: "http",
+            responseMode: "sse",
+            activeSessions: sessions.size,
+          });
           logger.info({
             module: "mcp",
             action: "mcp.session.init",
@@ -598,6 +818,20 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
         onsessionclosed: (sid) => {
           sessions.delete(sid);
           if (sessions.size === 0) stopSweeper();
+          recordUsageEvent(db, {
+            tenantId: principal.tenant_id,
+            surface: "mcp",
+            operation: "session/closed",
+            method: "DELETE",
+            outcome: "success",
+            trafficClass,
+            requestSource: "mcp",
+            actorId: principal.id,
+            sessionId: sid,
+            platform: "http",
+            responseMode: "none",
+            activeSessions: sessions.size,
+          });
           logger.info({
             module: "mcp",
             action: "mcp.session.closed",
@@ -659,6 +893,12 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
         owner: ownerKey(principal),
         lastSeenAt: now(),
         inFlight: 0,
+        usage: {
+          db,
+          tenantId: principal.tenant_id,
+          actorId: principal.id,
+          trafficClass,
+        },
       };
       await server.connect(transport);
       session = lease;
@@ -697,23 +937,42 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
     try {
       const response = await active.transport.handleRequest(c.req.raw);
       const body = response.body;
-      if (!body || !isEventStream(response)) return response;
+      if (!body || !isEventStream(response)) {
+        recordRequest({
+          status: response.status,
+          responseMode: response.headers.get("content-type")?.includes("json") ? "json" : "none",
+          responseBytes: Number(response.headers.get("content-length") ?? "") || undefined,
+          streamOutcome: "not_streamed",
+        });
+        return response;
+      }
       streamed = true;
       return new Response(
-        trackStreamLifetime(body, {
-          release: () => release(active),
-          reacquire: () => retain(active),
-          onForceReleased: () =>
-            logger.warn({
-              module: "mcp",
-              action: "mcp.session.retain_force_released",
-              msg: "sse body was never pulled or cancelled within the retain grace — releasing its lease retain so the sweeper can reclaim it",
-              session_id: active.transport.sessionId ?? null,
-              grace_ms: STREAM_RETAIN_START_GRACE_MS,
-              principal_id: principal.id,
-              tenant_id: principal.tenant_id,
-            }),
-        }),
+        trackMcpUsageStream(
+          trackStreamLifetime(body, {
+            release: () => release(active),
+            reacquire: () => retain(active),
+            onForceReleased: () =>
+              logger.warn({
+                module: "mcp",
+                action: "mcp.session.retain_force_released",
+                msg: "sse body was never pulled or cancelled within the retain grace — releasing its lease retain so the sweeper can reclaim it",
+                session_id: active.transport.sessionId ?? null,
+                grace_ms: STREAM_RETAIN_START_GRACE_MS,
+                principal_id: principal.id,
+                tenant_id: principal.tenant_id,
+              }),
+          }),
+          (streamOutcome, responseBytes) => {
+            recordRequest({
+              status: response.status,
+              responseMode: "sse",
+              responseBytes,
+              streamOutcome,
+              outcome: streamOutcome === "completed" ? mcpOutcome(response.status) : "disconnected",
+            });
+          },
+        ),
         { status: response.status, statusText: response.statusText, headers: response.headers },
       );
     } finally {

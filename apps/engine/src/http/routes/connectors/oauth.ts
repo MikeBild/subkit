@@ -41,6 +41,7 @@ import {
   consumeStartGrant,
   escapeHtml,
 } from "../../../connectors/index.ts";
+import { markConnectorNativeUrlElicitationsComplete } from "../../../conversations/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
 import { buildOAuthRedirectUri, completeAuthorizationCode } from "../../../credentials/index.ts";
 import { writeEvent } from "../../../db/events.ts";
@@ -425,6 +426,25 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         partial_grant: isPartialGrant,
         ...(isPartialGrant ? { missing_scopes: missingScopes } : {}),
       });
+      try {
+        await markConnectorNativeUrlElicitationsComplete(
+          {
+            tenant_id: stateRow.tenant_id,
+            connector_id: stateRow.connector_id,
+            outcome: "succeeded",
+          },
+          db,
+        );
+      } catch (completionErr) {
+        logger.warn({
+          module: "oauth",
+          action: "oauth.callback.elicitation_completion_failed",
+          msg: "OAuth credential saved but native MCP URL completion could not be recorded",
+          tenant_id: stateRow.tenant_id,
+          connector_id: stateRow.connector_id,
+          error: completionErr instanceof Error ? completionErr.message : String(completionErr),
+        });
+      }
       if (isPartialGrant) {
         logger.warn({
           module: "oauth",
@@ -536,6 +556,21 @@ async function publishCallbackFailed(
     },
     db,
   );
+  try {
+    await markConnectorNativeUrlElicitationsComplete(
+      { tenant_id: p.tenant_id, connector_id: p.connector_id, outcome: "failed" },
+      db,
+    );
+  } catch (completionErr) {
+    logger.warn({
+      module: "oauth",
+      action: "oauth.callback.failed_elicitation_completion_failed",
+      msg: "OAuth failed but native MCP URL completion could not be recorded",
+      tenant_id: p.tenant_id,
+      connector_id: p.connector_id,
+      error: completionErr instanceof Error ? completionErr.message : String(completionErr),
+    });
+  }
   try {
     const connector = await connectorSvc.getConnector(p.tenant_id, p.connector_id, db);
     if (!connector) throw new NotFoundError("connector");

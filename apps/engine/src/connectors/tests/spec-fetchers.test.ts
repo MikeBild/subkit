@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
-import { fetchGraphQLIntrospection, fetchOpenApiSpec, SpecFetchError } from "../spec-fetchers.ts";
+import {
+  fetchGoogleDiscoverySpec,
+  fetchGraphQLIntrospection,
+  fetchOpenApiSpec,
+  GOOGLE_DISCOVERY_SPEC_MAX_BYTES,
+  OPENAPI_SPEC_MAX_BYTES,
+  readGoogleDiscoverySpecBody,
+  readOpenApiSpecBody,
+  SpecFetchError,
+} from "../spec-fetchers.ts";
 
 let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 
@@ -61,20 +70,23 @@ describe("fetchOpenApiSpec — invalid URL", () => {
 });
 
 describe("fetchOpenApiSpec — size budget via mocked fetch", () => {
-  seamTest("rejects content larger than 8 MB", async () => {
-    const bigBuffer = new ArrayBuffer(9 * 1024 * 1024); // 9 MB
+  test("uses an exact 50 MiB byte budget", () => {
+    expect(OPENAPI_SPEC_MAX_BYTES).toBe(52_428_800);
+  });
+
+  seamTest("accepts a valid response above the former 8 MiB budget", async () => {
+    const bigBuffer = new ArrayBuffer(12 * 1024 * 1024);
     fetchSpy.mockResolvedValue(
       new Response(bigBuffer, {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
     );
-    await expect(fetchOpenApiSpec("https://external.api.example.com/openapi.json")).rejects.toThrow(
-      SpecFetchError,
-    );
+    const result = await fetchOpenApiSpec("https://external.api.example.com/openapi.json");
+    expect(new TextEncoder().encode(result.content).byteLength).toBe(12 * 1024 * 1024);
   });
 
-  seamTest("accepts content within the 8 MB budget", async () => {
+  seamTest("accepts small content within the budget", async () => {
     const smallContent = JSON.stringify({ openapi: "3.0.0", paths: {} });
     const encoder = new TextEncoder();
     fetchSpy.mockResolvedValue(
@@ -93,6 +105,95 @@ describe("fetchOpenApiSpec — size budget via mocked fetch", () => {
     await expect(fetchOpenApiSpec("https://external.api.example.com/missing.json")).rejects.toThrow(
       SpecFetchError,
     );
+  });
+});
+
+describe("readOpenApiSpecBody — streaming size enforcement", () => {
+  test("accepts a body exactly at an injected cap", async () => {
+    const res = new Response(new Uint8Array(1024).fill(65));
+    const content = await readOpenApiSpecBody(res, "https://api.example.com/openapi.json", 1024);
+    expect(content).toHaveLength(1024);
+  });
+
+  test("rejects Content-Length above 50 MiB before reading the body", async () => {
+    let readAttempted = false;
+    const res = new Response(null, {
+      status: 200,
+      headers: { "content-length": String(OPENAPI_SPEC_MAX_BYTES + 1) },
+    });
+    Object.defineProperty(res, "arrayBuffer", {
+      value: async () => {
+        readAttempted = true;
+        return new ArrayBuffer(0);
+      },
+    });
+
+    await expect(readOpenApiSpecBody(res, "https://api.example.com/openapi.json")).rejects.toThrow(
+      "OpenAPI spec exceeds 50 MiB",
+    );
+    expect(readAttempted).toBe(false);
+  });
+
+  test("cancels a chunked stream as soon as an injected cap is exceeded", async () => {
+    let chunk = 0;
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        chunk += 1;
+        controller.enqueue(new Uint8Array(700).fill(65));
+        if (chunk === 3) controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const res = new Response(stream);
+
+    await expect(
+      readOpenApiSpecBody(res, "https://api.example.com/openapi.json", 1024),
+    ).rejects.toThrow(SpecFetchError);
+    expect(cancelled).toBe(true);
+  });
+});
+
+describe("Google Discovery spec fetcher", () => {
+  test("uses the same exact 50 MiB byte budget as OpenAPI", () => {
+    expect(GOOGLE_DISCOVERY_SPEC_MAX_BYTES).toBe(52_428_800);
+  });
+
+  test("rejects private hosts with the shared SSRF guard", async () => {
+    await expect(fetchGoogleDiscoverySpec("http://127.0.0.1/discovery.json")).rejects.toThrow(
+      SpecFetchError,
+    );
+  });
+
+  seamTest("fetches a public Discovery document", async () => {
+    const content = JSON.stringify({
+      kind: "discovery#restDescription",
+      protocol: "rest",
+      resources: {},
+    });
+    fetchSpy.mockResolvedValue(
+      new Response(content, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await fetchGoogleDiscoverySpec(
+      "https://firestore.googleapis.com/$discovery/rest?version=v1",
+    );
+    expect(result.content).toBe(content);
+    expect(result.content_type).toBe("application/json");
+  });
+
+  test("reports Google Discovery in streaming size errors", async () => {
+    const res = new Response(null, {
+      status: 200,
+      headers: { "content-length": String(GOOGLE_DISCOVERY_SPEC_MAX_BYTES + 1) },
+    });
+    await expect(
+      readGoogleDiscoverySpecBody(res, "https://example.googleapis.com/discovery.json"),
+    ).rejects.toThrow("Google Discovery spec exceeds 50 MiB");
   });
 });
 

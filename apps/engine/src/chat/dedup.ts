@@ -11,6 +11,7 @@
 
 import { sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
+import { recordUsageEvent } from "../stats/usage-events.ts";
 
 export interface MarkChatEventSeenInput {
   tenant_id: string;
@@ -37,5 +38,18 @@ export async function markChatEventSeen(
     RETURNING "platform_event_id"
   `);
   const rows = (result as unknown as { rows?: unknown[] }).rows ?? [];
-  return rows.length > 0;
+  const fresh = rows.length > 0;
+  if (!fresh) {
+    recordUsageEvent(db, {
+      tenantId: input.tenant_id,
+      surface: "chat",
+      operation: "event/deduplicated",
+      method: "EVENT",
+      outcome: "deduplicated",
+      requestSource: "chat",
+      sessionId: `${input.workspace_id}:${input.platform_event_id}`,
+      responseMode: "none",
+    });
+  }
+  return fresh;
 }

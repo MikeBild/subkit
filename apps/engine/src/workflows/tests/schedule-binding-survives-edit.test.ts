@@ -105,7 +105,7 @@ describe("schedule binding survives a step-only edit", () => {
 
     const rows = await schedulesFor(wfId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.id).toBe(sched.id);
+    expect(rows[0]?.id).toBe(sched.row.id);
     expect(rows[0]?.cron).toBe("0 19 * * *");
     expect((rows[0]!.input as { recipient_email?: string })?.recipient_email).toBe("x@y.com");
   });

@@ -24,6 +24,7 @@ import { type Executor, getDb } from "../db/client.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
 import { embeddingsAvailable } from "../embeddings/local-provider.ts";
 import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
+import { parseGoogleDiscoveryDocument } from "../llm/flows/document-parsers/google-discovery.ts";
 import { log, logger } from "../logging/logger.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
 import {
@@ -39,6 +40,7 @@ import { dedupChunks } from "./dedup.ts";
 import { BinaryParseError } from "./parsers/index.ts";
 import { rerankSearchHits, type SearchHitMatchType } from "./search-ranking.ts";
 import { type FileUploadInput, ingestFileUpload } from "./sources/file-upload.ts";
+import { chunkGoogleDiscovery, ingestGoogleDiscoveryUrl } from "./sources/google-discovery.ts";
 import { chunkGraphQLSchema, ingestGraphQLIntrospection } from "./sources/graphql.ts";
 import { ingestLlmsTxt } from "./sources/llms-txt.ts";
 import { ingestMarkdown } from "./sources/markdown.ts";
@@ -66,6 +68,16 @@ function parseInlineOpenApiChunks(content: string): RawChunk[] {
     );
   }
   return chunkOpenAPI(parsed);
+}
+
+function parseInlineGoogleDiscoveryChunks(content: string): RawChunk[] {
+  try {
+    return chunkGoogleDiscovery(parseGoogleDiscoveryDocument(content));
+  } catch (err) {
+    throw new Error(
+      `inline google discovery parse failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 function parseInlineGraphQlChunks(content: string): RawChunk[] {
@@ -116,6 +128,18 @@ export async function ingestDocs(p: IngestParams, exec?: Executor): Promise<Inge
         } else {
           if (!p.input.url) throw new Error("openapi source requires url");
           const got = await ingestOpenAPIUrl(p.input.url, state, fetchImpl);
+          uri = got.uri;
+          rawChunks = got.chunks;
+        }
+        break;
+      }
+      case "google_discovery": {
+        if (p.input.content !== undefined) {
+          uri = p.input.url ?? "inline:google-discovery";
+          rawChunks = parseInlineGoogleDiscoveryChunks(p.input.content);
+        } else {
+          if (!p.input.url) throw new Error("google_discovery source requires url");
+          const got = await ingestGoogleDiscoveryUrl(p.input.url, state, fetchImpl);
           uri = got.uri;
           rawChunks = got.chunks;
         }
@@ -413,6 +437,7 @@ export async function ingestTemplateDocsForConnector(
   if (!template.ingestion_url) return null;
   if (
     template.ingestion_source !== "openapi" &&
+    template.ingestion_source !== "google_discovery" &&
     template.ingestion_source !== "markdown" &&
     template.ingestion_source !== "llms_txt" &&
     template.ingestion_source !== "graphql" &&

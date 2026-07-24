@@ -144,7 +144,8 @@ The clean authoring experience treats intermediate verification as first-class p
 | 1 | Start or update the connector draft |
 | 2 | Inspect the current draft |
 | 3 | Validate required fields and config shape |
-| 4 | Probe the real upstream boundary — a green probe persists inline; envelope carries `auto_saved: true` |
+| 4 | Collect static credentials through the masked `sk` form or MCP single-use URL elicitation; never through chat text |
+| 5 | Probe the real upstream boundary — a green probe persists inline; envelope carries `auto_saved: true` |
 
 **Workflows:**
 
@@ -404,6 +405,14 @@ When a user names an external boundary — "pull from our Salesforce instance" o
 | Connector Templates | A catalog covering common enterprise services — driver type, auth config, doc references, setup guidance. The AI understands the target API, not just the idea of it |
 | Documentation Ingestion | OpenAPI specs, GraphQL schemas, and HTML docs are indexed and become context for that connector — specific endpoints, parameters, error codes |
 | Credential Vault | Users never handle raw secrets; the AI proposes "use your Stripe connector" without seeing the key. Credentials are referenced by name, never by value |
+
+Cloudflare and Firebase/Firestore are catalog templates (`cloudflare` and `firebase`). When no
+catalog template exists, `import_connector_from_spec` can start from OpenAPI JSON/YAML or Google
+REST Discovery JSON, inline or at a URL. URL imports are streamed up to 50 MiB and use server,
+service-root, and security metadata to seed the draft. Cloudflare's official OpenAPI document
+auto-matches the Cloudflare template; Firestore's official Discovery document auto-matches
+Firebase revision 2. Credentials are collected only after import through the masked or managed
+OAuth flow and must never appear in the public spec fetch or conversation transcript.
 
 ---
 

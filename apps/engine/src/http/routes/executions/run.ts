@@ -195,7 +195,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       // ever picking it up. Compensate by finalizing it to `failed` so the
       // caller's 202 contract isn't violated by a silently-stuck run.
       try {
-        await getBoss().send(EXECUTION_RUN_QUEUE, job);
+        await (c.get("boss") ?? getBoss()).send(EXECUTION_RUN_QUEUE, job);
       } catch (err) {
         await finalizeExecution(db, principal.tenant_id, execution_id, "failed", null, {
           step_id: null,

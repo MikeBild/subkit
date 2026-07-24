@@ -87,20 +87,13 @@ Authentication
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `auth.firebase.login_url` | string | `""` | global | no | yes |  |
-| `auth.firebase.project_id` | string | `""` | global | no | yes |  |
-| `auth.firebase.tenant_slug` | string | `"default"` | global | no | yes | Tenant slug that Firebase-authenticated users are mapped into. |
+| `auth.enable_signup` | boolean | `false` | global | no | no | Allow first-time SSO sign-ins to auto-provision a new member account (JIT signup). When false, unknown identities are rejected with access_denied; existing users and links keep working. |
 | `auth.mcp_oauth.access_token_ttl_seconds` | number | `3600` | global | no | no | Lifetime in seconds for MCP OAuth access tokens. |
 | `auth.mcp_oauth.authorization_code_ttl_seconds` | number | `60` | global | no | no | Lifetime in seconds for MCP OAuth authorization codes. |
 | `auth.mcp_oauth.dynamic_registration_enabled` | boolean | `true` | global | no | no | Allow RFC 7591 dynamic client registration at POST /v1/oauth/register. |
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
 | `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
-| `auth.oidc.client_id` | string | `""` | global | no | yes |  |
-| `auth.oidc.client_secret` | string | `""` | global | yes | yes |  |
-| `auth.oidc.issuer_url` | string | `""` | global | no | yes |  |
-| `auth.oidc.redirect_uri` | string | `""` | global | no | yes |  |
-| `auth.provider` | enum("subkit" \| "firebase" \| "oidc") | `"subkit"` | global | no | yes | Human identity provider: 'subkit' (local admin-invite), 'firebase' (Firebase ID tokens), or 'oidc' (generic OIDC). Machine auth (API keys, portal, MCP OAuth) is always available. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform
@@ -159,6 +152,9 @@ Observability
 | `observability.predictive.memory_cap_fraction` | number | `0.9` | global | no | no | Fraction of the host memory cap the RSS high-water may reach before an OOM-risk warning. |
 | `observability.predictive.pool_saturation_pct` | number | `80` | global | no | no | Percent of the Postgres pool in use (or any waiting clients) above which saturation is flagged. |
 | `observability.predictive.transient_retry_rate` | number | `1` | global | no | no | Transient-DB-retries-per-minute above which a flapping Postgres is flagged. |
+| `observability.usage.enabled` | boolean | `false` | global | no | no | Persist privacy-safe, tenant-scoped product usage events locally. Disabled by default; requires hmac_secret when enabled. |
+| `observability.usage.hmac_secret` | string | `""` | global | yes | no | Product-local HMAC secret for actor and session pseudonyms. Set at least 32 characters before enabling usage telemetry. |
+| `observability.usage.retention_days` | number | `90` | global | no | no | Raw usage-event retention in days; aggregate reports may outlive raw rows. |
 
 ## egress
 Egress filter
@@ -266,3 +262,9 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | `connectors.web_scraper.runtime.max_pages` | number | `1000` | tenant | no | no | Per-run crawl cap. Hard ceiling 10 000 (crawl_max_pages_exceeded). |
 | `connectors.web_scraper.runtime.respect_robots` | boolean | `true` | tenant | no | no | Skip URLs that robots.txt disallows for the configured User-Agent. |
 | `connectors.web_scraper.runtime.user_agent` | string | `"sk-web-scraper/1.0 (+https://subkit.io/bot)"` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. |
+
+## Structural settings
+
+`auth.providers` is the single SubKit-local auth list and is edited in `subkit.config.json`, not through the scalar settings API. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. Each OIDC client, optional secret, callback, session and tenant mapping belongs to this SubKit deployment.
+
+Configured labels are diagnostic metadata only. The common `mcp-auth-v2` surface derives its two user actions from protocol and always presents `Continue with SSO` before `Continue with API key`. Discovery exposes the canonical labels `SSO` and `API key`; no provider-specific route or parallel configuration tree is accepted.

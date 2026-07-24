@@ -35,6 +35,7 @@ import {
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
+import { trafficClassFromHeader } from "../../stats/usage-events.ts";
 import type { AppEnv } from "../openapi.ts";
 
 export interface ChatRoutesDeps {
@@ -123,7 +124,12 @@ async function ingest(
     });
   }
 
-  const event = await adapter.receive(verified);
+  const received = await adapter.receive(verified);
+  const trafficClass = trafficClassFromHeader(
+    req.headers.get("x-subkit-traffic-class") ?? undefined,
+  );
+  const event =
+    trafficClass === "organic" ? received : { ...received, traffic_class: trafficClass };
 
   // Synchronous platform-specific fast path. Slack uses this to call
   // `views.open` on an "Antworten" button click within the ~3 s

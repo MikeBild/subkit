@@ -72,7 +72,7 @@ describe("GET /v1/oauth/authorize", () => {
     expect(res.status).toBe(400);
   });
 
-  test("unknown client_id returns 400", async () => {
+  test("unknown client_id returns the styled 400 HTML error page for browsers", async () => {
     const res = await fetch(
       authorizeUrl({
         client_id: "nonexistentclientid1234",
@@ -83,11 +83,29 @@ describe("GET /v1/oauth/authorize", () => {
       }),
     );
     expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
+  });
+
+  test("unknown client_id keeps the 400 JSON contract for Accept: application/json", async () => {
+    const res = await fetch(
+      authorizeUrl({
+        client_id: "nonexistentclientid1234",
+        redirect_uri: "https://client.example.com/cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+      }),
+      { headers: { accept: "application/json" } },
+    );
+    expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("invalid_client");
   });
 
-  test("unregistered redirect_uri returns 400 (open-redirect guard)", async () => {
+  test("unregistered redirect_uri returns 400 HTML for browsers (open-redirect guard)", async () => {
     const clientId = await registerClient();
     const res = await fetch(
       authorizeUrl({
@@ -97,6 +115,24 @@ describe("GET /v1/oauth/authorize", () => {
         code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
       }),
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const html = await res.text();
+    expect(html).toContain("<h1>Sign-in failed</h1>");
+  });
+
+  test("unregistered redirect_uri keeps the 400 JSON contract for Accept: application/json", async () => {
+    const clientId = await registerClient();
+    const res = await fetch(
+      authorizeUrl({
+        client_id: clientId,
+        redirect_uri: "https://attacker.example.com/steal",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+      }),
+      { headers: { accept: "application/json" } },
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
@@ -166,6 +202,55 @@ describe("GET /v1/oauth/authorize", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Authorize access");
+  });
+
+  test("DCR without scope registers the full supported set (not bare mcp:read)", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/oauth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        redirect_uris: ["https://client.example.com/cb"],
+        client_name: "Scope-less DCR Client",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { scope: string };
+    const scopes = body.scope.split(" ");
+    expect(scopes).toContain("mcp:read");
+    expect(scopes).toContain("mcp:authoring");
+    expect(scopes).toContain("mcp:admin");
+  });
+
+  test("authorize without scope param offers the client's registered scopes on the consent page (RFC 6749 §3.3)", async () => {
+    // ChatGPT-shaped client: DCR without scope, authorize without scope.
+    const clientId = await registerClient();
+    const sessionId = await seedSession(db, ctx.tenantId, ctx.userId);
+    const jwt = await mintSessionCookie({
+      session_id: sessionId,
+      user_id: ctx.userId,
+      tenant_id: ctx.tenantId,
+    });
+
+    const res = await fetch(
+      authorizeUrl({
+        client_id: clientId,
+        redirect_uri: "https://client.example.com/cb",
+        response_type: "code",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        // no scope param on purpose
+      }),
+      {
+        headers: { cookie: `subkit_session=${jwt}` },
+        redirect: "manual",
+      },
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // Admin test user + full registered set → all three scopes must be OFFERED.
+    expect(html).toContain("mcp:read");
+    expect(html).toContain("mcp:authoring");
+    expect(html).toContain("mcp:admin");
   });
 });
 

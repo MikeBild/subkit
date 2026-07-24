@@ -40,6 +40,12 @@ import sql0019CloudyJazinda from "./0019_cloudy_jazinda.sql" with { type: "text"
 import sql0020MightyMagdalene from "./0020_mighty_magdalene.sql" with { type: "text" };
 import sql0021CrazySilkFever from "./0021_crazy_silk_fever.sql" with { type: "text" };
 import sql0022CalmGroot from "./0022_calm_groot.sql" with { type: "text" };
+import sql0023EarlySharonCarter from "./0023_early_sharon_carter.sql" with { type: "text" };
+import sql0024CuddlyStarkIndustries from "./0024_cuddly_stark_industries.sql" with { type: "text" };
+import sql0025OvalGammaCorps from "./0025_oval_gamma_corps.sql" with { type: "text" };
+import sql0026KnownNicoMinoru from "./0026_known_nico_minoru.sql" with { type: "text" };
+import sql0027ShortIronFist from "./0027_short_iron_fist.sql" with { type: "text" };
+import sql0028ClearRiptide from "./0028_clear_riptide.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -87,6 +93,12 @@ const SQL_BY_TAG: Record<string, string> = {
   "0020_mighty_magdalene": sql0020MightyMagdalene,
   "0021_crazy_silk_fever": sql0021CrazySilkFever,
   "0022_calm_groot": sql0022CalmGroot,
+  "0023_early_sharon_carter": sql0023EarlySharonCarter,
+  "0024_cuddly_stark_industries": sql0024CuddlyStarkIndustries,
+  "0025_oval_gamma_corps": sql0025OvalGammaCorps,
+  "0026_known_nico_minoru": sql0026KnownNicoMinoru,
+  "0027_short_iron_fist": sql0027ShortIronFist,
+  "0028_clear_riptide": sql0028ClearRiptide,
 };
 
 const journal = journalMeta as unknown as Journal;

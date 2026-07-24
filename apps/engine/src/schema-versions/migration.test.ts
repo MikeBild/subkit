@@ -110,7 +110,7 @@ describe("schema-versions · proposeSchemaMigration", () => {
     expect(plan!.fully_safe).toBe(true);
   });
 
-  test("removed key with no matching added key surfaces as a remove step (not safe)", async () => {
+  test("absence alone does not become a removal migration", async () => {
     const ek = "GET /v1/orders";
     await recordSuccessShape(
       {
@@ -134,12 +134,8 @@ describe("schema-versions · proposeSchemaMigration", () => {
       { tenant_id: tenantId, connector_id: connectorId, endpoint_key: ek },
       ctx.db,
     );
-    expect(plan!.steps).toContainEqual({
-      kind: "remove",
-      path: "deprecated_field",
-      safe: false,
-    });
-    expect(plan!.fully_safe).toBe(false);
+    expect(plan!.steps).toEqual([]);
+    expect(plan!.fully_safe).toBe(true);
   });
 
   test("widen detection captures type change", async () => {

@@ -15,7 +15,7 @@ sk exposes one HTTP surface for direct API callers, all under the `/v1` base pat
 - Auth: `Authorization: Bearer <api_key>` on every route except a small unauthenticated set (health probe, login/bootstrap, OAuth callbacks).
 - Content type: `application/json` for request and response bodies.
 - Single execution entry point: `POST /v1/executions` (runs saved workflows, inline drafts, and single steps).
-- Spec: `GET /openapi.json` (OpenAPI 3.0). Interactive reference UI: `GET /docs` (Scalar).
+- Spec: `GET /openapi.json` (OpenAPI 3.1). Interactive reference UI: `GET /docs` (Scalar).
 - LLM-native docs (unauthenticated, `text/markdown`, per https://llmstxt.org): `GET /llms.txt` (a robots.txt-style index of the docs set) and `GET /llms-full.txt` (the full docs concatenated into one fetch). Point a model at these to ground it on the sk surface — auth, error-code semantics, and conventions in prose that the bare schema can't express.
 
 # Authentication
@@ -34,7 +34,7 @@ Authorization: Bearer <api_key>
 
 # OpenAPI and Docs
 
-- `GET /openapi.json` — the raw OpenAPI 3.0 document. The security scheme is `bearerAuth` (HTTP bearer). Generated from the Zod route schemas.
+- `GET /openapi.json` — the raw OpenAPI 3.1 document. The security scheme is `bearerAuth` (HTTP bearer). Generated from the Zod route schemas.
 - `GET /docs` — Scalar API reference UI, rendered against `/openapi.json`.
 - `GET /v1/health` — unauthenticated liveness/readiness probe.
 - `GET /v1/status` — engine status summary.
@@ -204,7 +204,7 @@ The grounding + capture surface for external coding agents (Claude Code, Codex).
 - `GET /v1/identity/whoami` — the calling principal.
 - `GET /v1/identity/permissions` — the caller's effective, enforced permission set (displayed equals enforced).
 - `GET /v1/identity/providers` — configured auth providers.
-- `POST /v1/identity/sessions/oidc` — exchange an OIDC session.
+- `POST /v1/identity/sessions` — exchange a configured provider assertion.
 
 # RBAC
 

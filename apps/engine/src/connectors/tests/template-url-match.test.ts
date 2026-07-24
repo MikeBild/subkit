@@ -27,6 +27,29 @@ describe("matchTemplateByUrl", () => {
     expect(result!.template.slug).toMatch(/github/);
   });
 
+  test("Cloudflare REST URL matches the built-in and exposes starter recipes", () => {
+    const result = matchTemplateByUrl(
+      "https://api.cloudflare.com/client/v4/zones/example/dns_records",
+    );
+    expect(result?.template.slug).toBe("cloudflare");
+    expect(result?.recipes.map((recipe) => recipe.slug)).toEqual([
+      "verify-token",
+      "list-zones",
+      "list-dns-records",
+    ]);
+  });
+
+  test("Firestore root and versioned URLs match Firebase v2", () => {
+    for (const url of [
+      "https://firestore.googleapis.com",
+      "https://firestore.googleapis.com/v1/projects/example/databases/(default)/documents",
+    ]) {
+      const result = matchTemplateByUrl(url);
+      expect(result?.template.slug).toBe("firebase");
+      expect(result?.template.version).toBe(2);
+    }
+  });
+
   test("invalid URL returns null", () => {
     const result = matchTemplateByUrl("not-a-url");
     expect(result).toBeNull();

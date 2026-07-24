@@ -74,20 +74,16 @@
     }
   },
   "auth": {
-    "provider": "subkit",
-    "oidc": {
-      "issuer_url": "",
-      "client_id": "",
-      "client_secret": "",
-      "redirect_uri": ""
-    },
+    "providers": [
+      {
+        "protocol": "api_key",
+        "id": "api-key",
+        "label": "SubKit API key"
+      }
+    ],
+    "enable_signup": false,
     "session": {
       "secret": ""
-    },
-    "firebase": {
-      "project_id": "",
-      "login_url": "",
-      "tenant_slug": "default"
     },
     "mcp_oauth": {
       "enabled": true,
@@ -151,6 +147,11 @@
       "endpoint": "",
       "api_key": "",
       "project": ""
+    },
+    "usage": {
+      "enabled": false,
+      "hmac_secret": "",
+      "retention_days": 90
     },
     "deployment_environment": "development",
     "field_truncation_chars": 2048,

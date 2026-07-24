@@ -20,7 +20,7 @@ every API call.
 | `sk auth` | `connector:write` | Start a reauthentication flow for a connector (OAuth2 authorize URL) | — |
 | `sk chat` | `chat_workspace:read` | Manage external chat spaces (Google Chat / Slack) | `install-space`, `remove-space`, `spaces` |
 | `sk connector-templates` | `connector:read` | Manage connector templates | `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth` |
-| `sk connectors` | `connector:read` | Manage connectors | `create`, `delete`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `get`, `inspect`, `list`, `patch`, `probe`, `test` |
+| `sk connectors` | `connector:read` | Manage connectors | `create`, `delete`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `get`, `inspect`, `list`, `patch`, `probe`, `promote`, `test` |
 | `sk credentials` | `credential:read` | Manage connector credentials | `delete`, `list`, `rotate`, `set` |
 | `sk diagnostics` | `audit:read` | Engine diagnostics: errors, LLM status, setup validation | `errors`, `llm`, `setup` |
 | `sk discovery` | `discovery:read` | Manage discovery runs and artifacts | `approve`, `artifacts`, `create`, `get`, `list`, `reject` |
@@ -58,7 +58,7 @@ every API call.
 | `sk show` | — | Show cached metadata for a session by id or alias | — |
 | `sk skill-candidates` | `skill:read` | Manage skill candidates | `approve`, `get`, `list`, `reject` |
 | `sk skills` | `skill:read` | Manage skills | `activate`, `archive`, `create`, `delete`, `edit`, `get`, `history`, `list`, `patch`, `restore`, `sync` |
-| `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `connectors`, `events`, `executions`, `llm` |
+| `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `chat`, `connectors`, `conversations`, `events`, `executions`, `http`, `llm`, `mcp` |
 | `sk status` | — | Print the active profile + engine reachability | — |
 | `sk subscriptions` | `subscription:read` | Manage event subscriptions | `create`, `delete`, `deliveries`, `get`, `list`, `patch`, `replay` |
 | `sk system-accounts` | `identity:read` | Manage system accounts | `create`, `delete`, `list` |

@@ -30,6 +30,7 @@
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { IdParam } from "../../../api/common-schemas.ts";
+import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   buildCallbackPageHtml,
@@ -38,6 +39,15 @@ import {
   escapeHtml,
   validateSetupGrant,
 } from "../../../connectors/index.ts";
+import {
+  claimDraftCredentialNativeUrlElicitation,
+  clearDraftCredential,
+  completeDraftCredentialNativeUrlElicitation,
+  markConnectorNativeUrlElicitationsComplete,
+  releaseDraftCredentialNativeUrlElicitation,
+  setDraftCredential,
+  validateDraftCredentialSetup,
+} from "../../../conversations/index.ts";
 import * as credsvc from "../../../credentials/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -132,6 +142,64 @@ const credentialSetupSubmitRoute = createRoute({
   },
 });
 
+const draftCredentialSetupFormRoute = createRoute({
+  method: "get",
+  path: "/v1/connector-drafts/{id}/credentials/setup",
+  tags: ["connectors"],
+  summary: "Browser-openable credential form for an unsaved connector draft",
+  request: { params: IdParam, query: CredentialSetupGrantQuery },
+  responses: {
+    200: { description: "OK (HTML form)", content: { "text/html": { schema: z.string() } } },
+    400: {
+      description: "Grant invalid, expired, or already used",
+      content: { "text/html": { schema: z.string() } },
+    },
+  },
+});
+
+const draftCredentialSetupSubmitRoute = createRoute({
+  method: "post",
+  path: "/v1/connector-drafts/{id}/credentials/setup",
+  tags: ["connectors"],
+  summary: "Submit a credential for an unsaved connector draft",
+  request: {
+    params: IdParam,
+    body: {
+      description: "Single-use HTML credential form submission.",
+      content: {
+        "application/x-www-form-urlencoded": {
+          schema: {
+            type: "object",
+            properties: {
+              grant: { type: "string" },
+              token: { type: "string" },
+              username: { type: "string" },
+              password: { type: "string" },
+              header_name: { type: "string" },
+              header_value: { type: "string" },
+              query_name: { type: "string" },
+              query_value: { type: "string" },
+              access_key_id: { type: "string" },
+              secret_access_key: { type: "string" },
+              session_token: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Credential staged for the draft probe",
+      content: { "text/html": { schema: z.string() } },
+    },
+    400: {
+      description: "Grant or credential input invalid",
+      content: { "text/html": { schema: z.string() } },
+    },
+  },
+});
+
 const AUTH_TYPE_FIELD_HTML: Record<string, string> = {
   bearer:
     '<label>API token / bearer token<br /><input type="password" name="token" required autocomplete="off" autofocus /></label>',
@@ -144,6 +212,10 @@ const AUTH_TYPE_FIELD_HTML: Record<string, string> = {
   query:
     '<label>Query parameter name<br /><input type="text" name="query_name" required autocomplete="off" autofocus /></label>' +
     '<label>Query parameter value<br /><input type="password" name="query_value" required autocomplete="off" /></label>',
+  aws_sigv4:
+    '<label>Access key ID<br /><input type="text" name="access_key_id" required autocomplete="off" autofocus /></label>' +
+    '<label>Secret access key<br /><input type="password" name="secret_access_key" required autocomplete="off" /></label>' +
+    '<label>Session token (optional)<br /><input type="password" name="session_token" autocomplete="off" /></label>',
 };
 
 /**
@@ -152,14 +224,16 @@ const AUTH_TYPE_FIELD_HTML: Record<string, string> = {
  * must never appear anywhere else in this response.
  */
 function buildCredentialSetupFormHtml(opts: {
-  connector: { id: string; slug: string; display_name: string; auth_type: string };
+  action: string;
+  label: string;
+  auth_type: string;
   grant: string;
 }): string {
-  const { connector, grant } = opts;
-  const action = `/v1/connectors/${connector.id}/credentials/setup`;
-  const safeName = escapeHtml(connector.display_name || connector.slug);
+  const { auth_type, grant } = opts;
+  const safeAction = escapeHtml(opts.action);
+  const safeName = escapeHtml(opts.label);
   const safeGrant = escapeHtml(grant);
-  const fields = AUTH_TYPE_FIELD_HTML[connector.auth_type] ?? "";
+  const fields = AUTH_TYPE_FIELD_HTML[auth_type] ?? "";
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -180,7 +254,7 @@ function buildCredentialSetupFormHtml(opts: {
   <main>
     <h1>Reconnect ${safeName}</h1>
     <p class="sub">Enter the new credential below. This link is single-use and expires shortly.</p>
-    <form method="POST" action="${action}">
+    <form method="POST" action="${safeAction}">
       <input type="hidden" name="grant" value="${safeGrant}" />
       ${fields}
       <button type="submit">Save credential</button>
@@ -191,6 +265,167 @@ function buildCredentialSetupFormHtml(opts: {
 }
 
 export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
+  app.openapi(draftCredentialSetupFormRoute, async (c) => {
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const { grant } = c.req.valid("query");
+    const validated = await validateDraftCredentialSetup(db, {
+      conversation_id: id,
+      grant,
+    });
+    if (!validated) {
+      const { html, status } = buildCallbackPageHtml({
+        kind: "error",
+        title: "Sign-in link expired",
+        message:
+          "This credential-setup link was already used or has expired — ask the assistant for a fresh link.",
+      });
+      return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
+    }
+    const html = buildCredentialSetupFormHtml({
+      action: `/v1/connector-drafts/${id}/credentials/setup`,
+      label: validated.connector_label,
+      auth_type: validated.auth_type,
+      grant,
+    });
+    return c.body(html, 200, { "content-type": "text/html; charset=utf-8" });
+  });
+
+  app.openapi(draftCredentialSetupSubmitRoute, async (c) => {
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const form = await parseFormBody(c.req.raw);
+    const grant = form.get("grant") ?? "";
+    const validated = grant
+      ? await validateDraftCredentialSetup(db, { conversation_id: id, grant })
+      : null;
+    if (!validated) {
+      const { html, status } = buildCallbackPageHtml({
+        kind: "error",
+        title: "Sign-in link expired",
+        message:
+          "This credential-setup link was already used or has expired — ask the assistant for a fresh link.",
+      });
+      return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
+    }
+
+    try {
+      let credential: Parameters<typeof setDraftCredential>[1];
+      switch (validated.auth_type) {
+        case "bearer": {
+          const token = form.get("token") ?? "";
+          if (!token) throw new MissingFieldError("token");
+          credential = { mode: "bearer", token };
+          break;
+        }
+        case "basic": {
+          const username = form.get("username") ?? "";
+          const password = form.get("password") ?? "";
+          if (!username || !password) throw new MissingFieldError("username/password");
+          credential = { mode: "basic", username, password };
+          break;
+        }
+        case "header": {
+          const header_name = form.get("header_name") ?? "";
+          const header_value = form.get("header_value") ?? "";
+          if (!header_name || !header_value) {
+            throw new MissingFieldError("header_name/header_value");
+          }
+          credential = { mode: "header", header_name, header_value };
+          break;
+        }
+        case "query": {
+          const param = form.get("query_name") ?? "";
+          const value = form.get("query_value") ?? "";
+          if (!param || !value) throw new MissingFieldError("query_name/query_value");
+          credential = { mode: "query", param, value };
+          break;
+        }
+        case "aws_sigv4": {
+          const access_key_id = form.get("access_key_id") ?? "";
+          const secret_access_key = form.get("secret_access_key") ?? "";
+          const session_token = form.get("session_token") ?? "";
+          if (!access_key_id || !secret_access_key) {
+            throw new MissingFieldError("access_key_id/secret_access_key");
+          }
+          credential = {
+            mode: "aws_sigv4",
+            access_key_id,
+            secret_access_key,
+            ...(session_token ? { session_token } : {}),
+          };
+          break;
+        }
+      }
+
+      const claim = {
+        tenant_id: validated.tenant_id,
+        conversation_id: validated.conversation_id,
+        elicitation_id: validated.elicitation_id,
+      };
+      if (!(await claimDraftCredentialNativeUrlElicitation(claim, db))) {
+        const { html, status } = buildCallbackPageHtml({
+          kind: "error",
+          title: "Sign-in link expired",
+          message: "This credential-setup link has already been used.",
+        });
+        return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
+      }
+
+      try {
+        await auditAwait(
+          {
+            tenant_id: validated.tenant_id,
+            actor_type: "system",
+            actor_id: null,
+            action: AuditAction.CONNECTOR_CREDENTIAL_GRANT_CONSUMED,
+            resource_type: "conversation",
+            resource_id: validated.conversation_id,
+            result: "success",
+            metadata: {
+              draft_only: true,
+              auth_type: validated.auth_type,
+              elicitation_id: validated.elicitation_id,
+            },
+          },
+          db,
+        );
+        setDraftCredential(validated.conversation_id, credential);
+        if (!(await completeDraftCredentialNativeUrlElicitation(claim, db))) {
+          throw new Error("Credential setup completion lost its single-use claim.");
+        }
+      } catch (err) {
+        clearDraftCredential(validated.conversation_id);
+        await releaseDraftCredentialNativeUrlElicitation(claim, db);
+        throw err;
+      }
+
+      logger.info({
+        module: "credentials_setup",
+        action: "credentials_setup.draft.submit.success",
+        msg: "credential staged for connector-draft probe",
+        tenant_id: validated.tenant_id,
+        conversation_id: validated.conversation_id,
+        auth_type: validated.auth_type,
+      });
+      const { html, status } = buildCallbackPageHtml({
+        kind: "success",
+        title: "Credential received",
+        message:
+          `The credential for "${validated.connector_label}" is ready for its live probe. ` +
+          "You can close this tab and return to the assistant.",
+      });
+      return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
+    } catch (err) {
+      const { html, status } = buildCallbackPageHtml({
+        kind: "error",
+        title: "Could not accept credential",
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
+    }
+  });
+
   // ── GET /v1/connectors/{id}/credentials/setup?grant=sksg_… ────────────────
   // Unauthenticated browser-grant path. VALIDATES ONLY — does not consume.
   app.openapi(credentialSetupFormRoute, async (c) => {
@@ -231,7 +466,12 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.body(html, status, { "content-type": "text/html; charset=utf-8" });
     }
 
-    const html = buildCredentialSetupFormHtml({ connector, grant });
+    const html = buildCredentialSetupFormHtml({
+      action: `/v1/connectors/${connector.id}/credentials/setup`,
+      label: connector.display_name || connector.slug,
+      auth_type: connector.auth_type,
+      grant,
+    });
     return c.body(html, 200, { "content-type": "text/html; charset=utf-8" });
   });
 
@@ -345,6 +585,22 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       await clearConnectorReauth(db, tenant_id, connector_id, {
         actor_id: created_by_actor_id,
       });
+
+      try {
+        await markConnectorNativeUrlElicitationsComplete(
+          { tenant_id, connector_id, outcome: "succeeded" },
+          db,
+        );
+      } catch (completionErr) {
+        logger.warn({
+          module: "credentials_setup",
+          action: "credentials_setup.elicitation_completion_failed",
+          msg: "credential saved but native MCP URL completion could not be recorded",
+          tenant_id,
+          connector_id,
+          error: completionErr instanceof Error ? completionErr.message : String(completionErr),
+        });
+      }
 
       logger.info({
         module: "credentials_setup",

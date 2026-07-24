@@ -113,15 +113,41 @@ export const users = pgTable(
     // unaffected; the invite-redeem path flips a fresh invited user to
     // `active`.
     status: userStatusEnum("status").default("active").notNull(),
-    oidc_subject: text("oidc_subject"),
-    external_subject: text("external_subject"),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
+  (t) => [uniqueIndex("users_tenant_email_key").on(t.tenant_id, t.email)],
+);
+
+// Provider-neutral identity bindings. A user may authenticate through more
+// than one configured adapter; subjects are namespaced by provider id instead
+// of being stored in protocol-specific columns on `users`.
+export const userIdentities = pgTable(
+  "user_identities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider_id: text("provider_id").notNull(),
+    subject: text("subject").notNull(),
+    email: text("email").notNull(),
+    last_seen_at: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    ...timestamps,
+  },
   (t) => [
-    uniqueIndex("users_tenant_email_key").on(t.tenant_id, t.email),
-    uniqueIndex("users_tenant_oidc_key").on(t.tenant_id, t.oidc_subject),
-    uniqueIndex("users_tenant_external_subject_key").on(t.tenant_id, t.external_subject),
+    uniqueIndex("user_identities_tenant_provider_subject_key").on(
+      t.tenant_id,
+      t.provider_id,
+      t.subject,
+    ),
+    uniqueIndex("user_identities_tenant_user_provider_key").on(
+      t.tenant_id,
+      t.user_id,
+      t.provider_id,
+    ),
+    index("user_identities_tenant_user_idx").on(t.tenant_id, t.user_id),
   ],
 );
 

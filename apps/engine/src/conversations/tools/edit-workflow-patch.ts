@@ -55,6 +55,7 @@ export const editWorkflowPatchTool: ConversationTool = {
     "THE workflow editor. Apply an RFC 6902 JSON Patch array to the workflow draft: append/replace a step (`add /steps/-`, `replace /steps/N`), set a single field or header (`replace /steps/N/headers/Accept`), retarget references, add an edge (`add /edges/-`), or reorder steps (`move`). Coordinated multi-edits land atomically. The patched draft must still validate; partial application is never persisted.",
   inputSchema,
   category: "draft_write" as const,
+  authoring_resource: "workflow",
   requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);

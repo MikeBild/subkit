@@ -187,10 +187,9 @@ also fails after rotation**. There is no key-rotation envelope today.
    — every Slack/Teams/Google Chat workspace must be re-installed and
    re-onboarded through the platform's add-app flow.
 
-9. **Re-enter OIDC client secrets and tenant LLM API keys.** These tables
-   (`auth_provider_configs`, `tenant_llm_settings`) kept their non-secret
-   config; operators just re-enter the redacted credential leaf. CLI:
-   `sk settings set auth.oidc.client_secret '"…"'` and per-tenant `llm.api_key`.
+9. **Re-enter identity-provider secrets and tenant LLM API keys.** Update the
+   affected OIDC record in the structural `auth.providers` list inside
+   `subkit.config.json`; tenant LLM keys remain scalar `llm.api_key` settings.
 
 10. **Verify.** Hit `${ENGINE_URL}/v1/health` and run the tenant-scoped
     integration smoke; expect zero `decrypt_failed` `CryptoError` entries in the

@@ -53,6 +53,8 @@ import { errorFields, log, logger } from "../logging/logger.ts";
 import { tryAcquire } from "../notifications/rate-limit.ts";
 import { recordChatDelivery } from "../observability/instrumentation.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
+import { recordUsageEvent } from "../stats/usage-events.ts";
+import { now } from "../utils/clock.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { mapToolNameToKind } from "./api.ts";
 import { formatChatText } from "./format/outbound-format.ts";
@@ -82,6 +84,12 @@ import {
 export interface DispatcherDeps {
   db: Db;
   adapter: ChatAdapter;
+}
+
+interface ChatUsageContext {
+  tenantId: string | null;
+  actorId: string | null;
+  sessionId: string | null;
 }
 
 interface SendOptions {
@@ -330,12 +338,78 @@ export async function handleChatEvent(
   ev: ChatEvent,
   opts: HandleChatEventOpts = {},
 ): Promise<DispatchOutcome> {
-  return instrument({
-    module: "chat",
-    action: "inbound.dispatch",
-    fields: { platform: ev.platform, workspace_id: ev.workspace_id },
-    fn: () => handleChatEventImpl(deps, ev, opts),
-  });
+  const startedAt = now();
+  const usage: ChatUsageContext = { tenantId: null, actorId: null, sessionId: null };
+  try {
+    const outcome = await instrument({
+      module: "chat",
+      action: "inbound.dispatch",
+      fields: { platform: ev.platform, workspace_id: ev.workspace_id },
+      fn: () => handleChatEventImpl(deps, ev, opts, usage),
+    });
+    if (usage.tenantId) {
+      const durationMs = now() - startedAt;
+      recordUsageEvent(deps.db, {
+        tenantId: usage.tenantId,
+        surface: "chat",
+        operation: `event/${ev.kind}`,
+        method: "EVENT",
+        outcome:
+          outcome.status === "ignored"
+            ? "ignored"
+            : outcome.status === "workspace_not_found"
+              ? "not_found"
+              : outcome.status === "rejected"
+                ? "denied"
+                : "success",
+        trafficClass: ev.traffic_class ?? "organic",
+        requestSource: "chat",
+        actorId: usage.actorId,
+        sessionId: usage.sessionId,
+        durationMs,
+        platform: ev.platform,
+        responseMode: opts.replyDelivery === "capture" ? "sync" : "async",
+      });
+      if (outcome.conversation_id) {
+        recordUsageEvent(deps.db, {
+          tenantId: usage.tenantId,
+          surface: "conversations",
+          operation: "chat/turn",
+          method: "EVENT",
+          outcome: outcome.status === "rejected" ? "denied" : "success",
+          trafficClass: ev.traffic_class ?? "organic",
+          requestSource: "chat",
+          actorId: usage.actorId,
+          // A conversation is the stable session unit on this surface;
+          // only its tenant-local HMAC crosses the writer boundary.
+          sessionId: outcome.conversation_id,
+          durationMs,
+          platform: ev.platform,
+          responseMode: opts.replyDelivery === "capture" ? "sync" : "async",
+          taskPhase: outcome.loop?.status === "awaiting_input" ? "input_required" : "completed",
+        });
+      }
+    }
+    return outcome;
+  } catch (err) {
+    if (usage.tenantId) {
+      recordUsageEvent(deps.db, {
+        tenantId: usage.tenantId,
+        surface: "chat",
+        operation: `event/${ev.kind}`,
+        method: "EVENT",
+        outcome: "server_error",
+        trafficClass: ev.traffic_class ?? "organic",
+        requestSource: "chat",
+        actorId: usage.actorId,
+        sessionId: usage.sessionId,
+        durationMs: now() - startedAt,
+        platform: ev.platform,
+        responseMode: opts.replyDelivery === "capture" ? "sync" : "async",
+      });
+    }
+    throw err;
+  }
 }
 
 /**
@@ -468,6 +542,7 @@ async function handleChatEventImpl(
   deps: DispatcherDeps,
   ev: ChatEvent,
   opts: HandleChatEventOpts = {},
+  usage?: ChatUsageContext,
 ): Promise<DispatchOutcome> {
   const { db, adapter } = deps;
 
@@ -488,6 +563,10 @@ async function handleChatEventImpl(
   // (queue/handlers/chat-event.ts). Kept for direct callers/tests.
   if (!workspace) return { status: "workspace_not_found" };
   const tenant_id = workspace.tenant_id;
+  if (usage) {
+    usage.tenantId = tenant_id;
+    usage.sessionId = `${workspace.id}:${ev.thread_id ?? ev.channel_id}`;
+  }
 
   // Non-conversational platform events never run a turn and never need
   // a linked identity. `removed_from_space` drops the space's session
@@ -610,6 +689,7 @@ async function handleChatEventImpl(
   // local variable would otherwise lose this fact.
   if (!identity) throw new Error("dispatcher: identity is unexpectedly undefined after deny check");
   const user_id = identity.user_id;
+  if (usage) usage.actorId = user_id;
 
   await auditAwait(
     {

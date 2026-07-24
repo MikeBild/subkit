@@ -2,7 +2,7 @@
 
 > **Audience:** Engineers wiring sk to external systems, operators curating the catalogue
 
-**Outcome:** authenticate an external system once, reuse it across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log. Connectors collapse weeks of bespoke integration glue into a one-time, governed setup — typed, authenticated, monitored, and audited.
+**Outcome:** authenticate external systems—including built-in Cloudflare and Firebase/Firestore—once, reuse them across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log. Connectors collapse weeks of bespoke integration glue into a one-time, governed setup — typed, authenticated, monitored, and audited.
 
 A Connector combines three independently-evolving layers: a **Driver** (protocol), a **Connector Template** (target-specific config + context), and a **Credential** (vault-managed secret).
 
@@ -64,7 +64,7 @@ The two connectors can coexist in a tenant — one `github` connector for writes
 
 Templates are what make the AI's proposals accurate. Without templates, the AI cannot propose the correct authentication pattern, suggest the right endpoints, or explain the connector target's specific behaviors and limitations.
 
-sk ships 55 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Notion, Google services, AWS services, databases, and more.
+sk ships 57 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Notion, Cloudflare, Firebase/Firestore, Google services, AWS services, databases, and more.
 
 A Template is more than a configuration skeleton. It includes: the appropriate driver, the authentication configuration for that service (OAuth2 scopes, API key placement, basic auth conventions), links to documentation that the platform will index, setup guidance the AI presents when a user configures the Connector, and example Skill content the AI can draw on when proposing integrations.
 
@@ -105,7 +105,7 @@ All secrets live in the Credential Vault: encrypted at rest, never logged, never
 
 External APIs change. Fields are renamed, endpoints move, new error codes appear, response shapes evolve. A Connector that worked last month may not work the same way today.
 
-sk tracks schema versions for each Connector endpoint. As the engine executes Steps against a Connector, it observes the response shapes and compares them against the recorded schema. When a discrepancy appears — a field that was present is missing, a type that was a string is now an object — the engine classifies it as drift.
+sk tracks schema versions per Connector endpoint, Workflow, and Step. Successful responses accumulate observed fields into a contract, so request-dependent or optional fields can appear and disappear without being misclassified as removals. Incompatible type changes remain proactive drift signals; an actual missing path or failed validation is still detected reactively from the affected execution.
 
 Drift is detected from actual execution results, not from periodic polling. The signal comes from real workflow runs encountering real changes in the connected boundary. When drift is detected, it becomes the trigger for the self-healing process described in the execution document.
 
@@ -117,7 +117,102 @@ Every Connector can be tested independently of any workflow. The engine validate
 
 Connector validation is available on demand and during authoring. Operators do not need to wait for a full workflow failure before checking whether a Connector is reachable, authenticated, and returning the expected shape.
 
-A draft connector that does not yet have a saved credential cannot be probed. The probe path returns a structured `credential_required` envelope rather than silently sending an unauthenticated request. The conversational layer treats this as a signal to collect the credential through a masked form before the next probe.
+A draft connector that does not yet have a credential cannot be probed. The probe path returns a structured `credential_required` envelope rather than silently sending an unauthenticated request. `sk` collects the value in its masked terminal form. MCP clients use a single-use URL elicitation for an unsaved static-credential draft; the submission stages the credential in engine memory, resumes the same conversation, and the next green probe persists the connector and encrypted credential atomically. The draft never has to be saved unauthenticated just to obtain a connector id.
+
+Templates may attach bounded, non-secret headers to their health endpoint. The header schema rejects authentication, cookie, transport, and CR/LF-bearing values; a saved credential remains the only source of authentication. This is used for vendor-required protocol headers such as Notion's `Notion-Version`, so a connector probe exercises the same valid request shape as runtime traffic.
+
+---
+
+## Audited DEV to PROD Promotion
+
+An admin can promote a persisted DEV connector without reading or re-entering its credential. The operation is one transaction: connector state, credential state, promotion idempotency record, and immutable audit entries either all commit or all roll back. It requires the dedicated `connector:promote` permission and an `Idempotency-Key`; only the SHA-256 digest of that key is persisted.
+
+Two strategies make retention explicit:
+
+| Strategy | Connector identity | Credential handling | DEV after success |
+|---|---|---|---|
+| `copy` | Creates a new PROD connector id | Decrypts and re-encrypts supported static credentials under a new credential id and AAD; token-mint caches are cleared | Retained |
+| `move` | Keeps the connector id | Keeps credential ids, ciphertext, OAuth refresh state, and end-user bindings; only the environment changes | Removed |
+
+`copy` deliberately rejects OAuth/OAuth-client state and connectors with end-user credential bindings: duplicating either would create ambiguous refresh ownership or silently lose user bindings. Use `move` for those connectors. A conflicting active PROD connector with the same tenant-scoped slug is also rejected. Copy carries the pinned template snapshot, connector configuration, self-description links, circuit/health state, and static credential; ingested document rows and observed schema history stay attached to the DEV connector.
+
+Every successful operation writes `connector.environment_promoted` and one `credential.environment_promoted` event per affected credential. Audit metadata contains ids, environments, strategy, request source, and the idempotency-key digest—never plaintext or ciphertext.
+
+The conversational action is `promote_connector`. The equivalent CLI command is:
+
+```bash
+sk connectors promote <dev-connector-id> --to prod --strategy copy
+sk connectors promote <dev-connector-id> --to prod --strategy move --yes
+```
+
+The REST form is `POST /v1/connectors/{id}/promote` with a required `Idempotency-Key` header and body `{ "target_environment": "prod", "strategy": "copy" | "move" }`. A new copy returns 201; a move or idempotent replay returns 200.
+
+---
+
+## OpenAPI Connector Import
+
+`import_connector_from_spec` creates a connector draft from inline OpenAPI JSON/YAML, Google
+REST Discovery JSON, or an HTTP(S) spec URL. The equivalent REST surface is
+`POST /v1/connector-templates/import` with `source: "openapi"` or
+`source: "google_discovery"`. URL-fetched specification bodies are streamed with a 50 MiB
+(52,428,800 byte) hard limit: a declared oversized body is rejected before reading, while an
+unknown-length stream is cancelled on the first byte over budget.
+
+The importer reads top-level `servers` and `components.securitySchemes`. Absolute servers are
+preferred over the spec-host origin, relative servers resolve against the spec URL, and server
+variables use their declared defaults. Supported authentication hints are Bearer, OAuth2,
+header/query API keys, and Basic; Bearer wins when the document declares several alternatives.
+Google Discovery imports recursively read nested resources and methods, build the service base
+URL from `baseUrl` or `rootUrl` + `servicePath`, resolve request/response schema references, and
+derive OAuth2 or query-key authentication hints. The public import response shape is unchanged.
+
+Cloudflare now ships as the built-in `cloudflare` template. Create it directly, then add a newly
+created least-privilege API token through the credential command's masked/secret input path:
+
+```bash
+sk connectors create --template cloudflare --name cloudflare-dev
+sk credentials set <CONNECTOR_ID> --mode bearer --token '<NEW_SCOPED_TOKEN>'
+sk connectors test <CONNECTOR_ID>
+```
+
+The template uses `https://api.cloudflare.com/client/v4`, Bearer authentication, the official
+[Cloudflare OpenAPI schema](https://github.com/cloudflare/api-schemas), and three read-only
+starter recipes: token verification, zone listing, and DNS-record listing. A token that has
+appeared in chat, source code, shell history, or logs must be revoked and replaced before use.
+The Global API Key is intentionally not the default.
+
+The same official schema can still be imported explicitly when testing or customizing a draft:
+
+```json
+{
+  "source": "openapi",
+  "content": "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
+  "name": "Cloudflare",
+  "environment": "dev"
+}
+```
+
+The resulting draft auto-matches the same built-in template. Never put a token in the spec URL,
+public spec-fetch headers, a chat message, connector config, or workflow.
+
+Firebase/Firestore ships as template revision 2 and ingests the official Firestore v1 Google
+Discovery document. Configure a Google OAuth client, create the connector, and authorize it:
+
+```bash
+sk connector-templates set-oauth --slug firebase \
+  --client-id '<GOOGLE_OAUTH_CLIENT_ID>' \
+  --client-secret '<GOOGLE_OAUTH_CLIENT_SECRET>'
+sk connectors create --template firebase --name firebase-dev
+sk auth --connector-id <CONNECTOR_ID>
+```
+
+The built-in OAuth scopes are `cloud-platform` and `datastore`. For end-user requests governed
+by Firestore Security Rules, a short-lived Firebase Authentication ID token may instead be stored
+as a Bearer credential. A service-account JSON key is not an OAuth client secret and must not be
+pasted into the OAuth fields.
+
+This 50 MiB allowance is specific to connector-spec import. Live API Discovery below remains
+bounded to 16 MiB and returns a curated, cached endpoint index rather than a connector draft.
 
 ---
 
@@ -198,7 +293,7 @@ flowchart TB
     Discover["discover_connector_endpoints"]
     Draft["start_connector_from_template<br/>or _from_description"]
     AuthType{Auth type}
-    AskForm["ask_user_form<br/>(password, sensitive)"]
+    AskForm["secure credential input<br/>(masked in sk · URL-mode over MCP)"]
     AskFormOA["ask_user_form +<br/>commit_intent: save_connector_draft"]
     Probe["probe_connector_draft"]
     OAuth["authenticate_oauth<br/>(browser opens)"]
@@ -218,7 +313,7 @@ flowchart TB
 
 1. The agent calls `discover_connector_endpoints` to ground its endpoint choices in real spec data.
 2. The agent calls `start_connector_from_template` (or `start_connector_from_description`) to create a draft.
-3. The agent calls `ask_user_form(type: password, sensitive: true)` to collect the credential. The form value lands on the draft via the credential cache; no `commit_intent` is needed.
+3. The agent requests the credential. `sk` renders a masked terminal form. Over MCP, where protocol form elicitation must not carry secrets, the engine converts the request into a single-use URL-mode elicitation tied to the unsaved draft. In either case the value lands only in the draft credential cache; no connector row or `commit_intent` is needed.
 4. The agent calls `probe_connector_draft`. A green probe (`ok: true`) persists the connector + credential atomically inside the same tool call — DB row, encrypted credential, audit entry — and the response envelope carries `auto_saved: true` plus the saved connector shape. The agent does NOT need to call `save_connector_draft` afterward.
 5. The agent calls `call_connector` to iterate / paginate / sample.
 
@@ -237,7 +332,7 @@ The diagnostic tools `save_connector_draft` and `save_workflow_draft` remain ava
 | `auto_persist_on_confirmation` | harness auto-persist | An `ask_user_form` carrying `commit_intent` (OAuth2 happy path, plus delete/revoke confirmations) |
 | `manual_re_issue` | `save_connector_draft` / `save_workflow_draft` (direct) | Operator-driven re-save, force-save, credential rotation |
 
-Credentials only flow through the masked form path. The `update_connector_draft` tool rejects any credential-shaped key in `config` with a structured `credential_must_use_form` envelope. Drivers no longer accept inline credentials from `connector.config` at probe time. There is no shortcut.
+Credentials only flow through a sanctioned secret-input surface: the masked `sk` form or the single-use MCP URL flow. The `update_connector_draft` tool rejects any credential-shaped key in `config` with a structured `credential_must_use_form` envelope. Drivers no longer accept inline credentials from `connector.config` at probe time. There is no chat-text or connector-config shortcut.
 
 ---
 
@@ -250,6 +345,7 @@ The catalogue ships three layers of validation:
 - **Layer 1 — structural lint.** `apps/engine/src/connectors/templates.test.ts` runs at every PR: every template must parse `ConnectorTemplateSchema`, slugs are globally unique, recipes pass `WorkflowDefSchema`, etc. No network.
 - **Layer 2 — cross-reference invariants.** Same test file: every `default_skill` resolves to a known entry in `template-skills.json`, recipe placeholders are bound, no credential-shaped literals leak into recipe workflows. No network.
 - **Layer 3 — vendor-drift sweep.** A network sweep HEADs every `base_url`, calls every declared `probe_endpoint`, and fetches `<oauth.issuer_url>/.well-known/openid-configuration` for OAuth templates, stamping `verified_at` per template. It **never runs in CI** — gated by `RUN_TEMPLATE_AUDIT=1` so a careless pipeline can't hammer vendors. The sweep lives in `scripts/template-vendor-sweep.ts` and runs on an operator-chosen cadence against `templates.json`.
+- **Layer 4 — conversation journey.** `conversation-native-elicitation.integration.test.ts` drives a real Streamable HTTP MCP client from an unsaved bearer draft through URL elicitation, single-use credential submission, conversation resume, authenticated probe, connector save, and encrypted credential persistence. This composed state-machine test is mandatory because isolated tests of form delivery, probing, and saving cannot detect lifecycle deadlocks between those components.
 
 ### Running the sweep
 

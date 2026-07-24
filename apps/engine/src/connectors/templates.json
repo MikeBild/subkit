@@ -4846,6 +4846,203 @@
   },
   {
     "version": 1,
+    "slug": "cloudflare",
+    "name": "Cloudflare",
+    "driver": "http",
+    "base_url": "https://api.cloudflare.com/client/v4",
+    "auth_type": "bearer",
+    "oauth": null,
+    "default_skill": "cloudflare-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
+    "icon": "cloudflare.svg",
+    "description": "Cloudflare REST API for zones, DNS, Workers, R2, Zero Trust, and account services",
+    "category": "cloud",
+    "tags": ["rest", "dns", "cdn", "security", "workers", "r2"],
+    "setup_instructions": "Create a least-privilege API token in the Cloudflare dashboard and grant only the account and zone permissions required by your workflows. Do not use the legacy Global API Key.",
+    "auth_options": [
+      {
+        "auth_type": "bearer",
+        "label": "API token",
+        "description": "Authenticate with a scoped Cloudflare API token sent as a Bearer token.",
+        "oauth": null
+      }
+    ],
+    "url_pattern": "^https:\\/\\/api\\.cloudflare\\.com\\/client\\/v4(\\/|$)",
+    "keywords": [
+      "accounts",
+      "zones",
+      "dns",
+      "workers",
+      "r2",
+      "zero trust",
+      "access",
+      "rulesets",
+      "tokens"
+    ],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/user/tokens/verify",
+      "expected_status": [200, 200],
+      "description": "Verify the configured API token"
+    },
+    "credential_hints": [
+      {
+        "field": "token",
+        "label": "Cloudflare API token",
+        "placeholder": "Scoped API token",
+        "doc_url": "https://developers.cloudflare.com/fundamentals/api/get-started/create-token/",
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": {
+      "strategy": "page",
+      "page_param": "page",
+      "page_size": 50
+    },
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "recipes": [
+      {
+        "slug": "verify-token",
+        "title": "Verify API token",
+        "description": "Verify that the configured Cloudflare API token is active and accepted.",
+        "intent_keywords": [
+          "verify cloudflare token",
+          "test cloudflare credentials",
+          "token status"
+        ],
+        "derived_from_skill": "cloudflare-basics",
+        "category": "cloud",
+        "tags": ["read-only", "credentials"],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 5,
+        "prerequisites": ["A scoped Cloudflare API token"],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "cloudflare-verify-token",
+          "description": "Verify the configured Cloudflare API token.",
+          "steps": [
+            {
+              "kind": "request",
+              "id": "verify",
+              "method": "GET",
+              "url": "${connector.cloudflare.base_url}/user/tokens/verify",
+              "side_effects": "read"
+            }
+          ]
+        }
+      },
+      {
+        "slug": "list-zones",
+        "title": "List zones",
+        "description": "List zones visible to the configured API token.",
+        "intent_keywords": ["list cloudflare zones", "cloudflare domains", "all zones"],
+        "derived_from_skill": "cloudflare-basics",
+        "category": "cloud",
+        "tags": ["read-only", "zones", "pagination"],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 5,
+        "prerequisites": ["API token with Zone:Read permission"],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "cloudflare-list-zones",
+          "description": "List zones visible to the configured API token.",
+          "steps": [
+            {
+              "kind": "request",
+              "id": "list_zones",
+              "method": "GET",
+              "url": "${connector.cloudflare.base_url}/zones",
+              "query": {
+                "per_page": 50
+              },
+              "pagination": {
+                "strategy": "page",
+                "page_param": "page",
+                "page_size": 50
+              },
+              "side_effects": "read"
+            }
+          ]
+        }
+      },
+      {
+        "slug": "list-dns-records",
+        "title": "List DNS records",
+        "description": "List DNS records for a Cloudflare zone.",
+        "intent_keywords": ["list dns records", "cloudflare dns", "zone records"],
+        "derived_from_skill": "cloudflare-basics",
+        "category": "cloud",
+        "tags": ["read-only", "dns", "pagination"],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 5,
+        "prerequisites": ["API token with Zone:DNS:Read permission", "Cloudflare zone ID"],
+        "sample_input": {
+          "zone_id": "023e105f4ecef8ad9ca31a8372d0c353"
+        },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "cloudflare-list-dns-records",
+          "description": "List DNS records for a Cloudflare zone.",
+          "input_schema": {
+            "type": "object",
+            "required": ["zone_id"],
+            "properties": {
+              "zone_id": {
+                "type": "string",
+                "description": "Cloudflare zone ID"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "list_dns_records",
+              "method": "GET",
+              "url": "${connector.cloudflare.base_url}/zones/${input.zone_id}/dns_records",
+              "query": {
+                "per_page": 100
+              },
+              "pagination": {
+                "strategy": "page",
+                "page_param": "page",
+                "page_size": 100
+              },
+              "side_effects": "read"
+            }
+          ]
+        }
+      }
+    ],
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
+  },
+  {
+    "version": 1,
     "slug": "confluence",
     "name": "Confluence",
     "driver": "http",
@@ -5060,11 +5257,11 @@
     "verified_at": null
   },
   {
-    "version": 1,
+    "version": 2,
     "slug": "firebase",
     "name": "Firebase",
     "driver": "http",
-    "base_url": "https://firestore.googleapis.com/v1",
+    "base_url": "https://firestore.googleapis.com",
     "auth_type": "oauth2",
     "oauth": {
       "issuer_url": "https://accounts.google.com",
@@ -5079,13 +5276,13 @@
       "extra_headers": {}
     },
     "default_skill": "firebase-basics",
-    "ingestion_source": "openapi",
+    "ingestion_source": "google_discovery",
     "ingestion_url": "https://firestore.googleapis.com/$discovery/rest?version=v1",
     "icon": "firebase.svg",
     "description": "Firebase Firestore REST API",
     "category": "database",
     "tags": ["rest", "google", "nosql", "realtime"],
-    "setup_instructions": "Enable Firestore in Firebase Console, create service account with Firestore Admin role.",
+    "setup_instructions": "Enable Firestore in Firebase Console, then create a Google OAuth 2.0 client and authorize the cloud-platform or datastore scope. Firebase ID tokens can alternatively be supplied as bearer tokens for requests allowed by your Firestore Security Rules.",
     "auth_options": [
       {
         "auth_type": "oauth2",
@@ -5103,10 +5300,16 @@
           "client_id": null,
           "extra_headers": {}
         }
+      },
+      {
+        "auth_type": "bearer",
+        "label": "Firebase ID token",
+        "description": "Use a short-lived Firebase Authentication ID token as Bearer credentials. Access is evaluated by Firestore Security Rules.",
+        "oauth": null
       }
     ],
-    "url_pattern": "^https://firestore\\.googleapis\\.com/v1(\\/|$)",
-    "keywords": [],
+    "url_pattern": "^https://firestore\\.googleapis\\.com(?:/v1)?(\\/|$)",
+    "keywords": ["firestore", "documents", "collections", "structured-query", "firebase-auth"],
     "inline_schema": null,
     "probe_endpoint": null,
     "credential_hints": [
@@ -6716,7 +6919,7 @@
       "rate_limits": null
     },
     "operator_quirks": {
-      "site_url_encoding": "Search Console paths require the full property URL as a URL-encoded path segment, e.g. https%3A%2F%2Fwww.mikebild.dev%2F.",
+      "site_url_encoding": "Search Console paths require the full property URL as a URL-encoded path segment, e.g. https%3A%2F%2Fwww.example.com%2F.",
       "property_access": "The authenticated Google account must have access to the exact Search Console property; URL-prefix properties include the trailing slash.",
       "search_analytics": "searchAnalytics.query uses a POST body with startDate, endDate, dimensions, rowLimit, and optional dimensionFilterGroups."
     },
@@ -10126,7 +10329,10 @@
       "method": "GET",
       "path": "/users/me",
       "expected_status": [200, 200],
-      "description": "Fetch integration bot user"
+      "description": "Fetch integration bot user",
+      "headers": {
+        "Notion-Version": "2022-06-28"
+      }
     },
     "credential_hints": [
       {

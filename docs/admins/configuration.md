@@ -83,10 +83,20 @@ the file only needs to carry overrides:
   "llm":     { "provider": "anthropic",
                "api_key":  "…",                 // sensitive, masked everywhere
                "providers": { "anthropic": { "model": "claude-sonnet-4-6" } } },
-  "auth":    { "oidc": { "issuer_url": "…" }, "session": { "secret": "auto-generated" } },
+  "auth":    { "providers": [
+                 { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
+                 { "protocol": "oidc", "id": "workforce", "label": "Work account",
+                   "issuer_url": "https://identity.example.com", "client_id": "…",
+                   "tenant_slug": "default" }
+               ],
+               "session": { "secret": "auto-generated" } },
   "platform":      { "slack": { … }, "teams": { … }, "googlechat": { … } },
   "storage":       { "s3": { … }, "knowledge": { "backend": "local" } },
-  "observability": { "langfuse": { "secret_key": "…" }, "otlp": { "endpoint": "…" } },
+  "observability": { "langfuse": { "secret_key": "…" },
+                     "otlp": { "endpoint": "…" },
+                     "usage": { "enabled": false,
+                                "hmac_secret": "…at least 32 chars…",
+                                "retention_days": 90 } },
   "egress":        { "mode": "permissive", "provider_hosts_extra": [] },
   "mcp":     { "read_only": false },
   "errors":  { "ring_size": 100 },
@@ -104,6 +114,14 @@ the file only needs to carry overrides:
   }
 }
 ```
+
+`observability.usage` is the local, content-free product measurement surface. Set its
+dedicated HMAC secret first, then enable it; changing either leaf is hot-applied. Raw events
+stay in the engine Postgres for `retention_days` (31–365, default 90) and are exposed only as
+tenant-scoped aggregates behind `stats:read`. This is separate from
+`observability.analytics`, which optionally forwards a smaller HTTP event to an external
+endpoint. Usage rows have no fields for prompts, messages, tool arguments/results, raw
+paths/query strings, IP addresses, user agents, OAuth material, or plaintext dynamic IDs.
 
 ### Resolution order (every read)
 

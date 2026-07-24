@@ -58,6 +58,10 @@ const STATS_ROUTES = [
   `/v1/stats/connectors?${WINDOW_PARAMS}`,
   `/v1/stats/events?${WINDOW_PARAMS}&class=policy`,
   `/v1/stats/llm?${WINDOW_PARAMS}`,
+  `/v1/stats/http?${WINDOW_PARAMS}`,
+  `/v1/stats/chat?${WINDOW_PARAMS}`,
+  `/v1/stats/mcp?${WINDOW_PARAMS}`,
+  `/v1/stats/conversations?${WINDOW_PARAMS}`,
 ] as const;
 
 beforeAll(async () => {

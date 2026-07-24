@@ -13,7 +13,7 @@ import { BUCKET_UNITS } from "./bucket-window.ts";
 // coercion accepts both and yields a `string[]`. Used for the multi-value
 // filters (status[], request_source[], driver[], model[], …) and for
 // `group_by`.
-const CsvOrArray = z
+export const CsvOrArray = z
   .union([z.string(), z.array(z.string())])
   .optional()
   .transform((v) => {
@@ -238,6 +238,85 @@ export const LlmStatsResponse = z
 export const StatsQualityQuery = BucketWindowQuery.extend({
   workflow_id: z.string().uuid().optional(),
 }).openapi("StatsQualityQuery");
+
+// ---- product usage -------------------------------------------------------
+
+export const UsageStatsQuery = BucketWindowQuery.extend({
+  traffic_class: CsvOrArray.default(["organic"]),
+  operation: CsvOrArray,
+  outcome: CsvOrArray,
+  request_source: CsvOrArray,
+  platform: CsvOrArray,
+  response_mode: CsvOrArray,
+  group_by: CsvOrArray,
+}).openapi("StatsUsageQuery");
+
+const UsageDurationSchema = z.object({
+  measured: z.number(),
+  avg: z.number(),
+  p50: z.number(),
+  p95: z.number(),
+  p99: z.number(),
+  max: z.number(),
+});
+
+const UsageRollupSchema = z.object({
+  calls: z.number(),
+  unique_actors: z.number(),
+  unique_sessions: z.number(),
+  failures: z.number(),
+  duration_ms: UsageDurationSchema,
+  bytes: z.object({ request: z.number(), response: z.number() }),
+  streams: z.object({ completed: z.number(), cancelled: z.number(), errored: z.number() }),
+});
+
+const UsageTotalsSchema = UsageRollupSchema.extend({
+  by_outcome: z.record(z.string(), z.number()),
+  success_ratio: z.object({
+    numerator: z.number(),
+    denominator: z.number(),
+    value: z.number().nullable(),
+  }),
+  surface_details: z.object({
+    sessions_initialized: z.number(),
+    sessions_closed: z.number(),
+    capacity_rejections: z.number(),
+    active_sessions_peak: z.number(),
+    sync_responses: z.number(),
+    async_responses: z.number(),
+    task_started: z.number(),
+  }),
+});
+
+export const UsageStatsResponse = z
+  .object({
+    schema_version: z.literal("subkit.usage-stats.v1"),
+    surface: z.enum(["http", "chat", "mcp", "conversations"]),
+    ...EnvelopeBase,
+    traffic_class: z.array(z.enum(["organic", "synthetic", "internal"])),
+    groups: z.array(
+      z.object({
+        key: GroupKey,
+        buckets: z.array(UsageRollupSchema.extend({ ts: z.string() })),
+        totals: UsageRollupSchema,
+      }),
+    ),
+    totals: UsageTotalsSchema,
+    semantic: z.object({
+      value_state: z.enum(["measured", "zero", "missing"]),
+      value_kind: z.literal("count"),
+      unit: z.literal("calls"),
+    }),
+    quality: z.object({
+      sampled: z.literal(false),
+      unique_scope: z.literal("exact_window"),
+      identity: z.literal("product_local_hmac"),
+      content_captured: z.literal(false),
+      retention_days: z.number(),
+      duration_coverage: z.object({ numerator: z.number(), denominator: z.number() }),
+    }),
+  })
+  .openapi("StatsUsageResponse");
 
 const QualityFailureReason = z
   .object({

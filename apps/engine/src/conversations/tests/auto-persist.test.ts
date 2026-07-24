@@ -896,4 +896,40 @@ describe("auto-persist on confirmation — oauth_completed credential gate", () 
     expect(data?.authenticated).toBe(false);
     expect(dispatch.synthetic_result?.next_best_actions).toContain("authenticate_oauth");
   });
+
+  test("confirming credential re-issue with no saved credential returns reconnected:false", async () => {
+    const { conversation_id } = await seedConversationWithDraft("ap-reauth-nocred");
+    const connectorId = "22222222-2222-4222-8222-222222222222";
+    const elicitation = await createCarrierElicitation({
+      conversation_id,
+      tool_name: "ask_user_confirm",
+      input: {
+        kind: "external_write",
+        question: "Complete the secure credential replacement.",
+        commit_intent: {
+          kind: "credential_reissue_completed",
+          payload: { connector_id: connectorId, connector_slug: "notion" },
+          description: "Resume work after the replacement credential is active.",
+        },
+      },
+      output: { confirmed: true },
+    });
+
+    const dispatch = await maybeAutoPersistFromElicitation({
+      answer_actor: TEST_HUMAN_ANSWER,
+      tenant_id,
+      conversation_id,
+      actor_id: null,
+      elicitation_output: { confirmed: true },
+      elicitation,
+      db: ctx.db,
+    });
+
+    expect(dispatch.dispatched).toBe(true);
+    expect(dispatch.synthetic_result?.ok).toBe(false);
+    expect(dispatch.synthetic_result?.error_code).toBe("credential_reissue_not_completed");
+    const data = dispatch.synthetic_result?.data as Record<string, unknown> | undefined;
+    expect(data?.reconnected).toBe(false);
+    expect(dispatch.synthetic_result?.next_best_actions).toContain("request_connector_reauth");
+  });
 });

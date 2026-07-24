@@ -15,16 +15,16 @@ credentials, and an immutable audit trail apply to every entry point.
 
 ## At a glance
 
-![sk architecture at a glance — outside-the-bridge AI clients cross via the MCP OAuth bridge into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](./overview.png)
+![sk architecture at a glance — external AI clients cross the product-local MCP OAuth boundary into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](./overview.png)
 
-*Outside-the-bridge clients (IDE assistants, employee chat) reach governed workflows only through the **MCP OAuth bridge**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`./overview.drawio`](./overview.drawio).*
+*External clients (IDE assistants, employee chat) reach governed workflows only through SubKit's product-local **MCP OAuth boundary**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`./overview.drawio`](./overview.drawio).*
 
 ```mermaid
 flowchart TB
     subgraph surfaces["Inbound surfaces"]
         CLI["sk CLI"]
         REST["HTTP REST API"]
-        MCP["MCP OAuth bridge<br/>(IDE assistants, employee chat)"]
+        MCP["MCP OAuth boundary<br/>(IDE assistants, employee chat)"]
         Chat["Chat adapters"]
         Hook["Inbound webhooks"]
         Sched["Scheduler"]

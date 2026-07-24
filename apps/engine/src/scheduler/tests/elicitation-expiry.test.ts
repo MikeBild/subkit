@@ -25,9 +25,12 @@ import {
   conversationElicitations,
   conversations,
   conversationToolCalls,
+  mcpTasks,
   toolApprovals,
 } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import { handleConversationTool } from "../../mcp/capabilities/conversations.ts";
+import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { runElicitationExpiry } from "../elicitation-expiry-runner.ts";
 
@@ -51,13 +54,13 @@ async function seedConversation(status: ConversationStatus): Promise<string> {
   return row.id;
 }
 
-async function seedToolCall(conversationId: string): Promise<string> {
+async function seedToolCall(conversationId: string, tool = "wf_send_report"): Promise<string> {
   const [row] = await srv.db
     .insert(conversationToolCalls)
     .values({
       tenant_id: srv.tenantId,
       conversation_id: conversationId,
-      tool: "wf_send_report",
+      tool,
       input: { to: "ops@example.com" },
     })
     .returning();
@@ -115,6 +118,76 @@ async function seedElicitation(p: {
   await srv.db.execute(
     `UPDATE conversation_elicitations SET created_at = now() - interval '20 minutes' WHERE id = '${row.id}'`,
   );
+  return row.id;
+}
+
+async function seedDraftCredentialElicitation(p: {
+  conversationId: string;
+  toolCallId: string;
+  expiresAt: Date;
+}): Promise<string> {
+  const [row] = await srv.db
+    .insert(conversationElicitations)
+    .values({
+      tenant_id: srv.tenantId,
+      conversation_id: p.conversationId,
+      tool_call_id: p.toolCallId,
+      tool_name: "ask_user_form",
+      summary: "Enter the credential for Cloudflare PROD",
+      input: {
+        kind: "connector_draft_credential_setup",
+        auth_type: "bearer",
+        connector_slug: "cloudflare",
+        setup_url: `https://engine.invalid/v1/connector-drafts/${p.conversationId}/credentials/setup?grant=canary`,
+        expires_at: p.expiresAt.toISOString(),
+      },
+      status: "pending",
+    })
+    .returning();
+  if (!row) throw new Error("seed draft credential elicitation failed");
+  await srv.db.execute(
+    `UPDATE conversation_elicitations SET created_at = now() - interval '20 minutes' WHERE id = '${row.id}'`,
+  );
+  return row.id;
+}
+
+async function seedCompletedMcpTask(
+  conversationId: string,
+  elicitationId: string,
+): Promise<string> {
+  const setupUrl =
+    `https://engine.invalid/v1/connector-drafts/${conversationId}` +
+    "/credentials/setup?grant=canary";
+  const [row] = await srv.db
+    .insert(mcpTasks)
+    .values({
+      tenant_id: srv.tenantId,
+      conversation_id: conversationId,
+      turn_seq: 1,
+      kind: "start",
+      actor_id: srv.userId,
+      request_source: "mcp",
+      result: {
+        conversation_id: conversationId,
+        status: "awaiting_input",
+        pending_elicitation_id: elicitationId,
+        events: [
+          {
+            type: "tool_result",
+            output: { status: "awaiting_input", elicitation_id: elicitationId },
+          },
+          {
+            type: "elicit_request",
+            elicitation_id: elicitationId,
+            input: { kind: "connector_draft_credential_setup", setup_url: setupUrl },
+          },
+          { type: "completed", status: "awaiting_input" },
+          { type: "next_suggestion", suggestion: "retry ask_user_form" },
+        ],
+      },
+    })
+    .returning();
+  if (!row) throw new Error("seed mcp task failed");
   return row.id;
 }
 
@@ -206,6 +279,107 @@ describe("runElicitationExpiry — dead approval cascade", () => {
     expect(elicitation.decision_reason).toBe("approval_expired");
     expect(await readConversationStatus(conversationId)).toBe("active");
     expect(await expiredAuditRowsFor(elicitationId)).toHaveLength(1);
+  });
+});
+
+describe("runElicitationExpiry — expired draft credential setup", () => {
+  test("expired grant unstrands both conversation_get and MCP Tasks state", async () => {
+    const conversationId = await seedConversation("awaiting_input");
+    const toolCallId = await seedToolCall(conversationId, "ask_user_form");
+    const elicitationId = await seedDraftCredentialElicitation({
+      conversationId,
+      toolCallId,
+      expiresAt: expiredAt,
+    });
+    const taskId = await seedCompletedMcpTask(conversationId, elicitationId);
+    const store = new ConversationTaskStore({ db: srv.db, tenant_id: srv.tenantId });
+    const principal = {
+      kind: "user" as const,
+      id: srv.userId,
+      tenant_id: srv.tenantId,
+      provider: "api_key" as const,
+      roles: ["admin"],
+    };
+
+    expect((await store.getTask(taskId))?.status).toBe("input_required");
+    const before = await handleConversationTool({
+      db: srv.db,
+      principal,
+      name: "conversation_get",
+      args: { conversation_id: conversationId },
+    });
+    const beforeBody = JSON.parse(before.content[0]?.text ?? "{}") as { status?: string };
+    expect(beforeBody.status).toBe("input_required");
+
+    await runElicitationExpiry(new Date(), srv.db); // allow-wall-clock
+
+    const elicitation = await readElicitation(elicitationId);
+    expect(elicitation.status).toBe("timeout");
+    expect(elicitation.decision_reason).toBe("credential_setup_expired");
+    expect(elicitation.decided_by).toBeNull();
+    expect(await readConversationStatus(conversationId)).toBe("active");
+    expect((await store.getTask(taskId))?.status).toBe("completed");
+    const after = await handleConversationTool({
+      db: srv.db,
+      principal,
+      name: "conversation_get",
+      args: { conversation_id: conversationId },
+    });
+    const afterBody = JSON.parse(after.content[0]?.text ?? "{}") as {
+      status?: string;
+      result?: { status?: string; pending_elicitation_id?: string; events?: unknown[] };
+    };
+    expect(afterBody.status).toBe("completed");
+    expect(afterBody.result?.status).toBe("active");
+    expect(afterBody.result?.pending_elicitation_id).toBeUndefined();
+    expect(
+      afterBody.result?.events?.some((event) => {
+        return (event as { type?: string }).type === "elicit_request";
+      }),
+    ).toBe(false);
+    expect(JSON.stringify(afterBody)).not.toContain("credentials/setup?grant=");
+
+    const taskResult = (await store.getTaskResult(taskId)) as {
+      content: Array<{ type: string; text: string }>;
+    };
+    const taskBody = JSON.parse(taskResult.content[0]?.text ?? "{}") as {
+      status?: string;
+      pending_elicitation_id?: string;
+    };
+    expect(taskBody.status).toBe("active");
+    expect(taskBody.pending_elicitation_id).toBeUndefined();
+    expect(JSON.stringify(taskBody)).not.toContain("credentials/setup?grant=");
+
+    const [toolCall] = await srv.db
+      .select({ output: conversationToolCalls.output })
+      .from(conversationToolCalls)
+      .where(eq(conversationToolCalls.id, toolCallId))
+      .limit(1);
+    const output = toolCall?.output as Record<string, unknown>;
+    expect(output.ok).toBe(false);
+    expect(output.abandoned).toBe(true);
+    expect(output.reason).toBe("credential_setup_expired");
+    expect(String(output.note)).toContain("no credential was stored");
+
+    const audits = await expiredAuditRowsFor(elicitationId);
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.reason).toBe("credential_setup_expired");
+  });
+
+  test("unexpired draft grant stays pending even when its row is old", async () => {
+    const conversationId = await seedConversation("awaiting_input");
+    const toolCallId = await seedToolCall(conversationId, "ask_user_form");
+    const elicitationId = await seedDraftCredentialElicitation({
+      conversationId,
+      toolCallId,
+      expiresAt: liveUntil,
+    });
+
+    await runElicitationExpiry(new Date(), srv.db); // allow-wall-clock
+
+    expect((await readElicitation(elicitationId)).status).toBe("pending");
+    expect(await readConversationStatus(conversationId)).toBe("awaiting_input");
+    expect(await expiredAuditRowsFor(elicitationId)).toHaveLength(0);
   });
 });
 

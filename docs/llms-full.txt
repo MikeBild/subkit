@@ -44,7 +44,7 @@ Start with the **Overview** for the big picture, then the **Glossary** to lock t
 
 > **Audience:** Engineers wiring sk to external systems, operators curating the catalogue
 
-**Outcome:** authenticate an external system once, reuse it across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log. Connectors collapse weeks of bespoke integration glue into a one-time, governed setup — typed, authenticated, monitored, and audited.
+**Outcome:** authenticate external systems—including built-in Cloudflare and Firebase/Firestore—once, reuse them across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log. Connectors collapse weeks of bespoke integration glue into a one-time, governed setup — typed, authenticated, monitored, and audited.
 
 A Connector combines three independently-evolving layers: a **Driver** (protocol), a **Connector Template** (target-specific config + context), and a **Credential** (vault-managed secret).
 
@@ -106,7 +106,7 @@ The two connectors can coexist in a tenant — one `github` connector for writes
 
 Templates are what make the AI's proposals accurate. Without templates, the AI cannot propose the correct authentication pattern, suggest the right endpoints, or explain the connector target's specific behaviors and limitations.
 
-sk ships 55 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Notion, Google services, AWS services, databases, and more.
+sk ships 57 Connector Templates covering the most common enterprise services: Stripe, Salesforce, HubSpot, GitHub, Jira, Slack, Notion, Cloudflare, Firebase/Firestore, Google services, AWS services, databases, and more.
 
 A Template is more than a configuration skeleton. It includes: the appropriate driver, the authentication configuration for that service (OAuth2 scopes, API key placement, basic auth conventions), links to documentation that the platform will index, setup guidance the AI presents when a user configures the Connector, and example Skill content the AI can draw on when proposing integrations.
 
@@ -147,7 +147,7 @@ All secrets live in the Credential Vault: encrypted at rest, never logged, never
 
 External APIs change. Fields are renamed, endpoints move, new error codes appear, response shapes evolve. A Connector that worked last month may not work the same way today.
 
-sk tracks schema versions for each Connector endpoint. As the engine executes Steps against a Connector, it observes the response shapes and compares them against the recorded schema. When a discrepancy appears — a field that was present is missing, a type that was a string is now an object — the engine classifies it as drift.
+sk tracks schema versions per Connector endpoint, Workflow, and Step. Successful responses accumulate observed fields into a contract, so request-dependent or optional fields can appear and disappear without being misclassified as removals. Incompatible type changes remain proactive drift signals; an actual missing path or failed validation is still detected reactively from the affected execution.
 
 Drift is detected from actual execution results, not from periodic polling. The signal comes from real workflow runs encountering real changes in the connected boundary. When drift is detected, it becomes the trigger for the self-healing process described in the execution document.
 
@@ -159,7 +159,102 @@ Every Connector can be tested independently of any workflow. The engine validate
 
 Connector validation is available on demand and during authoring. Operators do not need to wait for a full workflow failure before checking whether a Connector is reachable, authenticated, and returning the expected shape.
 
-A draft connector that does not yet have a saved credential cannot be probed. The probe path returns a structured `credential_required` envelope rather than silently sending an unauthenticated request. The conversational layer treats this as a signal to collect the credential through a masked form before the next probe.
+A draft connector that does not yet have a credential cannot be probed. The probe path returns a structured `credential_required` envelope rather than silently sending an unauthenticated request. `sk` collects the value in its masked terminal form. MCP clients use a single-use URL elicitation for an unsaved static-credential draft; the submission stages the credential in engine memory, resumes the same conversation, and the next green probe persists the connector and encrypted credential atomically. The draft never has to be saved unauthenticated just to obtain a connector id.
+
+Templates may attach bounded, non-secret headers to their health endpoint. The header schema rejects authentication, cookie, transport, and CR/LF-bearing values; a saved credential remains the only source of authentication. This is used for vendor-required protocol headers such as Notion's `Notion-Version`, so a connector probe exercises the same valid request shape as runtime traffic.
+
+---
+
+## Audited DEV to PROD Promotion
+
+An admin can promote a persisted DEV connector without reading or re-entering its credential. The operation is one transaction: connector state, credential state, promotion idempotency record, and immutable audit entries either all commit or all roll back. It requires the dedicated `connector:promote` permission and an `Idempotency-Key`; only the SHA-256 digest of that key is persisted.
+
+Two strategies make retention explicit:
+
+| Strategy | Connector identity | Credential handling | DEV after success |
+|---|---|---|---|
+| `copy` | Creates a new PROD connector id | Decrypts and re-encrypts supported static credentials under a new credential id and AAD; token-mint caches are cleared | Retained |
+| `move` | Keeps the connector id | Keeps credential ids, ciphertext, OAuth refresh state, and end-user bindings; only the environment changes | Removed |
+
+`copy` deliberately rejects OAuth/OAuth-client state and connectors with end-user credential bindings: duplicating either would create ambiguous refresh ownership or silently lose user bindings. Use `move` for those connectors. A conflicting active PROD connector with the same tenant-scoped slug is also rejected. Copy carries the pinned template snapshot, connector configuration, self-description links, circuit/health state, and static credential; ingested document rows and observed schema history stay attached to the DEV connector.
+
+Every successful operation writes `connector.environment_promoted` and one `credential.environment_promoted` event per affected credential. Audit metadata contains ids, environments, strategy, request source, and the idempotency-key digest—never plaintext or ciphertext.
+
+The conversational action is `promote_connector`. The equivalent CLI command is:
+
+```bash
+sk connectors promote <dev-connector-id> --to prod --strategy copy
+sk connectors promote <dev-connector-id> --to prod --strategy move --yes
+```
+
+The REST form is `POST /v1/connectors/{id}/promote` with a required `Idempotency-Key` header and body `{ "target_environment": "prod", "strategy": "copy" | "move" }`. A new copy returns 201; a move or idempotent replay returns 200.
+
+---
+
+## OpenAPI Connector Import
+
+`import_connector_from_spec` creates a connector draft from inline OpenAPI JSON/YAML, Google
+REST Discovery JSON, or an HTTP(S) spec URL. The equivalent REST surface is
+`POST /v1/connector-templates/import` with `source: "openapi"` or
+`source: "google_discovery"`. URL-fetched specification bodies are streamed with a 50 MiB
+(52,428,800 byte) hard limit: a declared oversized body is rejected before reading, while an
+unknown-length stream is cancelled on the first byte over budget.
+
+The importer reads top-level `servers` and `components.securitySchemes`. Absolute servers are
+preferred over the spec-host origin, relative servers resolve against the spec URL, and server
+variables use their declared defaults. Supported authentication hints are Bearer, OAuth2,
+header/query API keys, and Basic; Bearer wins when the document declares several alternatives.
+Google Discovery imports recursively read nested resources and methods, build the service base
+URL from `baseUrl` or `rootUrl` + `servicePath`, resolve request/response schema references, and
+derive OAuth2 or query-key authentication hints. The public import response shape is unchanged.
+
+Cloudflare now ships as the built-in `cloudflare` template. Create it directly, then add a newly
+created least-privilege API token through the credential command's masked/secret input path:
+
+```bash
+sk connectors create --template cloudflare --name cloudflare-dev
+sk credentials set <CONNECTOR_ID> --mode bearer --token '<NEW_SCOPED_TOKEN>'
+sk connectors test <CONNECTOR_ID>
+```
+
+The template uses `https://api.cloudflare.com/client/v4`, Bearer authentication, the official
+[Cloudflare OpenAPI schema](https://github.com/cloudflare/api-schemas), and three read-only
+starter recipes: token verification, zone listing, and DNS-record listing. A token that has
+appeared in chat, source code, shell history, or logs must be revoked and replaced before use.
+The Global API Key is intentionally not the default.
+
+The same official schema can still be imported explicitly when testing or customizing a draft:
+
+```json
+{
+  "source": "openapi",
+  "content": "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
+  "name": "Cloudflare",
+  "environment": "dev"
+}
+```
+
+The resulting draft auto-matches the same built-in template. Never put a token in the spec URL,
+public spec-fetch headers, a chat message, connector config, or workflow.
+
+Firebase/Firestore ships as template revision 2 and ingests the official Firestore v1 Google
+Discovery document. Configure a Google OAuth client, create the connector, and authorize it:
+
+```bash
+sk connector-templates set-oauth --slug firebase \
+  --client-id '<GOOGLE_OAUTH_CLIENT_ID>' \
+  --client-secret '<GOOGLE_OAUTH_CLIENT_SECRET>'
+sk connectors create --template firebase --name firebase-dev
+sk auth --connector-id <CONNECTOR_ID>
+```
+
+The built-in OAuth scopes are `cloud-platform` and `datastore`. For end-user requests governed
+by Firestore Security Rules, a short-lived Firebase Authentication ID token may instead be stored
+as a Bearer credential. A service-account JSON key is not an OAuth client secret and must not be
+pasted into the OAuth fields.
+
+This 50 MiB allowance is specific to connector-spec import. Live API Discovery below remains
+bounded to 16 MiB and returns a curated, cached endpoint index rather than a connector draft.
 
 ---
 
@@ -240,7 +335,7 @@ flowchart TB
     Discover["discover_connector_endpoints"]
     Draft["start_connector_from_template<br/>or _from_description"]
     AuthType{Auth type}
-    AskForm["ask_user_form<br/>(password, sensitive)"]
+    AskForm["secure credential input<br/>(masked in sk · URL-mode over MCP)"]
     AskFormOA["ask_user_form +<br/>commit_intent: save_connector_draft"]
     Probe["probe_connector_draft"]
     OAuth["authenticate_oauth<br/>(browser opens)"]
@@ -260,7 +355,7 @@ flowchart TB
 
 1. The agent calls `discover_connector_endpoints` to ground its endpoint choices in real spec data.
 2. The agent calls `start_connector_from_template` (or `start_connector_from_description`) to create a draft.
-3. The agent calls `ask_user_form(type: password, sensitive: true)` to collect the credential. The form value lands on the draft via the credential cache; no `commit_intent` is needed.
+3. The agent requests the credential. `sk` renders a masked terminal form. Over MCP, where protocol form elicitation must not carry secrets, the engine converts the request into a single-use URL-mode elicitation tied to the unsaved draft. In either case the value lands only in the draft credential cache; no connector row or `commit_intent` is needed.
 4. The agent calls `probe_connector_draft`. A green probe (`ok: true`) persists the connector + credential atomically inside the same tool call — DB row, encrypted credential, audit entry — and the response envelope carries `auto_saved: true` plus the saved connector shape. The agent does NOT need to call `save_connector_draft` afterward.
 5. The agent calls `call_connector` to iterate / paginate / sample.
 
@@ -279,7 +374,7 @@ The diagnostic tools `save_connector_draft` and `save_workflow_draft` remain ava
 | `auto_persist_on_confirmation` | harness auto-persist | An `ask_user_form` carrying `commit_intent` (OAuth2 happy path, plus delete/revoke confirmations) |
 | `manual_re_issue` | `save_connector_draft` / `save_workflow_draft` (direct) | Operator-driven re-save, force-save, credential rotation |
 
-Credentials only flow through the masked form path. The `update_connector_draft` tool rejects any credential-shaped key in `config` with a structured `credential_must_use_form` envelope. Drivers no longer accept inline credentials from `connector.config` at probe time. There is no shortcut.
+Credentials only flow through a sanctioned secret-input surface: the masked `sk` form or the single-use MCP URL flow. The `update_connector_draft` tool rejects any credential-shaped key in `config` with a structured `credential_must_use_form` envelope. Drivers no longer accept inline credentials from `connector.config` at probe time. There is no chat-text or connector-config shortcut.
 
 ---
 
@@ -292,6 +387,7 @@ The catalogue ships three layers of validation:
 - **Layer 1 — structural lint.** `apps/engine/src/connectors/templates.test.ts` runs at every PR: every template must parse `ConnectorTemplateSchema`, slugs are globally unique, recipes pass `WorkflowDefSchema`, etc. No network.
 - **Layer 2 — cross-reference invariants.** Same test file: every `default_skill` resolves to a known entry in `template-skills.json`, recipe placeholders are bound, no credential-shaped literals leak into recipe workflows. No network.
 - **Layer 3 — vendor-drift sweep.** A network sweep HEADs every `base_url`, calls every declared `probe_endpoint`, and fetches `<oauth.issuer_url>/.well-known/openid-configuration` for OAuth templates, stamping `verified_at` per template. It **never runs in CI** — gated by `RUN_TEMPLATE_AUDIT=1` so a careless pipeline can't hammer vendors. The sweep lives in `scripts/template-vendor-sweep.ts` and runs on an operator-chosen cadence against `templates.json`.
+- **Layer 4 — conversation journey.** `conversation-native-elicitation.integration.test.ts` drives a real Streamable HTTP MCP client from an unsaved bearer draft through URL elicitation, single-use credential submission, conversation resume, authenticated probe, connector save, and encrypted credential persistence. This composed state-machine test is mandatory because isolated tests of form delivery, probing, and saving cannot detect lifecycle deadlocks between those components.
 
 ### Running the sweep
 
@@ -518,7 +614,7 @@ Collected so every reader has the same expansion at hand.
 
 **Connector** — a configured connection to an external integration boundary. A Connector is built from a template, a driver, and credentials. It represents a specific integration instance — for example, a Stripe production account or a GitHub organisation. Connectors are tenant-scoped and versioned.
 
-**Connector Template** — a pre-built blueprint for a well-known service. Templates include the driver type, authentication configuration, documentation ingestion setup, and guided setup instructions. sk ships 55 Connector Templates covering services across payments, CRM, DevOps, data, communication, and cloud infrastructure. Templates are the starting point for creating a Connector; they are not Connectors themselves.
+**Connector Template** — a pre-built blueprint for a well-known service. Templates include the driver type, authentication configuration, documentation ingestion setup, and guided setup instructions. sk ships 57 Connector Templates covering services across payments, CRM, DevOps, data, communication, and cloud infrastructure. Templates are the starting point for creating a Connector; they are not Connectors themselves.
 
 **Driver** — the protocol layer that executes Connector requests. sk has four built-in drivers: HTTP, GraphQL, PostgreSQL, and S3. Each driver handles request construction, response parsing, pagination, and error normalisation for its protocol. Drivers are not pluggable at runtime — the four built-in drivers cover the intended integration surface.
 
@@ -894,16 +990,16 @@ credentials, and an immutable audit trail apply to every entry point.
 
 ## At a glance
 
-![sk architecture at a glance — outside-the-bridge AI clients cross via the MCP OAuth bridge into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](./overview.png)
+![sk architecture at a glance — external AI clients cross the product-local MCP OAuth boundary into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](./overview.png)
 
-*Outside-the-bridge clients (IDE assistants, employee chat) reach governed workflows only through the **MCP OAuth bridge**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`./overview.drawio`](./overview.drawio).*
+*External clients (IDE assistants, employee chat) reach governed workflows only through SubKit's product-local **MCP OAuth boundary**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`./overview.drawio`](./overview.drawio).*
 
 ```mermaid
 flowchart TB
     subgraph surfaces["Inbound surfaces"]
         CLI["sk CLI"]
         REST["HTTP REST API"]
-        MCP["MCP OAuth bridge<br/>(IDE assistants, employee chat)"]
+        MCP["MCP OAuth boundary<br/>(IDE assistants, employee chat)"]
         Chat["Chat adapters"]
         Hook["Inbound webhooks"]
         Sched["Scheduler"]
@@ -1105,6 +1201,8 @@ The trigger is recorded in every Execution and every Audit Log entry alongside t
 
 All three variants land at the same `runExecution()` core through the same execution contract; only the way the run is initiated differs.
 
+**Schedule resource upserts.** `POST /v1/schedules` is an upsert on `(tenant_id, workflow_id)`. A new row returns 201 with `upsert_status: "created"` and audits `schedule.created`; replacing the existing workflow schedule returns 200 with `upsert_status: "updated"` and audits `schedule.updated`. The persisted JSON `input`—including arrays, scalars, and `null`—is returned by create/update responses and by `GET /v1/schedules`, so the catalog shows the exact payload that unattended runs receive.
+
 **Webhook trigger, exactly.** Two facts trip up authors; both are grounded in `apps/engine/src/webhooks/inbound/service.ts`:
 
 - **`verify` is not the stored verifier.** `stripe-signature` → stored `verifier = "stripe"`; `github-hmac` → `"github"`; `none` → `"standard"` with `native_verifier_config.skip = true`. The stored `verifier` column is always one of `standard` / `github` / `stripe` — never `none`. A row whose `verifier` is set to `none` (or anything unrecognized) is denied at ingress with `unknown_verifier` / 401.
@@ -1161,7 +1259,7 @@ flowchart LR
 
 *No autonomous repair in production. The loop runs through a human gate. The compounding effect — each run improving the next — comes from operator-reviewed drift repair feeding back into authoring.*
 
-The engine monitors active Connectors for schema drift. Drift is detected from execution results — when a Step receives a response that does not match the recorded schema for that endpoint, the engine classifies it as drift and initiates the repair process. Detection is passive: no polling, no scheduled checks, just observation of what actually runs.
+The engine monitors active Connectors for schema drift from real execution results. Successful response evidence is accumulated per endpoint, Workflow, and Step; optional field absence is compatible, while incompatible type changes are proactive drift. Missing paths, validation failures, and endpoint removals remain reactive signals from the affected run. Detection is passive: no vendor polling, just observation of what actually executes plus the scheduled comparison of recorded evidence.
 
 When drift is detected, the self-healing loop analyzes the failure, consults the Connector's latest documentation, and proposes the smallest change that would make the Step work again. The proposal is validated by dry-running it against recorded Execution Fixtures — samples of past successful inputs and outputs. This validation step distinguishes a plausible repair from one that would introduce new failures.
 
@@ -1738,10 +1836,29 @@ on their behalf — proper delegation, not credential sharing.
 Attach a credential from the CLI:
 
 ```bash
-sk connectors credentials set <CONNECTOR_ID> --mode bearer --token sk_live_…
+sk credentials set <CONNECTOR_ID> --mode bearer --token sk_live_…
 #   modes: bearer | header | query | basic | aws_sigv4 | none
-sk connectors credentials list <CONNECTOR_ID>
+sk credentials list <CONNECTOR_ID>
 ```
+
+Cloudflare and Firebase/Firestore are built in:
+
+```bash
+# Cloudflare: use a newly created, least-privilege API token.
+sk connectors create --template cloudflare --name cloudflare-prod
+sk credentials set <CONNECTOR_ID> --mode bearer --token '<NEW_SCOPED_TOKEN>'
+
+# Firebase: store the Google OAuth client once per tenant/template, then authorize the connector.
+sk connector-templates set-oauth --slug firebase \
+  --client-id '<GOOGLE_OAUTH_CLIENT_ID>' \
+  --client-secret '<GOOGLE_OAUTH_CLIENT_SECRET>'
+sk connectors create --template firebase --name firebase-prod
+sk auth --connector-id <CONNECTOR_ID>
+```
+
+Revoke any Cloudflare token that has appeared in chat, logs, shell history, or source control.
+Firebase ID tokens are also accepted as short-lived Bearer credentials for end-user flows; a
+service-account JSON key is not an OAuth client secret.
 
 ## Health and validation
 
@@ -2182,7 +2299,8 @@ stalls into a ticket backlog.
 
 > **Audience:** SREs, platform engineers, operators running sk in production
 
-**See every run, catch drift before it costs you.** sk runs unattended: observable
+**See every run, understand content-free product usage, and catch drift before it costs
+you.** sk runs unattended: observable
 enough to diagnose a problem in minutes, bounded enough that no single workflow,
 tenant, or external dependency can degrade the platform for everyone else. The payoff
 is operational — fewer incidents, faster root-cause, predictable AI spend.
@@ -2192,6 +2310,7 @@ is operational — fewer incidents, faster root-cause, predictable AI spend.
 | Scrape process-wide metrics | [`/metrics` (Prometheus)](#observability) |
 | Trace one failing run across surfaces | [Telemetry Surface](#telemetry-surface) — correlate by `trace_id` |
 | Answer per-tenant questions over time | [`/v1/stats/*`](#tenant-scoped-runtime-stats-v1stats) |
+| Optimise HTTP, Chat, Conversation, and MCP product usage | [Privacy-safe usage reports](#privacy-safe-product-usage) |
 | Keep a tenant from monopolizing capacity | [Resource Limits](#resource-limits-and-operational-safety) |
 | Tune ingestion / knowledge budgets | [Documentation & Knowledge Tunables](#documentation--knowledge-tunables) |
 
@@ -2265,6 +2384,36 @@ Each event carries `method`, `path` (route template, not raw URL), `status_code`
 caught and logged at debug level — a slow or unavailable endpoint never stalls a
 response.
 
+### Privacy-safe product usage
+
+SubKit can persist a product-internal usage ledger in its own Postgres. It is disabled by
+default and makes no external request. Configure a dedicated product-local key before the
+switch so actor and session identities are one-way HMAC pseudonyms:
+
+```bash
+sk settings set observability.usage.hmac_secret '"<at-least-32-random-characters>"'
+sk settings set observability.usage.retention_days 90
+sk settings set observability.usage.enabled true
+```
+
+The schema is deliberately payload-free. It stores bounded route/operation classes,
+outcomes, traffic class, duration/byte counts, stream result, platform/mode/task phase,
+active MCP session counts, and product-local HMACs. It has no columns for HTTP query
+strings, unknown raw paths, messages, prompts, MCP arguments/results/resource URIs, Chat
+platform IDs, IP addresses, user agents, OAuth material, or credentials. Unknown and
+dynamic values collapse to bounded `unmatched`, `other`, or `unknown` classes.
+
+`X-SubKit-Traffic-Class: synthetic` marks content-free canaries; `internal` is reserved for
+collectors and reporting. Stats default to `organic`, so health probes and canaries do not
+distort product decisions. Google Chat propagates this header only after request
+verification; MCP and HTTP apply it at their authenticated transport edge.
+
+Raw rows expire after 90 days by default (configurable from 31–365). The four semantic
+reports are exact, never sampled, and return exact full-window unique actors/sessions,
+ratio numerator and denominator, duration coverage, `measured|zero|missing` value state,
+and retention truncation. Cockpit and ContentKit can therefore distinguish “zero usage”
+from “collection disabled” without guessing.
+
 ### Telemetry Surface
 
 Every code path an operator may need to debug emits at least one structured event
@@ -2331,8 +2480,9 @@ requirement.
 
 Where `/metrics` is a process-wide Prometheus snapshot that resets on redeploy and is
 **not** tenant-scoped, the `/v1/stats/*` surface answers per-tenant operational
-questions over time-bucketed history. It aggregates at read time from `executions`,
-`audit_log`, and `llm_usage` — no new tables. Every route filters
+questions over time-bucketed history. Operational routes aggregate at read time from
+`executions`, `audit_log`, and `llm_usage`; product usage routes aggregate the bounded
+`usage_events` ledger. Every route filters
 `tenant_id = principal.tenant_id` as the first predicate and is gated by the single
 `stats:read` permission (admins hold it by default; members opt in via a custom role).
 
@@ -2342,6 +2492,10 @@ questions over time-bucketed history. It aggregates at read time from `execution
 | `GET /v1/stats/connectors` | `audit_log` (`action='connector.invoked'`) | connector-call volume + latency + outcome + status-class (`4xx_auth`/`4xx_rate_limited`/…) |
 | `GET /v1/stats/events` | `audit_log` (per `?class=`) | webhook / chat / schedule / self-healing / discovery / policy / external-write event volume |
 | `GET /v1/stats/llm` | `llm_usage` | token usage + cache-hit rate + latency by model / flow |
+| `GET /v1/stats/http` | `usage_events` | canonical route volume, exact actors/sessions, latency, bytes, outcomes |
+| `GET /v1/stats/chat` | `usage_events` | Chat event kind/platform, sync vs async, deduplication, outcomes |
+| `GET /v1/stats/mcp` | `usage_events` | JSON-RPC classes, tasks, SSE completion/disconnect, session churn/capacity |
+| `GET /v1/stats/conversations` | `usage_events` | cross-surface HTTP/Chat/MCP turns, async task lifecycle, input pauses, completion/disconnect, outcomes |
 
 Connector status classes use the upstream transport status when one exists.
 `network_error` means that a connector call failed before receiving such a
@@ -2362,7 +2516,14 @@ carries three rollups: per-bucket (`groups[].buckets[]`), per-group totals
 Two btree indexes back these routes:
 `executions (tenant_id, status, started_at)` and `audit_log (tenant_id, action, ts)`.
 
-Operators read this surface from the CLI: `sk stats executions|connectors|events|llm`
+Usage routes add `traffic_class` (default `organic`) and controlled filters for
+`operation`, `outcome`, `request_source`, `platform`, and `response_mode`. At most two
+controlled `group_by` dimensions are accepted. Their response schema is
+`subkit.usage-stats.v1`; `quality.sampled=false`, `quality.unique_scope=exact_window`, and
+every ratio carries both numerator and denominator.
+
+Operators read this surface from the CLI:
+`sk stats executions|connectors|events|llm|http|chat|mcp|conversations`
 (human ASCII table + sparkline by default, `--json` for cron/CI/ETL), and it feeds the
 `sk` settings Status heatmap + Usage token bar.
 
@@ -2552,7 +2713,9 @@ sk connectors create \
   --name stripe-prod
 ```
 
-Pick from 55 connector templates — see [docs/concepts/connectors.md](../concepts/connectors.md) for how templates, drivers, and credentials work together.
+Pick from 57 connector templates — including Cloudflare and Firebase/Firestore. See
+[docs/concepts/connectors.md](../concepts/connectors.md) for how templates, drivers, and
+credentials work together.
 
 ## 5. You're operational
 
@@ -3227,7 +3390,8 @@ The clean authoring experience treats intermediate verification as first-class p
 | 1 | Start or update the connector draft |
 | 2 | Inspect the current draft |
 | 3 | Validate required fields and config shape |
-| 4 | Probe the real upstream boundary — a green probe persists inline; envelope carries `auto_saved: true` |
+| 4 | Collect static credentials through the masked `sk` form or MCP single-use URL elicitation; never through chat text |
+| 5 | Probe the real upstream boundary — a green probe persists inline; envelope carries `auto_saved: true` |
 
 **Workflows:**
 
@@ -3487,6 +3651,14 @@ When a user names an external boundary — "pull from our Salesforce instance" o
 | Connector Templates | A catalog covering common enterprise services — driver type, auth config, doc references, setup guidance. The AI understands the target API, not just the idea of it |
 | Documentation Ingestion | OpenAPI specs, GraphQL schemas, and HTML docs are indexed and become context for that connector — specific endpoints, parameters, error codes |
 | Credential Vault | Users never handle raw secrets; the AI proposes "use your Stripe connector" without seeing the key. Credentials are referenced by name, never by value |
+
+Cloudflare and Firebase/Firestore are catalog templates (`cloudflare` and `firebase`). When no
+catalog template exists, `import_connector_from_spec` can start from OpenAPI JSON/YAML or Google
+REST Discovery JSON, inline or at a URL. URL imports are streamed up to 50 MiB and use server,
+service-root, and security metadata to seed the draft. Cloudflare's official OpenAPI document
+auto-matches the Cloudflare template; Firestore's official Discovery document auto-matches
+Firebase revision 2. Credentials are collected only after import through the masked or managed
+OAuth flow and must never appear in the public spec fetch or conversation transcript.
 
 ---
 
@@ -5214,7 +5386,7 @@ every API call.
 | `sk auth` | `connector:write` | Start a reauthentication flow for a connector (OAuth2 authorize URL) | — |
 | `sk chat` | `chat_workspace:read` | Manage external chat spaces (Google Chat / Slack) | `install-space`, `remove-space`, `spaces` |
 | `sk connector-templates` | `connector:read` | Manage connector templates | `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth` |
-| `sk connectors` | `connector:read` | Manage connectors | `create`, `delete`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `get`, `inspect`, `list`, `patch`, `probe`, `test` |
+| `sk connectors` | `connector:read` | Manage connectors | `create`, `delete`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `get`, `inspect`, `list`, `patch`, `probe`, `promote`, `test` |
 | `sk credentials` | `credential:read` | Manage connector credentials | `delete`, `list`, `rotate`, `set` |
 | `sk diagnostics` | `audit:read` | Engine diagnostics: errors, LLM status, setup validation | `errors`, `llm`, `setup` |
 | `sk discovery` | `discovery:read` | Manage discovery runs and artifacts | `approve`, `artifacts`, `create`, `get`, `list`, `reject` |
@@ -5252,7 +5424,7 @@ every API call.
 | `sk show` | — | Show cached metadata for a session by id or alias | — |
 | `sk skill-candidates` | `skill:read` | Manage skill candidates | `approve`, `get`, `list`, `reject` |
 | `sk skills` | `skill:read` | Manage skills | `activate`, `archive`, `create`, `delete`, `edit`, `get`, `history`, `list`, `patch`, `restore`, `sync` |
-| `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `connectors`, `events`, `executions`, `llm` |
+| `sk stats` | `stats:read` | Tenant-scoped runtime statistics (needs stats:read) | `chat`, `connectors`, `conversations`, `events`, `executions`, `http`, `llm`, `mcp` |
 | `sk status` | — | Print the active profile + engine reachability | — |
 | `sk subscriptions` | `subscription:read` | Manage event subscriptions | `create`, `delete`, `deliveries`, `get`, `list`, `patch`, `replay` |
 | `sk system-accounts` | `identity:read` | Manage system accounts | `create`, `delete`, `list` |
@@ -5578,7 +5750,7 @@ the repo; the committed driver above is the portable interface.
 > **Reading time:** ~12 min
 > **Audience:** Engineers integrating with sk, operators configuring surfaces
 
-**Meet your team where they already work — without re-implementing access control per channel.** A developer lives in a terminal. An analyst lives in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant wants to call a workflow directly. sk gives each of them a native door, and every door opens onto the *same* governed engine: one RBAC model, one Audit Log, one identity envelope (`tenant_id`, `actor_id`, `request_source`, `trace_id`). Adopting sk never forces a tooling migration, and security never forks per surface.
+**Meet your team where they already work—with one governed engine and one common MCP auth contract.** A developer lives in a terminal. An analyst lives in Slack. A CI pipeline needs a machine-readable API. An AI coding assistant wants to call a workflow directly. sk gives each of them a native door, and every door opens onto the *same* governed engine: one RBAC model, one Audit Log, one identity envelope (`tenant_id`, `actor_id`, `request_source`, `trace_id`). Adopting sk never forces a tooling migration, and security never forks per surface.
 
 ## Surfaces at a glance
 
@@ -5615,9 +5787,9 @@ flowchart LR
     Gate --> Engine
 ```
 
-For system-wide context — where external AI clients cross the MCP OAuth bridge and other surfaces enter directly — see the architecture overview:
+For system-wide context — where external AI clients cross SubKit's MCP OAuth boundary and other surfaces enter directly — see the architecture overview:
 
-![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the MCP OAuth bridge; other surfaces enter directly.](../concepts/overview.png)
+![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the product-local MCP OAuth boundary; other surfaces enter directly.](../concepts/overview.png)
 
 *Source: [`overview.drawio`](../concepts/overview.drawio).*
 
@@ -5663,6 +5835,8 @@ The normal guided flow does not expose conversational force bypasses for these t
 
 **Resource references.** Inside a Conversation, users mention platform resources directly with `@connector` and `@skill` syntax, grounding AI proposals in the specific Connectors and Skills the tenant has configured.
 
+**Connector promotion.** Admins can ask the conversation to promote a connector, or call `sk connectors promote <id> --to prod --strategy copy|move`. Both reach the same tenant-scoped promotion service and require `connector:promote`. The CLI generates and prints an idempotency key when one is omitted; `move` also requires an interactive confirmation unless `--yes` is supplied.
+
 **Headless mode.** When stdin is not a TTY, the sk CLI runs without interactive prompts — enabling scripted workflows, CI pipeline integration, and automated testing where no human is at the terminal.
 
 **Outbound network from CLI startup.** The welcome banner can pull a one-line "what's new" headline from a remote JSON endpoint on REPL start, but the **default posture is opt-in**. With `SK_WHATS_NEW_URL` unset, no network call fires and the resolver renders the bundled `CHANGELOG.md` head. Operators who want the upstream feed set `SK_WHATS_NEW_URL=<url>` (recommended: `https://updates.subkit.dev/whats-new.json`); the fetch is async, 3-second timeout, 24-hour on-disk cache at `~/.sk/whats-new-cache.json`, identifies itself with a `User-Agent: sk-cli/<version>` header, and the JSON payload is Zod-validated (`{ headline: string }`, strict — unknown keys reject) before any string reaches the banner. The request carries no auth and no tenant identifier. The opt-out sentinels (`""`, `"disabled"`, `"off"`, `"0"`) remain compatible with operators who inherited a populated default and want to disable explicitly. All headline strings (cache, remote, CHANGELOG) pass through `sanitizeHeadline` which strips ANSI escapes and control bytes and truncates to 80 chars before render. After three consecutive remote-fetch failures (including Zod parse failures) the resolver opens a 7-day circuit breaker: subsequent REPL boots skip the network call entirely until the breaker re-arms or a future success resets it.
@@ -5680,6 +5854,7 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 | **Schema-first** | Request/response shapes are Zod schemas; the OpenAPI 3.1 spec is generated from them, never hand-written — so the spec is always accurate and generated clients always match the implementation. |
 | **Conversation state** | Conversation responses expose the authoring state machine directly — `authoring_mode`, `authoring_stage`, active target metadata, checkpoint statuses, stale checkpoints, `next_required_action`, persisted resources, latest execution / diagnosis references. Clients never reconstruct progress from free-form text. |
 | **Consistency** | Pagination, filtering, and sorting follow the same conventions across all list endpoints. Learn the pattern once, apply it everywhere. |
+| **Promotion** | `POST /v1/connectors/{id}/promote` promotes DEV to PROD with explicit `copy` or `move` semantics, a required `Idempotency-Key`, admin-only RBAC, and connector/credential audit ids in the response. |
 | **Discoverability** | OpenAPI spec served at `/openapi.json`; interactive Scalar UI at `/docs`. Both available to any authenticated client. |
 | **LLM grounding** | The engine publishes its own docs in the [llms-txt](https://llmstxt.org) format, unauthenticated, as `text/markdown`: `GET /llms.txt` (a robots.txt-style index) and `GET /llms-full.txt` (the full docs in one fetch). Point an MCP client or model at these to ground it on auth, error-code semantics, and conventions in prose the bare schema can't express. |
 
@@ -5712,17 +5887,57 @@ The Model Context Protocol (MCP) server is embedded in the sk engine and exposes
 
 The complete MCP conversation cluster is `conversation_start`, `conversation_append`, `conversation_get`, `conversation_respond_elicitation`, and `conversation_commit` — the session orchestration an AI client uses to open, drive, resolve elicitations on, and commit an authoring conversation. See [Tool palette → MCP session and confirmation tools](./tool-palette.md#mcp-session-and-confirmation-tools) for each tool's role.
 >
-> **Elicitation over MCP is always the DB-pause path.** No in-process elicitation bridge exists on any surface: an `ask_user_*` / `authenticate_oauth` inserts a pending `conversation_elicitations` row, sets the conversation to `awaiting_input`, and the turn ends. The task then derives `input_required`; the client reads the pending form via `conversation_get` (or `tasks/get`) and resolves it with `conversation_respond_elicitation`, which enqueues the next turn. (Write approvals never elicit at all — they wait at their `approval_url`.)
+> **Persisted-to-native MCP elicitation.** Background workers have no live MCP
+> session, so an `ask_user_*`, conversation approval, or browser authorization
+> first persists a pending `conversation_elicitations` row and ends the turn.
+> The next `conversation_get` or `tasks/get` on a client advertising
+> `elicitation` atomically leases that row and emits a real server→client
+> `elicitation/create`: form mode for primitive questions/approvals and URL mode
+> for OAuth or credential setup. Delivery is **non-blocking**: the poll holds
+> the call open only for a ~1 s delivery grace (so the request reaches the
+> client inside an active call — clients auto-cancel "unsolicited"
+> elicitations) and then returns `input_required` immediately. Agentic clients
+> (Claude Code) render the form only after their own agent turn completes —
+> a poll that blocked on the answer could therefore never be answered in time.
+> The round-trip itself stays pending for up to five minutes; a form answer is
+> stamped as `human/in_band_elicitation`, staged by a detached continuation,
+> and resumes the same conversation with no poll in flight. A `cancel`
+> arriving faster than a human could render the form is treated as an
+> undelivered form (the client auto-cancelled), not a decision — the row
+> stays pending and a later poll re-prompts. URL
+> acceptance only acknowledges navigation; the credential/OAuth callback marks
+> the persisted row complete and emits `notifications/elicitation/complete`
+> before the next poll resumes it. Tasks clients retain the same task id. A
+> DB lease slightly longer than the round-trip timeout prevents duplicate
+> dialogs across concurrent polls and expires after a disconnect so another
+> replica can retry. A transport break never destroys the row: the pending
+> elicitation survives (demoted to the portal DB-pause on live-bridge
+> surfaces) and the in-flight draft with it. Ordinary questions still have the explicit
+> `conversation_respond_elicitation` fallback on clients without elicitation;
+> approval-bearing rows remain human-only and cannot be answered by a model.
+
+Static credentials are intentionally not transported in MCP form-elicitation
+payloads. For a new unsaved bearer/basic/header/query/AWS-SigV4 connector, the
+worker mints a single-use URL capability bound to the conversation draft. The
+credential submission remains process-local until an authenticated green probe
+atomically writes the connector and encrypted credential. This avoids the
+invalid lifecycle “save to obtain an id, but probe before save”. The native `sk`
+surface continues to use its masked in-terminal form.
 
 **Governance.** All MCP calls are subject to the same RBAC checks and Audit Log entries as direct API calls. There is no privileged back channel; identity and permissions are enforced identically regardless of which surface initiated the request.
 
-**Destructive-action flow.** Tenant writes (e.g. `delete_workflow`, `revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation authoring actions. One rule governs every write tool on every client: **an approval is granted by a human, out of band, through the approval portal.**
+**Destructive-action flow.** Tenant writes (e.g. `delete_workflow`, `revoke_api_key`) follow the same `confirm_before_execution` policy as in-conversation authoring actions. One rule governs every write tool on every client: **an approval is granted by a human, never by the model.**
 
-*Every client.* The first call returns a `needs_confirm` envelope — `{status: "needs_confirm", tool, pending_output, tool_call_id, approval_url}` — and an `approval.requested` audit row that persists the encrypted arguments and the `would_write` preview. The approval is minted UNGRANTED. A person opens `approval_url`, sees exactly what will be written, and grants or declines (`approval.granted` / `approval.declined`). Only then does `confirm_tool_call({tool, confirm_id})` succeed: the engine claims that single-use approval under a CAS, replays the arguments it already holds, emits `approval.approved`, and executes. Before the human decides, the same call answers `approval_not_granted`.
+*Standalone tool calls.* The first call returns a `needs_confirm` envelope — `{status: "needs_confirm", tool, pending_output, tool_call_id, approval_url}` — and an `approval.requested` audit row that persists the encrypted arguments and the `would_write` preview. The approval is minted UNGRANTED. A person opens `approval_url`, sees exactly what will be written, and grants or declines (`approval.granted` / `approval.declined`). Only then does `confirm_tool_call({tool, confirm_id})` succeed: the engine claims that single-use approval under a CAS, replays the arguments it already holds, emits `approval.approved`, and executes. Before the human decides, the same call answers `approval_not_granted`.
 
 `confirm_tool_call` is therefore a **trigger**, not a gate — it performs a call a human already approved and can approve nothing itself. It is offered to every client, with no capability-based refusal, because there is nothing left for one to protect.
 
-*Clients that advertise `elicitation`.* No different. The engine never issues an in-band `elicitation/create` for a write approval — production showed the responses are not human decisions (29 unanswered prompts, 0 fulfilled; the one client that answered auto-declined without a person ever seeing the prompt). Whatever capabilities a client advertises, the approval waits, ungranted, at its `approval_url`.
+*Conversation clients that advertise form elicitation.* A policy gate reached
+inside `conversation_*` is persisted by the worker and delivered by the next
+poll as `elicitation/create(mode: form)`. Only the active MCP session can supply
+the answer; it is recorded with human in-band provenance before the held call is
+claimed. Standalone tool calls still use the approval portal because they have
+no conversation/task pause to reattach to.
 
 There is no argument on any tool, and no `_meta` flag a model-driven client can set, that clears a confirmation gate. `_meta.sk_confirm` is the same trigger `confirm_tool_call` is, and fails the same way on an ungranted approval.
 
@@ -5744,7 +5959,54 @@ There is no argument on any tool, and no `_meta` flag a model-driven client can 
 
 The sk engine is a full OAuth 2.1 authorization server and resource server for `/mcp`. This lets OAuth-only clients — including the ChatGPT custom connector, Claude.ai, and Cursor — authenticate without a static API key.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`).
+Every issued MCP access token is RFC 8707-bound to this deployment's canonical
+`/mcp` resource. When `server.public_base_url` is configured, a token with a
+missing or different resource audience is rejected; there is no audience-less
+compatibility path.
+
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this SubKit deployment. Provider ids and labels are deployment-owned values, never engine modes.
+
+The visible state machine is the common `mcp-auth-v2` contract. Authorize
+redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser
+always renders **Continue with SSO** before **Continue with API key** and does
+not expose the configured provider label. The consent, account-switch and
+logout screens use the same layout and security headers as WikiKit and
+ContentKit while retaining SubKit branding and RBAC.
+
+```json
+{
+  "auth": {
+    "providers": [
+        {
+          "protocol": "api_key",
+          "id": "api-key",
+          "label": "SubKit API key"
+        },
+        {
+          "protocol": "oidc",
+          "id": "workforce-oidc",
+          "label": "Workforce OIDC",
+          "issuer_url": "https://identity.example.com",
+          "client_id": "<client-id>",
+          "client_secret": "<secret>"
+        }
+      ]
+  }
+}
+```
+
+Register `${server.public_base_url}/v1/identity/login/callback` as every OIDC
+adapter's redirect URI. Every adapter uses only the generic `login/start`,
+`login/callback`, and `logout` routes.
+
+The CLI discovers the same list through `GET /v1/identity/providers`. An OIDC
+device-flow result is exchanged at `POST /v1/identity/sessions`
+with `{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
+The response is exactly `{api_key,principal_id,context_id,email}`; `email` is
+nullable and contains only a provider-verified address;
+`context_id` is the SubKit tenant id.
+The exchange never accepts an arbitrary issuer URL and has no protocol- or
+vendor-specific route alias.
 
 **Discovery endpoints.**
 
@@ -5768,7 +6030,7 @@ sequenceDiagram
     C->>E: POST /v1/oauth/register (DCR, RFC 7591)
     E-->>C: { client_id, client_secret? }
     C->>U: 302 to /v1/oauth/authorize?code_challenge=...
-    U->>E: OIDC login + consent
+    U->>E: selected API-key or OIDC adapter + consent
     E-->>U: 302 to redirect_uri?code=...&state=...
     U-->>C: deliver code
     C->>E: POST /v1/oauth/token (code + verifier)
@@ -5782,13 +6044,15 @@ sequenceDiagram
 2. Client fetches `/.well-known/oauth-authorization-server` to get all endpoints.
 3. Client registers itself at `POST /v1/oauth/register` (dynamic client registration, RFC 7591). Returns `client_id` (and `client_secret` for confidential clients).
 4. Client redirects the user to `GET /v1/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&code_challenge=...&code_challenge_method=S256&scope=mcp:read&state=...`. PKCE S256 is mandatory; `plain` is rejected.
-5. If not logged in, the engine redirects to `/v1/identity/login/start` (OIDC). After login the user returns to the authorize page.
-6. The consent page shows the client name, tenant, and requested scopes. The user approves or denies.
+5. If not logged in, the engine redirects to `/v1/identity/login/start`, which shows the configured provider matrix. Every method creates the same revocable browser session.
+6. The common `sk` consent card shows the client name, tenant, and only requested scopes allowed by the current role. Read is mandatory; the user may reduce the grant, deny, log out, or switch accounts.
 7. On approval, the engine issues an authorization code and redirects to the client's `redirect_uri?code=...&state=...`.
 8. Client exchanges the code at `POST /v1/oauth/token` (form-encoded, `grant_type=authorization_code`). Response: `{ access_token: "wf_mcp_...", refresh_token: "wf_mcr_...", token_type: "bearer", expires_in: 3600 }`.
 9. Client uses `Authorization: Bearer wf_mcp_...` on subsequent `POST /mcp` calls.
 10. Client refreshes at `POST /v1/oauth/token` (`grant_type=refresh_token`). Refresh tokens rotate on every use; replaying a rotated token revokes the whole chain.
-11. Client revokes at `POST /v1/oauth/revoke`.
+11. Client revokes at `POST /v1/oauth/revoke`. Revoking a refresh token
+    invalidates its complete rotation family and every associated access token;
+    revoking an access token invalidates that access token alone.
 
 **Scopes.**
 
@@ -5798,7 +6062,7 @@ sequenceDiagram
 | `mcp:authoring` | authoring | Adds `conversation.*` authoring tools. |
 | `mcp:admin` | admin | Adds full `tenant.*` admin tools (subject to RBAC). |
 
-The scope granted at consent is the intersection of what the client requested and what the consenting user's role permits. A token can never carry a scope its owner lacks.
+The scope granted at consent is the intersection of what the client requested, what the server supports and what the consenting user's current role permits. An unrequested scope is never displayed or granted, including when a form is tampered with. A role/session downgrade is rechecked at decision time.
 
 **Connecting ChatGPT custom connector.**
 
@@ -5828,7 +6092,7 @@ Add to `.cursor/mcp.json`:
 ```
 Cursor discovers OAuth from the `WWW-Authenticate` header on the first unauthenticated request and opens the browser-based consent flow.
 
-**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Refresh tokens rotate on every use and replay of a rotated token revokes the full chain. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
+**Security notes.** Authorization codes are single-use with a 60-second TTL. `redirect_uri` is matched exactly against the registered URIs — no prefix or wildcard matching. Login state is short-lived and signed; account switching revokes the old session. Browser sessions have an eight-hour sliding limit and a 24-hour absolute lifetime cap. Refresh tokens rotate on every use; replay or explicit revocation of a refresh token revokes the full family and its access tokens. Only SHA-256 hashes of tokens are persisted; the plaintext values are never stored. `mcp_oauth_clients` intentionally has no `tenant_id` because DCR (RFC 7591) registers the client before any tenant context exists; the tenant binds at consent time on the authorization-code row and on every token. This is a deliberate, documented exception to the "every row carries tenant_id" rule.
 
 ---
 
@@ -6033,15 +6297,46 @@ docker exec subkit sk init \
 > docker logs subkit 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
 > ```
 
-> **Authentication defaults to the local `subkit` provider** — people are added
-> by admin invite and authenticate with engine-issued API keys; no external
-> identity provider is involved (that's the [teammate flow](#add-a-teammate-multi-user)
-> below). To switch the whole engine to SSO via Firebase, set the provider and
-> restart:
-> ```bash
-> docker exec subkit sk settings set auth.provider '"firebase"' --force
-> docker restart subkit
-> ```
+> **Authentication defaults to the `api_key` adapter** — people are added by
+> admin invite and authenticate with engine-issued API keys. Configure direct
+> OIDC by adding named `oidc` records to
+> `auth.providers` in `subkit.config.json`, then restart. No provider-specific
+> setting or route is required.
+
+For example, a SubKit-owned direct OIDC client is one configuration record:
+
+```json
+{
+  "auth": {
+    "providers": [
+      { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
+      {
+        "protocol": "oidc",
+        "id": "workforce-oidc",
+        "label": "Workforce OIDC",
+        "issuer_url": "https://identity.example.com",
+        "client_id": "<subkit-client-id>",
+        "client_secret": "<subkit-client-secret>",
+        "scopes": "openid profile email",
+        "tenant_slug": "default"
+      }
+    ]
+  }
+}
+```
+
+The only browser endpoints remain `/v1/identity/login/start`,
+`/v1/identity/login/callback`, and `/v1/identity/logout` regardless of adapter
+id or vendor.
+
+The chooser is deliberately not vendor-configurable: `mcp-auth-v2` always
+shows **Continue with SSO** first and **Continue with API key** second. Provider
+ids remain opaque deployment configuration, discovery returns canonical
+labels (`SSO`, `API key`), and assertion exchange uses only
+`POST /v1/identity/sessions` with the shared
+`{provider_id,identity_token}` → `{api_key,principal_id,context_id,email}`
+contract. The immutable OIDC `sub` is required; `email` is nullable and
+contains only a provider-verified address.
 
 Verify:
 
@@ -6805,17 +7100,14 @@ with `_meta.sk_confirm: true` + `_meta.sk_confirm_id: <tool_call_id>`. Both are 
 same trigger, and both fail with `approval_not_granted` until the human decides.
 There is no second door to bolt, because neither door opens by itself.
 
-**In-band elicitation is NOT a grant channel over MCP.** The engine never issues an
-`elicitation/create` confirmation for a write approval, whatever capabilities the
-client advertises. Production settled this: across the full journal retention,
-**29 `elicitation/create` timeouts and not one fulfilled prompt** — and the one
-client that did answer auto-declined without a human ever seeing the prompt. An
-in-band response over MCP is therefore never a verified human decision (an
-auto-accept would be a self-approval hole; an auto-decline killed writes a person
-still wanted). Every write approval takes the portal path above:
-`dispatchTool#gateConfirm` for a registry tool and `gateHeldWrites` for a
-`wf_<slug>` preview both mint the approval UNGRANTED and hand back the
-`approval_url` — the one channel where a person, and only a person, decides.
+**A fulfilled native elicitation is a human grant channel.** Conversation workers
+persist their confirmation and end the turn; a later `conversation_get` or
+`tasks/get` can only resolve it through the active MCP session's
+`elicitation/create(mode: form)` request. That delivery is leased, the answer is
+stamped `human/in_band_elicitation`, and only then may the harness grant and claim
+the held call. A model relay through `conversation_respond_elicitation` is still
+refused for approval-bearing rows. Standalone registry/workflow calls retain the
+approval-portal flow because they have no persisted conversation task to resume.
 
 **No path re-sends the arguments.** `confirm_tool_call` publishes no `arguments`
 property at all, and on the `_meta` path the dispatcher discards whatever the client
@@ -6911,7 +7203,7 @@ must not be conflated:
 | Fact | Values | Records |
 |---|---|---|
 | `action` | `APPROVAL_APPROVED` · `APPROVAL_REJECTED` | the *governance decision* |
-| `decision_reason` | `user_declined`, `oauth_timeout`, `elicitation_transport_failed`, … | machine code behind a cancel |
+| `decision_reason` | `user_declined`, `oauth_timeout`, `oauth_elicitation_transport_failed`, … | machine code behind a cancel |
 | `elicitation_transport` | `succeeded` · `failed` | whether a `protocol_native` bridge round-trip *delivered* — not whether it was approved |
 
 Crucially, `elicitation_transport: "succeeded"` can coexist with a `cancelled`
@@ -6921,15 +7213,27 @@ decision*. An audit query for "successful elicitations" must therefore filter on
 `action` / `decision_reason`, not on `elicitation_transport` — equating transport
 success with approval double-counts every declined-but-delivered prompt.
 
+A broken transport is *not* a decision at all: when an `ask_user_*` bridge
+round-trip fails in transit (or a client auto-cancels the form faster than a
+human could render it), the row is **demoted to the portal DB-pause** — it
+stays `pending`, the conversation stays `awaiting_input`, and the audit trail
+records `ELICITATION_DEMOTED_TO_PORTAL`, never `APPROVAL_REJECTED`. Only the
+OAuth OOB flow resolves its approval handle on transport failure
+(`oauth_elicitation_transport_failed`), because its state row survives
+independently and a retried `authenticate_oauth` resumes the same flow.
+
 ### Secret answers never transit the transcript or LLM context
 
 A connector credential the operator supplies never lands in the conversation
 transcript, a persisted tool-call row, or the model's replayed context:
 
-- **Over MCP** a secret-shaped elicitation is refused (`secret_elicitation_blocked`)
-  and degraded to URL-mode elicitation or the portal DB-pause; poll-based clients
-  mask the field because `conversation_get` relays the form's `type:"password"` /
-  `sensitive:true` markers verbatim.
+- **Over MCP** a secret-shaped form is never sent as `mode: form`. For an unsaved
+  bearer, basic, header, query, or AWS SigV4 connector draft, the engine converts
+  it to a single-use `mode: url` elicitation. Submission stages the value only for
+  the draft probe; a green probe atomically persists the connector and encrypted
+  credential. Saved connectors use the corresponding reauthentication URL flow.
+  Clients without URL elicitation can still expose the persisted setup action from
+  `conversation_get`, but the secret is never accepted through chat text.
 - When a secret **is** typed into the sanctioned CLI/web masked form, its answer
   value is projected to `***redacted***` at the single persist chokepoint
   (`resolveElicitation`), and credential subtrees in
@@ -7131,10 +7435,20 @@ the file only needs to carry overrides:
   "llm":     { "provider": "anthropic",
                "api_key":  "…",                 // sensitive, masked everywhere
                "providers": { "anthropic": { "model": "claude-sonnet-4-6" } } },
-  "auth":    { "oidc": { "issuer_url": "…" }, "session": { "secret": "auto-generated" } },
+  "auth":    { "providers": [
+                 { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
+                 { "protocol": "oidc", "id": "workforce", "label": "Work account",
+                   "issuer_url": "https://identity.example.com", "client_id": "…",
+                   "tenant_slug": "default" }
+               ],
+               "session": { "secret": "auto-generated" } },
   "platform":      { "slack": { … }, "teams": { … }, "googlechat": { … } },
   "storage":       { "s3": { … }, "knowledge": { "backend": "local" } },
-  "observability": { "langfuse": { "secret_key": "…" }, "otlp": { "endpoint": "…" } },
+  "observability": { "langfuse": { "secret_key": "…" },
+                     "otlp": { "endpoint": "…" },
+                     "usage": { "enabled": false,
+                                "hmac_secret": "…at least 32 chars…",
+                                "retention_days": 90 } },
   "egress":        { "mode": "permissive", "provider_hosts_extra": [] },
   "mcp":     { "read_only": false },
   "errors":  { "ring_size": 100 },
@@ -7152,6 +7466,14 @@ the file only needs to carry overrides:
   }
 }
 ```
+
+`observability.usage` is the local, content-free product measurement surface. Set its
+dedicated HMAC secret first, then enable it; changing either leaf is hot-applied. Raw events
+stay in the engine Postgres for `retention_days` (31–365, default 90) and are exposed only as
+tenant-scoped aggregates behind `stats:read`. This is separate from
+`observability.analytics`, which optionally forwards a smaller HTTP event to an external
+endpoint. Usage rows have no fields for prompts, messages, tool arguments/results, raw
+paths/query strings, IP addresses, user agents, OAuth material, or plaintext dynamic IDs.
 
 ### Resolution order (every read)
 
@@ -7472,10 +7794,9 @@ also fails after rotation**. There is no key-rotation envelope today.
    — every Slack/Teams/Google Chat workspace must be re-installed and
    re-onboarded through the platform's add-app flow.
 
-9. **Re-enter OIDC client secrets and tenant LLM API keys.** These tables
-   (`auth_provider_configs`, `tenant_llm_settings`) kept their non-secret
-   config; operators just re-enter the redacted credential leaf. CLI:
-   `sk settings set auth.oidc.client_secret '"…"'` and per-tenant `llm.api_key`.
+9. **Re-enter identity-provider secrets and tenant LLM API keys.** Update the
+   affected OIDC record in the structural `auth.providers` list inside
+   `subkit.config.json`; tenant LLM keys remain scalar `llm.api_key` settings.
 
 10. **Verify.** Hit `${ENGINE_URL}/v1/health` and run the tenant-scoped
     integration smoke; expect zero `decrypt_failed` `CryptoError` entries in the
@@ -8038,12 +8359,14 @@ flowchart TB
 
 | Role | Can do | Cannot do |
 |---|---|---|
-| **admin** | Full platform control: roles, keys, connectors, workflows | — |
-| **member** | Author and trigger workflows | Manage tenant identity/keys |
+| **admin** | Full platform control: roles, keys, connector promotion, workflows | — |
+| **member** | Author and trigger workflows | Manage tenant identity/keys or promote DEV connectors to PROD |
 | **end-user** | Trigger and view workflows | Modify any definition |
 | **service account** | Programmatic access | Reach any interactive surface |
 
 Beyond the built-ins, operators define **custom roles** for finer control, attach **resource grants** scoped to a single resource with an expiry, and group users for assignment.
+
+`connector:promote` is intentionally admin-only in the built-in roles. It moves encrypted production access and therefore does not ride on the broader member-level `connector:write` permission. A custom role may receive it explicitly; every allow or deny is audited before promotion state changes.
 
 ### Before-Request Hooks
 
@@ -8194,20 +8517,13 @@ Authentication
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `auth.firebase.login_url` | string | `""` | global | no | yes |  |
-| `auth.firebase.project_id` | string | `""` | global | no | yes |  |
-| `auth.firebase.tenant_slug` | string | `"default"` | global | no | yes | Tenant slug that Firebase-authenticated users are mapped into. |
+| `auth.enable_signup` | boolean | `false` | global | no | no | Allow first-time SSO sign-ins to auto-provision a new member account (JIT signup). When false, unknown identities are rejected with access_denied; existing users and links keep working. |
 | `auth.mcp_oauth.access_token_ttl_seconds` | number | `3600` | global | no | no | Lifetime in seconds for MCP OAuth access tokens. |
 | `auth.mcp_oauth.authorization_code_ttl_seconds` | number | `60` | global | no | no | Lifetime in seconds for MCP OAuth authorization codes. |
 | `auth.mcp_oauth.dynamic_registration_enabled` | boolean | `true` | global | no | no | Allow RFC 7591 dynamic client registration at POST /v1/oauth/register. |
 | `auth.mcp_oauth.enabled` | boolean | `true` | global | no | yes | Enable the MCP OAuth 2.1 authorization server (ChatGPT / Claude.ai / Cursor). |
 | `auth.mcp_oauth.refresh_token_ttl_seconds` | number | `2592000` | global | no | no | Lifetime in seconds for MCP OAuth refresh tokens (30 days). |
 | `auth.mcp_oauth.scopes_supported` | string[] | `["mcp:read","mcp:authoring","mcp:admin"]` | global | no | no | OAuth scopes advertised in the authorization server metadata. |
-| `auth.oidc.client_id` | string | `""` | global | no | yes |  |
-| `auth.oidc.client_secret` | string | `""` | global | yes | yes |  |
-| `auth.oidc.issuer_url` | string | `""` | global | no | yes |  |
-| `auth.oidc.redirect_uri` | string | `""` | global | no | yes |  |
-| `auth.provider` | enum("subkit" \| "firebase" \| "oidc") | `"subkit"` | global | no | yes | Human identity provider: 'subkit' (local admin-invite), 'firebase' (Firebase ID tokens), or 'oidc' (generic OIDC). Machine auth (API keys, portal, MCP OAuth) is always available. |
 | `auth.session.secret` | string | `""` | global | yes | yes | Session signing secret (auto-generated to a 32-byte hex value on first boot if empty); operator-supplied values must be at least 32 chars |
 
 ## platform
@@ -8266,6 +8582,9 @@ Observability
 | `observability.predictive.memory_cap_fraction` | number | `0.9` | global | no | no | Fraction of the host memory cap the RSS high-water may reach before an OOM-risk warning. |
 | `observability.predictive.pool_saturation_pct` | number | `80` | global | no | no | Percent of the Postgres pool in use (or any waiting clients) above which saturation is flagged. |
 | `observability.predictive.transient_retry_rate` | number | `1` | global | no | no | Transient-DB-retries-per-minute above which a flapping Postgres is flagged. |
+| `observability.usage.enabled` | boolean | `false` | global | no | no | Persist privacy-safe, tenant-scoped product usage events locally. Disabled by default; requires hmac_secret when enabled. |
+| `observability.usage.hmac_secret` | string | `""` | global | yes | no | Product-local HMAC secret for actor and session pseudonyms. Set at least 32 characters before enabling usage telemetry. |
+| `observability.usage.retention_days` | number | `90` | global | no | no | Raw usage-event retention in days; aggregate reports may outlive raw rows. |
 
 ## egress
 Egress filter
@@ -8373,3 +8692,9 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | `connectors.web_scraper.runtime.max_pages` | number | `1000` | tenant | no | no | Per-run crawl cap. Hard ceiling 10 000 (crawl_max_pages_exceeded). |
 | `connectors.web_scraper.runtime.respect_robots` | boolean | `true` | tenant | no | no | Skip URLs that robots.txt disallows for the configured User-Agent. |
 | `connectors.web_scraper.runtime.user_agent` | string | `"sk-web-scraper/1.0 (+https://subkit.io/bot)"` | tenant | no | no | User-Agent header on every fetch; passed to robots-parser matching. |
+
+## Structural settings
+
+`auth.providers` is the single SubKit-local auth list and is edited in `subkit.config.json`, not through the scalar settings API. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. Each OIDC client, optional secret, callback, session and tenant mapping belongs to this SubKit deployment.
+
+Configured labels are diagnostic metadata only. The common `mcp-auth-v2` surface derives its two user actions from protocol and always presents `Continue with SSO` before `Continue with API key`. Discovery exposes the canonical labels `SSO` and `API key`; no provider-specific route or parallel configuration tree is accepted.

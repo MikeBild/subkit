@@ -20,7 +20,7 @@ function makeClient(opts: { knowledgeSources?: Array<Record<string, unknown>>; e
         tenant_slug: "acme",
         email: opts.email ?? "alice@acme.test",
         role_name: "admin",
-        provider: "firebase",
+        provider: "workforce",
         base_url: "http://localhost:3000",
         scopes: null,
       },
@@ -81,7 +81,7 @@ describe("KnowledgeTab — inline ingest (G8 closure)", () => {
           tenant_slug: "acme",
           email: "u@a.test",
           role_name: "admin",
-          provider: "firebase",
+          provider: "workforce",
           base_url: "http://localhost:3000",
           scopes: null,
         },
@@ -211,7 +211,7 @@ describe("ProfileTab (M7) — rendered direct, no longer reachable from /setting
       expect(txt).toContain("carol@acme.test");
       expect(txt).toContain("acme");
       expect(txt).toContain("admin");
-      expect(txt).toContain("firebase");
+      expect(txt).toContain("workforce");
       expect(txt).toContain("http://localhost:3000");
     } finally {
       ui.unmount();

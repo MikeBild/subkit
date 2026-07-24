@@ -24,11 +24,30 @@ import { setConfigKey } from "../../../config/loader.ts";
 import { generateCredentialSetupGrant } from "../../../connectors/credential-setup-grant.ts";
 import { sha256Hex } from "../../../connectors/oauth-start-grant.ts";
 import {
+  createEmptyDraftDocument,
+  withConnectorDraft,
+  withConnectorInspection,
+  withConnectorValidation,
+} from "../../../conversations/authoring-state.ts";
+import { validateConnectorDraft } from "../../../conversations/connector-draft.ts";
+import { invokeConversationToolDirect } from "../../../conversations/direct-invoke.ts";
+import { appendSnapshot } from "../../../conversations/draft.ts";
+import { resolveElicitationAndReactivate } from "../../../conversations/elicitations.ts";
+import {
+  _resetDraftCredentialCacheForTests,
+  getDraftCredential,
+} from "../../../conversations/persistence/draft-credential-cache.ts";
+import { pauseForUserInput } from "../../../conversations/tools/ask-user/common.ts";
+import {
   auditLog,
   connectorCredentialSetupGrants,
   connectors,
+  conversationElicitations,
+  conversations,
   credentials,
 } from "../../../db/schema/index.ts";
+import { EngineClient } from "../../../engine-client/index.ts";
+import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { now } from "../../../utils/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
@@ -60,6 +79,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  _resetDraftCredentialCacheForTests();
   await server.cleanup();
 });
 
@@ -145,6 +165,31 @@ describe("GET /v1/connectors/{id}/credentials/setup?grant=…", () => {
 describe("POST /v1/connectors/{id}/credentials/setup", () => {
   test("(b) valid submission → consumes grant, upserts credential, clears needs_reauth", async () => {
     const token = await seedGrant();
+    const [conversation] = await server.db
+      .insert(conversations)
+      .values({
+        tenant_id: server.tenantId,
+        owner_id: server.userId,
+        status: "active",
+      })
+      .returning();
+    if (!conversation) throw new Error("seed conversation failed");
+    const [elicitation] = await server.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: server.tenantId,
+        conversation_id: conversation.id,
+        tool_name: "ask_user_confirm",
+        summary: "Reconnect connector",
+        input: {
+          connector_id: connectorId,
+          setup_url: `${server.baseUrl}/setup`,
+        },
+        protocol_native: true,
+        delivery_last_error: "url_accepted",
+      })
+      .returning();
+    if (!elicitation) throw new Error("seed elicitation failed");
 
     const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/credentials/setup`, {
       method: "POST",
@@ -172,6 +217,12 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
       .where(eq(connectors.id, connectorId))
       .limit(1);
     expect(connectorRow?.needs_reauth).toBe(false);
+
+    const [completedElicitation] = await server.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitation.id));
+    expect(completedElicitation?.delivery_last_error).toBe("url_completed");
 
     // grant_consumed audit row present.
     const consumedAudit = await server.db
@@ -245,5 +296,189 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
     );
     expect(correctRes.status).toBe(200);
     expect(await getGrantRow(token)).toBeNull();
+  });
+});
+
+describe("unsaved connector draft credential setup", () => {
+  test("MCP secret prompt → URL setup → green probe → connector and credential persist", async () => {
+    const [conversation] = await server.db
+      .insert(conversations)
+      .values({
+        tenant_id: server.tenantId,
+        owner_id: server.userId,
+        status: "awaiting_input",
+      })
+      .returning();
+    if (!conversation) throw new Error("seed draft conversation failed");
+    const startedDraft = withConnectorDraft(
+      createEmptyDraftDocument("connector_authoring"),
+      {
+        name: "Cloudflare Journey",
+        slug: "cloudflare-journey",
+        driver: "http",
+        environment: "prod",
+        base_url: "https://api.cloudflare.com/client/v4",
+        auth_type: "bearer",
+        config: {},
+      },
+      "connector_draft_started",
+    );
+    const inspectedDraft = withConnectorInspection(startedDraft);
+    const validation = validateConnectorDraft(inspectedDraft.connector ?? null, []);
+    const draft = withConnectorValidation(
+      inspectedDraft,
+      { ...inspectedDraft.connector, validation },
+      validation.ok,
+      "Connector draft validated.",
+    );
+    await appendSnapshot(server.tenantId, conversation.id, draft, server.db);
+
+    const askResult = await pauseForUserInput(
+      {
+        db: server.db,
+        tenant_id: server.tenantId,
+        conversation_id: conversation.id,
+        actor_id: server.userId,
+        connector_id: null,
+        workflow_id: null,
+        engineClient: new EngineClient({
+          tenant_id: server.tenantId,
+          actor_id: server.userId,
+          actor_type: "user",
+          db: server.db,
+        }),
+        getDraft: () => draft,
+        setDraft: async (next) => {
+          await appendSnapshot(server.tenantId, conversation.id, next, server.db);
+        },
+        abortSignal: new AbortController().signal,
+        surface: "mcp",
+      },
+      {
+        tool_name: "ask_user_form",
+        summary: "Enter the Cloudflare token",
+        input: {
+          question: "Enter the Cloudflare token",
+          fields: [{ name: "token", label: "Token", type: "password" }],
+        },
+      },
+    );
+    expect(askResult.ok).toBe(true);
+    if (!askResult.ok || !askResult.pause) throw new Error("expected secure URL pause");
+    expect(askResult.pause.tool_name).toBe("ask_user_confirm");
+    const [elicitation] = await server.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, askResult.pause.elicitation_id));
+    if (!elicitation) throw new Error("draft elicitation missing");
+    const setupUrl = (elicitation.input as { setup_url?: unknown }).setup_url;
+    if (typeof setupUrl !== "string") throw new Error("draft setup URL missing");
+    const plaintext = new URL(setupUrl).searchParams.get("grant");
+    if (!plaintext) throw new Error("draft setup grant missing");
+
+    const form = await fetch(setupUrl);
+    expect(form.status).toBe(200);
+    expect(await form.text()).toContain('name="token"');
+
+    const submitted = await fetch(
+      `${server.baseUrl}/v1/connector-drafts/${conversation.id}/credentials/setup`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant: plaintext,
+          token: "fresh-cloudflare-token-123",
+        }).toString(),
+      },
+    );
+    expect(submitted.status).toBe(200);
+    expect(await submitted.text()).toContain("Credential received");
+    expect(getDraftCredential(conversation.id)).toEqual({
+      mode: "bearer",
+      token: "fresh-cloudflare-token-123",
+    });
+
+    const resolved = await resolveElicitationAndReactivate(
+      {
+        tenant_id: server.tenantId,
+        conversation_id: conversation.id,
+        id: elicitation.id,
+        output: { confirmed: true },
+        decided_by: server.userId,
+        reason: "credential_setup_completed",
+        transport: "succeeded",
+      },
+      server.db,
+    );
+    expect(resolved.kind).toBe("resolved");
+
+    const observed: { authorization: string | null; url: string | null } = {
+      authorization: null,
+      url: null,
+    };
+    const probeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      observed.url = input.toString();
+      observed.authorization = new Headers(init?.headers).get("authorization");
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    const probe = await withDriverFetchForTests(probeFetch, () =>
+      invokeConversationToolDirect({
+        db: server.db,
+        tenant_id: server.tenantId,
+        conversation_id: conversation.id,
+        actor_id: server.userId,
+        tool: "probe_connector_draft",
+        args: {
+          method: "GET",
+          path: "/accounts/test-account/tokens/verify",
+          environment: "prod",
+          timeout_ms: 5_000,
+        },
+      }),
+    );
+    expect(probe.ok).toBe(true);
+    expect(observed.url).toBe(
+      "https://api.cloudflare.com/client/v4/accounts/test-account/tokens/verify",
+    );
+    expect(observed.authorization).toBe("Bearer fresh-cloudflare-token-123");
+
+    const persisted = await server.db
+      .select()
+      .from(connectors)
+      .where(eq(connectors.slug, "cloudflare-journey"));
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]?.environment).toBe("prod");
+    const persistedCredentials = await server.db
+      .select()
+      .from(credentials)
+      .where(
+        and(
+          eq(credentials.tenant_id, server.tenantId),
+          eq(credentials.connector_id, persisted[0]!.id),
+          eq(credentials.environment, "prod"),
+        ),
+      );
+    expect(persistedCredentials).toHaveLength(1);
+    expect(getDraftCredential(conversation.id)).toBeNull();
+
+    const [completed] = await server.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitation.id));
+    expect(completed?.delivery_last_error).toBe("url_completed");
+
+    const replay = await fetch(
+      `${server.baseUrl}/v1/connector-drafts/${conversation.id}/credentials/setup`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant: plaintext, token: "replacement" }).toString(),
+      },
+    );
+    expect(replay.status).toBe(400);
+    expect(getDraftCredential(conversation.id)).toBeNull();
   });
 });

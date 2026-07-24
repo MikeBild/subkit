@@ -89,15 +89,46 @@ docker exec subkit sk init \
 > docker logs subkit 2>&1 | grep -oE 'sk init --token [a-f0-9]{64}' | tail -1
 > ```
 
-> **Authentication defaults to the local `subkit` provider** — people are added
-> by admin invite and authenticate with engine-issued API keys; no external
-> identity provider is involved (that's the [teammate flow](#add-a-teammate-multi-user)
-> below). To switch the whole engine to SSO via Firebase, set the provider and
-> restart:
-> ```bash
-> docker exec subkit sk settings set auth.provider '"firebase"' --force
-> docker restart subkit
-> ```
+> **Authentication defaults to the `api_key` adapter** — people are added by
+> admin invite and authenticate with engine-issued API keys. Configure direct
+> OIDC by adding named `oidc` records to
+> `auth.providers` in `subkit.config.json`, then restart. No provider-specific
+> setting or route is required.
+
+For example, a SubKit-owned direct OIDC client is one configuration record:
+
+```json
+{
+  "auth": {
+    "providers": [
+      { "protocol": "api_key", "id": "api-key", "label": "SubKit API key" },
+      {
+        "protocol": "oidc",
+        "id": "workforce-oidc",
+        "label": "Workforce OIDC",
+        "issuer_url": "https://identity.example.com",
+        "client_id": "<subkit-client-id>",
+        "client_secret": "<subkit-client-secret>",
+        "scopes": "openid profile email",
+        "tenant_slug": "default"
+      }
+    ]
+  }
+}
+```
+
+The only browser endpoints remain `/v1/identity/login/start`,
+`/v1/identity/login/callback`, and `/v1/identity/logout` regardless of adapter
+id or vendor.
+
+The chooser is deliberately not vendor-configurable: `mcp-auth-v2` always
+shows **Continue with SSO** first and **Continue with API key** second. Provider
+ids remain opaque deployment configuration, discovery returns canonical
+labels (`SSO`, `API key`), and assertion exchange uses only
+`POST /v1/identity/sessions` with the shared
+`{provider_id,identity_token}` → `{api_key,principal_id,context_id,email}`
+contract. The immutable OIDC `sub` is required; `email` is nullable and
+contains only a provider-verified address.
 
 Verify:
 

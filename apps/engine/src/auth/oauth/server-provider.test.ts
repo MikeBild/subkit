@@ -143,9 +143,12 @@ describe("registerClient", () => {
     expect(result.grant_types).toContain("refresh_token");
   });
 
-  test("default scope is mcp:read when not provided", async () => {
+  test("default scope is the full supported set when not provided", async () => {
     const result = await provider.registerClient({ redirect_uris: [REDIRECT_URI] });
-    expect(result.scope).toBe("mcp:read");
+    const scopes = result.scope.split(" ");
+    expect(scopes).toContain("mcp:read");
+    expect(scopes).toContain("mcp:authoring");
+    expect(scopes).toContain("mcp:admin");
   });
 
   test("registerClient writes a mcp_oauth.client_registered audit row", async () => {
@@ -663,17 +666,25 @@ describe("revokeToken", () => {
     expect(auditRows.length).toBeGreaterThanOrEqual(1);
   });
 
-  test("revoking a refresh token sets revoked_at", async () => {
+  test("revoking a refresh token revokes its access-token family", async () => {
     const pair = await issueTokenPair();
     await provider.revokeToken(pair.refresh_token);
 
-    const tokenHash = sha256Hex(pair.refresh_token);
-    const rows = await db
+    const refreshHash = sha256Hex(pair.refresh_token);
+    const refreshRows = await db
       .select({ revoked_at: mcpOauthRefreshTokens.revoked_at })
       .from(mcpOauthRefreshTokens)
-      .where(eq(mcpOauthRefreshTokens.token_sha256, tokenHash))
+      .where(eq(mcpOauthRefreshTokens.token_sha256, refreshHash))
       .limit(1);
-    expect(rows[0]?.revoked_at).not.toBeNull();
+    expect(refreshRows[0]?.revoked_at).not.toBeNull();
+
+    const accessHash = sha256Hex(pair.access_token);
+    const accessRows = await db
+      .select({ revoked_at: mcpOauthAccessTokens.revoked_at })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.token_sha256, accessHash))
+      .limit(1);
+    expect(accessRows[0]?.revoked_at).not.toBeNull();
   });
 
   test("revoking an unknown token silently succeeds (RFC 7009)", async () => {

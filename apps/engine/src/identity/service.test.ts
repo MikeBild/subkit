@@ -3,7 +3,7 @@
 // All tests run against a real Postgres database via createTestDb /
 // createHttpTestServer. The OIDC identity scenarios (JIT provisioning,
 // clock-skew, issuer-mismatch) are exercised via the
-// POST /v1/identity/sessions/oidc route which wraps the identity service.
+// POST /v1/identity/sessions route which wraps the identity service.
 //
 // The mock OIDC provider (startMockOidc from the existing fixture) is
 // re-used so JWKS signing is real RS256 and openid-client's validation
@@ -16,10 +16,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { and, eq } from "drizzle-orm";
 import { generateKeyPair, SignJWT } from "jose";
 import { type MockOidcHandle, startMockOidc } from "../auth/providers/tests/fixtures/mock-oidc.ts";
-import { setConfigKey } from "../config/loader.ts";
-import { auditLog, sessions, tenants, users } from "../db/schema/index.ts";
+import { auditLog, sessions, tenants, userIdentities, users } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
-import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
+import {
+  createHttpTestServer,
+  type HttpTestServer,
+  loadAuthProvidersForTest,
+} from "../http/tests/setup.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { flushDiscoveryCache } from "./oidc-discovery.ts";
 import {
@@ -314,7 +317,7 @@ describe("service — listUsers tenant isolation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Part 2 — JIT provisioning scenarios (POST /v1/identity/sessions/oidc)
+// Part 2 — JIT provisioning scenarios (POST /v1/identity/sessions)
 // ---------------------------------------------------------------------------
 //
 // Uses createHttpTestServer (real Hono + real DB) + startMockOidc (real
@@ -347,8 +350,10 @@ afterAll(async () => {
   // Reset the global OIDC allow-list this suite mutated, so the config
   // doesn't leak a dead issuer URL into later suites in a full run.
   try {
-    await setConfigKey("auth.oidc.issuer_url", "", { force: true });
-    await setConfigKey("auth.oidc.client_id", "", { force: true });
+    await loadAuthProvidersForTest(
+      [{ protocol: "api_key", id: "api-key", label: "SubKit API key" }],
+      httpCtx.testDb.url,
+    );
   } catch {
     /* config loader may already be torn down */
   }
@@ -360,7 +365,7 @@ afterAll(async () => {
   if (httpCtx) await httpCtx.cleanup();
 });
 
-// Ensure the `default` tenant slug exists (the sessions-oidc route does a
+// Ensure the configured `default` tenant slug exists (the identity session route does a
 // slug lookup). The httpCtx seeds slug `t-identity-jit` but the route
 // needs `default`.
 beforeAll(async () => {
@@ -375,24 +380,33 @@ afterEach(() => {
   flushDiscoveryCache();
 });
 
-async function postOidcSession(body: { id_token: string; issuer: string }) {
-  return fetch(`${httpCtx.baseUrl}/v1/identity/sessions/oidc`, {
+async function postIdentitySession(identityToken: string) {
+  return fetch(`${httpCtx.baseUrl}/v1/identity/sessions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ provider_id: "test-identity", identity_token: identityToken }),
   });
 }
 
-// The sessions-oidc route now requires the issuer to match the configured
-// allow-list (auth.oidc.issuer_url) — the security fix that stops it from
-// minting a key for an attacker-chosen issuer. Each scenario points the
-// allow-list at the issuer it exercises (the stable mock, or a per-test
-// JWKS server). client_id is left empty so audience isn't enforced here —
-// these scenarios assert sub/issuer/clock/link behaviour; the dedicated
-// audience check is covered in http/routes/identity/sessions-oidc.test.ts.
+// The generic session route resolves only a configured provider id. Each
+// scenario points that provider at the issuer it exercises.
 async function configureOidc(issuerUrl: string): Promise<void> {
-  await setConfigKey("auth.oidc.issuer_url", issuerUrl, { force: true });
-  await setConfigKey("auth.oidc.client_id", "", { force: true });
+  await loadAuthProvidersForTest(
+    [
+      { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+      {
+        protocol: "oidc",
+        id: "test-identity",
+        label: "Test identity",
+        issuer_url: issuerUrl,
+        client_id: issuerUrl === mockOidc.url ? "mock-client" : "subkit-cli",
+        client_secret: "",
+        scopes: "openid profile email",
+        tenant_slug: "default",
+      },
+    ],
+    httpCtx.testDb.url,
+  );
 }
 
 describe("JIT provisioning — happy path (scenario 3)", () => {
@@ -410,7 +424,7 @@ describe("JIT provisioning — happy path (scenario 3)", () => {
     // We need an actual id_token. Directly sign one with the mock's key
     // by going through the token endpoint. The simplest way: drive the
     // exchange via openid-client by making a call to finishLogin... but
-    // the sessions-oidc route takes an id_token directly.
+    // the identity session route takes the signed assertion directly.
     //
     // To keep this test self-contained, sign a token with our own key
     // and register the matching JWKS with a tiny HTTP server. Instead,
@@ -432,30 +446,33 @@ describe("JIT provisioning — happy path (scenario 3)", () => {
     expect(typeof id_token).toBe("string");
 
     await configureOidc(provider.url);
-    const res = await postOidcSession({ id_token, issuer: provider.url });
+    const res = await postIdentitySession(id_token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       api_key: string;
-      user_id: string;
-      tenant_id: string;
-      sub: string;
+      principal_id: string;
+      context_id: string;
     };
     expect(body.api_key).toMatch(/^wf_live_/);
-    expect(body.sub).toBe("jit-sub-1");
 
-    // User row must exist with oidc_subject set.
+    // Provider binding and local user must both exist.
+    const identityRows = await httpCtx.db
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.subject, "jit-sub-1"));
+    expect(identityRows).toHaveLength(1);
+    if (!identityRows[0]) throw new Error("provider binding missing");
     const userRows = await httpCtx.db
       .select()
       .from(users)
-      .where(eq(users.oidc_subject, "jit-sub-1"));
-    expect(userRows.length).toBe(1);
+      .where(eq(users.id, identityRows[0].user_id));
     expect(userRows[0]?.email).toBe("jit-happy@test.local");
 
     // Audit entries: user.created + session.issued + user.logged_in.
     const auditRows = await httpCtx.db
       .select()
       .from(auditLog)
-      .where(eq(auditLog.actor_id, body.user_id));
+      .where(eq(auditLog.actor_id, body.principal_id));
     const actions = auditRows.map((r) => r.action);
     expect(actions).toContain("session.issued");
     expect(actions).toContain("user.logged_in");
@@ -466,7 +483,7 @@ describe("JIT provisioning — duplicate-email collision (scenario 4)", () => {
   test("second login with same email but different sub attaches sub to existing user", async () => {
     const provider = mockOidc;
 
-    // First: seed a user with the email and no oidc_subject.
+    // First: seed a user with the email and no provider binding.
     const [existingUser] = await httpCtx.db
       .insert(users)
       .values({
@@ -515,12 +532,16 @@ describe("JIT provisioning — duplicate-email collision (scenario 4)", () => {
     const tokenBody = (await tokenRes.json()) as { id_token: string };
 
     await configureOidc(provider.url);
-    const res = await postOidcSession({ id_token: tokenBody.id_token, issuer: provider.url });
+    const res = await postIdentitySession(tokenBody.id_token);
     expect(res.status).toBe(200);
 
-    // The existing user row should now carry the oidc_subject.
-    const updated = await httpCtx.db.select().from(users).where(eq(users.id, defaultUser.id));
-    expect(updated[0]?.oidc_subject).toBe("collide-sub-99");
+    // The existing user row should now carry the provider-neutral binding.
+    const linked = await httpCtx.db
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, defaultUser.id));
+    expect(linked[0]?.provider_id).toBe("test-identity");
+    expect(linked[0]?.subject).toBe("collide-sub-99");
 
     // No duplicate user rows for that email in the default tenant.
     const allForEmail = await httpCtx.db
@@ -554,7 +575,7 @@ describe("JIT provisioning — clock-skew tolerance (scenario 5)", () => {
 
     // Token issued with nowSec - 1 is well within the tolerance window.
     await configureOidc(provider.url);
-    const res = await postOidcSession({ id_token: tokenBody.id_token, issuer: provider.url });
+    const res = await postIdentitySession(tokenBody.id_token);
     expect(res.status).toBe(200);
   });
 
@@ -610,7 +631,7 @@ describe("JIT provisioning — clock-skew tolerance (scenario 5)", () => {
         .sign(privateKey);
 
       await configureOidc(issuerBase);
-      const res = await postOidcSession({ id_token, issuer: issuerBase });
+      const res = await postIdentitySession(id_token);
       // jose rejects expired tokens by default.
       expect(res.status).toBe(401);
     } finally {
@@ -620,7 +641,7 @@ describe("JIT provisioning — clock-skew tolerance (scenario 5)", () => {
 });
 
 describe("JIT provisioning — issuer-mismatch rejection (scenario 6)", () => {
-  test("id_token iss !== discovered issuer returns 401", async () => {
+  test("assertion issuer mismatch returns 401", async () => {
     const { createServer } = await import("node:http");
     const { exportJWK } = await import("jose");
 
@@ -678,7 +699,7 @@ describe("JIT provisioning — issuer-mismatch rejection (scenario 6)", () => {
       // body.issuer == configured (passes the allow-list); the TOKEN's iss
       // differs from the discovered issuer, so jwtVerify rejects → 401.
       await configureOidc(discoveredIssuer);
-      const res = await postOidcSession({ id_token, issuer: discoveredIssuer });
+      const res = await postIdentitySession(id_token);
       // jose must reject iss mismatch → 401.
       expect(res.status).toBe(401);
     } finally {
@@ -738,7 +759,7 @@ describe("JIT provisioning — token without sub (scenario 7)", () => {
         .sign(privateKey);
 
       await configureOidc(issuerBase);
-      const res = await postOidcSession({ id_token, issuer: issuerBase });
+      const res = await postIdentitySession(id_token);
       expect(res.status).toBe(401);
     } finally {
       await new Promise<void>((resolve) => noSubServer.close(() => resolve()));

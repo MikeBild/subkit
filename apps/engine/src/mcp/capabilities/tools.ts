@@ -24,12 +24,14 @@ import {
   CallToolRequestSchema,
   type CallToolResult,
   ListToolsRequestSchema,
+  ElicitResultSchema as McpElicitResultSchema,
   type ServerNotification,
   type ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, asc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
+import { registerNativeUrlElicitationCompletion } from "../../conversations/native-url-elicitation.ts";
 import type { Db } from "../../db/client.ts";
 import { executions, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
@@ -47,6 +49,7 @@ import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import { assembleCatalog, DEFAULT_PALETTE_LIMIT, TOOL_PREFIX } from "./catalog-budget.ts";
+import { ELICITATION_FORM_TIMEOUT_MS } from "./conversation-native-elicitation.ts";
 import { CONVERSATION_TOOL_PREFIX, handleConversationTool } from "./conversations.ts";
 import { buildResultEnvelope } from "./held-preview.ts";
 import { raceInlineRun } from "./inline-timeout.ts";
@@ -387,8 +390,17 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         // DB-pause elicitation path, NOT the live `ElicitationBridge` —
         // a backgrounded turn has no live session.
         const taskParamPresent = request.params.task !== undefined;
-        const clientTasksCapable = server.getClientCapabilities()?.tasks !== undefined;
+        const clientCapabilities = server.getClientCapabilities();
+        const clientTasksCapable = clientCapabilities?.tasks !== undefined;
         const taskAugmented = taskParamPresent && clientTasksCapable;
+        const elicitationCapabilities = clientCapabilities?.elicitation;
+        // MCP backwards compatibility: `elicitation: {}` means form support.
+        // SDK 1.29's convenience `elicitInput()` does not normalize that form,
+        // so issue the typed request directly after this explicit capability check.
+        const formElicitationCapable =
+          elicitationCapabilities !== undefined &&
+          (elicitationCapabilities.form !== undefined || elicitationCapabilities.url === undefined);
+        const urlElicitationCapable = elicitationCapabilities?.url !== undefined;
         const result = await handleConversationTool({
           db,
           principal,
@@ -397,6 +409,52 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           ...(permissionMode ? { permission_mode: permissionMode } : {}),
           ...(playground ? { playground } : {}),
           ...(taskAugmented ? { taskAugmented } : {}),
+          ...(formElicitationCapable || urlElicitationCapable
+            ? {
+                nativeElicitation: {
+                  // No `signal: extra.signal` here: delivery is detached
+                  // from the originating `tools/call` (the poll returns
+                  // immediately while the form round-trip stays pending),
+                  // so tying it to the dying request's abort signal would
+                  // kill the form the moment the poll response is written.
+                  ...(formElicitationCapable
+                    ? {
+                        elicitForm: async (params) =>
+                          await server.request(
+                            {
+                              method: "elicitation/create",
+                              params: { mode: "form", ...params },
+                            },
+                            McpElicitResultSchema,
+                            { timeout: ELICITATION_FORM_TIMEOUT_MS },
+                          ),
+                      }
+                    : {}),
+                  ...(urlElicitationCapable
+                    ? {
+                        elicitUrl: async (params) => {
+                          const unregister = registerNativeUrlElicitationCompletion(
+                            params.elicitationId,
+                            server.createElicitationCompletionNotifier(params.elicitationId),
+                          );
+                          try {
+                            const result = await server.request(
+                              { method: "elicitation/create", params },
+                              McpElicitResultSchema,
+                              { timeout: ELICITATION_FORM_TIMEOUT_MS },
+                            );
+                            if (result.action !== "accept") unregister();
+                            return result;
+                          } catch (err) {
+                            unregister();
+                            throw err;
+                          }
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         });
         logger.info({
           module: "mcp",
@@ -592,7 +650,12 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
   const state: {
     bridge: { stop: () => void } | null;
     executionId: string | null;
-  } = { bridge: null, executionId: null };
+    runSettled: boolean;
+  } = { bridge: null, executionId: null, runSettled: false };
+  const settleProgressBridge = (): void => {
+    state.runSettled = true;
+    state.bridge?.stop();
+  };
   const notifier: ProgressNotifier = {
     send: async (progress, total, message) => {
       if (progressToken === undefined || progressToken === null) return;
@@ -642,7 +705,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         const latest = rows[rows.length - 1];
         if (latest) {
           state.executionId = latest.id;
-          if (progressToken !== undefined && progressToken !== null) {
+          if (!state.runSettled && progressToken !== undefined && progressToken !== null) {
             state.bridge = startProgressBridge(
               db,
               principal.tenant_id,
@@ -667,7 +730,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     if (outcome.timedOut) {
       // Still running — stop blocking the client but keep the run alive.
       extra.signal.removeEventListener("abort", onSignalAbort);
-      runPromise.then(() => state.bridge?.stop()).catch(() => state.bridge?.stop());
+      void runPromise.then(settleProgressBridge, settleProgressBridge);
       const execId = state.executionId;
       if (!execId) {
         // We never captured the execution id (the id-poll had not landed
@@ -731,7 +794,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       };
     }
     const result = outcome.result;
-    state.bridge?.stop();
+    settleProgressBridge();
     // When a run produced non-fatal warnings (e.g. jsonata
     // `unresolved_identifier`), wrap the output so the MCP client sees
     // them alongside the payload. See held-preview.ts.
@@ -834,7 +897,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       ...structured,
     };
   } catch (err) {
-    state.bridge?.stop();
+    settleProgressBridge();
     if (state.executionId) cancel(state.executionId);
     const text = toMcpErrorText(err);
     logger.error({

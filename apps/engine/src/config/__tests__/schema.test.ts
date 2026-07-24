@@ -63,6 +63,57 @@ describe("ConfigSchema", () => {
     expect(r.data.tenants?.["tenant-a"]?.llm?.api_key).toBe("tenant-a-key");
     expect(r.data.tenants?.["tenant-b"]?.tokens?.monthly_budget).toBe(50_000);
   });
+
+  test("auth accepts one product-local list with API key and OIDC", () => {
+    const result = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      auth: {
+        providers: [
+          { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+          {
+            protocol: "oidc",
+            id: "workforce-oidc",
+            label: "Workforce OIDC",
+            issuer_url: "https://identity.example.test",
+            client_id: "client",
+          },
+        ],
+      },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.auth.providers.map((provider) => provider.protocol)).toEqual([
+      "api_key",
+      "oidc",
+    ]);
+  });
+
+  test("auth rejects duplicate named OIDC provider ids", () => {
+    const provider = {
+      id: "workforce-oidc",
+      label: "Workforce OIDC",
+      issuer_url: "https://identity.example.test",
+      client_id: "client",
+    };
+    const result = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      auth: {
+        providers: [
+          { protocol: "oidc", ...provider },
+          { protocol: "oidc", ...provider },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("auth rejects removed provider-specific configuration", () => {
+    const result = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      auth: { provider: "oidc", oidc: { issuer_url: "https://identity.example.test" } },
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("ConfigSchema — llm.web_search leaf", () => {

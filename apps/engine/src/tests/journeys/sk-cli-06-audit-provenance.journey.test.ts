@@ -3,8 +3,8 @@
 // `sk_cli.login` rows. The engine tags OIDC exchanges when the
 // `user-agent: sk-cli/*` header is present on the request.
 //
-// This test stands up a mock OIDC IdP, drives the engine's
-// `POST /v1/identity/sessions/oidc` endpoint with a sk-cli user-agent
+// This test stands up a mock OIDC IdP, drives the engine's generic
+// `POST /v1/identity/sessions` endpoint with a sk-cli user-agent
 // header, and asserts the `SK_CLI_LOGIN` audit action lands on top of
 // the standard `USER_LOGGED_IN` row.
 
@@ -12,8 +12,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server as HttpServer } from "node:http";
 import { and, desc, eq } from "drizzle-orm";
 import * as jose from "jose";
-import { setConfigKey } from "../../config/loader.ts";
 import { auditLog, tenants } from "../../db/schema/index.ts";
+import { loadAuthProvidersForTest } from "../../http/tests/setup.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -43,8 +43,7 @@ describe("journey: sk-cli audit provenance", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-06-audit");
 
-    // The sessions-oidc route hard-codes a lookup for slug=`default`.
-    // Seed that tenant row so the journey fixture's random slug does
+    // The configured adapter maps to slug=`default`. Seed that tenant so the journey fixture's random slug does
     // not break the test. We reuse the existing journey-created
     // admin tenant by renaming it.
     await ctx.db.insert(tenants).values({ slug: "default", display_name: "default" });
@@ -103,10 +102,23 @@ describe("journey: sk-cli audit provenance", () => {
       .setIssuedAt()
       .sign(kp.privateKey);
 
-    // The sessions-oidc route now requires the issuer to match the
-    // configured allow-list; point it at this journey's mock IdP.
-    await setConfigKey("auth.oidc.issuer_url", idpUrl, { force: true });
-    await setConfigKey("auth.oidc.client_id", "", { force: true });
+    // Point the configured provider at this journey's mock IdP.
+    await loadAuthProvidersForTest(
+      [
+        { protocol: "api_key", id: "api-key", label: "SubKit API key" },
+        {
+          protocol: "oidc",
+          id: "journey-identity",
+          label: "Journey identity",
+          issuer_url: idpUrl,
+          client_id: "subkit-cli",
+          client_secret: "",
+          scopes: "openid profile email",
+          tenant_slug: "default",
+        },
+      ],
+      ctx.testDb.url,
+    );
   }, JOURNEY_HOOK_TIMEOUT);
 
   afterAll(async () => {
@@ -118,23 +130,23 @@ describe("journey: sk-cli audit provenance", () => {
     }
   }, JOURNEY_HOOK_TIMEOUT);
 
-  test("POST /v1/identity/sessions/oidc with sk-cli user-agent emits SK_CLI_LOGIN", async () => {
-    const res = await fetch(`${ctx.baseUrl}/v1/identity/sessions/oidc`, {
+  test("POST /v1/identity/sessions with sk-cli user-agent emits SK_CLI_LOGIN", async () => {
+    const res = await fetch(`${ctx.baseUrl}/v1/identity/sessions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "user-agent": "sk-cli/0.0.1",
       },
-      body: JSON.stringify({ id_token: idToken, issuer: idpUrl }),
+      body: JSON.stringify({ provider_id: "journey-identity", identity_token: idToken }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { user_id: string; api_key: string };
+    const body = (await res.json()) as { principal_id: string; api_key: string };
     expect(body.api_key.startsWith("wf_")).toBe(true);
 
-    const loggedIn = await auditRowsByAction("user.logged_in", body.user_id);
+    const loggedIn = await auditRowsByAction("user.logged_in", body.principal_id);
     expect(loggedIn.length).toBeGreaterThanOrEqual(1);
 
-    const skCliLogin = await auditRowsByAction("sk_cli.login", body.user_id);
+    const skCliLogin = await auditRowsByAction("sk_cli.login", body.principal_id);
     expect(skCliLogin.length).toBe(1);
     const metadata = skCliLogin[0]?.metadata as { user_agent?: string };
     expect(metadata?.user_agent).toBe("sk-cli/0.0.1");
@@ -145,14 +157,14 @@ describe("journey: sk-cli audit provenance", () => {
     // `sub`, so this call resolves to the same user row as the first
     // test. That lets us assert the sk_cli.login count stays at 1:
     // only the first (sk-cli-tagged) login minted a row.
-    const res = await fetch(`${ctx.baseUrl}/v1/identity/sessions/oidc`, {
+    const res = await fetch(`${ctx.baseUrl}/v1/identity/sessions`, {
       method: "POST",
       headers: { "content-type": "application/json", "user-agent": "subkit/0.0.1" },
-      body: JSON.stringify({ id_token: idToken, issuer: idpUrl }),
+      body: JSON.stringify({ provider_id: "journey-identity", identity_token: idToken }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { user_id: string };
-    const skCliLogin = await auditRowsByAction("sk_cli.login", body.user_id);
+    const body = (await res.json()) as { principal_id: string };
+    const skCliLogin = await auditRowsByAction("sk_cli.login", body.principal_id);
     expect(skCliLogin.length).toBe(1);
   });
 });

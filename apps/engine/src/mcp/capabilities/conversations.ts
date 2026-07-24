@@ -28,7 +28,7 @@ import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { persistedWorkflowResource } from "../../conversations/authoring-state/summary.ts";
 import { loadDraft } from "../../conversations/draft.ts";
-import { getElicitation } from "../../conversations/elicitations.ts";
+import { type ElicitationRecord, getElicitation } from "../../conversations/elicitations.ts";
 import { classifyDraftVsPersisted } from "../../conversations/persistence/draft-diff.ts";
 import { findResumableAuthoringConversation } from "../../conversations/resumable-authoring.ts";
 import * as svc from "../../conversations/service.ts";
@@ -46,11 +46,20 @@ import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
 import { getWorkflow, getWorkflowBySlug } from "../../workflows/service.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { zodToJsonSchema7 } from "../json-schema.ts";
-import { insertMcpTask, setMcpTaskFailure, setMcpTaskJobId } from "../tasks/store.ts";
+import {
+  insertMcpTask,
+  rearmMcpTaskForNativeElicitation,
+  setMcpTaskFailure,
+  setMcpTaskJobId,
+} from "../tasks/store.ts";
 import {
   CONVERSATION_TASK_POLL_INTERVAL_MS,
   CONVERSATION_TASK_TTL_MS,
 } from "../tasks/task-store.ts";
+import {
+  deliverPendingNativeElicitationCore,
+  type NativeElicitationTransport,
+} from "./conversation-native-elicitation.ts";
 import { buildToolAnnotations } from "./tool-meta.ts";
 import { projectTurnEnvelopeForClient } from "./turn-projection.ts";
 
@@ -201,6 +210,8 @@ export interface HandleConversationToolParams {
    * `CallToolResult` telling them to poll `conversation_get`.
    */
   taskAugmented?: boolean;
+  /** Live MCP request channel used only while servicing conversation_get. */
+  nativeElicitation?: NativeElicitationTransport;
 }
 
 export interface HandleConversationToolResult {
@@ -246,18 +257,33 @@ async function backgroundTurn(p: {
   elicitation_id?: string;
   reason?: string;
   taskAugmented?: boolean;
+  answer_channel?: "model_relay" | "mcp_native";
+  reuse_task_id?: string;
 }): Promise<HandleConversationToolResult> {
-  const taskId = await insertMcpTask(
-    {
-      tenant_id: p.principal.tenant_id,
-      conversation_id: p.conversation_id,
-      kind: p.kind,
-      actor_id: p.principal.id,
-      request_source: "mcp",
-      user_message_id: p.user_message_id,
-    },
-    p.db,
-  );
+  const taskId = p.reuse_task_id
+    ? p.reuse_task_id
+    : await insertMcpTask(
+        {
+          tenant_id: p.principal.tenant_id,
+          conversation_id: p.conversation_id,
+          kind: p.kind,
+          actor_id: p.principal.id,
+          request_source: "mcp",
+          user_message_id: p.user_message_id,
+        },
+        p.db,
+      );
+  if (p.reuse_task_id) {
+    const rearmed = await rearmMcpTaskForNativeElicitation(
+      {
+        tenant_id: p.principal.tenant_id,
+        task_id: taskId,
+        actor_id: p.principal.id,
+      },
+      p.db,
+    );
+    if (!rearmed) return errorText("task not found while resuming native elicitation");
+  }
 
   // Enqueue the run-turn job. If `boss.send` throws (queue down) or
   // returns null (pg-boss dedup), the `mcp_tasks` row exists with no
@@ -277,6 +303,7 @@ async function backgroundTurn(p: {
       kind: p.kind,
       ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
       ...(p.elicitation_id ? { elicitation_id: p.elicitation_id } : {}),
+      ...(p.answer_channel ? { answer_channel: p.answer_channel } : {}),
       ...(p.reason ? { reason: p.reason } : {}),
     });
   } catch (err) {
@@ -318,6 +345,32 @@ async function backgroundTurn(p: {
     status: "working",
     poll_with: "conversation_get",
     poll_arg: { conversation_id: p.conversation_id },
+  });
+}
+
+export async function deliverPendingNativeElicitation(p: {
+  db: Db;
+  principal: ResolvedPrincipal;
+  pending: ElicitationRecord;
+  nativeElicitation: NativeElicitationTransport;
+  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  reuse_task_id?: string;
+}): Promise<HandleConversationToolResult | null> {
+  return deliverPendingNativeElicitationCore({
+    ...p,
+    resume: async (resume) =>
+      await backgroundTurn({
+        db: p.db,
+        principal: p.principal,
+        conversation_id: p.pending.conversation_id,
+        kind: "respond_elicitation",
+        user_message_id: null,
+        elicitation_id: p.pending.id,
+        answer_channel: "mcp_native",
+        ...(resume.reuse_task_id ? { reuse_task_id: resume.reuse_task_id } : {}),
+        ...(resume.reason ? { reason: resume.reason } : {}),
+        ...(resume.permission_mode ? { permission_mode: resume.permission_mode } : {}),
+      }),
   });
 }
 
@@ -384,7 +437,16 @@ async function refuseApprovalElicitation(
 export async function handleConversationTool(
   p: HandleConversationToolParams,
 ): Promise<HandleConversationToolResult> {
-  const { db, principal, name, args, permission_mode, playground, taskAugmented } = p;
+  const {
+    db,
+    principal,
+    name,
+    args,
+    permission_mode,
+    playground,
+    taskAugmented,
+    nativeElicitation,
+  } = p;
   try {
     if (name === "conversation_start") {
       const parsed = StartArgs.safeParse(args);
@@ -519,7 +581,10 @@ export async function handleConversationTool(
     if (name === "conversation_get") {
       const parsed = GetArgs.safeParse(args);
       if (!parsed.success) return errorText("conversation_id is required");
-      return conversationGet(db, principal, parsed.data.conversation_id);
+      return conversationGet(db, principal, parsed.data.conversation_id, {
+        ...(nativeElicitation ? { nativeElicitation } : {}),
+        ...(permission_mode ? { permission_mode } : {}),
+      });
     }
 
     if (name === "suggest_related_conversations") {
@@ -655,6 +720,10 @@ async function conversationGet(
   db: Db,
   principal: ResolvedPrincipal,
   conversation_id: string,
+  opts: {
+    nativeElicitation?: NonNullable<HandleConversationToolParams["nativeElicitation"]>;
+    permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  } = {},
 ): Promise<HandleConversationToolResult> {
   const detail = await svc.getConversation(principal.tenant_id, conversation_id, db);
   if (!detail) return errorText("conversation not found");
@@ -727,11 +796,25 @@ async function conversationGet(
         })()
       : undefined;
 
+  if (pending && opts.nativeElicitation) {
+    const delivered = await deliverPendingNativeElicitation({
+      db,
+      principal,
+      pending,
+      nativeElicitation: opts.nativeElicitation,
+      reuse_task_id: latest.id,
+      ...(opts.permission_mode ? { permission_mode: opts.permission_mode } : {}),
+    });
+    if (delivered) return delivered;
+  }
+
   if (latest.result) {
     // Lean projection: drop the live-streaming replay frames and truncate
     // oversized payloads so a poll client gets status + final message + tool
     // outcomes, not the token-by-token replay (thesis T1). Shape preserved.
-    const leanResult = projectTurnEnvelopeForClient(latest.result);
+    const leanResult = projectTurnEnvelopeForClient(latest.result, {
+      pending_elicitation_id: pending?.id ?? null,
+    });
     if (pending) {
       return successText({
         status: "input_required",

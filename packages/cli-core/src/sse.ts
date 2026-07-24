@@ -10,7 +10,8 @@ export interface SseFrame {
 
 export async function readSse(
   response: Response,
-  onFrame: (frame: SseFrame) => void,
+  // biome-ignore lint/suspicious/noConfusingVoidType: existing consumers are notification callbacks; returning false is the opt-in early-stop signal.
+  onFrame: (frame: SseFrame) => void | boolean,
   signal?: AbortSignal,
 ): Promise<void> {
   if (!response.body) return;
@@ -33,7 +34,13 @@ export async function readSse(
         const chunk = buffer.slice(0, sepIdx);
         buffer = buffer.slice(sepIdx + 2);
         const frame = parseFrame(chunk);
-        if (frame) onFrame(frame);
+        if (frame && onFrame(frame) === false) {
+          // A protocol-level terminal frame is stronger than transport EOF.
+          // Actively cancel so a keep-alive SSE response cannot strand a
+          // headless client after the operation has already completed.
+          await reader.cancel().catch(() => {});
+          return;
+        }
         sepIdx = buffer.indexOf("\n\n");
       }
     }

@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
-import { loadBuiltinTemplates } from "./templates.ts";
+import { loadBuiltinTemplates, ProbeEndpointSchema } from "./templates.ts";
 
 const templates = loadBuiltinTemplates();
 
@@ -22,7 +22,7 @@ describe("connector-template catalog — structural", () => {
     // canonical drift guard is `loadBuiltinTemplates()` at startup —
     // every entry must pass `ConnectorTemplateSchema`. This test pins
     // the catalog size so a stray add/remove surfaces explicitly.
-    expect(templates.length).toBe(56);
+    expect(templates.length).toBe(57);
   });
 
   test("supabase-graphql url_pattern matches a real host, not the literal [^/]+", () => {
@@ -51,6 +51,50 @@ describe("connector-template catalog — structural", () => {
       expect(t.name.length).toBeGreaterThan(0);
       expect(t.setup_instructions.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("connector-template probe headers", () => {
+  test("Notion declares its required API version on the identity probe", () => {
+    const notion = templates.find((template) => template.slug === "notion");
+    expect(notion?.probe_endpoint?.headers).toEqual({ "Notion-Version": "2022-06-28" });
+  });
+
+  test("accepts bounded protocol headers and rejects auth or transport injection", () => {
+    const base = {
+      method: "GET" as const,
+      path: "/users/me",
+      expected_status: [200, 200] as [number, number],
+    };
+    expect(
+      ProbeEndpointSchema.safeParse({
+        ...base,
+        headers: { "Notion-Version": "2022-06-28" },
+      }).success,
+    ).toBe(true);
+    for (const name of [
+      "Authorization",
+      "authorization",
+      "X-Api-Key",
+      "X-Auth-Token",
+      "Cookie",
+      "Host",
+    ]) {
+      expect(
+        ProbeEndpointSchema.safeParse({ ...base, headers: { [name]: "blocked" } }).success,
+      ).toBe(false);
+    }
+  });
+
+  test("enforces entry, value, and aggregate byte limits", () => {
+    const base = { method: "GET" as const, path: "/health" };
+    const tooMany = Object.fromEntries(
+      Array.from({ length: 17 }, (_, index) => [`X-Probe-${index}`, "ok"]),
+    );
+    expect(ProbeEndpointSchema.safeParse({ ...base, headers: tooMany }).success).toBe(false);
+    expect(
+      ProbeEndpointSchema.safeParse({ ...base, headers: { "X-Probe": "x".repeat(1025) } }).success,
+    ).toBe(false);
   });
 });
 

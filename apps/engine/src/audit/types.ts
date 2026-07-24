@@ -33,9 +33,9 @@ export const AuditAction = {
   // time — this row records the grant the admin authorized (scopes +
   // allow lists), pinned by `UserInvitedMetadataSchema`.
   USER_INVITED: "user.invited",
-  // An external identity provider (Firebase/OIDC) linked a verified
+  // An external identity provider linked a verified
   // external subject to an existing email-matched user row by stamping
-  // `external_subject`. Records the bind so an account-takeover via a
+  // provider-namespaced `subject`. Records the bind so an account-takeover via a
   // provider-side email collision is auditable. Pinned by
   // `UserIdentityLinkedMetadataSchema`.
   USER_IDENTITY_LINKED: "user.identity_linked",
@@ -77,6 +77,7 @@ export const AuditAction = {
   CREDENTIAL_UPDATED: "credential.updated",
   CREDENTIAL_ROTATED: "credential.rotated",
   CREDENTIAL_DELETED: "credential.deleted",
+  CREDENTIAL_ENVIRONMENT_PROMOTED: "credential.environment_promoted",
 
   CONNECTOR_CREATED: "connector.created",
   CONNECTOR_UPDATED: "connector.updated",
@@ -1126,12 +1127,12 @@ export const UserInviteRevokedMetadataSchema = z.object({
 });
 export type UserInviteRevokedMetadata = z.infer<typeof UserInviteRevokedMetadataSchema>;
 
-/** `user.identity_linked` metadata. Emitted when an auth provider binds a
- *  verified external subject to a pre-existing email-matched user row. The
- *  `source` names the provider; `external_subject` is the bound subject. */
+/** `user.identity_linked` metadata. Emitted when an auth adapter binds a
+ *  verified subject to a pre-existing email-matched user row. The `source`
+ *  names the configured adapter and `subject` is namespaced by that source. */
 export const UserIdentityLinkedMetadataSchema = z.object({
   source: z.string(),
-  external_subject: z.string(),
+  subject: z.string(),
   email: z.string().optional(),
   request_source: RequestSourceSchema.optional(),
 });

@@ -33,6 +33,7 @@ import { cancelConversationAbort } from "../../conversations/abort.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
+import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { projectTurnEnvelopeForClient } from "../capabilities/turn-projection.ts";
 import {
   getMcpTask,
@@ -56,10 +57,16 @@ export interface ConversationTaskStoreParams {
 export class ConversationTaskStore implements TaskStore {
   private readonly db: Db;
   private readonly tenantId: string;
+  private inputRequiredHandler?: (row: McpTaskRow) => Promise<boolean>;
 
   constructor(p: ConversationTaskStoreParams) {
     this.db = p.db;
     this.tenantId = p.tenant_id;
+  }
+
+  /** Bind the live per-session MCP channel after the Server is constructed. */
+  setInputRequiredHandler(handler: (row: McpTaskRow) => Promise<boolean>): void {
+    this.inputRequiredHandler = handler;
   }
 
   /**
@@ -85,8 +92,15 @@ export class ConversationTaskStore implements TaskStore {
   }
 
   async getTask(taskId: string): Promise<Task | null> {
-    const row = await getMcpTask(this.tenantId, taskId, this.db);
+    let row = await getMcpTask(this.tenantId, taskId, this.db);
     if (!row) return null;
+    if ((await this.deriveTask(row)).status === "input_required" && this.inputRequiredHandler) {
+      const attempted = await this.inputRequiredHandler(row);
+      if (attempted) {
+        row = await getMcpTask(this.tenantId, taskId, this.db);
+        if (!row) return null;
+      }
+    }
     return this.deriveTask(row);
   }
 
@@ -108,7 +122,20 @@ export class ConversationTaskStore implements TaskStore {
       // clients and Tasks clients see the identical body. Lean projection
       // matches `conversation_get`: drop replay frames, truncate oversized
       // payloads (thesis T1) — same shape, no token-by-token replay.
-      const leanResult = projectTurnEnvelopeForClient(row.result);
+      const [pending] = await this.db
+        .select({ id: conversationElicitations.id })
+        .from(conversationElicitations)
+        .where(
+          and(
+            eq(conversationElicitations.tenant_id, this.tenantId),
+            eq(conversationElicitations.conversation_id, row.conversation_id),
+            eq(conversationElicitations.status, "pending"),
+          ),
+        )
+        .limit(1);
+      const leanResult = projectTurnEnvelopeForClient(row.result, {
+        pending_elicitation_id: pending?.id ?? null,
+      });
       return {
         content: [{ type: "text", text: JSON.stringify(leanResult) }],
         isError: false,
@@ -156,8 +183,23 @@ export class ConversationTaskStore implements TaskStore {
       // Stamp the terminal cancel marker, then abort the running turn
       // so `runLoop` stops promptly. The worker's entry guard catches a
       // cancel that lands before the turn starts.
-      await setMcpTaskCancelled(this.tenantId, taskId, this.db);
+      const firstCancellation = await setMcpTaskCancelled(this.tenantId, taskId, this.db);
       cancelConversationAbort(this.tenantId, row.conversation_id);
+      if (firstCancellation) {
+        recordUsageEvent(this.db, {
+          tenantId: this.tenantId,
+          surface: "conversations",
+          operation: "mcp/task/cancel",
+          method: "POST",
+          outcome: "cancelled",
+          requestSource: row.request_source,
+          actorId: row.actor_id,
+          sessionId: row.conversation_id,
+          platform: "http",
+          responseMode: "async",
+          taskPhase: "cancelled",
+        });
+      }
       logger.info({
         module: "mcp.tasks",
         action: "task.cancelled",

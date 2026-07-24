@@ -11,45 +11,57 @@
 //
 // `resolve()` is the middleware-side surface. It reads the signed
 // `subkit_session` cookie, verifies the JWS, loads the `sessions` row,
-// enforces sliding (8 h) + absolute (30 d) TTLs, and returns a
-// populated ResolvedPrincipal.
+// enforces the shared browser-session sliding (8 h) + absolute (24 h)
+// TTLs, and returns a populated ResolvedPrincipal.
 //
 // All HTTP cookies carry a JWS signed by the env-derived session
 // secret, never the plaintext session id. The session id is extracted
 // from the payload after verification. This matches the production
 // guidance from docs/admins/rbac-and-roles.md.
 //
-// The migration `0016_p2_oidc_state.sql` adds:
-//   - `oidc_login_states`
-//   - `users.external_subject`
-//   - `sessions.token_sha256`
+// Provider subjects are persisted through the provider-neutral
+// `user_identities` relation; no protocol owns a column on `users`.
 
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, lt } from "drizzle-orm";
+import { eq, lt } from "drizzle-orm";
 import * as jose from "jose";
 import * as oauth from "openid-client";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { getConfig } from "../../config/loader.ts";
+import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { oidcLoginStates, sessions, tenants, users } from "../../db/schema/index.ts";
+import {
+  authHtmlResponse,
+  GRANT_DENIED_MESSAGE,
+  renderErrorPage,
+  SIGN_IN_FAILED_TITLE,
+  STATE_ERROR_MESSAGE,
+} from "../../http/routes/oauth/ui.ts";
 import { logger } from "../../logging/logger.ts";
+import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
+import { resolveProviderIdentity, SignupDisabledError } from "../identity-link.ts";
+import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
 const SESSION_COOKIE = "subkit_session";
 const DEFAULT_TENANT_SLUG = "default";
 const LOGIN_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
-const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const JWS_ALG = "HS256";
+const LOGIN_START_PATH = "/v1/identity/login/start";
 
 export interface OidcProviderOptions {
+  providerId?: string;
   issuerUrl?: string;
   clientId?: string;
   clientSecret?: string;
+  scopes?: string;
   redirectUri?: string;
+  tenantSlug?: string;
   db?: Db;
   sessionSecret?: Uint8Array;
+  /** Test-only override for auth.enable_signup; production reads the live config. */
+  enableSignup?: boolean;
 }
 
 function sha256Hex(value: string): string {
@@ -165,6 +177,55 @@ function httpError(status: number, code: string, message: string): Response {
   });
 }
 
+function wantsJson(req: Request): boolean {
+  return (req.headers.get("accept") ?? "").includes("application/json");
+}
+
+// Browser-funnel error: humans get the shared HTML template, JSON stays
+// available for clients that explicitly Accept: application/json.
+function browserError(
+  req: Request,
+  status: number,
+  code: string,
+  message: string,
+  pageMessage: string,
+  retryHref: string,
+): Response {
+  if (wantsJson(req)) return httpError(status, code, message);
+  return authHtmlResponse(renderErrorPage(SIGN_IN_FAILED_TITLE, pageMessage, retryHref), status);
+}
+
+// When the pending login belongs to a waiting MCP OAuth client, finish the
+// RFC 6749 dance with error=access_denied at the client's registered
+// redirect_uri so the client does not hang on a dead-end HTML page.
+async function redirectDenialToClient(
+  exec: Db,
+  redirectTo: string | null,
+): Promise<Response | null> {
+  if (!redirectTo) return null;
+  try {
+    const authorizeUrl = new URL(redirectTo);
+    if (!authorizeUrl.pathname.endsWith("/v1/oauth/authorize")) return null;
+    const clientId = authorizeUrl.searchParams.get("client_id");
+    const clientRedirect = authorizeUrl.searchParams.get("redirect_uri");
+    if (!clientId || !clientRedirect) return null;
+    const client = await createMcpOAuthProvider({ db: exec, config: getConfig() }).getClient(
+      clientId,
+    );
+    if (!client?.redirect_uris.includes(clientRedirect)) return null;
+    const target = new URL(clientRedirect);
+    target.searchParams.set("error", "access_denied");
+    const clientState = authorizeUrl.searchParams.get("state");
+    if (clientState) target.searchParams.set("state", clientState);
+    return new Response(null, {
+      status: 302,
+      headers: { location: target.toString(), "cache-control": "no-store" },
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * isSafeRedirect — returns true only for:
  *   - path-only relative URLs (start with `/`, not `//` — `//` is protocol-relative)
@@ -196,39 +257,48 @@ async function resolveTenantId(db: Db, slug: string | null): Promise<string | nu
 }
 
 export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider {
-  let oidcCfg: {
-    issuer_url: string;
-    client_id: string;
-    client_secret: string;
-    redirect_uri: string;
-  } = {
-    issuer_url: "",
-    client_id: "",
-    client_secret: "",
-    redirect_uri: "",
-  };
+  let configured:
+    | {
+        id: string;
+        issuer_url: string;
+        client_id: string;
+        client_secret: string;
+        scopes: string;
+        tenant_slug: string;
+      }
+    | undefined;
+  let configuredRedirectUri = "";
   try {
-    oidcCfg = getConfig().auth.oidc;
+    const config = getConfig();
+    configured = config.auth.providers.find((provider) => provider.protocol === "oidc");
+    configuredRedirectUri = `${config.server.public_base_url}/v1/identity/login/callback`;
   } catch {
     /* loader not initialised — unit tests pass values via opts */
   }
-  // v3.5: OIDC_* env reads removed — every leaf is in ConfigSchema
-  // (auth.oidc.*) and op-supplied opts win for per-call overrides.
-  // Operators who still set OIDC_* env vars get a warn at boot via
-  // RETIRED_ENV_KEYS.
-  const issuerUrl = opts.issuerUrl ?? oidcCfg.issuer_url ?? "";
-  const clientId = opts.clientId ?? oidcCfg.client_id ?? "";
-  const clientSecretInput = opts.clientSecret ?? oidcCfg.client_secret ?? undefined;
-  const redirectUri = opts.redirectUri ?? oidcCfg.redirect_uri ?? "";
+  const issuerUrl = opts.issuerUrl ?? configured?.issuer_url ?? "";
+  const clientId = opts.clientId ?? configured?.client_id ?? "";
+  const clientSecretInput = opts.clientSecret ?? configured?.client_secret ?? undefined;
+  const scopes = opts.scopes ?? configured?.scopes ?? "openid profile email";
+  const redirectUri = opts.redirectUri ?? configuredRedirectUri;
+  const configuredTenantSlug = opts.tenantSlug ?? configured?.tenant_slug ?? DEFAULT_TENANT_SLUG;
   const sessionSecret = deriveSessionSecret(opts.sessionSecret);
+  const providerId = opts.providerId?.trim() || configured?.id;
+  const adapterId = providerId ?? "oidc";
   const db = opts.db;
 
   function getExec(): Db {
     return db ?? getDb();
   }
 
+  // Read at call time so `sk settings set auth.enable_signup …` applies
+  // without a restart; the secure default (false) covers uninitialised loaders.
+  function signupEnabled(): boolean {
+    if (opts.enableSignup !== undefined) return opts.enableSignup;
+    return isConfigLoaded() ? getConfig().auth.enable_signup : false;
+  }
+
   return {
-    name: "oidc",
+    name: adapterId,
     capabilities: {
       human: true,
       machine: false,
@@ -242,7 +312,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         return httpError(500, "oidc_not_configured", "oidc provider not configured");
       }
       const url = new URL(req.url);
-      const tenantSlug = url.searchParams.get("tenant");
+      const tenantSlug = url.searchParams.get("tenant") ?? configuredTenantSlug;
       const redirectTo = url.searchParams.get("redirect_to");
       const exec = getExec();
 
@@ -266,7 +336,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       const code_verifier = oauth.randomPKCECodeVerifier();
       const code_challenge = await oauth.calculatePKCECodeChallenge(code_verifier);
-      const state = oauth.randomState();
+      const state = providerId ? `${providerId}.${oauth.randomState()}` : oauth.randomState();
       const nonce = oauth.randomNonce();
 
       await exec.insert(oidcLoginStates).values({
@@ -280,7 +350,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       const authUrl = oauth.buildAuthorizationUrl(configuration, {
         redirect_uri: redirectUri,
-        scope: "openid profile email",
+        scope: scopes,
         state,
         nonce,
         code_challenge,
@@ -297,7 +367,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       const reqUrl = new URL(req.url);
       const state = reqUrl.searchParams.get("state");
       if (!state) {
-        return httpError(400, "missing_state", "state parameter missing");
+        return browserError(
+          req,
+          400,
+          "missing_state",
+          "state parameter missing",
+          STATE_ERROR_MESSAGE,
+          LOGIN_START_PATH,
+        );
       }
       const exec = getExec();
 
@@ -323,11 +400,62 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
       });
 
       if (!pending) {
-        return httpError(400, "unknown_state", "state not recognised");
+        return browserError(
+          req,
+          400,
+          "unknown_state",
+          "state not recognised",
+          STATE_ERROR_MESSAGE,
+          LOGIN_START_PATH,
+        );
       }
+      const retryHref =
+        pending.redirect_to && isSafeRedirect(pending.redirect_to, redirectUri)
+          ? pending.redirect_to
+          : LOGIN_START_PATH;
       if (pending.expires_at.getTime() < Date.now()) {
-        return httpError(400, "expired_state", "login state expired");
+        return browserError(
+          req,
+          400,
+          "expired_state",
+          "login state expired",
+          STATE_ERROR_MESSAGE,
+          retryHref,
+        );
       }
+
+      // The IdP answered with an error instead of a code — most commonly
+      // access_denied when the account holds no grant for this product.
+      const idpError = reqUrl.searchParams.get("error");
+      if (idpError) {
+        logger.warn({
+          module: "auth",
+          action: "oidc.provider_error",
+          msg: "identity provider returned an authorization error",
+          error: idpError,
+        });
+        if (idpError === "access_denied") {
+          const clientRedirect = await redirectDenialToClient(exec, pending.redirect_to);
+          if (clientRedirect) return clientRedirect;
+          return browserError(
+            req,
+            403,
+            "access_denied",
+            "the identity provider denied the grant",
+            GRANT_DENIED_MESSAGE,
+            retryHref,
+          );
+        }
+        return browserError(
+          req,
+          502,
+          "oidc_provider_error",
+          `identity provider returned ${idpError}`,
+          STATE_ERROR_MESSAGE,
+          retryHref,
+        );
+      }
+
       if (!pending.tenant_id) {
         return httpError(400, "tenant_missing", "pending login missing tenant");
       }
@@ -351,8 +479,8 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         // `req.url` is the engine's internal URL — behind a TLS-terminating
         // reverse proxy its scheme is `http`. openid-client derives the
         // token-exchange `redirect_uri` from the URL passed here, so it must
-        // carry the external scheme/host. The configured `auth.oidc.redirect_uri`
-        // IS that canonical value; reuse it with the inbound query so the token
+        // carry the external scheme/host. The provider-neutral callback URL is
+        // that canonical value; reuse it with the inbound query so the token
         // request's redirect_uri matches the one sent at the authorize step.
         const callbackUrl = new URL(redirectUri);
         callbackUrl.search = reqUrl.search;
@@ -368,7 +496,14 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           msg: "authorization code grant failed",
           error: err instanceof Error ? err.message : String(err),
         });
-        return httpError(401, "oidc_code_exchange_failed", "token exchange failed");
+        return browserError(
+          req,
+          401,
+          "oidc_code_exchange_failed",
+          "token exchange failed",
+          STATE_ERROR_MESSAGE,
+          retryHref,
+        );
       }
 
       const claims = tokens.claims();
@@ -377,49 +512,59 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         return httpError(401, "oidc_missing_sub", "id_token missing sub");
       }
       const rawEmail = (claims as { email?: unknown } | undefined)?.email;
+      const emailVerified =
+        (claims as { email_verified?: unknown } | undefined)?.email_verified === true;
       const email =
-        typeof rawEmail === "string" && rawEmail.length > 0
+        emailVerified && typeof rawEmail === "string" && rawEmail.length > 0
           ? rawEmail
-          : `${sub}@${new URL(issuerUrl).host}`;
-
-      // Upsert the user row keyed on (tenant_id, external_subject).
-      const existing = await exec
-        .select()
-        .from(users)
-        .where(and(eq(users.tenant_id, tenantId), eq(users.external_subject, sub)))
-        .limit(1);
-      let userRow = existing[0];
-      let createdUser = false;
-      if (!userRow) {
-        // Try to reuse an email-match row before creating a new user.
-        const byEmail = await exec
-          .select()
-          .from(users)
-          .where(and(eq(users.tenant_id, tenantId), eq(users.email, email)))
-          .limit(1);
-        if (byEmail[0]) {
-          const [updated] = await exec
-            .update(users)
-            .set({ external_subject: sub })
-            .where(eq(users.id, byEmail[0].id))
-            .returning();
-          userRow = updated;
-        } else {
-          const [created] = await exec
-            .insert(users)
-            .values({
-              tenant_id: tenantId,
-              email,
-              role: "member",
-              external_subject: sub,
-            })
-            .returning();
-          userRow = created;
-          createdUser = true;
+          : `${adapterId}:${sub}@invalid`;
+      let userRow: Awaited<ReturnType<typeof resolveProviderIdentity>>["user"];
+      let createdUser: boolean;
+      let linkedIdentity: boolean;
+      try {
+        ({
+          user: userRow,
+          createdUser,
+          linkedIdentity,
+        } = await resolveProviderIdentity(exec, {
+          tenantId,
+          providerId: adapterId,
+          subject: sub,
+          email,
+          linkByEmail: emailVerified,
+          allowCreate: signupEnabled(),
+        }));
+      } catch (err) {
+        if (err instanceof SignupDisabledError) {
+          logger.warn({
+            module: "auth",
+            action: "oidc.signup_disabled",
+            msg: "SSO login rejected — signups disabled and identity matches no existing account",
+            provider_id: adapterId,
+            subject: sub,
+          });
+          const clientRedirect = await redirectDenialToClient(exec, pending.redirect_to);
+          if (clientRedirect) return clientRedirect;
+          return browserError(
+            req,
+            403,
+            "access_denied",
+            "signups are disabled and this identity matches no existing account",
+            GRANT_DENIED_MESSAGE,
+            retryHref,
+          );
         }
+        throw err;
       }
-      if (!userRow) {
-        return httpError(500, "user_upsert_failed", "failed to resolve user row");
+      if (userRow.deleted_at !== null || userRow.status !== "active") {
+        return browserError(
+          req,
+          403,
+          "user_inactive",
+          "user is not active",
+          GRANT_DENIED_MESSAGE,
+          retryHref,
+        );
       }
 
       // Mint + persist a new session.
@@ -458,6 +603,21 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             resource_id: userRow.id,
             result: "success",
             metadata: { sub, email, source: "oidc_login" },
+          },
+          exec,
+        );
+      }
+      if (linkedIdentity) {
+        await auditAwait(
+          {
+            tenant_id: tenantId,
+            actor_type: "system",
+            actor_id: null,
+            action: AuditAction.USER_IDENTITY_LINKED,
+            resource_type: "user",
+            resource_id: userRow.id,
+            result: "success",
+            metadata: { source: adapterId, subject: sub, email },
           },
           exec,
         );
