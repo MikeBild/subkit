@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.12] – 2026-07-24
+
+> Version note: 5.1.2–5.1.11 and 5.2.0–5.2.4 were consumed by pre-squash
+> releases of this project and are never reused; the next free patch number
+> after 5.1.1 is 5.1.12.
+
+### Fixed
+
+- **The credential-setup portal no longer reads as a sign-in wall.** The
+  token-gated setup page (linked from chat when a non-OAuth connector needs a
+  credential) asked for an unlabeled "API token / bearer token", which
+  operators misread as having to re-authenticate against the engine. The form
+  now names the external service on the heading and every secret field
+  ("API token / bearer token issued by ‹service›"), explains that the
+  single-use link from the chat session is already the authorization and that
+  no login is needed, and distinguishes first-time drafts ("Connect …") from
+  reauth ("Reconnect …"). Error pages say "Setup link expired" instead of the
+  misleading "Sign-in link expired". Operator docs now cover why the portal
+  link needs no sign-in.
+
 ## [5.1.1] – 2026-07-24
 
 ### Fixed
