@@ -98,6 +98,7 @@ async function issueTokenPair(opts?: {
   scope?: string;
   verifier?: string;
   challenge?: string;
+  resource?: string;
 }): Promise<{
   access_token: string;
   refresh_token: string;
@@ -118,6 +119,7 @@ async function issueTokenPair(opts?: {
     redirectUri: REDIRECT_URI,
     codeChallenge: challenge,
     scope: opts?.scope ?? "mcp:read",
+    ...(opts?.resource ? { resource: opts.resource } : {}),
   });
 
   return provider.exchangeAuthorizationCode({
@@ -634,6 +636,87 @@ describe("refresh token rotation", () => {
         .limit(1);
       expect(rows[0]?.revoked_at).not.toBeNull();
     }
+  });
+
+  // Regression: the resource server rejects an access token whose `resource`
+  // (RFC 8707 audience) is NULL once a public base URL is configured. A rotated
+  // token used to be minted without it — because the refresh token had no
+  // resource column to carry it — so the client re-authenticated every hour.
+  const AUDIENCE = "https://test.example.com/mcp";
+
+  test("rotated access token carries the audience the code was issued with", async () => {
+    const clientId = await registerTestClient({ scope: "mcp:read" });
+    const firstPair = await issueTokenPair({ clientId, scope: "mcp:read", resource: AUDIENCE });
+
+    // The initial (code-exchange) access token has the audience.
+    const [firstAccess] = await db
+      .select({ resource: mcpOauthAccessTokens.resource })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.token_sha256, sha256Hex(firstPair.access_token)))
+      .limit(1);
+    expect(firstAccess?.resource).toBe(AUDIENCE);
+
+    const refreshed = await provider.exchangeRefreshToken({
+      refreshToken: firstPair.refresh_token,
+      clientId,
+    });
+
+    // THE fix: the rotated access token must carry the SAME audience, or the
+    // resource server rejects it as `audience_missing`.
+    const [rotatedAccess] = await db
+      .select({ resource: mcpOauthAccessTokens.resource })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.token_sha256, sha256Hex(refreshed.access_token)))
+      .limit(1);
+    expect(rotatedAccess?.resource).toBe(AUDIENCE);
+
+    // The new refresh token carries it too, so the NEXT rotation can copy it.
+    const [rotatedRefresh] = await db
+      .select({ resource: mcpOauthRefreshTokens.resource })
+      .from(mcpOauthRefreshTokens)
+      .where(eq(mcpOauthRefreshTokens.token_sha256, sha256Hex(refreshed.refresh_token)))
+      .limit(1);
+    expect(rotatedRefresh?.resource).toBe(AUDIENCE);
+  });
+
+  test("audience survives multiple rotations (chain keeps carrying it)", async () => {
+    const clientId = await registerTestClient({ scope: "mcp:read" });
+    const pairA = await issueTokenPair({ clientId, scope: "mcp:read", resource: AUDIENCE });
+
+    const pairB = await provider.exchangeRefreshToken({
+      refreshToken: pairA.refresh_token,
+      clientId,
+    });
+    const pairC = await provider.exchangeRefreshToken({
+      refreshToken: pairB.refresh_token,
+      clientId,
+    });
+
+    const [thirdHopAccess] = await db
+      .select({ resource: mcpOauthAccessTokens.resource })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.token_sha256, sha256Hex(pairC.access_token)))
+      .limit(1);
+    expect(thirdHopAccess?.resource).toBe(AUDIENCE);
+  });
+
+  test("audience-less grant stays audience-less on rotation (no phantom audience)", async () => {
+    const clientId = await registerTestClient({ scope: "mcp:read" });
+    // No resource on the code → the whole chain stays NULL (deployments with no
+    // public base URL skip the audience check entirely).
+    const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
+
+    const refreshed = await provider.exchangeRefreshToken({
+      refreshToken: firstPair.refresh_token,
+      clientId,
+    });
+
+    const [rotatedAccess] = await db
+      .select({ resource: mcpOauthAccessTokens.resource })
+      .from(mcpOauthAccessTokens)
+      .where(eq(mcpOauthAccessTokens.token_sha256, sha256Hex(refreshed.access_token)))
+      .limit(1);
+    expect(rotatedAccess?.resource).toBeNull();
   });
 });
 
