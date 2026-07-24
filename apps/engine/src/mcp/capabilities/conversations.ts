@@ -259,6 +259,12 @@ async function backgroundTurn(p: {
   taskAugmented?: boolean;
   answer_channel?: "model_relay" | "mcp_native";
   reuse_task_id?: string;
+  /**
+   * Set when a conversation_start was deduplicated onto an existing
+   * conversation — surfaced in the plain response body so the client
+   * knows the id it got back is a resumed conversation, not a new one.
+   */
+  resumed?: boolean;
 }): Promise<HandleConversationToolResult> {
   const taskId = p.reuse_task_id
     ? p.reuse_task_id
@@ -342,6 +348,7 @@ async function backgroundTurn(p: {
   return successText({
     conversation_id: p.conversation_id,
     mcp_task_id: taskId,
+    ...(p.resumed ? { resumed: true } : {}),
     status: "working",
     poll_with: "conversation_get",
     poll_arg: { conversation_id: p.conversation_id },
@@ -468,12 +475,32 @@ export async function handleConversationTool(
             db,
           );
       if (resumable) {
-        return successText({
+        // A resumed start is an APPEND, not a no-op: the incoming message
+        // must land in the resumed conversation and run a turn. The old
+        // behaviour — returning `working` without persisting the message
+        // or enqueueing anything — silently dropped the user's intent and
+        // left the client polling a conversation that was never going to
+        // move (observed live: every start funnelled into one stuck
+        // conversation and every new message vanished).
+        const appended = await svc.appendUserMessage(
+          {
+            tenant_id: principal.tenant_id,
+            conversation_id: resumable.conversation_id,
+            actor_id: principal.id,
+            message: parsed.data.message,
+            ...(permission_mode ? { permission_mode } : {}),
+          },
+          db,
+        );
+        return backgroundTurn({
+          db,
+          principal,
           conversation_id: resumable.conversation_id,
+          kind: "append",
+          user_message_id: appended.message_id,
           resumed: true,
-          status: "working",
-          poll_with: "conversation_get",
-          poll_arg: { conversation_id: resumable.conversation_id },
+          ...(permission_mode ? { permission_mode } : {}),
+          ...(taskAugmented ? { taskAugmented } : {}),
         });
       }
       const created = await svc.createConversation(

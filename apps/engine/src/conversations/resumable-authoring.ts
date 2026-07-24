@@ -18,10 +18,21 @@
 //     legitimately starts fresh),
 //   - inside a short recency window (RESUMABLE_AUTHORING_WINDOW_MS),
 //   - the incoming message names an EXPLICIT kebab-case slug token
-//     (two+ segments, e.g. `load-jira-issue-full-details`) that also
-//     appears as the candidate's authored slug or in its opening message.
-//     A bare natural-language phrase carries no slug token, so it never
-//     resumes — it starts fresh, which is the safe default.
+//     (two+ segments, e.g. `load-jira-issue-full-details`) that matches
+//     the candidate's AUTHORED identity — its draft workflow slug/name or
+//     the draft summary's active target — OR the incoming message is a
+//     byte-identical retry of the candidate's opening message (the
+//     pre-draft window, before the first turn has populated the draft).
+//
+// The candidate's opening-message PROSE is deliberately NOT a match
+// source. Kebab tokens extracted from free text are not slug references:
+// German (and hyphenated English) prose is full of compounds like
+// `http-connector`, `api-key`, or `authorization-header`, and matching
+// prose-against-prose turned every subsequent start that shared one such
+// compound into a resume of an unrelated conversation — a trap the user
+// could not escape, observed live as every conversation_start funnelling
+// into one stuck conversation. Authored slugs are chosen identifiers;
+// prose overlap is coincidence.
 //
 // No DB unique constraint: that would block legitimate re-authoring of the
 // same slug. This is a soft, read-side dedup scoped to the live window.
@@ -48,9 +59,16 @@ const CANDIDATE_SCAN = 20;
 
 export interface ResumableAuthoringMatch {
   conversation_id: string;
-  /** The slug token that matched — logged so the resume is auditable. */
+  /**
+   * What matched — the authored slug token, or the literal
+   * `"(identical-opening-message)"` marker for a pre-draft retry.
+   * Logged so the resume is auditable.
+   */
   matched_slug: string;
 }
+
+/** Marker logged when the match was an exact opening-message retry. */
+export const IDENTICAL_MESSAGE_MARKER = "(identical-opening-message)";
 
 function slugify(name: string): string {
   return name
@@ -86,15 +104,14 @@ function messageText(content: unknown): string {
 }
 
 /**
- * The set of slug tokens a candidate conversation is authoring against,
- * assembled from cheap, already-loaded sources (no full draft hydration):
- *   - the draft's authored workflow slug / name,
- *   - the draft summary's active target slug,
- *   - the opening user message's explicit kebab tokens (the signal that is
- *     present immediately, before the first turn has populated the draft).
+ * The set of slug tokens a candidate conversation is AUTHORING, assembled
+ * from cheap, already-loaded sources (no full draft hydration): the
+ * draft's authored workflow slug / name and the draft summary's active
+ * target (which also covers connector authoring). Deliberately NOT the
+ * opening message's prose — see the module docblock.
  */
-function candidateSlugTokens(draft: unknown, firstMessage: string): Set<string> {
-  const tokens = extractSlugTokens(firstMessage);
+function candidateSlugTokens(draft: unknown): Set<string> {
+  const tokens = new Set<string>();
   if (draft && typeof draft === "object") {
     const doc = draft as DraftDocument;
     const wfSlug = doc.workflow?.slug;
@@ -104,18 +121,30 @@ function candidateSlugTokens(draft: unknown, firstMessage: string): Set<string> 
       const s = slugify(wfName);
       if (s.length > 0) tokens.add(s);
     }
-    const activeSlug = doc.summary?.active_target?.slug;
-    if (typeof activeSlug === "string" && activeSlug.length > 0) tokens.add(activeSlug);
+    const target = doc.summary?.active_target;
+    if (target) {
+      if (typeof target.slug === "string" && target.slug.length > 0) tokens.add(target.slug);
+      if (typeof target.name === "string" && target.name.length > 0) {
+        const s = slugify(target.name);
+        if (s.length > 0) tokens.add(s);
+      }
+    }
   }
   return tokens;
 }
 
+/** Whitespace-insensitive equality key for the exact-retry fallback. */
+function normalizeMessage(text: string): string {
+  return text.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 /**
  * Find a recent, non-terminal authoring conversation OWNED by this
- * principal that is already authoring the same workflow slug named in
- * `message_or_slug`. Returns the match (most-recent first) or `null` when
- * the message names no slug or nothing in the live window matches — in
- * which case the caller creates a fresh conversation as before.
+ * principal that is already authoring the same workflow/connector slug
+ * named in `message_or_slug`, or whose opening message is an identical
+ * retry of it. Returns the match (most-recent first) or `null` when
+ * nothing in the live window matches — in which case the caller creates
+ * a fresh conversation as before.
  *
  * Tenant-scoped: every query is filtered by `tenant_id`, and results are
  * further scoped to `owner_id` so a resume can only ever attach to the
@@ -130,8 +159,11 @@ export async function findResumableAuthoringConversation(
   if (!owner_id) return null;
   const incoming = extractSlugTokens(message_or_slug);
   // No explicit slug token in the prompt → cannot tightly identify a
-  // target, so never resume. Start fresh (the safe default).
+  // target, so never resume — not even via the identical-retry fallback:
+  // short token-less prompts ("list users", "status?") are legitimately
+  // re-used across genuinely separate conversations.
   if (incoming.size === 0) return null;
+  const incomingNormalized = normalizeMessage(message_or_slug);
 
   const cutoff = new Date(Date.now() - RESUMABLE_AUTHORING_WINDOW_MS);
   const rows = await db
@@ -179,19 +211,33 @@ export async function findResumableAuthoringConversation(
 
   // rows are already most-recent-first → the first match wins.
   for (const row of rows) {
-    const candidate = candidateSlugTokens(row.draft, firstMessageByConversation.get(row.id) ?? "");
+    let matched: string | null = null;
+    const candidate = candidateSlugTokens(row.draft);
     for (const token of incoming) {
       if (candidate.has(token)) {
-        logger.info({
-          module: "conversation",
-          action: "resumed",
-          tenant_id,
-          owner_id,
-          conversation_id: row.id,
-          matched_slug: token,
-        });
-        return { conversation_id: row.id, matched_slug: token };
+        matched = token;
+        break;
       }
+    }
+    // Pre-draft retry window: the first turn has not populated the draft
+    // yet, so the only reliable duplicate signal is the message itself
+    // being an identical re-issue of the candidate's opening message.
+    if (!matched) {
+      const firstMessage = firstMessageByConversation.get(row.id) ?? "";
+      if (incomingNormalized.length > 0 && normalizeMessage(firstMessage) === incomingNormalized) {
+        matched = IDENTICAL_MESSAGE_MARKER;
+      }
+    }
+    if (matched) {
+      logger.info({
+        module: "conversation",
+        action: "resumed",
+        tenant_id,
+        owner_id,
+        conversation_id: row.id,
+        matched_slug: matched,
+      });
+      return { conversation_id: row.id, matched_slug: matched };
     }
   }
   return null;

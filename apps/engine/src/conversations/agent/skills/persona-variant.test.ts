@@ -137,6 +137,30 @@ describe("install-grounding rule is surface-gated (chat/mcp/web), not in the aut
   });
 });
 
+describe("action-honesty rule reaches EVERY real surface, not the surface-less base", () => {
+  // Unlike the answer-surface groundings above, ACTION HONESTY guards the
+  // REPL too: the observed fabrication ("deleted the conversation" with no
+  // such tool in the palette) happened on sk_interactive. Only the
+  // surface-less assembly — the drop-ladder tests' pinned base — stays
+  // without it.
+  test("all real surfaces carry the action-honesty rule", async () => {
+    for (const surface of ["sk_interactive", "sk_headless", "mcp", "web", "chat"] as const) {
+      const r = await generateMainAgentSystemPrompt({
+        surface,
+        authoring_hint: makeHint("workflow"),
+      });
+      expect(r.content).toContain("ACTION HONESTY");
+    }
+  });
+
+  test("surface-less assembly does NOT carry it (pinned base stays lean)", async () => {
+    const r = await generateMainAgentSystemPrompt({
+      authoring_hint: makeHint("workflow"),
+    });
+    expect(r.content).not.toContain("ACTION HONESTY");
+  });
+});
+
 describe("concept-grounding rule is surface-gated (chat/mcp/web), not in the authoring base", () => {
   // Same architecture as install-grounding: the Skills-vs-Knowledge / model-a-
   // domain rule is injected only on user-facing ANSWER surfaces so the concept
