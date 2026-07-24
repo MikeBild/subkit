@@ -107,6 +107,7 @@ import {
 } from "./persist.ts";
 import { closingProseQuestion } from "./prose-question.ts";
 import { resolveScopeFactsForConversation } from "./scope-facts.ts";
+import { compactConversation } from "./service/compact.ts";
 import {
   autoloadForUserTurn,
   listBaselineSlugs,
@@ -834,17 +835,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       p.db,
     ),
   );
-  const messages = await timePhaseAsync("converse.build_model_messages", () =>
+  let messages = await timePhaseAsync("converse.build_model_messages", () =>
     buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
       conversationEnvelope: true,
       conversation_id: p.conversation_id,
     }),
   );
-  const messageTokens = timePhase("converse.count_message_tokens", () =>
+  let messageTokens = timePhase("converse.count_message_tokens", () =>
     countModelMessagesTokens(messages),
   );
-  const estimatedPromptTokens = prompt.token_counts.total + messageTokens;
-  const estimated = estimatedPromptTokens + budget * 1024;
+  let estimatedPromptTokens = prompt.token_counts.total + messageTokens;
+  let estimated = estimatedPromptTokens + budget * 1024;
 
   // Pre-flight context-window check. The provider rejects oversize
   // prompts with a 400 ("prompt is too long: N tokens > 200000 maximum")
@@ -855,26 +856,64 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // already accounts for completion headroom (see `contextCapFor`).
   const contextCap = contextCapFor(effectiveModel);
   if (estimatedPromptTokens > contextCap) {
-    logger.warn({
-      module: "conversation",
-      action: "preflight.context_too_large",
-      msg: "rejecting turn before provider call — assembled prompt exceeds context cap",
-      conversation_id: p.conversation_id,
-      tenant_id: p.tenant_id,
-      model: effectiveModel,
-      estimated_prompt_tokens: estimatedPromptTokens,
-      context_cap: contextCap,
-      message_tokens: messageTokens,
-      prompt_breakdown: prompt.token_counts,
-    });
-    throw new LlmContextTooLarge("llm_context_too_large", {
-      estimated_prompt_tokens: estimatedPromptTokens,
-      context_cap: contextCap,
-      message_tokens: messageTokens,
-      prompt_total: prompt.token_counts.total,
-      model: effectiveModel,
-      remediation: "compact_or_resume",
-    });
+    // Auto-compact ONCE before giving up. A full authoring conversation should
+    // degrade to a summary + recent turns, not strand mid-build behind a hard
+    // 413. Only the chat TURNS collapse; the draft workflow lives in draft
+    // snapshots, so the in-progress build survives. `compactConversation` marks
+    // the older rows compacted (it does not delete them), and `buildModelMessages`
+    // replays only from the latest marker — so a re-count reflects the smaller
+    // history. If it collapsed nothing (already minimal) or the prompt still
+    // exceeds the cap after collapsing, the turn is genuinely too large: throw
+    // the same typed error, now unrecoverable.
+    const compaction = await compactConversation(
+      { tenant_id: p.tenant_id, conversation_id: p.conversation_id, actor_id: p.actor_id },
+      p.db,
+    );
+    if (compaction.messages_collapsed > 0) {
+      messages = await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
+        conversationEnvelope: true,
+        conversation_id: p.conversation_id,
+      });
+      messageTokens = countModelMessagesTokens(messages);
+      const before = estimatedPromptTokens;
+      estimatedPromptTokens = prompt.token_counts.total + messageTokens;
+      estimated = estimatedPromptTokens + budget * 1024;
+      logger.warn({
+        module: "conversation",
+        action: "preflight.context_auto_compacted",
+        msg: "assembled prompt exceeded the context cap; auto-compacted the conversation and retried",
+        conversation_id: p.conversation_id,
+        tenant_id: p.tenant_id,
+        model: effectiveModel,
+        messages_collapsed: compaction.messages_collapsed,
+        estimated_prompt_tokens_before: before,
+        estimated_prompt_tokens_after: estimatedPromptTokens,
+        context_cap: contextCap,
+      });
+    }
+    if (estimatedPromptTokens > contextCap) {
+      logger.warn({
+        module: "conversation",
+        action: "preflight.context_too_large",
+        msg: "rejecting turn before provider call — assembled prompt exceeds context cap even after compaction",
+        conversation_id: p.conversation_id,
+        tenant_id: p.tenant_id,
+        model: effectiveModel,
+        estimated_prompt_tokens: estimatedPromptTokens,
+        context_cap: contextCap,
+        message_tokens: messageTokens,
+        prompt_breakdown: prompt.token_counts,
+        compacted: compaction.messages_collapsed > 0,
+      });
+      throw new LlmContextTooLarge("llm_context_too_large", {
+        estimated_prompt_tokens: estimatedPromptTokens,
+        context_cap: contextCap,
+        message_tokens: messageTokens,
+        prompt_total: prompt.token_counts.total,
+        model: effectiveModel,
+        remediation: "compact_or_resume",
+      });
+    }
   }
 
   const actor = actorFields(p.principal);

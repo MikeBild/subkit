@@ -87,18 +87,33 @@ const FORM_TOOL_NAMES = new Set<FormBridgeToolName>([
   "ask_user_form",
 ]);
 
+// A URL an elicitation row hands to the human to complete out of band.
+//   - `credential`: an OAuth authorization / credential-setup link. URL-FIRST —
+//     the alternative would collect a secret as chat text, which the MCP surface
+//     refuses. Delivered as url-mode whenever the client can, regardless of form
+//     capability.
+//   - `approval`: a policy-confirmation portal link (`approval_url`). A FALLBACK
+//     — a form-capable client renders the rich confirm form and never needs the
+//     link; a client that cannot render a form (or has already completed the
+//     link out of band) reaches the confirmation only through it.
 function pendingUrlElicitation(
   pending: ElicitationRecord,
-): { url: string; message: string } | null {
+): { url: string; message: string; kind: "credential" | "approval" } | null {
   if (!pending.input || typeof pending.input !== "object" || Array.isArray(pending.input)) {
     return null;
   }
   const input = pending.input as Record<string, unknown>;
-  const candidate = input.authorization_url ?? input.setup_url;
-  if (typeof candidate !== "string" || !/^https?:\/\//i.test(candidate)) return null;
   const message =
     typeof input.summary === "string" && input.summary.length > 0 ? input.summary : pending.summary;
-  return { url: candidate, message };
+  const credentialUrl = input.authorization_url ?? input.setup_url;
+  if (typeof credentialUrl === "string" && /^https?:\/\//i.test(credentialUrl)) {
+    return { url: credentialUrl, message, kind: "credential" };
+  }
+  const approvalUrl = input.approval_url;
+  if (typeof approvalUrl === "string" && /^https?:\/\//i.test(approvalUrl)) {
+    return { url: approvalUrl, message, kind: "approval" };
+  }
+  return null;
 }
 
 export async function deliverPendingNativeElicitationCore(p: {
@@ -112,12 +127,31 @@ export async function deliverPendingNativeElicitationCore(p: {
 }): Promise<NativeDeliveryResult | null> {
   if (!FORM_TOOL_NAMES.has(p.pending.tool_name as FormBridgeToolName)) return null;
   const toolName = p.pending.tool_name as FormBridgeToolName;
-  const urlElicitation = pendingUrlElicitation(p.pending);
-  const mapped = urlElicitation ? null : mapAskUserToPrimitiveSchema(toolName, p.pending.input);
-  const formMapping = mapped && !mapped.degrade ? mapped : null;
   const elicitForm = p.nativeElicitation.elicitForm;
   const elicitUrl = p.nativeElicitation.elicitUrl;
-  if (urlElicitation && !elicitUrl) return null;
+  const urlCandidate = pendingUrlElicitation(p.pending);
+  // A URL interaction already settled out of band (the portal POST marked the
+  // row) is a FACT to replay, not a mode to choose — honor it regardless of the
+  // client's form capability, so a form-capable client whose form never
+  // rendered still resumes once the human used the link.
+  const urlAlreadyResolved =
+    p.pending.delivery_last_error === "url_completed" ||
+    p.pending.delivery_last_error === "url_failed" ||
+    p.pending.delivery_last_error === "url_accepted";
+  // Deliver via URL when it is a credential row (url-first), when the URL
+  // interaction already resolved (replay), or when the client cannot render a
+  // form (the only channel it has). An `approval` row on a form-capable client
+  // keeps the rich confirm form.
+  const urlElicitation =
+    urlCandidate && (urlCandidate.kind === "credential" || urlAlreadyResolved || !elicitForm)
+      ? urlCandidate
+      : null;
+  const mapped = urlElicitation ? null : mapAskUserToPrimitiveSchema(toolName, p.pending.input);
+  const formMapping = mapped && !mapped.degrade ? mapped : null;
+  // A LIVE url delivery needs `elicitUrl`; an already-resolved one is replayed
+  // synchronously (below) and needs no wire capability — so only bail when the
+  // URL still needs a round-trip the client cannot make.
+  if (urlElicitation && !elicitUrl && !urlAlreadyResolved) return null;
   if (!urlElicitation && (!formMapping || !elicitForm)) return null;
   if (urlElicitation && p.pending.delivery_last_error === "url_accepted") {
     return successText({

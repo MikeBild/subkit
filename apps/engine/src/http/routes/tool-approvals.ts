@@ -36,6 +36,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { ResolvedPrincipal } from "../../auth/index.ts";
 import { buildCallbackPageHtml, escapeHtml } from "../../connectors/index.ts";
+import { markApprovalElicitationsComplete } from "../../conversations/index.ts";
 import { logger, scrubString } from "../../logging/index.ts";
 import {
   APPROVAL_PORTAL_PATH,
@@ -340,6 +341,34 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         message: `${DECISION_REFUSED_COPY[result.code]}\n\nNothing was changed by this submission.`,
       });
       return c.body(html, status, HTML_HEADERS);
+    }
+
+    // Close the loop back to a paused CONVERSATION, if this approval gates one.
+    // The grant above decided the `tool_approvals` row; a policy-gated authoring
+    // turn additionally waits on a `conversation_elicitations` row that only the
+    // elicitation's resolution reactivates. Mark it settled and nudge the polling
+    // MCP client so its next Tasks poll replays the decision and resumes the turn
+    // (the harness then claims this now-granted approval and runs the tool).
+    // Best-effort: a direct MCP dispatch confirm has no paired conversation row,
+    // so a zero match is normal and never fails the human's decision.
+    try {
+      await markApprovalElicitationsComplete(
+        {
+          tenant_id: view.tenant_id,
+          approval_id: view.approval_id,
+          outcome: decision === "approve" ? "succeeded" : "failed",
+        },
+        db,
+      );
+    } catch (err) {
+      logger.warn({
+        module: "tool_approvals",
+        action: "approval.portal.conversation_reactivation_failed",
+        msg: "approval decided, but reactivating its paused conversation failed; the expiry sweep is the backstop",
+        approval_id: view.approval_id,
+        tenant_id: view.tenant_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     logger.info({
