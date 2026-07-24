@@ -4,6 +4,33 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] – 2026-07-24
+
+### Fixed
+
+- **Native MCP elicitation survives real client rendering.** Form delivery over
+  `conversation_get` / `tasks/get` no longer blocks the poll on the human's
+  answer with the SDK's 60s default timeout — the root cause of the repeated
+  `elicitation_transport_failed` failures in Claude Code and Codex. The engine
+  now fires `elicitation/create`, holds the poll only for a ~1 s delivery
+  grace, returns `input_required` immediately, and stages the answer through a
+  detached continuation with a 5-minute round-trip window. Claude Code (which
+  renders MCP forms only after its agent turn completes) and slow human
+  answers in Codex now land reliably.
+- A transport break no longer destroys the pending elicitation: the row is
+  demoted to the portal DB-pause (audit `ELICITATION_DEMOTED_TO_PORTAL`,
+  never `APPROVAL_REJECTED`) and the in-flight authoring draft survives.
+- A form `cancel` arriving faster than a human could render it (a client
+  auto-cancel) is treated as an undelivered form and re-prompted, not
+  recorded as a human cancellation. Explicit declines are always honored.
+
+### Added
+
+- `tests/real-world/elicitation/` — an operator diagnostic that drives real
+  Claude Code and Codex CLIs in tmux sessions against a local engine and
+  captures terminal frames plus PNG screenshots per matrix cell (accept /
+  timeout / cancel). Not wired into CI.
+
 ## [5.0.0] – 2026-07-23
 
 ### Changed
