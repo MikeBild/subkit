@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] – 2026-07-24
+
+> Version note: the 5.2.x line (5.2.0–5.2.4) was consumed by pre-squash
+> releases and is never reused; the next free minor after 5.1 is 5.3.
+
+### Added
+
+- **Idle OAuth2 refresh tokens are now kept alive proactively.** Token
+  refresh used to happen only when a connector saw traffic (or an hourly
+  probe), so a connector idle for days could lose its refresh token to
+  IdP idle-expiry and land avoidably in `needs_reauth` — recoverable only
+  by a human re-authentication. The scheduler's hourly connector scan now
+  runs a keep-alive sweep: any oauth2 credential whose token has not been
+  exercised for 3 days gets a proactive refresh via the (previously
+  producer-less) `connector.refresh-oauth` queue. A successful refresh
+  bumps the credential's freshness, so each credential costs at most one
+  IdP call per window and connectors with regular traffic or probes are
+  never touched. Connectors already flagged `needs_reauth` stay excluded —
+  a rejected refresh token or revoked secret still requires the human
+  reauth flow (`request_connector_reauth`), by design.
+
 ## [5.1.12] – 2026-07-24
 
 > Version note: 5.1.2–5.1.11 and 5.2.0–5.2.4 were consumed by pre-squash

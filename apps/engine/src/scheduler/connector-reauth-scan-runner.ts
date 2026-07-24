@@ -20,13 +20,20 @@
 // (execution_steps auth_failed errors) and escalates persistent streaks on
 // schedule-bound workflows to `level:"error"` — see
 // scanScheduledWorkflowAuthFailureStreaks below.
+//
+// A third sweep, `runOAuth2RefreshKeepAliveForTenant`, rides the same
+// hourly claim: it enqueues proactive `connector.refresh-oauth` jobs for
+// oauth2 credentials idle for days, so refresh tokens survive IdP
+// idle-expiry on connectors that neither traffic nor probes exercise.
 
-import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import type { PgBoss } from "pg-boss";
 import { probeConnector } from "../connectors/drivers/index.ts";
 import { flagConnectorAuthFailure } from "../connectors/reauth.ts";
 import type { AuthType, ConnectorView, DriverName } from "../connectors/types.ts";
+import type { RefreshOAuthJob } from "../credentials/oauth2/refresh-worker.ts";
 import type { Db } from "../db/client.ts";
-import { connectors } from "../db/schema/index.ts";
+import { connectors, credentials } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
 // Consecutive scheduler-run auth failures on one workflow before the scan
@@ -209,6 +216,102 @@ export async function runConnectorReauthScanForTenant(
     known_auth_failed,
     workflow_auth_failure_streaks: streaks,
     duration_ms,
+  });
+}
+
+// How long an oauth2 credential may sit unexercised before the keep-alive
+// sweep enqueues a proactive refresh. 3 days is well under every IdP
+// idle-expiry window that keep-alive can actually help with (Google prod
+// ~6 months unused, Microsoft ~90-day inactivity, Auth0 idle lifetimes in
+// days); Google testing-mode's 7-day limit is absolute, not idle-based —
+// no sweep can save those. A successful refresh bumps
+// `credentials.updated_at`, so each credential costs at most one IdP call
+// per window even though the sweep itself runs hourly.
+export const OAUTH2_KEEPALIVE_IDLE_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Enqueue a proactive oauth2 refresh for every credential of this tenant
+ * whose token has not been exercised for OAUTH2_KEEPALIVE_IDLE_MS.
+ *
+ * The lazy inline refresh (`refreshIfStale` in the HTTP driver) and the
+ * hourly probe scan above already keep tokens fresh for any connector
+ * that sees traffic or probes. This sweep is the backstop for the rest —
+ * circuit-open connectors (excluded from probe candidates), probes that
+ * bail before an HTTP request, multi-day engine downtime — so refresh
+ * tokens don't die of IdP idle-expiry while nothing exercises them.
+ *
+ * Candidate selection is fully unencrypted: `oauth2_refresh_ciphertext
+ * IS NOT NULL` is the exact proxy for "has a refresh token" (the
+ * refresh_token and cognito grants always persist one; a
+ * client_credentials_json re-mint never does), and
+ * `credentials.updated_at` is bumped by `rotateOAuth2Tokens` on every
+ * rotation, making it the "token last exercised" timestamp.
+ *
+ * Deliberately NO circuit_state filter: the IdP token endpoint is a
+ * different host than the broken API endpoint, and keeping the token
+ * alive during an API outage is precisely the point. Connectors already
+ * flagged needs_reauth are excluded — their refresh token is known-dead
+ * and only a human re-issue revives them.
+ *
+ * Work is enqueued onto the existing `connector.refresh-oauth` pg-boss
+ * queue (retry config in queue/queues.ts) rather than refreshed inline,
+ * keeping IdP round-trips out of the reconciler tick. IdP *rejections*
+ * are not retried: `refreshIfStale` swallows them and flags the
+ * connector; pg-boss retries only cover infra errors.
+ */
+export async function runOAuth2RefreshKeepAliveForTenant(
+  tenant_id: string,
+  now: Date,
+  db: Db,
+  boss: Pick<PgBoss, "send">,
+): Promise<void> {
+  // tenant-filter:bound — the candidate query is scoped to this tenant_id
+  const cutoff = new Date(now.getTime() - OAUTH2_KEEPALIVE_IDLE_MS);
+  const candidates = await db
+    .select({ credential_id: credentials.id })
+    .from(credentials)
+    .innerJoin(connectors, eq(credentials.connector_id, connectors.id))
+    .where(
+      and(
+        eq(credentials.tenant_id, tenant_id),
+        eq(credentials.mode, "oauth2"),
+        isNull(credentials.deleted_at),
+        isNotNull(credentials.connector_id),
+        isNotNull(credentials.oauth2_refresh_ciphertext),
+        lt(credentials.updated_at, cutoff),
+        isNull(connectors.deleted_at),
+        eq(connectors.needs_reauth, false),
+      ),
+    );
+
+  let enqueued = 0;
+  for (const { credential_id } of candidates) {
+    try {
+      await boss.send("connector.refresh-oauth", {
+        tenant_id,
+        credential_id,
+      } satisfies RefreshOAuthJob);
+      enqueued += 1;
+    } catch (err) {
+      logger.error({
+        module: "scheduler",
+        action: "oauth2_keepalive.enqueue_failed",
+        msg: "failed to enqueue keep-alive refresh — will retry on next sweep",
+        tenant_id,
+        credential_id,
+        ...errorFields(err),
+      });
+    }
+  }
+
+  logger.info({
+    module: "scheduler",
+    action: "oauth2_keepalive.completed",
+    msg: "oauth2 refresh keep-alive sweep completed",
+    tenant_id,
+    candidate_count: candidates.length,
+    enqueued,
+    duration_ms: Date.now() - now.getTime(),
   });
 }
 
