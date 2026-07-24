@@ -190,13 +190,17 @@ describe("conversation_start — slug idempotency (resume, not duplicate)", () =
     expect(secondBody.resumed).toBe(true);
     expect(secondBody.conversation_id).toBe(firstBody.conversation_id);
 
-    // No duplicate conversation and no second mcp_tasks row (the resume
-    // path never enqueues a new turn).
+    // No duplicate conversation — but the resumed start APPENDS the
+    // incoming message and enqueues a turn for it (a resume that swallows
+    // the message would leave the client polling a conversation that
+    // never moves): one `start` task plus one `append` task.
     const tasks = await testDb.db
       .select()
       .from(mcpTasks)
       .where(eq(mcpTasks.conversation_id, firstBody.conversation_id));
-    expect(tasks).toHaveLength(1);
+    expect(tasks).toHaveLength(2);
+    expect(tasks.map((t) => t.kind).sort()).toEqual(["append", "start"]);
+    expect(tasks.every((t) => t.job_id)).toBe(true);
   });
 
   test("a terminal (committed) conversation is not resumed — a fresh one is created", async () => {
@@ -250,6 +254,81 @@ describe("conversation_start — slug idempotency (resume, not duplicate)", () =
     };
     expect(secondBody.resumed).toBeUndefined();
     expect(secondBody.conversation_id).not.toBe(firstBody.conversation_id);
+  });
+
+  test("shared prose compounds (German hyphenated words) never resume — only authored slugs do", async () => {
+    // Regression: `extractSlugTokens` sees German compounds like
+    // `http-connector` / `api-key` as kebab tokens. Matching them against
+    // the candidate's opening-message PROSE funnelled every later start
+    // that shared one compound into an unrelated stuck conversation
+    // (observed live). Prose overlap must not resume.
+    const first = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: {
+        message:
+          "Lege einen neuen HTTP-Connector für die TrustMRR-API an. Authentifizierung: Bearer Token im Authorization-Header.",
+      },
+    });
+    const firstBody = JSON.parse(first.content[0]?.text ?? "{}") as { conversation_id: string };
+
+    const second = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: {
+        message:
+          "Baue vier Workflows für den Opportunity-Radar. Nutze dafür den bestehenden HTTP-Connector mit dem API-Key.",
+      },
+    });
+    expect(second.isError).toBe(false);
+    const secondBody = JSON.parse(second.content[0]?.text ?? "{}") as {
+      conversation_id: string;
+      resumed?: boolean;
+    };
+    expect(secondBody.resumed).toBeUndefined();
+    expect(secondBody.conversation_id).not.toBe(firstBody.conversation_id);
+  });
+
+  test("naming the candidate's authored draft slug resumes AND runs the message as a turn", async () => {
+    const slug = "radar-sync-weekly-digest";
+    const [conv] = await testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: principal.tenant_id,
+        owner_id: principal.id,
+        status: "active",
+        draft: { workflow: { name: "Radar Sync Weekly Digest", slug, steps: [] } },
+      })
+      .returning();
+    if (!conv) throw new Error("seed conversation failed");
+
+    const started = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: { message: `bitte ${slug} fertigstellen und speichern` },
+    });
+    expect(started.isError).toBe(false);
+    const body = JSON.parse(started.content[0]?.text ?? "{}") as {
+      conversation_id: string;
+      resumed?: boolean;
+      status: string;
+    };
+    expect(body.resumed).toBe(true);
+    expect(body.conversation_id).toBe(conv.id);
+    expect(body.status).toBe("working");
+
+    // The incoming message was persisted into the resumed conversation
+    // and a turn was enqueued for it — nothing swallowed.
+    const tasks = await testDb.db
+      .select()
+      .from(mcpTasks)
+      .where(eq(mcpTasks.conversation_id, conv.id));
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.kind).toBe("append");
+    expect(tasks[0]?.job_id).toBeTruthy();
   });
 });
 

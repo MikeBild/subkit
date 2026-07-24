@@ -18,6 +18,7 @@ import {
   EXECUTION_PERSONA,
   GENERAL_RULES,
   RBAC_EDITING_PERSONA,
+  SK_ACTION_HONESTY,
   SK_CONCEPT_GROUNDING,
   SK_COUNT_HYGIENE,
   SK_INSTALL_GROUNDING,
@@ -202,6 +203,11 @@ export async function generateMainAgentSystemPrompt(
     sections.push(SK_COUNT_HYGIENE);
     sections.push(SK_STATUS_GROUNDING);
   }
+  // Action honesty on EVERY real surface — the REPL (sk_interactive) is
+  // where the claimed-but-never-performed "deleted the conversation"
+  // fabrication was observed. Surface-less assembly (the drop-ladder
+  // tests' pinned base) stays unchanged.
+  if (input.surface) sections.push(SK_ACTION_HONESTY);
   // The chat surface never authors — an authoring-focus block would
   // instruct the model to progress a draft it has no tools for.
   const focusBlock = input.surface === "chat" ? "" : authoringFocusPrompt(input.authoring_hint);
