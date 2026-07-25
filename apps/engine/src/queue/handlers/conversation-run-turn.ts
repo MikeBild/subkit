@@ -29,7 +29,11 @@ import {
   registerConversationAbort,
   unregisterConversationAbort,
 } from "../../conversations/abort.ts";
-import { humanInBandAnswer, MODEL_RELAYED_ANSWER } from "../../conversations/answer-actor.ts";
+import {
+  humanInBandAnswer,
+  humanPortalAnswer,
+  MODEL_RELAYED_ANSWER,
+} from "../../conversations/answer-actor.ts";
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
@@ -182,16 +186,23 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
           // from an elicitation also runs under RBAC instead of failing
           // principal_required.
           ...(data.principal ? { principal: data.principal } : {}),
-          // The MODEL called `conversation_respond_elicitation`; this worker only
-          // carried the answer across a queue. It authenticates as a user
-          // principal and is still not a person, so it grants nothing. An
-          // approval-bearing elicitation never reaches here — the MCP tool
-          // refuses it — and if one ever did, the claim would answer
-          // `approval_not_granted`.
+          // WHO answered, per the channel that carried it:
+          //   - `mcp_native` — the client fulfilled an `elicitation/create`
+          //     round-trip, which it can only do by showing a person the prompt.
+          //   - `portal` — a person decided in the browser approval portal,
+          //     which already granted the `tool_approvals` row inside their own
+          //     request; this names them so the resume is not filed as a machine
+          //     relay. An unidentified browser degrades to a relay.
+          //   - anything else — the MODEL called
+          //     `conversation_respond_elicitation` and this worker only carried
+          //     the answer across a queue. It authenticates as a user principal
+          //     and is still not a person, so it grants nothing.
           answer_actor:
             data.answer_channel === "mcp_native"
               ? humanInBandAnswer(data.principal)
-              : MODEL_RELAYED_ANSWER,
+              : data.answer_channel === "portal"
+                ? humanPortalAnswer(data.approver_user_id)
+                : MODEL_RELAYED_ANSWER,
           output: elicitation.output,
           ...(data.answer_channel === "mcp_native" &&
           data.reason &&

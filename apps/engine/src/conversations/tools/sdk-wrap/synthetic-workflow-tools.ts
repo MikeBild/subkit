@@ -315,9 +315,10 @@ async function executeSyntheticRun(
     // elicitation's commit_intent, and the harness claims it after the
     // operator answers (persistence/auto-persist.ts).
     let approvalId: string | null = null;
+    let approvalUrl: string | null = null;
     if (heldPreview) {
       approvalId = crypto.randomUUID();
-      await requestApproval({
+      const requested = await requestApproval({
         db,
         principal,
         approval_id: approvalId,
@@ -334,6 +335,10 @@ async function executeSyntheticRun(
         // both must show the same writes.
         preview: heldDetails,
       });
+      // The minted link used to be discarded outright, so an operator who could
+      // not answer in-band had no channel at all and the portal's completion
+      // bridge could not recognise the row.
+      approvalUrl = requested.approval_url ?? null;
     }
     const output: Record<string, unknown> = {
       // A preview reports the reads that ran, never a completed action. `ok:
@@ -419,6 +424,7 @@ async function executeSyntheticRun(
         risk_level: "high",
         reversible: false,
         pending_output: { held_steps: heldSteps, would_write: wouldWrite },
+        ...(approvalUrl ? { approval_url: approvalUrl } : {}),
         commit_intent: {
           kind: "commit_held_workflow_writes",
           payload: { tool: name, approval_id: approvalId },

@@ -431,6 +431,11 @@ async function executeExternalMcpTool(
           payload: { tool: name, approval_id: confirm_id },
           description: `Approve the external MCP tool ${name} so it can run.`,
         },
+        // Persist the human-reachable link, not just mention it to the model.
+        // Withholding it here left the operator with no channel at all on a
+        // client that cannot render a form, and left the portal's completion
+        // bridge unable to recognise the row.
+        ...(requested.approval_url ? { approval_url: requested.approval_url } : {}),
       };
       const elicitationSummary = `Run external MCP tool ${name} (server ${namespace})`;
       const elicitation = await createElicitation(

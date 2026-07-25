@@ -3,13 +3,15 @@
 // The approval portal (`/v1/tool-approvals/decide`) grants a `tool_approvals`
 // row but knows nothing about the paused conversation. This function is the
 // bridge: it matches the pending confirm elicitation by the `approval_id` its
-// `commit_intent` carries AND the presence of an `approval_url`, marks it
-// `url_completed` / `url_failed`, so the polling MCP client's next Tasks poll
-// replays the decision and resumes the turn.
+// `commit_intent` carries — the approval handle is the relation — and marks it
+// `url_completed` / `url_failed` so a polling MCP client's next Tasks poll can
+// replay the decision. The durable resume is
+// `completeApprovalBackedElicitation`, which the portal route drives directly.
 //
-// These tests pin the match precision — the query must touch ONLY the row that
-// took the approval-portal path, never a shape-carrier row, an OAuth/credential
-// URL row, or a different approval's row.
+// These tests pin the match precision: every row carrying the handle, and
+// nothing else — never a different approval's row, never an already-resolved
+// one. Requiring an `approval_url` too (the previous predicate) is what made
+// this bridge match nothing for 4 of the 5 approval-backed rows in production.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
@@ -101,7 +103,7 @@ describe("markApprovalElicitationsComplete", () => {
       ctx.db,
     );
 
-    expect(matched).toBe(1);
+    expect(matched).toHaveLength(1);
     expect(await lastError(id)).toBe("url_completed");
   });
 
@@ -119,11 +121,16 @@ describe("markApprovalElicitationsComplete", () => {
       ctx.db,
     );
 
-    expect(matched).toBe(1);
+    expect(matched).toHaveLength(1);
     expect(await lastError(id)).toBe("url_failed");
   });
 
-  test("a confirm row WITHOUT an approval_url is never matched — it never took the portal path", async () => {
+  test("a confirm row WITHOUT an approval_url is still matched — the approval handle is the relation", async () => {
+    // Regression: this used to require an `approval_url` in the input, which
+    // silently excluded every confirm row whose gate minted a link it never
+    // persisted (external-MCP tools, held workflow writes). In production that
+    // was 4 of the 5 approval-backed rows ever created, so a human's portal
+    // decision matched nothing and the conversation timed out regardless.
     const conversation_id = await freshConversation();
     const approvalId = uuid(3);
     const id = await seedConfirm({ conversation_id, approvalId }); // no approval_url
@@ -133,8 +140,9 @@ describe("markApprovalElicitationsComplete", () => {
       ctx.db,
     );
 
-    expect(matched).toBe(0);
-    expect(await lastError(id)).toBeNull();
+    expect(matched).toHaveLength(1);
+    expect(matched[0]?.conversation_id).toBe(conversation_id);
+    expect(await lastError(id)).toBe("url_completed");
   });
 
   test("a different approval's row is left untouched", async () => {
@@ -152,7 +160,7 @@ describe("markApprovalElicitationsComplete", () => {
       ctx.db,
     );
 
-    expect(matched).toBe(0);
+    expect(matched).toHaveLength(0);
     expect(await lastError(otherRow)).toBeNull();
   });
 
@@ -174,6 +182,6 @@ describe("markApprovalElicitationsComplete", () => {
       ctx.db,
     );
 
-    expect(matched).toBe(0);
+    expect(matched).toHaveLength(0);
   });
 });

@@ -39,7 +39,7 @@ export type AnswerActor =
       /** The person who answered. Recorded as `granted_by_user_id`. */
       readonly user_id: string;
       /** The human channel they answered through — `tool_approvals.granted_via`. */
-      readonly via: Extract<ApprovalGrantVia, "chat" | "in_band_elicitation">;
+      readonly via: ApprovalGrantVia;
     }
   | {
       readonly kind: "relay";
@@ -62,6 +62,22 @@ export function humanChatAnswer(principal: ResolvedPrincipal | null | undefined)
 export function humanInBandAnswer(principal: ResolvedPrincipal | null | undefined): AnswerActor {
   if (principal?.kind !== "user") return { kind: "relay", reason: "machine_principal" };
   return { kind: "human", user_id: principal.id, via: "in_band_elicitation" };
+}
+
+/** A person who decided in the browser approval portal.
+ *
+ *  Unlike the two channels above, the decision here is already RECORDED on the
+ *  `tool_approvals` row before this actor is ever constructed — the portal route
+ *  grants inside the human's own request. So this actor does not authorize the
+ *  write, it names who did, keeping the resumed turn's audit trail honest
+ *  instead of filing a person's decision under "a machine relayed it".
+ *
+ *  An unidentified browser yields a relay: the portal is unauthenticated, so an
+ *  approver it could not identify must not be invented. That is exactly the
+ *  attribution gap `granted_by_user_id` exposes. */
+export function humanPortalAnswer(user_id: string | null | undefined): AnswerActor {
+  if (!user_id) return { kind: "relay", reason: "machine_principal" };
+  return { kind: "human", user_id, via: "portal" };
 }
 
 /** A model called the tool that carried this answer. Grants nothing. */

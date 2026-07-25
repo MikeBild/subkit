@@ -212,6 +212,22 @@ export function defaultModeForCategory(
  */
 interface ToolPolicyDefinition {
   defaultMode?: ToolPolicyMode;
+  /**
+   * Never gate this tool on the client's `permission_mode`.
+   *
+   * A `no_confirm` defaultMode alone is NOT enough: it is consulted at step 5
+   * of `decideToolMode`, while the `permission_mode` short-circuit fires at
+   * step 2 and gates EVERY `tenant_write`. So a client advertising `ask`/`plan`
+   * re-gated tools whose pin exists precisely to keep them ungated — observed
+   * in production on `load_skill` (`resolver_reason: "permission_mode"`),
+   * which paused an authoring turn to confirm loading a skill into context.
+   *
+   * Set this only for reversible, non-dispatching tools whose own approve step
+   * IS the confirmation. An explicit per-conversation override still wins (see
+   * `dangerous-tools.ts` — the override is the documented opt-out mechanism),
+   * so an operator who deliberately gated one of these still gets the pause.
+   */
+  neverGate?: boolean;
   computeModeFromInput?: (input: unknown) => ToolPolicyMode | null;
   computeDangerFromInput?: (input: unknown) => boolean;
   credentialFields?: ReadonlyArray<string>;
@@ -326,6 +342,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   // tenant_write category default (confirm_before_execution) does not gate it.
   load_skill: {
     defaultMode: "no_confirm",
+    neverGate: true,
   },
   // save_learning creates an INERT `proposed` skill candidate (human
   // review gate before anything goes live). Confirming the proposal
@@ -333,12 +350,14 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   // approve step IS the confirmation.
   save_learning: {
     defaultMode: "no_confirm",
+    neverGate: true,
   },
   // create_skill files an INERT `proposed` candidate too (it stopped
   // creating active skills) — same rationale as save_learning: the
   // approve step IS the confirmation.
   create_skill: {
     defaultMode: "no_confirm",
+    neverGate: true,
   },
   run_workflow: {
     defaultMode: "confirm_before_execution",
@@ -357,6 +376,12 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       // auto-approve flag would be an escape hatch around the operator.
       return obj.environment === "dev" ? "no_confirm" : "confirm_before_execution";
     },
+    // Makes the "ALWAYS confirms" above true. Without this, a live write run is
+    // per-call hazardous but not *named* dangerous, so the
+    // `permission_mode: auto` short-circuit returned `no_confirm` before
+    // `computeModeFromInput` was ever consulted — dispatching real sends with
+    // no human. `yolo` still honours the user's explicitly-armed override.
+    computeDangerFromInput: (input) => asObj(input).execute_writes === true,
     buildPendingOutput: (input) => {
       const obj = asObj(input);
       return {
@@ -454,10 +479,24 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   dry_run_workflow: {
     defaultMode: "no_confirm",
     computeModeFromInput: (input) => {
-      const env = asObj(input).environment;
-      if (env === "prod") return "confirm_before_execution";
+      // A dry run HOLDS its writes: `hold_writes: !execute_writes` in
+      // `dry-run-workflow.ts`, so every WRITE step is fully resolved but never
+      // dispatched. `execute_writes: true` is the ONLY input that makes this
+      // tool touch a live system, so it is the only one that needs a human.
+      //
+      // Gating on `environment === "prod"` instead (the previous rule) paused a
+      // preview that dispatches nothing — observed in production, where a
+      // 2-page probe against a held-write prod dry run demanded an approval and
+      // then died unapproved. Same rationale as `run_workflow` above: "Default
+      // runs hold writes (no dispatch), so they need no confirm."
+      if (asObj(input).execute_writes === true) return "confirm_before_execution";
       return "no_confirm";
     },
+    // A live write run is per-call dangerous, so the permission_mode
+    // auto/ask/plan short-circuits must not auto-approve it before
+    // `computeModeFromInput` is ever consulted (same shape as call_connector's
+    // write case). `yolo` still honours the user's explicitly-armed override.
+    computeDangerFromInput: (input) => asObj(input).execute_writes === true,
   },
   validate_draft: { defaultMode: "no_confirm" },
   save_workflow_draft: {
@@ -679,6 +718,7 @@ export const MCP_TURN_KEEP_PAUSE_WRITE_TOOLS: ReadonlySet<string> = new Set([
  */
 export type ToolModeRule =
   | "inline_credential"
+  | "never_gate"
   | "permission_mode"
   | "conversation_override"
   | "computed_from_input"
@@ -693,11 +733,12 @@ export interface ToolModeDecision {
 /**
  * Full mode-resolution stack:
  *   1. inline-credential safeguard
- *   2. client permission_mode ("auto" / "ask" / "plan" / "yolo") — outer gate
- *   3. per-conversation override (`conversations.tool_policies` jsonb)
- *   4. dynamic compute-from-input hook
- *   5. per-tool default mode
- *   6. category default
+ *   2. never-gate pin (`neverGate`, unless an explicit override exists)
+ *   3. client permission_mode ("auto" / "ask" / "plan" / "yolo") — outer gate
+ *   4. per-conversation override (`conversations.tool_policies` jsonb)
+ *   5. dynamic compute-from-input hook
+ *   6. per-tool default mode
+ *   7. category default
  *
  * The inline-credential safeguard fires FIRST and is category-independent: a
  * tool that DECLARED its credential slots (`credentialFields`) and finds one
@@ -747,6 +788,17 @@ export function decideToolMode(args: {
   // exactly which credential field is being staged.
   if (def?.credentialFields && hasInlineCredential(input, def.credentialFields)) {
     return { mode: "confirm_before_execution", rule: "inline_credential" };
+  }
+
+  // Never-gate tools — the pin has to survive the permission_mode
+  // short-circuit below, which gates every tenant_write under "ask"/"plan"
+  // and would otherwise re-gate a reversible, non-dispatching tool whose
+  // whole point is to run unattended. Ordered AFTER the inline-credential
+  // safeguard (a declared secret still confirms) and gated on the absence of
+  // an explicit per-conversation override (that override is the documented
+  // opt-out, so an operator who deliberately gated one keeps the pause).
+  if (def?.neverGate && !overrides[tool]) {
+    return { mode: "no_confirm", rule: "never_gate" };
   }
 
   if (permission_mode === "yolo") {

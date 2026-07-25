@@ -14,6 +14,10 @@ export {
   unregisterConversationAbort,
 } from "./abort.ts";
 export * from "./answer-actor.ts";
+export {
+  type ApprovalResumeEnqueuer,
+  completeApprovalBackedElicitation,
+} from "./approval-completion.ts";
 export * from "./attachments.ts";
 // Re-exported so http/routes/conversations/stream.ts can re-derive the
 // terminal citations frame on replay through the subsystem entry point
