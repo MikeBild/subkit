@@ -213,6 +213,22 @@ describe("approval portal — the decision owns its effect", () => {
       answer_channel: "portal",
       mcp_task_id: tasks[0]?.id,
     });
+
+    // 5. The turn runs as the principal that OWNS the approval, never as the
+    //    browser approver. `resolveConversationPrincipal` derives the principal
+    //    from `actor_id`, and `consumeApproval`'s CAS binds `principal_id`: an
+    //    unidentified approver (the normal case on an unauthenticated portal)
+    //    would yield no principal, so the harness could not claim and the held
+    //    call would be re-issued by the model instead of replayed byte-exactly.
+    //    Observed on production before this was wired.
+    expect(sent[0]?.job.principal).toMatchObject({
+      kind: "system_account",
+      id: server.systemAccountId,
+      tenant_id: server.tenantId,
+    });
+    // `mcp_tasks.actor_id` references `users`, so a system-account owner must not
+    // land there — the principal rides the job envelope instead.
+    expect(tasks[0]?.actor_id).toBeNull();
   });
 
   test("declining stages a refusal and resumes — never a silent timeout", async () => {
