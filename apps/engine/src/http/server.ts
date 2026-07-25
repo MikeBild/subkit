@@ -12,6 +12,7 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
 import { createApiKeyProvider } from "../auth/providers/api-key.ts";
+import { createBrowserSessionProvider } from "../auth/providers/browser-session.ts";
 import { createMcpOAuthAuthProvider } from "../auth/providers/mcp-oauth.ts";
 import { createOidcProvider } from "../auth/providers/oidc.ts";
 import { createPortalTokenProvider } from "../auth/providers/portal-token.ts";
@@ -171,6 +172,18 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
       registered.push(provider.id);
     }
   }
+
+  // The `subkit_session` cookie, LAST: it only reads a cookie, so it costs a
+  // token-bearing request nothing and can never shadow one.
+  //
+  // Unconditional on purpose. The login funnel mints this cookie on every path
+  // (API-key paste form and OIDC callback alike), but the only resolver used to
+  // live inside the OIDC provider — so on the default api_key-only config the
+  // middleware ignored it and a freshly logged-in human was anonymous to every
+  // route. That is what made the approval portal record `granted_by_user_id:
+  // NULL` for every grant.
+  reg.register(createBrowserSessionProvider(db ? { db } : {}));
+  registered.push("browser_session");
 
   logger.info({
     module: "auth",

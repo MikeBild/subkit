@@ -21,7 +21,12 @@ function names(auth: Config["auth"]): string[] {
 describe("buildDefaultRegistry — provider-neutral membership", () => {
   test("the default keeps the always-on machine providers", () => {
     const auth = authWith([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }]);
-    expect(names(auth)).toEqual(["mcp_oauth", "portal_token", "api_key"]);
+    // `browser_session` is unconditional and last: it reads only the
+    // `subkit_session` cookie, so it costs a token-bearing caller nothing and
+    // cannot shadow one. Without it a human who just signed in through the login
+    // funnel was anonymous to every route on an api_key-only deployment — which
+    // is what left `granted_by_user_id` NULL on every approval in production.
+    expect(names(auth)).toEqual(["mcp_oauth", "portal_token", "api_key", "browser_session"]);
   });
 
   test("configured OIDC adapters are registered by id", () => {
@@ -38,11 +43,17 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
         tenant_slug: "default",
       },
     ]);
-    expect(names(auth)).toEqual(["mcp_oauth", "portal_token", "api_key", "partner"]);
+    expect(names(auth)).toEqual([
+      "mcp_oauth",
+      "portal_token",
+      "api_key",
+      "partner",
+      "browser_session",
+    ]);
   });
 
   test("disabling MCP OAuth drops only its bearer adapter", () => {
     const auth = authWith([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }], false);
-    expect(names(auth)).toEqual(["portal_token", "api_key"]);
+    expect(names(auth)).toEqual(["portal_token", "api_key", "browser_session"]);
   });
 });

@@ -4,7 +4,7 @@
 // Precedent: the raw /mcp mount in mcp/transports/streamable-http.ts.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Context } from "hono";
 import {
   AuditAction,
@@ -194,18 +194,54 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       return Response.redirect(loginUrl.toString(), 302);
     }
 
-    // Fetch user info for consent page
+    // Fetch user info for the consent page — ACTIVE users only.
+    //
+    // Login re-checks `status`/`deleted_at`, but a session issued before the
+    // account was disabled never passes back through login, so without these two
+    // predicates a deactivated account still walked an authorization to a code
+    // off its existing cookie. (`deactivateUser` now revokes sessions as well;
+    // this is the second, independent guard, so neither alone has to be perfect.)
     const userRows = await db
       .select({ email: users.email, role: users.role, role_name: rolesTable.name })
       .from(users)
       .leftJoin(rolesTable, eq(rolesTable.id, users.role_id))
       .where(
-        and(eq(users.id, sessionPayload.user_id), eq(users.tenant_id, sessionPayload.tenant_id)),
+        and(
+          eq(users.id, sessionPayload.user_id),
+          eq(users.tenant_id, sessionPayload.tenant_id),
+          isNull(users.deleted_at),
+          eq(users.status, "active"),
+        ),
       )
       .limit(1);
     const userRow = userRows[0];
     if (!userRow) {
-      return c.json({ error: "server_error" }, 500);
+      // Not a server fault: the session is real, the account is not entitled any
+      // more. Deny like every other authorization refusal — and audibly, because
+      // a silent denial here is indistinguishable from an outage.
+      await auditAwait(
+        {
+          tenant_id: sessionPayload.tenant_id,
+          actor_type: "user",
+          actor_id: sessionPayload.user_id,
+          action: AuditAction.MCP_OAUTH_CONSENT_DENIED,
+          resource_type: "mcp_oauth_client",
+          resource_id: clientId,
+          result: "denied",
+          reason: "account_not_active",
+          metadata: { session_id: sessionPayload.session_id },
+        },
+        db,
+      );
+      logger.warn({
+        module: "mcp_oauth",
+        action: "oauth.authorize.account_not_active",
+        msg: "an account that is disabled or deleted reached the consent screen; denied",
+        tenant_id: sessionPayload.tenant_id,
+        user_id: sessionPayload.user_id,
+        client_id: clientId,
+      });
+      return buildErrorRedirect(redirectUri, "access_denied", state);
     }
 
     // Fetch tenant display name
@@ -262,7 +298,38 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     // Read is the mandatory baseline. Never silently add an unrequested scope.
+    //
+    // This is also the entitlement gate: an account whose role holds no `mcp:*`
+    // permission cannot be offered anything, so it is denied here. It used to
+    // deny SILENTLY — no audit row, no log — which is why an unentitled account
+    // reaching this screen could only be detected by scraping the HTML.
     if (!offeredScopes.includes("mcp:read")) {
+      await auditAwait(
+        {
+          tenant_id: sessionPayload.tenant_id,
+          actor_type: "user",
+          actor_id: sessionPayload.user_id,
+          action: AuditAction.MCP_OAUTH_CONSENT_DENIED,
+          resource_type: "mcp_oauth_client",
+          resource_id: clientId,
+          result: "denied",
+          reason: "no_mcp_entitlement",
+          metadata: {
+            role: userRow.role_name ?? userRow.role,
+            requested_scope: requestedScope,
+          },
+        },
+        db,
+      );
+      logger.warn({
+        module: "mcp_oauth",
+        action: "oauth.authorize.no_entitlement",
+        msg: "account holds no mcp:* permission; consent denied",
+        tenant_id: sessionPayload.tenant_id,
+        user_id: sessionPayload.user_id,
+        client_id: clientId,
+        role: userRow.role_name ?? userRow.role,
+      });
       return buildErrorRedirect(redirectUri, "access_denied", state);
     }
 
