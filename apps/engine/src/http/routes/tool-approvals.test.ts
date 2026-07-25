@@ -92,7 +92,11 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
   test("renders would_write, and never the decrypted args or the ciphertext", async () => {
     const { approval_id, approval_url } = await seedApproval();
 
-    const res = await fetch(approval_url);
+    // The preview is shown to a signed-in approver: the page names who is about
+    // to release the write, so it needs to know who that is.
+    const res = await fetch(approval_url, {
+      headers: { authorization: `Bearer ${server.apiKey}` },
+    });
     expect(res.status).toBe(200);
     const html = await res.text();
 
@@ -140,25 +144,64 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     expect(html).toContain("expired");
   });
 
+  test("an unidentified browser is sent to sign in, and sees no write preview", async () => {
+    // Grant possession scopes WHICH approval is on the table; it is not an
+    // identity. Until this held, `granted_by_user_id` was NULL on every grant in
+    // production and anyone holding a forwarded link could release a write.
+    const { approval_url } = await seedApproval();
+
+    const res = await fetch(approval_url, { redirect: "manual" });
+    expect([302, 200]).toContain(res.status);
+    const body = res.status === 302 ? (res.headers.get("location") ?? "") : await res.text();
+    expect(body).toContain("/v1/identity/login/start");
+    // Nothing about the pending write leaks to an anonymous visitor.
+    expect(body).not.toContain("post_ledger");
+    expect(body).not.toContain(SECRET_ARG_VALUE);
+  });
+
   test("GET without a grant param → 400 (Zod validation)", async () => {
     const res = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`);
     expect(res.status).toBe(400);
   });
 });
 
+/** The real decision flow: open the page as the signed-in approver, take the
+ *  CSRF token that page minted, then submit it back.
+ *
+ *  Grant possession alone no longer decides. It scopes WHICH approval is on the
+ *  table; WHO decides comes from a signed-in account, because
+ *  `granted_by_user_id` used to be NULL on every grant in production and an
+ *  unattributable authorization is exactly what an audited system must refuse. */
+async function decide(
+  grant: string,
+  decision: "approve" | "decline",
+  opts: { authenticated?: boolean; csrf?: string } = {},
+): Promise<Response> {
+  const authenticated = opts.authenticated ?? true;
+  const headers: Record<string, string> = authenticated
+    ? { authorization: `Bearer ${server.apiKey}` }
+    : {};
+  let csrf = opts.csrf;
+  if (csrf === undefined) {
+    const page = await fetch(
+      `${server.baseUrl}/v1/tool-approvals/decide?grant=${encodeURIComponent(grant)}`,
+      { headers },
+    );
+    csrf = /name="csrf_token" value="([^"]+)"/.exec(await page.text())?.[1] ?? "";
+  }
+  return await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant, decision, csrf_token: csrf }).toString(),
+  });
+}
+
 describe("POST /v1/tool-approvals/decide", () => {
   test("approve grants once, and the token dies — a second decision on the same token is refused", async () => {
     const { approval_id, approval_url } = await seedApproval();
     const grant = grantParam(approval_url);
 
-    const res = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        authorization: `Bearer ${server.apiKey}`,
-      },
-      body: new URLSearchParams({ grant, decision: "approve" }).toString(),
-    });
+    const res = await decide(grant, "approve");
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Approved");
@@ -180,11 +223,7 @@ describe("POST /v1/tool-approvals/decide", () => {
 
     // The token is dead: a second POST (with the same grant token) is refused
     // and changes nothing.
-    const replay = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ grant, decision: "approve" }).toString(),
-    });
+    const replay = await decide(grant, "approve");
     expect(replay.status).toBe(400);
     const replayHtml = await replay.text();
     expect(replayHtml).not.toContain("Approved</h1>");
@@ -197,14 +236,7 @@ describe("POST /v1/tool-approvals/decide", () => {
     const { approval_id, approval_url } = await seedApproval();
     const grant = grantParam(approval_url);
 
-    const res = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        authorization: `Bearer ${server.apiKey}`,
-      },
-      body: new URLSearchParams({ grant, decision: "decline" }).toString(),
-    });
+    const res = await decide(grant, "decline");
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Declined");
@@ -215,11 +247,7 @@ describe("POST /v1/tool-approvals/decide", () => {
 
     // A second decision (approve, this time) against the same token cannot
     // undo the decline.
-    const secondDecision = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ grant, decision: "approve" }).toString(),
-    });
+    const secondDecision = await decide(grant, "approve");
     expect(secondDecision.status).toBe(400);
     const secondHtml = await secondDecision.text();
     expect(secondHtml).not.toContain("Approved</h1>");
@@ -227,6 +255,49 @@ describe("POST /v1/tool-approvals/decide", () => {
     const rowAfter = await approvalRow(approval_id);
     expect(rowAfter?.declined_at).not.toBeNull();
     expect(rowAfter?.granted_at).toBeNull();
+  });
+
+  test("an unidentified POST is refused — no approval is recorded to nobody", async () => {
+    const { approval_id, approval_url } = await seedApproval();
+    const grant = grantParam(approval_url);
+
+    const res = await decide(grant, "approve", { authenticated: false, csrf: "" });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("Sign in");
+
+    const row = await approvalRow(approval_id);
+    expect(row?.granted_at).toBeNull();
+  });
+
+  test("a signed-in approver without a valid CSRF token is refused", async () => {
+    // A cross-site form post must not be able to release a write on behalf of an
+    // approver who merely happens to be signed in.
+    const { approval_id, approval_url } = await seedApproval();
+    const grant = grantParam(approval_url);
+
+    const res = await decide(grant, "approve", { csrf: "not-a-signed-token" });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("verify");
+
+    const row = await approvalRow(approval_id);
+    expect(row?.granted_at).toBeNull();
+  });
+
+  test("a CSRF token minted for one approval cannot decide another", async () => {
+    const first = await seedApproval();
+    const second = await seedApproval();
+    const firstGrant = grantParam(first.approval_url);
+    const secondGrant = grantParam(second.approval_url);
+
+    const page = await fetch(
+      `${server.baseUrl}/v1/tool-approvals/decide?grant=${encodeURIComponent(firstGrant)}`,
+      { headers: { authorization: `Bearer ${server.apiKey}` } },
+    );
+    const stolen = /name="csrf_token" value="([^"]+)"/.exec(await page.text())?.[1] ?? "";
+
+    const res = await decide(secondGrant, "approve", { csrf: stolen });
+    expect(res.status).toBe(400);
+    expect(await approvalRow(second.approval_id).then((r) => r?.granted_at)).toBeNull();
   });
 
   test("a forged/expired token on POST is rejected and grants nothing", async () => {
@@ -237,24 +308,13 @@ describe("POST /v1/tool-approvals/decide", () => {
       .where(eq(toolApprovals.id, approval_id));
     const grant = grantParam(approval_url);
 
-    const res = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ grant, decision: "approve" }).toString(),
-    });
+    const res = await decide(grant, "approve");
     expect(res.status).toBe(400);
 
     const row = await approvalRow(approval_id);
     expect(row?.granted_at).toBeNull();
 
-    const forgedRes = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant: "skag_forged-token-that-names-nothing-0000",
-        decision: "approve",
-      }).toString(),
-    });
+    const forgedRes = await decide("skag_forged-token-that-names-nothing-0000", "approve");
     expect(forgedRes.status).toBe(400);
   });
 
