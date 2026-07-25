@@ -42,6 +42,10 @@ export type ApprovalResumeEnqueuer = (p: {
   tenant_id: string;
   conversation_id: string;
   elicitation_id: string;
+  /** The approval whose args the resumed turn will claim and replay. The turn
+   *  must run as the principal that OWNS this row — `consumeApproval`'s CAS binds
+   *  `principal_id` — which is NOT the browser approver. */
+  approval_id: string;
   approver_user_id: string | null;
   decision: "approve" | "decline";
 }) => Promise<boolean>;
@@ -119,6 +123,7 @@ export async function completeApprovalBackedElicitation(
         tenant_id: p.tenant_id,
         conversation_id: row.conversation_id,
         elicitation_id: row.id,
+        approval_id: p.approval_id,
         approver_user_id: p.approver_user_id,
         decision: p.decision,
       });
