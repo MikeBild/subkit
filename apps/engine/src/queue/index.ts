@@ -1,5 +1,6 @@
 // Queue barrel: pg-boss lifecycle helpers, queue registry, handlers.
 
+export { enqueueApprovalElicitationResume } from "./approval-resume.ts";
 export * from "./boss.ts";
 export { createBoss, disposeBoss, getBoss, startBoss, stopBoss } from "./boss.ts";
 export {

@@ -103,6 +103,19 @@ import type { ConfirmReason, ToolSurface } from "./types.ts";
  *  TTL depend on host clock skew between the engine and the database. */
 export const APPROVAL_TTL_MS = 15 * 60 * 1000;
 
+/** How long the harness has to CLAIM an approval after a human granted it.
+ *
+ *  `APPROVAL_TTL_MS` above bounds the human's deliberation, measured from mint.
+ *  It used to bound the claim too, which made the claim window whatever the
+ *  person happened to leave over — a decision at mint+14:59 left one second, and
+ *  `consumeApproval` refuses on `expires_at > now()`. `decideApproval` therefore
+ *  re-stamps `expires_at` on grant, and this is that window.
+ *
+ *  Generous enough to survive a queue backlog or an engine restart between the
+ *  grant and the resumed turn, short enough that a granted-but-unclaimed
+ *  capability does not linger. */
+export const APPROVAL_CLAIM_WINDOW_MS = 10 * 60 * 1000;
+
 /** Which call path opened or claimed the approval. Wider than `ToolSurface`:
  *  the conversation fast-path shares the `chat` surface but is its own
  *  attribution bucket in the audit log. */
@@ -501,7 +514,25 @@ async function decideApproval(
       .update(toolApprovals)
       .set(
         decision === "grant"
-          ? { granted_at: sql`now()`, granted_by_user_id, granted_via: via }
+          ? {
+              granted_at: sql`now()`,
+              granted_by_user_id,
+              granted_via: via,
+              // A grant OPENS the claim window. `expires_at` was set from mint
+              // time, so a human who deliberated for 14 of their 15 minutes left
+              // the harness a one-second window to claim in — and the claim CAS
+              // requires `expires_at > now()`. Production hit exactly that: a
+              // decision at mint+10:34 lapsed at mint+15:00 and the paused
+              // conversation was then timed out as "the operator did not
+              // answer", the opposite of what they did.
+              //
+              // The pre-decision window bounds how long a PERSON has to answer;
+              // this one bounds how long the machine has to act on the answer.
+              // Deliberately short, and unreachable by the model — only this CAS
+              // writes it, and only in the same statement that records a human's
+              // yes.
+              expires_at: sql`now() + make_interval(secs => ${APPROVAL_CLAIM_WINDOW_MS / 1000})`,
+            }
           : { declined_at: sql`now()` },
       )
       .where(

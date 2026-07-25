@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  decideToolMode,
   defaultModeForCategory,
   effectiveMode,
   resolveToolMode,
@@ -47,6 +48,115 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
       overrides: {},
     });
     expect(mode).toBe("no_confirm");
+  });
+
+  it("never-gate pins survive permission_mode=ask/plan", () => {
+    // Production regression: a client advertising `ask` gated `load_skill` with
+    // `resolver_reason: "permission_mode"`, because the permission_mode
+    // short-circuit fires BEFORE the per-tool `no_confirm` pin. The pin exists
+    // precisely so a benign context-load never pauses an authoring turn.
+    for (const permission_mode of ["ask", "plan"] as const) {
+      for (const tool of ["load_skill", "save_learning", "create_skill"]) {
+        const decision = decideToolMode({
+          tool,
+          category: "tenant_write",
+          input: { slug: "workflow-authoring" },
+          overrides: {},
+          permission_mode,
+        });
+        expect(decision.mode).toBe("no_confirm");
+        expect(decision.rule).toBe("never_gate");
+      }
+    }
+  });
+
+  it("an explicit per-conversation override still gates a never-gate tool", () => {
+    // The override is the documented opt-out (see dangerous-tools.ts): an
+    // operator who deliberately gated load_skill keeps the pause, even though
+    // the tool is pinned never-gate for the permission_mode short-circuit.
+    const withPermissionMode = decideToolMode({
+      tool: "load_skill",
+      category: "tenant_write",
+      input: { slug: "workflow-authoring" },
+      overrides: { load_skill: "confirm_before_execution" },
+      permission_mode: "ask",
+    });
+    expect(withPermissionMode.mode).toBe("confirm_before_execution");
+    // The never-gate bypass must not swallow the operator's explicit choice.
+    // (Which branch gets the credit depends on whether the client also sent a
+    // permission_mode; either way the pause is honoured, never skipped.)
+    expect(withPermissionMode.rule).not.toBe("never_gate");
+
+    const withoutPermissionMode = decideToolMode({
+      tool: "load_skill",
+      category: "tenant_write",
+      input: { slug: "workflow-authoring" },
+      overrides: { load_skill: "confirm_before_execution" },
+    });
+    expect(withoutPermissionMode.mode).toBe("confirm_before_execution");
+    expect(withoutPermissionMode.rule).toBe("conversation_override");
+  });
+
+  it("dry_run_workflow gates on execute_writes, not on environment", () => {
+    // A dry run HOLDS its writes (`hold_writes: !execute_writes`), so a prod
+    // dry run that dispatches nothing must not demand a human approval — the
+    // production incident that stranded a 2-page probe. Only a live write run
+    // touches a real system, and only that needs a human.
+    const heldWritesProd = decideToolMode({
+      tool: "dry_run_workflow",
+      category: "draft_write",
+      input: { environment: "prod" },
+      overrides: {},
+    });
+    expect(heldWritesProd.mode).toBe("no_confirm");
+
+    const liveWriteRun = decideToolMode({
+      tool: "dry_run_workflow",
+      category: "draft_write",
+      input: { environment: "prod", execute_writes: true },
+      overrides: {},
+    });
+    expect(liveWriteRun.mode).toBe("confirm_before_execution");
+
+    // …and a live write run still confirms under a permissive client mode.
+    const liveWriteRunAuto = decideToolMode({
+      tool: "dry_run_workflow",
+      category: "draft_write",
+      input: { environment: "dev", execute_writes: true },
+      overrides: {},
+      permission_mode: "auto",
+    });
+    expect(liveWriteRunAuto.mode).toBe("confirm_before_execution");
+  });
+
+  it("a live write run confirms even under permission_mode=auto", () => {
+    // TOOL_POLICIES says a live write run "ALWAYS confirms, even in dev". It did
+    // not: `execute_writes: true` is per-call hazardous but not a *named*
+    // dangerous tool, so the auto short-circuit returned no_confirm before
+    // computeModeFromInput ran — dispatching real sends with no human.
+    for (const tool of ["run_workflow", "dry_run_workflow"]) {
+      const decision = decideToolMode({
+        tool,
+        category: tool === "run_workflow" ? "tenant_write" : "draft_write",
+        input: { workflow: "x", environment: "dev", execute_writes: true },
+        overrides: {},
+        permission_mode: "auto",
+      });
+      expect(decision.mode).toBe("confirm_before_execution");
+    }
+  });
+
+  it("yolo still honours an explicitly-armed override for a live write run", () => {
+    // yolo is gated at a higher layer (tenant policy + typed confirmation +
+    // expiry); by the time it reaches the resolver the user has armed it.
+    const decision = decideToolMode({
+      tool: "run_workflow",
+      category: "tenant_write",
+      input: { workflow: "x", environment: "prod", execute_writes: true },
+      overrides: {},
+      permission_mode: "yolo",
+    });
+    expect(decision.mode).toBe("no_confirm");
   });
 
   it("run_workflow environment=prod requires confirm", () => {
