@@ -13,19 +13,29 @@
 //        the approval's own atomic CAS, which is what makes the decision
 //        single-use. Both outcomes write an audit row, with the HUMAN as actor.
 //
-// AUTH. Deliberately reachable without an API key: the approver has a browser,
-// not a token. Possession of the one-shot `skag_…` grant is the proof, exactly
-// as `sksg_…` is for the credential-setup portal — the token is a sha256 digest
-// at rest, bound to one approval, expiring with it. The grant is NOT an
-// identity, so it grants nothing beyond deciding this one approval.
+// AUTH — TWO INDEPENDENT FACTS, both required.
 //
-// WHO IS RECORDED AS THE APPROVER. `grantApproval` writes `actor_id` onto the
-// APPROVAL_GRANTED row, and that actor must be the human. The MCP principal that
-// REQUESTED the write is recorded on APPROVAL_REQUESTED and must never be
-// attributed the decision. So the approver id comes only from an authenticated
-// USER principal on this browser request, in this approval's tenant — an API key
-// or a system account riding along resolves to null (an unidentified human), not
-// to the machine that asked.
+//   WHICH approval may be decided: possession of the one-shot `skag_…` grant,
+//   reachable without an API key because the approver has a browser, not a
+//   token. Stored as a sha256 digest, bound to one approval, expiring with it.
+//
+//   WHO is deciding: a signed-in account in this approval's tenant. The grant is
+//   NOT an identity. On its own it left `granted_by_user_id` NULL on 100% of
+//   grants in production — an unattributable authorization in a system whose
+//   whole promise is an audited one, and a link anyone could forward. So an
+//   unidentified browser is sent through the provider-neutral login funnel
+//   (`/v1/identity/login/start`, the same round-trip the MCP consent screen
+//   uses) and returned here; an unidentified POST is refused outright rather
+//   than recorded as "somebody".
+//
+// The decision form additionally carries a CSRF token bound to BOTH the
+// approver's session and the grant's digest, so a cross-site post cannot
+// release a write on a signed-in approver's behalf and a token minted for one
+// approval cannot be replayed against another.
+//
+// `grantApproval` writes `actor_id` onto the APPROVAL_GRANTED row, and that
+// actor is the human. The MCP principal that REQUESTED the write is recorded on
+// APPROVAL_REQUESTED and is never attributed the decision.
 //
 // WHAT IS NEVER RENDERED. `args_ciphertext`, the decrypted args, and the approval
 // id in any copyable form. The write preview is scrubbed through the
@@ -33,10 +43,13 @@
 // can carry a query-mode credential. The plaintext grant token appears only in
 // the hidden `grant` field so the browser can round-trip it on submit.
 
+import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import type { ResolvedPrincipal } from "../../auth/index.ts";
+import { type ResolvedPrincipal, signLoginState } from "../../auth/index.ts";
+import { getConfig } from "../../config/loader.ts";
 import { buildCallbackPageHtml, escapeHtml } from "../../connectors/index.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/index.ts";
+import type { Db } from "../../db/client.ts";
 import { logger, scrubString } from "../../logging/index.ts";
 import { enqueueApprovalElicitationResume, getBoss } from "../../queue/index.ts";
 import {
@@ -48,7 +61,25 @@ import {
   resolveApprovalPortalToken,
 } from "../../tools/index.ts";
 import type { AppEnv } from "../openapi.ts";
-import { parseFormBody } from "./oauth/shared.ts";
+import {
+  deriveSessionSecret,
+  parseFormBody,
+  resolveSession,
+  sessionIsLive,
+  signCsrfToken,
+  verifyCsrfToken,
+} from "./oauth/shared.ts";
+
+/** sha256 hex — binds a CSRF token to the exact grant it was minted for without
+ *  putting the plaintext token into the signed payload. */
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+/** The engine's own public origin, for the login round-trip. */
+function publicBaseUrl(): string {
+  return getConfig().server.public_base_url;
+}
 
 // Min-20 guards against random short strings; no semantic validation here —
 // `resolveApprovalPortalToken` enforces the prefix, the sha256 match, and expiry.
@@ -104,6 +135,14 @@ const DECISION_REFUSED_COPY: Record<ApprovalDecisionDenialCode, string> = {
     "This request expired before anyone decided on it, so nothing ran. Ask the assistant to re-issue it.",
 };
 
+/** The signed-in human deciding on an approval, with the session their CSRF
+ *  token is bound to. */
+interface ApprovalApprover {
+  user_id: string;
+  session_id: string;
+  email: string;
+}
+
 /**
  * The human who decided, or null when we cannot name one.
  *
@@ -111,15 +150,47 @@ const DECISION_REFUSED_COPY: Record<ApprovalDecisionDenialCode, string> = {
  * an anonymous browser, an API key, a system account, a user from another
  * tenant — is null. Recording the requesting machine as the approver would
  * describe a decision nobody made.
+ *
+ * Two sources, both legitimate:
+ *   - the auth middleware's principal (a Bearer/`?token=` caller, and now also
+ *     the `subkit_session` cookie via the browser-session provider), and
+ *   - the session cookie read directly, which is what a browser that just came
+ *     back from the login funnel carries. Read as a fallback so the portal does
+ *     not depend on which providers a deployment happens to register.
+ *
+ * The session row is re-checked for liveness, so a revoked session cannot
+ * approve on the strength of a still-valid cookie signature.
  */
-function portalApproverUserId(
-  principal: ResolvedPrincipal | undefined,
+async function resolveApprovalApprover(
+  c: { get: (k: "principal") => ResolvedPrincipal | undefined; req: { raw: Request } },
+  db: Db,
   tenant_id: string,
-): string | null {
-  if (!principal) return null;
-  if (principal.kind !== "user") return null;
-  if (principal.tenant_id !== tenant_id) return null;
-  return principal.id;
+): Promise<ApprovalApprover | null> {
+  const session = await resolveSession(c.req.raw);
+  if (
+    session &&
+    session.tenant_id === tenant_id &&
+    (await sessionIsLive(db, session.session_id, session.tenant_id))
+  ) {
+    return {
+      user_id: session.user_id,
+      session_id: session.session_id,
+      email: session.email,
+    };
+  }
+
+  const principal = c.get("principal");
+  if (principal?.kind === "user" && principal.tenant_id === tenant_id) {
+    // A token-authenticated approver (the shape the route's own tests use) has
+    // no browser session; bind the CSRF token to the principal instead so the
+    // check stays meaningful rather than being skipped.
+    return {
+      user_id: principal.id,
+      session_id: principal.session_id ?? `principal:${principal.id}`,
+      email: principal.email ?? "an authenticated account",
+    };
+  }
+  return null;
 }
 
 function environmentLabel(view: ApprovalPortalView): string {
@@ -188,8 +259,16 @@ function pageShell(title: string, main: string): string {
  * Render the decision form. The plaintext grant token is placed ONLY in the
  * hidden `grant` field so the browser round-trips it on submit; it must never
  * appear anywhere else in this response. The approval id appears nowhere at all.
+ *
+ * `csrf_token` is bound to the approver's session, so a cross-site form post
+ * cannot release a write using a link someone forwarded them.
  */
-function buildApprovalDecisionHtml(view: ApprovalPortalView, grant: string): string {
+function buildApprovalDecisionHtml(
+  view: ApprovalPortalView,
+  grant: string,
+  approver: { email: string },
+  csrfToken: string,
+): string {
   const target = view.workflow_slug
     ? `<dt>Workflow</dt><dd>${escapeHtml(view.workflow_slug)}</dd>`
     : "";
@@ -206,14 +285,33 @@ function buildApprovalDecisionHtml(view: ApprovalPortalView, grant: string): str
     </dl>
     <h2 style="font-size:15px;margin:0 0 12px;">What will be written</h2>
     ${buildWouldWriteHtml(view)}
+    <p class="sub">Signed in as ${escapeHtml(approver.email)} — your decision is recorded against this account.</p>
     <form method="POST" action="${APPROVAL_PORTAL_PATH}">
       <input type="hidden" name="grant" value="${escapeHtml(grant)}" />
+      <input type="hidden" name="csrf_token" value="${escapeHtml(csrfToken)}" />
       <div class="actions">
         <button class="approve" type="submit" name="decision" value="approve">Approve</button>
         <button class="decline" type="submit" name="decision" value="decline">Decline</button>
       </div>
     </form>`,
   );
+}
+
+/** Send an unidentified browser through the provider-neutral login funnel and
+ *  back to this same approval link.
+ *
+ *  A governed write has to name the human who released it. The grant token
+ *  scopes WHICH approval may be decided; it says nothing about WHO is deciding,
+ *  so on its own it left `granted_by_user_id` NULL on every grant in production
+ *  — an unattributable authorization in a system whose whole promise is an
+ *  audited one. The `login_state` round-trip is the same one the MCP consent
+ *  screen uses. */
+async function redirectToSignIn(grant: string, publicBaseUrl: string): Promise<Response> {
+  const back = new URL(APPROVAL_PORTAL_PATH, publicBaseUrl);
+  back.searchParams.set("grant", grant);
+  const loginUrl = new URL("/v1/identity/login/start", publicBaseUrl);
+  loginUrl.searchParams.set("login_state", await signLoginState({ redirect_to: back.toString() }));
+  return Response.redirect(loginUrl.toString(), 302);
 }
 
 /** A token replayed after its decision. It can produce no second decision, so
@@ -265,7 +363,19 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.body(html, status, HTML_HEADERS);
     }
 
-    return c.body(buildApprovalDecisionHtml(view, grant), 200, HTML_HEADERS);
+    // WHO is deciding. An unidentified browser goes through the login funnel and
+    // comes back here — grant possession scopes the approval, it does not name a
+    // human, and a governed write must record one.
+    const approver = await resolveApprovalApprover(c, db, view.tenant_id);
+    if (!approver) {
+      return await redirectToSignIn(grant, publicBaseUrl());
+    }
+
+    const csrfToken = await signCsrfToken(deriveSessionSecret(), {
+      session_id: approver.session_id,
+      grant_sha256: sha256Hex(grant),
+    });
+    return c.body(buildApprovalDecisionHtml(view, grant, approver, csrfToken), 200, HTML_HEADERS);
   });
 
   // ── POST /v1/tool-approvals/decide ────────────────────────────────────────
@@ -301,9 +411,60 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.body(html, status, HTML_HEADERS);
     }
 
-    // Tenant comes from the resolved row, never from the request. The approver
-    // is the browser's human principal, if it has one.
-    const granted_by_user_id = portalApproverUserId(c.get("principal"), view.tenant_id);
+    // Tenant comes from the resolved row, never from the request.
+    //
+    // WHO released this write. Required, not best-effort: `granted_by_user_id`
+    // used to be NULL on every grant in production, because grant possession is
+    // not an identity and a browser sends a cookie rather than a Bearer token.
+    // An unattributable authorization is exactly what an audited system must not
+    // accept, so an unidentified submitter is refused here rather than recorded
+    // as "somebody".
+    const approver = await resolveApprovalApprover(c, db, view.tenant_id);
+    if (!approver) {
+      logger.warn({
+        module: "tool_approvals",
+        action: "approval.portal.unidentified_submitter",
+        msg: "an unidentified browser submitted an approval decision; nothing was decided",
+        approval_id: view.approval_id,
+        tenant_id: view.tenant_id,
+        decision,
+      });
+      const { html, status } = buildCallbackPageHtml({
+        kind: "error",
+        title: "Sign in to decide",
+        message:
+          "Approving a write records who released it, so this decision needs a signed-in account. Open the approval link again and sign in — nothing has been approved.",
+      });
+      return c.body(html, status, HTML_HEADERS);
+    }
+    const granted_by_user_id = approver.user_id;
+
+    // CSRF: the token is bound to THIS session and THIS grant, so a cross-site
+    // post cannot release a write on behalf of a signed-in approver, and a token
+    // minted for one approval cannot be replayed against another.
+    const csrf = await verifyCsrfToken(deriveSessionSecret(), form.get("csrf_token") ?? "");
+    if (
+      !csrf ||
+      csrf.session_id !== approver.session_id ||
+      csrf.grant_sha256 !== sha256Hex(grant)
+    ) {
+      logger.warn({
+        module: "tool_approvals",
+        action: "approval.portal.csrf_rejected",
+        msg: "approval decision rejected: missing or mismatched CSRF token",
+        approval_id: view.approval_id,
+        tenant_id: view.tenant_id,
+        user_id: approver.user_id,
+        decision,
+      });
+      const { html, status } = buildCallbackPageHtml({
+        kind: "error",
+        title: "Could not verify this submission",
+        message:
+          "This decision form could not be verified as yours. Open the approval link again and decide from that page. Nothing has been approved.",
+      });
+      return c.body(html, status, HTML_HEADERS);
+    }
 
     // The CAS inside these two is what makes the decision single-use: two tabs
     // racing this token decide exactly once, and a token replayed after its
