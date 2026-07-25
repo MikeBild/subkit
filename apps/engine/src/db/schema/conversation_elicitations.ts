@@ -16,6 +16,7 @@
 // `save-workflow-draft` repo-wide and this table now backs the
 // save-workflow-draft + external-write confirmation flows.
 
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -79,11 +80,27 @@ export const conversationElicitations = pgTable(
     // or `superseded_by_new_elicitation` here so the resolution path
     // stays auditable and consumers can switch on it.
     decision_reason: text("decision_reason"),
-    expires_at: timestamp("expires_at", { withTimezone: true }),
+    // When this prompt stops being answerable. NOT NULL is the invariant: an
+    // unbounded elicitation wedges its conversation in `awaiting_input` forever,
+    // which is precisely what happened while this column existed and nothing
+    // ever wrote it — the expiry sweep re-derived each bounded KIND from JSONB
+    // instead, so an ordinary question could never be selected, and production
+    // accumulated 60 stuck conversations (oldest: two and a half months).
+    //
+    // `elicitationExpiry` picks the right value per kind at insert time. The DB
+    // default only backstops a future writer that forgets, and is kept in step
+    // with `ELICITATION_HUMAN_TTL_MS`.
+    expires_at: timestamp("expires_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '7 days'`),
     ...timestamps,
   },
   (t) => [
     index("conversation_elicitations_conv_status_idx").on(t.conversation_id, t.status),
     index("conversation_elicitations_parent_msg_idx").on(t.parent_message_id),
+    // Drives the elicitation-expiry sweep, which carries this exact predicate.
+    index("conversation_elicitations_expiry_sweep_idx")
+      .on(t.expires_at)
+      .where(sql`${t.status} = 'pending'`),
   ],
 );

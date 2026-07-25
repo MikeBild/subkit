@@ -47,6 +47,7 @@ import sql0026KnownNicoMinoru from "./0026_known_nico_minoru.sql" with { type: "
 import sql0027ShortIronFist from "./0027_short_iron_fist.sql" with { type: "text" };
 import sql0028ClearRiptide from "./0028_clear_riptide.sql" with { type: "text" };
 import sql0029TanPurifiers from "./0029_tan_purifiers.sql" with { type: "text" };
+import sql0030OverjoyedWhistler from "./0030_overjoyed_whistler.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -101,6 +102,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0027_short_iron_fist": sql0027ShortIronFist,
   "0028_clear_riptide": sql0028ClearRiptide,
   "0029_tan_purifiers": sql0029TanPurifiers,
+  "0030_overjoyed_whistler": sql0030OverjoyedWhistler,
 };
 
 const journal = journalMeta as unknown as Journal;

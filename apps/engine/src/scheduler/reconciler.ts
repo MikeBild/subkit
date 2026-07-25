@@ -27,6 +27,7 @@ import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { createExecution } from "../execution/state.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
+import { enqueueApprovalElicitationResume } from "../queue/approval-resume.ts";
 import { enqueueIngest, INGEST_DOCS_QUEUE } from "../queue/handlers/ingest-docs.ts";
 import {
   enqueueKnowledgeIngest,
@@ -1161,7 +1162,14 @@ export class SchedulerReconciler {
       if (elapsed < ELICITATION_EXPIRY_CADENCE_MS) return;
     }
     this.lastElicitationExpiryAt = now;
-    await runElicitationExpiry(now, this.opts.db);
+    // Supply the resume channel so the sweep can COMPLETE an approval a human
+    // already granted, not only expire one that lapsed. The portal route
+    // normally does this in the human's own request; this is the backstop for a
+    // decision whose resume was interrupted (`conversation.run-turn` never
+    // retries on its own).
+    await runElicitationExpiry(now, this.opts.db, {
+      resume: (resume) => enqueueApprovalElicitationResume(resume, this.opts.db, this.opts.boss),
+    });
   }
 
   /**

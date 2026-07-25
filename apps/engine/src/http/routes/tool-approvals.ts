@@ -36,8 +36,9 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { ResolvedPrincipal } from "../../auth/index.ts";
 import { buildCallbackPageHtml, escapeHtml } from "../../connectors/index.ts";
-import { markApprovalElicitationsComplete } from "../../conversations/index.ts";
+import { completeApprovalBackedElicitation } from "../../conversations/index.ts";
 import { logger, scrubString } from "../../logging/index.ts";
+import { enqueueApprovalElicitationResume, getBoss } from "../../queue/index.ts";
 import {
   APPROVAL_PORTAL_PATH,
   type ApprovalDecisionDenialCode,
@@ -344,32 +345,30 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     // Close the loop back to a paused CONVERSATION, if this approval gates one.
-    // The grant above decided the `tool_approvals` row; a policy-gated authoring
-    // turn additionally waits on a `conversation_elicitations` row that only the
-    // elicitation's resolution reactivates. Mark it settled and nudge the polling
-    // MCP client so its next Tasks poll replays the decision and resumes the turn
-    // (the harness then claims this now-granted approval and runs the tool).
-    // Best-effort: a direct MCP dispatch confirm has no paired conversation row,
-    // so a zero match is normal and never fails the human's decision.
-    try {
-      await markApprovalElicitationsComplete(
-        {
-          tenant_id: view.tenant_id,
-          approval_id: view.approval_id,
-          outcome: decision === "approve" ? "succeeded" : "failed",
-        },
-        db,
-      );
-    } catch (err) {
-      logger.warn({
-        module: "tool_approvals",
-        action: "approval.portal.conversation_reactivation_failed",
-        msg: "approval decided, but reactivating its paused conversation failed; the expiry sweep is the backstop",
-        approval_id: view.approval_id,
+    // The grant above decided the `tool_approvals` row; a policy-gated turn
+    // additionally waits on a `conversation_elicitations` row that only the
+    // elicitation's resolution reactivates. Stage the human's answer onto it and
+    // enqueue the resume in THIS request, so the decision owns its effect
+    // instead of waiting for an MCP client poll that a browser-only approver
+    // never makes — the gap that stranded every approval-backed confirm in
+    // production and then timed them out claiming nothing ran.
+    //
+    // The turn itself runs in the queue worker: `respondElicitation` executes a
+    // full LLM turn in-process, so driving it here would hold this page open for
+    // minutes. Best-effort by design — a zero match is normal (a direct tool
+    // dispatch or a chat fast-path run has no paused conversation row), and
+    // nothing here may fail the human's already-recorded decision.
+    const completion = await completeApprovalBackedElicitation(
+      {
         tenant_id: view.tenant_id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+        approval_id: view.approval_id,
+        decision,
+        approver_user_id: granted_by_user_id,
+        resume: (resume) =>
+          enqueueApprovalElicitationResume(resume, db, c.get("boss") ?? getBoss()),
+      },
+      db,
+    );
 
     logger.info({
       module: "tool_approvals",
@@ -380,14 +379,24 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       user_id: granted_by_user_id,
       tool: result.tool,
       surface: result.surface,
+      elicitations_matched: completion.matched,
+      elicitations_resumed: completion.resumed,
     });
 
+    // Say only what is true. A resumed conversation really will carry the call
+    // out; an approval with no paused conversation (a direct tool dispatch, a
+    // chat fast-path run, a relayed external-MCP call) is now merely CLAIMABLE,
+    // and promising "the assistant will carry it out" there would invent a
+    // completion no code performs.
     const { html, status } =
       decision === "approve"
         ? buildCallbackPageHtml({
             kind: "success",
             title: "Approved",
-            message: `"${result.tool}" is approved. The assistant will carry it out and report back. You can close this tab.`,
+            message:
+              completion.resumed > 0
+                ? `"${result.tool}" is approved and is being carried out now. You can close this tab — the assistant reports back when it finishes.`
+                : `"${result.tool}" is approved. The assistant can now carry it out; ask it to continue if it does not pick this up on its own. You can close this tab.`,
           })
         : buildCallbackPageHtml({
             kind: "success",

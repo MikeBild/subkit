@@ -19,6 +19,8 @@ import {
   conversationToolCalls,
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { APPROVAL_TTL_MS } from "../tools/approval.ts";
+import { approvalHandleFromElicitationInput } from "./tools/ask-user/commit-intent.ts";
 import { redactElicitationOutput } from "./tools/ask-user/redact-answer.ts";
 
 export type ElicitationStatus = "pending" | "resolved" | "cancelled" | "timeout";
@@ -169,6 +171,47 @@ export interface CreateElicitationParams {
   summary: string;
   input: unknown;
   actor_id: string | null;
+  /** When this prompt stops being answerable. Omit to take the default from
+   *  `elicitationExpiry()` — every row gets one, so no prompt is unbounded. */
+  expires_at?: Date;
+}
+
+/** How long a plain `ask_user_*` prompt stays answerable.
+ *
+ *  Generous on purpose: a human may legitimately step away from an authoring
+ *  session for a day. But it is NOT unbounded, which is what it effectively was
+ *  — the column existed and nothing ever wrote it, so the expiry sweep (which
+ *  selected only approval-backed and draft-credential rows by JSONB predicate)
+ *  could never see an ordinary prompt. Production accumulated 60 conversations
+ *  wedged in `awaiting_input`, the oldest for two and a half months, each one
+ *  still deriving `input_required` on every MCP Tasks poll. */
+export const ELICITATION_HUMAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The expiry to stamp on a new elicitation row.
+ *
+ * Aligned to whatever capability actually bounds the prompt, so the sweep can
+ * select uniformly on one indexed column instead of re-deriving each kind from
+ * JSONB:
+ *   - approval-backed confirm → the approval window. The sweep still re-reads
+ *     `tool_approvals` before expiring, so a grant that extends the window is
+ *     honoured rather than timed out.
+ *   - draft-credential setup → the grant's own embedded expiry.
+ *   - everything else → `ELICITATION_HUMAN_TTL_MS`.
+ */
+export function elicitationExpiry(input: unknown, now: Date): Date {
+  if (approvalHandleFromElicitationInput(input)) {
+    return new Date(now.getTime() + APPROVAL_TTL_MS);
+  }
+  const embedded =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as { expires_at?: unknown }).expires_at
+      : undefined;
+  if (typeof embedded === "string") {
+    const parsed = Date.parse(embedded);
+    if (Number.isFinite(parsed)) return new Date(parsed);
+  }
+  return new Date(now.getTime() + ELICITATION_HUMAN_TTL_MS);
 }
 
 /**
@@ -260,6 +303,9 @@ async function insertElicitation(
       input: (p.input ?? {}) as Record<string, unknown>,
       status: "pending",
       protocol_native: protocolNative,
+      // Every row is bounded. See `elicitationExpiry` — an unbounded prompt is
+      // a conversation wedged in `awaiting_input` forever.
+      expires_at: p.expires_at ?? elicitationExpiry(p.input, new Date()),
     })
     .returning();
   assertInsertRow(inserted, "elicitation");
@@ -769,7 +815,26 @@ export async function resolveElicitationAndReactivate(
  *      model exactly what happened and what to do next. Mirrors the
  *      stale-supersede backfill in `insertElicitation`.
  */
-export type ElicitationExpiryReason = "approval_expired" | "credential_setup_expired";
+export type ElicitationExpiryReason =
+  | "approval_expired"
+  | "approval_abandoned"
+  | "credential_setup_expired"
+  | "prompt_expired";
+
+/** What the model is told when its paused call is abandoned. Keyed by reason so
+ *  the note names the capability that actually lapsed — and, for
+ *  `approval_abandoned`, does not accuse the operator of ignoring a prompt they
+ *  actually answered. */
+const EXPIRY_NOTES: Readonly<Record<ElicitationExpiryReason, string>> = {
+  approval_expired:
+    "the operator did not answer the confirmation within the approval window; nothing ran. Ask the user whether they still want this action, and re-issue the tool call if so.",
+  approval_abandoned:
+    "the operator DID approve this, but the approval could not be carried out before it expired, so nothing ran. Tell the user their approval was received and arrived too late to execute, and re-issue the tool call if they still want it.",
+  credential_setup_expired:
+    "the secure credential setup link expired before the operator submitted it; no credential was stored. Ask whether they want a fresh credential prompt and re-issue the tool call if so.",
+  prompt_expired:
+    "the question went unanswered long enough to expire; nothing ran. Ask it again if the answer is still needed.",
+};
 
 export async function expireElicitationAndReactivate(
   p: {
@@ -815,10 +880,7 @@ export async function expireElicitationAndReactivate(
             ok: false,
             abandoned: true,
             reason,
-            note:
-              reason === "credential_setup_expired"
-                ? "the secure credential setup link expired before the operator submitted it; no credential was stored. Ask whether they want a fresh credential prompt and re-issue the tool call if so."
-                : "the operator did not answer the confirmation within the approval window; nothing ran. Ask the user whether they still want this action, and re-issue the tool call if so.",
+            note: EXPIRY_NOTES[reason],
           } as Record<string, unknown>,
         })
         .where(eq(conversationToolCalls.id, toolCallId));

@@ -264,6 +264,10 @@ async function grantApprovalIfHuman(p: {
     via: p.actor.via,
   });
   if (granted.ok) return true;
+  // Already granted is the DESIRED state, not a miss. The approval portal grants
+  // inside the human's own decision request and only then enqueues the resume,
+  // so by the time this runs the row is legitimately granted already.
+  if (granted.code === "approval_already_granted") return true;
   logger.warn({
     module: "conversation_persistence",
     action: "auto_persist.approval_grant_missed",

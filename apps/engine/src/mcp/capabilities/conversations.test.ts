@@ -563,17 +563,19 @@ describe("conversation_respond_elicitation", () => {
       error_code: string;
       approval_id: string;
       message: string;
+      approval_url?: string;
+      approval_window: string;
     };
     expect(body.status).toBe("cannot_help");
     expect(body.error_code).toBe("approval_requires_human");
     expect(body.approval_id).toBe(approvalId);
-    // The refusal must not promise an approval_url — the engine discards that
-    // URL on this path. The only real channels are the chat UI and expiry.
-    expect(body.message).not.toContain("approval_url");
-    expect(body.message).toContain("chat UI");
-    expect(body.message).toContain(
-      "Approvals expire after 15 minutes; if it expires unanswered, the engine cancels the pause and reactivates the conversation, and the held call never runs.",
-    );
+    // This row carries no link, so the refusal must not invent one.
+    expect(body.approval_url).toBeUndefined();
+    expect(body.message).not.toContain("http");
+    // …and it must not send an MCP client to a "chat UI" that does not exist for
+    // it. The window stays stated, in its own field.
+    expect(body.message).not.toContain("chat UI");
+    expect(body.approval_window).toContain("expire 15 minutes after they are raised");
 
     // Nothing was resolved: the row is still pending, with no output staged —
     // the refusal happens BEFORE stageElicitationAnswer would touch it.
@@ -590,6 +592,74 @@ describe("conversation_respond_elicitation", () => {
       .from(mcpTasks)
       .where(eq(mcpTasks.conversation_id, conversation_id));
     expect(tasksAfter).toHaveLength(tasksBefore.length);
+  });
+
+  test("when the confirm carries an approval_url, the refusal hands it over instead of dead-ending", async () => {
+    // The refusal is correct — a model may not grant — but it used to send every
+    // caller to "the chat UI where it was raised", which for an MCP client is
+    // nowhere. That is how a hosted client ended up reporting a dead end while a
+    // perfectly good browser link sat unused in the row. The refusal must name
+    // the channel the human can actually use, and say that the run continues on
+    // its own afterwards so the model does not try to relay the answer back.
+    const started = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: { message: "list users" },
+    });
+    const conversation_id = (
+      JSON.parse(started.content[0]?.text ?? "{}") as { conversation_id: string }
+    ).conversation_id;
+
+    const approvalId = "22222222-3333-4444-5555-666666666666";
+    const approvalUrl = "https://engine.example.test/v1/tool-approvals/decide?grant=skag_probe";
+    const [elicitation] = await testDb.db
+      .insert(conversationElicitations)
+      .values({
+        tenant_id: principal.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        summary: "Approve the held write?",
+        input: {
+          kind: "external_write",
+          approval_url: approvalUrl,
+          commit_intent: {
+            kind: "execute_confirmed_tool_call",
+            payload: { tool: "wf_post_ledger_entries", approval_id: approvalId },
+            description: "Post the ledger entries",
+          },
+        },
+        status: "pending",
+      })
+      .returning();
+    if (!elicitation) throw new Error("seed elicitation failed");
+
+    const responded = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_respond_elicitation",
+      args: { conversation_id, elicitation_id: elicitation.id, output: { confirmed: true } },
+    });
+
+    expect(responded.isError).toBe(true);
+    const body = JSON.parse(responded.content[0]?.text ?? "{}") as {
+      error_code: string;
+      approval_url?: string;
+      message: string;
+    };
+    expect(body.error_code).toBe("approval_requires_human");
+    expect(body.approval_url).toBe(approvalUrl);
+    expect(body.message).toContain("approval_url");
+    expect(body.message).toContain("carries out the held call on its own");
+    expect(body.message).not.toContain("chat UI");
+
+    // Still refused: nothing resolved, nothing staged.
+    const [row] = await testDb.db
+      .select({ status: conversationElicitations.status, output: conversationElicitations.output })
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitation.id));
+    expect(row?.status).toBe("pending");
+    expect(row?.output).toBeNull();
   });
 
   test("an ordinary ask_user_confirm elicitation (no approval handle) is still model-resolvable", async () => {

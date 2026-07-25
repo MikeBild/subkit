@@ -1153,7 +1153,7 @@ export function wrapOne(
             note: policyCommitIntent
               ? `policy_confirm_required — nothing ran. The operator must answer the emitted ask_user_confirm; the engine performs ${inner.name} itself once they approve. You do NOT re-issue this call, and you cannot approve on their behalf.${
                   policyApprovalUrl
-                    ? ` If the operator has no way to answer the confirmation in their client, present this approval link to them verbatim on its own line as a bare URL — opening it in a browser is already authorized (the single-use link is the authorization; no sign-in): ${policyApprovalUrl}`
+                    ? ` Present this approval link to the operator verbatim, on its own line, as a bare URL — opening it in a browser IS the authorization (single-use link, no sign-in): ${policyApprovalUrl} Once they decide there, the engine resolves this pause and carries out ${inner.name} on its own, then reports back — so hand over the link and wait rather than asking them to repeat their answer to you.`
                     : ""
                 }`
               : `policy_confirm_required — nothing ran, and this turn has no way to release ${inner.name}: no approval handle could be opened for it. Tell the user the action must be performed from an authenticated session.`,

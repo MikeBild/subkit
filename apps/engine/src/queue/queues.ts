@@ -239,8 +239,15 @@ export interface ConversationRunTurnJob {
   provider_limit_parks?: number;
   /** Present only for `respond_elicitation` turns. */
   elicitation_id?: string;
-  /** Server-authored provenance. MCP tool arguments can never set this. */
-  answer_channel?: "model_relay" | "mcp_native";
+  /** Server-authored provenance. MCP tool arguments can never set this.
+   *  `portal` = a human decided in the browser approval portal, which granted
+   *  the `tool_approvals` row inside their own request before enqueueing this
+   *  turn. */
+  answer_channel?: "model_relay" | "mcp_native" | "portal";
+  /** The person the portal identified as the approver, for `answer_channel:
+   *  "portal"`. Null when the unauthenticated portal could not identify them —
+   *  the resume then attributes no human rather than inventing one. */
+  approver_user_id?: string | null;
   reason?: string;
   runtime_context?: {
     engine_url?: string;
