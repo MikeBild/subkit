@@ -129,11 +129,20 @@ async function seedParkedCall(): Promise<{
   };
 }
 
+/** The real flow: open the page as the signed-in approver, take the CSRF token
+ *  it minted, then submit. Grant possession scopes WHICH approval; a signed-in
+ *  account supplies WHO decides. */
 async function decide(grant: string, decision: "approve" | "decline"): Promise<Response> {
+  const headers = { authorization: `Bearer ${server.apiKey}` };
+  const page = await fetch(
+    `${server.baseUrl}/v1/tool-approvals/decide?grant=${encodeURIComponent(grant)}`,
+    { headers },
+  );
+  const csrf_token = /name="csrf_token" value="([^"]+)"/.exec(await page.text())?.[1] ?? "";
   return await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant, decision }).toString(),
+    headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant, decision, csrf_token }).toString(),
   });
 }
 
@@ -226,9 +235,10 @@ describe("approval portal — the decision owns its effect", () => {
       id: server.systemAccountId,
       tenant_id: server.tenantId,
     });
-    // `mcp_tasks.actor_id` references `users`, so a system-account owner must not
-    // land there — the principal rides the job envelope instead.
-    expect(tasks[0]?.actor_id).toBeNull();
+    // `mcp_tasks.actor_id` references `users`, so a system-account OWNER cannot
+    // land there; the identified approver does, and the owning principal rides
+    // the job envelope where the claim actually reads it.
+    expect(tasks[0]?.actor_id).toBe(server.userId);
   });
 
   test("declining stages a refusal and resumes — never a silent timeout", async () => {

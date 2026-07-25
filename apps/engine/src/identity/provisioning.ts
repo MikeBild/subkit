@@ -12,7 +12,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
-import { apiKeys, userInvites, users } from "../db/schema/index.ts";
+import { apiKeys, sessions, userInvites, users } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
@@ -150,6 +150,41 @@ export async function deactivateUser(input: DeactivateUserInput, exec?: Executor
           resource_id: key.id,
           result: "success",
           metadata: { prefix: key.prefix, reason: "user_deactivated" },
+        },
+        tx,
+      );
+    }
+
+    // Sever live BROWSER sessions too. Revoking only the api keys left a
+    // deactivated account holding a valid `subkit_session` cookie, and the MCP
+    // consent screen reads that cookie — so a disabled user could still walk an
+    // OAuth authorization to a code. Login re-checks `status`/`deleted_at`, but
+    // an already-issued session never passed back through login. Same tx as the
+    // disable, so there is no window in which the row is disabled and the
+    // session still live.
+    const revokedSessions = await tx
+      .update(sessions)
+      .set({ revoked_at: nowTs })
+      .where(
+        and(
+          eq(sessions.tenant_id, input.tenant_id),
+          eq(sessions.user_id, input.user_id),
+          isNull(sessions.revoked_at),
+        ),
+      )
+      .returning();
+
+    for (const session of revokedSessions) {
+      await auditAwait(
+        {
+          tenant_id: input.tenant_id,
+          actor_type: input.actor_id ? "user" : "system",
+          actor_id: input.actor_id,
+          action: AuditAction.SESSION_REVOKED,
+          resource_type: "session",
+          resource_id: session.id,
+          result: "success",
+          metadata: { reason: "user_deactivated" },
         },
         tx,
       );
