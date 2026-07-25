@@ -418,6 +418,15 @@ async function refuseApprovalElicitation(
     principal_id: principal.id,
     tenant_id: principal.tenant_id,
   });
+  // The human-reachable channel, when the gate persisted one. Naming it is the
+  // difference between a model that can hand the user a working link and one
+  // that reports a dead end: the previous copy sent every caller to "the chat UI
+  // where it was raised", which for an MCP client is nowhere.
+  const approvalUrl =
+    row.input && typeof row.input === "object" && !Array.isArray(row.input)
+      ? (row.input as { approval_url?: unknown }).approval_url
+      : undefined;
+  const hasUrl = typeof approvalUrl === "string" && approvalUrl.length > 0;
   return {
     isError: true,
     content: [
@@ -428,12 +437,16 @@ async function refuseApprovalElicitation(
           error_code: "approval_requires_human",
           elicitation_id: args.elicitation_id,
           approval_id: approvalId,
+          ...(hasUrl ? { approval_url: approvalUrl } : {}),
           message:
             `Elicitation ${args.elicitation_id} is a person's approval decision for approval ${approvalId}, not a question you may answer. ` +
             "Resolving it would perform a write the engine is holding, so this tool refuses it — nothing was written and nothing was resolved. " +
-            "The user grants or declines it themselves in the chat UI where it was raised. " +
-            "Approvals expire after 15 minutes; if it expires unanswered, the engine cancels the pause and reactivates the conversation, and the held call never runs. " +
-            "Relay that to the user and wait. Do NOT retry this call, and do NOT re-issue the original tool call.",
+            (hasUrl
+              ? "Give the user the approval_url below and let them decide in their browser; opening it IS the authorization, with no sign-in step. " +
+                "Once they decide, the engine resolves this pause and carries out the held call on its own — you do not need to do anything else, and you must not relay their answer back through this tool. "
+              : "The user grants or declines it themselves on the surface where it was raised. "),
+          approval_window:
+            "Approvals expire 15 minutes after they are raised. If nobody decides in time the engine cancels the pause, reactivates the conversation, and the held call never runs.",
           next_best_actions: ["conversation_get"],
         }),
       },

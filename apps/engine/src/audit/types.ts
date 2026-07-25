@@ -374,6 +374,14 @@ export const AuditAction = {
   // Emitted once per scheduler tick after the `tool_approvals` retention
   // sweeps. Bounds how long the encrypted approved-args ciphertext lives.
   APPROVAL_EXPIRED_PRUNED: "approval.expired_pruned",
+  // A human GRANTED an approval and the engine never claimed it before the
+  // window closed — the person said yes and nothing ran. Its own action because
+  // every other trace of this outcome is indistinguishable from "nobody
+  // answered": the claim miss reports `confirmation_expired` whether or not a
+  // grant ever landed, and it does not burn the handle, so it writes no audit
+  // row at all. Production lost five approvals this way, silently, before there
+  // was anything to query. A non-zero count here is always a bug.
+  APPROVAL_GRANT_ABANDONED: "approval.grant_abandoned",
   // A `protocol_native` (MCP-bridge) elicitation row degraded mid-call
   // to the portal DB-pause path because the MCP `elicitation`
   // capability raced away. The row flips `protocol_native: true →

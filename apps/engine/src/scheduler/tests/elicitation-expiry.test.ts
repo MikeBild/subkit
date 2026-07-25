@@ -43,6 +43,10 @@ const nextUuid = createDeterministicUuidFactory(0xe11c17);
 const expiredAt = new Date(Date.now() - 60_000); // 1 minute ago allow-wall-clock
 const liveUntil = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now allow-wall-clock
 
+/** The sweep's `started` instant. A helper so the multi-line call sites below
+ *  keep the wall-clock read on one annotated line. */
+const nowForSweep = (): Date => new Date(); // allow-wall-clock
+
 type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
 
 async function seedConversation(status: ConversationStatus): Promise<string> {
@@ -70,7 +74,11 @@ async function seedToolCall(conversationId: string, tool = "wf_send_report"): Pr
 
 /** Minimal `tool_approvals` row — dummy ciphertext; the sweep only reads
  *  `expires_at`, never decrypts. */
-async function seedApproval(id: string, expiresAt: Date): Promise<void> {
+async function seedApproval(
+  id: string,
+  expiresAt: Date,
+  decision?: { granted_at?: Date; declined_at?: Date; consumed_at?: Date },
+): Promise<void> {
   await srv.db.insert(toolApprovals).values({
     id,
     tenant_id: srv.tenantId,
@@ -82,6 +90,9 @@ async function seedApproval(id: string, expiresAt: Date): Promise<void> {
     args_auth_tag: new Uint8Array([7, 8, 9]),
     args_hash: `hash-${id}`,
     expires_at: expiresAt,
+    ...(decision?.granted_at ? { granted_at: decision.granted_at, granted_via: "portal" } : {}),
+    ...(decision?.declined_at ? { declined_at: decision.declined_at } : {}),
+    ...(decision?.consumed_at ? { consumed_at: decision.consumed_at } : {}),
   });
 }
 
@@ -91,6 +102,9 @@ async function seedElicitation(p: {
   conversationId: string;
   toolCallId: string | null;
   approvalId: string | null;
+  /** Leave unset for an already-expired row (the common case here). Set a future
+   *  instant to seed a prompt the sweep must NOT select. */
+  expiresAt?: Date;
 }): Promise<string> {
   const input = p.approvalId
     ? {
@@ -112,6 +126,9 @@ async function seedElicitation(p: {
       summary: "Send the weekly report",
       input,
       status: "pending",
+      // The sweep selects on the row's OWN expiry, so seed it explicitly rather
+      // than backdating `created_at` and relying on a per-kind re-derivation.
+      expires_at: p.expiresAt ?? new Date(Date.now() - 5 * 60_000), // allow-wall-clock
     })
     .returning();
   if (!row) throw new Error("seed elicitation failed");
@@ -142,6 +159,9 @@ async function seedDraftCredentialElicitation(p: {
         expires_at: p.expiresAt.toISOString(),
       },
       status: "pending",
+      // Mirrors `elicitationExpiry`, which lifts a draft grant's embedded expiry
+      // onto the column the sweep selects on.
+      expires_at: p.expiresAt,
     })
     .returning();
   if (!row) throw new Error("seed draft credential elicitation failed");
@@ -399,18 +419,140 @@ describe("runElicitationExpiry — rows the sweep must not touch", () => {
     expect(await expiredAuditRowsFor(elicitationId)).toHaveLength(0);
   });
 
-  test("pending elicitation without an approval handle: untouched", async () => {
-    // An ordinary ask_user_confirm with no commit_intent — it has no TTL and
-    // may legitimately wait on a human for days.
+  test("plain prompt still inside its window: untouched", async () => {
+    // An ordinary ask_user_confirm a human may legitimately still be answering.
+    // Bounded, but nowhere near its bound — the sweep must leave it alone.
     const conversationId = await seedConversation("awaiting_input");
     const toolCallId = await seedToolCall(conversationId);
-    const elicitationId = await seedElicitation({ conversationId, toolCallId, approvalId: null });
+    const elicitationId = await seedElicitation({
+      conversationId,
+      toolCallId,
+      approvalId: null,
+      expiresAt: liveUntil,
+    });
 
     await runElicitationExpiry(new Date(), srv.db); // allow-wall-clock
 
     const elicitation = await readElicitation(elicitationId);
     expect(elicitation.status).toBe("pending");
     expect(await readConversationStatus(conversationId)).toBe("awaiting_input");
+  });
+});
+
+describe("runElicitationExpiry — a granted approval is completed, not expired", () => {
+  test("granted but unclaimed: the sweep resumes the turn instead of timing it out", async () => {
+    // The backstop for a decision whose primary completion was interrupted — an
+    // engine restart between the grant and the enqueue, or a lost job
+    // (`conversation.run-turn` has retryLimit 0, so nothing else retries it).
+    // Before this edge existed the sweep only ever EXPIRED: a person's yes could
+    // reach a dead end and then be reported as "the operator did not answer".
+    const conversationId = await seedConversation("awaiting_input");
+    const toolCallId = await seedToolCall(conversationId);
+    const approvalId = nextUuid();
+    // Granted, unclaimed, and still inside its claim window.
+    await seedApproval(approvalId, liveUntil, { granted_at: new Date(Date.now() - 60_000) }); // allow-wall-clock
+    const elicitationId = await seedElicitation({ conversationId, toolCallId, approvalId });
+
+    const resumed: Array<{ elicitation_id: string }> = [];
+    await runElicitationExpiry(nowForSweep(), srv.db, {
+      resume: async (p) => {
+        resumed.push({ elicitation_id: p.elicitation_id });
+        return true;
+      },
+    });
+
+    expect(resumed).toEqual([{ elicitation_id: elicitationId }]);
+    const elicitation = await readElicitation(elicitationId);
+    // Staged for the resumed turn to resolve — emphatically NOT timed out.
+    expect(elicitation.status).toBe("pending");
+    expect(elicitation.output).toEqual({ confirmed: true });
+    expect(await expiredAuditRowsFor(elicitationId)).toHaveLength(0);
+
+    // The row is still pending while the worker runs, so a second tick must not
+    // enqueue a second resume for the same decision. Its expiry now rides the
+    // approval's claim window.
+    await runElicitationExpiry(nowForSweep(), srv.db, {
+      resume: async (p) => {
+        resumed.push({ elicitation_id: p.elicitation_id });
+        return true;
+      },
+    });
+    expect(resumed).toHaveLength(1);
+  });
+
+  test("granted but past its claim window: expired, and the loss is audited", async () => {
+    // The decision can no longer be acted on. Expiring is correct — staying
+    // silent is not: a claim miss reports `confirmation_expired` whether or not a
+    // human ever granted, and it writes no audit row, which is why production
+    // lost five approvals without a trace.
+    const conversationId = await seedConversation("awaiting_input");
+    const toolCallId = await seedToolCall(conversationId);
+    const approvalId = nextUuid();
+    await seedApproval(approvalId, expiredAt, { granted_at: new Date(Date.now() - 60_000) }); // allow-wall-clock
+    const elicitationId = await seedElicitation({ conversationId, toolCallId, approvalId });
+
+    await runElicitationExpiry(nowForSweep(), srv.db, {
+      resume: async () => true,
+    });
+
+    const elicitation = await readElicitation(elicitationId);
+    expect(elicitation.status).toBe("timeout");
+    expect(await readConversationStatus(conversationId)).toBe("active");
+    const abandoned = await srv.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, srv.tenantId),
+          eq(auditLog.action, "approval.grant_abandoned"),
+          eq(auditLog.resource_id, approvalId),
+        ),
+      );
+    expect(abandoned).toHaveLength(1);
+  });
+
+  test("declined: expired without ever being resumed", async () => {
+    const conversationId = await seedConversation("awaiting_input");
+    const toolCallId = await seedToolCall(conversationId);
+    const approvalId = nextUuid();
+    await seedApproval(approvalId, expiredAt, { declined_at: new Date(Date.now() - 60_000) }); // allow-wall-clock
+    const elicitationId = await seedElicitation({ conversationId, toolCallId, approvalId });
+
+    const resumed: string[] = [];
+    await runElicitationExpiry(nowForSweep(), srv.db, {
+      resume: async (p) => {
+        resumed.push(p.elicitation_id);
+        return true;
+      },
+    });
+
+    expect(resumed).toHaveLength(0);
+    expect((await readElicitation(elicitationId)).status).toBe("timeout");
+  });
+});
+
+describe("runElicitationExpiry — plain prompts are bounded too", () => {
+  test("an ordinary ask_user_confirm past its expiry is swept and its conversation reactivated", async () => {
+    // Regression for the 60 conversations found wedged in `awaiting_input` in
+    // production — the oldest for two and a half months. None carried an approval
+    // handle or a draft-credential kind, so the old kind-derived selection could
+    // never see them, and each kept deriving `input_required` on every MCP Tasks
+    // poll. A prompt nobody will ever answer must not hold a session hostage.
+    const conversationId = await seedConversation("awaiting_input");
+    const toolCallId = await seedToolCall(conversationId);
+    const elicitationId = await seedElicitation({
+      conversationId,
+      toolCallId,
+      approvalId: null,
+    });
+
+    await runElicitationExpiry(new Date(), srv.db); // allow-wall-clock
+
+    const elicitation = await readElicitation(elicitationId);
+    expect(elicitation.status).toBe("timeout");
+    expect(elicitation.decision_reason).toBe("prompt_expired");
+    expect(elicitation.decided_by).toBeNull();
+    expect(await readConversationStatus(conversationId)).toBe("active");
   });
 });
 
