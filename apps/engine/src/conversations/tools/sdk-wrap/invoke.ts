@@ -56,7 +56,7 @@ import {
   type ToolPolicies,
 } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
-import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
+import { withApprovalHandle, withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../index.ts";
 import {
@@ -975,7 +975,24 @@ export function wrapOne(
           // carriers (save/delete/…) whose approval the commit path mints, and
           // when the engine has no configured `server.public_base_url`.
           let policyApprovalUrl: string | null = null;
-          if (!policyCommitIntent) {
+          // Mint the approval for EVERY gated confirm, not just the universal
+          // carrier. A shape-specific carrier used to skip this entirely, so
+          // `save_workflow_draft`, `delete_*`, `create_api_key` and the
+          // `run_workflow` commit paused with NO out-of-band channel at all: on a
+          // client that cannot render an in-band form the human simply had no way
+          // to answer. Observed on claude.ai, where the only remaining route was
+          // an operator hand-running a curl against `/respond` with their API key.
+          //
+          // What the approval MEANS differs by carrier, and that difference is
+          // deliberate:
+          //   - universal (`execute_confirmed_tool_call`) — a claimable capability
+          //     over encrypted args the harness replays byte-exactly.
+          //   - shape-specific — the portal CHANNEL plus the decision record (who
+          //     approved, when, `granted_via`). The resume re-dispatches the tool
+          //     with a prior-approval marker rather than claiming, so this handle
+          //     is never consumed; `elicitation-expiry-runner.ts` knows that and
+          //     does not report it as an abandoned grant.
+          {
             // Same principal `checkToolPermission` gates on, resolved the same
             // way — so the id this approval is bound to is the id the harness
             // claims it with (`auto-persist.ts` resolves it identically).
@@ -1018,7 +1035,9 @@ export function wrapOne(
                   args: rawArgs,
                 });
                 policyApprovalUrl = requested.approval_url;
-                policyCommitIntent = buildConfirmedToolCallIntent(inner.name, approvalId);
+                policyCommitIntent = policyCommitIntent
+                  ? withApprovalHandle(policyCommitIntent, approvalId)
+                  : buildConfirmedToolCallIntent(inner.name, approvalId);
               } catch (err) {
                 // A handle we could not persist is a handle nobody can claim.
                 // Surface it instead of pausing on an approval that will never
