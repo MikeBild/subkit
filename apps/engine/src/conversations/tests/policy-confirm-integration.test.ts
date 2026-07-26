@@ -12,7 +12,7 @@
 // pins that behaviour on the loop surface AND proves the loop and MCP surfaces
 // reach the IDENTICAL pause/proceed verdict for the same tool + args.
 
-import { beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
@@ -21,9 +21,19 @@ import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { buildToolAnnotations } from "../../mcp/capabilities/tool-meta.ts";
 import { policyDecide } from "../../tools/policy.ts";
 import { getElicitation } from "../elicitations.ts";
+import {
+  APPROVAL_HANDLE_KEY as _APPROVAL_HANDLE_KEY,
+  approvalHandleFromElicitationInput,
+  withApprovalHandle,
+  withoutApprovalHandle,
+} from "../tools/ask-user/commit-intent.ts";
 import type { ToolContext } from "../tools/index.ts";
+import { buildPolicyGateCommitIntent } from "../tools/sdk-wrap/policy-helpers.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
+
+/** Deterministic handle — random ids are banned in tests. */
+const APPROVAL_ID = "00000000-0000-4000-8000-00000000c0de";
 
 let ctx: LlmTestCtx;
 let conversation_id: string;
@@ -253,5 +263,45 @@ describe("confirm gate — chat pauses server-side, MCP delegates to the client 
     expect(Boolean(loop.pause)).toBe(true);
     expect(mcp.kind).not.toBe("needs_confirm");
     expect(buildToolAnnotations("workflow_run", "run_workflow").destructiveHint).toBe(true);
+  });
+});
+
+describe("every gated confirm gets a human channel", () => {
+  // Production, on claude.ai: `save_workflow_draft` paused with
+  // `commit_intent.kind: "save_workflow_draft"`, NO `approval_url` and NO
+  // approval handle. On a client that cannot render an in-band form that is not
+  // a prompt — it is a dead end, and the only remaining route was an operator
+  // hand-running curl against /respond with their API key.
+  //
+  // A shape-specific carrier must therefore carry a handle exactly like the
+  // universal one, so the browser portal can reach it. `withApprovalHandle` is
+  // what makes both shapes satisfy the single predicate everything downstream
+  // keys on.
+  test("a shape-specific carrier keeps its kind AND gains the approval handle", () => {
+    const intent = buildPolicyGateCommitIntent("save_workflow_draft", { force_commit: true });
+    expect(intent).not.toBeNull();
+    expect(intent?.kind).toBe("save_workflow_draft");
+    // Before: no handle at all → invisible to the portal, model-resolvable.
+    expect(approvalHandleFromElicitationInput({ commit_intent: intent })).toBeNull();
+
+    const withHandle = withApprovalHandle(intent as Record<string, unknown>, APPROVAL_ID);
+    // The carrier's own payload survives — the resume still knows it is a save.
+    expect(withHandle.kind).toBe("save_workflow_draft");
+    expect((withHandle.payload as Record<string, unknown>).force_commit).toBe(true);
+    // …and it is now reachable through the portal.
+    expect(approvalHandleFromElicitationInput({ commit_intent: withHandle })).toBe(APPROVAL_ID);
+  });
+
+  test("the handle never reaches a client projection", () => {
+    const intent = withApprovalHandle(
+      buildPolicyGateCommitIntent("save_workflow_draft", {}) as Record<string, unknown>,
+      APPROVAL_ID,
+    );
+    const operatorInput = withoutApprovalHandle({
+      kind: "save_workflow_draft",
+      commit_intent: intent,
+    });
+    expect(approvalHandleFromElicitationInput(operatorInput)).toBeNull();
+    expect(JSON.stringify(operatorInput)).not.toContain(APPROVAL_ID);
   });
 });
