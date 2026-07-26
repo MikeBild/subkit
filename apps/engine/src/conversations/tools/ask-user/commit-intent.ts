@@ -162,6 +162,31 @@ export function approvalHandleFromElicitationInput(input: unknown): string | nul
 }
 
 /**
+ * A shape-specific commit intent with the approval handle attached.
+ *
+ * The universal carrier is BUILT around its handle
+ * (`buildConfirmedToolCallIntent`); a shape-specific one carries its own payload
+ * and gets the handle added. Both then satisfy the one predicate that matters
+ * downstream — `approvalHandleFromElicitationInput` — so a paused confirm is
+ * reachable through the browser portal and refused to the model regardless of
+ * which carrier raised it. Without this, `save_workflow_draft`, `delete_*`,
+ * `create_api_key` and the `run_workflow` commit paused with no human channel.
+ *
+ * The handle never reaches a client: `withoutApprovalHandle` strips it from
+ * every outward projection, exactly as it does for the universal carrier.
+ */
+export function withApprovalHandle(
+  intent: Record<string, unknown>,
+  approvalId: string,
+): Record<string, unknown> {
+  const payload =
+    intent.payload && typeof intent.payload === "object" && !Array.isArray(intent.payload)
+      ? (intent.payload as Record<string, unknown>)
+      : {};
+  return { ...intent, payload: { ...payload, [APPROVAL_HANDLE_KEY]: approvalId } };
+}
+
+/**
  * The elicitation input with the approval handle removed — the projection the
  * model's tool-result, the SDK pause envelope, and every client-facing
  * `elicit_request` frame carry. Everything an operator's client renders
