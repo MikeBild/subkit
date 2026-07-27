@@ -90,6 +90,7 @@ import {
 } from "./loop/model-resolver.ts";
 import { applyRecency, parseLoadedSkills } from "./loop/skill-recency.ts";
 import {
+  abstainedStopCondition,
   committedStopCondition,
   noProgressRepairStopCondition,
   pausedStopCondition,
@@ -1535,7 +1536,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         hasToolCall("ask_user_multi"),
         hasToolCall("ask_user_text"),
         hasToolCall("ask_user_form"),
-        hasToolCall("cannot_help"),
+        // NOT `hasToolCall("cannot_help")` — that fires on the call and
+        // ignores the result, so a REFUSED abstention (a claim about a tool
+        // the model demonstrably holds) still ended the turn.
+        abstainedStopCondition,
         pausedStopCondition,
         committedStopCondition,
         turnLoopBudgetStopCondition,
