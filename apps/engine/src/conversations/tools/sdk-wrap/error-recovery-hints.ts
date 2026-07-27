@@ -30,6 +30,11 @@ import {
  * the cap surfaces only the generic "ask the user" hint.
  */
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  // The abstention named a tool that IS in this turn's palette. The recovery
+  // is never "abstain harder" — it is to use the tool, or to report what it
+  // actually returned when it was called.
+  capability_claim_false:
+    "you claimed a tool is unavailable that you DO have in this conversation — the abstention was refused. Call the tool. If you already called it and it failed, report what it returned (its error_code and message) instead of describing it as missing.",
   // Approval-gate signals — a write paused for HUMAN approval. The model is
   // never the approver: a person grants out of band (chat confirm card or the
   // approval portal link), then the write can be re-issued. Do NOT loop.
