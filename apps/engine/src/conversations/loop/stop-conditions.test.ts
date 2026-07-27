@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  abstainedStopCondition,
   committedStopCondition,
   MAX_STALLED_REPAIR_PREVIEWS,
   noProgressRepairStopCondition,
@@ -288,5 +289,43 @@ describe("noProgressRepairStopCondition", () => {
       ],
     };
     expect(noProgressRepairStopCondition({ steps: [step, step, step] })).toBe(true);
+  });
+});
+
+describe("abstainedStopCondition — a refused abstention must not end the turn", () => {
+  const step = (ok: boolean, toolName = "cannot_help") => ({
+    toolResults: [{ toolName, output: { ok, data: {} } }],
+  });
+
+  test("returns false on empty step list", () => {
+    expect(abstainedStopCondition({ steps: [] })).toBe(false);
+  });
+
+  test("an accepted abstention stops the turn", () => {
+    expect(abstainedStopCondition({ steps: [step(true)] })).toBe(true);
+  });
+
+  test("a REFUSED abstention does not stop the turn", () => {
+    // The whole point. `hasToolCall` fired on the call and threw the turn
+    // away even when the engine had just proven the claim false and told
+    // the model which tool it actually holds.
+    expect(abstainedStopCondition({ steps: [step(false)] })).toBe(false);
+  });
+
+  test("another tool's failure is not mistaken for an abstention", () => {
+    expect(abstainedStopCondition({ steps: [step(false, "dry_run_workflow")] })).toBe(false);
+    expect(abstainedStopCondition({ steps: [step(true, "dry_run_workflow")] })).toBe(false);
+  });
+
+  test("an unreadable envelope stops — fail towards ending, not looping", () => {
+    expect(
+      abstainedStopCondition({ steps: [{ toolResults: [{ toolName: "cannot_help" }] }] }),
+    ).toBe(true);
+  });
+
+  test("only the LAST step is considered", () => {
+    // Mirrors every other predicate here: an abstention two steps back must
+    // not keep re-stopping a turn that has since moved on.
+    expect(abstainedStopCondition({ steps: [step(true), step(false)] })).toBe(false);
   });
 });

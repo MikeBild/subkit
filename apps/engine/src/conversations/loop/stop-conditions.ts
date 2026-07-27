@@ -61,6 +61,41 @@ export const committedStopCondition = ({
 };
 
 /**
+ * Stop after an ACCEPTED abstention. `cannot_help` used to stop the turn
+ * via `hasToolCall`, which fires on the call and ignores the result — so a
+ * refused abstention still ended the turn.
+ *
+ * That refusal exists: the tool checks a `tool.<name>` claim against the
+ * palette the model actually holds and rejects one that names a tool it
+ * has (`capability_claim_false`). Production produced exactly that case —
+ * a model, misled by an authoring error that wrongly blamed it, abstained
+ * over `author_workflow` minutes after calling it successfully. Correcting
+ * the model and then ending the turn anyway wastes the correction: the
+ * whole turn is lost for a mistake we just proved wrong and can explain.
+ *
+ * Keying on the tool's OWN structured result is not the forbidden pattern
+ * documented at the prose-guard call site in `loop.ts`. That prohibition
+ * covers a regex verdict over free text; every tool result already steers
+ * this loop, and `ok: false` from any other tool likewise continues it.
+ */
+export const abstainedStopCondition = ({
+  steps,
+}: {
+  steps: ReadonlyArray<StepShapeWithToolName>;
+}): boolean => {
+  const last = steps[steps.length - 1];
+  if (!last) return false;
+  return last.toolResults.some((r) => {
+    if (r.toolName !== "cannot_help") return false;
+    const output = r.output;
+    // Unreadable envelope → treat as a real abstention and stop. Failing
+    // the other way would let a malformed result run the turn on.
+    if (!output || typeof output !== "object") return true;
+    return (output as { ok?: unknown }).ok !== false;
+  });
+};
+
+/**
  * Stop after any tool returns a pause payload. Required for
  * policy-gated confirm-before-execution flows where the wrapper emits
  * an `ask_user_confirm` elicitation without the model explicitly
