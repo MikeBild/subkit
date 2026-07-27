@@ -101,6 +101,24 @@ export interface ToolContext {
   /** Abort signal for the currently running conversation turn. */
   abortSignal?: AbortSignal;
   /**
+   * Names of the tools actually exposed to the model this turn — the
+   * resolved palette after the skill gate, the surface restriction, and
+   * the synthetic/external additions, i.e. exactly the keys `wrapTools`
+   * hands to the SDK.
+   *
+   * Threaded so a tool can check a claim the model makes ABOUT the
+   * palette against the palette itself. `cannot_help` is the case that
+   * needed it: it accepted `missing_capability: "tool.<name>"` verbatim,
+   * so a model could abstain — and durably file a capability gap —
+   * naming a tool it had already called successfully in the same turn.
+   *
+   * Optional on purpose: absent means "cannot verify", and an
+   * unverifiable abstention must still be allowed through. Never use
+   * this to widen what a tool may do; it answers one question, whether a
+   * name was in the palette.
+   */
+  availableToolNames?: ReadonlySet<string>;
+  /**
    * Optional live-log callback. Long-running tools (run_workflow,
    * dry_run_step, refresh_connector_docs) call this to emit progress
    * updates that surface as `tool_log` TurnEvents, rendered live by sk

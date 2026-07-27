@@ -64,6 +64,37 @@ export const cannotHelpTool: ConversationTool = {
   },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
+    // A `tool.<name>` slug is a CHECKABLE claim, and this tool used to
+    // take it on faith. Production: after `author_workflow` failed on a
+    // timeout, the model abstained with
+    // `missing_capability: "tool.author_workflow"`, reason "not available
+    // in this MCP surface" — minutes after calling that same tool
+    // successfully in the same turn. Two costs: the user was told
+    // something false, and `recordGapCandidate` filed a durable,
+    // demand-ranked capability gap for a capability that exists. That
+    // backlog is read as evidence of what the product is missing; a
+    // fabricated entry there is worse than noise, it misdirects.
+    //
+    // Only the structured slug is checked. The free-text `reason` is
+    // deliberately left alone — `loop/tool-not-available-guard.ts` scans
+    // prose and is observability ONLY, and wiring a regex verdict into
+    // control flow is forbidden by contract. Validating a documented
+    // field against the palette is not that; it is the same input
+    // validation every other tool performs.
+    const claimedTool = /^tool\.([a-z][a-z0-9_]*)$/i.exec(args.missing_capability ?? "")?.[1];
+    // No palette threaded → cannot verify → let the abstention through.
+    // An unverifiable claim must never be treated as a false one.
+    if (claimedTool && ctx.availableToolNames?.has(claimedTool.toLowerCase())) {
+      return {
+        ok: false,
+        data: {
+          error_code: "capability_claim_false",
+          message: `\`${claimedTool}\` IS available to you in this conversation — do not abstain claiming otherwise. Call it, or if it failed, say what it returned.`,
+          recommended_mode: "workflow",
+          next_best_actions: [claimedTool],
+        },
+      };
+    }
     // Capability-gap analytics — the operator sees what the assistant
     // could not do, sorted by missing_capability slug, in the
     // `cannot_help_invocations_total` time series.

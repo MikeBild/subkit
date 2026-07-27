@@ -164,5 +164,13 @@ export async function wrapTools(
       }
     }
   }
+  // Publish the resolved palette on the context the wrapped tools close
+  // over, so a tool can check a claim about the palette against the
+  // palette. Assigned once here, AFTER every source has contributed
+  // (in-repo, synthetic `wf_`, external MCP) — a partial set would be
+  // worse than none, because the check it feeds is only sound when the
+  // set is complete. Property lookup happens at call time, so the
+  // closures created above see it.
+  ctx.availableToolNames = new Set(Object.keys(out));
   return out;
 }
