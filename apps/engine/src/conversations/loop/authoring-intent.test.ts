@@ -1,17 +1,17 @@
-// Unit tests for the authoring-intent detector — the seed for FIX 2 of
-// the 6.0.3 hotfix. The detector decides whether the FIRST step of a
-// conversation loop should run on Sonnet 4.6 (authoring-quality) or
-// stick with the tenant default (Haiku 4.5 per 2026-05-22 cost
-// change). Anything that lets a non-authoring phrase ("list my
-// workflows") fall into the authoring branch costs the tenant in
-// Sonnet tokens — the detector must stay narrow.
+// Unit tests for the authoring-intent detector — the single source of
+// truth for "the user wants to author a new workflow" pattern matching,
+// consumed by `conversations/intent-detector.ts` for its
+// `startNewWorkflow` signal.
+//
+// This detector no longer picks a model. It used to: a match seeded the
+// whole turn on a hard-coded top-tier literal, overriding the configured
+// `llm.model`. That is gone — see the file header of
+// `authoring-intent.ts`. What survives here is the narrowness the
+// detector always needed, now for a different reason: a false positive
+// resets an authoring target rather than inflating a bill.
 
 import { describe, expect, it } from "bun:test";
-import {
-  AUTHORING_INITIAL_MODEL,
-  detectAuthoringIntent,
-  resolveInitialModel,
-} from "./authoring-intent.ts";
+import { detectAuthoringIntent } from "./authoring-intent.ts";
 
 describe("detectAuthoringIntent — authoring phrases", () => {
   it("matches 'build a workflow'", () => {
@@ -147,106 +147,5 @@ describe("detectAuthoringIntent — non-authoring phrases", () => {
 
   it("does NOT match 'erstelle einen connector für den workflow'", () => {
     expect(detectAuthoringIntent("erstelle einen connector für den workflow")).toBe(false);
-  });
-});
-
-describe("AUTHORING_INITIAL_MODEL constant", () => {
-  it("seeds Opus 4.8 (the ladder top)", () => {
-    // Hard-wired here so a future rename surfaces as a failing test
-    // instead of a silent drift. Raised Sonnet 4.6 → Opus 4.7 → Opus 4.8:
-    // Sonnet-seeded authoring turns mis-selected run_workflow, and the
-    // ladder now tops out at opus-4-8 so the seed sits at the top tier.
-    expect(AUTHORING_INITIAL_MODEL).toBe("claude-opus-4-8");
-  });
-});
-
-// 6.0.3 hotfix — FIX 2 loop-seeding test. Verifies the precedence
-// order documented on `resolveInitialModel`:
-//   override > authoring-intent seed > tenant default.
-// The tenant default here is `claude-haiku-4-5` to mirror the
-// production engine config (memory: project_engine_llm_default_haiku,
-// set 2026-05-22 for cost). An authoring turn must not run on Haiku;
-// a list/run/delete turn must.
-describe("resolveInitialModel — FIX 2 loop seeding", () => {
-  const tenantDefault = "claude-haiku-4-5";
-
-  it("seeds the authoring model when initial_message expresses authoring intent", () => {
-    const decision = resolveInitialModel({
-      modelOverride: null,
-      tenantDefault,
-      recentUserMessage: "build a workflow called daily-report",
-    });
-    expect(decision.modelId).toBe("claude-opus-4-8");
-    expect(decision.authoringSeeded).toBe(true);
-  });
-
-  it("seeds the authoring model for the German equivalent", () => {
-    const decision = resolveInitialModel({
-      modelOverride: null,
-      tenantDefault,
-      recentUserMessage: "erstelle einen workflow für den Tagesbericht",
-    });
-    expect(decision.modelId).toBe("claude-opus-4-8");
-    expect(decision.authoringSeeded).toBe(true);
-  });
-
-  it("uses the tenant default (Haiku) for 'list my workflows'", () => {
-    const decision = resolveInitialModel({
-      modelOverride: null,
-      tenantDefault,
-      recentUserMessage: "list my workflows",
-    });
-    expect(decision.modelId).toBe(tenantDefault);
-    expect(decision.authoringSeeded).toBe(false);
-  });
-
-  it("uses the tenant default for 'run workflow X'", () => {
-    const decision = resolveInitialModel({
-      modelOverride: null,
-      tenantDefault,
-      recentUserMessage: "run workflow X",
-    });
-    expect(decision.modelId).toBe(tenantDefault);
-    expect(decision.authoringSeeded).toBe(false);
-  });
-
-  it("uses the tenant default for 'delete the workflow'", () => {
-    const decision = resolveInitialModel({
-      modelOverride: null,
-      tenantDefault,
-      recentUserMessage: "delete the workflow",
-    });
-    expect(decision.modelId).toBe(tenantDefault);
-    expect(decision.authoringSeeded).toBe(false);
-  });
-
-  it("uses the tenant default when there is no user message (e.g. elicitation continuation)", () => {
-    const decision = resolveInitialModel({
-      modelOverride: null,
-      tenantDefault,
-      recentUserMessage: null,
-    });
-    expect(decision.modelId).toBe(tenantDefault);
-    expect(decision.authoringSeeded).toBe(false);
-  });
-
-  it("explicit modelOverride wins over authoring intent (operator pick is sacred)", () => {
-    const decision = resolveInitialModel({
-      modelOverride: "claude-opus-4-7",
-      tenantDefault,
-      recentUserMessage: "build a workflow called X",
-    });
-    expect(decision.modelId).toBe("claude-opus-4-7");
-    expect(decision.authoringSeeded).toBe(false);
-  });
-
-  it("explicit modelOverride wins even when it equals the tenant default", () => {
-    const decision = resolveInitialModel({
-      modelOverride: tenantDefault,
-      tenantDefault,
-      recentUserMessage: "build a workflow called X",
-    });
-    expect(decision.modelId).toBe(tenantDefault);
-    expect(decision.authoringSeeded).toBe(false);
   });
 });
