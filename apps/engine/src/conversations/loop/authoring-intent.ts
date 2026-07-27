@@ -1,41 +1,34 @@
-// Authoring-intent detection — seeds the first step on the right model
-// AND is the single source of truth for "user wants to start a new
-// workflow" pattern matching (also consumed by
-// `conversations/intent-detector.ts`).
+// Authoring-intent detection — the single source of truth for "user
+// wants to start a new workflow" pattern matching (consumed by
+// `conversations/intent-detector.ts` for its `startNewWorkflow` signal).
 //
-// The conversation loop resolves the per-turn model via
-// `effectiveModel = p.model_override ?? route.primary`. The tenant
-// default (memory: 2026-05-22) is Haiku 4.5 for cost. Haiku is fine for
-// enumeration / read-heavy turns, but on a workflow-authoring turn it
-// loops on the authoring guardrails — the production logs from
-// 2026-05-23 c322e0ca + the 04:37-04:39 incident show
-// `build a workflow called X` repeatedly choosing `run_workflow`
-// instead of `build_workflow` / `propose_step` / `save_workflow_draft`.
+// This file used to ALSO pick a model. It exported an
+// `AUTHORING_INITIAL_MODEL` literal that the loop seeded whenever the
+// pattern matched, overriding `llm.model` / `llm.fallback_model`
+// silently and unconditionally. It was introduced alongside a real bug
+// fix: the first turn of `conversation_start("build a workflow ...")`
+// repeatedly fired `run_workflow{}` on a not-yet-persisted draft until
+// loop detection stopped it. That commit shipped TWO remedies — the
+// structural one (drop `requires_persisted_workflow` tools from the
+// palette while nothing is persisted) and a stronger seed model.
 //
-// The step-router's existing `model_swapped` ladder only fires on
-// *later* steps (repair signal, hard stage, etc). We need the *first*
-// step to run on the documented authoring-quality default — Sonnet 4.6
-// — so the model picks the right tool the first time round. This
-// detector is the deterministic seed for that decision.
+// The structural remedy is the one that holds. It now gates on live
+// draft state rather than stage (`llm/core/step-router.ts`), so
+// `run_workflow` is not in the palette to be mis-picked at all. The seed
+// meanwhile got ratcheted sonnet-4-6 → opus-4-7 → opus-4-8 and turned
+// into the most expensive path in the system: measured on production, a
+// quarter of all conversations tripped it, and it carried roughly four
+// fifths of the month's LLM spend for a fifth of the calls — to prevent
+// a tool choice that is already structurally impossible.
+//
+// So the model decision lives where it is configured, and nowhere else:
+// `llm.model` / `llm.fallback_model`, plus the per-conversation
+// override. A turn that genuinely needs a stronger model still gets one
+// through the step-router, but only on earned evidence (`prior_critic_fail`,
+// repair, hard stage) rather than on a word pattern in the user's message.
 //
 // Kept intentionally as a pure regex pass: no LLM classifier, no
 // network, no DB. Easy to unit-test, cheap to call once per turn.
-
-/** Opus 4.8 — authoring-quality seed for the FIRST step of an
- *  authoring turn. Raised from Sonnet 4.6 after the publish-ready-essays
- *  incident: even Sonnet-seeded authoring turns (the user message
- *  contained `build_workflow`, so `detectAuthoringIntent` matched and
- *  Sonnet was selected) repeatedly chose `run_workflow` instead of
- *  `build_workflow`, looping on the principal/input guardrails until the
- *  caps stopped the turn. Opus follows the explicit "call build_workflow,
- *  not run_workflow" instruction reliably. This model is paid only on
- *  authoring-intent turns (infrequent), so the tenant's cheap default
- *  still covers enumeration / read / execute turns. Single string literal
- *  so the source-of-truth lives next to the detector that needs it;
- *  `claude-opus-4-8` is the top of the step-router escalation ladder, so a
- *  hard-turn escalation from this seed is a genuine no-op (already top)
- *  rather than the dead 4-7→4-7 it used to be. */
-export const AUTHORING_INITIAL_MODEL = "claude-opus-4-8";
 
 // English + German authoring verbs the user actually types when
 // starting a workflow build. Verbs are anchored with `\b` so substrings
@@ -150,41 +143,4 @@ export function detectAuthoringIntent(message: string | null | undefined): boole
   const trimmed = message.trim();
   if (!trimmed) return false;
   return matchesWorkflowAuthoringPattern(trimmed);
-}
-
-/**
- * Decide which model the conversation loop should seed for the FIRST
- * step of a turn. Precedence (highest first):
- *   1. Explicit per-conversation override (`p.model_override`, sourced
- *      from `conversations.model`) — always wins. The operator picked
- *      this model deliberately; we never second-guess it.
- *   2. Authoring-intent seed — Sonnet 4.6 when `detectAuthoringIntent`
- *      flags the user's message, regardless of how cheap the tenant
- *      default is. This trades a small Sonnet cost for not looping on
- *      Haiku authoring guardrails (production-observed 04:37-04:39).
- *   3. Tenant default (`route.primary`) — the resolved
- *      `tenant_llm_settings` / config / `DEFAULT_PRIMARY` chain.
- *
- * Returning a single decision struct keeps the resolution testable
- * without running the full conversation loop.
- */
-export interface InitialModelDecision {
-  /** The model id the loop should resolve and pass to streamText. */
-  modelId: string;
-  /** True when the authoring-intent branch picked the model. */
-  authoringSeeded: boolean;
-}
-
-export function resolveInitialModel(params: {
-  modelOverride: string | null | undefined;
-  tenantDefault: string;
-  recentUserMessage: string | null | undefined;
-}): InitialModelDecision {
-  if (params.modelOverride != null) {
-    return { modelId: params.modelOverride, authoringSeeded: false };
-  }
-  if (detectAuthoringIntent(params.recentUserMessage)) {
-    return { modelId: AUTHORING_INITIAL_MODEL, authoringSeeded: true };
-  }
-  return { modelId: params.tenantDefault, authoringSeeded: false };
 }

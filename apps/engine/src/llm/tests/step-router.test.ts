@@ -144,6 +144,25 @@ describe("prepareStep — passthrough as default", () => {
     ).toBeUndefined();
   });
 
+  it("drops run_workflow on the FIRST authoring turn — nothing persisted yet", () => {
+    // Load-bearing. This is the assurance that let the hard-coded
+    // premium-model authoring seed be deleted: the failure it was bought
+    // for — `conversation_start("build a workflow ...")` firing
+    // `run_workflow{}` on a not-yet-persisted draft until loop detection
+    // stopped it — is prevented structurally, not by paying for a model
+    // clever enough to resist the temptation. The tool is not in the
+    // palette, so no model can pick it.
+    const decision = prepareStep(
+      baseParams({ signals: { stage: "idle", hasPersistedWorkflow: false } }),
+    );
+    expect(decision?.activeTools).toBeDefined();
+    expect(decision?.activeTools).not.toContain("run_workflow");
+    expect(decision?.activeTools).not.toContain("create_schedule");
+    // Authoring itself must stay reachable, or the drop would just trade
+    // one dead end for another.
+    expect(decision?.activeTools).toContain("save_workflow_draft");
+  });
+
   it("returns undefined when stage and persisted-workflow signal are both unset (synthetic)", () => {
     // With no stage AND no hasPersistedWorkflow flag, the gate defaults
     // to "no persisted workflow" which would normally narrow the

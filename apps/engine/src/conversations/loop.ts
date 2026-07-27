@@ -83,7 +83,6 @@ import {
   inferStateDrivenFollowUpTool,
 } from "./intent-detector.ts";
 import { RUN_VERB_RE } from "./intent-patterns.ts";
-import { resolveInitialModel } from "./loop/authoring-intent.ts";
 import {
   DEFAULT_BUDGET,
   MAX_REPAIRS_PER_TURN,
@@ -393,32 +392,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   };
 
   const route = await resolveModelRoute(p.tenant_id, p.db);
-  // Authoring-intent seeding: if the user's current message expresses
-  // workflow-authoring intent ("build a workflow ...", "erstelle einen
-  // workflow ...") AND no explicit per-conversation model override is
-  // set, seed the FIRST step with the documented authoring-quality
-  // default (Sonnet 4.6) instead of the global tenant default (Haiku
-  // 4.5 per the 2026-05-22 cost change). The step-router's
-  // `model_swapped` ladder continues to apply for later steps; this
-  // only changes the seed. Non-authoring conversations (enumeration,
-  // run, delete, list) keep the tenant default — `resolveInitialModel`
-  // returns the tenant default for them.
-  const initialModel = resolveInitialModel({
-    modelOverride: p.model_override,
-    tenantDefault: route.primary,
-    recentUserMessage: ingestedUserMessage,
-  });
-  const effectiveModel = initialModel.modelId;
-  if (initialModel.authoringSeeded) {
-    log.debug({
-      module: "conversation",
-      action: "loop.authoring_intent_seeded_model",
-      conversation_id: p.conversation_id,
-      tenant_id: p.tenant_id,
-      tenant_default_model: route.primary,
-      seeded_model: effectiveModel,
-    });
-  }
+  // The model a turn starts on: the operator's explicit per-conversation
+  // pick, else the configured tenant default. Nothing about the user's
+  // wording enters this decision — an authoring-intent branch used to sit
+  // here and silently overrode `llm.model` with a hard-coded top-tier
+  // literal (see `loop/authoring-intent.ts` for why it existed and why it
+  // is gone). Later steps may still be routed UP by the step-router, but
+  // only on earned signals, and `activeStepModel` inside `runOnce` is what
+  // accounting bills for those.
+  const seedModel = p.model_override ?? route.primary;
 
   // Step-router signals — refreshed per turn. The router never
   // downgrades the tenant default; it only escalates upward when one
@@ -792,7 +774,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           ];
         })(),
         max_tokens: route.context_cap,
-        model: effectiveModel,
+        model: seedModel,
         ...(p.user_memory ? { user_memory: p.user_memory } : {}),
         ...(loadedSkillSlugs.length > 0 ? { loaded_skill_slugs: loadedSkillSlugs } : {}),
         // Index-safety: every loaded slug (recency-filtered or not) must
@@ -854,7 +836,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   // the CLI can map to actionable guidance ("conversation too long;
   // try /compact"). The cap is the assembler's usable window, which
   // already accounts for completion headroom (see `contextCapFor`).
-  const contextCap = contextCapFor(effectiveModel);
+  const contextCap = contextCapFor(seedModel);
   if (estimatedPromptTokens > contextCap) {
     // Auto-compact ONCE before giving up. A full authoring conversation should
     // degrade to a summary + recent turns, not strand mid-build behind a hard
@@ -884,7 +866,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         msg: "assembled prompt exceeded the context cap; auto-compacted the conversation and retried",
         conversation_id: p.conversation_id,
         tenant_id: p.tenant_id,
-        model: effectiveModel,
+        model: seedModel,
         messages_collapsed: compaction.messages_collapsed,
         estimated_prompt_tokens_before: before,
         estimated_prompt_tokens_after: estimatedPromptTokens,
@@ -898,7 +880,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         msg: "rejecting turn before provider call — assembled prompt exceeds context cap even after compaction",
         conversation_id: p.conversation_id,
         tenant_id: p.tenant_id,
-        model: effectiveModel,
+        model: seedModel,
         estimated_prompt_tokens: estimatedPromptTokens,
         context_cap: contextCap,
         message_tokens: messageTokens,
@@ -910,7 +892,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         context_cap: contextCap,
         message_tokens: messageTokens,
         prompt_total: prompt.token_counts.total,
-        model: effectiveModel,
+        model: seedModel,
         remediation: "compact_or_resume",
       });
     }
@@ -935,7 +917,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         {
           tenant_id: p.tenant_id,
           flow: "converse",
-          model: effectiveModel,
+          model: seedModel,
           prompt_tokens: estimatedPromptTokens,
           completion_tokens: 0,
           latency_ms: 0,
@@ -1135,6 +1117,17 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
    */
   async function runOnce(modelId: string, prebuiltMessages?: ModelMessage[]): Promise<void> {
     let lastStepEnd = now();
+    // The model this attempt's CURRENT step actually runs on. `modelId` is
+    // only the base the attempt started from — when the step-router swaps a
+    // step up a tier it hands the upgraded model to the SDK via
+    // `prepareStep`, and `modelId` deliberately stays put (the router must
+    // keep deciding relative to the base, or the ladder would compound
+    // within one turn). Accounting, however, has to name what ran: before
+    // this existed, every swapped step was billed under the base name, and
+    // production went 2+ months without a single `llm_usage` row for a
+    // model the router demonstrably selected 58 times. Reset per step —
+    // a `prepareStep` override governs exactly one step.
+    let activeStepModel = modelId;
     // Per-turn repair counter for experimental_repairToolCall. See
     // MAX_REPAIRS_PER_TURN constant.
     let turnRepairCount = 0;
@@ -1388,6 +1381,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       // wins on routine steps.
       prepareStep: async ({ stepNumber, steps, messages: stepMessages, model: stepModel }) =>
         timePhaseAsync("converse.prepare_step", async () => {
+          // A per-step override does not carry: this step runs on the base
+          // unless the swap below says otherwise.
+          activeStepModel = modelId;
           // Step-boundary memory bracket. With every loop phase exonerated
           // by phase.slow/phase.alloc, these absolute samples localize the
           // ~700MB/turn external churn to within-step (provider call + tool
@@ -1467,6 +1463,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 decision.modelId,
                 p.tenant_id,
               );
+              // Only after the resolve succeeded — the catch below sticks
+              // with the base model, and so must the accounting.
+              activeStepModel = decision.modelId;
               logger.info({
                 module: "llm",
                 action: "step_router.model_swapped",
@@ -1631,7 +1630,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             {
               tenant_id: p.tenant_id,
               flow: "converse",
-              model: modelId,
+              model: activeStepModel,
               prompt_tokens: u.inputTokens,
               completion_tokens: u.outputTokens,
               cache_read_tokens: u.cacheReadTokens,
@@ -1645,7 +1644,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           );
           recordLlmTokens({
             tenant_id: p.tenant_id,
-            model: modelId,
+            model: activeStepModel,
             flow: "converse",
             prompt_tokens: u.inputTokens,
             completion_tokens: u.outputTokens,
@@ -1865,7 +1864,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   try {
     // Attempt #1 reuses the preflight `messages` build; fallback
     // attempts rebuild inside runOnce (see its parameter note).
-    await runOnce(effectiveModel, messages);
+    await runOnce(seedModel, messages);
   } catch (primaryErr) {
     // Cancel-vs-error split — see `abort.ts` header for reason coverage.
     if (isExpectedCancellation(primaryErr, turnAbortCtrl.signal)) {
@@ -1879,7 +1878,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         action: "converse.failed",
         msg: "streamText primary error",
         conversation_id: p.conversation_id,
-        model: effectiveModel,
+        model: seedModel,
         kind: providerErr?.kind ?? providerKind,
         error: msg,
       });
@@ -1887,7 +1886,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         {
           tenant_id: p.tenant_id,
           flow: "converse",
-          model: effectiveModel,
+          model: seedModel,
           prompt_tokens: estimatedPromptTokens,
           completion_tokens: 0,
           latency_ms: 0,
@@ -1903,7 +1902,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       if (
         !providerErr ||
         !isFallbackEligible(primaryErr) ||
-        route.fallback === effectiveModel ||
+        route.fallback === seedModel ||
         sameProviderQuota
       ) {
         throw providerErr ?? primaryErr;
@@ -1914,7 +1913,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         msg: "llm fallback engaged",
         flow: "converse",
         conversation_id: p.conversation_id,
-        primary: effectiveModel,
+        primary: seedModel,
         fallback: route.fallback,
         kind: providerErr.kind,
       });
