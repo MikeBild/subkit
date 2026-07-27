@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "5.7.0",
+  "version": "5.8.0",
   "private": true,
   "type": "module",
   "description": "A self-hostable, multi-tenant engine for governed, versioned, AI-assisted workflow execution against connected systems.",
