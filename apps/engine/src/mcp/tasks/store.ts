@@ -379,6 +379,67 @@ export interface ConversationProgress {
 }
 
 /**
+ * Mark the live task as PARKED rather than silently working.
+ *
+ * A provider usage limit re-enqueues the turn with a future `startAfter`
+ * instead of failing it. That is correct — but without this stamp the task row
+ * stays non-terminal and unchanged, so every client keeps reading `working`
+ * with no reason and no end date. In production that silence ran for 21 hours
+ * and sent a careful reader chasing a "hung worker" that did not exist.
+ *
+ * Deliberately NOT terminal: the turn really is going to run. It just is not
+ * running now, and the client deserves to know both facts.
+ */
+export async function setMcpTaskParked(
+  tenant_id: string,
+  task_id: string,
+  parked_until: Date,
+  parked_reason: string,
+  db: Db,
+): Promise<void> {
+  await db
+    .update(mcpTasks)
+    .set({ parked_until, parked_reason, updated_at: new Date() })
+    .where(and(eq(mcpTasks.tenant_id, tenant_id), eq(mcpTasks.id, task_id)));
+}
+
+/** Clear the park stamp when the turn actually starts running again. */
+export async function clearMcpTaskPark(tenant_id: string, task_id: string, db: Db): Promise<void> {
+  await db
+    .update(mcpTasks)
+    .set({ parked_until: null, parked_reason: null, updated_at: new Date() })
+    .where(and(eq(mcpTasks.tenant_id, tenant_id), eq(mcpTasks.id, task_id)));
+}
+
+/**
+ * The live task's park state, when it is parked into the future. Read by the
+ * `conversation_get` heartbeat so a waiting client sees WHEN it resumes and
+ * WHY it stopped, instead of an indefinite `working`.
+ */
+export async function parkedStateForConversation(
+  tenant_id: string,
+  conversation_id: string,
+  db: Db,
+): Promise<{ parked_until: Date; parked_reason: string | null } | null> {
+  const [row] = await db
+    .select({
+      parked_until: mcpTasks.parked_until,
+      parked_reason: mcpTasks.parked_reason,
+      result: mcpTasks.result,
+      failure_reason: mcpTasks.failure_reason,
+      cancelled_at: mcpTasks.cancelled_at,
+    })
+    .from(mcpTasks)
+    .where(and(eq(mcpTasks.tenant_id, tenant_id), eq(mcpTasks.conversation_id, conversation_id)))
+    .orderBy(desc(mcpTasks.turn_seq))
+    .limit(1);
+  // A settled turn is not parked, whatever the stamp says.
+  if (!row || row.result || row.failure_reason || row.cancelled_at) return null;
+  if (!row.parked_until || row.parked_until.getTime() <= Date.now()) return null;
+  return { parked_until: row.parked_until, parked_reason: row.parked_reason };
+}
+
+/**
  * The working-state heartbeat for a conversation. Backs the
  * `conversation_get` poll tool so a client can tell an actively-building
  * turn from a hung one. Tenant-scoped. Null-safe.

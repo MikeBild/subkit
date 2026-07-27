@@ -81,6 +81,20 @@ export const mcpTasks = pgTable(
     last_action: text("last_action"),
     progress_step: text("progress_step"),
     heartbeat_at: timestamp("heartbeat_at", { withTimezone: true }),
+    // ── Parked, not working ───────────────────────────────────────────
+    // A turn that hit a provider usage limit is re-enqueued with a future
+    // `startAfter` instead of failing. That is the right call — but the task
+    // row stayed non-terminal with no other trace, so every client saw
+    // `working / phase: "starting"` and nothing else. In production that
+    // silence lasted 21 hours and led a competent reader to the wrong
+    // conclusion (a "hung worker"), because the honest reason — the provider
+    // reported its monthly quota exhausted and named a reset date — existed
+    // only in the engine log.
+    //
+    // These two columns make the wait legible: WHEN it can resume, and WHY it
+    // is not running now. A waiting client must never have to guess.
+    parked_until: timestamp("parked_until", { withTimezone: true }),
+    parked_reason: text("parked_reason"),
     ...timestamps,
   },
   (t) => [
