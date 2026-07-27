@@ -160,6 +160,27 @@ describe("edit_workflow_patch", () => {
     expect(JSON.stringify(draftRef.current)).toBe(before);
   });
 
+  test("a patch that replaces steps with a non-array fails typed, not with a TypeError", async () => {
+    // Production, right after an in-band tool-call repair fed corrected args
+    // back into the loop: `steps` came back as an object, and the legacy
+    // item_var probe did `(patched.steps ?? []).some(...)`. `?? []` only
+    // covers null/undefined, so `.some` was undefined and the tool died with
+    // a raw "is not a function" TypeError — no error_code, nothing the model
+    // could act on, and the authoring turn dead-ended.
+    const draftRef = { current: makeDraft() };
+    const before = JSON.stringify(draftRef.current);
+    const result = await editWorkflowPatchTool.execute(
+      makeCtx(() => draftRef.current, draftRef),
+      { patches: [{ op: "replace", path: "/steps", value: { id: "not-a-list" } }] },
+    );
+    expect(result.ok).toBe(false);
+    const data = result.data as { error_code?: string; message?: string };
+    expect(data.error_code).toBe("patch_invalid");
+    expect(data.message).toContain("steps");
+    // Atomic, like every other rejected patch.
+    expect(JSON.stringify(draftRef.current)).toBe(before);
+  });
+
   test("input schema rejects an empty patch list", async () => {
     const draftRef = { current: makeDraft() };
     const ctxObj = makeCtx(() => draftRef.current, draftRef);

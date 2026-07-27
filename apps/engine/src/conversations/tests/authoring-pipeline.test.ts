@@ -25,6 +25,7 @@ import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { LLM_CALL_TIMEOUT_MS } from "../../llm/core/ai-sdk-model.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -33,6 +34,7 @@ import type { WorkflowTrigger } from "../../workflows/types.ts";
 import {
   GeneratedWorkflowSchema,
   MAX_GENERATION_PASSES,
+  PIPELINE_DEADLINE_MS,
   runAuthoringPipeline,
 } from "../authoring-pipeline.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
@@ -248,6 +250,10 @@ describe("runAuthoringPipeline — one-shot contract", () => {
       expect(result.error_code).toBe("authoring_generation_failed");
       expect(result.attempts).toBe(MAX_GENERATION_PASSES);
       expect(result.errors.length).toBeGreaterThan(0);
+      // A genuine generation failure must NOT borrow the deadline excuse —
+      // the honest-message fix has to stay honest in both directions.
+      expect(result.deadline_exceeded).toBeUndefined();
+      expect(result.message).toContain("schema-parseable");
       expect(toolCtx._draft.value).toBeNull();
       expect(fetchCalls).toBe(0);
     },
@@ -446,8 +452,35 @@ describe("runAuthoringPipeline — shared deadline / abort degradation (P2)", ()
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("unreachable");
     expect(result.error_code).toBe("authoring_generation_failed");
+    // Say WHY. This envelope used to read "the generation model produced no
+    // schema-parseable workflow definition" even here, where no model ever
+    // ran — and a production caller believed it: it invented tool names,
+    // started an unrelated connector draft, and finally abstained claiming
+    // `author_workflow` was unavailable, minutes after calling it. The
+    // machine-readable flag is what lets a caller branch on "retry / split"
+    // rather than "the tool is broken".
+    expect(result.deadline_exceeded).toBe(true);
+    expect(result.message).toContain("ran out of time");
+    expect(result.message).not.toContain("schema-parseable");
     expect(toolCtx._draft.value).toBeNull();
     expect(fetchCalls).toBe(0);
+  });
+
+  test("the pipeline budget can fund every pass it promises", () => {
+    // The budget is derived from what the pipeline advertises, not chosen.
+    // At 120s it promised MAX_GENERATION_PASSES but funded roughly one and a
+    // third: a first pass running near its own ceiling left the second unable
+    // to finish, and production killed one 33s in — tokens spent, nothing
+    // returned. A retry budget that cannot pay for the retry is theatre.
+    expect(PIPELINE_DEADLINE_MS).toBeGreaterThanOrEqual(
+      MAX_GENERATION_PASSES * LLM_CALL_TIMEOUT_MS,
+    );
+    // Plus headroom for the bounded repair fan-out that shares this budget.
+    expect(
+      PIPELINE_DEADLINE_MS - MAX_GENERATION_PASSES * LLM_CALL_TIMEOUT_MS,
+    ).toBeGreaterThanOrEqual(LLM_CALL_TIMEOUT_MS);
+    // And it must still fit inside the turn that hosts it (10 min).
+    expect(PIPELINE_DEADLINE_MS).toBeLessThan(10 * 60_000);
   });
 });
 
