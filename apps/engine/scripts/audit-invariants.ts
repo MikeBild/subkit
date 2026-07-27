@@ -176,6 +176,55 @@ function checkJsonataLocality(): Result {
   };
 }
 
+function checkConversationModelSelection(): Result {
+  // The conversation path must never name a premium model in code.
+  //
+  // A hard-coded `claude-opus-4-8` seed lived in
+  // `conversations/loop/authoring-intent.ts` and was applied whenever the
+  // user's message matched an authoring word pattern. It overrode the
+  // configured `llm.model` silently, in the one direction that costs
+  // money, and it survived long after the bug it was added for had been
+  // fixed structurally. Measured on production before its removal: a
+  // quarter of conversations tripped it, and it carried roughly four
+  // fifths of the month's LLM spend.
+  //
+  // Which model a turn runs on is a configuration decision
+  // (`llm.model` / `llm.fallback_model` / per-conversation override).
+  // Escalating one is the step-router's job, in `llm/core/step-router.ts`,
+  // on earned signals — not the conversation loop's, on a regex.
+  //
+  // A literal naming a CHEAP floor stays legal (e.g. a suggestion-flow
+  // fallback): it cannot silently inflate a bill. Only the
+  // upgrade-direction literals are banned here.
+  const PREMIUM_LITERAL = /["'`]claude-(?:opus|sonnet)[a-z0-9.-]*["'`]/;
+  const root = join(ENGINE_SRC, "conversations");
+  const violations: string[] = [];
+  for (const f of listFiles(root, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"))) {
+    const text = readFileSync(f, "utf8");
+    for (const [i, line] of text.split("\n").entries()) {
+      // Prose in comments may name a model when explaining history.
+      const code = line.replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, "");
+      if (PREMIUM_LITERAL.test(code)) {
+        violations.push(`${relative(REPO, f)}:${i + 1}`);
+      }
+    }
+  }
+  if (violations.length === 0) {
+    return {
+      id: "conversation_model_selection",
+      status: "PASS",
+      message: "no premium model literals in the conversation path",
+    };
+  }
+  return {
+    id: "conversation_model_selection",
+    status: "FAIL",
+    message:
+      "premium model named in code — model choice belongs to config, escalation to the step-router:\n  " +
+      violations.join("\n  "),
+  };
+}
+
 function checkRouteLayering(): Result {
   // routes/<f>.ts may import from a subsystem's index.ts only — i.e.
   // relative paths of the form `../../<sub>/index` or `../../<sub>`
@@ -792,6 +841,7 @@ const CHECKS: Array<() => Result> = [
   checkNoNewSubsystem,
   checkAiSdkLocality,
   checkJsonataLocality,
+  checkConversationModelSelection,
   checkRouteLayering,
   checkInternalLayering,
   checkFileSize,
