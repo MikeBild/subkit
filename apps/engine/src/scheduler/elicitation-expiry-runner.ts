@@ -76,6 +76,25 @@ async function carryExpiryToApproval(
     );
 }
 
+/** Commit-intent kinds whose resume CLAIMS the approval (`consumeApproval`)
+ *  rather than re-dispatching the tool with a prior-approval marker.
+ *
+ *  Only these can leave a granted capability unused, so only these can be
+ *  "abandoned". A shape-specific carrier mints its approval as the portal
+ *  channel and the decision record; its handle is never consumed by design, and
+ *  reporting that as a lost grant would cry wolf on every save. */
+const CLAIMING_COMMIT_INTENTS: ReadonlySet<string> = new Set([
+  "execute_confirmed_tool_call",
+  "commit_held_workflow_writes",
+]);
+
+function claimsApproval(input: Record<string, unknown> | null): boolean {
+  const intent = input?.commit_intent;
+  if (!intent || typeof intent !== "object" || Array.isArray(intent)) return false;
+  const kind = (intent as { kind?: unknown }).kind;
+  return typeof kind === "string" && CLAIMING_COMMIT_INTENTS.has(kind);
+}
+
 /** Which capability lapsed, so the note the model reads names the right thing. */
 function expiryReasonFor(
   handle: string | null,
@@ -196,6 +215,23 @@ export async function runElicitationExpiry(
             // decision cannot be acted on any more. Expire it, but say so
             // loudly: every other trace of this outcome looks identical to
             // "nobody answered".
+            //
+            // Only for carriers that actually claim. A shape-specific carrier's
+            // handle is the portal channel, not a capability the resume spends,
+            // so an unconsumed one is the normal end state — not a lost grant.
+            if (!claimsApproval(input)) {
+              const resolution = await expireElicitationAndReactivate(
+                {
+                  tenant_id: row.tenant_id,
+                  conversation_id: row.conversation_id,
+                  id: row.id,
+                  reason: "approval_expired",
+                },
+                db,
+              );
+              if (resolution.kind === "resolved") expired_count += 1;
+              continue;
+            }
             await auditAwait(
               {
                 tenant_id: row.tenant_id,

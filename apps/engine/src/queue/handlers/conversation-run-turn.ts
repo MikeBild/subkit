@@ -40,8 +40,10 @@ import { conversationMessages } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
 import {
   type ConversationTurnEnvelope,
+  clearMcpTaskPark,
   getMcpTask,
   setMcpTaskFailure,
+  setMcpTaskParked,
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
@@ -128,6 +130,13 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       duration_ms: Date.now() - started,
     });
     return;
+  }
+
+  // (a2) The turn is running now, so it is no longer parked. Clearing the
+  // stamp here — not at park time — keeps the reason visible for the whole
+  // wait and removes it the moment it stops being true.
+  if ((data.provider_limit_parks ?? 0) > 0) {
+    await clearMcpTaskPark(data.tenant_id, data.mcp_task_id, db);
   }
 
   // (b) Register the AbortController so `tasks/cancel` can stop the
@@ -351,6 +360,16 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
           CONVERSATION_RUN_TURN_QUEUE,
           { ...data, provider_limit_parks: parkPlan.parks },
           { startAfter: parkPlan.start_after },
+        );
+        // Make the wait legible to whoever is polling. The task row stays
+        // non-terminal on purpose — the turn WILL run — but "not terminal" must
+        // not mean "indistinguishable from working".
+        await setMcpTaskParked(
+          data.tenant_id,
+          data.mcp_task_id,
+          parkPlan.start_after,
+          `provider_${parkPlan.kind}`,
+          db,
         );
         log.queue.job.completed({
           msg: "conversation.run-turn hit a provider usage limit — parked for retry",

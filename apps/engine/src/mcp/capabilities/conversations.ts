@@ -905,9 +905,32 @@ async function workingHeartbeat(
   conversation_id: string,
   since_ms: number,
 ): Promise<HandleConversationToolResult> {
-  const { latestProgressForConversation } = await import("../tasks/store.ts");
-  const progress = await latestProgressForConversation(tenant_id, conversation_id, db);
+  const { latestProgressForConversation, parkedStateForConversation } = await import(
+    "../tasks/store.ts"
+  );
   const anchor = Number.isFinite(since_ms) ? since_ms : Date.now();
+
+  // A parked turn is NOT "working". It hit a provider usage limit and was
+  // re-enqueued for a named future instant. Reporting it as `working` with
+  // `phase: "starting"` is what turned a 21-hour provider-quota wait into a
+  // hunt for a hung worker: the honest reason existed only in the engine log.
+  // Say it plainly, and say when it resumes.
+  const parked = await parkedStateForConversation(tenant_id, conversation_id, db);
+  if (parked) {
+    return successText({
+      status: "working",
+      conversation_id,
+      phase: "parked",
+      elapsed_ms: Math.max(0, Date.now() - anchor),
+      last_action: null,
+      parked_until: parked.parked_until.toISOString(),
+      parked_reason: parked.parked_reason ?? "provider_usage_limit",
+      resumes_in_ms: Math.max(0, parked.parked_until.getTime() - Date.now()),
+      note: "The turn is not running: the LLM provider reported a usage limit and named a reset time. It resumes on its own at `parked_until` — nothing is stuck, and restarting or opening a new conversation does not help, because a new turn parks the same way. Raise the provider quota to resume sooner.",
+    });
+  }
+
+  const progress = await latestProgressForConversation(tenant_id, conversation_id, db);
   return successText({
     status: "working",
     conversation_id,
