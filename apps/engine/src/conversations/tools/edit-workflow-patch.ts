@@ -114,6 +114,28 @@ export async function applyWorkflowPatchToDraft(
     // PROVEN AST rewriter in-band: a provable rewrite is applied and
     // reported; an unprovable one earns a typed error naming the manual
     // step — the user can always edit their own workflow from chat.
+    // A patch may legally target `steps`, and nothing upstream guarantees the
+    // op left an ARRAY behind — `applyDiffsToConfig` applies what it is given.
+    // `?? []` only covers null/undefined, so a `replace` that put an object
+    // there reached `.some()` and threw a raw TypeError
+    // ("(patched.steps ?? []).some is not a function"), escaping as an
+    // untyped crash instead of something the model could correct. Observed in
+    // production right after an in-band tool-call repair fed corrected args
+    // back into the loop. Fail the patch atomically, in the shape every other
+    // bad patch already uses.
+    if (patched.steps !== undefined && !Array.isArray(patched.steps)) {
+      return {
+        ok: false,
+        data: buildGateError(currentDraft, {
+          error_code: "patch_invalid",
+          message: `the patch left \`steps\` as ${patched.steps === null ? "null" : typeof patched.steps}, not an array — steps must stay a list of step objects`,
+          recommended_mode: "workflow",
+          next_best_actions: ["inspect_workflow_draft"],
+          extra: { patches },
+        }),
+      };
+    }
+
     let legacyItemvarChanges: ItemvarRewriteChange[] | null = null;
     const declaresItemvar = (patched.steps ?? []).some(
       (st) =>
