@@ -42,6 +42,7 @@ import { z } from "zod";
 import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../connectors/discovery/types.ts";
 import { connectors as connectorsTable, conversationToolCalls } from "../db/schema/index.ts";
+import { LLM_CALL_TIMEOUT_MS } from "../llm/core/ai-sdk-model.ts";
 import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatters.ts";
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
 import { invoke } from "../llm/core/invoke.ts";
@@ -73,14 +74,24 @@ export const MAX_GENERATION_PASSES = 2;
 /** Single wall-clock budget for the WHOLE pipeline — both generate
  *  passes plus recorded-eval's repair fan-out — expressed as one
  *  `AbortSignal.timeout`. Threaded as `signal` into every `invoke()` the
- *  pipeline and its repairs make (P1 gives each provider call its own
- *  90s ceiling; this is the aggregate ceiling so a serial chain of calls
+ *  pipeline and its repairs make (each provider call has its own
+ *  `LLM_CALL_TIMEOUT_MS` ceiling; this is the aggregate so a serial chain
  *  can't sum past it). On a deadline hit `invoke()` throws a typed
- *  `LlmProviderError`; the pipeline catches it and returns the best
- *  draft it has with the findings, never hangs. 120s leaves room for two
- *  generate passes plus a small bounded repair fan-out while staying
- *  well under the client socket budget the STALL exceeded. */
-export const PIPELINE_DEADLINE_MS = 120_000;
+ *  `LlmProviderError`; the pipeline catches it and returns the best draft
+ *  it has, never hangs.
+ *
+ *  DERIVED, not picked: `MAX_GENERATION_PASSES` calls, each entitled to
+ *  `LLM_CALL_TIMEOUT_MS`, plus one call's worth of headroom for the
+ *  bounded repair fan-out. The previous 120s promised two passes and
+ *  funded roughly one and a third: a first pass that legitimately ran
+ *  near its own 90s ceiling left the second structurally unable to
+ *  finish, and production duly killed one 33s in. A retry budget that
+ *  cannot pay for the retry is theatre — the pass runs, burns tokens, and
+ *  is guaranteed to be cut off.
+ *
+ *  The turn that hosts this pipeline is bounded at 10 minutes, so the
+ *  aggregate below is not the scarce resource it was treated as. */
+export const PIPELINE_DEADLINE_MS = (MAX_GENERATION_PASSES + 1) * LLM_CALL_TIMEOUT_MS;
 
 /** Per-connector char budget for the ingested-docs excerpt embedded in
  *  the generation prompt. Mirrors the context assembler's discipline of
@@ -206,6 +217,11 @@ export type AuthoringPipelineResult =
       ok: false;
       error_code: "authoring_generation_failed" | "authoring_connectors_unresolved";
       message: string;
+      /** Set when the failure was the wall-clock budget rather than the
+       *  model. Machine-readable counterpart to `message`, so a caller can
+       *  branch on "retry / split the spec" instead of concluding the tool
+       *  is broken. Absent on a genuine generation failure. */
+      deadline_exceeded?: true;
       errors: ValidationError[];
       attempts: number;
       unresolved_connectors: string[];
@@ -557,6 +573,12 @@ export async function runAuthoringPipeline(
   const deadlineSignal = ctx.abortSignal
     ? AbortSignal.any([ctx.abortSignal, AbortSignal.timeout(PIPELINE_DEADLINE_MS)])
     : AbortSignal.timeout(PIPELINE_DEADLINE_MS);
+  // Wall-clock is the thing being budgeted here, so it is the honest source —
+  // the pass gate below asks "can the next call still finish", which no
+  // injected clock can answer for a real provider call.
+  const deadlineStartedAt = Date.now(); // allow-wall-clock
+  const msRemaining = (): number =>
+    Math.max(0, PIPELINE_DEADLINE_MS - (Date.now() - deadlineStartedAt)); // allow-wall-clock
 
   let definition: GeneratedWorkflow | null = null;
   let validationErrors: ValidationError[] = [];
@@ -652,6 +674,26 @@ export async function runAuthoringPipeline(
   for (let pass = 1; pass <= MAX_GENERATION_PASSES; pass++) {
     if (deadlineSignal.aborted) {
       deadlineExceeded = true;
+      break;
+    }
+    // Refuse to start a pass the remaining budget cannot pay for. Checking
+    // only `aborted` catches a deadline that has already fired, never one
+    // that will fire mid-call — so a pass could start with seconds left,
+    // spend a full prompt, and be cut off with nothing to show. Stopping
+    // here reaches the same outcome without the wasted tokens, and reports
+    // the honest reason instead of an empty result.
+    if (pass > 1 && msRemaining() < LLM_CALL_TIMEOUT_MS) {
+      deadlineExceeded = true;
+      logger.warn({
+        module: "conversations",
+        action: "authoring_pipeline.pass_skipped_no_budget",
+        msg: "skipping a generate pass that cannot finish within the remaining pipeline budget",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        pass,
+        ms_remaining: msRemaining(),
+        ms_required: LLM_CALL_TIMEOUT_MS,
+      });
       break;
     }
     const prompt = buildGenerationPrompt({
@@ -792,11 +834,23 @@ export async function runAuthoringPipeline(
   }
 
   if (!definition) {
+    // Name the actual reason. The success path already reports a blown time
+    // budget honestly (see the `note` below); this path used to blame the
+    // model unconditionally — "produced no schema-parseable definition" — even
+    // when `deadlineExceeded` was set and the generation had simply been cut
+    // off mid-flight. Production consequence, observed: the caller believed
+    // the tool was broken, invented tool names that do not exist, started an
+    // unrelated connector draft, and finally abstained via `cannot_help`
+    // claiming `author_workflow` was "not available in this MCP surface" —
+    // after having called it successfully in the same turn. That detour cost
+    // 858k tokens. A wrong reason is more expensive than no reason.
     return {
       ok: false,
       error_code: "authoring_generation_failed",
-      message:
-        "the generation model produced no schema-parseable workflow definition within the pass cap",
+      message: deadlineExceeded
+        ? "generation ran out of time before producing a complete definition — the model was cut off, not wrong. Retry, or split the specification into smaller workflows."
+        : "the generation model produced no schema-parseable workflow definition within the pass cap",
+      ...(deadlineExceeded ? { deadline_exceeded: true } : {}),
       errors: validationErrors,
       attempts,
       unresolved_connectors: unresolved,
