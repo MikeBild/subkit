@@ -12,23 +12,35 @@
 //   - product   — the minimal end-user run-surface (registry's
 //                 PRODUCT_MODE_ALLOW_LIST, applied inside listToolsViaRegistry
 //                 for mcpMode:"product").
-//   - authoring — the `wf_` palette, every registry tool the provider
-//                 publishes, and the conversation_* session tools.
-//   - admin     — the same catalogue as authoring.
+//   - authoring — the full authoring set: the `wf_` palette, every registry
+//                 tool the mode publishes (tenant_read + workflow_run, no
+//                 tenant_write except run_workflow), and the conversation_*
+//                 session tools.
+//   - admin     — the full inventory, tenant_write included when not read-only.
 //
-// PRODUCT IS THE ONLY MODE THAT TRIMS. `conversation.ts` gates on
-// `filter.mcpMode === "product"` and nothing else, so authoring and admin
-// resolve to an identical list — verified by listing all three. An earlier
-// version of this comment claimed authoring published "no tenant_write except
-// run_workflow"; it does publish tenant writes (`restore_workflow_version`,
-// `update_workflow`, …), and the docs built on that claim were wrong until
-// corrected. What actually bounds a caller is the per-tool RBAC the dispatcher
-// enforces, NOT the mode. Do not infer reachability from the mode name.
+// WHERE THE TRIM ACTUALLY HAPPENS — read this before "verifying" the shape.
+// `conversation.ts` gates on `filter.mcpMode === "product"` and on
+// `filter.readOnly`; it does NOT gate tenant_write on the mode name. The
+// authoring/admin split lives one layer up, in `modeFlags`
+// (`mode-resolver.ts`), which hardcodes `showTenantWrites: false` for authoring
+// and `!readOnly` for admin. `capabilities/tools.ts` turns that into the
+// `readOnly` flag it passes down. So the published catalogue is
+//     modeFlags(mode) -> readOnly -> listToolsViaRegistry
+// and calling `conversationToolProvider.list({surface,mcpMode})` WITHOUT that
+// derived flag makes authoring look identical to admin. It is not: authoring
+// publishes ~80 tools with no `restore_workflow_version` / `update_workflow`,
+// admin ~110 with both. A round of customer documentation was written from the
+// provider-level reading and had to be withdrawn when a live `tools/list`
+// against production disagreed. `tests/catalog-mode-invariants.test.ts`
+// asserts the real path — extend that rather than probing the provider.
 //
-// The one boundary that IS categorical: `draft_write` tools are dropped from
-// the MCP catalogue in every mode and refused on a direct call
-// (`conversation.ts` `shouldDropFromCatalog`), so no external client can edit a
-// workflow draft step-by-step. That is the invariant worth protecting here.
+// `run_workflow` is the one tenant_write that survives read-only, via
+// `visible_when_readonly`: it runs a workflow rather than mutating config.
+//
+// The boundary that is categorical across ALL modes: `draft_write` tools are
+// dropped from the MCP catalogue and refused on a direct call
+// (`conversation.ts`), so no external client can edit a workflow draft
+// step-by-step. That is the invariant the authoring docs rest on.
 //
 // The ONE remaining bound is DEFAULT_PALETTE_LIMIT: a cap on how many `wf_`
 // per-workflow tools we preload. Workflows past it stay reachable via
