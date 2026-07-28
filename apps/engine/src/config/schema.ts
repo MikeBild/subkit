@@ -723,7 +723,7 @@ const EgressSection = z
       .array(z.string())
       .default([])
       .describe(
-        "Extra hostnames treated as LLM providers for token accounting and per-run budget enforcement. This does NOT allow or block egress — the egress filter never reads it; adding a host makes calls to it metered, not permitted.",
+        "Extra hostnames counted as LLM providers for token accounting and per-run budgets. Does NOT affect the egress filter — adding a host makes calls to it metered, not permitted.",
       )
       .meta(global()),
   })
