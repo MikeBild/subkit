@@ -33,21 +33,27 @@ sk workflows get <id> > normalize.json
 # edit the one line
 sk workflows validate normalize.json
 sk workflows preview  normalize.json
-sk workflows update <id> normalize.json
+sk workflows update   <id> --file=normalize.json
 ```
 
 You see the diff. The change is the change you wrote.
 
+`update` runs `validate` and `preview` itself before writing, so the two explicit
+steps above are for reading the result yourself — the point of the whole exercise.
+An unchanged definition does not rotate a version.
+
 ### 2. "Roll back to the previous version."
 
-**Wrong door — browser chat.** Version restore is a tenant write, and the MCP authoring surface does not carry those. The tool is not in the client's catalogue at all, so the assistant cannot see it and will propose detours instead of saying "I can't reach that."
+**Either door, but know what you need.** A browser client *can* reach version restore — but the call needs the `workflow:restore` permission, and a key without it is refused at the gate. A session that runs into that refusal tends to propose detours rather than say "I am not allowed to do this."
 
-**Right door:**
+**The terminal is still the better door**, because restoring safely means reading the history first:
 
 ```bash
 sk workflows history <id>
 sk workflows restore <id> <version>
 ```
+
+Never guess the version number. Restoring is not a repair: if you do not know which version was good, find out before you replace what is live.
 
 ### 3. "Prove that two runs produce identical output."
 
@@ -91,14 +97,15 @@ The last one is the most expensive, because it is the one you notice last.
 
 ## What a browser client cannot do — and why that is deliberate
 
-Over MCP, the authoring surface publishes reads plus the ability to run a workflow. It does **not** publish other tenant writes. Specifically:
+The boundary is narrower than "MCP is read-only", and worth stating precisely. A browser client can run workflows, read almost everything, restore a version, and rename a workflow. What it cannot do is **author a definition**:
 
-- **Draft-editing tools are not in the catalogue**, and calling one directly is refused rather than silently failing. They are driven by sk's own authoring loop inside a conversation, never by the external client.
-- **There is no MCP equivalent of `PUT /v1/workflows/{id}`.** No tool accepts a full workflow definition.
-- **`update_workflow` over MCP changes metadata only** — name, description, lifecycle. It refuses when the draft has uncommitted step edits, rather than reporting success while those edits stay unsaved.
-- **A broadly scoped key does not change this.** Even a wildcard scope resolves to the authoring surface; the admin surface requires its own explicit scope.
+- **The step-level editor is not in the catalogue** — in any mode. `edit_workflow_patch`, `save_workflow_draft`, `dry_run_workflow`, and `validate_draft` are omitted from the tool list, and calling one directly is refused rather than silently failing. They are driven by sk's own authoring loop inside a conversation, never by the external client.
+- **No tool accepts a full workflow definition.** There is no MCP equivalent of `PUT /v1/workflows/{id}`.
+- **`update_workflow` changes metadata only** — name, description, lifecycle. It refuses outright when the draft has uncommitted step edits, rather than reporting success while those edits stay unsaved.
 
-This is a deliberate boundary, not an oversight: a definition edit should pass through something a person can read. Mechanics in [Input Surfaces → MCP Integration](../developers/input-surfaces.md#mcp-integration); the reasoning in [Reversibility & Trust Domains](../concepts/reversibility-and-trust-domains.md).
+So the writes a browser client *can* make are the ones that name or restore a definition, never the ones that compose one. Every step edit routes through the authoring conversation, where a model turns your sentence into the patch.
+
+That is a deliberate boundary, not an oversight: a definition edit should pass through something a person can read. Mechanics in [Input Surfaces → MCP Integration](../developers/input-surfaces.md#mcp-integration); the reasoning in [Reversibility & Trust Domains](../concepts/reversibility-and-trust-domains.md).
 
 ## Green is not the same as correct
 
@@ -106,7 +113,17 @@ A dry run checks that the workflow **executes**. It does not check that the resu
 
 A workflow can read the wrong field, produce empty values for every record, and finish without a single error — green, and wrong. If you did not read the preview, you have confirmation that nothing crashed and nothing more.
 
-This matters most on an **unattended turn**. When a confirmation cannot be delivered — a background client with no way to surface a prompt — sk commits a green dry run rather than leaving the work stranded mid-flight. That behaviour is deliberate, and it means an auto-commit is not evidence a person agreed. On those surfaces, "it committed" tells you the run was clean, not that it was reviewed.
+This matters most on an **unattended turn** — a background client with no way to surface a prompt. A deferral there would strand the work mid-flight, so sk commits instead. What it commits, and what it holds back, is worth knowing exactly:
+
+| Unattended turn, dry run green | Outcome |
+|---|---|
+| the preview judge returned a verdict | commits |
+| judge skipped, and the workflow is **new** | commits — there is nothing to lose |
+| judge skipped, and it would **replace** an existing workflow | **held back** |
+
+That last row exists because the alternative went wrong in production: an unjudged green preview once landed a generic normaliser on top of a purpose-built one, and "green" there meant only "no exception". Replacing verified work now needs more than an absent objection.
+
+The first two rows still commit without anyone agreeing to it. An auto-commit is not evidence a person reviewed anything — it tells you the run was clean, not that it was right.
 
 Read the preview. Especially when it is green.
 
