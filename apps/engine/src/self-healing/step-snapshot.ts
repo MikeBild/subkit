@@ -75,6 +75,31 @@ export function endpointKeyFromRequestMeta(
   }
 }
 
+/**
+ * Resolve the DAG step id behind a failing *execution* step.
+ *
+ * `execution_steps.step_key` is written by the engine as the DAG step's own
+ * `id`, so it is the link between "this run broke" and "this line of the
+ * workflow definition". Both the operator preview and the apply path resolve
+ * their target through here, which is what keeps the previewed diff and the
+ * applied version pointed at the same step.
+ *
+ * Null when the id does not resolve — the caller must treat that as "no step
+ * to patch", never as "patch a guess".
+ */
+export async function loadWorkflowStepKey(
+  tenant_id: string,
+  execution_step_id: string,
+  exec: Executor,
+): Promise<string | null> {
+  const rows = await exec
+    .select({ step_key: executionSteps.step_key })
+    .from(executionSteps)
+    .where(and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.id, execution_step_id)))
+    .limit(1);
+  return rows[0]?.step_key ?? null;
+}
+
 export async function loadStepSnapshot(
   tenant_id: string,
   step_id: string,

@@ -21,6 +21,7 @@ import { resetMockProvider } from "../../llm/mock-provider.ts";
 
 export interface SelfHealingTestCtx {
   testDb: TestDb;
+  label: string;
   tenant_id: string;
   connector_id: string;
   workflow_id: string;
@@ -30,6 +31,51 @@ export interface SelfHealingTestCtx {
   fixture_id: string;
   endpoint_key: string;
   cleanup: () => Promise<void>;
+}
+
+/** The DAG step the seeded execution fails on — `execution_steps.step_key`
+ *  matches it, which is how a patch finds its target in the definition. */
+export const SEED_STEP_ID = "req-1";
+
+/** The pre-drift projection. A patch that heals this workflow rewrites it to
+ *  `data.result.id`. */
+export const SEED_DATA_SELECTOR = "data.id";
+
+function buildSeedDag(label: string, connector_id: string) {
+  return {
+    name: `Workflow ${label}`,
+    steps: [
+      {
+        kind: "request",
+        id: SEED_STEP_ID,
+        method: "GET",
+        connector_id,
+        path: "/users/1",
+        data_selector: SEED_DATA_SELECTOR,
+      },
+    ],
+  };
+}
+
+/**
+ * Restore the workflow's CURRENT version to the pre-drift definition.
+ *
+ * An applied patch rewrites the step, so a test that approves twice would
+ * otherwise be measuring "already healed, nothing to change" the second time
+ * instead of the guard it means to test. Resetting keeps each seed independent.
+ */
+export async function resetSeedDag(ctx: SelfHealingTestCtx): Promise<void> {
+  const { eq } = await import("drizzle-orm");
+  const rows = await ctx.testDb.db
+    .select({ current_version_id: workflows.current_version_id })
+    .from(workflows)
+    .where(eq(workflows.id, ctx.workflow_id));
+  const current = rows[0]?.current_version_id;
+  if (!current) throw new Error("workflow has no current version");
+  await ctx.testDb.db
+    .update(workflowVersions)
+    .set({ dag: buildSeedDag(ctx.label, ctx.connector_id) })
+    .where(eq(workflowVersions.id, current));
 }
 
 export async function createSelfHealingCtx(label: string): Promise<SelfHealingTestCtx> {
@@ -69,19 +115,7 @@ export async function createSelfHealingCtx(label: string): Promise<SelfHealingTe
     .returning();
   if (!workflow) throw new Error("seed workflow failed");
 
-  const dag = {
-    name: `Workflow ${label}`,
-    steps: [
-      {
-        kind: "request",
-        id: "req-1",
-        method: "GET",
-        connector_id: connector.id,
-        path: "/users/1",
-        data_selector: "data.id",
-      },
-    ],
-  };
+  const dag = buildSeedDag(label, connector.id);
 
   const [version] = await testDb.db
     .insert(workflowVersions)
@@ -119,7 +153,7 @@ export async function createSelfHealingCtx(label: string): Promise<SelfHealingTe
     .values({
       tenant_id: tenant.id,
       execution_id: execution.id,
-      step_key: "req-1",
+      step_key: SEED_STEP_ID,
       step_index: 0,
       kind: "request",
       status: "failed",
@@ -193,6 +227,7 @@ export async function createSelfHealingCtx(label: string): Promise<SelfHealingTe
 
   return {
     testDb,
+    label,
     tenant_id: tenant.id,
     connector_id: connector.id,
     workflow_id: workflow.id,

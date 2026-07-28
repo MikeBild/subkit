@@ -88,7 +88,7 @@ deployment — index first, then fetch just the pages they need.
 | [connectors.md](concepts/connectors.md) | The integration fabric: Connectors, Drivers, Credentials, the vault, and the OAuth2 lifecycle. |
 | [workflows.md](concepts/workflows.md) | The governed, version-bound execution engine: Workflow DAGs, Step types, Execution records, Schedules, and drift-assisted repair. |
 | [knowledge-and-skills.md](concepts/knowledge-and-skills.md) | How organization-specific context compounds: Skills, Knowledge Sources, context assembly, Discovery. |
-| [governance-and-audit.md](concepts/governance-and-audit.md) | Multi-tenancy, the immutable audit trail, the compliance posture, and conversational secret hygiene. |
+| [governance-and-audit.md](concepts/governance-and-audit.md) | Multi-tenancy, the append-only audit trail, what its guarantee covers, and conversational secret hygiene. |
 
 ---
 

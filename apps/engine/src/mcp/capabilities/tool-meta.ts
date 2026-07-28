@@ -40,7 +40,8 @@ export interface SubkitToolMetaEnvelope {
  *     on MCP (see `policyDecide`'s MCP shortcut in `tools/policy.ts`), so the
  *     annotation IS the gate. This keeps the invariant "every MCP-reachable
  *     `confirm_before_execution` tool advertises `destructiveHint:true`" whole;
- *     `mcp/tests/tools-list.test.ts` pins it.
+ *     `mcp/tests/confirm-gate-invariant.test.ts` pins it across the whole
+ *     registry (`tools-list.test.ts` only spot-checks named tools).
  * The runtime gate already treats these correctly via `computeDangerFromInput`
  * (tool-policies.ts); this set keeps the STATIC manifest honest in lockstep.
  */

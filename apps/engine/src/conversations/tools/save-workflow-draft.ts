@@ -27,7 +27,10 @@ import { recordWorkflowCommitted, recordWorkflowUpdated } from "../../audit/reco
 import { skills as skillsTable } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
-import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
+import {
+  commitGateBypassedByAutoMode,
+  commitWorkflowAtomic,
+} from "../persistence/commit-workflow.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z
@@ -127,10 +130,16 @@ export const saveWorkflowDraftTool: ConversationTool = {
     const draftSlug = draftSnapshot.slug ?? null;
     const draftName = draftSnapshot.name ?? null;
 
+    // Same predicate the gate itself applies — see commit-workflow.ts. When it
+    // is true nobody approved this commit, and both the reason and the flag
+    // below have to say so.
+    const gateBypassed = commitGateBypassedByAutoMode({ permission_mode: ctx.permission_mode });
+    const auditReason = gateBypassed ? "auto_mode_no_prior_approval" : "manual_re_issue";
+
     const result = await commitWorkflowAtomic({
       ctx,
       forceCommit: args.force_commit,
-      reason: "manual_re_issue",
+      reason: auditReason,
       ...(args.target_workflow_id ? { target_workflow_id: args.target_workflow_id } : {}),
     });
     if (!result.ok) {
@@ -138,8 +147,12 @@ export const saveWorkflowDraftTool: ConversationTool = {
     }
     // commitWorkflowAtomic emits an audit row only when
     // emitAutoPersistAudit=true (harness path). The tool path adds its
-    // own `manual_re_issue` row here so operators triaging the audit
-    // log can tell the two paths apart.
+    // own row here so operators triaging the audit log can tell the two
+    // paths apart. `manual_re_issue` is only honest when a human actually
+    // stood behind the call: under `permission_mode=auto` the prior-approval
+    // gate was skipped, so the row says that instead — and carries the flag,
+    // because "did anyone approve this commit?" must be answerable from the
+    // audit log alone.
     const data =
       typeof result.data === "object" && result.data !== null
         ? (result.data as Record<string, unknown>)
@@ -183,10 +196,11 @@ export const saveWorkflowDraftTool: ConversationTool = {
           slug: typeof data.slug === "string" ? data.slug : "",
           version,
           workflow_version_id,
-          reason: "manual_re_issue",
+          reason: auditReason,
           source: "tool_call",
           kind: "save_via_tool",
           tool: "save_workflow_draft",
+          ...(gateBypassed ? { bypassed_prior_approval: true } : {}),
         });
       }
     }
@@ -229,7 +243,7 @@ export const saveWorkflowDraftTool: ConversationTool = {
           name: resolvedName,
         },
         re_issued: true,
-        audit_reason: "manual_re_issue",
+        audit_reason: auditReason,
         ...(warnings.length > 0 ? { warnings } : {}),
       },
       ...(typeof result.committed_workflow_id === "string"

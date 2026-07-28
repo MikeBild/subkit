@@ -7,7 +7,7 @@
 // /knowledge → { kind: "settings", initialTab: "Knowledge" } (was text-panify)
 //
 // The legacy 4-field /config form moved to /config-form (covered in
-// slash-config-form-renamed.test.ts).
+// `slash-config-deeplink.test.ts`).
 
 import { describe, expect, test } from "bun:test";
 import type { PaneSpec, SlashHandlerContext } from "../repl/slash/handler.ts";

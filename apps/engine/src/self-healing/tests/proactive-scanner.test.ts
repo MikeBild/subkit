@@ -281,6 +281,10 @@ describe("scanForDrift", () => {
     expect(sig.ctx.workflow_id).toBe(workflow_id);
     expect(sig.ctx.connector_id).toBe(connector_id);
     expect(sig.ctx.endpoint_key).toBe("GET /users/1");
+    // No execution row, but the definition anchor must travel with the
+    // signal — without it an approved proactive patch has nothing to rewrite.
+    expect(sig.ctx.step_id).toBeNull();
+    expect(sig.ctx.workflow_step_id).toBe("r");
   });
 
   test("schema drift is suppressed when only one shape is recorded", async () => {

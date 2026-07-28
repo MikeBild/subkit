@@ -598,7 +598,7 @@ Collected so every reader has the same expansion at hand.
 
 **Conversation** — the primary authoring session in sk. A User and the AI exchange messages; the AI uses structured authoring actions internally to propose, validate, and assemble a workflow. Conversations are persistent and resumable — a session can be paused and continued without losing context. The Conversation is where Drafts are created, refined, and committed.
 
-**Draft** — a workflow under construction within a Conversation. A Draft exists only in the context of the Conversation until a User explicitly commits it. Committing a Draft creates a versioned, immutable Workflow. Drafts are never executed directly; only committed Workflows run in the execution engine.
+**Draft** — a workflow under construction within a Conversation. A Draft exists only in the context of the Conversation until it is committed. Committing a Draft creates a versioned, immutable Workflow. A Draft *is* executable — that is what a dry run does — but only with writes held back, so a Draft run has no side effects outside sk; the unheld path runs committed Workflows.
 
 **Skill** — a reusable, curated piece of context loaded into the AI during Conversations and other AI-assisted authoring flows such as discovery, diagnosis, and bounded repair. Skills encode best practices, integration patterns, domain-specific knowledge, and known failure modes. They are authored or promoted by operators with explicit human approval. Skills are never auto-generated or auto-promoted from execution history, and committed deterministic workflow execution does not load them. See [Model a Domain](../authors/model-a-domain.md) for a Skill and a Knowledge Source configured together for one domain.
 
@@ -624,11 +624,11 @@ Collected so every reader has the same expansion at hand.
 
 ## Group 4: Execution
 
-**Workflow** — a versioned, directed acyclic graph (DAG) of Steps that produces a deterministic outcome. Workflows are authored through Conversations, approved by a human, and then committed as immutable versions. Each version is a complete snapshot of the workflow at the time of approval. Workflows are tenant-scoped and support a lifecycle of draft, active, and archived.
+**Workflow** — a versioned, directed acyclic graph (DAG) of Steps with a deterministic control flow: which Steps run, in what order, on what condition is fixed at approval time and never re-decided at runtime. Step *results* can still vary — a Step calls the outside world. Workflows are authored through Conversations, approved by a human, and then committed as immutable versions. Each version is a complete snapshot of the workflow at the time of approval. Workflows are tenant-scoped and support a lifecycle of draft, active, and archived.
 
 **Step** — a single unit of work within a Workflow DAG. Step types are: request (call a Connector), transform (reshape data), branch (conditional routing), loop (iterate over a collection), parallel (run Steps concurrently), wait (introduce a delay), wait_for_event (pause until an inbound signal), and call (invoke another Workflow). Each Step declares retry policy, timeout, error handling behaviour, and optional field masking for sensitive data.
 
-**Execution** — a single run of a Workflow. An Execution carries its own state, step-by-step results, logs, and final status. Executions are immutable records — they are never modified after completion. Each Execution records its request source (API, CLI, scheduler, webhook, MCP, or chat) and its environment (dev or prod). Executions are queryable and searchable after the fact.
+**Execution** — a single run of a Workflow. An Execution carries its own state, step-by-step results, logs, and final status. sk never modifies an Execution record after it completes. Each Execution records its request source (API, CLI, scheduler, webhook, MCP, or chat) and its environment (dev or prod). Executions are queryable and searchable after the fact.
 
 **Execution Fixture** — a recorded snapshot of a past Workflow execution, capturing the request and response at each Step. Fixtures serve as the dry-run corpus for Self-Healing proposals: before a Patch Candidate is presented to an operator for approval, it is validated against relevant Fixtures to confirm the repair does not break known-good behaviour.
 
@@ -638,7 +638,7 @@ Collected so every reader has the same expansion at hand.
 
 ## Group 5: Governance
 
-**Audit Log** — the immutable, append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. The Audit Log cannot be modified or deleted. It is the authoritative record for compliance, debugging, and incident review.
+**Audit Log** — the append-only record of every state change in the platform. Every entry carries: what changed, who initiated it, from which surface (API, CLI, MCP, chat, scheduler, webhook), and when. sk exposes no path that modifies or deletes an audit entry — no route, no tool, no job, and `audit:read` is the only audit permission — so nothing reaching the platform through its own surfaces can rewrite history. That is an application-layer guarantee: it does not extend to a party with direct database access, and entries are not hash-chained, so it provides no tamper *evidence* against one. It is the authoritative record for compliance, debugging, and incident review.
 
 **RBAC** — role-based access control enforced at every platform boundary. Every API route, MCP call, webhook trigger, and execution path checks the caller's role and permissions before proceeding. sk ships five built-in roles: the three user-facing roles (admin, member, enduser) plus the metrics_scraper and portal_token_user system roles. Custom roles and resource-level grants are supported for more granular control. RBAC decisions are recorded in the Audit Log.
 
@@ -680,7 +680,7 @@ Collected so every reader has the same expansion at hand.
 
 > **Audience:** Security engineers, compliance reviewers, architects
 
-**Pass the audit on the first pass.** Every interaction in sk is authorised before it runs, recorded in an immutable trail, and stripped of secrets — so "who did what, when, and from where?" is always one query away. Security is the default behaviour by architecture, not by configuration: multi-tenant isolation, a comprehensive audit log, a compliance posture that holds by construction, and secret-hygiene defences at the conversational surface.
+**Pass the audit on the first pass.** Every interaction in sk is authorised before it runs, recorded in an append-only trail, and stripped of secrets — so "who did what, when, and from where?" is always one query away. Security is the default behaviour by architecture, not by configuration: multi-tenant isolation, a comprehensive audit log, and secret-hygiene defences at the conversational surface. sk produces the evidence a compliance review runs on; it does not make an organisation compliant.
 
 Two adjacent concerns have their own admin homes:
 
@@ -701,7 +701,7 @@ flowchart LR
     RBAC -->|allow| HOOK{Before-Request Hook<br/>sandboxed, fail-closed}
     HOOK -->|deny| D2[Blocked + audit row]
     HOOK -->|allow| DRV[Driver policy chain<br/>tool policy · egress · sandbox]
-    DRV --> AUD[(Immutable audit log<br/>tenant-scoped)]
+    DRV --> AUD[(Append-only audit log<br/>tenant-scoped)]
 ```
 
 Secrets never travel through that chain in the clear. A credential is collected through a masked form, encrypted, and stored by reference; the driver decrypts it only at the moment of use, while the LLM and every log surface see a redacted placeholder instead of the value.
@@ -730,15 +730,17 @@ This design means there is no "global" namespace to accidentally share, no confi
 
 ## The Audit Trail
 
-Every state change in sk produces an immutable audit log entry. This is not selective logging — it is comprehensive.
+Every state change in sk produces an audit log entry. This is not selective logging — it is comprehensive.
 
-The audit log captures: workflow creation, modification, approval, and deletion; connector operations; credential creation, rotation, and revocation; user provisioning and role changes; execution triggers and final results; approval events; skill promotions; patch candidate reviews; and more — over 100 distinct action types across all platform surfaces.
+The audit log captures: workflow creation, modification, approval, and deletion; connector operations; credential creation, rotation, and revocation; user provisioning and role changes; execution triggers and final results; approval events; skill promotions; patch candidate reviews; and more — over 240 distinct action types across all platform surfaces.
 
 Each entry captures the full context of the event: what action was taken, who took it (user or service account identity), from which surface (API, CLI, MCP, chat, webhook, or scheduler), what changed (a structured diff where applicable), and precisely when. The metadata field on every entry is scrubbed for token-shaped values before persistence — bearer tokens, JWTs, AWS access keys, and any value under a key matching a sensitive name (`password`, `token`, `secret`, `credential`, `*_token`, `authorization`) become `***REDACTED:<kind>***` at write time, regardless of how they reached the audit recorder.
 
-The audit log cannot be modified or deleted. It is the compliance and forensics record for the platform. It is designed to answer the question every audit or incident review requires: "Who did what, when, and from where?"
+The trail is append-only, and that guarantee has a precise shape worth knowing before an auditor asks. sk exposes **no path that modifies or deletes an audit entry** — no route (the audit API is read-only), no tool, no retention job, and `audit:read` is the only audit permission that exists. Nothing reaching the platform through its own surfaces can rewrite history, including a tenant admin, an API key holder, or a connected AI client.
 
-Audit emissions go through typed recorders under `apps/engine/src/audit/recorders/` — one helper per resource family (connector, workflow, credential, knowledge source, policy). Each recorder requires a non-null `reason` for state-changing rows. Reasons are part of the contract: `auto_persist_on_confirmation` distinguishes harness auto-persist writes from `manual_re_issue` (explicit `save_connector_draft` calls), `force_save_override` marks force-flag overrides of failed probes or previews, `credential_must_use_form` records rejected credential attempts at the draft layer, and `confirm_before_execution` records every tool-policy decision that paused for an operator confirmation.
+That is an application-layer guarantee, not a storage-layer one. A party with direct database access can still alter rows, and entries are not hash-chained or sequence-numbered, so a deletion leaves no gap to detect — sk provides no tamper *evidence* against that threat model. Operators who need it should pair the audit log with append-only storage or off-box log shipping. It is the compliance and forensics record for the platform, designed to answer the question every audit or incident review requires: "Who did what, when, and from where?"
+
+Audit emissions go through typed recorders under `apps/engine/src/audit/recorders/` — one helper per resource family (connector, workflow, credential, knowledge source, policy). Each recorder requires a non-null `reason` for state-changing rows. Reasons are part of the contract: `auto_persist_on_confirmation` distinguishes harness auto-persist writes from `manual_re_issue` (explicit `save_connector_draft` calls), `force_save_override` marks force-flag overrides of failed probes or previews, `auto_mode_no_prior_approval` marks a commit whose prior-approval gate was skipped because the session ran in `permission_mode=auto` (the row also carries `metadata.bypassed_prior_approval`, so "did anyone approve this commit?" is answerable from the log alone), `credential_must_use_form` records rejected credential attempts at the draft layer, and `confirm_before_execution` records every tool-policy decision that paused for an operator confirmation.
 
 New audit kinds for the conversational surface include `tool_policy.confirmation_required` (every confirmation gate the policy resolver fires), `connector.draft.credential_rejected` (rejections by the `update_connector_draft` contract), `connector.invoked` (each `call_connector` round-trip), `connector.saved_override` (a save persisted with `force_save: true` despite a failed probe), and `knowledge_source.refreshed` (each discovery cache refresh). The conversational context pipeline also emits `conversation.skill_loaded` — a tenant-scoped row written when a Skill is loaded into a conversation working set under the recency-gated `load_skill` path, with reason `skill_loaded` on first load and `skill_re_promoted` when an already-known Skill is re-promoted (see `apps/engine/src/audit/types.ts` `CONVERSATION_SKILL_LOADED` and `apps/engine/src/audit/recorders/conversation.ts`). It records a state-mutating write: `load_skill` updates the persisted `conversations.loaded_skills` palette — tenant-visible state that survives session resumption — so, like every other tenant-state mutation, it goes through the audit chokepoint. Per-turn recency demotions are derived and intentionally not audited.
 
@@ -750,7 +752,7 @@ Operators can query the audit log by actor, action type, resource, time range, a
 
 ## The Compliance Posture
 
-The following properties hold by construction — they are not optional configurations.
+The following properties are structural — they hold without being switched on.
 
 **Encryption at rest.** All credentials are encrypted with AES-256-GCM before being written to the database. The encryption key is managed at the engine configuration layer.
 
@@ -979,12 +981,13 @@ gets smarter over time — but only with human approval at each step.
 
 **Ship audited automation in hours, not sprints — and keep every run governed,
 versioned, and auditable.** A team describes the outcome in plain language; sk turns it into a
-governed, versioned workflow; an operator approves it; the engine runs it
-deterministically against the connectors (the SaaS and apps your team already uses).
+governed, versioned workflow; an operator approves it; the engine runs it against the
+connectors (the SaaS and apps your team already uses) along a control flow that is fixed
+at approval time.
 
-One contract holds throughout: **AI assists with *authoring*; *execution* is fixed
-at approval time and never re-decided at runtime.** Multi-tenancy, RBAC, encrypted
-credentials, and an immutable audit trail apply to every entry point.
+One contract holds throughout: **AI assists with *authoring*; the *control flow* of an
+approved workflow is fixed and never re-decided at runtime.** Multi-tenancy, RBAC,
+encrypted credentials, and an append-only audit trail apply to every entry point.
 
 ---
 
@@ -1032,7 +1035,7 @@ authoring — but only through operator promotion, never silently.
 flowchart LR
     Author["Author<br/>(NL → draft)"] --> Review["Review<br/>(human)"]
     Review --> Approve["Approve<br/>(version pinned)"]
-    Approve --> Run["Deterministic run<br/>(no LLM)"]
+    Approve --> Run["Fixed control flow<br/>(engine infers nothing)"]
     Run --> Audit["Immutable audit"]
     Audit --> Drift["Drift detection"]
     Drift --> Candidate["Patch / Skill Candidate"]
@@ -1068,7 +1071,7 @@ flowchart LR
 
 > **Audience:** Engineers integrating the runtime, operators monitoring executions
 
-**Approved workflows run the same way every time — deterministic, immutable, fully audited.** That is what lets an enterprise put revenue operations, compliance reporting, and back-office work on autopilot: every run is permission-checked, recorded, versioned, and replayable. There is no AI in the execution path. AI authors; the engine runs.
+**An approved workflow takes the same path every time — a fixed control flow, a permanent record, fully audited.** That is what lets an enterprise put revenue operations, compliance reporting, and back-office work on autopilot: every run is permission-checked, recorded, versioned, and replayable. No model decides what an approved workflow does. AI authors; the engine runs.
 
 This page covers the workflow lifecycle, the execution model, the eight Step kinds, triggers, versioning and rollback, scheduling, self-healing, and the observability surface operators rely on.
 
@@ -1107,7 +1110,9 @@ The critic is **off by default** and enabled through the `llm.critic.*` settings
 
 ## The Execution Model
 
-Execution in sk is deterministic. A Workflow is a DAG of Steps; the execution engine walks that DAG in order, following branching and parallel directives exactly as defined. The engine does not re-interpret, adapt, or infer at runtime. There is no AI in the execution path.
+The **control flow** of an Execution is deterministic. A Workflow is a DAG of Steps; the execution engine walks that DAG in order, following branching and parallel directives exactly as defined. The engine does not re-interpret, adapt, or infer at runtime: it never calls a model to decide what runs next, and committed execution never queries Skills or Knowledge Sources.
+
+What a Step *returns* is a different matter — a `request` Step calls the outside world, and the outside world is not deterministic. That includes a Step an author points at a model provider: sk supports this deliberately (see [Calling a model from a Step](#calling-a-model-from-a-step)), and such a Workflow does not produce identical output on every run. The guarantee is that no model decides what the Workflow *does*.
 
 There is a single runtime entry point for manual execution: `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all flow through this same route and the same execution engine. Inline runs complete synchronously by default. Queued background execution is explicit and reserved for persisted workflows, scheduler fires, webhook fan-out, and other detached cases.
 
@@ -1115,9 +1120,18 @@ All execution surfaces normalize workflow input through the same boundary before
 
 Provider failures on the authoring side do not leak through as generic internal errors anymore. Usage-limit and rate-limit failures are surfaced as typed provider-limited responses, context-window failures are surfaced as context-too-large responses, and temporary provider outages are surfaced as typed provider-unavailable responses. The execution engine remains deterministic; these envelopes only describe authoring-time model failures.
 
-This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know it will run the same way every time. Reproducibility and auditability require determinism. The moment execution involves inference, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
+This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know which steps will run, in which order, against which systems. The moment the *engine* infers that, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
 
-An Execution is an immutable record. It captures the specific Workflow version that ran, who or what triggered it, the inputs and outputs of every Step, timing at every boundary, and the final status. It cannot be modified after it completes. If something goes wrong, the complete record of what happened is preserved exactly as it occurred.
+An Execution is a permanent record. It captures the specific Workflow version that ran, who or what triggered it, the inputs and outputs of every Step, timing at every boundary, and the final status. sk never modifies it after it completes. If something goes wrong, the complete record of what happened is preserved exactly as it occurred.
+
+## Calling a model from a Step
+
+A `request` Step may target a model provider like any other HTTP endpoint, and sk supports this on purpose: it ships a connector template and recipes for it. This is how a Workflow does work that needs judgement — classifying, extracting, summarising — inside an otherwise fixed control flow.
+
+Two things follow, and both are the point rather than a caveat:
+
+- **The run is no longer reproducible.** The same input can yield different output. The control flow is still fixed; the content is not. A Workflow that must produce byte-identical results should not contain such a Step.
+- **The spend is bounded, not unbounded.** Declare `max_llm_tokens_per_run` on the Workflow. The engine recognises calls to known provider hosts, meters prompt + completion tokens across the run, and refuses to dispatch a call whose pre-call estimate would exceed the cap — before the provider is charged. Without a cap the tokens are still counted and land on the execution's audit record; they are simply not bounded. The recipe linter marks such Workflows `budgeted-llm` and requires the cap.
 
 ---
 
@@ -1381,7 +1395,7 @@ Each Execution emits structured events at every Step boundary. Operators can tai
 
 Prometheus metrics cover the dimensions operators need to monitor platform health: execution duration, Step latency, error rates, retry counts, and queue depth, all scoped per tenant. These metrics are the basis for dashboards, alerts, and capacity planning. Connection pools export their own counters (`pg_pool_*`) so operators can spot saturation before it shows up as step failures. The LLM context-assembly path additionally emits `llm_context_assembled_total{flow,request_source}`, `llm_context_dropped_sections_total{flow,section}`, and a histogram `llm_context_total_tokens` so trimmer pressure surfaces alongside model cost.
 
-The Audit Log records every execution trigger, every Step completion, every error, and every approval decision — with full context for forensic investigation. The audit trail is immutable: it cannot be modified or deleted, and it persists independently of execution records.
+The Audit Log records every execution trigger, every Step completion, every error, and every approval decision — with full context for forensic investigation. The trail is append-only: sk exposes no path that modifies or deletes an entry, and it persists independently of execution records. See the [Audit Log](./governance-and-audit.md#the-audit-trail) for what that guarantee does and does not cover.
 
 ---
 
@@ -3255,14 +3269,14 @@ flowchart TD
 
 **Describe the outcome. Get a governed, audited, versioned workflow in minutes — not a build project that runs for weeks.**
 
-Traditional workflow tools put construction on the builder: know the connector, learn the config syntax, draw it on a blank canvas. You ship what developers can build, not what the business needs. sk inverts that — the author states intent in plain language, the AI does the structural work, and a human signs off before anything runs.
+Traditional workflow tools put construction on the builder: know the connector, learn the config syntax, draw it on a blank canvas. You ship what developers can build, not what the business needs. sk inverts that — the author states intent in plain language, the AI does the structural work, and a human signs off on the result before it goes live.
 
 | Business outcome | How sk delivers it |
 |---|---|
 | **Time** — first workflow in minutes | One `author_workflow` pass generates the complete definition, grounded in real endpoint evidence |
-| **Compliance** — audit-ready by construction | Nothing reaches the engine without an explicit human approval; every step is reviewable |
+| **Compliance** — every change reviewable and attributable | A commit lands on a human review and an audit row that names the actor; every step is reviewable |
 | **Risk** — no raw secrets in the loop | Credentials are referenced by name through the Credential Vault, never seen during authoring |
-| **Determinism** — production is AI-free | Once committed, the engine runs the workflow with zero AI involvement |
+| **Determinism** — the engine never improvises | Once committed, the control flow is fixed: the engine infers nothing and loads no Skills or Knowledge at runtime |
 
 ![sk REPL authoring — prompt to governed workflow](../_tapes/out/repl-author.gif)
 
@@ -3365,11 +3379,11 @@ When the user says they want to create a new workflow after inspecting or runnin
 
 ## The Human-in-the-Loop Approval Gate
 
-The most important architectural decision in sk: **nothing reaches the execution engine without an explicit human approval.**
+The most important architectural decision in sk: **the author sees what a workflow will do before it can do it.** A commit lands on a human's review — either an explicit approval, or a clean dry run whose held-back preview they read (the two green-gate paths below). Starting an unattended trigger takes a further, separate decision.
 
 When the AI finishes a Draft, it pauses the authoring loop and presents it for review. The operator sees every step, connector reference, parameter, and branching condition — and can push back, ask for changes, iterate. On approval, the Draft is committed as a new versioned Workflow; the Conversation transitions to active and the workflow is ready to run.
 
-This is the governance model, not a UX convenience. It is the structural answer to "How do we know the AI did the right thing?" — because a human checked and signed off before anything ran.
+This is the governance model, not a UX convenience. It is the structural answer to "How do we know the AI did the right thing?" — because a human read what it would do, on a preview whose writes were held, before it ran for real.
 
 The gate sits on top of hard quality gates:
 
@@ -3559,7 +3573,7 @@ sk is not tied to a single AI model. It supports Claude (Anthropic), OpenAI GPT 
 |---|---|
 | Routing | Best available provider by operator config and task type |
 | Budgets | Token budgets enforced per tenant and per Conversation; operators set a monthly ceiling, consumption surfaces in the audit log |
-| Runtime | The provider is an authoring-layer detail; a committed workflow runs with no AI involvement, regardless of which model authored it |
+| Runtime | The provider is an authoring-layer detail; the engine calls no model to run a committed workflow, regardless of which model authored it |
 
 ### OpenAI-compatible endpoints
 
@@ -4123,7 +4137,7 @@ JavaScript that authors write — transform steps with `language: "javascript"`,
 **Outcome:** workflows follow *your* runbooks and compliance docs, not generic
 knowledge. A workflow that correctly honors your GDPR retention rule exists
 because the runbook is a Knowledge Source the AI searched while authoring — so
-compliance ships by construction, not by review after the fact.
+the evidence a compliance review needs is produced as you work, not reconstructed afterwards.
 
 A Knowledge Source is a persistent, indexed document store the AI can search
 while authoring, discovering, or repairing workflows. For the conceptual model —
@@ -4337,7 +4351,7 @@ auto-generates a description and tags.
 expense-reimbursement workflow, the AI proposes steps that respect the
 two-approver rule (from the **Skill**) and fills in the correct per-diem figure
 (from the **Knowledge Source**), grounded against your accounting API (the
-**Connector**). Compliance ships by construction, not by review after the fact.
+**Connector**). The evidence a compliance review needs is produced as you work, not reconstructed afterwards.
 
 ---
 
@@ -5774,6 +5788,8 @@ the repo; the committed driver above is the portable interface.
 
 Every inbound surface funnels through a single governance gate before it ever reaches the engine. The gate is the same callable, the audit row is the same shape, and the identity envelope is populated at every entry.
 
+One decision, rendered per surface. `policyDecide()` is the only place that decides whether a write needs a human confirmation, and no surface re-derives that answer. How the confirmation is *presented* does differ: chat raises an elicitation the engine owns end to end, while an MCP client renders its own `destructiveHint` dialog — which is why every MCP-reachable write tool must advertise that annotation. A client that ignores the annotation gets no prompt; the decision was still made, but the door it was rendered on is not one sk controls.
+
 ```mermaid
 flowchart LR
     CLI["sk CLI<br/>Ink + citty"]
@@ -5856,7 +5872,7 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 
 | Concern | Behavior |
 |---|---|
-| **Coverage** | CRUD for all resources: Workflows, Connectors, Executions, Credentials, Skills, Skill Candidates, Knowledge Sources, Conversations, Schedules, Webhooks, Audit Log entries, and more. Every state change flows through the API layer, so RBAC and the Audit Log apply uniformly. |
+| **Coverage** | CRUD for all resources: Workflows, Connectors, Executions, Credentials, Skills, Skill Candidates, Knowledge Sources, Conversations, Schedules, Webhooks, Audit Log entries, and more. Every state change flows through the API layer, so RBAC and the Audit Log apply to all of them. (The *confirmation prompt* for a write is rendered per surface — see [One gate, many doors](#one-gate-many-doors).) |
 | **Runtime entry** | One execution entry point at `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all run through that same contract. Inline runs complete synchronously by default; queued background execution is explicit. |
 | **Schema-first** | Request/response shapes are Zod schemas; the OpenAPI 3.1 spec is generated from them, never hand-written — so the spec is always accurate and generated clients always match the implementation. |
 | **Conversation state** | Conversation responses expose the authoring state machine directly — `authoring_mode`, `authoring_stage`, active target metadata, checkpoint statuses, stale checkpoints, `next_required_action`, persisted resources, latest execution / diagnosis references. Clients never reconstruct progress from free-form text. |
@@ -8295,9 +8311,9 @@ Set your own `MASTER_KEY` in production and learn the rotation procedure before 
 
 > **Audience:** Security engineers, compliance reviewers, operators wiring access
 
-**Least-privilege by default, every decision auditable.** No caller reaches a connector or a workflow without passing an explicit permission check, and every allow or deny lands in the immutable audit trail. This page covers the access surface: the pluggable identity chain, the built-in and custom roles, resource grants, and the dynamic policy layer added by Before-Request Hooks.
+**Least-privilege by default, every decision auditable.** No caller reaches a connector or a workflow without passing an explicit permission check, and every allow or deny lands in the append-only audit trail. This page covers the access surface: the pluggable identity chain, the built-in and custom roles, resource grants, and the dynamic policy layer added by Before-Request Hooks.
 
-The structural guarantees around it — multi-tenant isolation, the audit trail, the compliance posture — live in [Governance & Audit](../concepts/governance-and-audit.md).
+The structural properties around it — multi-tenant isolation, the audit trail and what its guarantee covers — live in [Governance & Audit](../concepts/governance-and-audit.md).
 
 ## At a glance
 
@@ -8428,7 +8444,7 @@ This is intentional: `stats:read` is the operator-tier permission, and "your run
 
 ## Further reading
 
-- [Governance & Audit](../concepts/governance-and-audit.md) — multi-tenancy, the immutable audit trail, the compliance posture, and conversational secret hygiene.
+- [Governance & Audit](../concepts/governance-and-audit.md) — multi-tenancy, the append-only audit trail, what its guarantee covers, and conversational secret hygiene.
 - [Credentials & Keys](./credentials-and-keys.md) — the credential vault, master-key rotation, and release signing.
 - [Scheduling & Hooks](../operators/scheduling-and-hooks.md) — the operator how-to for Before-Request Hooks.
 - [glossary — governance terms](../concepts/glossary.md#group-5-governance) — Audit Log, RBAC, Before-Request Hook, Self-Healing, Patch Candidate.
@@ -8599,7 +8615,7 @@ Egress filter
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `egress.mode` | enum("strict" \| "permissive") | `null` | global | no | no | Egress mode: strict blocks private/loopback hosts, permissive allows them. Null falls back to NODE_ENV default. |
-| `egress.provider_hosts_extra` | string[] | `[]` | global | no | no | Extra hostnames the egress filter allows for LLM provider calls |
+| `egress.provider_hosts_extra` | string[] | `[]` | global | no | no | Extra hostnames treated as LLM providers for token accounting and per-run budget enforcement. This does NOT allow or block egress — the egress filter never reads it; adding a host makes calls to it metered, not permitted. |
 
 ## mcp
 MCP transport

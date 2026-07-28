@@ -5,7 +5,7 @@
 **Outcome:** workflows follow *your* runbooks and compliance docs, not generic
 knowledge. A workflow that correctly honors your GDPR retention rule exists
 because the runbook is a Knowledge Source the AI searched while authoring — so
-compliance ships by construction, not by review after the fact.
+the evidence a compliance review needs is produced as you work, not reconstructed afterwards.
 
 A Knowledge Source is a persistent, indexed document store the AI can search
 while authoring, discovering, or repairing workflows. For the conceptual model —

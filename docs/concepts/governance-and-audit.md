@@ -2,7 +2,7 @@
 
 > **Audience:** Security engineers, compliance reviewers, architects
 
-**Pass the audit on the first pass.** Every interaction in sk is authorised before it runs, recorded in an immutable trail, and stripped of secrets — so "who did what, when, and from where?" is always one query away. Security is the default behaviour by architecture, not by configuration: multi-tenant isolation, a comprehensive audit log, a compliance posture that holds by construction, and secret-hygiene defences at the conversational surface.
+**Pass the audit on the first pass.** Every interaction in sk is authorised before it runs, recorded in an append-only trail, and stripped of secrets — so "who did what, when, and from where?" is always one query away. Security is the default behaviour by architecture, not by configuration: multi-tenant isolation, a comprehensive audit log, and secret-hygiene defences at the conversational surface. sk produces the evidence a compliance review runs on; it does not make an organisation compliant.
 
 Two adjacent concerns have their own admin homes:
 
@@ -23,7 +23,7 @@ flowchart LR
     RBAC -->|allow| HOOK{Before-Request Hook<br/>sandboxed, fail-closed}
     HOOK -->|deny| D2[Blocked + audit row]
     HOOK -->|allow| DRV[Driver policy chain<br/>tool policy · egress · sandbox]
-    DRV --> AUD[(Immutable audit log<br/>tenant-scoped)]
+    DRV --> AUD[(Append-only audit log<br/>tenant-scoped)]
 ```
 
 Secrets never travel through that chain in the clear. A credential is collected through a masked form, encrypted, and stored by reference; the driver decrypts it only at the moment of use, while the LLM and every log surface see a redacted placeholder instead of the value.
@@ -52,15 +52,17 @@ This design means there is no "global" namespace to accidentally share, no confi
 
 ## The Audit Trail
 
-Every state change in sk produces an immutable audit log entry. This is not selective logging — it is comprehensive.
+Every state change in sk produces an audit log entry. This is not selective logging — it is comprehensive.
 
-The audit log captures: workflow creation, modification, approval, and deletion; connector operations; credential creation, rotation, and revocation; user provisioning and role changes; execution triggers and final results; approval events; skill promotions; patch candidate reviews; and more — over 100 distinct action types across all platform surfaces.
+The audit log captures: workflow creation, modification, approval, and deletion; connector operations; credential creation, rotation, and revocation; user provisioning and role changes; execution triggers and final results; approval events; skill promotions; patch candidate reviews; and more — over 240 distinct action types across all platform surfaces.
 
 Each entry captures the full context of the event: what action was taken, who took it (user or service account identity), from which surface (API, CLI, MCP, chat, webhook, or scheduler), what changed (a structured diff where applicable), and precisely when. The metadata field on every entry is scrubbed for token-shaped values before persistence — bearer tokens, JWTs, AWS access keys, and any value under a key matching a sensitive name (`password`, `token`, `secret`, `credential`, `*_token`, `authorization`) become `***REDACTED:<kind>***` at write time, regardless of how they reached the audit recorder.
 
-The audit log cannot be modified or deleted. It is the compliance and forensics record for the platform. It is designed to answer the question every audit or incident review requires: "Who did what, when, and from where?"
+The trail is append-only, and that guarantee has a precise shape worth knowing before an auditor asks. sk exposes **no path that modifies or deletes an audit entry** — no route (the audit API is read-only), no tool, no retention job, and `audit:read` is the only audit permission that exists. Nothing reaching the platform through its own surfaces can rewrite history, including a tenant admin, an API key holder, or a connected AI client.
 
-Audit emissions go through typed recorders under `apps/engine/src/audit/recorders/` — one helper per resource family (connector, workflow, credential, knowledge source, policy). Each recorder requires a non-null `reason` for state-changing rows. Reasons are part of the contract: `auto_persist_on_confirmation` distinguishes harness auto-persist writes from `manual_re_issue` (explicit `save_connector_draft` calls), `force_save_override` marks force-flag overrides of failed probes or previews, `credential_must_use_form` records rejected credential attempts at the draft layer, and `confirm_before_execution` records every tool-policy decision that paused for an operator confirmation.
+That is an application-layer guarantee, not a storage-layer one. A party with direct database access can still alter rows, and entries are not hash-chained or sequence-numbered, so a deletion leaves no gap to detect — sk provides no tamper *evidence* against that threat model. Operators who need it should pair the audit log with append-only storage or off-box log shipping. It is the compliance and forensics record for the platform, designed to answer the question every audit or incident review requires: "Who did what, when, and from where?"
+
+Audit emissions go through typed recorders under `apps/engine/src/audit/recorders/` — one helper per resource family (connector, workflow, credential, knowledge source, policy). Each recorder requires a non-null `reason` for state-changing rows. Reasons are part of the contract: `auto_persist_on_confirmation` distinguishes harness auto-persist writes from `manual_re_issue` (explicit `save_connector_draft` calls), `force_save_override` marks force-flag overrides of failed probes or previews, `auto_mode_no_prior_approval` marks a commit whose prior-approval gate was skipped because the session ran in `permission_mode=auto` (the row also carries `metadata.bypassed_prior_approval`, so "did anyone approve this commit?" is answerable from the log alone), `credential_must_use_form` records rejected credential attempts at the draft layer, and `confirm_before_execution` records every tool-policy decision that paused for an operator confirmation.
 
 New audit kinds for the conversational surface include `tool_policy.confirmation_required` (every confirmation gate the policy resolver fires), `connector.draft.credential_rejected` (rejections by the `update_connector_draft` contract), `connector.invoked` (each `call_connector` round-trip), `connector.saved_override` (a save persisted with `force_save: true` despite a failed probe), and `knowledge_source.refreshed` (each discovery cache refresh). The conversational context pipeline also emits `conversation.skill_loaded` — a tenant-scoped row written when a Skill is loaded into a conversation working set under the recency-gated `load_skill` path, with reason `skill_loaded` on first load and `skill_re_promoted` when an already-known Skill is re-promoted (see `apps/engine/src/audit/types.ts` `CONVERSATION_SKILL_LOADED` and `apps/engine/src/audit/recorders/conversation.ts`). It records a state-mutating write: `load_skill` updates the persisted `conversations.loaded_skills` palette — tenant-visible state that survives session resumption — so, like every other tenant-state mutation, it goes through the audit chokepoint. Per-turn recency demotions are derived and intentionally not audited.
 
@@ -72,7 +74,7 @@ Operators can query the audit log by actor, action type, resource, time range, a
 
 ## The Compliance Posture
 
-The following properties hold by construction — they are not optional configurations.
+The following properties are structural — they hold without being switched on.
 
 **Encryption at rest.** All credentials are encrypted with AES-256-GCM before being written to the database. The encryption key is managed at the engine configuration layer.
 

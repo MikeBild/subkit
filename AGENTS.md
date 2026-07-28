@@ -10,16 +10,27 @@ instruction files are compatibility layers or indexes — not competing sources 
   workflow execution.** It is not a chat product, not an LLM provider, and not a general
   workflow-automation tool. It owns: identity & access (RBAC/ABAC, encrypted credentials,
   portal tokens, API keys), unified data/tool interfaces (4 typed drivers, 56 connector
-  templates), governed execution (immutable audit log, human-in-the-loop approvals,
+  templates), governed execution (append-only audit log, human-in-the-loop approvals,
   versioned workflows with full snapshots), observability (Prometheus, structured logs,
   drift detection), and multi-tenant conversation-first surfaces (CLI, `sk`, Slack, Teams,
   Google Chat, MCP).
 - Every piece of state is **tenant-scoped**. Every row carries `tenant_id`. Do not add
   globals or cross-tenant reads without explicit RBAC + audit plumbing.
 - **Audit everything that changes state.** Workflow commits, credential writes, approvals,
-  skill promotions, schedule fires — all must produce an immutable `audit_log` entry.
+  skill promotions, schedule fires — all must produce an `audit_log` entry. The log is
+  append-only because no code path writes or deletes one; it is not protected at the
+  storage layer, so do not describe it as tamper-proof.
 - **Skills are human-approved only.** Skill Candidates are proposed from execution patterns;
   they become Skills only through explicit operator action. Do not auto-promote.
+- **A comment is a claim; only a test is evidence.** A comment may explain *why* this line
+  is the way it is, state what must stay true here, or name the authority that proves a
+  claim (a test path — `check:docs-refs` verifies it exists). It must **not** describe what
+  another module, a client, or a test does: that assertion has nothing verifying it and
+  goes stale silently. If you catch yourself writing "X does Y over there", write the test
+  named after that sentence instead. The same discipline applies to `docs/`: an absolute
+  claim ("cannot", "never", "always", "no X in the path") needs either a test behind it or
+  the qualification that makes it true. Five comments in this repo have already asserted
+  behaviour the code did not have — twice optimistic, three times the reverse.
 - **Naming.** The prose docs describe the drift-repair subsystem as *drift-assisted repair*;
   the codebase keeps the technical name *self-healing* (directory
   `apps/engine/src/self-healing/`, module identifiers, log events) — do not rename it for

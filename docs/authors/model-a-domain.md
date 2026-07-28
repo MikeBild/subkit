@@ -86,7 +86,7 @@ auto-generates a description and tags.
 expense-reimbursement workflow, the AI proposes steps that respect the
 two-approver rule (from the **Skill**) and fills in the correct per-diem figure
 (from the **Knowledge Source**), grounded against your accounting API (the
-**Connector**). Compliance ships by construction, not by review after the fact.
+**Connector**). The evidence a compliance review needs is produced as you work, not reconstructed afterwards.
 
 ---
 

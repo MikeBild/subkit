@@ -6,8 +6,11 @@
 //   - passing fixture → auto-commits with `judge.verdict: "passes"`,
 //   - goal absent → `skipped`/`no_goal`, green preview is NOT auto-committed
 //     (returns save_required so the user/model persists deliberately),
-//   - judge infrastructure error → `skipped`/`judge_unavailable` and
-//     commits (the judge never blocks on an infra failure),
+//   - judge infrastructure error → `skipped`/`judge_unavailable`; the judge
+//     still never BLOCKS (the envelope stays ok), but with a human present the
+//     auto-commit is withheld: an unjudged preview is persisted deliberately,
+//     not silently. Unattended turns still commit, since the deferral would
+//     dead-end on a prompt nobody can answer,
 //   - circuit-breaker: after the block cap the edit LOOP is broken but the
 //     preview is HELD (never auto-committed) and a terminal done-signal is
 //     surfaced so the model stops re-running and asks the user; the counter
@@ -320,7 +323,13 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
   });
 
-  test("judge infrastructure error: skipped with judge_unavailable, commit proceeds", async () => {
+  test("judge infrastructure error, human present: skipped with judge_unavailable and NOT auto-committed", async () => {
+    // The judge fails open — it never turns an infra outage into a blocked
+    // preview, and the envelope stays `ok`. What it must not do is let an
+    // UNJUDGED preview mint a workflow version while a human is sitting there:
+    // keying the deferral on `no_goal` alone meant a provider outage silently
+    // auto-committed work nobody vouched for. The green result plus an explicit
+    // save is one keystroke; the silent commit is unrecoverable trust.
     getMockProvider().generateOverrides.judge = () => {
       throw new Error("provider exploded");
     };
@@ -330,7 +339,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
 
     expect(result.ok).toBe(true);
     const data = result.data as JudgeEnvelope;
-    expect(data.auto_committed).toBe(true);
+    expect(data.auto_committed).toBe(false);
     expect(data.judge).toEqual({ verdict: "skipped", reason: "judge_unavailable" });
   });
 

@@ -137,11 +137,47 @@ const rejectRoute = createRoute({
   },
 });
 
+/**
+ * True when the approve body asks for the promoted Skill to go live
+ * immediately (`status: "active"`).
+ *
+ * Reads the parsed body from Hono's body cache, so the zod validator on the
+ * route still sees it. A missing or unparseable body is not an activation
+ * request — the validator rejects it on its own terms.
+ */
+async function approveBodyRequestsActivation(c: {
+  req: { json: () => Promise<unknown> };
+}): Promise<boolean> {
+  try {
+    const body = await c.req.json();
+    if (!body || typeof body !== "object") return false;
+    return (body as Record<string, unknown>).status === "active";
+  } catch {
+    return false;
+  }
+}
+
 export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/skill-candidates", requirePermission("skill:read"));
   app.use("/v1/skill-candidates/:id", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("skill:read")(c, next);
     return requirePermission("skill:write")(c, next);
+  });
+  // Sub-paths need their own registration: a non-wildcard `app.use` matches
+  // its exact path only, so the two lines above never covered `/approve` and
+  // `/reject`. Without these, both ran on authentication alone — a read-only
+  // credential could promote a candidate into a Skill. Mirrors the explicit
+  // per-sub-path registration in `patch-candidates.ts` and `skills.ts`.
+  app.use("/v1/skill-candidates/:id/approve", requirePermission("skill:write"));
+  app.use("/v1/skill-candidates/:id/reject", requirePermission("skill:write"));
+  // Approving with `status: "active"` both promotes AND activates. Activating
+  // is a separate decision with its own permission (`POST /v1/skills/{id}/activate`
+  // enforces it), so this route must demand it too — otherwise it is a way
+  // around that gate. Registered after the `skill:write` check above, so the
+  // caller needs both.
+  app.use("/v1/skill-candidates/:id/approve", async (c, next) => {
+    if (!(await approveBodyRequestsActivation(c))) return next();
+    return requirePermission("skill:activate")(c, next);
   });
 
   app.openapi(listRoute, async (c) => {

@@ -8,6 +8,14 @@
 //      `#anchor` (same-file or cross-file) whose heading is missing.
 //   2. Code comments that cite a concept doc (`docs/<name>.md`) which does
 //      not exist.
+//   3. Code comments that cite a TEST file (`X.test.ts`) that exists nowhere
+//      in the repo. A comment saying "pinned by X.test.ts" is the one comment
+//      shape allowed to assert behaviour elsewhere — it names its evidence.
+//      This class catches the evidence being RENAMED OR DELETED out from under
+//      the citation. It deliberately does NOT (and cannot) catch a citation
+//      that points at a real test which does not actually check the claim —
+//      that stays a review concern. Matching is by basename because the
+//      codebase cites tests by filename, not by path.
 //
 // Wired into `package.json` (`bun run check:docs-refs`), the `verify` gate, and
 // `.github/workflows/ci.yml`. Output is line-oriented and deterministic:
@@ -54,6 +62,15 @@ const LINK = /\[(?:[^\]]*)\]\(([^)]+)\)/g;
 // `nodejs/undici docs/api/Errors.md` (external citation), which are not
 // subkit concept docs.
 const DOC_REF = /(?<![\w/])docs\/[a-z][a-z0-9-]*(?:\/[a-z][a-z0-9-]*)*\.md/g;
+
+// Code-comment refs to a test file: any path or bare filename ending in
+// `.test.ts` / `.int.test.ts` / `.component.test.tsx`. The codebase cites
+// evidence both ways — "pinned by `mcp/tests/confirm-gate-invariant.test.ts`"
+// and a bare `dispatcher.test.ts` — so only the basename is resolved.
+// The lookbehind also excludes a leading `.` so a SUFFIX mention — prose like
+// "a plain unit test (`.test.ts`, not `.int.test.ts`)" — is not read as a
+// citation of a file called `int.test.ts`.
+const TEST_REF = /(?<![\w/.])[a-z0-9][\w./-]*\.(?:int\.|component\.)?test\.tsx?(?![\w])/g;
 
 export type Broken = { file: string; target: string; reason: string };
 
@@ -108,6 +125,12 @@ function findBroken(): Broken[] {
     }
   }
 
+  // Every test file in the repo, by basename — the resolution target for
+  // class 3 above.
+  const testBasenames = new Set(
+    tracked("**/*.test.ts", "**/*.test.tsx").map((p) => p.split("/").pop() as string),
+  );
+
   const seenCodeRef = new Set<string>();
   for (const rel of tracked(
     "apps/**/*.ts",
@@ -129,6 +152,18 @@ function findBroken(): Broken[] {
       seenCodeRef.add(key);
       if (!existsSync(join(REPO, docRel))) {
         broken.push({ file: rel, target: docRel, reason: "code references missing doc" });
+      }
+    }
+    for (const m of text.matchAll(TEST_REF)) {
+      const testRef = m[0];
+      const base = testRef.split("/").pop() as string;
+      // A file citing itself is not a reference.
+      if (rel.endsWith(base)) continue;
+      const key = `${rel}::${base}`;
+      if (seenCodeRef.has(key)) continue;
+      seenCodeRef.add(key);
+      if (!testBasenames.has(base)) {
+        broken.push({ file: rel, target: testRef, reason: "code references missing test" });
       }
     }
   }

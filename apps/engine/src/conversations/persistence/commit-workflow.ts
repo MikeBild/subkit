@@ -16,6 +16,7 @@ import {
   conversations,
   webhooksInbound,
   workflows,
+  workflowsSchedules,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
@@ -168,6 +169,65 @@ async function detectWebhookBindingRemoval(
   };
 }
 
+/**
+ * Would committing this draft stand up an unattended trigger — a live cron or
+ * a public inbound URL — that is not running today?
+ *
+ * `applyTriggerBindings` binds a `schedule` trigger as `paused: false` in
+ * `execution_mode: "prod"`, and a `webhook` trigger as an active public hook.
+ * Neither path holds writes. Committing the definition is therefore the moment
+ * the workflow starts acting on its own, which is a different decision from
+ * "this definition looks right".
+ *
+ * Returns null when the trigger is `request` (nothing starts by itself) or when
+ * the same trigger is already bound (a step-only edit must not re-ask).
+ */
+async function detectUnattendedTriggerBinding(
+  ctx: ToolContext,
+  workflowId: string | null,
+  def: WorkflowDefFromDraft,
+): Promise<{ kind: "schedule" | "webhook"; cron?: string; tz?: string } | null> {
+  const trigger = triggerOf(def as unknown as WorkflowDef);
+  if (trigger.kind !== "schedule" && trigger.kind !== "webhook") return null;
+
+  // Already running? Then this commit is not the moment it starts, and
+  // re-asking on every step edit would only train operators to click through
+  // the gate. Asking the live binding — not comparing trigger blocks — is what
+  // makes that robust: a persisted trigger has been through schema defaults
+  // and would not compare equal to the draft's.
+  //
+  // Deliberate consequence: changing the cadence of an ALREADY-bound schedule
+  // is not re-gated. The workflow is unattended either way; the decision this
+  // guard protects is the one that made it unattended in the first place.
+  if (workflowId) {
+    const live =
+      trigger.kind === "schedule"
+        ? await ctx.db
+            .select({ id: workflowsSchedules.id })
+            .from(workflowsSchedules)
+            .where(
+              and(
+                eq(workflowsSchedules.tenant_id, ctx.tenant_id),
+                eq(workflowsSchedules.workflow_id, workflowId),
+              ),
+            )
+        : await ctx.db
+            .select({ id: webhooksInbound.id })
+            .from(webhooksInbound)
+            .where(
+              and(
+                eq(webhooksInbound.tenant_id, ctx.tenant_id),
+                eq(webhooksInbound.workflow_id, workflowId),
+              ),
+            );
+    if (live.length > 0) return null;
+  }
+
+  return trigger.kind === "schedule"
+    ? { kind: "schedule", cron: trigger.cron, tz: trigger.tz }
+    : { kind: "webhook" };
+}
+
 export type ScopeIndex = Record<
   string,
   { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
@@ -209,6 +269,20 @@ export interface CommitWorkflowAtomicParams {
  * can never be silently reordered or dropped.
  */
 type CommitGate = { name: string; run: () => Promise<ToolResult | null> };
+
+/**
+ * The prior-approval gate is skipped when the session runs in
+ * `permission_mode=auto`. Exported so the audit row written on the tool path
+ * can state that with the SAME rule the gate applies — two copies of this
+ * predicate would drift, and then the audit log would say "manually re-issued"
+ * about a commit nobody approved.
+ */
+export function commitGateBypassedByAutoMode(p: {
+  skipPriorApprovalCheck?: boolean | undefined;
+  permission_mode?: string | null | undefined;
+}): boolean {
+  return !p.skipPriorApprovalCheck && p.permission_mode === "auto";
+}
 
 export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promise<ToolResult> {
   const { ctx } = p;
@@ -280,8 +354,14 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
   // the authoritative field, NOT the cosmetic top-level `input.kind`.
   // The policy gate in `tools/sdk-wrap/invoke.ts` imports the SAME
   // predicate, so the two gates can never disagree again.
+  // Computed once at function scope: the gate reads it to decide whether to
+  // run, and the audit row below reads it to say so. One value, one truth.
+  const gateBypassedByAutoMode = commitGateBypassedByAutoMode({
+    skipPriorApprovalCheck: p.skipPriorApprovalCheck,
+    permission_mode: ctx.permission_mode,
+  });
+
   const gatePriorApproval = async (): Promise<ToolResult | null> => {
-    const gateBypassedByAutoMode = !p.skipPriorApprovalCheck && ctx.permission_mode === "auto";
     if (gateBypassedByAutoMode) {
       // FIX 6 / BUG-6: forensic audit so "did anyone approve this commit?"
       // is answerable from logs. Mirrors `tool.executed_yolo`.
@@ -1003,6 +1083,65 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     }
   }
 
+  // Standing up an unattended trigger needs a human, the same way tearing one
+  // down does (the guard above). Committing a `schedule` trigger binds an
+  // UNPAUSED, prod-mode cron — from then on the workflow runs on its own and
+  // dispatches real writes, because no scheduler path holds them. A green
+  // dry-run is consent to save a definition; it is not consent to let that
+  // definition act unattended forever, and on the auto-commit path there is no
+  // approval behind it at all.
+  //
+  // Fires only when nothing human backs THIS commit. `skipPriorApprovalCheck`
+  // alone does not mean "unapproved": the harness auto-persist path sets it
+  // precisely BECAUSE the operator just resolved the confirm elicitation. So
+  // ask the durable approval itself rather than reading intent out of a flag —
+  // the green-dry-run path is the one that has none.
+  const commitHasHumanBacking = gateBypassedByAutoMode
+    ? false
+    : p.skipPriorApprovalCheck
+      ? (await findPriorSaveWorkflowApproval(ctx.db, ctx.tenant_id, ctx.conversation_id)) !== null
+      : true;
+  if (!commitHasHumanBacking && p.forceCommit !== true) {
+    const binding = await detectUnattendedTriggerBinding(ctx, targetWorkflowId, def);
+    if (binding) {
+      logger.warn({
+        module: "conversation_persistence",
+        action: "commit_gate.unattended_trigger_binding",
+        msg: "commit would bind a live unattended trigger with no human approval behind it — blocking until confirmed",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        workflow_id: targetWorkflowId,
+        trigger_kind: binding.kind,
+      });
+      const what =
+        binding.kind === "schedule"
+          ? `a live schedule (\`${binding.cron}\`${binding.tz ? `, ${binding.tz}` : ""}) that runs unattended in production and dispatches real writes`
+          : "a public inbound webhook URL that anyone holding it can trigger";
+      return {
+        ok: false,
+        error_code: "trigger_binding_unconfirmed",
+        message:
+          `This save would start ${what}. Saving the definition was covered by the green dry-run; letting it run on its own is a separate decision. ` +
+          "Confirm with the user (ask_user_confirm with a save_workflow_draft commit_intent), then save again — or call save_workflow_draft with force_commit: true if they already agreed. " +
+          'To keep the workflow manual for now, change the trigger to `{ kind: "request" }` and re-run dry_run_workflow.',
+        next_best_actions: ["ask_user_confirm", "inspect_workflow_draft", "edit_workflow_patch"],
+        data: buildGateError(fullDraft, {
+          error_code: "trigger_binding_unconfirmed",
+          message:
+            "commit would bind an unattended trigger with no human approval behind it — confirm, or force_commit after the user agreed",
+          recommended_mode: "workflow",
+          next_best_actions: ["ask_user_confirm", "inspect_workflow_draft", "edit_workflow_patch"],
+          extra: {
+            trigger_kind: binding.kind,
+            ...(binding.cron ? { cron: binding.cron } : {}),
+            ...(binding.tz ? { tz: binding.tz } : {}),
+            force_commit_available: true,
+          },
+        }),
+      };
+    }
+  }
+
   let result: Awaited<ReturnType<typeof createWorkflow>>;
   try {
     if (targetWorkflowId) {
@@ -1162,6 +1301,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
         reason: p.reason ?? "auto_persist_on_confirmation",
         source: "harness_auto_persist",
         kind: adoptedSameSlug ? "same_slug_adoption" : "auto_persist",
+        ...(gateBypassedByAutoMode ? { bypassed_prior_approval: true } : {}),
         ...(p.commitIntentKind ? { commit_intent_kind: p.commitIntentKind } : {}),
         ...(p.extraAuditMetadata ?? {}),
         ...(forceClearsPreview && runtimeDataFailure

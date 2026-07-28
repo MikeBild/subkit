@@ -12,7 +12,7 @@
 - [Governance & Audit](concepts/governance-and-audit.md): Pass the audit on the first pass.
 - [Knowledge & Skills](concepts/knowledge-and-skills.md): Outcome: authoring grounded in your own conventions — not generic API docs — so workflows ship faster, with fewer rework cycles and fewer compliance surprises.
 - [Architecture Overview](concepts/overview.md): Ship audited automation in hours, not sprints — and keep every run governed, versioned, and auditable.
-- [Workflow Execution](concepts/workflows.md): Approved workflows run the same way every time — deterministic, immutable, fully audited.
+- [Workflow Execution](concepts/workflows.md): An approved workflow takes the same path every time — a fixed control flow, a permanent record, fully audited.
 
 ## Operators
 

@@ -22,6 +22,7 @@
 import { evaluate as evaluateJsonata } from "../execution/jsonata-engine.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
+import { applyRewriteToSlots, resolvePathRewrite } from "./patch-apply.ts";
 import type { DryRunFixture, DryRunResult, DryRunStep } from "./types.ts";
 
 export interface FixtureRunParams {
@@ -31,47 +32,20 @@ export interface FixtureRunParams {
 }
 
 /**
- * Apply a PatchProposal to a copy of the step, then project the
- * fixture's response through the patched selector/expression. The
- * original step object is never mutated.
+ * Apply a PatchProposal to a copy of the step so the dry-run projects the
+ * fixture through the SAME rewrite the apply path will write into the
+ * workflow. Both go through `patch-apply.ts`; that shared function is why a
+ * green dry-run predicts the applied version instead of merely resembling it.
+ * The original step object is never mutated.
+ *
+ * Kinds without executable semantics (`rename_param`, `add_header`,
+ * `change_type`) leave the step untouched here — and are refused outright by
+ * the apply path, so a dry-run cannot bless a patch the engine can't perform.
  */
 export function applyPatchToStep(step: DryRunStep, patch: PatchProposal): DryRunStep {
-  const patched: DryRunStep = { ...step };
-  const body = patch.patch as Record<string, unknown>;
-  // `update_field_path` is the common case. The mock provider ships a
-  // shape like `{ op: "replace", path: "/data/id", value: "data/result/id" }`.
-  // We interpret that as: wherever the step referenced `data.id`, make
-  // it now reference `data.result.id`.
-  if (patch.kind === "update_field_path") {
-    const oldPath =
-      typeof body.path === "string" ? body.path.replace(/^\//, "").replace(/\//g, ".") : undefined;
-    const newPath =
-      typeof body.value === "string"
-        ? body.value.replace(/^\//, "").replace(/\//g, ".")
-        : undefined;
-    if (newPath) {
-      // Rewrite data_selector
-      if (patched.data_selector && oldPath) {
-        patched.data_selector = patched.data_selector.split(oldPath).join(newPath);
-      } else if (!patched.data_selector) {
-        patched.data_selector = newPath;
-      }
-      // Rewrite transform expression
-      if (patched.expression && oldPath) {
-        patched.expression = patched.expression.split(oldPath).join(newPath);
-      }
-    }
-  } else if (patch.kind === "rename_param") {
-    // The request parameter rename is applied at the connector layer,
-    // not inside the projection. The dry-run still replays the old
-    // response so it's a no-op here — but we leave the hook for
-    // future enrichments.
-  } else if (patch.kind === "add_header") {
-    // Likewise no projection change.
-  } else if (patch.kind === "change_type") {
-    // Type widenings don't need projection rewrites.
-  }
-  return patched;
+  const rewrite = resolvePathRewrite(patch);
+  if (!rewrite) return { ...step };
+  return applyRewriteToSlots(step, rewrite, step.kind);
 }
 
 /**

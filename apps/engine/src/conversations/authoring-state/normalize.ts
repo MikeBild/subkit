@@ -480,7 +480,7 @@ export function normalizeState(
     // across turns and the memo never skips a re-judge. Backward
     // tolerant: a legacy `{ fingerprint, blocks }` entry seeds
     // `blocks_since_commit` from `blocks` (a soft over-count at worst —
-    // it only makes the breaker degrade to advisory one block sooner,
+    // it only makes the breaker escalate to the user one block sooner,
     // never a deadlock).
     judge_breaker: normalizeJudgeBreaker(state.judge_breaker),
     // Grounding fingerprint + the connector set it was computed over — must

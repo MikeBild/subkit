@@ -67,6 +67,9 @@ export interface ScannedSignalContext {
   workflow_id: string;
   execution_id: null;
   step_id: null;
+  /** The DAG step the drift was recorded against, when the scan has one.
+   *  Endpoint-shape drift does; stdlib/workflow-scoped drift does not. */
+  workflow_step_id?: string | null;
   connector_id?: string;
   endpoint_key?: string;
   repair_input: {
@@ -282,6 +285,10 @@ async function scanSchemaShapeDriftForTenant(
         workflow_id,
         execution_id: null,
         step_id: null,
+        // No failing execution row, but the recorded shape names the definition
+        // step — and the anchor check above just proved it still exists in the
+        // current version. That is the target a patch rewrites.
+        workflow_step_id: step_id,
         connector_id,
         endpoint_key,
         repair_input: {
