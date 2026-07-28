@@ -12,11 +12,23 @@
 //   - product   — the minimal end-user run-surface (registry's
 //                 PRODUCT_MODE_ALLOW_LIST, applied inside listToolsViaRegistry
 //                 for mcpMode:"product").
-//   - authoring — the full authoring set: the `wf_` palette, every registry
-//                 tool the mode publishes (tenant_read + workflow_run, no
-//                 tenant_write except run_workflow), and the conversation_*
-//                 session tools.
-//   - admin     — the full inventory, tenant_write included when not read-only.
+//   - authoring — the `wf_` palette, every registry tool the provider
+//                 publishes, and the conversation_* session tools.
+//   - admin     — the same catalogue as authoring.
+//
+// PRODUCT IS THE ONLY MODE THAT TRIMS. `conversation.ts` gates on
+// `filter.mcpMode === "product"` and nothing else, so authoring and admin
+// resolve to an identical list — verified by listing all three. An earlier
+// version of this comment claimed authoring published "no tenant_write except
+// run_workflow"; it does publish tenant writes (`restore_workflow_version`,
+// `update_workflow`, …), and the docs built on that claim were wrong until
+// corrected. What actually bounds a caller is the per-tool RBAC the dispatcher
+// enforces, NOT the mode. Do not infer reachability from the mode name.
+//
+// The one boundary that IS categorical: `draft_write` tools are dropped from
+// the MCP catalogue in every mode and refused on a direct call
+// (`conversation.ts` `shouldDropFromCatalog`), so no external client can edit a
+// workflow draft step-by-step. That is the invariant worth protecting here.
 //
 // The ONE remaining bound is DEFAULT_PALETTE_LIMIT: a cap on how many `wf_`
 // per-workflow tools we preload. Workflows past it stay reachable via

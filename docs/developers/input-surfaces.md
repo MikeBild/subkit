@@ -315,14 +315,14 @@ sequenceDiagram
 | Scope | MCP mode | What the token unlocks |
 |---|---|---|
 | `mcp:read` | product | Callable workflow entries and the `authenticate` tool only. |
-| `mcp:authoring` | authoring | Adds `conversation.*` authoring tools, tenant **reads**, and `run_workflow` — **no other tenant write**. |
-| `mcp:admin` | admin | Adds full `tenant.*` admin tools (subject to RBAC). |
+| `mcp:authoring` | authoring | Adds `conversation.*` authoring tools plus the full tenant read/write catalogue, RBAC-gated per call. |
+| `mcp:admin` | admin | Same catalogue as `authoring` today; reserved for surfaces that should not widen with a broad credential. |
 
 The scope granted at consent is the intersection of what the client requested, what the server supports and what the consenting user's current role permits. An unrequested scope is never displayed or granted, including when a form is tampered with. A role/session downgrade is rechecked at decision time.
 
-**Authoring mode is not a write surface for definitions.** The name is about *driving an authoring conversation*, not about editing workflow definitions directly. The mode publishes tenant reads plus `run_workflow`; `update_workflow` is metadata-only, version restore is absent, and there is no MCP equivalent of `PUT /v1/workflows/{id}`. Draft-editing tools are omitted from `tools/list` entirely and refused on a direct call — see [Tool palette → `save_workflow_draft` and `dry_run_workflow` are MCP-hidden](./tool-palette.md#save_workflow_draft-and-dry_run_workflow-are-mcp-hidden). A definition edit over MCP therefore always passes through the engine's own authoring loop.
+**What actually bounds a client is RBAC, not the mode.** Only `product` mode trims the catalogue (a fixed allow-list); `authoring` and `admin` publish the same tools. A tool being *listed* therefore says nothing about whether a given principal may call it — `restore_workflow_version`, for instance, is visible in authoring mode and still refused without `workflow:restore`. Read the permission on the tool, not the mode name.
 
-**A broad credential does not widen this.** A wildcard-scoped principal resolves to `authoring`, never `admin`: the admin catalogue adds tenant writes, and that surface stays behind the explicit `mcp:admin` marker no matter how broad the credential is. To write definitions directly, use the `sk` CLI or the REST API — see [Choosing your surface](../authors/choosing-your-surface.md).
+**Authoring mode is not a write surface for definitions.** The name is about *driving an authoring conversation*. No MCP tool accepts a full workflow definition — there is no equivalent of `PUT /v1/workflows/{id}` — and `update_workflow` is metadata-only. The step-level draft editors (`edit_workflow_patch`, `save_workflow_draft`, `dry_run_workflow`, `validate_draft`) are omitted from `tools/list` in **every** mode and refused on a direct call — see [Tool palette → `save_workflow_draft` and `dry_run_workflow` are MCP-hidden](./tool-palette.md#save_workflow_draft-and-dry_run_workflow-are-mcp-hidden). A definition edit over MCP therefore always passes through the engine's own authoring loop. To write definitions directly, use the `sk` CLI or the REST API — see [Choosing your surface](../authors/choosing-your-surface.md).
 
 **Connecting ChatGPT custom connector.**
 
