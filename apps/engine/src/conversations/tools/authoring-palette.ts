@@ -104,6 +104,11 @@ const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
   "delete_schedule",
   "delete_subscription",
   "delete_workflow",
+  // Recovery belongs beside deletion, not behind a skill load. The turn that
+  // needs it is precisely the one where a save went wrong — and that operator
+  // ("undo that") has usually not loaded the workflow-authoring skill. Same
+  // reasoning as `delete_workflow` above; the confirm gate still applies.
+  "restore_workflow_version",
   "revoke_api_key",
   "revoke_portal_token",
   "update_connector",

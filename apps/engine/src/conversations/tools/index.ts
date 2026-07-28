@@ -523,9 +523,11 @@ register(getVendorRecipeTool);
 // conversation; the LLM lists them, then restores the chosen one.
 import { listDraftSnapshotsTool } from "./list-draft-snapshots.ts";
 import { restoreDraftSnapshotTool } from "./restore-draft-snapshot.ts";
+import { restoreWorkflowVersionTool } from "./restore-workflow-version.ts";
 
 register(listDraftSnapshotsTool);
 register(restoreDraftSnapshotTool);
+register(restoreWorkflowVersionTool);
 
 // Auto-generated read tools covering every read-surface domain:
 // workflows, connectors, executions, skills, skill-candidates,

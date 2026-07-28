@@ -241,6 +241,29 @@ export function requireWorkflowDraft(draft: DraftDocument, toolName: string): To
 /**
  * Require a persisted workflow.
  */
+/**
+ * True when a commit from this conversation would REPLACE a workflow that is
+ * already persisted, rather than create a new one.
+ *
+ * The distinction decides whether an automatic commit is safe: creating costs
+ * nothing to get wrong (there is nothing to lose), replacing can destroy work
+ * someone verified. `latest_execution` is deliberately NOT part of it — having
+ * run some workflow says nothing about whether THIS draft targets a persisted
+ * one, and folding it in (as `requirePersistedWorkflow` does, for its own and
+ * different question) would over-report.
+ *
+ * Boolean on purpose: `requirePersistedWorkflow` answers "may this tool run at
+ * all" with an envelope; callers that need the plain fact should not have to
+ * inspect a rejection object to learn it.
+ */
+export function replacesPersistedWorkflow(summary: AuthoringSummary | null | undefined): boolean {
+  if (!summary) return false;
+  const persistedActive =
+    summary.active_target.kind === "workflow" &&
+    summary.active_target.lifecycle_state === "persisted";
+  return persistedActive || summary.persisted_resources.some((r) => r.kind === "workflow");
+}
+
 export function requirePersistedWorkflow(
   summary: AuthoringSummary | null | undefined,
   toolName: string,

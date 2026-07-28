@@ -146,6 +146,10 @@ describe("conversation tools — registration", () => {
     "update_subscription",
     "list_draft_snapshots",
     "restore_draft_snapshot",
+    // Rolls a SAVED workflow back to an earlier version — the recovery move
+    // for a bad commit. Distinct from `restore_draft_snapshot`, which only
+    // rewinds the conversation's unsaved draft.
+    "restore_workflow_version",
   ] as const;
 
   test("the expected tool palette is registered", () => {

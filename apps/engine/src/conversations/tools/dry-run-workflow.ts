@@ -46,6 +46,7 @@ import {
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { recordLastPreview } from "./last-preview-store.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
+import { replacesPersistedWorkflow } from "./state-gate.ts";
 import { buildRawStepResults } from "./step-results.ts";
 import { truncateStepPreviewForLlm } from "./truncate.ts";
 
@@ -900,8 +901,20 @@ export const dryRunWorkflowTool: ConversationTool = {
     // honest `judge_verdict: "skipped" / no_goal`. The judge stays a QUALITY
     // gate: a `partial`/`failed` verdict or a breaker hold keeps `judgeBlocked`
     // true, so this NEVER auto-commits a goal-mismatched preview.
-    const cleanPreview = dryRunGreen && !judgeBlocked && (!judgeSkippedNoGoal || unattended);
-    const greenPendingSave = dryRunGreen && !judgeBlocked && judgeSkippedNoGoal && !unattended;
+    // The `unattended` allowance above exists so a backgrounded turn does not
+    // dead-end on a `save_workflow_draft` deferral nobody can answer. That
+    // reasoning holds for a NEW workflow — there is nothing to lose. It does
+    // not hold when the commit would REPLACE one that already exists: then an
+    // unjudged preview (`judge.no_goal` means there was no goal to judge
+    // against) lands on top of work someone verified. Production did exactly
+    // that: a green-but-unjudged preview auto-committed a generic normaliser
+    // over a purpose-built one, and "green" there meant only "no exception".
+    const wouldReplacePersisted = replacesPersistedWorkflow(ctx.getDraft().summary);
+    const unattendedNoGoalCommit = unattended && !wouldReplacePersisted;
+    const cleanPreview =
+      dryRunGreen && !judgeBlocked && (!judgeSkippedNoGoal || unattendedNoGoalCommit);
+    const greenPendingSave =
+      dryRunGreen && !judgeBlocked && judgeSkippedNoGoal && !unattendedNoGoalCommit;
     // The judge hit its block cap: the edit loop is exhausted but the preview
     // still does not satisfy the goal. Do NOT keep nudging edit→dry_run (that
     // is the loop the breaker exists to stop); instead offer an explicit
@@ -925,7 +938,9 @@ export const dryRunWorkflowTool: ConversationTool = {
     const previewNextPrompt = cleanPreview
       ? "Committing the workflow"
       : greenPendingSave
-        ? "Preview is green — call save_workflow_draft to persist it (no goal was set, so it is not auto-committed)"
+        ? wouldReplacePersisted
+          ? "Preview is green, but no goal was set, so nothing judged it against one — and committing would REPLACE an existing persisted workflow. Not auto-committed. Tell the user which workflow would be replaced and let them decide, then call save_workflow_draft."
+          : "Preview is green — call save_workflow_draft to persist it (no goal was set, so it is not auto-committed)"
         : judgeExhausted
           ? (judgeDoneSignal?.guidance ??
             "The preview still does not satisfy the goal and was NOT committed — tell the user what is missing and ask how to proceed, or commit as-is via save_workflow_draft")
