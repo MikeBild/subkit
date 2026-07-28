@@ -130,6 +130,7 @@ The `authenticate_oauth` flow surfaces an authorization URL that the sk CLI auto
 
 ## Further reading
 
+- [Reversibility & Trust Domains](./reversibility-and-trust-domains.md) — how much autonomy a piece of work should get, and why a guardrail is a boundary rather than a request.
 - [RBAC & Roles](../admins/rbac-and-roles.md) — identity, authentication, RBAC/ABAC, and Before-Request Hooks.
 - [Credentials & Keys](../admins/credentials-and-keys.md) — the credential vault, master-key rotation, and release signing.
 - [glossary — governance terms](./glossary.md#group-5-governance) — Audit Log, RBAC, Before-Request Hook, Self-Healing, Patch Candidate.

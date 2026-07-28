@@ -11,7 +11,8 @@
 |---|---|---|---|
 | **sk CLI** | `sk` in a terminal | Human authoring + operator admin | API key · OIDC · portal token · headless |
 | **REST API** | `/v1/*` + OpenAPI | Programmatic + CI | API key |
-| **MCP server** | Streamable HTTP + stdio | AI clients / coding agents | OAuth 2.1 or API key |
+| **MCP server** (coding agent) | stdio or Streamable HTTP, alongside the `sk` CLI | Lookup **and** authoring — the CLI supplies the definition writes MCP does not carry | OAuth 2.1 or API key |
+| **MCP server** (browser client) | Streamable HTTP | Running workflows, reading results, first drafts — **not** definition edits | OAuth 2.1 |
 | **Chat** | Slack · Teams · Google Chat | Read-only Q&A + gated workflow runs | Linked platform identity |
 | **Webhooks** | Signed inbound URLs | Connector-boundary events | Standard Webhooks signature |
 | **Schedules** | Cron triggers | Time-based runs | RBAC on the trigger |
@@ -314,10 +315,14 @@ sequenceDiagram
 | Scope | MCP mode | What the token unlocks |
 |---|---|---|
 | `mcp:read` | product | Callable workflow entries and the `authenticate` tool only. |
-| `mcp:authoring` | authoring | Adds `conversation.*` authoring tools. |
+| `mcp:authoring` | authoring | Adds `conversation.*` authoring tools, tenant **reads**, and `run_workflow` — **no other tenant write**. |
 | `mcp:admin` | admin | Adds full `tenant.*` admin tools (subject to RBAC). |
 
 The scope granted at consent is the intersection of what the client requested, what the server supports and what the consenting user's current role permits. An unrequested scope is never displayed or granted, including when a form is tampered with. A role/session downgrade is rechecked at decision time.
+
+**Authoring mode is not a write surface for definitions.** The name is about *driving an authoring conversation*, not about editing workflow definitions directly. The mode publishes tenant reads plus `run_workflow`; `update_workflow` is metadata-only, version restore is absent, and there is no MCP equivalent of `PUT /v1/workflows/{id}`. Draft-editing tools are omitted from `tools/list` entirely and refused on a direct call — see [Tool palette → `save_workflow_draft` and `dry_run_workflow` are MCP-hidden](./tool-palette.md#save_workflow_draft-and-dry_run_workflow-are-mcp-hidden). A definition edit over MCP therefore always passes through the engine's own authoring loop.
+
+**A broad credential does not widen this.** A wildcard-scoped principal resolves to `authoring`, never `admin`: the admin catalogue adds tenant writes, and that surface stays behind the explicit `mcp:admin` marker no matter how broad the credential is. To write definitions directly, use the `sk` CLI or the REST API — see [Choosing your surface](../authors/choosing-your-surface.md).
 
 **Connecting ChatGPT custom connector.**
 

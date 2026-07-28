@@ -234,6 +234,27 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
       return typeof id === "string" && id.length > 0 ? { type: "skill_candidate", id } : null;
     },
   },
+  // restore_workflow_version replaces what is LIVE, so it needs the same
+  // `workflow:restore` the HTTP route enforces
+  // (`POST /v1/workflows/{id}/restore/{version}`). It shipped with neither an
+  // entry here nor a `permission` descriptor, so the dispatcher never called
+  // can(): its only gate was the confirm policy — a HUMAN gate standing where a
+  // PERMISSION gate was documented. Both paths are now covered: this entry for
+  // the dispatcher (MCP/admin), the tool's own `permission` for the
+  // LLM-mediated conversation path.
+  //
+  // Resource scoping is best-effort by design: the tool also accepts `slug`,
+  // and resolving it to a UUID needs a DB round-trip this sync extractor cannot
+  // make. A slug-only call therefore falls back to the tenant-scoped check
+  // (same shape as inspect_execution's omitted-id case); the tool's own
+  // descriptor does the resolved-id check on the path that can await it.
+  restore_workflow_version: {
+    permission: "workflow:restore",
+    resource: (args) => {
+      const id = (args as { workflow_id?: unknown }).workflow_id;
+      return typeof id === "string" && id.length > 0 ? { type: "workflow", id } : null;
+    },
+  },
 
   // ── tenant_read inventory / identity ───────────────────────────────
   // These are enforced on the LLM-mediated chat path and the direct

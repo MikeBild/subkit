@@ -30,3 +30,4 @@ Start with the **Overview** for the big picture, then the **Glossary** to lock t
 | [Knowledge & Skills](knowledge-and-skills.md) | How Knowledge Sources and Skills shape the AI that authors workflows. |
 | [FAQ](faq.md) | Fast answers on workflows, skills, and knowledge sources — each pointing to the page that covers it in full. |
 | [Governance & Audit](governance-and-audit.md) | Permission checks, immutable records, and the audit trail behind every run. |
+| [Reversibility & Trust Domains](reversibility-and-trust-domains.md) | How much autonomy a piece of work should get — and why authoring and execution are different jobs. |

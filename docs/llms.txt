@@ -12,6 +12,7 @@
 - [Governance & Audit](concepts/governance-and-audit.md): Pass the audit on the first pass.
 - [Knowledge & Skills](concepts/knowledge-and-skills.md): Outcome: authoring grounded in your own conventions — not generic API docs — so workflows ship faster, with fewer rework cycles and fewer compliance surprises.
 - [Architecture Overview](concepts/overview.md): Ship audited automation in hours, not sprints — and keep every run governed, versioned, and auditable.
+- [Reversibility & Trust Domains](concepts/reversibility-and-trust-domains.md): Give each piece of work the level of control it actually needs — no ceremony where mistakes are cheap, no blind spots where they are not.
 - [Workflow Execution](concepts/workflows.md): An approved workflow takes the same path every time — a fixed control flow, a permanent record, fully audited.
 
 ## Operators
@@ -31,6 +32,7 @@
 
 - [Authors](authors/README.md): Build and run workflows by chatting with sk — describe the outcome in plain language, approve what the AI proposes, and ship a governed, versioned workflow.
 - [AI-Assisted Authoring](authors/authoring-workflows.md): Describe the outcome.
+- [Choosing your surface](authors/choosing-your-surface.md): Do the work where it actually goes faster.
 - [Use sk from a coding agent (Claude Code, Codex, …)](authors/coding-agents.md): Outcome: every new session starts knowing your domain's rules, looks your runbooks up instead of inventing them, and what you teach it in one session is waiting — after your review — in the next one.
 - [Custom Skills](authors/custom-skills.md): Outcome: sk encodes your conventions once, then applies them on every Conversation, discovery, and repair — so authored workflows ship faster, pass review sooner, and stay policy-uniform across tenants.
 - [Knowledge Sources](authors/knowledge-sources.md): Outcome: workflows follow your runbooks and compliance docs, not generic knowledge.

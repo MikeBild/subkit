@@ -14,16 +14,22 @@
 // something entirely legitimate. A capability an agent needs and cannot reach
 // does not stay unreached; it gets reached around.
 //
-// Gated like the other destructive workflow tools: `confirm_before_execution`
-// AND dangerous (see `tool-policies.ts`), so `permission_mode: auto` cannot
-// short-circuit it. Restoring is as consequential as overwriting — it replaces
-// what is live.
+// Two independent gates, and it needs both:
+//   - `workflow:restore` (the `permission` descriptor below), matching what the
+//     HTTP route requires. Without it the tool was a HUMAN gate standing where a
+//     PERMISSION gate was documented: the header above claims "per-tool RBAC",
+//     but the dispatcher only calls `can()` when `rbac` is set, so a principal
+//     with no restore right reached the service as long as someone confirmed.
+//     Confirming is not the same as being allowed.
+//   - `confirm_before_execution` AND dangerous (see `tool-policies.ts`), so
+//     `permission_mode: auto` cannot short-circuit it.
+// Restoring is as consequential as overwriting — it replaces what is live.
 
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { workflows } from "../../db/schema/index.ts";
 import { restoreWorkflowVersion } from "../../workflows/service.ts";
-import type { ConversationTool, ToolResult } from "./index.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
 const inputSchema = z
   .object({
@@ -45,6 +51,19 @@ const inputSchema = z
   })
   .openapi("RestoreWorkflowVersionToolInput");
 
+/** Resolve a workflow slug to its id within the caller's tenant, or null when
+ *  no such slug exists. Shared by the permission gate and `execute()` so the
+ *  gate authorizes exactly the row the tool goes on to touch — a second,
+ *  independent lookup could drift and gate the wrong resource. */
+async function resolveWorkflowIdBySlug(ctx: ToolContext, slug: string): Promise<string | null> {
+  const rows = await ctx.db
+    .select({ id: workflows.id })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.slug, slug)))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
 export const restoreWorkflowVersionTool: ConversationTool = {
   name: "restore_workflow_version",
   description:
@@ -57,8 +76,22 @@ export const restoreWorkflowVersionTool: ConversationTool = {
   important_notes: [
     "This changes what runs in production. The version you name becomes the active one; the current definition is kept in history, not discarded.",
     "Restoring is not a repair. If you do not know which version was good, say so and ask — do not try versions until one looks right.",
+    "Requires `workflow:restore` on the workflow, the same permission the HTTP route enforces. A confirmation does not substitute for it.",
   ],
-  example_input: { slug: "radar-normalize-run", version: 1 },
+  example_input: { slug: "invoice-sync", version: 1 },
+  // Resource id must be the resolved UUID, never the slug: `can()` matches
+  // resource grants by exact id. Returning null DEFERS to execute(), so an
+  // unknown slug still gets the tool's own `workflow_not_found` rather than a
+  // misleading `permission_denied`.
+  permission: {
+    action: "workflow:restore",
+    resourceType: "workflow",
+    resolveResourceId: async (ctx, rawArgs) => {
+      if (rawArgs.workflow_id) return String(rawArgs.workflow_id);
+      if (!rawArgs.slug) return null;
+      return await resolveWorkflowIdBySlug(ctx, String(rawArgs.slug));
+    },
+  },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
 
@@ -74,12 +107,7 @@ export const restoreWorkflowVersionTool: ConversationTool = {
           },
         };
       }
-      const rows = await ctx.db
-        .select({ id: workflows.id })
-        .from(workflows)
-        .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.slug, args.slug)))
-        .limit(1);
-      workflowId = rows[0]?.id ?? null;
+      workflowId = await resolveWorkflowIdBySlug(ctx, args.slug);
       if (!workflowId) {
         return {
           ok: false,

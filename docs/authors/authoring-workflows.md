@@ -15,6 +15,14 @@ Traditional workflow tools put construction on the builder: know the connector, 
 
 > **Reading time:** ~18 min · **Audience:** engineers integrating with sk's authoring, operators curating Skills & Knowledge
 
+> **Before you start — pick the right door.** This page describes authoring by
+> conversation, which is how you get from an idea to a first working workflow.
+> Editing an *existing* definition is a different job and belongs in the `sk`
+> CLI, where you write the definition yourself instead of describing the change.
+> A browser client over MCP cannot write definitions at all. Two minutes on
+> [Choosing your surface](choosing-your-surface.md) saves an afternoon of
+> restating the same edit.
+
 ---
 
 ## The Conversation Model
