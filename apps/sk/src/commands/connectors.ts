@@ -1,6 +1,6 @@
 import * as prompts from "@clack/prompts";
 import { exitCodeFor, reportCommandError } from "@cli-core/errors";
-import { emitList, printJson, printTable } from "@cli-core/format";
+import { emitGroupedList, emitList, printJson, printTable } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
@@ -36,15 +36,20 @@ const fetchConnectorRows = async (client: EngineClient) => {
 };
 
 const listCommand = defineCommand({
-  meta: { name: "list", description: "List connectors" },
+  meta: { name: "list", description: "List connectors, grouped into catalog blocks" },
   args: {
     limit: { type: "string", description: "Max rows", default: "50" },
+    category: { type: "string", description: "Only this catalog block (a driver)" },
+    flat: { type: "boolean", description: "One flat table instead of grouped blocks" },
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      const { items, total } = await client.listConnectors({ limit: Number(args.limit) });
+      const { items, total, categories } = await client.listConnectors({
+        limit: Number(args.limit),
+        ...(args.category ? { category: args.category } : {}),
+      });
       // The engine names connectors via `display_name`; surface it under the
       // `name` column so the list never renders a blank name.
       const rows = (items as Record<string, unknown>[]).map((r) => ({
@@ -56,13 +61,22 @@ const listCommand = defineCommand({
               ? r.display_name
               : "",
       }));
-      emitList(!!args.json, ["id", "name", "slug", "environment", "template_slug"], rows);
+      const columns = ["id", "name", "slug", "environment", "template_slug"];
+      if (args.flat || !categories?.length) {
+        emitList(!!args.json, columns, rows);
+      } else {
+        emitGroupedList(!!args.json, columns, rows, categories);
+      }
       // Ground-truth cardinality: never present a page as the universe.
       if (!args.json) {
+        const blocks =
+          !args.flat && categories?.length
+            ? ` · ${categories.length} categor${categories.length === 1 ? "y" : "ies"}`
+            : "";
         process.stdout.write(
           items.length < total
-            ? `${pc.dim(`showing ${items.length} of ${total} connectors — raise --limit to see all`)}\n`
-            : `${pc.dim(`${total} connector${total === 1 ? "" : "s"} total`)}\n`,
+            ? `${pc.dim(`showing ${items.length} of ${total} connectors${blocks} — raise --limit to see all`)}\n`
+            : `${pc.dim(`${total} connector${total === 1 ? "" : "s"} total${blocks}`)}\n`,
         );
       }
     } catch (err) {

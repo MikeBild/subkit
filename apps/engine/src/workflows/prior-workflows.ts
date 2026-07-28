@@ -12,7 +12,8 @@
 // `.size-allowlist.txt` comment explicitly forbids new entries.
 
 import type { Executor } from "../db/client.ts";
-import { type ListWorkflowsOptions, listWorkflows, type WorkflowView } from "./service.ts";
+import type { ListWorkflowsOptions } from "./catalog-view.ts";
+import { listWorkflows, type WorkflowView } from "./service.ts";
 import type { WorkflowDef } from "./types.ts";
 
 /** Compressed reference-case shape for an active workflow. Travels in

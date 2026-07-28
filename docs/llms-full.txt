@@ -91,6 +91,10 @@ The **S3 driver** handles object storage. It manages bucket operations, presigne
 
 Every Connector in sk uses one of these four drivers. Custom drivers are not part of it.
 
+The driver is also how the connector catalog is grouped: listings present connectors in blocks by driver, and `category` on each entry (plus a `category` filter) mirrors the workflow catalog so both inventories read the same way on every surface. Unlike workflows — whose blocks are derived from naming — a connector needs nothing derived: it already carries the axis that groups it usefully.
+
+To go the other way and ask *which workflows depend on this connector* — the question that matters before rotating a credential or retiring a system — filter the **workflow** list by connector. See [Finding a Workflow in a Large Catalog](workflows.md#finding-a-workflow-in-a-large-catalog).
+
 ### GraphQL vs REST: when to pick which
 
 Several major APIs — GitHub, Linear, Monday, Shopify — offer both REST and GraphQL endpoints. The built-in template catalogue ships both where appropriate (for example `github` and `github-graphql`). Choose by what the workflow actually does:
@@ -1326,6 +1330,27 @@ All three variants land at the same `runExecution()` core through the same execu
 - **The public ingress is `POST /v1/hooks/{slug}`, and `{slug}` is the derived `wf-<workflow-slug>`, not the trigger's `source`.** The default (`standard`) verifier requires the Standard Webhooks headers `webhook-id`, `webhook-timestamp`, `webhook-signature`; the event type is read from the `webhook-type` header and must match one of `events[]` (non-empty) or the delivery is denied with `event_not_subscribed` / 401.
 
 **Reverse-bind is a mirror, not an add.** Saving a workflow *with* a `webhook` trigger upserts the inbound hook; saving it *without* one (an edit that drops the `trigger` block, or switches it to `request` / `schedule`) **deletes** the hook and its stored signing secret. Re-adding the trigger recreates the row with a fresh placeholder secret that must be re-provisioned. See [Scheduling & Hooks](../operators/scheduling-and-hooks.md#verify--stored-verifier-mapping-read-this-before-touching-the-crud-api) for the full mapping table, ingress request contract, and end-to-end wiring recipe.
+
+---
+
+## Finding a Workflow in a Large Catalog
+
+A catalog grows into the dozens quickly, and a flat list stops being useful long before it stops being correct. sk therefore presents workflows in **categories** — themed blocks the operator can scan instead of a single undifferentiated list.
+
+A category is **derived, never maintained**. There is no folder to create, no tag to apply, no field to keep current: sk reads the naming your team already uses. Workflows that share a leading slug segment form a block, so `notion-search-pages`, `notion-append-markdown`, and `notion-page-to-markdown` present together as **notion**. A prefix only becomes a block once at least three workflows share it — otherwise every one-off would become a heading of its own, which reads worse than no grouping at all. Everything without a qualifying family collects under **other**.
+
+Because the category comes from the whole catalog rather than from a stored attribute, the blocks *emerge* as the catalog grows: the third sibling of a would-be family promotes all three out of **other** into a block of their own. Nothing is migrated and nothing is edited.
+
+Two filters follow from this, and they are the same on every surface — CLI, HTTP API, MCP, and chat:
+
+- **by category** — show one block instead of the whole catalog.
+- **by connector** — show every workflow that touches a given external system. This answers the operational question directly: *before I rotate these credentials, what depends on them?* It counts both ways a step can bind a connector, so a workflow referencing it only through a `${connector.<slug>.base_url}` URL is not missed.
+
+Each listed workflow reports its `category` and the `connectors` it uses, so the same answer is available to an operator reading a terminal, a dashboard rendering the API, and an agent calling the tools.
+
+**Moving a workflow between blocks** means renaming its slug — the governed metadata update, which is audited and does not create a new version. Note that the slug is also the workflow's MCP tool name (`wf_<slug>`), so connected clients re-discover it after a rename.
+
+**New workflows land in the right block by construction.** When sk authors a workflow it is shown the families that already exist and asked to reuse one where it fits — so a new Notion reader is named into the `notion` block at the moment of creation, when no tool name exists yet and nothing has to be renamed. The display name stays clean and human; only the slug carries the family. The catalog keeps itself organised as it grows rather than needing a periodic tidy-up.
 
 ---
 
@@ -7165,6 +7190,27 @@ Deliberately absent: `call_connector`, `probe_connector`, `test_connector`,
 the `discover_*` probes, every `draft_write` authoring tool, every
 `tenant_write` mutation, and external-MCP tools. Connector access on chat is
 metadata-only.
+
+### Catalog grouping on the read tools
+
+`list_workflows` and `find_workflow` return a derived `category` (the catalog
+block) and `connectors` (the connector slugs the current version uses) on every
+item, and accept both as filters:
+
+| Param | Tools | Effect |
+|---|---|---|
+| `category` | `list_workflows` · `find_workflow` · `list_connectors` · `find_connector` | Restrict to one catalog block |
+| `connector` | `list_workflows` · `find_workflow` | Restrict to workflows using that connector (id or slug) |
+
+Workflow categories are derived from the slug corpus — a leading slug segment
+shared by at least three workflows forms a block, everything else collects under
+`other` — so read a category value off a previous result rather than inventing
+one. A connector's category is simply its driver. The `connector` filter counts
+both binding forms: a step's `connector_id` **and** a
+`${connector.<slug>.base_url}` URL, so a placeholder-only dependant is not
+missed. List responses also carry a `categories` array giving the blocks in
+render order, which is what `sk` and any dashboard should follow instead of
+re-deriving the ordering.
 
 `run_workflow` (with its synthetic `wf_<slug>` peers) is the one action in
 the set — running a *saved* workflow. It stays behind

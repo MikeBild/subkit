@@ -106,6 +106,27 @@ the `discover_*` probes, every `draft_write` authoring tool, every
 `tenant_write` mutation, and external-MCP tools. Connector access on chat is
 metadata-only.
 
+### Catalog grouping on the read tools
+
+`list_workflows` and `find_workflow` return a derived `category` (the catalog
+block) and `connectors` (the connector slugs the current version uses) on every
+item, and accept both as filters:
+
+| Param | Tools | Effect |
+|---|---|---|
+| `category` | `list_workflows` · `find_workflow` · `list_connectors` · `find_connector` | Restrict to one catalog block |
+| `connector` | `list_workflows` · `find_workflow` | Restrict to workflows using that connector (id or slug) |
+
+Workflow categories are derived from the slug corpus — a leading slug segment
+shared by at least three workflows forms a block, everything else collects under
+`other` — so read a category value off a previous result rather than inventing
+one. A connector's category is simply its driver. The `connector` filter counts
+both binding forms: a step's `connector_id` **and** a
+`${connector.<slug>.base_url}` URL, so a placeholder-only dependant is not
+missed. List responses also carry a `categories` array giving the blocks in
+render order, which is what `sk` and any dashboard should follow instead of
+re-deriving the ordering.
+
 `run_workflow` (with its synthetic `wf_<slug>` peers) is the one action in
 the set — running a *saved* workflow. It stays behind
 `resolveExecutionToolGate` (default-deny without a bound or explicitly named

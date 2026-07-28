@@ -70,6 +70,53 @@ export function emitList<T extends Record<string, unknown>>(
   printTable(columns, rows);
 }
 
+/** One catalog block, as the engine reports it on a list response. */
+export interface CategoryBlockSummary {
+  category: string;
+  count: number;
+}
+
+/**
+ * Render a catalog as titled blocks instead of one flat table.
+ *
+ * The block ORDER comes from the server (`categories` on the list response),
+ * never from a rule re-implemented here — the engine owns "largest block
+ * first, catch-all last" and every client must agree with it. Rows are matched
+ * to a block by their own `category` field; anything the server did not
+ * announce is appended in a final pass so a row can never be swallowed.
+ *
+ * JSON output stays FLAT and unchanged: machine consumers keep a stable shape,
+ * and the blocks are already present as `category` on each row.
+ */
+export function emitGroupedList<T extends Record<string, unknown>>(
+  asJson: boolean,
+  columns: readonly string[],
+  rows: T[],
+  blocks: readonly CategoryBlockSummary[],
+): void {
+  if (asJson) {
+    printJson(rows);
+    return;
+  }
+  if (rows.length === 0) {
+    process.stdout.write("(no rows)\n");
+    return;
+  }
+  const rendered = new Set<T>();
+  for (const block of blocks) {
+    const items = rows.filter((r) => r.category === block.category);
+    if (items.length === 0) continue;
+    for (const item of items) rendered.add(item);
+    process.stdout.write(`\n${block.category}  (${items.length})\n`);
+    printTable(columns, items);
+  }
+  const orphans = rows.filter((r) => !rendered.has(r));
+  if (orphans.length > 0) {
+    process.stdout.write(`\n(ungrouped)  (${orphans.length})\n`);
+    printTable(columns, orphans);
+  }
+}
+
 export function emitOne(asJson: boolean, value: Record<string, unknown>): void {
   if (asJson) {
     printJson(value);

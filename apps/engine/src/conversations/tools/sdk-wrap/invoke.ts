@@ -32,7 +32,7 @@ import {
 } from "../../../observability/instrumentation.ts";
 import { startToolSpan } from "../../../observability/langfuse-spans.ts";
 import { requestApproval } from "../../../tools/approval.ts";
-import { listWorkflowsUsingConnector } from "../../../workflows/connector-dependents.ts";
+import { listWorkflowsUsingConnector } from "../../../workflows/connector-refs.ts";
 import { FileNotFoundError, type ResolvedFile, walkAndResolve } from "../../attachments.ts";
 import { recordTransition } from "../../confirmation.ts";
 import { isDangerousTool } from "../../dangerous-tools.ts";

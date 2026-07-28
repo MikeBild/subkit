@@ -48,7 +48,11 @@ export const workflowsMethods = {
   listWorkflows(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[]; total: number }> {
+  ): Promise<{
+    items: Record<string, unknown>[];
+    total: number;
+    categories?: { category: string; count: number }[];
+  }> {
     return this.request("GET", "/v1/workflows", undefined, query);
   },
   getWorkflow(this: EngineClient, id: string): Promise<Record<string, unknown>> {
