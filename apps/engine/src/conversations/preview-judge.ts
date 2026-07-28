@@ -40,12 +40,11 @@
 // become the next authoring deadlock. The caller tracks
 // `blocks_since_commit` — a MONOTONIC per-draft counter that increments
 // on every block REGARDLESS of fingerprint change and resets to 0 only
-// when a workflow actually commits. After `JUDGE_BREAKER_MAX_BLOCKS`
-// blocks the verdict degrades to advisory (attached + logged,
-// non-blocking → auto-commit proceeds), so a model churning edits still
-// converges. At/over the cap the dry_run result carries a terminal
-// done-signal (tell the user what's missing and stop) instead of yet
-// another silent requires_repair.
+// when a workflow actually commits. `JUDGE_BREAKER_MAX_BLOCKS` bounds the
+// edit→dry-run LOOP, not the gate: at and over the cap the preview stays
+// HELD and the dry_run result carries a terminal done-signal (tell the user
+// what's missing and stop) instead of yet another silent requires_repair.
+// A preview that still does not satisfy the goal never auto-commits.
 //
 // Memoization (P3): the most recent judged verdict is cached against
 // its definition fingerprint (`state.judge_breaker.last_verdict`). An
@@ -71,10 +70,10 @@ import {
 import { canonicalJson } from "./text-line-diff.ts";
 import { truncateStepPreviewForLlm } from "./tools/truncate.ts";
 
-/** Max consecutive judge blocks since the last commit before the
- *  verdict degrades to advisory (auto-commit proceeds). Counted
- *  per-draft, NOT per-fingerprint — an edit between blocks does not
- *  reset it (P3). */
+/** Max consecutive judge blocks since the last commit before the gate stops
+ *  inviting another edit and escalates to the user instead. The preview stays
+ *  HELD at and over the cap — this bounds the loop, not the gate. Counted
+ *  per-draft, NOT per-fingerprint — an edit between blocks does not reset it. */
 export const JUDGE_BREAKER_MAX_BLOCKS = 2;
 
 /** Once the block cap is reached the preview is HELD (not committed) on every

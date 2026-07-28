@@ -11,11 +11,12 @@ import { and, eq } from "drizzle-orm";
 import { audit, auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
+import { writeEvent } from "../db/events.ts";
 import { patchCandidates } from "../db/schema/index.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
 import { recordPatchCandidate } from "../observability/instrumentation.ts";
-import { autoApplyPatch } from "./auto-apply.ts";
+import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 
 export async function approvePatchCandidate(
   params: { tenant_id: string; candidate_id: string; actor_id: string | null },
@@ -41,12 +42,41 @@ export async function approvePatchCandidate(
     const proposalRaw = diff.proposal as PatchProposal | undefined;
     if (!proposalRaw) return null;
 
-    const applied = await autoApplyPatch(tx, {
+    const outcome = await autoApplyPatch(tx, {
       tenant_id: params.tenant_id,
       workflow_id: row.workflow_id,
       candidate_id: row.id,
       proposal: proposalRaw,
     });
+
+    // An approval the engine cannot perform is an approval that changed
+    // nothing. Say so — audit it as an error with the reason, leave the
+    // candidate `proposed` so the operator can reject it, and return null so
+    // the route reports `applied: false` instead of inventing a version.
+    if (!outcome.applied) {
+      await auditAwait(
+        {
+          tenant_id: params.tenant_id,
+          actor_type: params.actor_id ? "user" : "system",
+          actor_id: params.actor_id,
+          action: AuditAction.PATCH_CANDIDATE_APPROVED,
+          resource_type: "patch_candidate",
+          resource_id: row.id,
+          result: "error",
+          reason: outcome.reason,
+          metadata: { workflow_id: row.workflow_id, new_workflow_version_id: null },
+        },
+        tx,
+      );
+      logPatchNotApplied(
+        { tenant_id: params.tenant_id, workflow_id: row.workflow_id, source: "manual_approve" },
+        row.id,
+        outcome.reason,
+        "manual_approve",
+      );
+      return null;
+    }
+
     await auditAwait(
       {
         tenant_id: params.tenant_id,
@@ -56,19 +86,36 @@ export async function approvePatchCandidate(
         resource_type: "patch_candidate",
         resource_id: row.id,
         result: "success",
-        metadata: { workflow_id: row.workflow_id, new_workflow_version_id: applied },
+        metadata: {
+          workflow_id: row.workflow_id,
+          new_workflow_version_id: outcome.version_id,
+          changed_paths: outcome.changed_paths,
+        },
       },
       tx,
     );
+    await writeEvent(tx, {
+      tenant_id: params.tenant_id,
+      channel: "notification.emitted",
+      type: "patch.applied",
+      payload: {
+        patch_candidate_id: row.id,
+        workflow_id: row.workflow_id,
+        workflow_version_id: outcome.version_id,
+        changed_paths: outcome.changed_paths,
+        auto_applied: false,
+      },
+    });
     recordPatchCandidate({ classification: "manual", decision: "approved" });
     log.selfHealing.patch.applied({
       candidate_id: row.id,
       workflow_id: row.workflow_id,
-      new_workflow_version_id: applied,
+      new_workflow_version_id: outcome.version_id,
+      changed_paths: outcome.changed_paths,
       actor_id: params.actor_id,
       decision: "manual_approve",
     });
-    return applied;
+    return outcome.version_id;
   });
 }
 

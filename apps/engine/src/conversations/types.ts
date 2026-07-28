@@ -18,8 +18,11 @@ export type ConversationStatus = "active" | "awaiting_input" | "committed" | "ab
  *   - `yolo` — non-sticky escape hatch that lifts the dangerous-tool
  *     gate too. Hard-armed in the client (typed confirmation),
  *     auto-expires after 10 turns / 10 minutes, and never persists
- *     into `draft.session`. Audit rows for tools executed under yolo
- *     carry `bypassed_confirmation: true` for forensics.
+ *     into `draft.session`. A tool executed under yolo is recorded with
+ *     `bypassed_confirmation: true` in `conversation_tool_calls.confirmation_data`
+ *     (`sdk-wrap/invoke.ts`) and a `tool.executed_yolo` warn log — NOT in the
+ *     audit log. Forensics for a yolo write therefore starts at the tool-call
+ *     row, not at `audit_log`.
  */
 export type ConversationPermissionMode = "auto" | "ask" | "plan" | "yolo";
 

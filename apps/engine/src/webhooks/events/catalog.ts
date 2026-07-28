@@ -45,6 +45,22 @@ const PatchProposed = z.object({
   classification: z.enum(["safe", "unsafe"]),
 });
 
+// A repair that actually rewrote a step and rotated the workflow version.
+// Distinct from `patch.proposed` on purpose: a proposal asks for a decision,
+// this one reports a workflow that already changed. Without it the only signal
+// an operator ever got was "proposed" — including for patches applied in the
+// same breath — and the pending-review list, which by definition never shows
+// an applied one.
+const PatchApplied = z.object({
+  patch_candidate_id: z.string().uuid(),
+  workflow_id: z.string().uuid(),
+  workflow_version_id: z.string().uuid(),
+  /** Which fields of the step the repair rewrote. */
+  changed_paths: z.array(z.string()),
+  /** True when policy applied it without waiting for a human decision. */
+  auto_applied: z.boolean(),
+});
+
 const ApiKeyRotated = z.object({
   api_key_id: z.string().uuid(),
   actor_id: z.string().uuid().nullable(),
@@ -119,6 +135,17 @@ export const EVENT_CATALOG = {
       patch_candidate_id: "00000000-0000-0000-0000-000000000005",
       workflow_id: "00000000-0000-0000-0000-000000000002",
       classification: "safe",
+    },
+  },
+  "patch.applied": {
+    name: "patch.applied",
+    schema: PatchApplied,
+    example: {
+      patch_candidate_id: "00000000-0000-0000-0000-000000000005",
+      workflow_id: "00000000-0000-0000-0000-000000000002",
+      workflow_version_id: "00000000-0000-0000-0000-000000000007",
+      changed_paths: ["data_selector"],
+      auto_applied: true,
     },
   },
   "apikey.rotated": {

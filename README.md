@@ -3,14 +3,15 @@
 **A self-hostable engine for governed, versioned, AI-assisted workflow execution.**
 
 sk lets a team describe automation in natural language, review and approve what the AI
-proposes, and then run it deterministically against the systems they already use — with
-multi-tenancy, RBAC, encrypted credentials, and an immutable audit trail throughout. AI
-assists with *authoring*; *execution* is fixed at approval time and never re-decided at
-runtime.
+proposes, and then run it against the systems they already use — with multi-tenancy, RBAC,
+encrypted credentials, and an append-only audit trail throughout. AI assists with
+*authoring*; the *control flow* of a workflow is fixed at approval time and never
+re-decided at runtime.
 
 It is open source and built to be run inside an organisation: every workflow is a
-versioned, reviewable artefact, every state change is audited, and no workflow reaches
-production without an explicit human approval step.
+versioned, reviewable artefact, every state change is audited, and a workflow reaches
+production only through a review a human signed off — either an explicit approval, or a
+dry run whose held-back preview they read before it was committed.
 
 [![ci](https://github.com/mikebild/subkit/actions/workflows/ci.yml/badge.svg)](https://github.com/mikebild/subkit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -26,10 +27,12 @@ contract for contributors is [`AGENTS.md`](AGENTS.md).
 
 *External clients (IDE assistants, employee chat) reach governed workflows only through SubKit's product-local **MCP OAuth boundary**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`docs/concepts/overview.drawio`](docs/concepts/overview.drawio).*
 
-Every interaction — regardless of entry point — flows through the same governed pipeline.
-AI assists with authoring but never executes without human approval. Execution is
-policy- and version-bound, auditable, and operator-reviewed for drift-assisted repair —
-the control flow of an approved workflow is fixed; runtime does not re-decide it.
+Every interaction — regardless of entry point — flows through the same governed pipeline,
+and one policy decision governs every write. AI assists with authoring; dispatching a write
+from a conversation requires a confirmation, rendered per surface (a chat prompt, an MCP
+client's own dialog). Execution is policy- and version-bound, auditable, and
+operator-reviewed for drift-assisted repair — the control flow of an approved workflow is
+fixed; runtime does not re-decide it.
 
 ---
 
@@ -52,7 +55,9 @@ with the [docs index](docs/README.md) and the [glossary](docs/concepts/glossary.
 
 Authoring is a guided pipeline: describe the outcome in plain language and sk builds a
 grounded draft, tests it against a sample payload, applies precise patch edits, and commits
-only on explicit approval — nothing reaches production without a human accepting the change.
+once the review lands — either an explicit approval, or a clean dry run whose preview the
+author read. Starting an unattended trigger (a schedule, a public webhook) always takes a
+separate decision on top.
 The [authoring guide](docs/authors/authoring-workflows.md) walks the full loop, including
 throwaway playground drafts that never persist and partial-accept of individual edits. For the
 governed MCP surface those tools expose — session progress, confirmation gates, and

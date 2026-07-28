@@ -669,7 +669,9 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
 // outer MCP client destructiveHint dialog + additive/reversible effect OR
 // internal hold/backstop. Concretely:
 //   - additive creations (`create_*`): a bad create is visible and
-//     deletable; nothing pre-existing is destroyed.
+//     deletable; nothing pre-existing is destroyed. The exception is
+//     `create_schedule` — an unattended trigger ACTS before anyone can see
+//     and delete it, so "additive" does not make it reversible.
 //   - save_workflow_draft: `commitWorkflowAtomic` re-authorizes the commit
 //     against the durable prior-approval predicate — a second backstop
 //     behind the gate.
@@ -699,7 +701,6 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
  */
 export const MCP_TURN_COLLAPSIBLE_WRITE_TOOLS: ReadonlySet<string> = new Set([
   "create_knowledge_source",
-  "create_schedule",
   "save_workflow_draft",
 ]);
 
@@ -711,6 +712,11 @@ export const MCP_TURN_COLLAPSIBLE_WRITE_TOOLS: ReadonlySet<string> = new Set([
  * the palette is classified in exactly one of the two sets.
  */
 export const MCP_TURN_KEEP_PAUSE_WRITE_TOOLS: ReadonlySet<string> = new Set([
+  // Not additive in the way the other `create_*` tools are: a schedule does
+  // not sit there waiting to be noticed and deleted — it FIRES, unattended, in
+  // prod, dispatching real writes on every tick. "Visible and deletable" only
+  // becomes true after it has already acted.
+  "create_schedule",
   // Replaces what is LIVE with an earlier version. The outer MCP dialog cannot
   // stand in for knowing WHICH version is being restored over WHAT.
   "restore_workflow_version",

@@ -144,7 +144,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
 
   // ── Network egress ─────────────────────────────────────────────
   "egress.mode": "Egress mode",
-  "egress.provider_hosts_extra": "Allowed provider hosts",
+  "egress.provider_hosts_extra": "Metered provider hosts",
 
   // ── MCP transport ──────────────────────────────────────────────
   "mcp.api_key": "MCP API key",

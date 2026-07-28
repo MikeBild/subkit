@@ -3,9 +3,10 @@
 // flags in assistant-emitted bash blocks.
 //
 // The manifest is hand-curated JSON checked into the repo (see
-// `cli-manifest.json`). The contract test (`cli-manifest.contract.test.ts`)
-// asserts the manifest is consistent with `sk --help` output for the
-// subcommands the LLM is likely to recommend.
+// `cli-manifest.json`). NOTE: nothing currently asserts it stays consistent
+// with `sk --help` — the contract test this comment used to name does not
+// exist. Treat drift between the manifest and the real CLI as unguarded
+// until such a test lands.
 
 import data from "./cli-manifest.json" with { type: "json" };
 

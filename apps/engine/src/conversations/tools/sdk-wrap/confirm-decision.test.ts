@@ -96,7 +96,9 @@ describe("decideConfirm — enumerated MCP collapse", () => {
     // it is pinned no_confirm now (the candidate approve step IS the
     // confirmation), so a confirm for it only ever comes from an explicit
     // per-conversation override — which must keep pausing.
-    for (const tool of ["create_knowledge_source", "create_schedule", "save_workflow_draft"]) {
+    // create_schedule left it too: an unattended trigger acts before anyone
+    // can see and delete it, so "additive" never made it reversible.
+    for (const tool of ["create_knowledge_source", "save_workflow_draft"]) {
       const decision = decideConfirm({
         resolvedMode: "confirm_before_execution",
         priorApproval: false,

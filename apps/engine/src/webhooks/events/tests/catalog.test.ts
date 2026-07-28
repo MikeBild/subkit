@@ -18,6 +18,7 @@ describe("events catalog", () => {
       "connector.oauth.callback_succeeded",
       "connector.oauth.callback_failed",
       "patch.proposed",
+      "patch.applied",
       "apikey.rotated",
       "conversation.committed",
     ]);

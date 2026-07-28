@@ -190,7 +190,9 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
   // MCP: the CLIENT's native `destructiveHint` dialog is the human gate.
   // Every MCP-reachable tool that can resolve to `confirm_before_execution`
   // advertises `destructiveHint:true` (`mcp/capabilities/tool-meta.ts`; pinned
-  // by `mcp/tests/tools-list.test.ts`), so a trusted client (claude.ai,
+  // exhaustively by `mcp/tests/confirm-gate-invariant.test.ts`, which sweeps
+  // the whole registry — `tools-list.test.ts` only spot-checks a few tools),
+  // so a trusted client (claude.ai,
   // ChatGPT) renders a blocking, per-call, model-unbypassable approval BEFORE
   // the call reaches the engine — empirically verified against both clients.
   // A second server-side confirm would be redundant AND has no in-band grant

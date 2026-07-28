@@ -23,6 +23,7 @@ import {
   conversations,
   webhooksInbound,
   workflows,
+  workflowsSchedules,
 } from "../../db/schema/index.ts";
 import {
   withLatestPreview,
@@ -296,6 +297,10 @@ describe("C.4 — webhook-binding removal guard", () => {
     const first = await commitWorkflowAtomic({
       ctx: stubToolCtx(conversationId, webhookReadyDraft("wh-guard-block", "WH Guard Block")),
       skipPriorApprovalCheck: true,
+      // Standing up a public webhook needs a human decision behind the commit
+      // (the unattended-trigger guard). This is fixture setup, not the case
+      // under test, so it says so explicitly instead of seeding an approval.
+      forceCommit: true,
     });
     expect(first.ok).toBe(true);
     const workflowId = (first.data as { workflow_id: string }).workflow_id;
@@ -345,6 +350,10 @@ describe("C.4 — webhook-binding removal guard", () => {
     const first = await commitWorkflowAtomic({
       ctx: stubToolCtx(conversationId, webhookReadyDraft("wh-guard-force", "WH Guard Force")),
       skipPriorApprovalCheck: true,
+      // Standing up a public webhook needs a human decision behind the commit
+      // (the unattended-trigger guard). This is fixture setup, not the case
+      // under test, so it says so explicitly instead of seeding an approval.
+      forceCommit: true,
     });
     expect(first.ok).toBe(true);
     const workflowId = (first.data as { workflow_id: string }).workflow_id;
@@ -459,5 +468,99 @@ describe("M4 — unbound-schedule warning on the commit envelope", () => {
     const data = result.data as { schedule_warning?: string; next_prompt?: string };
     expect(data.schedule_warning).toBeUndefined();
     expect(data.next_prompt ?? "").not.toContain("WARNING");
+  });
+});
+
+// ── C.5 unattended-trigger binding guard ─────────────────────────────────────
+
+describe("C.5 — unattended-trigger binding guard", () => {
+  const SCHEDULE_TRIGGER = {
+    kind: "schedule" as const,
+    cron: "0 7 * * *",
+    tz: "Europe/Berlin",
+  };
+
+  function scheduledDraft(slug: string, name = slug): DraftDocument {
+    const base = readyDraft(slug, name);
+    return { ...base, workflow: { ...base.workflow, trigger: { ...SCHEDULE_TRIGGER } } };
+  }
+
+  test("a commit nobody approved does NOT get to start a live cron", async () => {
+    // This is the green-dry-run auto-commit shape: `skipPriorApprovalCheck`
+    // with no approval row behind it. Binding here would create an unpaused,
+    // prod-mode schedule that dispatches real writes with no human in the loop.
+    const conversationId = await freshConversation();
+    const blocked = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, scheduledDraft("sched-guard-block", "Sched Guard Block")),
+      skipPriorApprovalCheck: true,
+    });
+
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) throw new Error("expected the guard to block");
+    expect(blocked.error_code).toBe("trigger_binding_unconfirmed");
+    const data = blocked.data as Record<string, unknown>;
+    expect(data.trigger_kind).toBe("schedule");
+    expect(data.cron).toBe("0 7 * * *");
+    expect(data.force_commit_available).toBe(true);
+
+    // Nothing was written: no workflow, and therefore no schedule.
+    const wfRows = await ctx.testDb.db
+      .select({ id: workflows.id })
+      .from(workflows)
+      .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.slug, "sched-guard-block")));
+    expect(wfRows).toHaveLength(0);
+  });
+
+  test("force_commit binds the schedule — live, unpaused, in prod", async () => {
+    const conversationId = await freshConversation();
+    const committed = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, scheduledDraft("sched-guard-force", "Sched Guard Force")),
+      skipPriorApprovalCheck: true,
+      forceCommit: true,
+    });
+    expect(committed.ok).toBe(true);
+
+    const workflowId = (committed.data as { workflow_id: string }).workflow_id;
+    const schedules = await ctx.testDb.db
+      .select()
+      .from(workflowsSchedules)
+      .where(
+        and(
+          eq(workflowsSchedules.tenant_id, ctx.tenant_id),
+          eq(workflowsSchedules.workflow_id, workflowId),
+        ),
+      );
+    expect(schedules).toHaveLength(1);
+    // Pinning what the guard exists for: this is what "bound" means.
+    expect(schedules[0]?.paused).toBe(false);
+    expect(schedules[0]?.execution_mode).toBe("prod");
+  });
+
+  test("a step-only edit on an already-bound schedule does not re-ask", async () => {
+    // Re-asking on every edit would train the operator to click through the
+    // gate. The trigger block is unchanged here, so nothing new is bound.
+    const conversationId = await freshConversation();
+    const first = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, scheduledDraft("sched-guard-edit", "Sched Guard Edit")),
+      skipPriorApprovalCheck: true,
+      forceCommit: true,
+    });
+    expect(first.ok).toBe(true);
+
+    const edited = scheduledDraft("sched-guard-edit", "Sched Guard Edit Renamed");
+    const second = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, edited),
+      skipPriorApprovalCheck: true,
+    });
+    expect(second.ok).toBe(true);
+  });
+
+  test("a request-triggered workflow is never gated — nothing starts by itself", async () => {
+    const conversationId = await freshConversation();
+    const committed = await commitWorkflowAtomic({
+      ctx: stubToolCtx(conversationId, readyDraft("sched-guard-manual", "Sched Guard Manual")),
+      skipPriorApprovalCheck: true,
+    });
+    expect(committed.ok).toBe(true);
   });
 });

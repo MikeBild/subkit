@@ -477,6 +477,11 @@ export const log = {
         logger.info({ module: "self-healing", action: "patch.proposed", ...ctx }),
       applied: (ctx: Ctx) =>
         logger.info({ module: "self-healing", action: "patch.applied", ...ctx }),
+      // An approved/auto-applied patch the engine could not perform on the
+      // definition. Warn, never info: the candidate stays open and the
+      // workflow is unchanged, so someone has to look.
+      notApplicable: (ctx: Ctx) =>
+        logger.warn({ module: "self-healing", action: "patch.not_applicable", ...ctx }),
       rejected: (ctx: Ctx) =>
         logger.warn({ module: "self-healing", action: "patch.rejected", ...ctx }),
       classified: (ctx: Ctx) =>

@@ -2,14 +2,14 @@
 
 **Describe the outcome. Get a governed, audited, versioned workflow in minutes — not a build project that runs for weeks.**
 
-Traditional workflow tools put construction on the builder: know the connector, learn the config syntax, draw it on a blank canvas. You ship what developers can build, not what the business needs. sk inverts that — the author states intent in plain language, the AI does the structural work, and a human signs off before anything runs.
+Traditional workflow tools put construction on the builder: know the connector, learn the config syntax, draw it on a blank canvas. You ship what developers can build, not what the business needs. sk inverts that — the author states intent in plain language, the AI does the structural work, and a human signs off on the result before it goes live.
 
 | Business outcome | How sk delivers it |
 |---|---|
 | **Time** — first workflow in minutes | One `author_workflow` pass generates the complete definition, grounded in real endpoint evidence |
-| **Compliance** — audit-ready by construction | Nothing reaches the engine without an explicit human approval; every step is reviewable |
+| **Compliance** — every change reviewable and attributable | A commit lands on a human review and an audit row that names the actor; every step is reviewable |
 | **Risk** — no raw secrets in the loop | Credentials are referenced by name through the Credential Vault, never seen during authoring |
-| **Determinism** — production is AI-free | Once committed, the engine runs the workflow with zero AI involvement |
+| **Determinism** — the engine never improvises | Once committed, the control flow is fixed: the engine infers nothing and loads no Skills or Knowledge at runtime |
 
 ![sk REPL authoring — prompt to governed workflow](../_tapes/out/repl-author.gif)
 
@@ -112,11 +112,11 @@ When the user says they want to create a new workflow after inspecting or runnin
 
 ## The Human-in-the-Loop Approval Gate
 
-The most important architectural decision in sk: **nothing reaches the execution engine without an explicit human approval.**
+The most important architectural decision in sk: **the author sees what a workflow will do before it can do it.** A commit lands on a human's review — either an explicit approval, or a clean dry run whose held-back preview they read (the two green-gate paths below). Starting an unattended trigger takes a further, separate decision.
 
 When the AI finishes a Draft, it pauses the authoring loop and presents it for review. The operator sees every step, connector reference, parameter, and branching condition — and can push back, ask for changes, iterate. On approval, the Draft is committed as a new versioned Workflow; the Conversation transitions to active and the workflow is ready to run.
 
-This is the governance model, not a UX convenience. It is the structural answer to "How do we know the AI did the right thing?" — because a human checked and signed off before anything ran.
+This is the governance model, not a UX convenience. It is the structural answer to "How do we know the AI did the right thing?" — because a human read what it would do, on a preview whose writes were held, before it ran for real.
 
 The gate sits on top of hard quality gates:
 
@@ -306,7 +306,7 @@ sk is not tied to a single AI model. It supports Claude (Anthropic), OpenAI GPT 
 |---|---|
 | Routing | Best available provider by operator config and task type |
 | Budgets | Token budgets enforced per tenant and per Conversation; operators set a monthly ceiling, consumption surfaces in the audit log |
-| Runtime | The provider is an authoring-layer detail; a committed workflow runs with no AI involvement, regardless of which model authored it |
+| Runtime | The provider is an authoring-layer detail; the engine calls no model to run a committed workflow, regardless of which model authored it |
 
 ### OpenAI-compatible endpoints
 

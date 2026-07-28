@@ -17,6 +17,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { auditLog } from "../../db/schema/audit.ts";
 import {
   conversationElicitations,
   conversationMessages,
@@ -38,6 +39,7 @@ import { maybeAutoPersistFromElicitation } from "../persistence/auto-persist.ts"
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import { findPriorSaveWorkflowApproval } from "../persistence/save-workflow-approval.ts";
 import type { ToolContext } from "../tools/index.ts";
+import { saveWorkflowDraftTool } from "../tools/save-workflow-draft.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { DraftDocument, TurnEvent } from "../types.ts";
 
@@ -686,5 +688,63 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     };
     const result = await commitWorkflowAtomic({ ctx: toolCtx });
     expect(result.ok).toBe(true);
+  });
+
+  test("permission_mode=auto bypasses the gate — and the audit row says so instead of claiming a manual re-issue", async () => {
+    // The gate is deliberately skipped in `auto`. What must not happen is the
+    // audit log calling that commit `manual_re_issue`: nobody re-issued
+    // anything manually, and an operator asking "did anyone approve this?"
+    // would read a yes where there was none.
+    const conversation_id = await freshConversation();
+    const draft = readyWorkflowDraft("commit-gate-auto-bypass");
+    await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
+
+    let liveDraft = draft;
+    const toolCtx: ToolContext = {
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id,
+      actor_id: null,
+      connector_id: null,
+      workflow_id: null,
+      permission_mode: "auto",
+      engineClient: new EngineClient({
+        tenant_id: ctx.tenant_id,
+        actor_id: null,
+        actor_type: "system",
+        db: ctx.testDb.db,
+      }),
+      getDraft: () => liveDraft,
+      setDraft: async (next) => {
+        liveDraft = next;
+      },
+    };
+
+    // No prior approval exists — under `auto` the commit still goes through.
+    expect(
+      await findPriorSaveWorkflowApproval(ctx.testDb.db, ctx.tenant_id, conversation_id),
+    ).toBeNull();
+
+    const result = await saveWorkflowDraftTool.execute(toolCtx, {});
+    expect(result.ok).toBe(true);
+
+    // Scope to THIS workflow: the suite shares a tenant, so earlier tests have
+    // rows of their own in the log.
+    const rows = (
+      await ctx.testDb.db.select().from(auditLog).where(eq(auditLog.tenant_id, ctx.tenant_id))
+    ).filter(
+      (r) => (r.metadata as Record<string, unknown> | null)?.slug === "commit-gate-auto-bypass",
+    );
+    expect(rows.length).toBeGreaterThan(0);
+
+    const toolRow = rows.find(
+      (r) => (r.metadata as Record<string, unknown> | null)?.tool === "save_workflow_draft",
+    );
+    if (!toolRow) throw new Error("expected an audit row for the save_workflow_draft commit");
+    expect(toolRow.reason).toBe("auto_mode_no_prior_approval");
+    expect((toolRow.metadata as Record<string, unknown>).bypassed_prior_approval).toBe(true);
+
+    // …and no row about this commit claims a manual re-issue.
+    expect(rows.some((r) => r.reason === "manual_re_issue")).toBe(false);
   });
 });

@@ -109,8 +109,8 @@ export async function getVendorRecipeForTenant(
 }
 
 /**
- * Return freshness for a single recipe. Used by the contract test
- * (`vendor-recipe.contract.test.ts`) to fail CI when verifications
+ * Return freshness for a single recipe. Used by
+ * `manifests/tests/vendor-recipes.test.ts` to fail CI when verifications
  * lapse. `now` is injectable so tests are deterministic.
  */
 export function recipeFreshness(

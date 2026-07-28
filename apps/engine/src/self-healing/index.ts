@@ -12,6 +12,18 @@ export { classifyPatch, classifyRateLimitFromTemplate } from "./classifier.ts";
 export type { FailingStepSnapshot } from "./drift-detector.ts";
 export { analyzeStepFailure, renderDriftDiff } from "./drift-detector.ts";
 export { applyPatchToStep, runFixtureDryRun } from "./fixture-runner.ts";
+export type {
+  PatchApplyFailure,
+  PatchApplyOutcome,
+  PathRewrite,
+  ProjectionSlots,
+} from "./patch-apply.ts";
+export {
+  applyPatchToWorkflowDag,
+  applyRewriteToSlots,
+  diffStepPaths,
+  resolvePathRewrite,
+} from "./patch-apply.ts";
 // Note: `optimization-analyzer.ts` is intentionally NOT re-exported
 // from this barrel until the matching pg-boss handler + persistence
 // schema land. Until then the analyzer is invocable only via a direct
@@ -42,7 +54,7 @@ export type {
 export * from "./service.ts";
 export { processDriftSignal, runSelfHealingLoop } from "./service.ts";
 export { scanStdlibDrift } from "./stdlib-drift-scan.ts";
-export { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
+export { buildDryRunStep, loadStepSnapshot, loadWorkflowStepKey } from "./step-snapshot.ts";
 export type {
   DriftSignal,
   DryRunFixture,

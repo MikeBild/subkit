@@ -642,9 +642,9 @@ export const dryRunWorkflowTool: ConversationTool = {
     let judgeBlocked = false;
     /** undefined = leave the stored breaker untouched. */
     let nextJudgeBreaker: JudgeBreakerState | undefined;
-    /** Terminal done-signal (P3) — set when the judge blocked at/over the
-     *  cap and degraded to advisory; the model gets an EXIT, not another
-     *  silent requires_repair. */
+    /** Terminal done-signal — set when the judge blocked at/over the cap: the
+     *  preview stays held and the model gets an EXIT, not another silent
+     *  requires_repair. */
     let judgeDoneSignal: Awaited<ReturnType<typeof runPreviewJudgeGate>>["doneSignal"] = null;
     /** Forced operator-choice escalation: the model re-ran past the hold cap. */
     let judgeEscalate = false;
@@ -865,19 +865,22 @@ export const dryRunWorkflowTool: ConversationTool = {
     // and the never-silent guard in loop.ts both have something to
     // anchor on.
     // On an ATTENDED surface a green dry-run auto-commits ONLY when the
-    // preview judge actually rendered a verdict against a stashed goal. With no
-    // goal the judge is skipped (`judge.no_goal`); a bare verification dry-run
-    // during iteration must NOT mint a new workflow version every call (one
-    // live session churned v6→v12 this way, six
-    // `auto_persist_on_green_dry_run` commits in 36 min). A green-but-unjudged
-    // preview is still `ok` — it just returns the `save_workflow_draft`
-    // next-action so the model/user persists once, deliberately. On an
-    // UNATTENDED turn (see `unattended` below) that deferral is invisible to
-    // the caller, so the no-goal green preview auto-commits instead of
-    // dead-ending at a `save_workflow_draft` → ask_user_confirm the client
-    // never surfaces.
-    const judgeSkippedNoGoal =
-      judgeOutcome?.verdict === "skipped" && judgeOutcome?.reason === "no_goal";
+    // preview judge actually rendered a verdict. ANY skip counts as unjudged —
+    // not just `no_goal`:
+    //   - `no_goal`: a bare verification dry-run during iteration must NOT mint
+    //     a version every call (one live session churned v6→v12 this way, six
+    //     `auto_persist_on_green_dry_run` commits in 36 min).
+    //   - `judge_unavailable`: the provider was down or the output uncoercible.
+    //     Keying only on `no_goal` here meant a provider outage silently
+    //     produced an UNJUDGED auto-commit with a human sitting right there —
+    //     the judge fails open by design, so this is the only place that can
+    //     hold the commit.
+    // A green-but-unjudged preview is still `ok`; it just returns the
+    // `save_workflow_draft` next-action so the model/user persists once,
+    // deliberately. On an UNATTENDED turn (see `unattended` below) that
+    // deferral is invisible to the caller, so it auto-commits instead of
+    // dead-ending at an `ask_user_confirm` the client never surfaces.
+    const judgeSkipped = judgeOutcome?.verdict === "skipped";
     // Unattended turn — the caller cannot surface an ask_user_confirm /
     // awaiting_input follow-up, so a `save_workflow_draft` deferral would
     // dead-end (that greenPendingSave churn loop becomes invisible on
@@ -893,28 +896,28 @@ export const dryRunWorkflowTool: ConversationTool = {
       ctx.permission_mode === "auto" || (ctx.surface === "mcp" && !ctx.elicitationBridge);
     // A green dry-run + non-blocking judge is safe to auto-commit: hold_writes
     // made the run side-effect-free. On an ATTENDED surface a green-but-
-    // unjudged (no-goal) preview still defers to an explicit save so a bare
-    // verification dry-run does not mint a version every call (the
-    // v6→v12 churn above). UNATTENDED, that deferral is invisible, so the no-goal
-    // green preview joins the auto-commit path — an unchanged re-preview still
-    // reports `already_persisted` (no churn), and the audit row carries the
-    // honest `judge_verdict: "skipped" / no_goal`. The judge stays a QUALITY
+    // unjudged preview still defers to an explicit save so a bare verification
+    // dry-run does not mint a version every call (the v6→v12 churn above).
+    // UNATTENDED, that deferral is invisible, so the unjudged green preview
+    // joins the auto-commit path — an unchanged re-preview still reports
+    // `already_persisted` (no churn), and the audit row carries the honest
+    // `judge_verdict: "skipped"` with its reason. The judge stays a QUALITY
     // gate: a `partial`/`failed` verdict or a breaker hold keeps `judgeBlocked`
     // true, so this NEVER auto-commits a goal-mismatched preview.
-    // The `unattended` allowance above exists so a backgrounded turn does not
+    // The `unattended` allowance exists so a backgrounded turn does not
     // dead-end on a `save_workflow_draft` deferral nobody can answer. That
     // reasoning holds for a NEW workflow — there is nothing to lose. It does
     // not hold when the commit would REPLACE one that already exists: then an
-    // unjudged preview (`judge.no_goal` means there was no goal to judge
-    // against) lands on top of work someone verified. Production did exactly
-    // that: a green-but-unjudged preview auto-committed a generic normaliser
-    // over a purpose-built one, and "green" there meant only "no exception".
+    // unjudged preview lands on top of work someone verified. Production did
+    // exactly that: a green-but-unjudged preview auto-committed a generic
+    // normaliser over a purpose-built one, and "green" there meant only
+    // "no exception".
     const wouldReplacePersisted = replacesPersistedWorkflow(ctx.getDraft().summary);
-    const unattendedNoGoalCommit = unattended && !wouldReplacePersisted;
+    const unattendedUnjudgedCommit = unattended && !wouldReplacePersisted;
     const cleanPreview =
-      dryRunGreen && !judgeBlocked && (!judgeSkippedNoGoal || unattendedNoGoalCommit);
+      dryRunGreen && !judgeBlocked && (!judgeSkipped || unattendedUnjudgedCommit);
     const greenPendingSave =
-      dryRunGreen && !judgeBlocked && judgeSkippedNoGoal && !unattendedNoGoalCommit;
+      dryRunGreen && !judgeBlocked && judgeSkipped && !unattendedUnjudgedCommit;
     // The judge hit its block cap: the edit loop is exhausted but the preview
     // still does not satisfy the goal. Do NOT keep nudging edit→dry_run (that
     // is the loop the breaker exists to stop); instead offer an explicit
