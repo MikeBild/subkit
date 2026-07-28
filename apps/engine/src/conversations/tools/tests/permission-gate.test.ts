@@ -25,6 +25,7 @@ import { updateWorkflowTool } from "../generated/writes/update-workflow.ts";
 import type { ToolContext } from "../index.ts";
 import { checkToolPermission } from "../permission-gate.ts";
 import { requestConnectorReauthTool } from "../request-connector-reauth.ts";
+import { restoreWorkflowVersionTool } from "../restore-workflow-version.ts";
 
 describe("declarative RBAC descriptors on migrated write tools", () => {
   const cases: Array<{
@@ -185,6 +186,82 @@ describe("delete_workflow resolveResourceId — resolves the UUID before can()",
       engineClient: { workflows: { getBySlug: async () => null } },
     } as unknown as ToolContext;
     expect(await resolve?.(ctx, { slug: "ghost" })).toBeNull();
+  });
+});
+
+describe("restore_workflow_version carries a permission gate, not just a confirm gate", () => {
+  // Regression: the tool is `tenant_write` and called the service directly with
+  // no `permission` descriptor and no RBAC_OVERRIDES entry. The dispatcher only
+  // calls can() when rbac is set, so its ONLY gate was the confirm policy — a
+  // human gate standing where the HTTP route (`workflow:restore`) enforces a
+  // permission one. Confirming is not the same as being allowed.
+  it("declares workflow:restore on the workflow resource", () => {
+    expect(restoreWorkflowVersionTool.permission?.action).toBe("workflow:restore");
+    expect(restoreWorkflowVersionTool.permission?.resourceType).toBe("workflow");
+  });
+
+  it("is also gated on the dispatcher path (MCP/admin), not only the LLM path", async () => {
+    // Two independent enforcement points: sdk-wrap/invoke.ts reads
+    // `tool.permission`, while the dispatcher reads `descriptor.rbac` built
+    // from RBAC_OVERRIDES. The provider calls tool.execute() directly, so a
+    // descriptor without rbac would leave the MCP surface ungated even though
+    // the conversation path is covered. The provider's own coverage rule says
+    // every tenant_write tool reachable from MCP needs an entry.
+    const { conversationToolProvider } = await import("../../../tools/providers/conversation.ts");
+    const descriptor = conversationToolProvider
+      .list({ surface: "mcp", mcpMode: "admin" })
+      .find((d) => d.name === "restore_workflow_version");
+    expect(descriptor).toBeDefined();
+    expect(descriptor?.rbac?.permission).toBe("workflow:restore");
+  });
+
+  it("resolves the id rather than gating on a slug", () => {
+    // can() matches resource grants by exact id, so passing a slug through
+    // would produce a decision about a resource that does not exist.
+    expect(typeof restoreWorkflowVersionTool.permission?.resolveResourceId).toBe("function");
+    expect(restoreWorkflowVersionTool.permission?.resourceIdArg).toBeUndefined();
+  });
+
+  describe("resolveResourceId", () => {
+    const resolve = restoreWorkflowVersionTool.permission?.resolveResourceId;
+    const dbReturning = (rows: Array<{ id: string }>) =>
+      ({
+        db: {
+          select: () => ({
+            from: () => ({ where: () => ({ limit: async () => rows }) }),
+          }),
+        },
+        tenant_id: "t1",
+      }) as unknown as ToolContext;
+
+    it("uses workflow_id verbatim when present (no lookup)", async () => {
+      const ctx = {
+        db: {
+          select: () => {
+            throw new Error("must not be called");
+          },
+        },
+        tenant_id: "t1",
+      } as unknown as ToolContext;
+      expect(await resolve?.(ctx, { workflow_id: "wf-uuid-1", version: 1 })).toBe("wf-uuid-1");
+    });
+
+    it("resolves slug → workflow id", async () => {
+      expect(
+        await resolve?.(dbReturning([{ id: "wf-uuid-2" }]), { slug: "invoice-sync", version: 1 }),
+      ).toBe("wf-uuid-2");
+    });
+
+    it("returns null for an unknown slug so the gate defers to workflow_not_found", async () => {
+      // Deferring matters: a permission_denied here would misreport a typo as
+      // an authorization problem.
+      expect(await resolve?.(dbReturning([]), { slug: "ghost", version: 1 })).toBeNull();
+    });
+
+    it("returns null when neither identifier is supplied", async () => {
+      const ctx = { tenant_id: "t1" } as unknown as ToolContext;
+      expect(await resolve?.(ctx, { version: 1 })).toBeNull();
+    });
   });
 });
 

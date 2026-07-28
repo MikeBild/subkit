@@ -23,6 +23,7 @@ flowchart TD
 | Doc | What it covers |
 |---|---|
 | [quickstart.md](quickstart.md) | Get authenticated and open your first authoring conversation in about 5 minutes. |
+| [choosing-your-surface.md](choosing-your-surface.md) | Which door for which job — changing a definition versus running one, with seven worked examples. |
 | [coding-agents.md](coding-agents.md) | Ground Claude Code / Codex in your team's knowledge: connect, import your wiki with a domain tag, grounded sessions, review loop. |
 | [repl-tour.md](repl-tour.md) | Author connectors and workflows by conversation in the `sk` REPL — the approve-to-commit loop, slash commands, headless `-p`. |
 | [authoring-workflows.md](authoring-workflows.md) | The AI authoring loop, the human approval gate, probe/preview, and stage-aware prompting. |

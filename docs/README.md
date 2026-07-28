@@ -89,6 +89,7 @@ deployment — index first, then fetch just the pages they need.
 | [workflows.md](concepts/workflows.md) | The governed, version-bound execution engine: Workflow DAGs, Step types, Execution records, Schedules, and drift-assisted repair. |
 | [knowledge-and-skills.md](concepts/knowledge-and-skills.md) | How organization-specific context compounds: Skills, Knowledge Sources, context assembly, Discovery. |
 | [governance-and-audit.md](concepts/governance-and-audit.md) | Multi-tenancy, the append-only audit trail, what its guarantee covers, and conversational secret hygiene. |
+| [reversibility-and-trust-domains.md](concepts/reversibility-and-trust-domains.md) | Reversibility × runtime judgment, why authoring and execution are different trust domains, and the readable-artefact test. |
 
 ---
 
@@ -99,6 +100,7 @@ deployment — index first, then fetch just the pages they need.
 | [quickstart.md](authors/quickstart.md) | You use sk through the CLI, chat, or an MCP client. Authenticated, first conversation open. 5 minutes. |
 | [coding-agents.md](authors/coding-agents.md) | You use Claude Code, Codex, Cursor, Claude Desktop, claude.ai, or ChatGPT: connect it, import your wiki with a domain tag, and get grounded sessions + a review loop. 10 minutes. |
 | [repl-tour.md](authors/repl-tour.md) | Author connectors and workflows by conversation in the `sk` REPL — the approve-to-commit loop, slash commands, headless `-p`. |
+| [choosing-your-surface.md](authors/choosing-your-surface.md) | Which door for which job — changing a definition versus running one, with seven worked examples. |
 | [authoring-workflows.md](authors/authoring-workflows.md) | The AI authoring loop, the human approval gate, probe/preview, and stage-aware prompting. |
 | [recipes.md](authors/recipes.md) | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
 | [custom-skills.md](authors/custom-skills.md) | Author, scope, and promote Skills that encode your conventions. |
