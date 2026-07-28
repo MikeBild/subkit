@@ -44,9 +44,9 @@ An unchanged definition does not rotate a version.
 
 ### 2. "Roll back to the previous version."
 
-**Either door, but know what you need.** A browser client *can* reach version restore — but the call needs the `workflow:restore` permission, and a key without it is refused at the gate. A session that runs into that refusal tends to propose detours rather than say "I am not allowed to do this."
+**Wrong door — browser chat.** Version restore is a tenant write, and the authoring surface publishes none of those except running a workflow. The tool is not in the client's catalogue at all, so the assistant cannot see it — and tends to propose detours rather than say "I cannot reach that."
 
-**The terminal is still the better door**, because restoring safely means reading the history first:
+**Right door — your terminal**, where restoring safely also means reading the history first:
 
 ```bash
 sk workflows history <id>
@@ -97,15 +97,14 @@ The last one is the most expensive, because it is the one you notice last.
 
 ## What a browser client cannot do — and why that is deliberate
 
-The boundary is narrower than "MCP is read-only", and worth stating precisely. A browser client can run workflows, read almost everything, restore a version, and rename a workflow. What it cannot do is **author a definition**:
+A browser client connects in **authoring mode**, which publishes the conversation tools, tenant reads, and exactly one write: running a workflow. Concretely:
 
-- **The step-level editor is not in the catalogue** — in any mode. `edit_workflow_patch`, `save_workflow_draft`, `dry_run_workflow`, and `validate_draft` are omitted from the tool list, and calling one directly is refused rather than silently failing. They are driven by sk's own authoring loop inside a conversation, never by the external client.
+- **No tenant writes reach the catalogue.** `restore_workflow_version` and `update_workflow` are not listed, so the assistant cannot call them — asking returns "no tool named that is available on this surface." `run_workflow` is the deliberate exception: it runs a workflow rather than mutating a definition.
+- **The step-level editors are not in the catalogue either** — in any mode, including admin. `edit_workflow_patch`, `save_workflow_draft`, `dry_run_workflow`, and `validate_draft` are omitted from the tool list, and calling one directly is refused rather than silently failing. They are driven by sk's own authoring loop inside a conversation, never by the external client.
 - **No tool accepts a full workflow definition.** There is no MCP equivalent of `PUT /v1/workflows/{id}`.
-- **`update_workflow` changes metadata only** — name, description, lifecycle. It refuses outright when the draft has uncommitted step edits, rather than reporting success while those edits stay unsaved.
+- **A broader credential does not widen this.** Even a wildcard scope resolves to authoring, and authoring withholds tenant writes unconditionally — no key changes that. The admin surface is a separate, explicitly requested scope.
 
-So the writes a browser client *can* make are the ones that name or restore a definition, never the ones that compose one. Every step edit routes through the authoring conversation, where a model turns your sentence into the patch.
-
-That is a deliberate boundary, not an oversight: a definition edit should pass through something a person can read. Mechanics in [Input Surfaces → MCP Integration](../developers/input-surfaces.md#mcp-integration); the reasoning in [Reversibility & Trust Domains](../concepts/reversibility-and-trust-domains.md).
+So every definition edit over MCP routes through the authoring conversation, where a model turns your sentence into the patch. That is a deliberate boundary, not an oversight: a definition edit should pass through something a person can read. Mechanics in [Input Surfaces → MCP Integration](../developers/input-surfaces.md#mcp-integration); the reasoning in [Reversibility & Trust Domains](../concepts/reversibility-and-trust-domains.md).
 
 ## Green is not the same as correct
 

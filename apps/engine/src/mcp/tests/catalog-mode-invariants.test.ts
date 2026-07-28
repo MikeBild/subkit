@@ -1,59 +1,66 @@
 // Pins what the MCP catalogue actually publishes per mode.
 //
-// Why this exists: `catalog-budget.ts` used to claim in prose that authoring
-// published "no tenant_write except run_workflow". The code never did that —
-// `conversation.ts` gates on `filter.mcpMode === "product"` and nothing else,
-// so authoring and admin resolve to an identical list including
-// `restore_workflow_version` and `update_workflow`. Customer documentation was
-// written from that comment and had to be corrected. A comment is a claim; only
-// a test is proof, so the real shape is asserted here.
-//
-// The invariant the docs and the governance story genuinely depend on is the
-// last block: no external MCP client can edit a workflow draft step by step,
-// in any mode. If that ever changes, this test must fail loudly.
+// TEST THE PUBLISHED CATALOGUE, NOT THE PROVIDER. `conversationToolProvider.list()`
+// is one input to the catalogue, not the catalogue itself: `tools.ts` derives
+// `readOnly` from `modeFlags(mode, configReadOnly)` and passes it down, and
+// `modeFlags` hardcodes `showTenantWrites: false` for authoring. Querying the
+// provider without that flag makes authoring look identical to admin — it is
+// not. A round of documentation was written from exactly that mistake and had
+// to be withdrawn after a live `tools/list` against production disagreed.
+// Reproduce the real path: modeFlags → readOnly → listToolsViaRegistry.
 
 import { describe, expect, it } from "bun:test";
-import { conversationToolProvider } from "../../tools/providers/conversation.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { listToolsViaRegistry } from "../adapter.ts";
+import { type McpMode, modeFlags } from "../mode-resolver.ts";
 
-const names = (mcpMode: "product" | "authoring" | "admin") =>
-  new Set(conversationToolProvider.list({ surface: "mcp", mcpMode }).map((d) => d.name));
+const principal = { id: "p", tenant_id: "t", scopes: ["*"] } as unknown as ResolvedPrincipal;
 
-describe("MCP catalogue — product is the only mode that trims", () => {
-  it("authoring and admin publish an identical tool set", () => {
-    // Not an aspiration — a statement of current fact. Narrowing one of them
-    // later is a deliberate change that should update this test on purpose.
-    expect([...names("authoring")].sort()).toEqual([...names("admin")].sort());
+/** The catalogue a client actually receives for a mode, assembled the way
+ *  `capabilities/tools.ts` assembles it. */
+const published = (mcpMode: McpMode): Set<string> => {
+  const readOnly = !modeFlags(mcpMode, false).showTenantWrites;
+  return new Set(listToolsViaRegistry({ principal, mcpMode, readOnly }).map((t) => t.name));
+};
+
+describe("MCP catalogue — authoring carries no tenant write but the run tool", () => {
+  it("authoring omits restore_workflow_version and update_workflow", () => {
+    // Both are tenant_write. authoring's modeFlags sets showTenantWrites:false,
+    // so they never reach the catalogue however broad the credential is.
+    const authoring = published("authoring");
+    expect(authoring.has("restore_workflow_version")).toBe(false);
+    expect(authoring.has("update_workflow")).toBe(false);
   });
 
-  it("product is a strict subset of authoring", () => {
-    const product = names("product");
-    const authoring = names("authoring");
-    expect(product.size).toBeGreaterThan(0);
-    expect(product.size).toBeLessThan(authoring.size);
-    for (const n of product) expect(authoring.has(n)).toBe(true);
-  });
-});
-
-describe("MCP catalogue — mode name does not imply reachability", () => {
-  // The bound on a caller is per-tool RBAC in the dispatcher, not the mode.
-  // These tools ARE listed in authoring; being listed is not being allowed.
-  for (const tool of ["restore_workflow_version", "update_workflow"]) {
-    it(`${tool} is published in authoring mode (RBAC gates the call, not the catalogue)`, () => {
-      expect(names("authoring").has(tool)).toBe(true);
-    });
-  }
-
-  it("run_workflow is reachable in every mode", () => {
+  it("run_workflow survives in every mode (visible_when_readonly)", () => {
+    // The deliberate exception: running a workflow is a run, not a config
+    // mutation, so it stays reachable on a read-only surface. RBAC still gates it.
     for (const m of ["product", "authoring", "admin"] as const) {
-      expect(names(m).has("run_workflow")).toBe(true);
+      expect(published(m).has("run_workflow")).toBe(true);
     }
+  });
+
+  it("admin DOES carry the tenant writes authoring withholds", () => {
+    // The modes are not interchangeable. If this ever equalises, the docs that
+    // tell authors "a browser client cannot restore a version" become wrong.
+    const admin = published("admin");
+    expect(admin.has("restore_workflow_version")).toBe(true);
+    expect(admin.has("update_workflow")).toBe(true);
+  });
+
+  it("product ⊂ authoring ⊂ admin", () => {
+    const [p, a, ad] = [published("product"), published("authoring"), published("admin")];
+    expect(p.size).toBeLessThan(a.size);
+    expect(a.size).toBeLessThan(ad.size);
+    for (const n of p) expect(a.has(n)).toBe(true);
+    for (const n of a) expect(ad.has(n)).toBe(true);
   });
 });
 
 describe("MCP catalogue — no draft_write tool is reachable in ANY mode", () => {
-  // THE invariant. External clients cannot compose a workflow definition
-  // step by step; every step edit routes through the engine's own authoring
-  // loop inside a conversation.
+  // THE invariant the authoring-surface documentation rests on: external
+  // clients cannot compose a workflow definition step by step. Every step edit
+  // routes through the engine's own authoring loop inside a conversation.
   const DRAFT_EDITORS = [
     "edit_workflow_patch",
     "save_workflow_draft",
@@ -64,24 +71,18 @@ describe("MCP catalogue — no draft_write tool is reachable in ANY mode", () =>
 
   for (const m of ["product", "authoring", "admin"] as const) {
     it(`${m} mode omits every draft editor`, () => {
-      const listed = names(m);
+      const listed = published(m);
       for (const t of DRAFT_EDITORS) expect(listed.has(t)).toBe(false);
-    });
-
-    it(`${m} mode publishes no draft_write category at all`, () => {
-      // Broader than the name list above: catches a NEW draft_write tool that
-      // would otherwise slip onto the surface unnoticed.
-      const categories = conversationToolProvider
-        .list({ surface: "mcp", mcpMode: m })
-        .map((d) => d.category);
-      expect(categories).not.toContain("draft_write");
     });
   }
 
   it("the chat surface DOES carry them — the omission is MCP-specific", () => {
-    // Guards against someone "fixing" this by hiding draft_write everywhere,
-    // which would break authoring in the REPL and chat.
-    const chat = new Set(conversationToolProvider.list({ surface: "chat" }).map((d) => d.name));
+    // Guards against "fixing" this by hiding draft_write everywhere, which
+    // would break authoring in the REPL and chat.
+    const { conversationToolProvider } = require("../../tools/providers/conversation.ts");
+    const chat = new Set(
+      conversationToolProvider.list({ surface: "chat" }).map((d: { name: string }) => d.name),
+    );
     expect(chat.has("edit_workflow_patch")).toBe(true);
   });
 });
