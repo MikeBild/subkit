@@ -44,6 +44,12 @@
     },
     {
       "audience": "concepts",
+      "path": "docs/concepts/reversibility-and-trust-domains.md",
+      "title": "Reversibility & Trust Domains",
+      "summary": "Give each piece of work the level of control it actually needs — no ceremony where mistakes are cheap, no blind spots where they are not."
+    },
+    {
+      "audience": "concepts",
       "path": "docs/concepts/workflows.md",
       "title": "Workflow Execution",
       "summary": "An approved workflow takes the same path every time — a fixed control flow, a permanent record, fully audited."
@@ -119,6 +125,12 @@
       "path": "docs/authors/authoring-workflows.md",
       "title": "AI-Assisted Authoring",
       "summary": "Describe the outcome."
+    },
+    {
+      "audience": "authors",
+      "path": "docs/authors/choosing-your-surface.md",
+      "title": "Choosing your surface",
+      "summary": "Do the work where it actually goes faster."
     },
     {
       "audience": "authors",

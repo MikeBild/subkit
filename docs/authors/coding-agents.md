@@ -25,16 +25,22 @@ Two channels do different jobs. **MCP** lets a session search and read your
 knowledge; the **briefing hook** tells it your rules and what knowledge exists
 before it starts. Not every client supports both:
 
-| Client | MCP (lookup) | Briefing hook | Setup |
-|---|---|---|---|
-| **Claude Code** | yes | yes | [below](#claude-code) |
-| **Codex** | yes | yes (feature-gated) | [below](#codex) |
-| **Cursor**, **Claude Desktop** | yes | no | [below](#cursor-claude-desktop-and-other-mcp-clients) |
-| **claude.ai**, **ChatGPT** | yes (OAuth) | no | [below](#claudeai-and-chatgpt-oauth) |
+| Client | MCP (lookup) | Briefing hook | Writes workflow definitions | Setup |
+|---|---|---|---|---|
+| **Claude Code** | yes | yes | yes — via the `sk` CLI | [below](#claude-code) |
+| **Codex** | yes | yes (feature-gated) | yes — via the `sk` CLI | [below](#codex) |
+| **Cursor**, **Claude Desktop** | yes | no | yes, if it can run `sk` | [below](#cursor-claude-desktop-and-other-mcp-clients) |
+| **claude.ai**, **ChatGPT** | yes (OAuth) | no | **no** — MCP carries no definition writes | [below](#claudeai-and-chatgpt-oauth) |
 
 A client without hooks still gets every tool — it just is not *told* about your
 domain up front, so ask it to search, or put the instruction in the client's own
 rules file (`CLAUDE.md`, `AGENTS.md`, Cursor rules …).
+
+The last column is the one that surprises people. MCP is a lookup and run
+surface: it carries reads and `run_workflow`, not definition writes. A client
+that can run `sk` in a shell edits definitions directly and byte-exactly; a
+browser client has to route every edit through an authoring conversation
+instead. Pick accordingly — see [Choosing your surface](choosing-your-surface.md).
 
 ## Before you start
 

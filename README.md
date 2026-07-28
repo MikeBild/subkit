@@ -10,8 +10,10 @@ re-decided at runtime.
 
 It is open source and built to be run inside an organisation: every workflow is a
 versioned, reviewable artefact, every state change is audited, and a workflow reaches
-production only through a review a human signed off — either an explicit approval, or a
-dry run whose held-back preview they read before it was committed.
+production through a reviewable step — either an explicit approval, or a dry run whose
+held-back preview is returned before it is committed. On an unattended turn, where no
+confirmation can be delivered, a clean dry run commits on its own; the audit row records
+that it did, so the review can happen after the fact rather than not at all.
 
 [![ci](https://github.com/mikebild/subkit/actions/workflows/ci.yml/badge.svg)](https://github.com/mikebild/subkit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -55,9 +57,11 @@ with the [docs index](docs/README.md) and the [glossary](docs/concepts/glossary.
 
 Authoring is a guided pipeline: describe the outcome in plain language and sk builds a
 grounded draft, tests it against a sample payload, applies precise patch edits, and commits
-once the review lands — either an explicit approval, or a clean dry run whose preview the
-author read. Starting an unattended trigger (a schedule, a public webhook) always takes a
-separate decision on top.
+once the review lands — either an explicit approval, or a clean dry run whose preview is
+returned to the author. On an unattended turn the clean dry run commits without waiting,
+because a confirmation there would never be surfaced; read the preview before relying on
+what it committed. Starting an unattended trigger (a schedule, a public webhook) always
+takes a separate decision on top.
 The [authoring guide](docs/authors/authoring-workflows.md) walks the full loop, including
 throwaway playground drafts that never persist and partial-accept of individual edits. For the
 governed MCP surface those tools expose — session progress, confirmation gates, and
