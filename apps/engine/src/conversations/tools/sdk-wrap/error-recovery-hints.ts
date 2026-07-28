@@ -30,6 +30,15 @@ import {
  * the cap surfaces only the generic "ask the user" hint.
  */
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  // restore_workflow_version — the recovery tool. Its own failures must not
+  // dead-end the recovery: each one names the read that resolves it.
+  workflow_not_identified:
+    "name the workflow you mean — pass `workflow_id` or `slug`. Use find_workflow / list_workflows to get it; do not guess an id.",
+  // `workflow_not_found` is deliberately NOT re-declared here — the existing
+  // entry further down already says the right thing, and a second key with the
+  // same name would have been silently overwritten by it.
+  workflow_version_not_found:
+    "that workflow has no such version. Read its history with get_workflow and name a version that exists — never probe version numbers until one works.",
   // The abstention named a tool that IS in this turn's palette. The recovery
   // is never "abstain harder" — it is to use the tool, or to report what it
   // actually returned when it was called.

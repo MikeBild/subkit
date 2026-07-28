@@ -346,4 +346,64 @@ describe("resolveToolMode — yolo mode", () => {
       }),
     ).toBe("confirm_before_execution");
   });
+
+  it("replacing an EXISTING workflow is dangerous — creating one is not", () => {
+    // Production, two calls four seconds apart, both under permission_mode
+    // "auto": the first hit `slug_conflict_with_live_workflow`, whose recovery
+    // text names the argument that lifts the block and says to use it "after
+    // the user confirms". The model supplied the argument and skipped the
+    // confirming, overwriting a verified 14-step workflow. Nothing gated it,
+    // because `auto` short-circuits every tool that is not *dangerous* and this
+    // one never declared itself dangerous.
+    const overwrite = decideToolMode({
+      tool: "save_workflow_draft",
+      category: "tenant_write",
+      input: { target_workflow_id: "5b873c3d-b9ce-465c-81a2-7a5a4e597365" },
+      permission_mode: "auto",
+      overrides: {},
+    });
+    expect(overwrite.mode).toBe("confirm_before_execution");
+    // The RULE matters as much as the mode. The MCP-origin collapse
+    // (`MCP_TURN_COLLAPSIBLE_WRITE_TOOLS`) drops the pause for confirms that
+    // came from a STATIC default — and save_workflow_draft is in that set. A
+    // danger flag alone resolves to `tool_default` and would therefore still
+    // collapse on exactly the surface this incident came from. Only a
+    // `computed_from_input` confirm survives it.
+    expect(overwrite.rule).toBe("computed_from_input");
+
+    // `force_commit` overrules a preview that was NOT green — same class.
+    const forced = decideToolMode({
+      tool: "save_workflow_draft",
+      category: "tenant_write",
+      input: { force_commit: true },
+      permission_mode: "auto",
+      overrides: {},
+    });
+    expect(forced.mode).toBe("confirm_before_execution");
+    expect(forced.rule).toBe("computed_from_input");
+
+    // The counter-proof matters as much as the guard: an ordinary save — a new
+    // workflow, or an in-place update of the conversation's own bound draft —
+    // carries neither argument and must stay frictionless. A gate that stops
+    // everything is not an improvement.
+    const ordinary = decideToolMode({
+      tool: "save_workflow_draft",
+      category: "tenant_write",
+      input: { workflow_slug: "brand-new-thing" },
+      permission_mode: "auto",
+      overrides: {},
+    });
+    expect(ordinary.mode).toBe("no_confirm");
+
+    // `yolo` is an explicitly armed, expiring, tenant-policy-gated override —
+    // it keeps clearing this, exactly as it does for every other dangerous tool.
+    const yolo = decideToolMode({
+      tool: "save_workflow_draft",
+      category: "tenant_write",
+      input: { target_workflow_id: "5b873c3d-b9ce-465c-81a2-7a5a4e597365" },
+      permission_mode: "yolo",
+      overrides: {},
+    });
+    expect(yolo.mode).toBe("no_confirm");
+  });
 });

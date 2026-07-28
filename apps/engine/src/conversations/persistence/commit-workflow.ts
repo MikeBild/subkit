@@ -936,8 +936,17 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
               attempted_slug: def.slug,
               conflict: { workflow_id: conflict.id, slug: conflict.slug, name: conflict.name },
               recovery: {
+                // Do NOT name the argument that lifts this block. The previous
+                // wording ("call save_workflow_draft again with
+                // target_workflow_id=…, after the user confirms") handed the
+                // model the exact key and trusted it to have asked first; in
+                // production it supplied the key four seconds later and
+                // overwrote a verified workflow. Overwriting is now a gated,
+                // human-approved action (see `save_workflow_draft`'s
+                // `computeDangerFromInput`), so the honest instruction is what
+                // to ASK, not what to send.
                 overwrite:
-                  "After the user confirms in chat, call save_workflow_draft again with target_workflow_id=<conflict.workflow_id>",
+                  "Replacing that workflow needs a person to approve it. Tell the user which workflow would be replaced and ask whether they want that — do not decide it yourself.",
                 rename:
                   "Otherwise rename the draft (edit_workflow_patch / author_workflow with a fresh slug) and re-validate before committing.",
               },
