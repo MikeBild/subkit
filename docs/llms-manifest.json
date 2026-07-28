@@ -46,7 +46,7 @@
       "audience": "concepts",
       "path": "docs/concepts/workflows.md",
       "title": "Workflow Execution",
-      "summary": "Approved workflows run the same way every time — deterministic, immutable, fully audited."
+      "summary": "An approved workflow takes the same path every time — a fixed control flow, a permanent record, fully audited."
     },
     {
       "audience": "operators",

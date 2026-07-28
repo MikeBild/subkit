@@ -10,10 +10,16 @@ import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, getDb } from "../db/client.ts";
-import { executionFixtures, patchCandidates } from "../db/schema/index.ts";
+import {
+  executionFixtures,
+  patchCandidates,
+  workflows,
+  workflowVersions,
+} from "../db/schema/index.ts";
 import { type PatchProposal, PatchProposalSchema } from "../llm/flows/repair.ts";
-import { applyPatchToStep, runFixtureDryRun } from "./fixture-runner.ts";
-import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
+import { runFixtureDryRun } from "./fixture-runner.ts";
+import { applyPatchToWorkflowDag } from "./patch-apply.ts";
+import { buildDryRunStep, loadStepSnapshot, loadWorkflowStepKey } from "./step-snapshot.ts";
 import type { DryRunStep } from "./types.ts";
 
 interface CandidateDiffEnvelope {
@@ -37,17 +43,48 @@ function readCandidateDiff(diff: unknown): CandidateDiffEnvelope {
   };
 }
 
-/** Deterministic flat-object diff over the DryRunStep shape. Pure —
- *  unit-tested directly. */
-export function diffStepPaths(before: DryRunStep, after: DryRunStep): string[] {
-  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-  const changed: string[] = [];
-  for (const key of [...keys].sort()) {
-    const b = (before as unknown as Record<string, unknown>)[key];
-    const a = (after as unknown as Record<string, unknown>)[key];
-    if (JSON.stringify(b ?? null) !== JSON.stringify(a ?? null)) changed.push(key);
-  }
-  return changed;
+/**
+ * Project a persisted DAG step down to the projection slots the review surface
+ * renders. The wire shape stays `{id, kind, data_selector?, expression?}` — a
+ * step definition carries connector ids, headers and bodies the operator does
+ * not need in a before/after diff.
+ */
+function projectStep(step: Record<string, unknown>): DryRunStep | null {
+  const id = typeof step.id === "string" ? step.id : null;
+  const kind = step.kind === "transform" ? "transform" : step.kind === "request" ? "request" : null;
+  if (!id || !kind) return null;
+  const projected: DryRunStep = { id, kind };
+  if (typeof step.data_selector === "string") projected.data_selector = step.data_selector;
+  if (typeof step.expression === "string") projected.expression = step.expression;
+  return projected;
+}
+
+/**
+ * Load the step the patch targets out of the workflow's CURRENT version —
+ * the same definition the apply path rewrites. Reading the failing
+ * execution-step row instead would show the operator a step that carries no
+ * `data_selector` at all, so the diff would promise a change the apply path
+ * never makes.
+ */
+async function loadTargetStep(
+  tenant_id: string,
+  workflow_id: string,
+  execution_step_id: string | null,
+  db: Db,
+): Promise<{ dag: unknown; step_key: string } | null> {
+  if (!execution_step_id) return null;
+  const step_key = await loadWorkflowStepKey(tenant_id, execution_step_id, db);
+  if (!step_key) return null;
+
+  const rows = await db
+    .select({ dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .innerJoin(workflows, eq(workflows.current_version_id, workflowVersions.id))
+    .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)))
+    .limit(1);
+  const dag = rows[0]?.dag;
+  if (dag === undefined) return null;
+  return { dag, step_key };
 }
 
 export interface PatchCandidatePreview {
@@ -80,14 +117,25 @@ export async function previewPatchCandidate(
   if (!row) return null;
   const envelope = readCandidateDiff(row.diff);
 
+  // Before/after come from the workflow definition and the SAME pure rewrite
+  // the apply path runs, so what the operator approves is what goes live.
   let before_step: DryRunStep | null = null;
   let after_step: DryRunStep | null = null;
-  if (envelope.step_id) {
-    const snapshot = await loadStepSnapshot(tenant_id, envelope.step_id, db);
-    if (snapshot) before_step = buildDryRunStep(snapshot);
-  }
-  if (before_step && envelope.proposal) {
-    after_step = applyPatchToStep(before_step, envelope.proposal);
+  let changed_paths: string[] = [];
+  const target = await loadTargetStep(tenant_id, row.workflow_id, envelope.step_id, db);
+  if (target) {
+    const steps = Array.isArray((target.dag as Record<string, unknown>)?.steps)
+      ? ((target.dag as Record<string, unknown>).steps as Record<string, unknown>[])
+      : [];
+    const current = steps.find((s) => s && typeof s === "object" && s.id === target.step_key);
+    if (current) before_step = projectStep(current);
+    if (before_step && envelope.proposal) {
+      const patched = applyPatchToWorkflowDag(target.dag, target.step_key, envelope.proposal);
+      if (patched.ok) {
+        after_step = projectStep(patched.after);
+        changed_paths = patched.changed_paths;
+      }
+    }
   }
 
   return {
@@ -101,7 +149,7 @@ export async function previewPatchCandidate(
     proposal_dry_run: envelope.dry_run,
     before_step,
     after_step,
-    changed_paths: before_step && after_step ? diffStepPaths(before_step, after_step) : [],
+    changed_paths,
   };
 }
 

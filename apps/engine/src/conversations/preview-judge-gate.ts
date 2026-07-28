@@ -19,12 +19,13 @@
 //   - Circuit-breaker = blocks-since-last-commit. The block counter is
 //     MONOTONIC per-draft (NOT per-fingerprint): it increments on every
 //     block regardless of whether the model edited the definition, and
-//     resets only on commit. After JUDGE_BREAKER_MAX_BLOCKS the verdict
-//     degrades to advisory (attached + logged, non-blocking → the
-//     auto-commit proceeds), so a model churning edits still converges.
-//   - Terminal done-signal. At/over the cap (the block that would
-//     degrade to advisory) the result carries an explicit EXIT
-//     instruction: stop editing, tell the user what's missing, ask how
+//     resets only on commit. The cap breaks the edit→dry-run LOOP; it does
+//     NOT release the quality gate — at and over `JUDGE_BREAKER_MAX_BLOCKS`
+//     the preview stays HELD (`judgeBlocked` remains true, see below), so an
+//     unsatisfied preview never auto-commits just because the model kept
+//     trying.
+//   - Terminal done-signal. At/over the cap the result carries an explicit
+//     EXIT instruction: stop editing, tell the user what's missing, ask how
 //     to proceed — instead of yet another silent requires_repair.
 
 import { logger } from "../logging/logger.ts";
@@ -49,10 +50,9 @@ export interface PreviewJudgeGateResult {
   /** The judge_goal_mismatch warning to append when blocked. */
   warning: { step_key: null; code: "judge_goal_mismatch"; message: string } | null;
   /**
-   * Terminal done-signal (P3). Present when the judge would block but
-   * the breaker is at/over the cap — the gate degrades the verdict to
-   * advisory (auto-commit proceeds) and surfaces this EXIT guidance so
-   * the model stops editing and asks the user instead of looping.
+   * Terminal done-signal. Present when the judge would block and the breaker
+   * is at/over the cap: the preview stays HELD and this EXIT guidance is
+   * surfaced so the model stops editing and asks the user instead of looping.
    */
   doneSignal: {
     attempts: number;
@@ -164,8 +164,8 @@ export async function runPreviewJudgeGate(p: {
   }
 
   // partial / failed. The breaker counts blocks since the last commit;
-  // the (priorBlocks)-th block is the one at the cap that degrades to
-  // advisory and emits the terminal done-signal.
+  // the (priorBlocks)-th block is the one at the cap that stops inviting
+  // another edit and emits the terminal done-signal. The preview stays held.
   if (priorBlocks >= JUDGE_BREAKER_MAX_BLOCKS) {
     const attempts = priorBlocks + 1;
     // Count holds AT the cap. The cap is hit once; every subsequent re-run

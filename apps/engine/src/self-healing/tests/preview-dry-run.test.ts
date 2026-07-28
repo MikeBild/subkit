@@ -16,7 +16,8 @@ import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { patchCandidates, workflowAutohealPolicies } from "../../db/schema/index.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
-import { diffStepPaths, dryRunPatchCandidate, previewPatchCandidate } from "../candidate-review.ts";
+import { dryRunPatchCandidate, previewPatchCandidate } from "../candidate-review.ts";
+import { diffStepPaths } from "../patch-apply.ts";
 import { runSelfHealingLoop } from "../service.ts";
 import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
 
@@ -83,11 +84,13 @@ describe("previewPatchCandidate", () => {
     expect(preview!.status).toBe("proposed");
     expect(preview!.proposal).not.toBeNull();
     expect(typeof preview!.drift_summary).toBe("string");
-    expect(preview!.before_step).not.toBeNull();
-    expect(preview!.after_step).not.toBeNull();
-    // The mock provider's update_field_path patch rewrites the
-    // projection — the diff must surface at least one changed path.
-    expect(preview!.changed_paths.length).toBeGreaterThan(0);
+    // `before_step` is the step as it stands in the workflow's CURRENT
+    // version — not the failing execution-step row, which carries no
+    // projection at all. Reading the definition is what makes the preview
+    // the same diff the apply path writes.
+    expect(preview!.before_step?.data_selector).toBe("data.id");
+    expect(preview!.after_step?.data_selector).toBe("data.result.id");
+    expect(preview!.changed_paths).toEqual(["data_selector"]);
   });
 
   test("wrong tenant sees null", async () => {

@@ -2,7 +2,7 @@
 
 > **Audience:** Engineers integrating the runtime, operators monitoring executions
 
-**Approved workflows run the same way every time — deterministic, immutable, fully audited.** That is what lets an enterprise put revenue operations, compliance reporting, and back-office work on autopilot: every run is permission-checked, recorded, versioned, and replayable. There is no AI in the execution path. AI authors; the engine runs.
+**An approved workflow takes the same path every time — a fixed control flow, a permanent record, fully audited.** That is what lets an enterprise put revenue operations, compliance reporting, and back-office work on autopilot: every run is permission-checked, recorded, versioned, and replayable. No model decides what an approved workflow does. AI authors; the engine runs.
 
 This page covers the workflow lifecycle, the execution model, the eight Step kinds, triggers, versioning and rollback, scheduling, self-healing, and the observability surface operators rely on.
 
@@ -41,7 +41,9 @@ The critic is **off by default** and enabled through the `llm.critic.*` settings
 
 ## The Execution Model
 
-Execution in sk is deterministic. A Workflow is a DAG of Steps; the execution engine walks that DAG in order, following branching and parallel directives exactly as defined. The engine does not re-interpret, adapt, or infer at runtime. There is no AI in the execution path.
+The **control flow** of an Execution is deterministic. A Workflow is a DAG of Steps; the execution engine walks that DAG in order, following branching and parallel directives exactly as defined. The engine does not re-interpret, adapt, or infer at runtime: it never calls a model to decide what runs next, and committed execution never queries Skills or Knowledge Sources.
+
+What a Step *returns* is a different matter — a `request` Step calls the outside world, and the outside world is not deterministic. That includes a Step an author points at a model provider: sk supports this deliberately (see [Calling a model from a Step](#calling-a-model-from-a-step)), and such a Workflow does not produce identical output on every run. The guarantee is that no model decides what the Workflow *does*.
 
 There is a single runtime entry point for manual execution: `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all flow through this same route and the same execution engine. Inline runs complete synchronously by default. Queued background execution is explicit and reserved for persisted workflows, scheduler fires, webhook fan-out, and other detached cases.
 
@@ -49,9 +51,18 @@ All execution surfaces normalize workflow input through the same boundary before
 
 Provider failures on the authoring side do not leak through as generic internal errors anymore. Usage-limit and rate-limit failures are surfaced as typed provider-limited responses, context-window failures are surfaced as context-too-large responses, and temporary provider outages are surfaced as typed provider-unavailable responses. The execution engine remains deterministic; these envelopes only describe authoring-time model failures.
 
-This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know it will run the same way every time. Reproducibility and auditability require determinism. The moment execution involves inference, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
+This is a deliberate architectural decision, not a limitation. AI is for authoring — exploring, proposing, and revising. Once a Workflow is approved and committed, the enterprise needs to know which steps will run, in which order, against which systems. The moment the *engine* infers that, the audit trail becomes "the AI decided" rather than "the workflow ran as specified."
 
-An Execution is an immutable record. It captures the specific Workflow version that ran, who or what triggered it, the inputs and outputs of every Step, timing at every boundary, and the final status. It cannot be modified after it completes. If something goes wrong, the complete record of what happened is preserved exactly as it occurred.
+An Execution is a permanent record. It captures the specific Workflow version that ran, who or what triggered it, the inputs and outputs of every Step, timing at every boundary, and the final status. sk never modifies it after it completes. If something goes wrong, the complete record of what happened is preserved exactly as it occurred.
+
+## Calling a model from a Step
+
+A `request` Step may target a model provider like any other HTTP endpoint, and sk supports this on purpose: it ships a connector template and recipes for it. This is how a Workflow does work that needs judgement — classifying, extracting, summarising — inside an otherwise fixed control flow.
+
+Two things follow, and both are the point rather than a caveat:
+
+- **The run is no longer reproducible.** The same input can yield different output. The control flow is still fixed; the content is not. A Workflow that must produce byte-identical results should not contain such a Step.
+- **The spend is bounded, not unbounded.** Declare `max_llm_tokens_per_run` on the Workflow. The engine recognises calls to known provider hosts, meters prompt + completion tokens across the run, and refuses to dispatch a call whose pre-call estimate would exceed the cap — before the provider is charged. Without a cap the tokens are still counted and land on the execution's audit record; they are simply not bounded. The recipe linter marks such Workflows `budgeted-llm` and requires the cap.
 
 ---
 
@@ -315,7 +326,7 @@ Each Execution emits structured events at every Step boundary. Operators can tai
 
 Prometheus metrics cover the dimensions operators need to monitor platform health: execution duration, Step latency, error rates, retry counts, and queue depth, all scoped per tenant. These metrics are the basis for dashboards, alerts, and capacity planning. Connection pools export their own counters (`pg_pool_*`) so operators can spot saturation before it shows up as step failures. The LLM context-assembly path additionally emits `llm_context_assembled_total{flow,request_source}`, `llm_context_dropped_sections_total{flow,section}`, and a histogram `llm_context_total_tokens` so trimmer pressure surfaces alongside model cost.
 
-The Audit Log records every execution trigger, every Step completion, every error, and every approval decision — with full context for forensic investigation. The audit trail is immutable: it cannot be modified or deleted, and it persists independently of execution records.
+The Audit Log records every execution trigger, every Step completion, every error, and every approval decision — with full context for forensic investigation. The trail is append-only: sk exposes no path that modifies or deletes an entry, and it persists independently of execution records. See the [Audit Log](./governance-and-audit.md#the-audit-trail) for what that guarantee does and does not cover.
 
 ---
 

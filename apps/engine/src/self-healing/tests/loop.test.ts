@@ -34,7 +34,7 @@ import {
 } from "../../queue/handlers/workflow-repair.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { runSelfHealingLoop } from "../service.ts";
-import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
+import { createSelfHealingCtx, SEED_STEP_ID, type SelfHealingTestCtx } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
 
@@ -94,7 +94,15 @@ describe("self-healing/loop — direct call", () => {
     expect(versions.length).toBe(2);
     expect(versions[0]?.version).toBe(2);
     const newDag = (versions[0]!.dag as Record<string, unknown>) ?? {};
-    expect(newDag.__self_healing).toBeTruthy();
+    // The applied patch rewrote the failing step's projection — this is the
+    // whole point of "applied". The annotation is provenance on top of a real
+    // change, never a substitute for one.
+    const steps = newDag.steps as Record<string, unknown>[];
+    expect(steps.find((s) => s.id === SEED_STEP_ID)?.data_selector).toBe("data.result.id");
+    expect(newDag.__self_healing).toMatchObject({
+      step_id: SEED_STEP_ID,
+      changed_paths: ["data_selector"],
+    });
 
     // 4. Audit rows for proposed + auto_applied.
     const audits = await db

@@ -6,7 +6,7 @@
 //
 // Lifted out of `tool-policies.ts` so the policy resolver, the RBAC
 // surface, and any future audit-coverage check can read from a single
-// source. A test in `tests/dangerous-tools-rbac.test.ts` asserts that
+// source. A test in `tests/dangerous-tools-registry.test.ts` asserts that
 // every entry here has a matching `*:write` (or stronger) RBAC
 // permission, so a refactor that adds a new dangerous tool can't slip
 // past without authorisation.

@@ -2,9 +2,9 @@
 
 > **Audience:** Security engineers, compliance reviewers, operators wiring access
 
-**Least-privilege by default, every decision auditable.** No caller reaches a connector or a workflow without passing an explicit permission check, and every allow or deny lands in the immutable audit trail. This page covers the access surface: the pluggable identity chain, the built-in and custom roles, resource grants, and the dynamic policy layer added by Before-Request Hooks.
+**Least-privilege by default, every decision auditable.** No caller reaches a connector or a workflow without passing an explicit permission check, and every allow or deny lands in the append-only audit trail. This page covers the access surface: the pluggable identity chain, the built-in and custom roles, resource grants, and the dynamic policy layer added by Before-Request Hooks.
 
-The structural guarantees around it — multi-tenant isolation, the audit trail, the compliance posture — live in [Governance & Audit](../concepts/governance-and-audit.md).
+The structural properties around it — multi-tenant isolation, the audit trail and what its guarantee covers — live in [Governance & Audit](../concepts/governance-and-audit.md).
 
 ## At a glance
 
@@ -135,7 +135,7 @@ This is intentional: `stats:read` is the operator-tier permission, and "your run
 
 ## Further reading
 
-- [Governance & Audit](../concepts/governance-and-audit.md) — multi-tenancy, the immutable audit trail, the compliance posture, and conversational secret hygiene.
+- [Governance & Audit](../concepts/governance-and-audit.md) — multi-tenancy, the append-only audit trail, what its guarantee covers, and conversational secret hygiene.
 - [Credentials & Keys](./credentials-and-keys.md) — the credential vault, master-key rotation, and release signing.
 - [Scheduling & Hooks](../operators/scheduling-and-hooks.md) — the operator how-to for Before-Request Hooks.
 - [glossary — governance terms](../concepts/glossary.md#group-5-governance) — Audit Log, RBAC, Before-Request Hook, Self-Healing, Patch Candidate.

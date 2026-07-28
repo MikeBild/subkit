@@ -50,9 +50,9 @@ describe("request driver · retry telemetry shape", () => {
     expect(body).toContain("retry_after_header");
   });
 
-  // The per-request timeout classification (2026-06-21 Gmail send outage:
-  // a stalled `POST /messages/send` must be terminal, not retried 5×) is
-  // proven behaviourally — and refactor-robustly — by
-  // `request-timeout-no-retry.test.ts` (a POST that times out hits the
-  // upstream exactly once). No brittle source-text assertion is kept here.
+  // The per-request timeout classification (a stalled `POST /messages/send`
+  // must be terminal, not retried 5×) is proven by
+  // `request-timeout-classify.test.ts`, which asserts the pure classifier
+  // directly — it replaced an earlier behavioural test that proved the same
+  // thing but was flaky. No brittle source-text assertion is kept here.
 });

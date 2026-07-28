@@ -1,8 +1,9 @@
 // Regression guard for thesis T1: the MCP poll surfaces (conversation_get,
 // tasks/result) must return a LEAN turn envelope — no live-streaming replay
 // frames, oversized payloads truncated with a raw_ref pointer, terminal/
-// meaningful frames preserved. Pairs with conversations/tests/verbosity-
-// evidence.test.ts (which measures the BEFORE state on the raw event log).
+// meaningful frames preserved. Pairs with
+// `conversations/tests/verbosity-evidence.test.ts`
+// (which measures the BEFORE state on the raw event log).
 //
 // Run: bun test apps/engine/src/mcp/tests/turn-projection.test.ts
 

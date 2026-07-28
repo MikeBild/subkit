@@ -4,12 +4,13 @@
 
 **Ship audited automation in hours, not sprints — and keep every run governed,
 versioned, and auditable.** A team describes the outcome in plain language; sk turns it into a
-governed, versioned workflow; an operator approves it; the engine runs it
-deterministically against the connectors (the SaaS and apps your team already uses).
+governed, versioned workflow; an operator approves it; the engine runs it against the
+connectors (the SaaS and apps your team already uses) along a control flow that is fixed
+at approval time.
 
-One contract holds throughout: **AI assists with *authoring*; *execution* is fixed
-at approval time and never re-decided at runtime.** Multi-tenancy, RBAC, encrypted
-credentials, and an immutable audit trail apply to every entry point.
+One contract holds throughout: **AI assists with *authoring*; the *control flow* of an
+approved workflow is fixed and never re-decided at runtime.** Multi-tenancy, RBAC,
+encrypted credentials, and an append-only audit trail apply to every entry point.
 
 ---
 
@@ -57,7 +58,7 @@ authoring — but only through operator promotion, never silently.
 flowchart LR
     Author["Author<br/>(NL → draft)"] --> Review["Review<br/>(human)"]
     Review --> Approve["Approve<br/>(version pinned)"]
-    Approve --> Run["Deterministic run<br/>(no LLM)"]
+    Approve --> Run["Fixed control flow<br/>(engine infers nothing)"]
     Run --> Audit["Immutable audit"]
     Audit --> Drift["Drift detection"]
     Drift --> Candidate["Patch / Skill Candidate"]

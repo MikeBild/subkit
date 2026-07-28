@@ -20,12 +20,18 @@ import { auditLog } from "../../db/schema/audit.ts";
 import {
   patchCandidates,
   workflowAutohealPolicies,
+  workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { approvePatchCandidate, rejectPatchCandidate } from "../candidate-decision.ts";
 import { runSelfHealingLoop } from "../service.ts";
-import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
+import {
+  createSelfHealingCtx,
+  resetSeedDag,
+  SEED_STEP_ID,
+  type SelfHealingTestCtx,
+} from "./setup.ts";
 
 let ctx: SelfHealingTestCtx;
 
@@ -49,6 +55,9 @@ async function seedProposedCandidate(): Promise<string> {
   await ctx.testDb.db
     .delete(patchCandidates)
     .where(eq(patchCandidates.workflow_id, ctx.workflow_id));
+  // …and a workflow the patch can still change: an earlier approve rewrote
+  // the step, and re-applying the same rewrite is correctly a no-op.
+  await resetSeedDag(ctx);
   await ctx.testDb.db
     .insert(workflowAutohealPolicies)
     .values({
@@ -100,6 +109,19 @@ describe("approvePatchCandidate", () => {
       .where(eq(workflowVersions.workflow_id, ctx.workflow_id));
     expect(versionsAfter.length).toBe(versionsBefore.length + 1);
 
+    // The point of applying: the new version's step actually reads the new
+    // path. A version that only carries an annotation heals nothing.
+    const newVersion = (
+      await db.select().from(workflowVersions).where(eq(workflowVersions.id, newVersionId!))
+    )[0];
+    if (!newVersion) throw new Error("new workflow version missing");
+    const steps = (newVersion.dag as { steps: Record<string, unknown>[] }).steps;
+    expect(steps.find((s) => s.id === SEED_STEP_ID)?.data_selector).toBe("data.result.id");
+
+    // …and the workflow points at it, so the next run uses the repaired step.
+    const wf = (await db.select().from(workflows).where(eq(workflows.id, ctx.workflow_id)))[0];
+    expect(wf?.current_version_id).toBe(newVersionId!);
+
     const candidateAfter = (
       await db.select().from(patchCandidates).where(eq(patchCandidates.id, candidateId))
     )[0];
@@ -113,6 +135,60 @@ describe("approvePatchCandidate", () => {
       );
     expect(auditRows.length).toBe(1);
     expect(auditRows[0]?.tenant_id).toBe(ctx.tenant_id);
+  });
+
+  test("a candidate with no step anchor is never recorded as applied", async () => {
+    // The regression this guards: an approve that rotates a workflow version
+    // carrying only an annotation. The candidate looks healed, the next run
+    // behaves exactly as before, and the drift scan sees a fixed endpoint.
+    const candidateId = await seedProposedCandidate();
+    const db = ctx.testDb.db;
+
+    const row = (
+      await db.select().from(patchCandidates).where(eq(patchCandidates.id, candidateId))
+    )[0];
+    if (!row) throw new Error("candidate missing");
+    const {
+      step_id: _s,
+      workflow_step_id: _w,
+      ...anchorless
+    } = row.diff as Record<string, unknown>;
+    await db
+      .update(patchCandidates)
+      .set({ diff: anchorless })
+      .where(eq(patchCandidates.id, candidateId));
+
+    const versionsBefore = await db
+      .select()
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflow_id, ctx.workflow_id));
+
+    const applied = await approvePatchCandidate(
+      { tenant_id: ctx.tenant_id, candidate_id: candidateId, actor_id: null },
+      db,
+    );
+    expect(applied).toBeNull();
+
+    const versionsAfter = await db
+      .select()
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflow_id, ctx.workflow_id));
+    expect(versionsAfter.length).toBe(versionsBefore.length);
+
+    // Still open for review — not silently closed as a repair that happened.
+    const after = (
+      await db.select().from(patchCandidates).where(eq(patchCandidates.id, candidateId))
+    )[0];
+    expect(after?.status).toBe("proposed");
+
+    // The refusal is on the record, with the reason.
+    const auditRows = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.resource_id, candidateId), eq(auditLog.action, "patch_candidate.approved")),
+      );
+    expect(auditRows.some((r) => r.result === "error" && r.reason === "no_step_anchor")).toBe(true);
   });
 
   test("returns null when the candidate is on a different tenant", async () => {

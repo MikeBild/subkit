@@ -17012,7 +17012,7 @@ export interface components {
         };
         EmitEventBody: {
             /** @enum {string} */
-            type: "execution.succeeded" | "execution.failed" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "patch.proposed" | "apikey.rotated" | "conversation.committed";
+            type: "execution.succeeded" | "execution.failed" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed";
             payload: {
                 [key: string]: unknown;
             };

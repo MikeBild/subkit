@@ -102,6 +102,9 @@ const DEFAULT_SEVERITY: Record<string, NotificationSeverity> = {
   "execution.aborted": "warn",
   "workflow.updated": "info",
   "patch.proposed": "warn",
+  // A workflow changed without anyone asking — the operator learns about it
+  // here or not at all: the pending-review list only shows what is still open.
+  "patch.applied": "warn",
   "api_key.rotated": "info",
 };
 

@@ -27,6 +27,10 @@ export interface RecordWorkflowCreatedParams extends RecorderBase {
    *  correlating logs by timestamp. */
   forced_over_runtime_data?: boolean;
   preview_failure_class?: string;
+  /** True when this commit skipped the prior-approval gate because the session
+   *  ran in `permission_mode=auto`. Without it the row reads like any approved
+   *  commit and "did anyone approve this?" is unanswerable from the audit log. */
+  bypassed_prior_approval?: boolean;
 }
 
 export async function recordWorkflowCreated(
@@ -55,6 +59,7 @@ export async function recordWorkflowCreated(
                 : {}),
             }
           : {}),
+        ...(p.bypassed_prior_approval ? { bypassed_prior_approval: true } : {}),
       },
     },
     p.executor,
@@ -76,6 +81,10 @@ export interface RecordWorkflowUpdatedParams extends RecorderBase {
    *  force_commit-cleared runtime/data dry-run failure. */
   forced_over_runtime_data?: boolean;
   preview_failure_class?: string;
+  /** True when this commit skipped the prior-approval gate because the session
+   *  ran in `permission_mode=auto`. Without it the row reads like any approved
+   *  commit and "did anyone approve this?" is unanswerable from the audit log. */
+  bypassed_prior_approval?: boolean;
 }
 
 export async function recordWorkflowUpdated(
@@ -107,6 +116,7 @@ export async function recordWorkflowUpdated(
                 : {}),
             }
           : {}),
+        ...(p.bypassed_prior_approval ? { bypassed_prior_approval: true } : {}),
       },
     },
     p.executor,

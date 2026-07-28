@@ -61,15 +61,15 @@ import {
   recordSelfHealingRepairRetried,
 } from "../observability/instrumentation.ts";
 import { getLatestShape } from "../schema-versions/service.ts";
-import { autoApplyPatch } from "./auto-apply.ts";
+import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 import { classifyPatch } from "./classifier.ts";
 import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from "./drift-detector.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
 import { buildDryRunStep, loadStepSnapshot } from "./step-snapshot.ts";
 import {
-  candidateDriftFingerprint,
   candidateProposal,
+  findActiveEndpointCandidate,
   findMatchingTerminalEndpointCandidate,
   signalFingerprint,
 } from "./terminal-dedup.ts";
@@ -116,6 +116,11 @@ export interface SignalContext {
   workflow_id: string;
   execution_id: string | null;
   step_id: string | null;
+  /** The DAG step the patch rewrites (`WorkflowDef.steps[].id`) — distinct
+   *  from `step_id`, which anchors the failing *execution* row. Proactive
+   *  callers have no execution row but do know the definition step, so
+   *  carrying it explicitly is what lets their patch apply instead of park. */
+  workflow_step_id?: string | null;
   connector_id?: string | null;
   endpoint_key?: string | null;
   actor_id: string | null;
@@ -301,34 +306,50 @@ async function refreshOrSkipExistingCandidate(
       .set({ updated_at: new Date() })
       .where(eq(patchCandidates.id, existing.id));
     if (!autoApply) return null;
-    const versionId = await autoApplyPatch(tx, {
+    const outcome = await autoApplyPatch(tx, {
       tenant_id: ctx.tenant_id,
       workflow_id: ctx.workflow_id,
       candidate_id: existing.id,
       proposal,
     });
-    if (versionId) {
-      await auditAwait(
-        {
-          tenant_id: ctx.tenant_id,
-          actor_type: "system",
-          action: AuditAction.PATCH_CANDIDATE_AUTO_APPLIED,
-          resource_type: "patch_candidate",
-          resource_id: existing.id,
-          result: "success",
-          metadata: {
-            workflow_id: ctx.workflow_id,
-            new_workflow_version_id: versionId,
-            classification: existing.classification,
-            policy,
-            source: ctx.source,
-            via: "proactive_refresh",
-          },
-        },
-        tx,
-      );
+    if (!outcome.applied) {
+      // Park for review rather than rotate an inert version.
+      logPatchNotApplied(ctx, existing.id, outcome.reason, "proactive_refresh");
+      return null;
     }
-    return versionId;
+    await auditAwait(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_type: "system",
+        action: AuditAction.PATCH_CANDIDATE_AUTO_APPLIED,
+        resource_type: "patch_candidate",
+        resource_id: existing.id,
+        result: "success",
+        metadata: {
+          workflow_id: ctx.workflow_id,
+          new_workflow_version_id: outcome.version_id,
+          changed_paths: outcome.changed_paths,
+          classification: existing.classification,
+          policy,
+          source: ctx.source,
+          via: "proactive_refresh",
+        },
+      },
+      tx,
+    );
+    await writeEvent(tx, {
+      tenant_id: ctx.tenant_id,
+      channel: "notification.emitted",
+      type: "patch.applied",
+      payload: {
+        patch_candidate_id: existing.id,
+        workflow_id: ctx.workflow_id,
+        workflow_version_id: outcome.version_id,
+        changed_paths: outcome.changed_paths,
+        auto_applied: true,
+      },
+    });
+    return outcome.version_id;
   });
 
   const auto_applied = !!appliedVersionId;
@@ -360,56 +381,6 @@ async function refreshOrSkipExistingCandidate(
     policy,
     created: false,
   };
-}
-
-/**
- * Find an already-active patch candidate (status proposed|applied) for
- * the same endpoint anchor, newest first. The proactive scan uses this
- * to refresh-or-skip instead of inserting a fresh row every cadence
- * tick — the patch_candidates flood fix. Returns null when the signal
- * has no endpoint anchor (workflow-scoped drift) or none is active.
- */
-async function findActiveEndpointCandidate(
-  exec: Executor,
-  params: {
-    tenant_id: string;
-    workflow_id: string;
-    connector_id: string;
-    endpoint_key: string;
-    signal: DriftSignal;
-  },
-) {
-  // return the active candidate that heals THIS drift's fingerprint,
-  // not merely the most-recent candidate on the endpoint. The pre-fix
-  // single-row lookup masked new breakage: when an endpoint had an applied
-  // candidate for drift A and a genuinely different drift B appeared, the
-  // lookup returned A and the `status==="applied"` short-circuit skipped B —
-  // so B was never proposed or healed. Matching by fingerprint (the same
-  // canonical form findMatchingTerminalEndpointCandidate uses) lets a new
-  // drift fall through to a fresh proposal while the same drift still dedups.
-  const rows = await exec
-    .select()
-    .from(patchCandidates)
-    .where(
-      and(
-        eq(patchCandidates.tenant_id, params.tenant_id),
-        eq(patchCandidates.workflow_id, params.workflow_id),
-        eq(patchCandidates.connector_id, params.connector_id),
-        eq(patchCandidates.endpoint_key, params.endpoint_key),
-        inArray(patchCandidates.status, ["proposed", "applied"]),
-      ),
-    )
-    .orderBy(desc(patchCandidates.created_at))
-    .limit(10);
-  const fingerprint = signalFingerprint(params.signal);
-  const match = rows.find((r) => candidateDriftFingerprint(r) === fingerprint);
-  if (match) return match;
-  // No fingerprint match. A legacy candidate (created before drift_signal was
-  // stored) carries no fingerprint to compare — dedup against it to preserve
-  // the old endpoint-only behaviour and avoid re-proposal flood for those
-  // rows. If every active candidate is fingerprinted and none match, this is
-  // a NEW drift → return null so it gets a fresh proposal.
-  return rows.find((r) => candidateDriftFingerprint(r) === null) ?? null;
 }
 
 /**
@@ -692,6 +663,9 @@ export async function processDriftSignal(
           },
           policy,
           step_id: ctx.step_id,
+          // The definition anchor the apply path rewrites. Persisted next to
+          // the execution anchor so approving never has to guess the step.
+          workflow_step_id: ctx.workflow_step_id ?? null,
           execution_id: ctx.execution_id,
           source: ctx.source,
           ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
@@ -758,13 +732,16 @@ export async function processDriftSignal(
 
     let appliedVersionId: string | null = null;
     if (autoApply) {
-      appliedVersionId = await autoApplyPatch(tx, {
+      const outcome = await autoApplyPatch(tx, {
         tenant_id: ctx.tenant_id,
         workflow_id: ctx.workflow_id,
         candidate_id: candidate.id,
         proposal,
       });
-      if (appliedVersionId) {
+      if (!outcome.applied) {
+        logPatchNotApplied(ctx, candidate.id, outcome.reason, decision.classification);
+      } else {
+        appliedVersionId = outcome.version_id;
         await auditAwait(
           {
             tenant_id: ctx.tenant_id,
@@ -775,7 +752,8 @@ export async function processDriftSignal(
             result: "success",
             metadata: {
               workflow_id: ctx.workflow_id,
-              new_workflow_version_id: appliedVersionId,
+              new_workflow_version_id: outcome.version_id,
+              changed_paths: outcome.changed_paths,
               fixture_id: gatedFixtureId,
               classification: decision.classification,
               policy,
@@ -784,6 +762,18 @@ export async function processDriftSignal(
           },
           tx,
         );
+        await writeEvent(tx, {
+          tenant_id: ctx.tenant_id,
+          channel: "notification.emitted",
+          type: "patch.applied",
+          payload: {
+            patch_candidate_id: candidate.id,
+            workflow_id: ctx.workflow_id,
+            workflow_version_id: outcome.version_id,
+            changed_paths: outcome.changed_paths,
+            auto_applied: true,
+          },
+        });
       }
     }
 

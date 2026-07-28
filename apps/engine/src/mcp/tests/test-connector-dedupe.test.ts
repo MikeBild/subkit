@@ -4,7 +4,7 @@
 // the unified dispatcher and writes exactly one connector.invoked
 // audit row per call.
 //
-// This file replaces the deleted mcp/tests/test-connector.test.ts —
+// This file replaces a deleted single-purpose test-connector test —
 // same coverage, asserted against the post-cutover envelope shape
 // (structured error_code, single audit row, dispatcher-driven RBAC).
 

@@ -1,7 +1,7 @@
 // Integration test for /v1/diagnostics/version.
 //
-// Replaces the test surface that lived in `health-update.test.ts` —
-// those fields moved off the public `/v1/health` and now require
+// Replaces the test surface that used to cover the public `/v1/health`
+// update fields — those moved off that route and now require
 // `audit:read`. This test covers:
 //
 //   - 200 + correct shape on a clean engine

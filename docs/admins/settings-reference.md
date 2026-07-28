@@ -162,7 +162,7 @@ Egress filter
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `egress.mode` | enum("strict" \| "permissive") | `null` | global | no | no | Egress mode: strict blocks private/loopback hosts, permissive allows them. Null falls back to NODE_ENV default. |
-| `egress.provider_hosts_extra` | string[] | `[]` | global | no | no | Extra hostnames the egress filter allows for LLM provider calls |
+| `egress.provider_hosts_extra` | string[] | `[]` | global | no | no | Extra hostnames treated as LLM providers for token accounting and per-run budget enforcement. This does NOT allow or block egress — the egress filter never reads it; adding a host makes calls to it metered, not permitted. |
 
 ## mcp
 MCP transport

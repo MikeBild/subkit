@@ -20,6 +20,8 @@
 
 Every inbound surface funnels through a single governance gate before it ever reaches the engine. The gate is the same callable, the audit row is the same shape, and the identity envelope is populated at every entry.
 
+One decision, rendered per surface. `policyDecide()` is the only place that decides whether a write needs a human confirmation, and no surface re-derives that answer. How the confirmation is *presented* does differ: chat raises an elicitation the engine owns end to end, while an MCP client renders its own `destructiveHint` dialog — which is why every MCP-reachable write tool must advertise that annotation. A client that ignores the annotation gets no prompt; the decision was still made, but the door it was rendered on is not one sk controls.
+
 ```mermaid
 flowchart LR
     CLI["sk CLI<br/>Ink + citty"]
@@ -102,7 +104,7 @@ The REST API is the full programmatic interface to sk and the canonical interfac
 
 | Concern | Behavior |
 |---|---|
-| **Coverage** | CRUD for all resources: Workflows, Connectors, Executions, Credentials, Skills, Skill Candidates, Knowledge Sources, Conversations, Schedules, Webhooks, Audit Log entries, and more. Every state change flows through the API layer, so RBAC and the Audit Log apply uniformly. |
+| **Coverage** | CRUD for all resources: Workflows, Connectors, Executions, Credentials, Skills, Skill Candidates, Knowledge Sources, Conversations, Schedules, Webhooks, Audit Log entries, and more. Every state change flows through the API layer, so RBAC and the Audit Log apply to all of them. (The *confirmation prompt* for a write is rendered per surface — see [One gate, many doors](#one-gate-many-doors).) |
 | **Runtime entry** | One execution entry point at `POST /v1/executions`. Persisted workflows, inline draft definitions, and single-step previews all run through that same contract. Inline runs complete synchronously by default; queued background execution is explicit. |
 | **Schema-first** | Request/response shapes are Zod schemas; the OpenAPI 3.1 spec is generated from them, never hand-written — so the spec is always accurate and generated clients always match the implementation. |
 | **Conversation state** | Conversation responses expose the authoring state machine directly — `authoring_mode`, `authoring_stage`, active target metadata, checkpoint statuses, stale checkpoints, `next_required_action`, persisted resources, latest execution / diagnosis references. Clients never reconstruct progress from free-form text. |
