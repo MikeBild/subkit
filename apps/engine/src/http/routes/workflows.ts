@@ -13,8 +13,12 @@ import {
 } from "../../scheduler/index.ts";
 import * as svc from "../../workflows/index.ts";
 import {
+  groupByCategory,
+  listConnectorRefs,
+  loadCategoryIndex,
   synthesizeInputSchema,
   TriggerSchema,
+  UNCATEGORIZED,
   validateWorkflowDef,
 } from "../../workflows/index.ts";
 import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
@@ -52,11 +56,28 @@ const WorkflowSchema = z
   })
   .openapi("Workflow");
 
+// A workflow AS IT APPEARS IN THE CATALOG. `category` and `connectors` are
+// derived, not stored: the category emerges from the whole slug corpus
+// (`workflows/categorize.ts`) and the connector list from the current version's
+// DAG (`workflows/connector-refs.ts`). They live on the list item rather than
+// on `Workflow` because both are catalog-level facts — deriving them would cost
+// an extra pass on every single-workflow fetch that has no use for them.
+const WorkflowListItemSchema = WorkflowSchema.extend({
+  category: z.string(),
+  connectors: z.array(z.string()),
+}).openapi("WorkflowListItem");
+
 const WorkflowListResponse = z
   .object({
-    items: z.array(WorkflowSchema),
+    items: z.array(WorkflowListItemSchema),
     /** Exact tenant-scoped count under the same filters (ignores limit/offset). */
     total: z.number().int().nonnegative(),
+    /**
+     * The blocks present in `items`, in render order (largest first, the
+     * catch-all last). Emitted so every client — `sk`, a dashboard, an agent —
+     * renders the same order without re-deriving the rule.
+     */
+    categories: z.array(z.object({ category: z.string(), count: z.number().int().nonnegative() })),
   })
   .openapi("WorkflowListResponse");
 
@@ -172,6 +193,14 @@ const listRoute = createRoute({
         offset: z.coerce.number().int().min(0).optional(),
         status: z.enum(["draft", "active", "archived"]).optional(),
         name_contains: z.string().optional(),
+        category: z
+          .string()
+          .optional()
+          .describe("Only workflows in this catalog block (see the `category` field on each item)"),
+        connector: z
+          .string()
+          .optional()
+          .describe("Only workflows whose current version uses this connector (id or slug)"),
       })
       .openapi("ListWorkflowsQuery"),
   },
@@ -574,8 +603,25 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.offset !== undefined) opts.offset = q.offset;
     if (q.status !== undefined) opts.status = q.status;
     if (q.name_contains !== undefined) opts.name_contains = q.name_contains;
+    if (q.category !== undefined) opts.category = q.category;
+    if (q.connector !== undefined) opts.connector = q.connector;
     const { rows, total } = await svc.listWorkflows(principal.tenant_id, opts, db);
-    return c.json({ items: rows.map(serializeWorkflow), total }, 200);
+    // Derived over the whole catalog, not the page, so a workflow reports the
+    // same block whether or not the caller filtered or paged.
+    const [categories, connectorRefs] = await Promise.all([
+      loadCategoryIndex(principal.tenant_id, db),
+      listConnectorRefs(principal.tenant_id, db),
+    ]);
+    const items = rows.map((w) => ({
+      ...serializeWorkflow(w),
+      category: categories.get(w.slug) ?? UNCATEGORIZED,
+      connectors: connectorRefs.get(w.id) ?? [],
+    }));
+    const blocks = groupByCategory(items, (i) => i.category).map((b) => ({
+      category: b.category,
+      count: b.items.length,
+    }));
+    return c.json({ items, total, categories: blocks }, 200);
   });
 
   app.openapi(listSchedulesRoute, async (c) => {

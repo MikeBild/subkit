@@ -15,9 +15,11 @@
 // enforce).
 
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { categoryOfConnector } from "../connectors/categorize.ts";
 import { totalOverWindow } from "../db/list-result.ts";
 import { connectors, knowledgeSources, workflows, workflowsSchedules } from "../db/schema/index.ts";
 import { listExecutions } from "../execution/list.ts";
+import { deriveCategories, groupByCategory, UNCATEGORIZED } from "../workflows/categorize.ts";
 import type { FastPathParams } from "./fast-path.ts";
 
 const CATALOG_SAFETY_LIMIT = 1000;
@@ -60,12 +62,31 @@ export async function renderWorkflowsList(p: FastPathParams): Promise<RenderPayl
       data: { items: [], total: 0, returned: 0, offset: 0, has_more: false },
     };
   }
-  const items = rows.map(({ total: _t, ...r }) => r);
-  const lines = items.map((r) => `- ${r.slug} (${r.lifecycle}) — ${r.name}`);
+  // Same derived blocks the HTTP/MCP/CLI catalogs show. The fast path
+  // queries the tables directly rather than going through `listWorkflows`,
+  // so it MUST call the shared categoriser — a second inline rule here is
+  // exactly how the surfaces drifted apart before.
+  const categories = deriveCategories(rows.map((r) => r.slug));
+  const items = rows.map(({ total: _t, ...r }) => ({
+    ...r,
+    category: categories.get(r.slug) ?? UNCATEGORIZED,
+  }));
+  const blocks = groupByCategory(items, (r) => r.category);
+  const lines = blocks.flatMap((b) => [
+    `\n**${b.category}** (${b.items.length})`,
+    ...b.items.map((r) => `- ${r.slug} (${r.lifecycle}) — ${r.name}`),
+  ]);
   return {
     ok: true,
-    reply: `${catalogHeadline("workflow", items.length, total)}\n${lines.join("\n")}`,
-    data: { items, total, returned: items.length, offset: 0, has_more: items.length < total },
+    reply: `${catalogHeadline("workflow", items.length, total)}${lines.join("\n")}`,
+    data: {
+      items,
+      total,
+      returned: items.length,
+      offset: 0,
+      has_more: items.length < total,
+      categories: blocks.map((b) => ({ category: b.category, count: b.items.length })),
+    },
   };
 }
 
@@ -91,12 +112,23 @@ export async function renderConnectorsList(p: FastPathParams): Promise<RenderPay
       data: { items: [], total: 0, returned: 0, offset: 0, has_more: false },
     };
   }
-  const items = rows.map(({ total: _t, ...r }) => r);
-  const lines = items.map((r) => `- ${r.slug} (${r.driver}/${r.environment}) — ${r.display_name}`);
+  const items = rows.map(({ total: _t, ...r }) => ({ ...r, category: categoryOfConnector(r) }));
+  const blocks = groupByCategory(items, (r) => r.category);
+  const lines = blocks.flatMap((b) => [
+    `\n**${b.category}** (${b.items.length})`,
+    ...b.items.map((r) => `- ${r.slug} (${r.environment}) — ${r.display_name}`),
+  ]);
   return {
     ok: true,
-    reply: `${catalogHeadline("connector", items.length, total)}\n${lines.join("\n")}`,
-    data: { items, total, returned: items.length, offset: 0, has_more: items.length < total },
+    reply: `${catalogHeadline("connector", items.length, total)}${lines.join("\n")}`,
+    data: {
+      items,
+      total,
+      returned: items.length,
+      offset: 0,
+      has_more: items.length < total,
+      categories: blocks.map((b) => ({ category: b.category, count: b.items.length })),
+    },
   };
 }
 

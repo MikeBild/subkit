@@ -83,11 +83,20 @@ export const ConnectorSchema = z
   })
   .openapi("Connector");
 
+// A connector AS IT APPEARS IN THE CATALOG. `category` mirrors the workflow
+// list item so both catalogs group the same way on every surface; for a
+// connector it is simply the driver (see `categoryOfConnector`).
+export const ConnectorListItemSchema = ConnectorSchema.extend({
+  category: z.string(),
+}).openapi("ConnectorListItem");
+
 export const ConnectorListResponse = z
   .object({
-    items: z.array(ConnectorSchema),
+    items: z.array(ConnectorListItemSchema),
     /** Exact tenant-scoped count under the same filters (ignores limit/offset). */
     total: z.number().int().nonnegative(),
+    /** Blocks present in `items`, in render order — mirrors the workflow list. */
+    categories: z.array(z.object({ category: z.string(), count: z.number().int().nonnegative() })),
   })
   .openapi("ConnectorListResponse");
 

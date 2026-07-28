@@ -14,6 +14,8 @@ import {
   UpdateConnectorSchema,
 } from "../../../connectors/index.ts";
 import { logger } from "../../../logging/index.ts";
+import { groupByCategory } from "../../../workflows/index.ts";
+
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -58,7 +60,15 @@ const listRoute = createRoute({
   security: [{ bearerAuth: [] }],
   request: {
     query: z
-      .object({ environment: z.enum(["dev", "prod"]).optional() })
+      .object({
+        environment: z.enum(["dev", "prod"]).optional(),
+        category: z
+          .string()
+          .optional()
+          .describe(
+            "Only connectors in this catalog block (see the `category` field on each item)",
+          ),
+      })
       .openapi("ListConnectorsQuery"),
   },
   responses: {
@@ -128,8 +138,17 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     const opts: Parameters<typeof connectorSvc.listConnectors>[1] = {};
     if (q.environment) opts.environment = q.environment;
+    if (q.category) opts.category = q.category;
     const { rows, total } = await connectorSvc.listConnectors(principal.tenant_id, opts, db);
-    return c.json({ items: rows.map(serialize), total }, 200);
+    const items = rows.map((r) => ({
+      ...serialize(r),
+      category: connectorSvc.categoryOfConnector(r),
+    }));
+    const blocks = groupByCategory(items, (i) => i.category).map((b) => ({
+      category: b.category,
+      count: b.items.length,
+    }));
+    return c.json({ items, total, categories: blocks }, 200);
   });
 
   app.openapi(createRouteSpec, async (c) => {

@@ -29,6 +29,8 @@ export {
   wasReported,
 } from "./errors.ts";
 export {
+  type CategoryBlockSummary,
+  emitGroupedList,
   emitList,
   emitOne,
   printJson,

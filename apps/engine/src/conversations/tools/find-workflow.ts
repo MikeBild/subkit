@@ -7,6 +7,7 @@
 // month". For "fetch by exact id" call `get_workflow`.
 
 import { z } from "@hono/zod-openapi";
+import { UNCATEGORIZED } from "../../workflows/categorize.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { keywordSearch } from "./keyword-search.ts";
 
@@ -20,6 +21,16 @@ const inputSchema = z
         'Free-text query. Matches against id, slug, name, description, step ids/kinds/connector_ids. Use "*" or omit to list all.',
       ),
     id: z.string().min(1).optional().describe("Exact workflow id; takes precedence over query."),
+    category: z
+      .string()
+      .optional()
+      .describe("Restrict the search to one catalog block (see `category` on each match)."),
+    connector: z
+      .string()
+      .optional()
+      .describe(
+        "Restrict the search to workflows using this connector (id or slug), counting both a bound connector_id and a ${connector.<slug>.base_url} url.",
+      ),
     limit: z.number().int().min(1).max(50).default(15),
   })
   .openapi("FindWorkflowToolInput");
@@ -30,6 +41,8 @@ interface WorkflowSummary {
   name: string;
   current_version: number | null;
   description: string | null;
+  category?: string;
+  connectors?: string[];
   steps: Array<{ id: string; kind: string; connector_id: string | null }>;
 }
 
@@ -66,6 +79,10 @@ function searchableText(s: WorkflowSummary): string {
     s.slug,
     s.name,
     s.description ?? "",
+    // The catalog block and the connector slugs are searchable too, so
+    // "notion" or "gmail" finds the family even when no step id spells it.
+    s.category ?? "",
+    ...(s.connectors ?? []),
     ...s.steps.map((st) => st.id),
     ...s.steps.map((st) => st.kind),
     ...s.steps.map((st) => st.connector_id ?? ""),
@@ -77,7 +94,7 @@ function searchableText(s: WorkflowSummary): string {
 export const findWorkflowTool: ConversationTool = {
   name: "find_workflow",
   description:
-    "Look up saved workflows by exact id or free-text query. Keyword scoring across id/slug/name/description/step.id/step.kind/step.connector_id. Use this before list_workflows for catalogs over ~50 entries.",
+    "Look up saved workflows by exact id or free-text query. Keyword scoring across id/slug/name/description/category/connectors/step.id/step.kind/step.connector_id, and narrowable with `category` or `connector`. Use this before list_workflows for catalogs over ~50 entries.",
   use_case:
     'Operator says "do we have a HubSpot workflow already?" or "find the orders thing I built". Faster than scrolling list_workflows for large tenants.',
   important_notes: [
@@ -103,8 +120,21 @@ export const findWorkflowTool: ConversationTool = {
     }
     // Complete catalog (service default = safety bound) so a match can
     // never be missed because it sat beyond an arbitrary page size.
-    const { rows: list } = await ctx.engineClient.workflows.list();
-    const summaries = list.map(summarize);
+    const { rows: list } = await ctx.engineClient.workflows.list({
+      ...(args.category !== undefined ? { category: args.category } : {}),
+      ...(args.connector !== undefined ? { connector: args.connector } : {}),
+    });
+    // Derived over the whole catalog, so a match reports the block it really
+    // belongs to even when the search was narrowed.
+    const [categories, connectorRefs] = await Promise.all([
+      ctx.engineClient.workflows.categories(),
+      ctx.engineClient.workflows.connectorRefs(),
+    ]);
+    const summaries = list.map((wf) => ({
+      ...summarize(wf),
+      category: categories.get(wf.slug) ?? UNCATEGORIZED,
+      connectors: connectorRefs.get(wf.id) ?? [],
+    }));
     const ranked = keywordSearch(args.query ?? "*", summaries, searchableText);
     const limited = ranked.slice(0, args.limit);
     return {

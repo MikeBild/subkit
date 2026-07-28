@@ -157,6 +157,27 @@ All three variants land at the same `runExecution()` core through the same execu
 
 ---
 
+## Finding a Workflow in a Large Catalog
+
+A catalog grows into the dozens quickly, and a flat list stops being useful long before it stops being correct. sk therefore presents workflows in **categories** — themed blocks the operator can scan instead of a single undifferentiated list.
+
+A category is **derived, never maintained**. There is no folder to create, no tag to apply, no field to keep current: sk reads the naming your team already uses. Workflows that share a leading slug segment form a block, so `notion-search-pages`, `notion-append-markdown`, and `notion-page-to-markdown` present together as **notion**. A prefix only becomes a block once at least three workflows share it — otherwise every one-off would become a heading of its own, which reads worse than no grouping at all. Everything without a qualifying family collects under **other**.
+
+Because the category comes from the whole catalog rather than from a stored attribute, the blocks *emerge* as the catalog grows: the third sibling of a would-be family promotes all three out of **other** into a block of their own. Nothing is migrated and nothing is edited.
+
+Two filters follow from this, and they are the same on every surface — CLI, HTTP API, MCP, and chat:
+
+- **by category** — show one block instead of the whole catalog.
+- **by connector** — show every workflow that touches a given external system. This answers the operational question directly: *before I rotate these credentials, what depends on them?* It counts both ways a step can bind a connector, so a workflow referencing it only through a `${connector.<slug>.base_url}` URL is not missed.
+
+Each listed workflow reports its `category` and the `connectors` it uses, so the same answer is available to an operator reading a terminal, a dashboard rendering the API, and an agent calling the tools.
+
+**Moving a workflow between blocks** means renaming its slug — the governed metadata update, which is audited and does not create a new version. Note that the slug is also the workflow's MCP tool name (`wf_<slug>`), so connected clients re-discover it after a rename.
+
+**New workflows land in the right block by construction.** When sk authors a workflow it is shown the families that already exist and asked to reuse one where it fits — so a new Notion reader is named into the `notion` block at the moment of creation, when no tool name exists yet and nothing has to be renamed. The display name stays clean and human; only the slug carries the family. The catalog keeps itself organised as it grows rather than needing a periodic tidy-up.
+
+---
+
 ## Versioning
 
 Every change to a Workflow creates a new version. A version is a complete snapshot of the workflow's DAG — not a diff, not a patch, but the full definition as it stood at the moment of change. Versions are immutable once created.

@@ -47,6 +47,8 @@ import * as skillsSvc from "../skills/service.ts";
 import type { CreateSkillInput, UpdateSkillInput } from "../skills/types.ts";
 import * as inboundSvc from "../webhooks/inbound/service.ts";
 import * as subscriptionsSvc from "../webhooks/outbound/service.ts";
+import { loadCategoryIndex } from "../workflows/catalog-view.ts";
+import { listConnectorRefs } from "../workflows/connector-refs.ts";
 import {
   deleteWorkflow,
   getWorkflow,
@@ -94,8 +96,18 @@ export class EngineClient {
   }
 
   workflows = {
-    list: (opts?: { status?: "draft" | "active" | "archived"; limit?: number; offset?: number }) =>
-      listWorkflows(this.tenant_id, opts ?? {}, this.db),
+    list: (opts?: {
+      status?: "draft" | "active" | "archived";
+      limit?: number;
+      offset?: number;
+      category?: string;
+      connector?: string;
+    }) => listWorkflows(this.tenant_id, opts ?? {}, this.db),
+    /** Derived catalog block per slug, over the whole catalog (see
+     *  `workflows/categorize.ts`). Callers enrich list rows with it. */
+    categories: () => loadCategoryIndex(this.tenant_id, this.db),
+    /** Connector slugs referenced per workflow id (`connector-refs.ts`). */
+    connectorRefs: () => listConnectorRefs(this.tenant_id, this.db),
     get: (id: string) => getWorkflow(this.tenant_id, id, this.db),
     getBySlug: (slug: string) => getWorkflowBySlug(this.tenant_id, slug, this.db),
     delete: (id: string) => deleteWorkflow(this.tenant_id, id, this.actor_id, this.db),
@@ -132,7 +144,8 @@ export class EngineClient {
   };
 
   connectors = {
-    list: () => listConnectors(this.tenant_id, {}, this.db),
+    list: (opts?: { environment?: "dev" | "prod"; category?: string }) =>
+      listConnectors(this.tenant_id, opts ?? {}, this.db),
     get: (id: string) => getConnector(this.tenant_id, id, this.db),
     delete: (id: string, opts?: { orphaned_workflow_ids?: string[] }) =>
       deleteConnector(this.tenant_id, id, this.actor_id, this.db, opts),

@@ -1,5 +1,5 @@
 import { exitCodeFor, reportCommandError } from "@cli-core/errors";
-import { emitList, printJson } from "@cli-core/format";
+import { emitGroupedList, emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
@@ -288,26 +288,41 @@ const invokeSnippetCommand = defineCommand({
 });
 
 const listCommand = defineCommand({
-  meta: { name: "list", description: "List workflows" },
+  meta: { name: "list", description: "List workflows, grouped into catalog blocks" },
   args: {
     limit: { type: "string", description: "Max rows", default: "50" },
+    category: { type: "string", description: "Only this catalog block" },
+    connector: { type: "string", description: "Only workflows using this connector (id or slug)" },
+    flat: { type: "boolean", description: "One flat table instead of grouped blocks" },
     json: { type: "boolean", description: "JSON output" },
   },
   async run({ args }) {
     const client = makeClient();
     try {
-      const { items, total } = await client.listWorkflows({ limit: Number(args.limit) });
-      emitList(
-        !!args.json,
-        ["id", "name", "status", "updated_at"],
-        items as Record<string, unknown>[],
-      );
+      const { items, total, categories } = await client.listWorkflows({
+        limit: Number(args.limit),
+        ...(args.category ? { category: args.category } : {}),
+        ...(args.connector ? { connector: args.connector } : {}),
+      });
+      const columns = ["id", "name", "status", "connectors", "updated_at"];
+      const rows = items as Record<string, unknown>[];
+      // Grouping is the default because a flat 60-row catalog is what made
+      // this unreadable; `--flat` restores the old view.
+      if (args.flat || !categories?.length) {
+        emitList(!!args.json, columns, rows);
+      } else {
+        emitGroupedList(!!args.json, columns, rows, categories);
+      }
       // Ground-truth cardinality: never present a page as the universe.
       if (!args.json) {
+        const blocks =
+          !args.flat && categories?.length
+            ? ` · ${categories.length} categor${categories.length === 1 ? "y" : "ies"}`
+            : "";
         process.stdout.write(
           items.length < total
-            ? `${pc.dim(`showing ${items.length} of ${total} workflows — raise --limit to see all`)}\n`
-            : `${pc.dim(`${total} workflow${total === 1 ? "" : "s"} total`)}\n`,
+            ? `${pc.dim(`showing ${items.length} of ${total} workflows${blocks} — raise --limit to see all`)}\n`
+            : `${pc.dim(`${total} workflow${total === 1 ? "" : "s"} total${blocks}`)}\n`,
         );
       }
     } catch (err) {

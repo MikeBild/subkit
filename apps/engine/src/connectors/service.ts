@@ -269,12 +269,24 @@ export const CONNECTOR_LIST_MAX_LIMIT = 1000;
 
 export async function listConnectors(
   tenant_id: string,
-  opts: { environment?: Environment; limit?: number; offset?: number } = {},
+  opts: {
+    environment?: Environment;
+    /**
+     * Catalog block. Connector slugs are single tokens, so unlike workflows
+     * there is nothing to derive: a connector's category IS its driver
+     * (`workflows/categorize.ts#categoryOfConnector`), which makes this a
+     * plain stored-column filter.
+     */
+    category?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
   exec?: Executor,
 ): Promise<ListResult<ConnectorView>> {
   const db = exec ?? getDb();
   const tenantConds = [eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)];
   if (opts.environment) tenantConds.push(eq(connectors.environment, opts.environment));
+  if (opts.category) tenantConds.push(eq(connectors.driver, opts.category));
   const offset = opts.offset ?? 0;
   const rows = await db
     .select({ row: connectors, total: totalOverWindow() })

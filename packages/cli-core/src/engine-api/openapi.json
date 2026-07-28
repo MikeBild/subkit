@@ -3854,17 +3854,169 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Workflow"
+              "$ref": "#/components/schemas/WorkflowListItem"
             }
           },
           "total": {
             "type": "integer",
             "minimum": 0
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "category",
+                "count"
+              ]
+            }
           }
         },
         "required": [
           "items",
-          "total"
+          "total",
+          "categories"
+        ]
+      },
+      "WorkflowListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Workflow"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "connectors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "category",
+              "connectors"
+            ]
+          }
+        ]
+      },
+      "WorkflowTrigger": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RequestTrigger"
+          },
+          {
+            "$ref": "#/components/schemas/WebhookTrigger"
+          },
+          {
+            "$ref": "#/components/schemas/ScheduleTrigger"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "RequestTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "request"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "WebhookTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "webhook"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "verify": {
+            "type": "string",
+            "enum": [
+              "stripe-signature",
+              "github-hmac",
+              "none"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "events",
+          "verify"
+        ]
+      },
+      "ScheduleTrigger": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "schedule"
+            ]
+          },
+          "cron": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tz": {
+            "type": "string",
+            "minLength": 1,
+            "default": "UTC"
+          },
+          "execution_mode": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "business_days_only": {
+            "type": "boolean"
+          },
+          "skip_dates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "cron"
         ]
       },
       "Workflow": {
@@ -3996,113 +4148,6 @@
           "timeout_ms",
           "max_llm_tokens_per_run",
           "trigger"
-        ]
-      },
-      "WorkflowTrigger": {
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/RequestTrigger"
-          },
-          {
-            "$ref": "#/components/schemas/WebhookTrigger"
-          },
-          {
-            "$ref": "#/components/schemas/ScheduleTrigger"
-          },
-          {
-            "type": "null"
-          }
-        ]
-      },
-      "RequestTrigger": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "request"
-            ]
-          }
-        },
-        "required": [
-          "kind"
-        ]
-      },
-      "WebhookTrigger": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "webhook"
-            ]
-          },
-          "source": {
-            "type": "string",
-            "minLength": 1
-          },
-          "events": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "verify": {
-            "type": "string",
-            "enum": [
-              "stripe-signature",
-              "github-hmac",
-              "none"
-            ]
-          }
-        },
-        "required": [
-          "kind",
-          "source",
-          "events",
-          "verify"
-        ]
-      },
-      "ScheduleTrigger": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "schedule"
-            ]
-          },
-          "cron": {
-            "type": "string",
-            "minLength": 1
-          },
-          "tz": {
-            "type": "string",
-            "minLength": 1,
-            "default": "UTC"
-          },
-          "execution_mode": {
-            "type": "string",
-            "enum": [
-              "dev",
-              "prod"
-            ]
-          },
-          "business_days_only": {
-            "type": "boolean"
-          },
-          "skip_dates": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-            }
-          }
-        },
-        "required": [
-          "kind",
-          "cron"
         ]
       },
       "ScheduleListResponse": {
@@ -7368,17 +7413,97 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Connector"
+              "$ref": "#/components/schemas/ConnectorListItem"
             }
           },
           "total": {
             "type": "integer",
             "minimum": 0
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "category",
+                "count"
+              ]
+            }
           }
         },
         "required": [
           "items",
-          "total"
+          "total",
+          "categories"
+        ]
+      },
+      "ConnectorListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Connector"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "category"
+            ]
+          }
+        ]
+      },
+      "CredentialSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "has_oauth_refresh": {
+            "type": "boolean"
+          },
+          "granted_scopes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "oauth2_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "environment",
+          "has_oauth_refresh",
+          "granted_scopes",
+          "oauth2_expires_at",
+          "created_at"
         ]
       },
       "Connector": {
@@ -7553,48 +7678,6 @@
           "auth_failed_reason",
           "created_at",
           "updated_at"
-        ]
-      },
-      "CredentialSummary": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "mode": {
-            "type": "string"
-          },
-          "environment": {
-            "type": "string"
-          },
-          "has_oauth_refresh": {
-            "type": "boolean"
-          },
-          "granted_scopes": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "oauth2_expires_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "created_at": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "mode",
-          "environment",
-          "has_oauth_refresh",
-          "granted_scopes",
-          "oauth2_expires_at",
-          "created_at"
         ]
       },
       "CreateConnectorBody": {
@@ -20976,6 +21059,26 @@
             "required": false,
             "name": "name_contains",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Only workflows in this catalog block (see the `category` field on each item)"
+            },
+            "required": false,
+            "description": "Only workflows in this catalog block (see the `category` field on each item)",
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Only workflows whose current version uses this connector (id or slug)"
+            },
+            "required": false,
+            "description": "Only workflows whose current version uses this connector (id or slug)",
+            "name": "connector",
+            "in": "query"
           }
         ],
         "responses": {
@@ -22709,6 +22812,16 @@
             },
             "required": false,
             "name": "environment",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Only connectors in this catalog block (see the `category` field on each item)"
+            },
+            "required": false,
+            "description": "Only connectors in this catalog block (see the `category` field on each item)",
+            "name": "category",
             "in": "query"
           }
         ],
