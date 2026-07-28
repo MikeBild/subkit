@@ -37,9 +37,16 @@ function readEnvOverride(): McpMode | null {
 // and the OIDC session scope. Treating it as `product` inverted that contract —
 // the LEAST-narrowed credential got the SMALLEST catalog while an OAuth token
 // carrying the literal `mcp:authoring` marker got the full one. A wildcard
-// principal therefore resolves to `authoring`. It never resolves to `admin`:
-// the admin catalog adds tenant writes, and that surface stays opt-in behind
-// the explicit `mcp:admin` marker regardless of how broad the credential is.
+// principal therefore resolves to `authoring`. It never resolves to `admin`,
+// which stays opt-in behind the explicit `mcp:admin` marker regardless of how
+// broad the credential is.
+//
+// That distinction is currently about intent, not reach: `admin` and
+// `authoring` resolve to the SAME catalogue, because `product` is the only mode
+// the conversation provider trims (see `capabilities/catalog-budget.ts`).
+// Reserving the marker keeps the option of narrowing one of them later without
+// re-minting credentials. Do not read "not admin" as "cannot write" — the
+// per-tool RBAC the dispatcher enforces is what bounds a caller.
 export function resolveMcpMode(principal: ResolvedPrincipal): McpMode {
   const env = readEnvOverride();
   if (env) return env;

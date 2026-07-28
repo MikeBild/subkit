@@ -64,7 +64,7 @@ For any change, one test decides whether review is even possible:
 
 If yes, review is possible and rollback has a target. If no, the only remaining control is trust in the intent — and intent does not survive a paraphrase. Something restated by another party, human or model, is no longer the thing you approved.
 
-This is why a workflow in sk is a **numbered, versioned document** rather than a configured personality. A behaviour change you cannot read is a change with no way back: nothing to compare, no version to name, no target to restore. A document has all three. It is the difference between "the automation behaves differently now" and "version 7 changed these four lines, and version 6 is one command away."
+This is why a workflow in sk is a **numbered, versioned document** rather than a configured personality. A behaviour change you cannot read is a change with no way back: nothing to compare, no version to name, no target to restore. A document has all three. It is the difference between "the automation behaves differently now" and "this version changed these four lines, and the previous one is a single command away."
 
 The practical consequences run through the whole product: [Workflow Execution](workflows.md) for version binding and replay, [Governance & Audit](governance-and-audit.md) for the trail that records who approved which version.
 
@@ -84,7 +84,9 @@ The distinction has a sharp edge worth stating plainly: **a value the model can 
 
 sk fixes the **control flow** of an approved workflow. It does not promise that every step returns the same value.
 
-A workflow may call a model mid-run. That step is versioned, recorded, replayable, and metered — governed, but not deterministic in its result. Saying this plainly matters, because the honest boundary is narrower than "deterministic execution" suggests, and a reader who assumes otherwise discovers the gap at the worst moment.
+There is no step kind that calls a model: the step kinds are `request`, `transform`, `call`, `wait`, `wait_for_event`, `branch`, `parallel`, and `loop`. A workflow that wants a model's judgment reaches it the way it reaches any other API — a `request` step against a provider. That step is version-bound, recorded, and replayable like every other, and its token cost is accounted for; what it is not is deterministic in its result.
+
+Saying this plainly matters, because the honest boundary is narrower than "deterministic execution" suggests. The guarantee is that the *path* through the workflow is fixed at approval time and never re-decided at runtime — not that every value along it is reproducible. A reader who assumes the stronger version discovers the gap at the worst moment.
 
 It is also why sk prefers a deterministic classifier, or a replay against a recorded real response, over asking a second model for a verdict. Two models built the same way share failure modes: they agree confidently, and agreement between them is not evidence. Where a verdict has to hold, the check should not itself be a judgment call.
 
