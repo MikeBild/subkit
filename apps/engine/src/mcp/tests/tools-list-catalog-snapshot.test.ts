@@ -223,6 +223,10 @@ const ADMIN_TOOLS = [
   "propose_schema_migration",
   "read_knowledge",
   "rerun_execution",
+  // The recovery move for a bad save. Deliberately IN the MCP catalog: the
+  // session that needed it was an MCP client, and a recovery tool that is not
+  // reachable from the surface where the damage happens is not a recovery tool.
+  "restore_workflow_version",
   "revoke_api_key",
   "revoke_portal_token",
   "run_workflow",

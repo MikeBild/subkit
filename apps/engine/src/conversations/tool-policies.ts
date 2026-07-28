@@ -335,6 +335,17 @@ export function callConnectorSideEffect(input: unknown): SideEffect {
   return classifyHttpSideEffect({ method, s3: method === "LIST" });
 }
 
+/**
+ * True when a `save_workflow_draft` call would REPLACE something that already
+ * exists rather than create it: `target_workflow_id` adopts a workflow this
+ * conversation did not create, `force_commit` overrules a preview that was not
+ * green. Named because two policy hooks must agree on it exactly.
+ */
+function overwritesExistingWorkflow(input: unknown): boolean {
+  const obj = asObj(input);
+  return typeof obj.target_workflow_id === "string" || obj.force_commit === true;
+}
+
 export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   // load_skill mutates conversations.loaded_skills (category tenant_write, so it
   // audits), but it is a benign, reversible context-load the autonomous loop and
@@ -509,6 +520,45 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
         ...(obj.connector_slug !== undefined ? { connector_slug: obj.connector_slug } : {}),
       };
     },
+    // Creating a workflow is cheap and reversible. REPLACING one that already
+    // exists destroys work that someone verified — so the two must not share a
+    // gate, and `defaultMode` alone did not separate them: `permission_mode:
+    // auto` short-circuits any tool that is not *dangerous*, and this one never
+    // declared itself dangerous.
+    //
+    // Production, two calls four seconds apart, both under `auto`:
+    //   save_workflow_draft{force_commit}                 → slug_conflict_with_live_workflow
+    //   save_workflow_draft{force_commit, target_workflow_id} → wrote v2
+    // The conflict error's own recovery text names the field that unlocks the
+    // overwrite and says to use it "after the user confirms". The model used
+    // the field and skipped the confirming. Four seconds is nobody being asked.
+    // A recovery instruction is a request; only a gate is a gate.
+    //
+    // Both inputs below mean "overrule something that already holds":
+    //   - `target_workflow_id` is ONLY ever supplied to adopt a workflow this
+    //     conversation did not create — the escape hatch out of that conflict.
+    //   - `force_commit` overrules a preview that was NOT green.
+    // A plain save (new workflow, or an in-place update of the conversation's
+    // own bound draft) carries neither and stays ungated.
+    // BOTH hooks, mirroring `call_connector`'s write case — and the pairing is
+    // load-bearing, not belt-and-braces:
+    //   - `computeDangerFromInput` stops `permission_mode: auto` from
+    //     short-circuiting before any hook is consulted.
+    //   - `computeModeFromInput` makes the resulting confirm carry the
+    //     `computed_from_input` rule. The MCP-origin collapse
+    //     (`MCP_TURN_COLLAPSIBLE_WRITE_TOOLS`) applies ONLY to confirms
+    //     resolved by a STATIC default, so a danger flag alone would still
+    //     collapse on the very surface the incident came from.
+    computeModeFromInput: (input) =>
+      overwritesExistingWorkflow(input) ? "confirm_before_execution" : null,
+    computeDangerFromInput: overwritesExistingWorkflow,
+  },
+  // Restoring replaces what is LIVE — the same consequence class as
+  // overwriting, so the same gate. Dangerous too, or `permission_mode: auto`
+  // would short-circuit the very confirmation this tool exists to carry.
+  restore_workflow_version: {
+    defaultMode: "confirm_before_execution",
+    computeDangerFromInput: () => true,
   },
   author_workflow: { defaultMode: "no_confirm" },
   edit_workflow_patch: { defaultMode: "no_confirm" },
@@ -661,6 +711,9 @@ export const MCP_TURN_COLLAPSIBLE_WRITE_TOOLS: ReadonlySet<string> = new Set([
  * the palette is classified in exactly one of the two sets.
  */
 export const MCP_TURN_KEEP_PAUSE_WRITE_TOOLS: ReadonlySet<string> = new Set([
+  // Replaces what is LIVE with an earlier version. The outer MCP dialog cannot
+  // stand in for knowing WHICH version is being restored over WHAT.
+  "restore_workflow_version",
   // Deletions / revocations — irreversible from within the conversation.
   "delete_connector",
   "delete_knowledge_source",
