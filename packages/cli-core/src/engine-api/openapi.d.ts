@@ -3519,6 +3519,10 @@ export interface paths {
                     offset?: number | null;
                     status?: "draft" | "active" | "archived";
                     name_contains?: string;
+                    /** @description Only workflows in this catalog block (see the `category` field on each item) */
+                    category?: string;
+                    /** @description Only workflows whose current version uses this connector (id or slug) */
+                    connector?: string;
                 };
                 header?: never;
                 path?: never;
@@ -5095,6 +5099,8 @@ export interface paths {
             parameters: {
                 query?: {
                     environment?: "dev" | "prod";
+                    /** @description Only connectors in this catalog block (see the `category` field on each item) */
+                    category?: string;
                 };
                 header?: never;
                 path?: never;
@@ -14317,8 +14323,40 @@ export interface components {
             server_time: string;
         };
         WorkflowListResponse: {
-            items: components["schemas"]["Workflow"][];
+            items: components["schemas"]["WorkflowListItem"][];
             total: number;
+            categories: {
+                category: string;
+                count: number;
+            }[];
+        };
+        WorkflowListItem: components["schemas"]["Workflow"] & {
+            category: string;
+            connectors: string[];
+        };
+        WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"] | null;
+        RequestTrigger: {
+            /** @enum {string} */
+            kind: "request";
+        };
+        WebhookTrigger: {
+            /** @enum {string} */
+            kind: "webhook";
+            source: string;
+            events: string[];
+            /** @enum {string} */
+            verify: "stripe-signature" | "github-hmac" | "none";
+        };
+        ScheduleTrigger: {
+            /** @enum {string} */
+            kind: "schedule";
+            cron: string;
+            /** @default UTC */
+            tz: string;
+            /** @enum {string} */
+            execution_mode?: "dev" | "prod";
+            business_days_only?: boolean;
+            skip_dates?: string[];
         };
         Workflow: {
             id: string;
@@ -14346,30 +14384,6 @@ export interface components {
             timeout_ms: number | null;
             max_llm_tokens_per_run: number | null;
             trigger: components["schemas"]["WorkflowTrigger"];
-        };
-        WorkflowTrigger: components["schemas"]["RequestTrigger"] | components["schemas"]["WebhookTrigger"] | components["schemas"]["ScheduleTrigger"] | null;
-        RequestTrigger: {
-            /** @enum {string} */
-            kind: "request";
-        };
-        WebhookTrigger: {
-            /** @enum {string} */
-            kind: "webhook";
-            source: string;
-            events: string[];
-            /** @enum {string} */
-            verify: "stripe-signature" | "github-hmac" | "none";
-        };
-        ScheduleTrigger: {
-            /** @enum {string} */
-            kind: "schedule";
-            cron: string;
-            /** @default UTC */
-            tz: string;
-            /** @enum {string} */
-            execution_mode?: "dev" | "prod";
-            business_days_only?: boolean;
-            skip_dates?: string[];
         };
         ScheduleListResponse: {
             schedules: components["schemas"]["ScheduleEntry"][];
@@ -15230,8 +15244,25 @@ export interface components {
             ingest_now?: boolean;
         };
         ConnectorListResponse: {
-            items: components["schemas"]["Connector"][];
+            items: components["schemas"]["ConnectorListItem"][];
             total: number;
+            categories: {
+                category: string;
+                count: number;
+            }[];
+        };
+        ConnectorListItem: components["schemas"]["Connector"] & {
+            category: string;
+        };
+        CredentialSummary: {
+            id: string;
+            mode: string;
+            environment: string;
+            has_oauth_refresh: boolean;
+            granted_scopes: string | null;
+            /** Format: date-time */
+            oauth2_expires_at: string | null;
+            created_at: string;
         };
         Connector: {
             id: string;
@@ -15272,16 +15303,6 @@ export interface components {
             created_at: string;
             updated_at: string;
             credentials?: components["schemas"]["CredentialSummary"][];
-        };
-        CredentialSummary: {
-            id: string;
-            mode: string;
-            environment: string;
-            has_oauth_refresh: boolean;
-            granted_scopes: string | null;
-            /** Format: date-time */
-            oauth2_expires_at: string | null;
-            created_at: string;
         };
         CreateConnectorBody: {
             name: string;

@@ -3,7 +3,7 @@
 // Restore is additive: it duplicates an old version's dag as a new version
 // with N+1, never overwriting history.
 
-import { and, asc, desc, eq, isNull, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -15,6 +15,13 @@ import { log } from "../logging/logger.ts";
 import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from "../pubsub/types.ts";
 import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
+import {
+  buildWorkflowListConds,
+  countWorkflows,
+  type ListWorkflowsOptions,
+  resolveCatalogFilter,
+  WORKFLOW_LIST_MAX_LIMIT,
+} from "./catalog-view.ts";
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
@@ -633,46 +640,10 @@ export async function updateWorkflowMetadata(
   }
 }
 
-export interface ListWorkflowsOptions {
-  limit?: number;
-  offset?: number;
-  status?: "draft" | "active" | "archived";
-  name_contains?: string;
-}
-
-/**
- * Build the WHERE conditions shared by `listWorkflows` and
- * `listWorkflowSummaries`. Centralising the
- * predicate avoids drift the next time the list surface gains a
- * filter (e.g. an `owner_id` knob).
- */
-function buildWorkflowListConds(tenant_id: string, opts: ListWorkflowsOptions) {
-  const conds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
-  if (opts.status) conds.push(eq(workflows.lifecycle, opts.status));
-  if (opts.name_contains) conds.push(like(workflows.name, `%${opts.name_contains}%`));
-  return conds;
-}
-
-/**
- * Workflows are a bounded business catalog (O(10²)), not telemetry — the
- * default page is the safety bound itself so enumeration surfaces (fast
- * path, conversation tools, MCP resources) see the complete set unless a
- * caller explicitly pages.
- */
-export const WORKFLOW_LIST_MAX_LIMIT = 1000;
-
-async function countWorkflows(
-  db: Executor,
-  tenant_id: string,
-  opts: ListWorkflowsOptions,
-): Promise<number> {
-  const [row] = await db
-    .select({ c: sql<number>`count(*)::int` })
-    .from(workflows)
-    .where(and(...buildWorkflowListConds(tenant_id, opts)));
-  return Number(row?.c ?? 0);
-}
-
+// The list scaffolding (`ListWorkflowsOptions`, `buildWorkflowListConds`,
+// `WORKFLOW_LIST_MAX_LIMIT`, `countWorkflows`) and the derived catalog view
+// live in `catalog-view.ts` — this file sits against the 1000-LOC audit
+// invariant. Both are re-exported by the subsystem barrel (`index.ts`).
 export async function listWorkflows(
   tenant_id: string,
   opts: ListWorkflowsOptions = {},
@@ -682,6 +653,26 @@ export async function listWorkflows(
   const limit = Math.min(opts.limit ?? WORKFLOW_LIST_MAX_LIMIT, WORKFLOW_LIST_MAX_LIMIT);
   const offset = opts.offset ?? 0;
   const tenantConds = buildWorkflowListConds(tenant_id, opts);
+
+  // Derived filters cannot be expressed in SQL, so they run over the matching
+  // row set before the page is cut — which also means only the page's views
+  // get loaded, not every match.
+  const derived = await resolveCatalogFilter(tenant_id, opts, db);
+  if (derived) {
+    const all = await db
+      .select({ row: workflows })
+      .from(workflows)
+      .where(and(...tenantConds))
+      .orderBy(desc(workflows.created_at));
+    const kept = all.filter((r) => derived.keep(r.row));
+    const out: WorkflowView[] = [];
+    for (const r of kept.slice(offset, offset + limit)) {
+      const v = await loadWorkflowView(tenant_id, r.row.id, db);
+      if (v) out.push(v);
+    }
+    return { rows: out, total: kept.length };
+  }
+
   const rows = await db
     .select({ row: workflows, total: totalOverWindow() })
     .from(workflows)
@@ -725,7 +716,8 @@ export async function listWorkflowSummaries(
   const limit = Math.min(opts.limit ?? WORKFLOW_LIST_MAX_LIMIT, WORKFLOW_LIST_MAX_LIMIT);
   const offset = opts.offset ?? 0;
   const tenantConds = buildWorkflowListConds(tenant_id, opts);
-  const rows = await db
+  const derived = await resolveCatalogFilter(tenant_id, opts, db);
+  const base = db
     .select({
       id: workflows.id,
       slug: workflows.slug,
@@ -738,21 +730,37 @@ export async function listWorkflowSummaries(
     .from(workflows)
     .leftJoin(workflowVersions, eq(workflowVersions.id, workflows.current_version_id))
     .where(and(...tenantConds))
-    .orderBy(desc(workflows.created_at))
-    .limit(limit)
-    .offset(offset);
+    .orderBy(desc(workflows.created_at));
+
+  const toSummary = (r: {
+    id: string;
+    slug: string;
+    name: string;
+    lifecycle: string;
+    current_version: number | null;
+    step_count: number;
+  }): WorkflowSummary => ({
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    lifecycle: r.lifecycle as "draft" | "active" | "archived",
+    current_version: r.current_version,
+    step_count: Number(r.step_count ?? 0),
+  });
+
+  // Same reason as `listWorkflows`: a derived predicate has to see the whole
+  // match set before the page is cut, or `total` would count non-matches.
+  if (derived) {
+    const kept = (await base).filter((r) => derived.keep(r));
+    return {
+      rows: kept.slice(offset, offset + limit).map(toSummary),
+      total: kept.length,
+    };
+  }
+
+  const rows = await base.limit(limit).offset(offset);
   const total = await resolveWindowTotal(rows, offset, () => countWorkflows(db, tenant_id, opts));
-  return {
-    rows: rows.map((r) => ({
-      id: r.id,
-      slug: r.slug,
-      name: r.name,
-      lifecycle: r.lifecycle as "draft" | "active" | "archived",
-      current_version: r.current_version,
-      step_count: Number(r.step_count ?? 0),
-    })),
-    total,
-  };
+  return { rows: rows.map(toSummary), total };
 }
 
 export async function getWorkflow(

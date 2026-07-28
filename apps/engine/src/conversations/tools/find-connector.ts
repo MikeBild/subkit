@@ -3,6 +3,7 @@
 // "do we have a Stripe connector?" before list_connectors.
 
 import { z } from "@hono/zod-openapi";
+import { categoryOfConnector } from "../../connectors/categorize.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { keywordSearch } from "./keyword-search.ts";
 
@@ -20,6 +21,12 @@ const inputSchema = z
       .enum(["dev", "prod"])
       .optional()
       .describe("Filter to a specific environment. Default: both."),
+    category: z
+      .string()
+      .optional()
+      .describe(
+        "Restrict the search to one catalog block. A connector's block is its driver (http, graphql, postgres, s3).",
+      ),
     limit: z.number().int().min(1).max(50).default(15),
   })
   .openapi("FindConnectorToolInput");
@@ -50,6 +57,8 @@ interface ConnectorSummary {
   needs_reauth: boolean;
   /** ISO timestamp of the first auth failure that flagged the connector, or null. */
   auth_failed_at: string | null;
+  /** Catalog block — a connector's driver (`categoryOfConnector`). */
+  category?: string;
 }
 
 function summarize(c: {
@@ -135,11 +144,13 @@ export const findConnectorTool: ConversationTool = {
       }
       return { ok: true, data: { matches: [summarize(c)], total: 1 } };
     }
-    const { rows: list } = await ctx.engineClient.connectors.list();
+    const { rows: list } = await ctx.engineClient.connectors.list(
+      args.category !== undefined ? { category: args.category } : {},
+    );
     const filtered = args.environment
       ? list.filter((c) => c.environment === args.environment)
       : list;
-    const summaries = filtered.map(summarize);
+    const summaries = filtered.map((c) => ({ ...summarize(c), category: categoryOfConnector(c) }));
     const ranked = keywordSearch(args.query ?? "*", summaries, searchableText);
     const limited = ranked.slice(0, args.limit);
     return {

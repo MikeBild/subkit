@@ -42,6 +42,7 @@ import {
 } from "../../observability/instrumentation.ts";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
 import type { Skill } from "../../skills/types.ts";
+import { buildNamingGroundingBlock } from "../../workflows/catalog-view.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
 import { LlmContextTooLarge } from "../errors.ts";
@@ -367,6 +368,16 @@ export async function assembleEnhancedPrompt(
   // the always-on tenant snapshot + the `find_workflow` tool); only
   // the structured authoring flows (`generate`, `repair`, `extract`,
   // `discover`, `summarize`) pre-embed.
+  // Naming grounding — the catalog families this tenant already has. Same
+  // `preEmbedCorpus` gate as prior workflows (converse/chat bases stay
+  // byte-identical), because this is only useful while a draft is being
+  // generated: that is the one moment where choosing a family-prefixed slug
+  // costs nothing, since no `wf_<slug>` tool exists yet to rename.
+  let namingGroundingBlock: string | null = null;
+  if (preEmbedCorpus) {
+    namingGroundingBlock = await buildNamingGroundingBlock(p.tenant_id, db);
+  }
+
   let priorWorkflowsBlock: string | null = null;
   let priorWorkflowsSurvivors: PriorWorkflowRef[] = [];
   if (preEmbedCorpus) {
@@ -495,6 +506,9 @@ export async function assembleEnhancedPrompt(
     // together. Marked `[reference, not template]` per its own header
     // so the model never confuses the two surfaces.
     if (priorWorkflowsBlock) sections.push(priorWorkflowsBlock);
+    // Sits next to the prior-workflow reference cases: both answer "what has
+    // this team already built" — one for structure, one for naming.
+    if (namingGroundingBlock) sections.push(namingGroundingBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
     // Loaded skills carry the full body — they are loaded AND within the

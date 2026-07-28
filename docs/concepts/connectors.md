@@ -48,6 +48,10 @@ The **S3 driver** handles object storage. It manages bucket operations, presigne
 
 Every Connector in sk uses one of these four drivers. Custom drivers are not part of it.
 
+The driver is also how the connector catalog is grouped: listings present connectors in blocks by driver, and `category` on each entry (plus a `category` filter) mirrors the workflow catalog so both inventories read the same way on every surface. Unlike workflows — whose blocks are derived from naming — a connector needs nothing derived: it already carries the axis that groups it usefully.
+
+To go the other way and ask *which workflows depend on this connector* — the question that matters before rotating a credential or retiring a system — filter the **workflow** list by connector. See [Finding a Workflow in a Large Catalog](workflows.md#finding-a-workflow-in-a-large-catalog).
+
 ### GraphQL vs REST: when to pick which
 
 Several major APIs — GitHub, Linear, Monday, Shopify — offer both REST and GraphQL endpoints. The built-in template catalogue ships both where appropriate (for example `github` and `github-graphql`). Choose by what the workflow actually does:

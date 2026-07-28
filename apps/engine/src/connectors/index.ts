@@ -2,6 +2,7 @@
 // subsystems must import from this entry point only — see the
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
+export * from "./categorize.ts";
 export * from "./credential-setup-grant.ts";
 export * from "./discovery/service.ts";
 export * from "./discovery/types.ts";

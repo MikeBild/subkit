@@ -1,16 +1,27 @@
 // Connector read tools.
 
 import { z } from "@hono/zod-openapi";
+import { categoryOfConnector } from "../../../connectors/categorize.ts";
 import type { ConversationTool } from "../index.ts";
 
-const ListInput = z.object({}).openapi("ListConnectorsToolInput");
+const ListInput = z
+  .object({
+    category: z
+      .string()
+      .optional()
+      .describe(
+        "Only connectors in this catalog block. A connector's block is its driver (http, graphql, postgres, s3) and is reported as `category` on every item.",
+      ),
+  })
+  .openapi("ListConnectorsToolInput");
 const GetInput = z
   .object({ id: z.string().uuid("connector id must be a UUID") })
   .openapi("GetConnectorToolInput");
 
 export const listConnectorsTool: ConversationTool = {
   name: "list_connectors",
-  description: "List the tenant's connectors.",
+  description:
+    "List the tenant's connectors. Each item carries a `category` (its driver) which is also filterable.",
   use_case:
     "Call early to find out which external systems the tenant has already configured; use the resulting slugs in placeholder tokens when authoring steps.",
   important_notes: [
@@ -24,11 +35,13 @@ export const listConnectorsTool: ConversationTool = {
   // a principal lacking connector:read would see the connector inventory
   // on the LLM-mediated chat/MCP path.
   permission: { action: "connector:read", resourceType: "connector" },
-  async execute(ctx) {
+  async execute(ctx, args: z.infer<typeof ListInput>) {
     // Connectors are a bounded catalog: the call returns the COMPLETE
     // tenant set, and the envelope is self-describing so the model can
     // never mistake a page for the universe.
-    const { rows, total } = await ctx.engineClient.connectors.list();
+    const { rows, total } = await ctx.engineClient.connectors.list(
+      args.category !== undefined ? { category: args.category } : {},
+    );
     return {
       ok: true,
       data: {
@@ -37,6 +50,7 @@ export const listConnectorsTool: ConversationTool = {
           display_name: c.display_name,
           slug: c.slug,
           driver: c.driver,
+          category: categoryOfConnector(c),
           environment: c.environment,
           // Re-auth health so the LLM can spot broken connectors at a glance
           // and reach for request_connector_reauth.
