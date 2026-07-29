@@ -8,6 +8,7 @@ import { EngineClient } from "../engine-client.ts";
 import { pickId } from "../lib/pick.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
+import { CONNECTOR_LIST_COLUMNS } from "./list-columns.ts";
 
 function makeClient() {
   const profile = resolveProfile();
@@ -61,7 +62,7 @@ const listCommand = defineCommand({
               ? r.display_name
               : "",
       }));
-      const columns = ["id", "name", "slug", "environment", "template_slug"];
+      const columns = CONNECTOR_LIST_COLUMNS;
       if (args.flat || !categories?.length) {
         emitList(!!args.json, columns, rows);
       } else {

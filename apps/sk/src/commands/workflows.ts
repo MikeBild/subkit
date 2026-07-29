@@ -20,6 +20,7 @@ import type {
 } from "../render/types.ts";
 import { formatFileRef } from "../utils/file-ref.ts";
 import { uploadPath } from "./files.ts";
+import { WORKFLOW_LIST_COLUMNS } from "./list-columns.ts";
 
 function parseTrigger(raw: unknown): WorkflowTrigger {
   if (raw && typeof raw === "object") {
@@ -304,7 +305,7 @@ const listCommand = defineCommand({
         ...(args.category ? { category: args.category } : {}),
         ...(args.connector ? { connector: args.connector } : {}),
       });
-      const columns = ["id", "name", "status", "connectors", "updated_at"];
+      const columns = WORKFLOW_LIST_COLUMNS;
       const rows = items as Record<string, unknown>[];
       // Grouping is the default because a flat 60-row catalog is what made
       // this unreadable; `--flat` restores the old view.
