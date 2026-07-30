@@ -2,13 +2,13 @@
 slug: mcp-tool-contract
 scope: global
 title: MCP Callable Contract
-description: Reference for sk's MCP callable surface — how callable entries are named, how a destructive call is gated by your MCP client's own native approval dialog (from the tool's `destructiveHint` annotation) and then executes directly, when to trust the synthesized `inputSchema`, and how to read the `warnings[]` envelope. Consult this before driving sk from any MCP client (Codex, Claude Desktop, Cursor, sk, etc.).
+description: Reference for sk's MCP callable surface — how callable entries are named, how a destructive call is gated by your MCP client's own native approval dialog (from the tool's `destructiveHint` annotation) and then executes directly, when to trust the synthesized `inputSchema`, how to read the `warnings[]` envelope, and why a remote MCP server the tenant registered is a connector rather than an entry in this catalog. Consult this before driving sk from any MCP client (Codex, Claude Desktop, Cursor, sk, etc.).
 activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp tool"},{"kind":"intent_keyword","word":"mcp tools"},{"kind":"intent_keyword","word":"tenant delete"},{"kind":"intent_keyword","word":"confirm_required"},{"kind":"intent_keyword","word":"sk_confirm"},{"kind":"intent_keyword","word":"ask_user_confirm"},{"kind":"intent_keyword","word":"unresolved_identifier"},{"kind":"intent_keyword","word":"warnings"},{"kind":"intent_keyword","word":"input schema"},{"kind":"intent_keyword","word":"wf_"},{"kind":"intent_keyword","word":"tenant_"},{"kind":"intent_keyword","word":"conversation_"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [mcp, contract]
-version: 7
+version: 8
 ---
 
 # sk MCP callable contract
@@ -20,6 +20,8 @@ sk exposes three families of callable entries over MCP. Calling them correctly s
 - **Bare snake_case names** — the operator surface. Reads (`list_workflows`, `get_connector`, …) and writes (`delete_workflow`, `revoke_api_key`, …). Use these for CRUD. Names never carry a `tenant_` prefix and never contain dots.
 - **`wf_<slug>`** — run a specific workflow. Arguments match the workflow's declared `input_schema`; when absent, sk synthesises one from the DAG's `${input.X}` placeholders and jsonata `$input.X` references.
 - **`conversation_*`** — multi-turn authoring sessions (`conversation_start`, `conversation_append`, `conversation_respond_elicitation`). Use these when the operator is **designing** a workflow or connector. Do NOT start a conversation for routine CRUD — the bare CRUD names are the cheap path.
+
+There is no fourth family. In particular, the tools of a remote MCP server the tenant registered are **not** on this surface — see below.
 
 The FULL authoring catalog is advertised — `tools/list` publishes every tool the mode exposes, with no server-side trim. When a client caps how many tools it preloads, its OWN native tool-search / defer-loading fetches any remaining tool on demand; you do not need a discovery meta-tool. For workflows use `find_workflow`; for connectors use `find_connector` (these search tenant DATA, not the tool catalog).
 
@@ -51,6 +53,14 @@ Every sk callable entry ships a `_meta.subkit` envelope:
 If a write does not seem to run, the human declined in the client dialog, or the connector's tool-permission is set to block. Re-issuing the identical call simply re-prompts them — it does not open any server-side approval.
 
 **Grant channel = the client dialog, not sk.** Even if your client advertises `elicitation`, sk issues no in-band prompt of its own: the `destructiveHint` annotation is the entire mechanism, and it is honored client-side. (The chat surface — not MCP — is the exception: there sk raises an `ask_user_confirm` elicitation over its own HTTP channel.)
+
+## Remote MCP servers the tenant registered
+
+sk is an MCP client as well as an MCP server, and the two directions do not meet in this catalog.
+
+- A remote MCP server sk calls is a **connector with `driver: "mcp"`** — endpoint in `base_url`, transport and auth shape in `config.mcp`, secret in the ordinary credential row. Manage it with the connector entries (`list_connectors`, `get_connector`, `update_connector`, `delete_connector`) and check it with `test_connector`, which handshakes and reports the tool count. There is no `mcp-servers` tool family and no `mcp_server:manage` permission; both were removed with the separate registry.
+- Its remote tools are minted into the **chat palette** as `mcp_<connector_slug>__<remote_tool>`, alongside read-only `list_resources` / `read_resource` / `list_prompts` / `get_prompt` adapters for the capabilities the server declared. A workflow reaches the same remote through a `request` step carrying an `mcp` block. Neither address is callable from this MCP surface — do not name an `mcp_…` tool to a caller here, and do not tell them to "call it over MCP".
+- Every `tools/call` against a remote is treated as a **write** and confirms, whatever the server's own `readOnlyHint` claims. A third-party server does not get to ungate its own writes; only a tenant-side author declaring `side_effects: "read"` on a workflow step can.
 
 ## `warnings[]` on workflow runs
 

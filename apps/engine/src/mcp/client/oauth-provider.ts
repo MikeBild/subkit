@@ -13,11 +13,11 @@
 //
 // STORAGE MAPPING (where each piece of state lives):
 //   - client_id + client_secret  → `credentials` (mode "oauth2_client")
-//                                   keyed by mcp_server_id. The non-secret
+//                                   keyed by connector_id. The non-secret
 //                                   client_id is ALSO mirrored into
-//                                   `mcp_servers.auth_config.client_id`.
+//                                   `connectors.config.mcp.auth.client_id`.
 //   - access/refresh token + exp  → `credentials` (mode "oauth2") keyed
-//                                   by mcp_server_id.
+//                                   by connector_id.
 //   - PKCE code_verifier          → `mcp_oauth_states.code_verifier`,
 //                                   the in-flight authorization row keyed
 //                                   by `state`.
@@ -28,7 +28,7 @@
 //
 // SECRET-BY-REFERENCE: token material and client_secret live ONLY in the
 // AES-256-GCM `credentials` table. They NEVER touch `mcp_oauth_states`,
-// `mcp_servers.auth_config`, or the logs.
+// `connectors.config.mcp.auth`, or the logs.
 //
 // INTERACTIVE vs NON-INTERACTIVE: the pool's palette handshake constructs
 // this provider with `interactive: false` and NO `mcp_oauth_states` row.
@@ -51,8 +51,8 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { and, desc, eq, gt } from "drizzle-orm";
 import {
-  getCredentialForMcpServer,
-  getOAuth2ClientCredentialForMcpServer,
+  getCredentialForConnector,
+  getOAuth2ClientCredential,
   upsertCredential,
 } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
@@ -60,8 +60,8 @@ import { credentials, mcpOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { now } from "../../utils/clock.ts";
-import type { McpServerAuthConfig } from "./registry.ts";
-import { updateMcpServer } from "./registry.ts";
+import type { McpAuthConfig } from "./registry.ts";
+import { updateMcpAuthConfig } from "./registry.ts";
 
 /** Identity the SDK presents to the external server's IdP on
  *  registration / authorization. The DCR (RFC 7591) request body is
@@ -72,7 +72,7 @@ const CLIENT_NAME = "sk-mcp-client";
 export interface McpDbOAuthClientProviderInput {
   db: Db;
   tenant_id: string;
-  mcp_server_id: string;
+  connector_id: string;
   environment: "dev" | "prod";
   /** The OAuth redirect URI the authorize route registered + persisted on
    *  the `mcp_oauth_states` row. For the non-interactive pool handshake it
@@ -83,35 +83,35 @@ export interface McpDbOAuthClientProviderInput {
    *  pool's non-interactive palette handshake there is NO state row; the
    *  value is unused (no verifier/URL persistence happens). */
   state: string;
-  /** Non-secret oauth2 shape from `mcp_servers.auth_config`. */
-  auth: McpServerAuthConfig;
+  /** Non-secret oauth2 shape from `connectors.config.mcp.auth`. */
+  auth: McpAuthConfig;
   /** True only on the authorize/callback browser round-trip. False for
    *  the pool's palette handshake — `redirectToAuthorization` no-ops and
    *  the verifier callbacks have no row to read/write. */
   interactive: boolean;
   /** Surface that drove this flow (route → api/cli, pool handshake →
-   *  chat, …). Stamped onto the `mcp_server.config_updated` audit rows
-   *  the provider writes when it mirrors / clears the registered
-   *  client_id on `auth_config`, so those rows attribute to the real
-   *  entry point instead of a hard-coded one. */
+   *  chat, …). Stamped onto the `connector.mcp_client_registered` audit
+   *  rows the provider writes when it mirrors / clears the registered
+   *  client_id on the connector config, so those rows attribute to the
+   *  real entry point instead of a hard-coded one. */
   request_source: RequestSource;
 }
 
 export class McpDbOAuthClientProvider implements OAuthClientProvider {
   private readonly db: Db;
   private readonly tenant_id: string;
-  private readonly mcp_server_id: string;
+  private readonly connector_id: string;
   private readonly environment: "dev" | "prod";
   private readonly redirect_uri: string;
   private readonly _state: string;
-  private readonly auth: McpServerAuthConfig;
+  private readonly auth: McpAuthConfig;
   private readonly interactive: boolean;
   private readonly request_source: RequestSource;
 
   constructor(input: McpDbOAuthClientProviderInput) {
     this.db = input.db;
     this.tenant_id = input.tenant_id;
-    this.mcp_server_id = input.mcp_server_id;
+    this.connector_id = input.connector_id;
     this.environment = input.environment;
     this.redirect_uri = input.redirect_uri;
     this._state = input.state;
@@ -148,9 +148,9 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
    * client registration and calls `saveClientInformation`.
    */
   async clientInformation(): Promise<OAuthClientInformation | undefined> {
-    const cred = await getOAuth2ClientCredentialForMcpServer(
+    const cred = await getOAuth2ClientCredential(
       this.tenant_id,
-      this.mcp_server_id,
+      this.connector_id,
       this.environment,
       this.db,
     );
@@ -172,7 +172,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
    * Persist a dynamically-registered (RFC 7591) client. The client_secret
    * (if the IdP issued one) goes to the encrypted `oauth2_client`
    * credential slot; the non-secret client_id is ALSO mirrored onto
-   * `mcp_servers.auth_config.client_id` so a future provider built before
+   * `connectors.config.mcp.auth.client_id` so a future provider built before
    * the credential is read still has the id, and operators can see which
    * client is registered without decrypting a secret.
    */
@@ -180,7 +180,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     await upsertCredential(
       {
         tenant_id: this.tenant_id,
-        mcp_server_id: this.mcp_server_id,
+        connector_id: this.connector_id,
         environment: this.environment,
         mode: "oauth2_client",
         value: {
@@ -196,20 +196,17 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     // Mirror the non-secret client_id onto auth_config so it survives
     // independently of the credential read path. Carry the existing
     // issuer/scope forward unchanged.
-    const next: McpServerAuthConfig = { ...this.auth, kind: "oauth2", client_id: info.client_id };
-    await updateMcpServer(
-      this.db,
-      this.tenant_id,
-      this.mcp_server_id,
-      { auth_config: next },
-      { actor_id: null, request_source: this.request_source, executor: this.db },
-    );
+    const next: McpAuthConfig = { ...this.auth, kind: "oauth2", client_id: info.client_id };
+    await updateMcpAuthConfig(this.db, this.tenant_id, this.connector_id, next, {
+      actor_id: null,
+      request_source: this.request_source,
+    });
     logger.info({
       module: "mcp_oauth",
       action: "client.registered",
       msg: "persisted dynamically-registered OAuth client for external MCP server",
       tenant_id: this.tenant_id,
-      mcp_server_id: this.mcp_server_id,
+      connector_id: this.connector_id,
       has_secret: info.client_secret !== undefined,
     });
   }
@@ -222,9 +219,9 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
    * that is the "needs authorization" signal.
    */
   async tokens(): Promise<OAuthTokens | undefined> {
-    const resolved = await getCredentialForMcpServer(
+    const resolved = await getCredentialForConnector(
       this.tenant_id,
-      this.mcp_server_id,
+      this.connector_id,
       this.environment,
       this.db,
     );
@@ -261,7 +258,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
    * SDK's automatic pre-expiry refresh). This is the auto-refresh
    * persistence hook: when the transport refreshes a token mid-session it
    * calls here, and the rotated bundle lands in the encrypted credentials
-   * row keyed by mcp_server_id.
+   * row keyed by connector_id.
    *
    * DETERMINISM: a token write is a credential side-effect, the same
    * posture as the connector refresh-worker — the OAuth dance never enters
@@ -272,9 +269,9 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
   async saveTokens(tokens: OAuthTokens): Promise<void> {
     let refresh: string | null = tokens.refresh_token ?? null;
     if (!refresh) {
-      const prior = await getCredentialForMcpServer(
+      const prior = await getCredentialForConnector(
         this.tenant_id,
-        this.mcp_server_id,
+        this.connector_id,
         this.environment,
         this.db,
       );
@@ -285,7 +282,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     await upsertCredential(
       {
         tenant_id: this.tenant_id,
-        mcp_server_id: this.mcp_server_id,
+        connector_id: this.connector_id,
         environment: this.environment,
         mode: "oauth2",
         value: {
@@ -307,7 +304,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       action: "tokens.saved",
       msg: "persisted oauth2 tokens for external MCP server",
       tenant_id: this.tenant_id,
-      mcp_server_id: this.mcp_server_id,
+      connector_id: this.connector_id,
       has_refresh: refresh != null,
       expires_at: expiresAt?.toISOString() ?? null,
     });
@@ -322,9 +319,9 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
    */
   async saveCodeVerifier(codeVerifier: string): Promise<void> {
     if (!this.interactive) return;
-    // Defense in depth: scope the write to (tenant_id, mcp_server_id, state)
+    // Defense in depth: scope the write to (tenant_id, connector_id, state)
     // and a non-expired row. The unique `state` already disambiguates, but
-    // pinning mcp_server_id + expiry means a leaked/stale state can never
+    // pinning connector_id + expiry means a leaked/stale state can never
     // steer a verifier onto the wrong server's in-flight row.
     await this.db
       .update(mcpOauthStates)
@@ -332,7 +329,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       .where(
         and(
           eq(mcpOauthStates.tenant_id, this.tenant_id),
-          eq(mcpOauthStates.mcp_server_id, this.mcp_server_id),
+          eq(mcpOauthStates.connector_id, this.connector_id),
           eq(mcpOauthStates.state, this._state),
           gt(mcpOauthStates.expires_at, new Date(now())),
         ),
@@ -357,7 +354,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       .where(
         and(
           eq(mcpOauthStates.tenant_id, this.tenant_id),
-          eq(mcpOauthStates.mcp_server_id, this.mcp_server_id),
+          eq(mcpOauthStates.connector_id, this.connector_id),
           eq(mcpOauthStates.state, this._state),
           gt(mcpOauthStates.expires_at, new Date(now())),
         ),
@@ -413,9 +410,9 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     scope: "all" | "client" | "tokens" | "verifier" | "discovery",
   ): Promise<void> {
     if (scope === "tokens" || scope === "all") {
-      const resolved = await getCredentialForMcpServer(
+      const resolved = await getCredentialForConnector(
         this.tenant_id,
-        this.mcp_server_id,
+        this.connector_id,
         this.environment,
         this.db,
       );
@@ -433,22 +430,19 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
         .where(
           and(
             eq(credentials.tenant_id, this.tenant_id),
-            eq(credentials.mcp_server_id, this.mcp_server_id),
+            eq(credentials.connector_id, this.connector_id),
             eq(credentials.environment, this.environment),
             eq(credentials.mode, "oauth2_client"),
           ),
         );
       // Strip the mirrored client_id so the next flow re-registers.
-      const next: McpServerAuthConfig = { kind: "oauth2" };
+      const next: McpAuthConfig = { kind: "oauth2" };
       if (this.auth.issuer !== undefined) next.issuer = this.auth.issuer;
       if (this.auth.scope !== undefined) next.scope = this.auth.scope;
-      await updateMcpServer(
-        this.db,
-        this.tenant_id,
-        this.mcp_server_id,
-        { auth_config: next },
-        { actor_id: null, request_source: this.request_source, executor: this.db },
-      );
+      await updateMcpAuthConfig(this.db, this.tenant_id, this.connector_id, next, {
+        actor_id: null,
+        request_source: this.request_source,
+      });
     }
     if (scope === "verifier" && this.interactive) {
       await this.db

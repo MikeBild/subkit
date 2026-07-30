@@ -68,4 +68,136 @@ describe("call step", () => {
     expect(childRow?.parent_execution_id).toBe(result.execution_id);
     expect(childRow?.request_source).toBe("tool-chain");
   });
+
+  test("call input interpolates against the caller scope, preserving types", async () => {
+    // Regression: runCallStep passed `step.input` verbatim because callRunner
+    // never received the scope. A chained workflow therefore handed the child
+    // the literal string "${scope.prepare.data.runId}", which then landed in an
+    // S3 key and failed with `Invalid key`. Arrays must survive as arrays — the
+    // publish stage receives a list of revision ids, not its JSON text.
+    const child = await createWorkflowRow(ctx, {
+      name: "child-echo",
+      slug: "child-echo",
+      steps: [
+        {
+          kind: "transform",
+          id: "echo",
+          language: "javascript",
+          expression: "return { runId: input.input.runId, count: input.input.ids.length };",
+        },
+      ],
+      output_transform: '{ "runId": $scope.echo.data.runId, "count": $scope.echo.data.count }',
+    });
+    const parent = await createWorkflowRow(ctx, {
+      name: "parent-interp",
+      slug: "parent-interp",
+      steps: [
+        {
+          kind: "transform",
+          id: "prepare",
+          language: "javascript",
+          expression: 'return { runId: "2026-07-28T031415Z", ids: ["a", "b", "c"] };',
+        },
+        {
+          kind: "call",
+          id: "call_child",
+          workflow_id: child.workflow_id,
+          input: { runId: "${scope.prepare.data.runId}", ids: "${scope.prepare.data.ids}" },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id: parent.workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("succeeded");
+    const all = await ctx.testDb.db
+      .select()
+      .from(executions)
+      .where(eq(executions.tenant_id, ctx.tenantId));
+    const childRow = all.find((e) => e.workflow_id === child.workflow_id);
+    // The child's recorded input is the direct evidence: pre-fix it held the
+    // literal "${scope.prepare.data.runId}".
+    const childInput = childRow?.input as { runId?: unknown; ids?: unknown } | null;
+    expect(childInput?.runId).toBe("2026-07-28T031415Z");
+    // An array, not its JSON text — type-preserving resolution.
+    expect(Array.isArray(childInput?.ids)).toBe(true);
+    expect(childInput?.ids).toEqual(["a", "b", "c"]);
+  });
+
+  test("an unresolvable placeholder fails the call instead of passing it through", async () => {
+    const child = await createWorkflowRow(ctx, {
+      name: "child-noop",
+      slug: "child-noop",
+      steps: [{ kind: "transform", id: "noop", language: "javascript", expression: "return {};" }],
+    });
+    const parent = await createWorkflowRow(ctx, {
+      name: "parent-bad-ref",
+      slug: "parent-bad-ref",
+      steps: [
+        {
+          kind: "call",
+          id: "call_child",
+          workflow_id: child.workflow_id,
+          input: { runId: "${scope.does_not_exist.data.runId}" },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id: parent.workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+  });
+
+  test("a credential placeholder is refused before it can be persisted", async () => {
+    // Unlike a request body, the call input is STORED: createExecution keeps the
+    // child's input verbatim so a rerun can default to it, and the execution read
+    // schema serves that column to anything holding execution:read — including
+    // the read-and-execute MCP tier. Resolving a credential here would write a
+    // secret in clear text into a row that outlives the run and is readable from
+    // a lower tier than the one that could read the credential itself.
+    //
+    // The refusal must happen BEFORE resolution, so the secret is never even
+    // fetched. Nothing is lost: the child resolves the credential itself, at the
+    // step that needs it.
+    const child = await createWorkflowRow(ctx, {
+      name: "child-cred",
+      slug: "child-cred",
+      steps: [{ kind: "transform", id: "noop", language: "javascript", expression: "return {};" }],
+    });
+    const parent = await createWorkflowRow(ctx, {
+      name: "parent-cred-leak",
+      slug: "parent-cred-leak",
+      steps: [
+        {
+          kind: "call",
+          id: "call_child",
+          workflow_id: child.workflow_id,
+          // Nested, to prove the scan walks the whole structure rather than
+          // only checking top-level string leaves.
+          input: { auth: { token: "${cred.stripe.secret_key}" } },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id: parent.workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+
+    // And no child execution row exists carrying that input — the refusal has to
+    // land before runExecution, not after.
+    const rows = await ctx.testDb.db
+      .select()
+      .from(executions)
+      .where(eq(executions.tenant_id, ctx.tenantId));
+    expect(rows.some((e) => e.workflow_id === child.workflow_id)).toBe(false);
+  });
 });

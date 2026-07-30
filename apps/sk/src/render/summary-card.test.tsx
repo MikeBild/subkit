@@ -176,6 +176,17 @@ describe("SummaryCard · connector", () => {
     ui.unmount();
   });
 
+  test("file-authored connector renders no template segment", () => {
+    const summary: ConnectorSummary = { kind: "connector", id: "con-file", slug: "loop-mcp" };
+    const ui = renderSummary(summary);
+    const out = snapshot(ui);
+    expect(out).toContain('Created connector "loop-mcp"');
+    expect(out).toContain("id=con-file");
+    expect(out).not.toContain("template=");
+    expect(out).not.toContain("undefined");
+    ui.unmount();
+  });
+
   test("probe ok=true renders 'ok'", () => {
     const summary: ConnectorSummary = {
       ...base,

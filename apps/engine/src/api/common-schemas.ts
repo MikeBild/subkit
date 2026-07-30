@@ -37,24 +37,6 @@ export const PaginationQuery = z.object({
 });
 
 /**
- * Canonical namespace constraint for an external MCP server, shared by the
- * HTTP route body, the registry, and the config decl so all three validate
- * IDENTICALLY. Mirrors the DB CHECK on `mcp_servers.namespace` EXACTLY:
- * a URL-safe slug (alphanumeric, `_`/`-` allowed inside, length-bounded),
- * plus a ban on any `__` run. A bad slug is then a 422-able boundary error
- * everywhere, never a raw 23514 SQL error or a silent seed-time clobber.
- *
- * Single source of truth — importing this prevents the three call sites
- * from drifting apart (the failure mode the duplicated regex invited).
- */
-export const MCP_NAMESPACE_REGEX = /^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$/;
-
-export const mcpNamespaceSchema = z
-  .string()
-  .regex(MCP_NAMESPACE_REGEX, "namespace must be a URL-safe slug (alphanumeric, _ or - inside)")
-  .refine((s) => !s.includes("__"), "namespace must not contain '__'");
-
-/**
  * The `{id}` URL path parameter — a UUID, with the OpenAPI `param`
  * annotation so the generated schema carries `in: path, name: id`.
  */

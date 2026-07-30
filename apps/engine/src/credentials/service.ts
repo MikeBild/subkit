@@ -38,11 +38,9 @@ import type {
 export interface CredentialRow {
   id: string;
   tenant_id: string;
-  // Owning resource — EXACTLY ONE of these is non-null (DB-enforced by the
-  // `credentials_owner_xor_check`). Connector credentials set
-  // `connector_id`; external-MCP-server credentials set `mcp_server_id`.
-  connector_id: string | null;
-  mcp_server_id: string | null;
+  /** Owning connector. An external MCP server is a connector whose driver
+   *  is `mcp`, so there is exactly one owner column. */
+  connector_id: string;
   environment: "dev" | "prod";
   mode: CredentialMode;
 }
@@ -222,14 +220,9 @@ function deserializePlain(mode: CredentialMode, raw: string): DecryptedCredentia
 
 export interface UpsertCredentialInput {
   tenant_id: string;
-  /**
-   * Owning resource — pass EXACTLY ONE of `connector_id` or
-   * `mcp_server_id`. Connector credentials set `connector_id`;
-   * external-MCP-server credentials set `mcp_server_id`. The XOR is
-   * asserted here and DB-enforced by `credentials_owner_xor_check`.
-   */
-  connector_id?: string;
-  mcp_server_id?: string;
+  /** Owning connector — including an external MCP server, which is a
+   *  connector whose driver is `mcp`. */
+  connector_id: string;
   environment: "dev" | "prod";
   mode: CredentialMode;
   value: CredentialPlaintext;
@@ -281,18 +274,7 @@ export async function upsertCredential(
   exec?: Executor,
 ): Promise<CredentialRow> {
   const db = exec ?? getDb();
-  // Owner XOR — exactly one of connector_id / mcp_server_id, mirroring the
-  // `credentials_owner_xor_check` DB constraint. Asserted here so the
-  // failure is a clear application error rather than a raw 23514.
-  if ((input.connector_id == null) === (input.mcp_server_id == null)) {
-    throw new Error(
-      "upsertCredential requires exactly one of connector_id or mcp_server_id to be set",
-    );
-  }
-  const ownerPredicate =
-    input.connector_id != null
-      ? eq(credentials.connector_id, input.connector_id)
-      : eq(credentials.mcp_server_id, input.mcp_server_id!);
+  const ownerPredicate = eq(credentials.connector_id, input.connector_id);
   // Two-step encrypt: insert a row with placeholder bytes so we have the
   // id, then update with the real ciphertext keyed on the id. This keeps
   // the AAD = tenant_id + credential_id contract intact. Postgres lets
@@ -337,8 +319,7 @@ export async function upsertCredential(
             .insert(credentials)
             .values({
               tenant_id: input.tenant_id,
-              connector_id: input.connector_id ?? null,
-              mcp_server_id: input.mcp_server_id ?? null,
+              connector_id: input.connector_id,
               environment: input.environment,
               mode: input.mode,
               ciphertext: toBuf(placeholder.ciphertext),
@@ -389,8 +370,7 @@ export async function upsertCredential(
         resource_id: id,
         result: "success",
         metadata: {
-          connector_id: input.connector_id ?? null,
-          mcp_server_id: input.mcp_server_id ?? null,
+          connector_id: input.connector_id,
           environment: input.environment,
           mode: input.mode,
           source: input.source ?? "unspecified",
@@ -402,8 +382,7 @@ export async function upsertCredential(
     return {
       id,
       tenant_id: input.tenant_id,
-      connector_id: input.connector_id ?? null,
-      mcp_server_id: input.mcp_server_id ?? null,
+      connector_id: input.connector_id,
       environment: input.environment,
       mode: input.mode,
     };
@@ -558,79 +537,6 @@ export async function getCredentialForConnector(
   return { row, value };
 }
 
-/**
- * Resolve the primary auth material for an external MCP server.
- * Mirrors `getCredentialForConnector`: same AAD derivation
- * (`credential:{tenant}:{credential_id}`, keyed on the row id, so it is
- * independent of which resource owns the row), same decrypt path, same
- * return shape. The `oauth2_client` registration slot is excluded — MCP
- * servers that perform dynamic client registration would read that via a
- * dedicated accessor, exactly as connectors do.
- */
-export async function getCredentialForMcpServer(
-  tenant_id: string,
-  mcp_server_id: string,
-  environment: "dev" | "prod",
-  exec?: Executor,
-): Promise<{
-  row: typeof credentials.$inferSelect;
-  value: DecryptedCredential;
-} | null> {
-  if (!UUID_RE.test(mcp_server_id)) return null;
-  const db = exec ?? getDb();
-  const rows = await db
-    .select()
-    .from(credentials)
-    .where(
-      and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.mcp_server_id, mcp_server_id),
-        eq(credentials.environment, environment),
-        ne(credentials.mode, "oauth2_client"),
-      ),
-    )
-    // Deterministic pick: with the partial unique index a server can
-    // transiently hold both a bearer and an oauth2 primary-slot row right
-    // after a kind change. Always resolve the newest so the handshake
-    // credential is stable rather than depending on physical row order.
-    .orderBy(desc(credentials.created_at), desc(credentials.id))
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  const plain = decryptSecret(
-    {
-      ciphertext: row.ciphertext,
-      iv: row.iv,
-      auth_tag: row.auth_tag,
-    },
-    aadFor(tenant_id, row.id),
-  );
-  const value = deserializePlain(row.mode as CredentialMode, plain);
-  if (
-    value.mode === "oauth2" &&
-    row.oauth2_refresh_ciphertext &&
-    row.oauth2_refresh_iv &&
-    row.oauth2_refresh_auth_tag
-  ) {
-    const refresh = decryptSecret(
-      {
-        ciphertext: row.oauth2_refresh_ciphertext,
-        iv: row.oauth2_refresh_iv,
-        auth_tag: row.oauth2_refresh_auth_tag,
-      },
-      refreshAadFor(tenant_id, row.id),
-    );
-    value.refresh_token = refresh;
-    value.expires_at = row.oauth2_expires_at ?? null;
-  }
-  // Grants like client_credentials_json store no refresh token but DO persist
-  // expires_at so the staleness check works correctly.
-  if (value.mode === "oauth2" && value.expires_at === null && row.oauth2_expires_at) {
-    value.expires_at = row.oauth2_expires_at;
-  }
-  return { row, value };
-}
-
 /** Load the `oauth2_client` credential for a connector — i.e. the
  *  client_id + client_secret issued by an IdP via RFC 7591 dynamic
  *  registration. Returns null if the connector was registered with a
@@ -657,54 +563,6 @@ export async function getOAuth2ClientCredential(
         eq(credentials.mode, "oauth2_client"),
       ),
     )
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  const plain = decryptSecret(
-    {
-      ciphertext: row.ciphertext,
-      iv: row.iv,
-      auth_tag: row.auth_tag,
-    },
-    aadFor(tenant_id, row.id),
-  );
-  const value = deserializePlain("oauth2_client", plain);
-  if (value.mode !== "oauth2_client") return null;
-  return { client_id: value.client_id, client_secret: value.client_secret };
-}
-
-/** Load the `oauth2_client` credential for an external MCP server
- *  — i.e. the client_id (+ optional client_secret) issued by
- *  the server's IdP, either pre-provisioned or via RFC 7591 dynamic
- *  client registration. Mirrors `getOAuth2ClientCredential` (the
- *  connector variant) but scopes the row by `mcp_server_id`. Returns null
- *  when the server has no registration slot yet. AAD-bound by
- *  `aadFor(tenant_id, credential_id)`; the `client_secret` lives only in
- *  the encrypted `credentials` row, never on the `mcp_oauth_states` flow
- *  row or in `mcp_servers.auth_config` (secret-by-reference). */
-export async function getOAuth2ClientCredentialForMcpServer(
-  tenant_id: string,
-  mcp_server_id: string,
-  environment: "dev" | "prod",
-  exec?: Executor,
-): Promise<{ client_id: string; client_secret: string | undefined } | null> {
-  if (!UUID_RE.test(mcp_server_id)) return null;
-  const db = exec ?? getDb();
-  const rows = await db
-    .select()
-    .from(credentials)
-    .where(
-      and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.mcp_server_id, mcp_server_id),
-        eq(credentials.environment, environment),
-        eq(credentials.mode, "oauth2_client"),
-      ),
-    )
-    // Deterministic pick — mirrors `getCredentialForMcpServer`. The
-    // partial unique index makes a duplicate transient at most, but the
-    // ORDER BY keeps the resolved client stable regardless of row order.
-    .orderBy(desc(credentials.created_at), desc(credentials.id))
     .limit(1);
   const row = rows[0];
   if (!row) return null;
@@ -835,20 +693,20 @@ export async function resolveDryRunEnvironment(p: {
   return resolvedEnvs.includes("dev") ? "dev" : "prod";
 }
 
-/** Load the `oauth2_private_key` credential for an external MCP server
- *  — the client_id, PEM/JWK private key, and signing algorithm used to
- *  construct a `PrivateKeyJwtProvider` for machine-to-machine OAuth2.
- *  Returns null when the server has no private-key credential stored.
- *  AAD-bound by `aadFor(tenant_id, credential_id)`. Tenant/server-scoped
- *  via both `tenant_id` and `mcp_server_id` predicates — never read
- *  across tenants. */
-export async function getOAuth2PrivateKeyCredentialForMcpServer(
+/** Load the `oauth2_private_key` credential for a connector — the
+ *  client_id, PEM/JWK private key, and signing algorithm used to
+ *  construct a `PrivateKeyJwtProvider` for machine-to-machine OAuth2
+ *  (today: an `mcp` connector declaring `oauth2_private_key_jwt`).
+ *  Returns null when the connector has no private-key credential stored.
+ *  AAD-bound by `aadFor(tenant_id, credential_id)`. Tenant/connector-scoped
+ *  via both predicates — never read across tenants. */
+export async function getOAuth2PrivateKeyCredential(
   tenant_id: string,
-  mcp_server_id: string,
+  connector_id: string,
   environment: "dev" | "prod",
   exec?: Executor,
 ): Promise<{ client_id: string; private_key: string; algorithm: string } | null> {
-  if (!UUID_RE.test(mcp_server_id)) return null;
+  if (!UUID_RE.test(connector_id)) return null;
   const db = exec ?? getDb();
   const rows = await db
     .select()
@@ -856,12 +714,12 @@ export async function getOAuth2PrivateKeyCredentialForMcpServer(
     .where(
       and(
         eq(credentials.tenant_id, tenant_id),
-        eq(credentials.mcp_server_id, mcp_server_id),
+        eq(credentials.connector_id, connector_id),
         eq(credentials.environment, environment),
         eq(credentials.mode, "oauth2_private_key"),
       ),
     )
-    // Deterministic pick — mirrors `getOAuth2ClientCredentialForMcpServer`.
+    // Deterministic pick — mirrors `getOAuth2ClientCredential`.
     .orderBy(desc(credentials.created_at), desc(credentials.id))
     .limit(1);
   const row = rows[0];

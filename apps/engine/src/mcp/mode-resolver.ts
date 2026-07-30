@@ -10,7 +10,7 @@
 // and keeps the rich authoring/admin surface available for callers that
 // explicitly ask for it.
 
-import { MCP_ADMIN_SCOPE, MCP_AUTHORING_SCOPE, WILDCARD_SCOPE } from "../auth/scopes.ts";
+import { MCP_ADMIN_SCOPE, MCP_AUTHORING_SCOPE } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 
 export type McpMode = "product" | "authoring" | "admin";
@@ -32,16 +32,27 @@ function readEnvOverride(): McpMode | null {
 // (SEP-835) has no trigger point in this model and is intentionally NOT
 // implemented; adding a 403 WWW-Authenticate challenge would be dead code.
 //
-// The wildcard `*` scope asserts "no narrowing — full role-derived access"
-// (auth/scopes.ts): it is the default minted key scope, the admin-key scope,
-// and the OIDC session scope. Treating it as `product` inverted that contract —
-// the LEAST-narrowed credential got the SMALLEST catalog while an OAuth token
-// carrying the literal `mcp:authoring` marker got the full one. A wildcard
-// principal therefore resolves to `authoring`. It never resolves to `admin`:
-// the admin catalog adds tenant writes, and that surface stays opt-in behind
-// the explicit `mcp:admin` marker regardless of how broad the credential is.
+// AUTHORING IS OPT-IN, AND THE WILDCARD IS NOT AN OPT-IN.
 //
-// `modeFlags` below is where that promise is actually kept — authoring pins
+// `product` is the read-and-execute tier: read the tenant, run what is already
+// there. `authoring` adds the tools that BUILD definitions — the conversation
+// cluster and the authoring helpers. That step is deliberate, so it takes a
+// deliberate scope.
+//
+// The wildcard `*` asserts "no narrowing — full role-derived access"
+// (auth/scopes.ts), and it is the default minted key scope, the admin-key
+// scope, and the OIDC session scope. It once resolved to `authoring` on the
+// reasoning that the least-narrowed credential should not get the smallest
+// catalogue. That reasoning held while the alternative was an 8-tool floor;
+// it does not hold now that `product` carries every read plus the run tools.
+// What it produced instead was authoring-on-by-default for every credential
+// ever minted — including the ones pasted into browser clients that cannot
+// carry a human through an authoring turn.
+//
+// So the wildcard resolves to `product`. Breadth of ROLE is not consent to
+// author: a credential authors when someone wrote `mcp:authoring` on it.
+//
+// `modeFlags` below is where the rest of the promise is kept — authoring pins
 // `showTenantWrites: false` unconditionally, so no credential widens it. Verify
 // the shape through `modeFlags` → `listToolsViaRegistry`, never by listing the
 // conversation provider directly: the provider does not see this flag, so it
@@ -52,7 +63,6 @@ export function resolveMcpMode(principal: ResolvedPrincipal): McpMode {
   const scopes = principal.scopes ?? [];
   if (scopes.includes(MCP_ADMIN_SCOPE)) return "admin";
   if (scopes.includes(MCP_AUTHORING_SCOPE)) return "authoring";
-  if (scopes.includes(WILDCARD_SCOPE)) return "authoring";
   return "product";
 }
 

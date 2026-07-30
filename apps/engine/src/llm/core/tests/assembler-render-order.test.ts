@@ -571,18 +571,21 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
   });
 
   test("recorded_endpoint_samples drops FIRST — before skill_candidates and connector_recipe_bodies", async () => {
-    // Cap note: `contextCapFor("mock")` clamps the budget to 12_000 —
+    // Cap note: `contextCapFor("mock")` clamps the budget to 13_000 —
     // with the workflow-authoring persona the irreducible prompt is
-    // ~11.3k, so 12_000 keeps assembly viable while the heavy seed
+    // ~12.2k, so 13_000 keeps assembly viable while the heavy seed
     // (recipes + 30 candidates + 4 recorded shapes) still overflows it
-    // deterministically and forces the ladder to run.
+    // deterministically and forces the ladder to run. This number is a
+    // knob, not a contract: it must stay above the irreducible prompt
+    // and below the seeded total. What the test asserts is the drop
+    // ORDER; prompt SIZE is guarded by the budget-baseline fixture.
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id: heavyTenantId,
         flow: "converse",
         connector_id: heavyConnectorId,
         user_turns: [{ role: "user", content: "stripe charge heavy workflow" }],
-        max_tokens: 12_000,
+        max_tokens: 13_000,
         model: "mock",
         authoring_hint: authoringHintFor("workflow"),
         authoring_connector_ids: [heavyConnectorId],

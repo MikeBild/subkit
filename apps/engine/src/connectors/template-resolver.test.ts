@@ -108,6 +108,8 @@ describe("buildTemplateBindingFields", () => {
       template_snapshot: fields.template_snapshot,
       created_at: new Date(0),
       updated_at: new Date(0),
+      enabled: true,
+      last_error: null,
       circuit_state: "closed",
       circuit_opened_at: null,
       circuit_failure_count: 0,

@@ -18,6 +18,12 @@ export const approveSkillCandidateTool: ConversationTool = {
   // `skill:write` stays the hard boundary. Without this, the loop's last
   // mile forces a surface switch to `sk learnings review` per approval.
   visible_when_readonly: true,
+  // …but approval PRODUCES a skill — an active definition the engine then
+  // grounds itself on. `save_learning` files the candidate and is harmless
+  // without this step; this step is the one that changes what the tenant
+  // knows. So it rides with the authoring tiers, and a read-and-execute
+  // credential approves through `sk skill-candidates approve` instead.
+  authoring_only: true,
   async execute(ctx, args: z.infer<typeof IdInput>) {
     const out = await approveSkillCandidate(
       { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor_id: ctx.actor_id },

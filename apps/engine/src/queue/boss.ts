@@ -185,9 +185,21 @@ export async function stopBoss(timeoutMs = 10_000): Promise<void> {
   });
 }
 
-export async function disposeBoss(boss: PgBoss, timeoutMs = 10_000): Promise<void> {
+/**
+ * Stop a test-owned pg-boss immediately, without draining.
+ *
+ * This is the TEST teardown path — `stopBoss` remains the graceful
+ * production shutdown and is unchanged. A suite has nothing to drain: its
+ * disposable database is dropped moments later, so an in-flight job is
+ * discarded either way. `graceful: true` polls `hasPendingCleanups()`
+ * every 500ms until the timeout expires, and under load that reliably
+ * spent the entire budget — the teardown was abandoned and a live worker
+ * set stayed registered against a database the next suite no longer owned.
+ * Authority: `apps/engine/src/queue/tests/dispose-boss.test.ts`.
+ */
+export async function disposeBoss(boss: PgBoss): Promise<void> {
   try {
-    await boss.stop({ graceful: true, timeout: timeoutMs, close: true });
+    await boss.stop({ graceful: false, close: true });
   } catch {
     /* ignore */
   }

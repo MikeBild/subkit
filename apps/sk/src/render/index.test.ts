@@ -33,6 +33,13 @@ const connIntent: ConnectorIntent = {
   base_url: "https://api.stripe.com",
 };
 
+/** The shape `sk connectors create --file` builds: a name, no template. */
+const fileAuthoredConnIntent: ConnectorIntent = {
+  kind: "connector",
+  name: "Loop MCP",
+  base_url: "https://mcp.example.com/mcp",
+};
+
 const ksIntent: KnowledgeSourceIntent = {
   kind: "knowledge_source",
   file_path: "/docs/spec.pdf",
@@ -214,6 +221,26 @@ describe("renderIntent · non-TTY plain ASCII", () => {
     expect(stderrBuf).toContain("https://api.stripe.com");
   });
 
+  // `sk connectors create --file` authors a connector with no template at
+  // all. Interpolating the absent slug printed `Loop MCP (undefined)` and a
+  // `Template: undefined` line into the operator's terminal.
+  test("connector intent without a template names no template and no undefined", async () => {
+    setTTY(false);
+    const { renderIntent } = await importDispatcher();
+    await renderIntent(fileAuthoredConnIntent as AnyIntent);
+    expect(stderrBuf).toContain("Create connector Loop MCP");
+    expect(stderrBuf).not.toContain("undefined");
+    expect(stderrBuf).not.toContain("Template:");
+  });
+
+  test("connector intent with neither name nor template stays readable", async () => {
+    setTTY(false);
+    const { renderIntent } = await importDispatcher();
+    await renderIntent({ kind: "connector" } as AnyIntent);
+    expect(stderrBuf).toContain("Create connector");
+    expect(stderrBuf).not.toContain("undefined");
+  });
+
   test("knowledge source intent emits every fixture field", async () => {
     setTTY(false);
     const { renderIntent } = await importDispatcher();
@@ -269,6 +296,20 @@ describe("renderSummary · non-TTY plain ASCII", () => {
     expect(stderrBuf).toContain("Use it via:");
     expect(stderrBuf).toContain("sk connectors get con-xyz");
     expect(stderrBuf).toContain("What should this connector do?");
+  });
+
+  test("connector summary without a template drops the template segment", async () => {
+    setTTY(false);
+    const { renderSummary } = await importDispatcher();
+    await renderSummary({
+      kind: "connector",
+      id: "con-file",
+      slug: "loop-mcp",
+      probe: { ok: true },
+    } as AnySummary);
+    expect(stderrBuf).toContain('Created connector "loop-mcp" · id=con-file');
+    expect(stderrBuf).not.toContain("template=");
+    expect(stderrBuf).not.toContain("undefined");
   });
 
   test("knowledge source summary emits every fixture field", async () => {

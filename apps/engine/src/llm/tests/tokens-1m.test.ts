@@ -54,7 +54,7 @@ describe("contextCapFor · 1M Claude cap", () => {
     process.env.LLM_CONTEXT_1M = "1";
     expect(contextCapFor("gpt-4o")).toBe(120_000);
     expect(contextCapFor("gpt-4")).toBe(110_000);
-    expect(contextCapFor("mock")).toBe(12_000);
+    expect(contextCapFor("mock")).toBe(13_000);
   });
 
   test("env LLM_CONTEXT_1M values other than '1' are ignored", () => {

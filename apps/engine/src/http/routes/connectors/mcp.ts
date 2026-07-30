@@ -1,8 +1,12 @@
-// Interactive browser OAuth 2.1 + PKCE onboarding for OAuth-only external
-// MCP servers.
+// The `mcp` driver's own connector routes.
 //
-//   POST /v1/mcp-servers/{id}/authorize    — authenticated, gated
-//                                            `mcp_server:manage`. Runs RFC
+//   POST /v1/connectors/{id}/mcp/inspect    — authenticated, gated
+//                                            `connector:test`. Forces one
+//                                            handshake and reports what the
+//                                            remote actually serves.
+//
+//   POST /v1/connectors/{id}/mcp/authorize  — authenticated, gated
+//                                            `connector:oauth`. Runs RFC
 //                                            9728 PRM → RFC 8414 AS
 //                                            discovery → RFC 7591 DCR →
 //                                            PKCE through the SDK's `auth()`
@@ -12,7 +16,7 @@
 //                                            returns it for the operator's
 //                                            browser to open.
 //
-//   GET  /v1/mcp-servers/oauth/callback     — UNAUTHENTICATED. The external
+//   GET  /v1/connectors/mcp/oauth/callback  — UNAUTHENTICATED. The external
 //                                            server's authorization server
 //                                            redirects the operator's
 //                                            browser here with
@@ -20,10 +24,18 @@
 //                                            (success) OR `?error=…&state=…`
 //                                            (denial). The opaque single-use
 //                                            `state` row carries tenant_id +
-//                                            mcp_server_id, so the engine
+//                                            connector_id, so the engine
 //                                            routes the token write to the
 //                                            right tenant with NO API key in
 //                                            the browser session.
+//
+// WHY A SEPARATE AUTHORIZE PATH FROM `/v1/connectors/{id}/oauth/start`:
+// that flow reads a pre-declared issuer/token endpoint out of the connector
+// config. An MCP server publishes its authorization server through RFC 9728
+// protected-resource metadata and frequently issues its client through RFC
+// 7591 dynamic registration, so the SDK — not the engine — decides where the
+// browser goes. Two different discovery models cannot share one handler
+// without one of them lying about what it did.
 //
 // AUTH MODEL (callback): the `state` token IS the authentication. The row
 // is claimed with an atomic `DELETE … RETURNING` keyed on the unique
@@ -40,36 +52,39 @@
 // server URL.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { classifyMcpToolSideEffect } from "@shared/index.ts";
 import { and, eq, gt } from "drizzle-orm";
-import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
   readRequestSource,
-  recordMcpServerAuthorizationFailed,
-  recordMcpServerAuthorizationStarted,
-  recordMcpServerAuthorized,
-} from "../../audit/index.ts";
-import type { Db } from "../../db/client.ts";
-import { mcpOauthStates } from "../../db/schema/index.ts";
-import { logger } from "../../logging/index.ts";
+  recordConnectorMcpAuthorizationFailed,
+  recordConnectorMcpAuthorizationStarted,
+  recordConnectorMcpAuthorized,
+} from "../../../audit/index.ts";
+import { mcpOauthStates } from "../../../db/schema/index.ts";
+import { logger } from "../../../logging/index.ts";
 import {
   buildMcpOAuthRedirectUri,
+  clearMcpConnectorFailure,
+  connectServerById,
   evictServer,
-  getMcpServer,
+  getMcpConnector,
   MCP_CREDENTIAL_ENVIRONMENT,
   MCP_OAUTH_CALLBACK_PATH,
-  type McpServerAuditCtx,
   makeMcpOAuthProvider,
-  parseAuthConfig,
-  redactLastError,
+  redactUpstreamDetail,
   sdkAuth,
-  setMcpServerStatus,
-} from "../../mcp/index.ts";
-import type { RequestSource } from "../../observability/index.ts";
-import { now } from "../../utils/clock.ts";
-import { BadRequestError, HttpError, NotFoundError, UnprocessableEntityError } from "../errors.ts";
-import { requireAuth } from "../middleware/auth.ts";
-import { requirePermission } from "../middleware/require-permission.ts";
-import type { AppEnv } from "../openapi.ts";
+} from "../../../mcp/index.ts";
+import type { RequestSource } from "../../../observability/index.ts";
+import { now } from "../../../utils/clock.ts";
+import {
+  BadRequestError,
+  HttpError,
+  NotFoundError,
+  UnprocessableEntityError,
+} from "../../errors.ts";
+import { requireAuth } from "../../middleware/auth.ts";
+import type { AppEnv } from "../../openapi.ts";
 
 const LOG_MODULE = "mcp_oauth";
 
@@ -89,7 +104,32 @@ const AuthorizeResponse = z
       .string()
       .openapi({ description: "Opaque single-use correlation token for this flow." }),
   })
-  .openapi("McpServerAuthorizeResponse");
+  .openapi("ConnectorMcpAuthorizeResponse");
+
+/** What one handshake observed. Everything here is the remote's claim
+ *  about itself, reported verbatim for an operator to read — nothing in
+ *  the engine branches on `server_version` or `instructions`. */
+const InspectResponse = z
+  .object({
+    connector_id: z.string(),
+    slug: z.string(),
+    tools: z.array(
+      z.object({
+        name: z.string(),
+        title: z.string().optional(),
+        description: z.string().optional(),
+        /** What the remote's own annotations claim. ADVISORY: the confirm
+         *  gate treats every `tools/call` as a write regardless. */
+        claims: z.enum(["read", "write"]).optional(),
+      }),
+    ),
+    capabilities: z
+      .object({ tools: z.boolean(), resources: z.boolean(), prompts: z.boolean() })
+      .nullable(),
+    instructions: z.string().nullable(),
+    server_version: z.record(z.string(), z.unknown()).nullable(),
+  })
+  .openapi("ConnectorMcpInspectResponse");
 
 // The authorization server redirects the browser here. `code`+`state` on
 // success; `error`+`state` on denial. `iss` (RFC 9207) is validated when
@@ -104,11 +144,31 @@ const McpOAuthCallbackQuery = z.object({
 
 // ── Route definitions ────────────────────────────────────────────────────────
 
+const inspectRoute = createRoute({
+  method: "post",
+  path: "/v1/connectors/{id}/mcp/inspect",
+  tags: ["connectors"],
+  summary: "Force one handshake against an mcp connector and report what it serves",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: { description: "OK", content: { "application/json": { schema: InspectResponse } } },
+    401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    422: { description: "Invalid", content: { "application/json": { schema: ErrorSchema } } },
+    502: {
+      description: "Handshake failed",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 const authorizeRoute = createRoute({
   method: "post",
-  path: "/v1/mcp-servers/{id}/authorize",
-  tags: ["mcp-servers"],
-  summary: "Begin an interactive OAuth 2.1 authorization for an external MCP server",
+  path: "/v1/connectors/{id}/mcp/authorize",
+  tags: ["connectors"],
+  summary: "Begin an interactive OAuth 2.1 authorization for an mcp connector",
   security: [{ bearerAuth: [] }],
   request: { params: IdParam },
   responses: {
@@ -128,12 +188,12 @@ const authorizeRoute = createRoute({
 const callbackRoute = createRoute({
   method: "get",
   path: MCP_OAUTH_CALLBACK_PATH,
-  tags: ["mcp-servers"],
-  summary: "Complete an interactive OAuth 2.1 authorization for an external MCP server",
+  tags: ["connectors"],
+  summary: "Complete an interactive OAuth 2.1 authorization for an mcp connector",
   // Unauthenticated: the authorization server redirects the operator's
   // browser here with no API key. Authentication is by way of the opaque
   // single-use `state` token (unique index on mcp_oauth_states.state),
-  // which carries the (tenant_id, mcp_server_id) pair.
+  // which carries the (tenant_id, connector_id) pair.
   request: { query: McpOAuthCallbackQuery },
   responses: {
     200: { description: "OK (HTML)", content: { "text/html": { schema: z.string() } } },
@@ -143,11 +203,55 @@ const callbackRoute = createRoute({
 
 // ── Registration ─────────────────────────────────────────────────────────────
 
-export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
-  // The authorize route is privileged and shares the same permission as the
-  // rest of the MCP-server surface. The callback route is intentionally
-  // NOT gated — it is state-token-authed, not API-key-authed.
-  app.use("/v1/mcp-servers/:id/authorize", requirePermission("mcp_server:manage"));
+export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
+  // RBAC for both authenticated paths is registered with the rest of the
+  // connector surface in ./index.ts, next to every other per-path gate, so
+  // one file answers "what does this route require". The callback route is
+  // deliberately ungated — it is state-token-authed, not API-key-authed.
+
+  app.openapi(inspectRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const requestSource: RequestSource = readRequestSource(c) ?? "api";
+
+    const connector = await getMcpConnector(db, principal.tenant_id, id);
+    if (!connector) throw new NotFoundError("mcp connector");
+
+    const outcome = await connectServerById(db, principal.tenant_id, id, {
+      environment: MCP_CREDENTIAL_ENVIRONMENT,
+      requestSource,
+    });
+    if (!outcome.ok) {
+      if (outcome.reason === "disabled") {
+        throw new UnprocessableEntityError(
+          "this mcp connector is disabled — enable it before inspecting",
+        );
+      }
+      throw new HttpError(
+        502,
+        "mcp_handshake_failed",
+        outcome.detail ?? "the external MCP server refused the handshake",
+      );
+    }
+    const set = outcome.tools;
+    return c.json(
+      {
+        connector_id: id,
+        slug: set.slug,
+        tools: set.tools.map((t) => ({
+          name: t.name,
+          ...(t.title !== undefined ? { title: t.title } : {}),
+          ...(t.description !== undefined ? { description: t.description } : {}),
+          ...(t.annotations ? { claims: classifyMcpToolSideEffect(t.annotations) } : {}),
+        })),
+        capabilities: set.capabilities,
+        instructions: set.instructions,
+        server_version: set.server_version,
+      },
+      200,
+    );
+  });
 
   app.openapi(authorizeRoute, async (c) => {
     const principal = requireAuth(c);
@@ -155,13 +259,13 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const requestSource: RequestSource = readRequestSource(c) ?? "api";
 
-    const server = await getMcpServer(db, principal.tenant_id, id);
-    if (!server) throw new NotFoundError("mcp_server");
+    const server = await getMcpConnector(db, principal.tenant_id, id);
+    if (!server) throw new NotFoundError("mcp connector");
 
-    const auth = parseAuthConfig(server.auth_config ?? null);
+    const auth = server.auth;
     if (auth.kind !== "oauth2") {
       throw new UnprocessableEntityError(
-        "interactive authorization is only available for an MCP server with auth_config.kind 'oauth2'",
+        "interactive authorization is only available for an mcp connector whose config.mcp.auth.kind is 'oauth2'",
       );
     }
 
@@ -181,7 +285,7 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     // provider's callbacks below.
     await db.insert(mcpOauthStates).values({
       tenant_id: principal.tenant_id,
-      mcp_server_id: id,
+      connector_id: id,
       state,
       code_verifier: "",
       redirect_uri,
@@ -198,7 +302,7 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       const provider = makeMcpOAuthProvider({
         db,
         tenant_id: principal.tenant_id,
-        mcp_server_id: id,
+        connector_id: id,
         environment: MCP_CREDENTIAL_ENVIRONMENT,
         redirect_uri,
         state,
@@ -233,12 +337,12 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         throw new Error("authorization URL was not persisted by the OAuth provider");
       }
 
-      await recordMcpServerAuthorizationStarted({
+      await recordConnectorMcpAuthorizationStarted({
         tenant_id: principal.tenant_id,
         actor_id: principal.id,
         request_source: requestSource,
-        mcp_server_id: id,
-        namespace: server.namespace,
+        connector_id: id,
+        connector_slug: server.slug,
         issuer: issuerForAudit,
         executor: db,
       });
@@ -248,8 +352,8 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         action: "authorize.started",
         msg: "issued interactive OAuth authorization URL for external MCP server",
         tenant_id: principal.tenant_id,
-        mcp_server_id: id,
-        namespace: server.namespace,
+        connector_id: id,
+        connector_slug: server.slug,
         state_prefix: state.slice(0, 8),
       });
 
@@ -264,12 +368,12 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         );
       // `reason` is a sanitized classifier, never the verbose error (it can
       // embed a discovery/authorization URL with a query string).
-      await recordMcpServerAuthorizationFailed({
+      await recordConnectorMcpAuthorizationFailed({
         tenant_id: principal.tenant_id,
         actor_id: principal.id,
         request_source: requestSource,
-        mcp_server_id: id,
-        namespace: server.namespace,
+        connector_id: id,
+        connector_slug: server.slug,
         issuer: issuerForAudit,
         reason: "discovery_or_registration_failed",
         executor: db,
@@ -279,12 +383,12 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         action: "authorize.failed",
         msg: "interactive OAuth authorization could not be started for external MCP server",
         tenant_id: principal.tenant_id,
-        mcp_server_id: id,
-        namespace: server.namespace,
+        connector_id: id,
+        connector_slug: server.slug,
         error_class: err instanceof Error ? err.name : "Error",
         // Raw discovery/DCR errors can embed a full URL with its query
         // string; reduce every embedded URL to host-only + length-cap.
-        error: redactLastError(err instanceof Error ? err.message : String(err)),
+        error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
       });
       // 502: the failure is almost always a remote discovery / DCR fault
       // (the external AS), not a malformed client request. No URL/secret in
@@ -335,28 +439,29 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     const tenant_id = stateRow.tenant_id;
-    const mcp_server_id = stateRow.mcp_server_id;
+    const connector_id = stateRow.connector_id;
     // The flow's originator, persisted at authorize time. The callback has
     // no principal of its own (state-token auth), so this is what lets the
     // authorized / failed audit rows attribute to the human who started
     // the flow instead of a system actor.
     const started_by_actor_id = stateRow.started_by_actor_id ?? null;
     const requestSource: RequestSource = readRequestSource(c) ?? "api";
-    const server = await getMcpServer(db, tenant_id, mcp_server_id);
-    // namespace/issuer for the audit trail; fall back to safe placeholders
-    // if the server row vanished mid-flow (delete race) so audit never throws.
-    const namespace = server?.namespace ?? "unknown";
-    const auth = server ? parseAuthConfig(server.auth_config ?? null) : { kind: "none" as const };
+    const server = await getMcpConnector(db, tenant_id, connector_id);
+    // slug/issuer for the audit trail; fall back to safe placeholders if
+    // the connector row vanished mid-flow (delete race) so audit never
+    // throws.
+    const connector_slug = server?.slug ?? "unknown";
+    const auth = server?.auth ?? { kind: "none" as const };
     const issuerForAudit =
       ("issuer" in auth && auth.issuer ? auth.issuer : server?.url) ?? q.iss ?? "";
 
     const failAudit = (reason: string): Promise<unknown> =>
-      recordMcpServerAuthorizationFailed({
+      recordConnectorMcpAuthorizationFailed({
         tenant_id,
         actor_id: started_by_actor_id,
         request_source: requestSource,
-        mcp_server_id,
-        namespace,
+        connector_id,
+        connector_slug,
         issuer: issuerForAudit,
         reason,
         executor: db,
@@ -369,7 +474,7 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         action: "callback.provider_error",
         msg: "external authorization server returned an error",
         tenant_id,
-        mcp_server_id,
+        connector_id,
         state_prefix: stateRow.state.slice(0, 8),
         provider_error: q.error,
       });
@@ -387,17 +492,17 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       logger.warn({
         module: LOG_MODULE,
         action: "callback.server_gone",
-        msg: "mcp server row no longer exists for a claimed callback state",
+        msg: "mcp connector row no longer exists for a claimed callback state",
         tenant_id,
-        mcp_server_id,
+        connector_id,
         state_prefix: stateRow.state.slice(0, 8),
       });
       await failAudit("server_not_found");
       return renderCallbackPage(c, {
         kind: "error",
-        title: "Server no longer registered",
+        title: "Connector no longer registered",
         message:
-          "The MCP server this authorization belonged to is no longer registered. Close this tab.",
+          "The MCP connector this authorization belonged to is no longer registered. Close this tab.",
       });
     }
 
@@ -407,7 +512,7 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         action: "callback.missing_code",
         msg: "callback had neither code nor error",
         tenant_id,
-        mcp_server_id,
+        connector_id,
         state_prefix: stateRow.state.slice(0, 8),
       });
       await failAudit("missing_code");
@@ -433,7 +538,7 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           action: "callback.issuer_mismatch",
           msg: "callback iss origin does not match the resource the flow began against",
           tenant_id,
-          mcp_server_id,
+          connector_id,
           state_prefix: stateRow.state.slice(0, 8),
         });
         await failAudit("issuer_mismatch");
@@ -450,7 +555,7 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       const provider = makeMcpOAuthProvider({
         db,
         tenant_id,
-        mcp_server_id,
+        connector_id,
         environment: MCP_CREDENTIAL_ENVIRONMENT,
         redirect_uri: stateRow.redirect_uri,
         state: stateRow.state,
@@ -469,25 +574,16 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         throw new Error(`token exchange did not authorize (auth() returned ${result})`);
       }
 
-      // Recover the server to active + clear any stale last_error now that a
-      // live token exists.
-      await setMcpServerStatus(
-        db,
-        tenant_id,
-        mcp_server_id,
-        "active",
-        callbackAuditCtx(db, requestSource, started_by_actor_id),
-        {
-          reason: "oauth_authorized",
-        },
-      );
+      // Recover the connector out of the degraded state its unauthorized
+      // handshakes put it in, now that a live token exists.
+      await clearMcpConnectorFailure(db, server);
 
-      await recordMcpServerAuthorized({
+      await recordConnectorMcpAuthorized({
         tenant_id,
         actor_id: started_by_actor_id,
         request_source: requestSource,
-        mcp_server_id,
-        namespace,
+        connector_id,
+        connector_slug,
         issuer: issuerForAudit,
         executor: db,
       });
@@ -499,22 +595,22 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       // stay dark despite being authorized. evictServer drops the cached
       // client AND the backoff entry for just this server, so the new token
       // is used immediately while the tenant's other servers stay warm.
-      evictServer(tenant_id, mcp_server_id);
+      evictServer(tenant_id, connector_id);
 
       logger.info({
         module: LOG_MODULE,
         action: "callback.success",
         msg: "external MCP server authorized via interactive OAuth",
         tenant_id,
-        mcp_server_id,
-        namespace,
+        connector_id,
+        connector_slug,
         state_prefix: stateRow.state.slice(0, 8),
       });
 
       return renderCallbackPage(c, {
         kind: "success",
         title: "Authorization complete",
-        message: `The MCP server "${server.name}" is now authorized. You can close this window and return to your session.`,
+        message: `The MCP connector "${server.display_name}" is now authorized. You can close this window and return to your session.`,
       });
     } catch (err) {
       logger.warn({
@@ -522,12 +618,12 @@ export function registerMcpServerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         action: "callback.exchange_failed",
         msg: "token exchange or credential write failed",
         tenant_id,
-        mcp_server_id,
+        connector_id,
         state_prefix: stateRow.state.slice(0, 8),
         error_class: err instanceof Error ? err.name : "Error",
         // Raw exchange errors can embed the token-endpoint URL with its
         // query string; reduce every embedded URL to host-only + length-cap.
-        error: redactLastError(err instanceof Error ? err.message : String(err)),
+        error: redactUpstreamDetail(err instanceof Error ? err.message : String(err)),
       });
       await failAudit("token_exchange_failed");
       return renderCallbackPage(c, {
@@ -550,20 +646,6 @@ function sameOrigin(a: string, b: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Audit envelope for the callback — there is no live principal (anonymous
- *  browser hit), so the actor is the flow's originator read off the claimed
- *  state row (`started_by_actor_id`), or null (→ `actor_type: "system"`)
- *  when the row predates attribution. The request-scoped db is the executor
- *  so audit writes land on the same pool the route already uses (required
- *  for integration-test isolation). */
-function callbackAuditCtx(
-  db: Db,
-  requestSource: RequestSource,
-  actorId: string | null,
-): McpServerAuditCtx {
-  return { actor_id: actorId, request_source: requestSource, executor: db };
 }
 
 interface CallbackPage {

@@ -20,8 +20,8 @@ import { parseGraphQLIntrospection } from "../../llm/flows/document-parsers/grap
 import { parseHar } from "../../llm/flows/document-parsers/har.ts";
 import { parseOpenApiWithMetadata } from "../../llm/flows/document-parsers/openapi.ts";
 import { parsePostman } from "../../llm/flows/document-parsers/postman.ts";
-import { findReusableConnectorByUrl } from "./connector-reuse.ts";
-import type { ConversationTool, ToolResult } from "./index.ts";
+import { findReusableConnectorByUrl, type ReusedConnectorEnvelope } from "./connector-reuse.ts";
+import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 
 const SourceEnum = z.enum([
   "postman",
@@ -168,84 +168,117 @@ export const importConnectorFromSpecTool: ConversationTool = {
   category: "tenant_write",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const parsed = await parseSource(args);
-    const baseUrl = parsed.base_url;
-    // Reuse-existing-saved-connector: same dedup as
-    // start_connector_from_description so two imports against the same
-    // upstream URL never produce two saved connectors. Stateless
-    // callers (smoke tests that exercise the parser only) may pass a
-    // null context — skip the dedup in that case so the tool stays
-    // testable without a DB stub.
-    const reuseEnvelope =
-      ctx?.tenant_id && ctx.db
-        ? await findReusableConnectorByUrl({
-            tenant_id: ctx.tenant_id,
-            environment: args.environment,
-            base_url: baseUrl,
-            driver: "http",
-            // Explicit operator request for a separate connector on this URL.
-            ...(args.force_new ? { force_new: true } : {}),
-            db: ctx.db,
-          })
-        : null;
-    if (reuseEnvelope) {
-      return { ok: true, data: reuseEnvelope };
-    }
-    const match = baseUrl ? matchTemplateByUrl(baseUrl) : null;
-
-    if (match) {
-      const enriched = enrichConnectorFromTemplate(
-        {
-          name: args.name ?? match.template.name,
-          environment: args.environment,
-        },
-        match.template,
-        args.base_url_environment ? { environment: args.base_url_environment } : undefined,
-      );
-      // Attach the sample endpoints to config so the LLM can reuse them
-      // during workflow authoring without re-parsing.
-      enriched.config = {
-        ...(enriched.config ?? {}),
-        imported_sample_endpoints: parsed.endpoints.slice(0, 25),
-        imported_source: args.source,
-      };
-      return {
-        ok: true,
-        data: {
-          draft: enriched,
-          template_match: {
-            slug: match.template.slug,
-            score: match.score,
-            matched_segment: match.matched_segment,
-          },
-          recommended_next: ["update_connector_draft", "probe_connector_draft"],
-        },
-      };
-    }
-
-    // Manual fallback — no template matched.
-    const authType = parsed.auth_hint?.type ?? "none";
     return {
       ok: true,
-      data: {
-        draft: {
-          name: args.name ?? baseUrlDomain(baseUrl) ?? "Imported connector",
-          slug: slugify(baseUrlDomain(baseUrl) ?? "imported"),
-          driver: "http" as const,
-          environment: args.environment,
-          base_url: baseUrl || undefined,
-          auth_type: authType,
-          config: {
-            imported_sample_endpoints: parsed.endpoints.slice(0, 25),
-            imported_source: args.source,
-          },
-        },
-        template_match: null,
-        recommended_next: ["update_connector_draft", "probe_connector_draft"],
-      },
+      data: await importConnectorDraftFromSpec({
+        args,
+        ...(ctx?.tenant_id ? { tenant_id: ctx.tenant_id } : {}),
+        ...(ctx?.db ? { db: ctx.db } : {}),
+      }),
     };
   },
 };
+
+/** What the import produces. Nothing here is persisted.
+ *
+ *  Either a `CreateConnectorSchema`-shaped `draft` for the caller to review and
+ *  save, or — when an equivalent connector is already saved for this base URL —
+ *  the reuse envelope pointing at it, so an import never quietly produces a
+ *  second connector against the same upstream. */
+export type ImportConnectorDraftResult = ReusedConnectorEnvelope | Record<string, unknown>;
+
+/**
+ * Parse a specification into a connector draft.
+ *
+ * The shared core behind the `import_connector_from_spec` tool and
+ * `POST /v1/connectors/import`, so the CLI and the authoring loop cannot drift
+ * on what a given spec turns into.
+ *
+ * PERSISTS NOTHING. The draft is returned for a person (or the CLI's create
+ * pipeline) to look at first — importing and saving in one step would put a
+ * definition into the tenant that nobody read.
+ *
+ * `tenant_id`/`db` are optional: without them the dedup against already-saved
+ * connectors is skipped, which keeps the parser testable without a database.
+ */
+export async function importConnectorDraftFromSpec(p: {
+  args: z.infer<typeof inputSchema>;
+  tenant_id?: string;
+  db?: ToolContext["db"];
+}): Promise<ImportConnectorDraftResult> {
+  const { args } = p;
+  const parsed = await parseSource(args);
+  const baseUrl = parsed.base_url;
+  // Reuse-existing-saved-connector: same dedup as
+  // start_connector_from_description so two imports against the same
+  // upstream URL never produce two saved connectors. Stateless
+  // callers (smoke tests that exercise the parser only) may pass no
+  // tenant/db — skip the dedup in that case so the parser stays
+  // testable without a DB stub.
+  const reuseEnvelope =
+    p.tenant_id && p.db
+      ? await findReusableConnectorByUrl({
+          tenant_id: p.tenant_id,
+          environment: args.environment,
+          base_url: baseUrl,
+          driver: "http",
+          // Explicit operator request for a separate connector on this URL.
+          ...(args.force_new ? { force_new: true } : {}),
+          db: p.db,
+        })
+      : null;
+  if (reuseEnvelope) return reuseEnvelope as ImportConnectorDraftResult;
+
+  const match = baseUrl ? matchTemplateByUrl(baseUrl) : null;
+  if (match) {
+    const enriched = enrichConnectorFromTemplate(
+      {
+        name: args.name ?? match.template.name,
+        environment: args.environment,
+      },
+      match.template,
+      args.base_url_environment ? { environment: args.base_url_environment } : undefined,
+    );
+    // Attach the sample endpoints to config so the LLM can reuse them
+    // during workflow authoring without re-parsing.
+    enriched.config = {
+      ...(enriched.config ?? {}),
+      imported_sample_endpoints: parsed.endpoints.slice(0, 25),
+      imported_source: args.source,
+    };
+    return {
+      draft: enriched,
+      template_match: {
+        slug: match.template.slug,
+        score: match.score,
+        matched_segment: match.matched_segment,
+      },
+      recommended_next: ["update_connector_draft", "probe_connector_draft"],
+    };
+  }
+
+  // Manual fallback — no template matched.
+  const authType = parsed.auth_hint?.type ?? "none";
+  return {
+    draft: {
+      name: args.name ?? baseUrlDomain(baseUrl) ?? "Imported connector",
+      slug: slugify(baseUrlDomain(baseUrl) ?? "imported"),
+      driver: "http" as const,
+      environment: args.environment,
+      base_url: baseUrl || undefined,
+      auth_type: authType,
+      config: {
+        imported_sample_endpoints: parsed.endpoints.slice(0, 25),
+        imported_source: args.source,
+      },
+    },
+    template_match: null,
+    recommended_next: ["update_connector_draft", "probe_connector_draft"],
+  };
+}
+
+/** The request shape `POST /v1/connectors/import` and the tool share. */
+export const importConnectorFromSpecInputSchema = inputSchema;
 
 function baseUrlDomain(url: string): string | null {
   try {

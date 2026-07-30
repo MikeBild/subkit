@@ -56,11 +56,20 @@ the testing section of [`AGENTS.md`](AGENTS.md). The short version:
 ```bash
 bun run test:unit          # curated fast layer
 bun run test:integration   # db/queue/http/webhooks/oauth2
-bun run test:e2e           # builds sk first, then runs tests/e2e/
-bun test                   # everything (what CI runs)
+bun run test:e2e           # builds sk, then runs each e2e file in its own process
+bun test apps/ packages/   # everything except e2e
 ```
 
 Run `bun test` from the repo root — several suites resolve fixtures relative to it.
+
+**`bun run test:e2e` is the only supported way to run the e2e layer**, and it is what CI
+runs. It builds `sk` and hands the files to `scripts/test-e2e-isolated.ts`, which spawns
+one `bun test` process per file. Do **not** run `bun test tests/e2e/`: that loads all of
+them into a single process, where suites contend for process-global state (config
+leaves, env vars, the LLM provider, pg-boss workers, listening servers) and roughly half
+of those runs fail on interference unrelated to the code under test. Running one file by
+name — `bun test tests/e2e/<file>.e2e.test.ts` — is fine, because one file is one
+process.
 
 ## Before you open a PR
 

@@ -111,22 +111,10 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
     case "string-list":
       return [tag, `${tag}-2`];
     case "string-array":
-      return arrayOfObjectsCandidate(leaf, tag) ?? [tag];
+      return [tag];
     default:
       return tag;
   }
-}
-
-// A `string-array` leaf may be an array of strings OR an array of objects
-// (e.g. `mcp.servers`, the first object-array leaf). A bare `[tag]` only
-// satisfies the string case, so probe a structured candidate that the
-// leaf's own schema accepts and fall back to the string array otherwise.
-function arrayOfObjectsCandidate(leaf: ConfigLeaf, tag: string): unknown | null {
-  const slug = tag.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40) || "srv";
-  const candidate = [
-    { name: tag, namespace: slug, transport: "http", url: "https://example.com/mcp" },
-  ];
-  return leaf.schema.safeParse(candidate).success ? candidate : null;
 }
 
 function readDeep(source: unknown, leafPath: string[]): unknown {

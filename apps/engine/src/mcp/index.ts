@@ -8,6 +8,7 @@
 // The MCP *server* side (server.ts, adapter.ts, …) is consumed via its own
 // explicit imports and is not aggregated here to keep the barrel light.
 
+export type { RemoteToolAnnotations } from "./client/manifest.ts";
 export {
   McpDbOAuthClientProvider,
   type McpDbOAuthClientProviderInput,
@@ -28,6 +29,7 @@ export {
   type InvokeRemoteToolResult,
   invalidateCachedManifest,
   invokeRemoteTool,
+  type NegotiatedServerCapabilities,
   type RemoteToolDescriptor,
   type TenantMcpToolSet,
 } from "./client/pool.ts";
@@ -36,4 +38,3 @@ export * from "./client/schema-drift.ts";
 // `__setSdkAuthForTests` stays on the inner module (`./client/sdk-auth.ts`)
 // for the same reason — only the production wrapper is barrel-visible.
 export { sdkAuth } from "./client/sdk-auth.ts";
-export { reconcileMcpServersFromConfig } from "./config-seed.ts";

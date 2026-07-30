@@ -36,6 +36,7 @@
 import { and, eq, like } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { principalOrigin } from "../auth/origin.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../conversations/abort.ts";
 import { humanChatAnswer } from "../conversations/answer-actor.ts";
@@ -900,7 +901,12 @@ async function handleChatEventImpl(
     }
   } else {
     const created = await createConversation(
-      { tenant_id, actor_id: user_id, initial_message: prompt },
+      {
+        tenant_id,
+        actor_id: user_id,
+        initial_message: prompt,
+        origin_client: principalOrigin(chatPrincipal),
+      },
       db,
     );
     conversation_id = created.conversation.id;

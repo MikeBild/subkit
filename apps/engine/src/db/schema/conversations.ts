@@ -74,6 +74,16 @@ export const conversations = pgTable(
     // stays fast; embedding_model tags the producer for invalidation.
     topic_embedding: real("topic_embedding").array(),
     topic_embedding_model: text("topic_embedding_model"),
+    // Which channel opened this conversation, as `<provider>:<credential-id>`
+    // (see `auth/origin.ts`). Credential-bound, so it survives a client that
+    // misreports itself at `initialize`. Nullable: a browser session is a person,
+    // not a registered client, and has no channel to attribute.
+    //
+    // Exists so per-client behaviour is measurable over time rather than for a
+    // log-retention window — every `conversation_elicitations` row joins here via
+    // `conversation_id`, which is what turns "0 of 29 fulfilled" from one number
+    // into a per-client matrix. Read-only signal; nothing gates on it.
+    origin_client: text("origin_client"),
     ...timestamps,
   },
   (t) => [

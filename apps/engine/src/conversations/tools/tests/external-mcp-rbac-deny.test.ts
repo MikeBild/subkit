@@ -12,7 +12,7 @@
 // `admin` role → no builtin-admin short-circuit → the evaluator resolves the
 // role's permission set and denies.
 //
-// INJECTION PATTERN: a REAL mcp_servers row is registered and the pool's
+// INJECTION PATTERN: a REAL mcp connector row is registered and the pool's
 // documented TEST SEAM (`__setMcpPoolFactoriesForTests`) swaps only the SDK
 // Client construction for an in-process fake — NO bun `mock.module` (module
 // mocks are process-global and leak into every other test file in the same
@@ -30,7 +30,7 @@ import {
   __setMcpPoolFactoriesForTests,
   type McpClientLike,
 } from "../../../mcp/client/pool.ts";
-import { createMcpServer } from "../../../mcp/client/registry.ts";
+import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import { seedBuiltinRolesAndPermissions } from "../../../rbac/seed.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
@@ -57,6 +57,12 @@ const fakeClient: McpClientLike = {
   async callTool() {
     remoteCallToolCalls += 1;
     return { content: [], isError: false };
+  },
+  async readResource() {
+    return { contents: [] };
+  },
+  async getPrompt() {
+    return { messages: [] };
   },
   async close() {},
 };
@@ -110,17 +116,12 @@ beforeAll(async () => {
   await seedBuiltinRolesAndPermissions(ctx.db as unknown as Db);
 
   // Real server row — `none` auth so the (fake) handshake needs no credential.
-  await createMcpServer(
-    ctx.db,
-    {
-      tenant_id,
-      name: "Example MCP",
-      namespace: "denymcp",
-      transport: "http",
-      url: "https://denymcp.rbactest.example.com/mcp",
-    },
-    { actor_id, request_source: "api", executor: ctx.db },
-  );
+  await seedMcpConnector(ctx.db, {
+    tenant_id,
+    slug: "denymcp",
+    transport: "http",
+    url: "https://denymcp.rbactest.example.com/mcp",
+  });
 }, 30_000);
 
 afterAll(async () => {

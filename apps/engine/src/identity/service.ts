@@ -236,6 +236,7 @@ export interface ApiKeyView {
   id: string;
   tenant_id: string;
   prefix: string;
+  name: string | null;
   scopes: string[];
   user_id: string | null;
   system_account_id: string | null;
@@ -254,6 +255,7 @@ function toApiKeyView(row: typeof apiKeys.$inferSelect): ApiKeyView {
     id: row.id,
     tenant_id: row.tenant_id,
     prefix: row.prefix,
+    name: row.name ?? null,
     scopes: row.scopes,
     user_id: row.user_id ?? null,
     system_account_id: row.system_account_id ?? null,
@@ -296,6 +298,10 @@ export interface IssueApiKeyInput {
   tenant_id: string;
   owner_kind: "user" | "system_account";
   owner_id: string;
+  /** Operator-facing label, e.g. "claude-code" or "claude-ai-readonly".
+   *  Persisted so a key can be identified by what it is for rather than by
+   *  its UUID — which matters once one key per channel is the normal setup. */
+  name?: string;
   scopes?: string[];
   allowed_workflows?: string[];
   allowed_connectors?: string[];
@@ -325,6 +331,7 @@ export async function issueApiKey(
         system_account_id: input.owner_kind === "system_account" ? input.owner_id : null,
         prefix: key.prefix,
         token_sha256: key.hash,
+        name: input.name ?? null,
         scopes: input.scopes ?? ["*"],
         allowed_workflows: input.allowed_workflows ?? null,
         allowed_connectors: input.allowed_connectors ?? null,
@@ -402,6 +409,10 @@ export async function rotateApiKey(
         system_account_id: existing.system_account_id ?? null,
         prefix: key.prefix,
         token_sha256: key.hash,
+        // The label rides along with the scopes: a rotated key is the same key
+        // for the same channel, so losing its name would leave the operator
+        // with an anonymous replacement for the one they meant to keep.
+        name: existing.name ?? null,
         scopes: existing.scopes,
         allowed_workflows: existing.allowed_workflows ?? null,
         allowed_connectors: existing.allowed_connectors ?? null,

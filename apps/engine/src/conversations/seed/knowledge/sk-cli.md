@@ -4,7 +4,7 @@ name: sk Platform Reference — sk CLI
 description: Exhaustive reference for the sk command-line client — every top-level command, headless mode, profiles, the sk mcp stdio proxy, settings, bootstrap flows, and the coding-agent integration commands (agent, learnings, skills sync).
 tags: [sk-platform-reference, cli, sk-cli, headless, profiles, mcp, settings, bootstrap]
 scope: global
-version: 2
+version: 3
 ---
 
 # sk CLI Overview
@@ -106,7 +106,7 @@ Approvals/policy: `/approvals`, `/approve`, `/reject`, `/yolo` (arms a typed-con
 Status/usage: `/status`, `/cost`, `/usage`, `/exec [execution_id]`, `/verbose`, `/model`, `/queue`, `/history`.
 Identity: `/login`, `/logout`, `/profile [name]`, `/tenant`.
 Context/files: `/memory` (open `SK.md` in `$EDITOR`), `/init` (generate a starter `SK.md`), `/files`, `/paste`, `/mention`, `/copy`, `/export`, `/view chat|inspect`. In the interactive REPL, pasted or dropped local file paths are handled directly by the composer; do not route users to `/attach` or `/upload`.
-Discovery: `/skills`, `/knowledge`, `/mcp`, `/mcp-servers`, `/connectors`, `/workflows`, `/executions`.
+Discovery: `/skills`, `/knowledge`, `/mcp`, `/connectors`, `/workflows`, `/executions`.
 Admin/config: `/config`, `/config-form`, `/settings` (5-tab palette: Status / Config / Usage / Skills / Knowledge), `/admin`, `/audit`, `/logs [limit] [trace_id]`, `/debug on|off|tail`, `/session <workflow-id>` (mint a short-lived portal token + QR code), `/actions`, `/feedback`, `/help`, `/exit`.
 
 # sk mcp — stdio MCP Proxy
@@ -153,12 +153,11 @@ Conversation sessions are cached locally in `~/.sk/sessions/` so `-c`/`-r` and a
 # Resource Commands (Operator)
 
 - `sk workflows` (`workflow:read`) — `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `preview`, `restore`, `run`, `validate`.
-- `sk connectors` (`connector:read`) — `create`, `delete`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `get`, `inspect`, `list`, `patch`, `probe`, `test`.
+- `sk connectors` (`connector:read`) — `list`, `get`, `inspect`, `create`, `import`, `validate`, `patch`, `enable`, `disable`, `mcp-inspect`, `mcp-authorize`, `delete`, `promote`, `test`, `probe`, `docs-ingest`, `docs-list`, `docs-search`, `docs-delete`. `create --file` validates and probes the unsaved definition before creating it (`--skip-checks` bypasses), `patch --file` applies a partial definition and validates first, `validate <file>` checks a definition against its driver's config schema without saving or reaching upstream, and `import --spec` turns an API specification into a connector after showing the draft. `enable` / `disable` are the driver-agnostic on/off switch. This is also where external MCP servers live: they are connectors with `driver: "mcp"`, so `mcp-inspect` forces a handshake and lists the tools, capabilities and instructions the remote actually serves, and `mcp-authorize` prints the OAuth 2.1 URL to open in a browser. There is no `sk mcp-servers` command — that registry was removed, and `/mcp-servers` in the REPL now answers with a pointer to `/connectors`.
 - `sk connector-templates` (`connector:read`) — `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth`.
 - `sk credentials` (`credential:read`) — `delete`, `list`, `rotate`, `set`.
 - `sk auth` (`connector:write`) — start a connector reauthentication flow (OAuth2 authorize URL).
 - `sk install` (`connector:write`) — guided enterprise integration setup: `github`, `google-workspace`, `hubspot`, `jira`, `salesforce`, `slack`, `teams`.
-- `sk mcp-servers` (`mcp_server:manage`) — manage external MCP servers: `add`, `authorize`, `disable`, `enable`, `get`, `inspect`, `list`, `remove`, `set-credential`.
 - `sk executions` (`execution:read`) — `abort`, `get`, `list`, `rerun`, `result`, `steps`, `tail`.
 - `sk schedules` (`workflow:read`) — `list`.
 - `sk knowledge-sources` (`knowledge:read`) — `analyze`, `create`, `delete`, `get`, `list`, `patch`, `search`.

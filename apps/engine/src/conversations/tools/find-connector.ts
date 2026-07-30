@@ -25,7 +25,7 @@ const inputSchema = z
       .string()
       .optional()
       .describe(
-        "Restrict the search to one catalog block. A connector's block is its driver (http, graphql, postgres, s3).",
+        "Restrict the search to one catalog block. A connector's block is its driver (http, graphql, postgres, s3, mcp).",
       ),
     limit: z.number().int().min(1).max(50).default(15),
   })

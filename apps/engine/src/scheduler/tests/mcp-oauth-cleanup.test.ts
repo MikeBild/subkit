@@ -16,8 +16,8 @@ import {
   mcpOauthRefreshTokens,
 } from "../../db/schema/mcp_oauth.ts";
 import { mcpOauthStates } from "../../db/schema/mcp_oauth_states.ts";
-import { mcpServers } from "../../db/schema/mcp_servers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
 import { runMcpOAuthCleanup } from "../mcp-oauth-cleanup-runner.ts";
 
 let srv: HttpTestServer;
@@ -548,20 +548,16 @@ describe("runMcpOAuthCleanup — stale unused DCR clients", () => {
 });
 
 describe("runMcpOAuthCleanup — expired client-direction in-flight states", () => {
-  /** Seed an mcp_server so mcp_oauth_states' FK is satisfied. */
-  async function seedServer(namespace: string): Promise<string> {
-    const [row] = await srv.db
-      .insert(mcpServers)
-      .values({
-        tenant_id: srv.tenantId,
-        name: `cleanup ${namespace}`,
-        namespace,
-        transport: "http",
-        url: "https://examplemcp.cleanup.test/mcp",
-        auth_config: { kind: "oauth2", issuer: "https://auth.cleanup.test" },
-      })
-      .returning();
-    if (!row) throw new Error("seed server failed");
+  /** Seed an mcp connector so mcp_oauth_states' FK is satisfied. */
+  async function seedServer(slug: string): Promise<string> {
+    const row = await seedMcpConnector(srv.db, {
+      tenant_id: srv.tenantId,
+      slug,
+      display_name: `cleanup ${slug}`,
+      transport: "http",
+      url: "https://examplemcp.cleanup.test/mcp",
+      auth: { kind: "oauth2", issuer: "https://auth.cleanup.test" },
+    });
     return row.id;
   }
 
@@ -571,10 +567,10 @@ describe("runMcpOAuthCleanup — expired client-direction in-flight states", () 
       .insert(mcpOauthStates)
       .values({
         tenant_id: srv.tenantId,
-        mcp_server_id: serverId,
+        connector_id: serverId,
         state: nextState("expired-state"),
         code_verifier: "",
-        redirect_uri: "https://engine.cleanup.test/v1/mcp-servers/oauth/callback",
+        redirect_uri: "https://engine.cleanup.test/v1/connectors/mcp/oauth/callback",
         expires_at: new Date(Date.now() - 60_000), // already expired allow-wall-clock
       })
       .returning();
@@ -595,10 +591,10 @@ describe("runMcpOAuthCleanup — expired client-direction in-flight states", () 
       .insert(mcpOauthStates)
       .values({
         tenant_id: srv.tenantId,
-        mcp_server_id: serverId,
+        connector_id: serverId,
         state: nextState("fresh-state"),
         code_verifier: "",
-        redirect_uri: "https://engine.cleanup.test/v1/mcp-servers/oauth/callback",
+        redirect_uri: "https://engine.cleanup.test/v1/connectors/mcp/oauth/callback",
         expires_at: freshExpiry,
       })
       .returning();

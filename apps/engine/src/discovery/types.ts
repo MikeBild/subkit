@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { DriverName } from "../connectors/types.ts";
 
 export const DiscoveryRunStatusSchema = z.enum([
   "pending",
@@ -84,7 +85,7 @@ export type DiscoveryArtifactView = z.infer<typeof DiscoveryArtifactSchema>;
 export interface ConnectorDraft {
   name: string;
   slug?: string;
-  driver: "http" | "postgres" | "s3" | "graphql";
+  driver: DriverName;
   base_url?: string;
   dsn?: string;
   auth_type: string;

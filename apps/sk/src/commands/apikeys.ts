@@ -50,7 +50,7 @@ const createCmd = defineCommand({
     scopes: {
       type: "string",
       description:
-        'Comma-separated scope strings (e.g. "workflow:read,workflow:invoke"). Default ["*"] when omitted.',
+        'Comma-separated scope strings (e.g. "workflow:read,workflow:invoke"). Defaults to ["*"] — full role-derived access, and read-and-execute over MCP. Add "mcp:authoring" for a key that may also author definitions over MCP (a coding agent); leave it off for a key going into a browser client.',
     },
     "allowed-workflows": {
       type: "string",

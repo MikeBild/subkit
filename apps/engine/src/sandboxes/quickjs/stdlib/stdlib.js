@@ -892,6 +892,65 @@
     }),
   });
 
+  // ---------------------------------------------------------------- fmt
+  // QuickJS has no Intl/ECMA-402 (see QUICKJS.md). `toLocaleString("de-DE")`
+  // therefore ACCEPTS the locale and IGNORES it, returning the C-locale string:
+  // a German page shipped "+9.2 %" and "35606 USD" to production because the
+  // same code formatted correctly under Node. Same footgun class as the missing
+  // btoa below — so the surface exists here, and the silent path is closed.
+  const SEPARATORS = {
+    de: { group: ".", decimal: "," },
+    en: { group: ",", decimal: "." },
+  };
+
+  function groupDigits(digits, sep) {
+    let out = "";
+    for (let i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 === 0) out += sep;
+      out += digits[i];
+    }
+    return out;
+  }
+
+  function fmtNumber(value, options) {
+    const opts = options || {};
+    const locale = String(opts.locale || "en")
+      .slice(0, 2)
+      .toLowerCase();
+    const sep = SEPARATORS[locale];
+    if (!sep) {
+      throw new Error(
+        'sk.fmt.number: unsupported locale "' +
+          opts.locale +
+          '" — known: ' +
+          Object.keys(SEPARATORS).join(", "),
+      );
+    }
+    const n = Number(value);
+    if (!isFinite(n)) throw new Error("sk.fmt.number: value is not a finite number");
+    const digits = opts.digits === undefined || opts.digits === null ? 0 : Number(opts.digits);
+    if (!(digits >= 0 && digits <= 20)) throw new Error("sk.fmt.number: digits must be 0..20");
+    const grouping = opts.grouping === false ? false : true;
+    // toFixed rounds the binary double: 0.95 is stored just below 0.95, so
+    // toFixed(1) yields "0.9" while Intl yields "1.0". Re-parsing through
+    // exponential notation rounds the shortest round-trip decimal instead,
+    // which is what a reader expects and what the same code produced under
+    // Node during authoring.
+    const magnitude = Math.abs(n);
+    const shifted = Number(magnitude + "e" + digits);
+    const rounded = isFinite(shifted) ? Number(Math.round(shifted) + "e-" + digits) : magnitude;
+    const fixed = (isFinite(rounded) ? rounded : magnitude).toFixed(digits);
+    const parts = fixed.split(".");
+    const whole = grouping ? groupDigits(parts[0], sep.group) : parts[0];
+    return (n < 0 ? "-" : "") + whole + (digits > 0 ? sep.decimal + parts[1] : "");
+  }
+
+  const fmt = Object.freeze({
+    number: fmtNumber,
+    de: function de(value, digits) {
+      return fmtNumber(value, { locale: "de", digits: digits === undefined ? 0 : digits });
+    },
+  });
   const sk = Object.freeze({
     http: http,
     get: get,
@@ -926,7 +985,8 @@
     isArray: isArray,
     isObject: isObject,
     isNil: isNil,
-    version: "1.6.0",
+    fmt: fmt,
+    version: "1.7.0",
   });
 
   Object.defineProperty(globalThis, "sk", {
@@ -969,4 +1029,43 @@
     configurable: false,
     enumerable: false,
   });
+
+  // A locale argument to toLocaleString is silently ignored in QuickJS, which
+  // turns a formatting mistake into wrong output instead of an error. Passing
+  // one now fails loudly and names the replacement; calling it without
+  // arguments keeps working, because that is not locale-aware.
+  //
+  // Shipped as a MINOR bump, not a major one, although behaviour changes: the
+  // only code that starts failing was already producing wrong output, while a
+  // major bump would flag every persisted JS workflow as drifted and bury that
+  // signal in noise. Revisit if the guard turns out to catch legitimate use.
+  function installLocaleGuard(proto, name) {
+    const original = proto[name];
+    Object.defineProperty(proto, name, {
+      // BOTH arguments are checked, not just the locale. `toLocaleString(undefined,
+      // { style: "percent" })` names no locale but still asks for Intl behaviour:
+      // under Node it yields "50 %", here the options are dropped and it yields
+      // "0.5". Guarding only the first argument would leave that path silently
+      // wrong — the exact failure this guard exists to close, reached through the
+      // second parameter instead of the first.
+      value: function guardedToLocaleString(locales, options) {
+        if (locales !== undefined || options !== undefined) {
+          throw new Error(
+            name +
+              "(locale, options) is not supported: this sandbox has no Intl/ECMA-402, so " +
+              "both would be ignored and the result would be wrong. Use sk.fmt.number(value, " +
+              '{ locale: "de", digits: 1 }) for numbers, or format upstream.',
+          );
+        }
+        return original.apply(this, []);
+      },
+      writable: false,
+      configurable: false,
+      enumerable: false,
+    });
+  }
+  installLocaleGuard(Number.prototype, "toLocaleString");
+  installLocaleGuard(Date.prototype, "toLocaleString");
+  installLocaleGuard(Date.prototype, "toLocaleDateString");
+  installLocaleGuard(Date.prototype, "toLocaleTimeString");
 })();

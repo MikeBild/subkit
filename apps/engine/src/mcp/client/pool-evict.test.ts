@@ -24,7 +24,7 @@ import {
   getTenantMcpTools,
   type McpClientLike,
 } from "./pool.ts";
-import { createMcpServer } from "./registry.ts";
+import { seedMcpConnector } from "./test-fixtures.ts";
 
 // Per-URL connect (handshake) counter. The factory seam hands the fake
 // client its server row, so each connect bumps the counter for the right
@@ -50,6 +50,12 @@ function makeFakeClient(url: string): McpClientLike {
     async callTool() {
       return { content: [], isError: false };
     },
+    async readResource() {
+      return { contents: [] };
+    },
+    async getPrompt() {
+      return { messages: [] };
+    },
     async close() {},
   };
 }
@@ -58,22 +64,10 @@ let ctx: TestDb;
 let tenantId: string;
 const _origDatabaseUrl = process.env.DATABASE_URL;
 
-function auditCtx() {
-  return {
-    actor_id: "00000000-0000-0000-0000-000000000001",
-    request_source: "api" as const,
-    executor: ctx.db,
-  };
-}
-
 // Both servers use `none` auth so connect always succeeds (no credential).
-async function seedServer(namespace: string, host: string): Promise<{ id: string; url: string }> {
+async function seedServer(slug: string, host: string): Promise<{ id: string; url: string }> {
   const url = `https://${host}.evicttest.example.com/mcp`;
-  const row = await createMcpServer(
-    ctx.db,
-    { tenant_id: tenantId, name: namespace, namespace, transport: "http", url },
-    auditCtx(),
-  );
+  const row = await seedMcpConnector(ctx.db, { tenant_id: tenantId, slug, transport: "http", url });
   return { id: row.id, url };
 }
 

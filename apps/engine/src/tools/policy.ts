@@ -45,7 +45,19 @@ export const MCP_ELICITATION_BLURB =
  * surfaced via MCP elicitation. Keep the two surfaces in lock-step by
  * sourcing the text here.
  */
-export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON = `This tool mutates a conversation-scoped working draft and is only available inside an authoring conversation. Call conversation_start to begin connector/workflow authoring; ${MCP_ELICITATION_BLURB}.`;
+export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON = `This tool mutates a conversation-scoped working draft and is only available inside an authoring conversation. Author from the sk CLI (\`sk workflows --help\`, \`sk connectors --help\`), which edits definitions from a file you can read. Over MCP, conversation_start opens an authoring conversation when the credential carries the mcp:authoring scope; ${MCP_ELICITATION_BLURB}.`;
+
+/**
+ * Reason surfaced when a `conversation_*` session tool is called by a
+ * credential that does not carry authoring.
+ *
+ * Authoring over MCP is opt-in per credential, so this is a real refusal, not
+ * a hint about a missing draft. It names the CLI first because that is the
+ * path that always works, and the scope second so an operator who does want
+ * MCP authoring knows exactly what to grant.
+ */
+export const CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON =
+  "Authoring is not enabled for this credential. Definitions — workflows, connectors, knowledge sources, skills — are authored through the sk CLI (`sk workflows --help`, `sk connectors --help`), where the change is a file you can read before it is applied. To author over MCP instead, the credential must carry the mcp:authoring scope.";
 
 /**
  * Reason surfaced when a draft-DEPENDENT tool (`requires_draft`) is reached
@@ -55,7 +67,7 @@ export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON = `This tool mutates a conversat
  * conversation draft for its DATA — running it against the empty MCP stub
  * draft would be a silent no-op. The dispatcher returns this instead.
  */
-export const DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON = `This tool operates on a conversation-scoped working draft and is only available inside an authoring conversation. Call conversation_start to begin connector/workflow authoring; ${MCP_ELICITATION_BLURB}.`;
+export const DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON = `This tool operates on a conversation-scoped working draft and is only available inside an authoring conversation. Author from the sk CLI (\`sk workflows --help\`, \`sk connectors --help\`), which edits definitions from a file you can read. Over MCP, conversation_start opens an authoring conversation when the credential carries the mcp:authoring scope; ${MCP_ELICITATION_BLURB}.`;
 
 /** Confirmation marker the client sets when re-issuing a previously
  *  paused call. Two aliases for symmetry with the legacy sdk-wrap /

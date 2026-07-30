@@ -76,7 +76,7 @@ async function seedAccessToken(opts?: {
   revokedAt?: Date;
   /** RFC 8707 resource indicator. Omit only in tests that do not enable audience validation. */
   resource?: string | null;
-}): Promise<{ plaintext: string; tokenId: string }> {
+}): Promise<{ plaintext: string; tokenId: string; clientId: string }> {
   const clientId = await seedClient();
   const token = generateAccessToken();
   const now = new Date(); // allow-wall-clock
@@ -99,7 +99,7 @@ async function seedAccessToken(opts?: {
     })
     .returning({ id: mcpOauthAccessTokens.id });
   if (!row) throw new Error("seed access token failed");
-  return { plaintext: token.plaintext, tokenId: row.id };
+  return { plaintext: token.plaintext, tokenId: row.id, clientId };
 }
 
 function makeRequest(token: string): Request {
@@ -123,6 +123,33 @@ describe("createMcpOAuthAuthProvider — happy path", () => {
     expect(principal?.scopes).toContain("mcp:authoring");
     expect(Array.isArray(principal?.roles)).toBe(true);
     expect((principal?.roles ?? []).length).toBeGreaterThan(0);
+  });
+
+  test("carries the OAuth client registration the token was issued to", async () => {
+    // Which client connected is credential-bound, not self-reported: it comes
+    // from the access-token row, so a client cannot claim to be another one the
+    // way it can with `clientInfo` at `initialize`. That is what makes it usable
+    // for per-channel decisions and for splitting telemetry by client.
+    const { plaintext, clientId } = await seedAccessToken();
+    const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
+    const principal = await provider.resolve(makeRequest(plaintext));
+
+    expect(principal?.oauth_client_id).toBe(clientId);
+  });
+
+  test("two clients authorised by the same user resolve to different registrations", async () => {
+    // The session owner key derives its credential term from this field, so two
+    // distinct clients for one user must not collapse onto the same value —
+    // otherwise they would share an MCP session.
+    const first = await seedAccessToken();
+    const second = await seedAccessToken();
+    const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
+
+    const a = await provider.resolve(makeRequest(first.plaintext));
+    const b = await provider.resolve(makeRequest(second.plaintext));
+
+    expect(a?.id).toBe(b?.id ?? "");
+    expect(a?.oauth_client_id).not.toBe(b?.oauth_client_id);
   });
 });
 

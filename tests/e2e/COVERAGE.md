@@ -6,6 +6,23 @@
 > below is treated as untested, and code review rejects the change until
 > the entry and its test land together.
 
+## Running these tests
+
+```bash
+bun run test:e2e     # the only supported command; also what CI runs
+```
+
+It builds `sk` and hands the suites to `scripts/test-e2e-isolated.ts`,
+which spawns **one `bun test` process per file**.
+
+`bun test tests/e2e/` is **not** supported. It loads every file into a
+single process, where suites contend for process-global state — config
+leaves, env vars, the LLM provider, pg-boss workers, listening servers —
+and roughly half of those runs fail on interference that has nothing to
+do with the change under test. Running one file by name
+(`bun test tests/e2e/<file>.e2e.test.ts`) is fine: one file is one
+process.
+
 ## Tracks
 
 Two tracks against a real engine + Postgres + RBAC + audit. Only the
@@ -20,6 +37,13 @@ The mock track exists for tests that pin a specific tool sequence (the
 canned plans in `apps/engine/src/llm/mock-provider.ts`). Prefer real
 + outcome-based assertions ("a connector was persisted") over
 trace-based ("start_connector_from_description was called for vendor X").
+
+The mock track is also hermetic where connector discovery is concerned:
+`boot(label, { llm: "mock" })` disables the `playwright-crawl` strategy,
+which is the tail of the strategy chain and claims any URL, so a "mock"
+suite no longer launches Chromium or navigates to a live third party.
+A suite that is actually testing the browser crawl opts back in with
+`boot(label, { llm: "mock", browser_discovery: true })`.
 
 ---
 

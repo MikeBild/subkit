@@ -19,7 +19,7 @@ export async function createQueueCtx(label: string): Promise<QueueTestCtx> {
     testDb,
     boss,
     cleanup: async () => {
-      await disposeBoss(boss, 5_000);
+      await disposeBoss(boss);
       await testDb.cleanup();
     },
   };

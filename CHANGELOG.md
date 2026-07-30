@@ -4,6 +4,471 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] – 2026-07-30
+
+### Added
+
+- **Any Model Context Protocol server is now a Connector.** Point sk at an MCP
+  server and everything it publishes — tools, resources, prompts — becomes
+  reachable from workflows and from chat, with no driver to write and no engine
+  change. `mcp` joins `http`, `graphql`, `postgres`, and `s3` as the fifth
+  built-in driver, and it is the one that turns a closed driver set into an open
+  integration surface: where the other four each cover a single wire protocol,
+  this one covers an ecosystem. A vendor shipping an MCP server is a connector
+  you create in a minute rather than an integration you wait for.
+- **MCP servers are created, listed, patched, enabled, disabled and deleted
+  through the ordinary connector surface** — `/v1/connectors` and
+  `sk connectors`. They carry their secret in the same credential vault, appear
+  in the same catalog grouped under the `mcp` driver, and answer the same
+  "which workflows depend on this?" question as every other connector.
+- **Remote tools reach workflows as a `request` step carrying an `mcp` block** —
+  `call_tool` (with `tool`), `read_resource` (with `uri`), or `get_prompt` (with
+  `prompt`). No new step kind: retry, backoff, `error_policy`,
+  `response_filters`, and the versioned output envelope behave identically to
+  every other driver. A tool that declares an output schema returns
+  `{ content, structured_content }`, keeping the half the remote guaranteed
+  separate from the half it did not.
+- **Remote tools reach chat as `mcp_<connector-slug>__<tool>`**, so a message
+  naming one dispatches in a single call. Where a server declares resource or
+  prompt capabilities, four engine-minted read adapters are added per server
+  (`list_resources`, `read_resource`, `list_prompts`, `get_prompt`) — and only
+  where declared, so the model is never offered an entry whose every call would
+  be a protocol error.
+- **A driver-agnostic operator off switch.** `POST /v1/connectors/{id}/enable`
+  and `/disable` (`sk connectors enable|disable`) work on every driver, and the
+  disable is honest: an MCP connector's pooled session is evicted and a Postgres
+  connector's pool is closed on the way out, so nothing keeps serving past the
+  switch.
+- **`POST /v1/connectors/{id}/mcp/inspect`** (`sk connectors mcp-inspect`) forces
+  one handshake and reports what a remote actually serves — its negotiated
+  capabilities, its instructions, and its tool manifest — so a server can be
+  verified before anyone authors against it.
+- **Connectors can now be authored from a file, like every other resource.**
+  `sk connectors create --file` and `sk connectors patch --file` take a full
+  definition, `sk connectors validate` checks one without saving it, and
+  `sk connectors probe --file` reaches the upstream without creating anything.
+  Until now `create` accepted only a template slug, so a connector matching no
+  built-in template could not be authored from the CLI at all — the one gap that
+  made "author through the sk CLI" a promise the tool could not keep. Workflows,
+  knowledge sources and skills already had this shape; connectors now match it.
+- **`sk connectors import --spec` builds a connector from a specification** —
+  OpenAPI, HAR, Postman or a `curl` line. The import produces a draft you read
+  and edit before it exists as anything; it never writes on its own.
+- **The documentation now names one authoring surface and describes it in full.**
+  `docs/llms.txt`, `llms-full.txt` and the OpenAPI description route authoring to
+  the sk CLI, and the generated CLI reference lists every command with every
+  argument — type, default, alias and whether it is required — rather than a
+  one-line summary per subcommand. A coding agent reading only the generated
+  reference can now author without guessing at a flag.
+- **The API now answers "why is this connector not being used?"** Every
+  connector representation carries `health_state` — the engine's reconciled
+  verdict (`ok`, `degraded`, `needs_update`, `needs_reauth`) — beside
+  `health_reason` and the branchable `health_error_code`. Until now the API
+  reported only whether a human had switched the connector off, and the other
+  half of the answer was reserved for whoever had database access.
+
+### Changed
+
+- **BREAKING: a wildcard credential no longer authors over MCP.** The `*` scope
+  asserts "no narrowing of role-derived access"; it does not assert consent to
+  author. It now resolves to the **product** tier — 67 tools: every tenant read
+  plus the run tools — instead of the authoring tier. Authoring is opt-in per
+  credential: a credential authors when someone wrote `mcp:authoring` on it, and
+  not otherwise. This is enforced on the call and not merely in the catalogue —
+  a `conversation_*` call from a credential without the scope is refused, with a
+  message naming the scope that would enable it.
+
+  Why: `*` is the default minted scope, the admin-key scope, and the OIDC
+  session scope, so the old mapping meant authoring-on-by-default for every
+  credential ever issued — including the ones pasted into browser clients that
+  cannot carry a human through an authoring turn. Breadth of role is not
+  consent to author.
+
+  **Upgrade:** re-issue any key that is supposed to author.
+
+  ```bash
+  sk apikeys create --name coding-agent  --scopes "*,mcp:authoring"
+  sk apikeys create --name browser-client --scopes "*"
+  ```
+
+- **BREAKING: `/v1/mcp-servers` is removed** — all eight endpoints, along with
+  the OAuth callback that belonged to them. An external MCP server is a
+  connector, so it is managed through `/v1/connectors`. The interactive OAuth
+  round-trip was not dropped: it moved to
+  `POST /v1/connectors/{id}/mcp/authorize` with its callback at
+  `GET /v1/connectors/mcp/oauth/callback`. It stays a separate flow from the
+  generic connector OAuth start because an MCP server publishes its
+  authorization server through protected-resource metadata rather than declaring
+  an issuer in config — two discovery models cannot share one handler without
+  one of them misreporting what it did.
+
+  **Upgrade:** replace `/v1/mcp-servers` calls with the `/v1/connectors`
+  equivalents; a removed route answers 404.
+
+- **BREAKING: `sk mcp-servers` is removed** — all nine subcommands, along with
+  the `/mcp-servers` REPL slash command, which now redirects to `/connectors`.
+  Use `sk connectors`, which gained `enable`, `disable`, `mcp-inspect`, and
+  `mcp-authorize`.
+
+- **BREAKING: `mcp.servers` and `mcp.client.*` are removed from the engine
+  configuration, and an engine that still finds them refuses to boot.** The
+  refusal is deliberate: `ConfigSchema` strips an unknown key silently and the
+  next settings write reserializes the whole file, so warn-and-continue would
+  have *deleted* an operator's server declarations on the first
+  `sk settings set` after the upgrade. That is data, and only stopping is
+  honest. The error names every offending path (including per-tenant overlays),
+  how many declarations are at stake, the config file, and the migration.
+
+  **Upgrade, before swapping the binary.** Recreate each declared server as a
+  connector and move the three client budgets:
+
+  ```bash
+  # Each entry in mcp.servers becomes a connector:
+  #   driver: "mcp", environment: "prod", base_url: <the server url>,
+  #   config: { mcp: { transport: "http", auth: { kind: … } } }
+  sk connectors create --file server.json
+  sk credentials set <CONNECTOR_ID> --mode bearer --token '<TOKEN>'
+  ```
+
+  | Removed | Replacement |
+  |---|---|
+  | `mcp.client.per_server_manifest_byte_cap` | `connectors.mcp.per_server_manifest_byte_cap` |
+  | `mcp.client.remote_tool_call_timeout_ms` | `connectors.mcp.remote_tool_call_timeout_ms` |
+  | `mcp.client.tools_list_max_pages` | `connectors.mcp.tools_list_max_pages` |
+
+  A config secret is not carried over by design: `config.mcp.auth` is refused at
+  the storage layer if it holds a secret-shaped key — a database `CHECK`, not a
+  convention. Attach the secret with `sk credentials`.
+
+- **BREAKING: `mcp_server:manage` is removed from the permission catalog.**
+  Managing an external MCP server is managing a connector, so the connector
+  permissions govern it. Custom roles granting the old permission need updating.
+
+- **BREAKING: a connector slug may no longer contain a double underscore**, and
+  existing slugs that do are renamed automatically on migration
+  (`legacy__conn` → `legacy-conn`), each with an audit row naming the old and
+  new value. Remote tools are addressed as `mcp_<slug>__<tool>`, and the
+  separator is only an unambiguous split point with that ban. Workflows bind
+  connectors by id, so definitions are unaffected — but a hand-written
+  slug-addressed command or a bookmark may need updating. The audit row is the
+  reconciliation trail.
+
+### Fixed
+
+- **A connector's failure record is written by the engine, not by the remote.**
+  `connectors.last_error` and `health_reason` used to carry the upstream's own
+  error text, redacted on a best-effort basis — and an authentication failure
+  is exactly the response in which a server may echo the credential it just
+  rejected. Both now carry an engine-authored sentence plus a machine-readable
+  code (`[auth_rejected] …`), naming the endpoint, the status, and — when the
+  engine itself refused — which credential or setting is missing. The upstream
+  body stays in the structured log, which has retention and access control that
+  a database column does not.
+- **A remote MCP server can no longer talk its own calls past the confirm
+  gate.** `readOnlyHint` and `destructiveHint` are optional, unverified, and
+  asserted by the same party whose side effects they describe. They now reach
+  the model's tool description and the audit trail, and they reach no gate: a
+  `tools/call` is a write whatever the server claims, and only a tenant-side
+  author can reclassify one with `side_effects: "read"`. `read_resource` and
+  `get_prompt` are reads by the specification's own definition of them.
+- **A healthy MCP session is no longer torn down by a validation complaint.**
+  A tool result that failed its own declared output schema raised an error the
+  pool read as a dead socket: it evicted a live session, armed backoff, and —
+  because the check was a bare match on "401" anywhere in the message — a
+  validator complaint that happened to mention 401 could delete the server's
+  OAuth token. Transport failures and peer answers are now told apart by the
+  protocol's own error codes.
+- **A paginating MCP server no longer exposes only its first page of tools.**
+  The `nextCursor` was dropped; pages are now followed, bounded by
+  `connectors.mcp.tools_list_max_pages`.
+- **A handshake backoff now survives an engine restart.** Failure counts and the
+  backoff window are held in the database rather than only in process memory, so
+  a server that has been refusing for an hour is no longer handed a full-rate
+  retry because the process bounced.
+- **A call step's input can no longer smuggle a credential into stored data.**
+  Call steps interpolate their input like every other step, and `executions.input`
+  is persisted verbatim and readable from the read tier — so a `${cred.…}`
+  reference there would have written a decrypted secret into a row a reader can
+  fetch. Such an input is now refused with `call_input_credential_forbidden`
+  before anything is resolved, rather than resolved and then stored.
+- **An MCP server can no longer be reached by rebinding its name.** The connect
+  path checked the egress allowlist against the literal hostname while the
+  registry checked it against the resolved address, so a name that passed the
+  first check could point somewhere else by the time the socket opened. Every
+  handshake now resolves before it connects.
+- **`sk.fmt` no longer depends on the machine's locale.** Formatting used the
+  host locale, so the same workflow rendered different numbers and dates on a
+  developer's laptop than on the engine — and the sandbox has no ECMA-402 at
+  all, making the difference silent rather than loud. The locale-taking
+  overloads now throw instead of quietly falling back, and both arguments are
+  checked: passing only options was still a locale-dependent call.
+- **The circuit breaker now blocks every driver.** Enforcement sat below an
+  HTTP-only guard while the fan-out preflight applied the same rule to all
+  drivers — one predicate with two scopes. A new failure-class predicate decides
+  what counts: 5xx, 429, transport errors, and connection-class SQLSTATEs open
+  the breaker; a 4xx, a SQL syntax error, an integrity violation, and a missing
+  S3 key do not. A connector is no longer taken offline for the whole reset
+  window because an author typed a query wrong.
+
+## [5.16.1] – 2026-07-29
+
+### Fixed
+
+- **`sk workflows list` no longer renders a permanently blank column.** The list
+  asked for `status`; the engine has always called that field `lifecycle`, so
+  the column showed nothing on every row from the day it was added — nothing
+  failed, it was just silently empty. Grouping the catalog put it beside real
+  data, which is what made it visible. A column name is a contract with the
+  engine's schema, and nothing was checking it: the rendered columns are now
+  resolved against the committed OpenAPI list-item schemas, and a column that is
+  not a real property fails the suite.
+
+## [5.16.0] – 2026-07-28
+
+### Added
+
+- **Workflows and connectors are grouped into blocks instead of one flat list.**
+  A tenant with 60+ workflows got a single undifferentiated list on every
+  surface. Grouping needed no new column and nothing to maintain: a workflow's
+  category is derived from the slug corpus — a leading segment shared by at
+  least three workflows forms a block, and the rest collect under `other` — so
+  blocks emerge as the catalog grows. Connectors need no derivation at all;
+  their category is the driver they already store. Block order is computed once
+  in the engine and sent on the response, so every client renders the same order
+  rather than re-deriving the rule.
+- **Two catalog filters, identical on HTTP, MCP, `sk`, and chat:** by category,
+  and by connector — the latter answering "what breaks if I rotate this
+  credential?" directly.
+- Authoring context now carries the families that already exist, so a new
+  workflow is named into one at creation time, when nothing has to be renamed.
+
+### Fixed
+
+- **"Which workflows use this connector?" had two different answers.** The
+  delete-time dependency guard matched `steps[].connector_id` only, so a
+  workflow bound through a `${connector.<slug>.base_url}` URL was invisible to
+  it and the delete was cleared as having no dependants. The guard and the new
+  filter now resolve through one complete extractor covering both binding forms.
+
+## [5.15.0] – 2026-07-28
+
+### Fixed
+
+- **Corrected the documented MCP authoring boundary against a live `tools/list`
+  rather than against a reading of the code.** An earlier correction had widened
+  the claim in the wrong direction. Verified on a running engine: an
+  `mcp:authoring` credential carries neither `restore_workflow_version` nor
+  `update_workflow`, and calling either is refused. The mistake was testing the
+  wrong layer — querying the tool provider directly bypasses where the
+  authoring/admin split actually happens, which makes the two tiers look
+  identical when they are not. The test now runs through the real path and
+  asserts what production returns, including that admin does carry the writes
+  authoring withholds.
+
+## [5.14.0] – 2026-07-28
+
+### Fixed
+
+- **Self-healing now actually repairs.** One patch semantic backs preview,
+  dry-run, and apply, so the diff an operator approves is the diff that goes
+  live. An applied patch rewrites the step; one the engine cannot perform is
+  refused with a typed reason instead of being recorded as a repair. A new
+  `patch.applied` event reports it — until now only proposals were announced.
+- **Committing no longer starts an unattended trigger behind nobody's back.** A
+  commit with no human decision behind it is blocked before it can bind an
+  unpaused production cron or a public webhook. `create_schedule` correspondingly
+  stops collapsing its confirmation on MCP: a schedule fires before anyone can
+  see and delete it, so "additive" never made it reversible.
+- **A judge outage no longer auto-commits an unjudged preview while a human is
+  present.** The deferral now keys on any skip, not only one specific reason.
+- A commit that skipped the prior-approval gate under `permission_mode=auto` now
+  says so, carrying an honest reason instead of claiming a manual re-issue.
+- `POST /v1/skill-candidates/{id}/approve|reject` were reachable with
+  `skill:read` alone, and setting `status: "active"` routed around
+  `skill:activate`. Both closed.
+- The approval, determinism, audit-immutability, and one-gate claims in the docs
+  now state what the code holds rather than an absolute it does not.
+  `max_llm_tokens_per_run` is documented — sk ships a template that calls a model
+  at runtime while the docs said that could not happen.
+
+## [5.13.0] – 2026-07-28
+
+### Fixed
+
+- **Replacing an existing workflow now requires a person; restoring one is now
+  possible at all.** A verified 14-step workflow was overwritten twice with
+  nobody looking, and the session that found the damage had no way to undo it.
+  Creating and replacing shared one gate, and recovery had no tool. Saving a
+  draft is now declared dangerous when the payload means "overrule something
+  that already holds" — adopting a workflow this conversation did not create, or
+  forcing past a non-green preview — so it confirms with a human. A fresh slug
+  still commits with no added friction: the split is create-versus-replace, not
+  "everything is gated". `restore_workflow_version` makes the undo real.
+- **A conflict error stopped dictating its own bypass.** It used to name the
+  exact field that would overrule the conflict "after the user confirms"; the
+  model supplied the field four seconds later and skipped the confirming. It now
+  says what to *ask*.
+
+## [5.12.0] – 2026-07-27
+
+### Fixed
+
+- **A refused abstention no longer throws the turn away.** `cannot_help` ended
+  the turn on the call and never looked at the result — so once the tool learned
+  to refuse an abstention naming a capability the model demonstrably holds, the
+  engine could prove the claim false, tell the model exactly which tool it has,
+  and then discard the turn anyway. The correction was issued and thrown out in
+  the same breath. An accepted abstention ends the turn; a refused one does not.
+
+## [5.11.0] – 2026-07-27
+
+### Fixed
+
+- **An "I can't do that" is now checked before it is believed.** A model
+  abstained claiming a tool was "not available in this MCP surface" minutes
+  after calling that same tool successfully in the same turn. Two things went
+  wrong and only one of them was the model's: the user was told something false,
+  and a durable, demand-ranked capability gap was filed for a capability that
+  exists — a backlog read as evidence of what the product lacks, where a
+  fabricated row does not add noise but misdirects. An abstention naming a tool
+  the caller's own palette contains is now rejected, and no gap is filed for it.
+  An unverifiable claim still goes through: "cannot verify" is not "false".
+
+## [5.10.0] – 2026-07-27
+
+### Fixed
+
+- **A retry budget that could not pay for the retry.** The authoring pipeline
+  allowed each model call up to 90 seconds and promised two passes, inside a
+  120-second aggregate budget — so a first pass running legitimately near its own
+  ceiling left the second structurally unable to finish. Production duly started
+  a second pass and cut it off 33 seconds in: a full prompt spent, guaranteed to
+  return nothing. The deadline is now derived from what the pipeline advertises,
+  so raising the pass count cannot silently re-open the gap, and a pass the
+  remaining budget cannot cover is not started.
+- **A failed generation now names the real reason.** The total-failure path
+  blamed the model unconditionally — "produced no schema-parseable workflow
+  definition within the pass cap" — even when the actual cause was the blown
+  budget it had already recorded. An agent believed it exactly as written,
+  invented tool names, started an unrelated connector draft, and abstained
+  claiming a tool it had just used successfully was unavailable. 858k tokens. A
+  wrong reason costs more than no reason.
+
+## [5.9.0] – 2026-07-27
+
+### Fixed
+
+- **The configured model decides again.** A hard-coded premium model was seeded
+  onto any conversation turn whose message matched an authoring word pattern,
+  silently overriding `llm.model` and only ever upward. Measured over one month
+  before removal: roughly four fifths of spend from a fifth of the calls, and it
+  exhausted the deployment's monthly provider quota. The rule that made the seed
+  necessary was fixed structurally long ago; the seed stayed and kept charging
+  for a failure that had become impossible. Which model a turn runs on is now
+  `llm.model`, `llm.fallback_model`, or the per-conversation override, and
+  escalating one stays the step router's job — on earned signals, not on a regex
+  over the user's wording.
+- **The bill now names what actually ran.** Usage accounting logged the
+  attempt's base model, so a per-step router swap was never reflected. This is
+  why the above stayed invisible: the deployment went two months without a single
+  usage row for a model the router had selected 58 times in a fortnight.
+
+## [5.8.0] – 2026-07-27
+
+### Added
+
+- **A parked turn now says so instead of waiting in silence.** For 21 hours,
+  three conversation turns reported an ordinary in-flight state while the LLM
+  provider's monthly quota was exhausted and the engine was correctly waiting for
+  the reset. Nothing was wrong with the worker or the queue, but the reason
+  existed only in the engine log, where a waiting client cannot look — so a
+  careful reader concluded a worker was hung and proposed restarting it and
+  killing a conversation. Neither would have helped. `conversation_get` now
+  answers with a `parked` phase, the reset instant, how long until it resumes,
+  and a note stating plainly that nothing is stuck, that restarting or opening a
+  new conversation does not help, and that raising the provider quota does. The
+  stamp is deliberately not terminal — the turn really will run — and it is
+  cleared when the turn starts, so a stale "parked until" can never mislead the
+  way the original silence did.
+
+## [5.7.0] – 2026-07-26
+
+### Fixed
+
+- **Every gated confirmation now has a human channel, not just one of them.** A
+  held `save_workflow_draft` paused on a browser client with no approval link and
+  no approval handle — a dead end on any client that cannot render an in-band
+  form, leaving an operator to hand-run `curl` with their API key, which is
+  precisely the workaround the approval portal exists to replace. Only the
+  universal confirmation carrier ever minted an approval; every shape-specific
+  one — draft saves, deletes, key creation, the run commit — skipped it. All of
+  them mint one now. What the approval *means* still differs by carrier, and
+  deliberately so: the universal carrier grants a claimable capability the
+  harness replays byte-exactly, while a shape-specific one supplies the portal
+  channel plus the decision record. Ordinary clarifying questions are untouched.
+
+## [5.6.0] – 2026-07-25
+
+### Fixed
+
+- **The human who releases a write is now recorded.** The approver was `NULL` on
+  100% of grants. The approval portal is reachable without a token — the approver
+  has a browser — and the only resolver for the session cookie lived inside the
+  OIDC provider, so on the default configuration a human who had just signed in
+  was, to every route, an anonymous browser. Possession of the grant link decided
+  the write, unattributably, in a system whose whole promise is an audited one.
+  The portal now separates the two facts it needs: the grant scopes *which*
+  approval is on the table, and a signed-in account supplies *who* is deciding.
+  An unidentified browser goes through the login funnel and returns to the same
+  link; an unidentified POST is refused rather than recorded as "somebody". The
+  decision form carries a CSRF token bound to both the approver's session and the
+  grant, so a cross-site post cannot release a write on a signed-in approver's
+  behalf and a token minted for one approval cannot be replayed against another.
+  The write preview is no longer shown to anonymous visitors.
+- **A deactivated account no longer keeps a live session.** Deactivation revoked
+  API keys and pending invites but never sessions, and login re-checks are no
+  help to an already-issued cookie. Sessions are now revoked in the same
+  operation — which is how a no-longer-entitled account had been reaching the
+  consent screen.
+
+## [5.5.1] – 2026-07-25
+
+### Fixed
+
+- **A portal-approved action now executes the arguments the approver reviewed.**
+  Verified in production: a human approved, the conversation resumed, the action
+  happened — and the approval was never claimed. What actually ran was the model
+  re-issuing the tool once the pause cleared, so the arguments the operator saw
+  in the write preview were not necessarily the arguments that executed. The
+  resume was running as the browser approver, who on an unauthenticated portal is
+  usually nobody, so the claim failed before it could bind. The turn now runs as
+  the principal that *owns* the approval — the one whose permissions the original
+  call already passed. Attribution of the decision stays separate: the approver
+  decides, they do not execute.
+
+## [5.5.0] – 2026-07-25
+
+### Fixed
+
+- **An approval decision now carries its own effect.** An operator approved a
+  held write in the browser portal, the grant was recorded, and the conversation
+  still died nine minutes later reporting that the operator had not answered.
+  Across the entire history of the feature, 0 of 5 approval-backed confirmations
+  had ever resolved in production. Granting was the end of the story: advancing
+  the paused conversation was delegated to a client poll that the clients which
+  *need* the portal never make, and the only durable reactor keyed on an approval
+  expiring, never on one being granted. The portal decision now stages the
+  answer and enqueues the resume inside the approver's own request.
+- **A grant now opens its own claim window.** The expiry was set from mint time,
+  so a human who deliberated for 14 of their 15 minutes left the system one
+  second to act on their decision.
+- **An abandoned grant is now loud.** The expiry sweep gained the missing edges —
+  granted-but-unclaimed completes, declined resolves as a decline, and a grant
+  that can no longer be acted on expires with its own audit action. Every
+  previous trace of that outcome was indistinguishable from "nobody answered".
+- A dry run now gates on whether writes will actually execute, rather than on the
+  environment, since it holds its writes and dispatches nothing.
+
 ## [5.4.2] – 2026-07-24
 
 ### Fixed

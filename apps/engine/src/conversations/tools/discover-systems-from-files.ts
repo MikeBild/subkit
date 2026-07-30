@@ -85,6 +85,15 @@ const CapabilityEnum = z.enum([
 
 const CandidateSchema = z.object({
   name: z.string(),
+  /**
+   * Four drivers, not five. `mcp` is deliberately absent: this enum is
+   * what the model may infer FROM A FILE, and no file artifact identifies
+   * an MCP server the way an OpenAPI document identifies an HTTP API or a
+   * DSN identifies a database. Offering the value without such a marker
+   * buys guesses, not discoveries. Widen it when a spec-shaped artifact
+   * exists to ground the choice — not to make the list symmetric with
+   * `DriverName`.
+   */
   kind: z.enum(["http", "graphql", "postgres", "s3"]),
   base_url_guess: z.string().nullable(),
   endpoints: z.array(
@@ -158,6 +167,9 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
     "When the connector's API has no OpenAPI spec, fall back to analyzing an uploaded knowledge source (README, code, PDF, architecture doc) to synthesize provisional endpoints. Returns connector_endpoint_candidates: a list of {name, kind, base_url_guess, endpoints, auth_kind, data_flow_summary, data_flow_role, capabilities[]} plus a potential_connections[] graph between candidates so the agent can propose chained workflows without a second round-trip.",
   inputSchema,
   category: "tenant_read",
+  // Builds a definition rather than using one: withheld from the
+  // read-and-execute tier even though it only reads.
+  authoring_only: true,
   use_case:
     "Reach for this when `discover_connector_endpoints` returns no endpoints and no text_corpus, but the operator has uploaded a description of the system (README, architecture doc, code dump). The LLM enumerates third-party systems and provisional endpoints from the file.",
   important_notes: [

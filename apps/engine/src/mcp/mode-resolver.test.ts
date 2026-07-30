@@ -39,17 +39,28 @@ describe("MCP catalog visibility · resolveMcpMode", () => {
     expect(resolveMcpMode(principal(["mcp:authoring", "mcp:admin"]))).toBe("admin");
   });
 
-  // The wildcard `*` scope asserts "no narrowing — full role-derived access"
-  // (auth/scopes.ts). Resolving it to `product` inverted that contract: the
-  // least-narrowed credential (default minted keys, admin@local, OIDC
-  // sessions) got the SMALLEST catalog while an OAuth token carrying the
-  // literal `mcp:authoring` marker got the full one.
-  test("wildcard `*` scope resolves to authoring mode", () => {
-    expect(resolveMcpMode(principal(["*"]))).toBe("authoring");
+  // The wildcard `*` asserts "no narrowing — full role-derived access"
+  // (auth/scopes.ts). It is the default minted key scope, the admin-key scope
+  // and the OIDC session scope, so treating it as consent to author made
+  // authoring the default for every credential ever issued — including the
+  // ones pasted into clients that cannot carry a human through an authoring
+  // turn.
+  //
+  // Breadth of role is not consent to author. A credential authors when
+  // someone wrote `mcp:authoring` on it, and the read-and-execute tier the
+  // wildcard now lands in is not a punishment: it carries every read plus the
+  // run tools.
+  test("wildcard `*` scope resolves to the read-and-execute tier, not authoring", () => {
+    expect(resolveMcpMode(principal(["*"]))).toBe("product");
   });
 
   test("wildcard `*` scope NEVER resolves to admin — tenant writes stay behind the explicit `mcp:admin` marker", () => {
     expect(resolveMcpMode(principal(["*"]))).not.toBe("admin");
+  });
+
+  test("an explicit `mcp:authoring` on a wildcard credential does opt in", () => {
+    // The opt-in has to be reachable, or the boundary becomes a wall.
+    expect(resolveMcpMode(principal(["*", "mcp:authoring"]))).toBe("authoring");
   });
 
   test("explicit `mcp:admin` still wins when wildcard is also present", () => {

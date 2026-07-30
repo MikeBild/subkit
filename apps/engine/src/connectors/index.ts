@@ -3,6 +3,7 @@
 // route_layering check at apps/engine/scripts/audit-invariants.ts.
 
 export * from "./categorize.ts";
+export * from "./config-schemas.ts";
 export * from "./credential-setup-grant.ts";
 export * from "./discovery/service.ts";
 export * from "./discovery/types.ts";

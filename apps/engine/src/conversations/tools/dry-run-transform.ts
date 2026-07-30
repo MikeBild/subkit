@@ -219,6 +219,9 @@ export const dryRunTransformTool: ConversationTool = {
   },
   inputSchema: DryRunInput,
   category: "tenant_read",
+  // Builds a definition rather than using one: withheld from the
+  // read-and-execute tier even though it only reads.
+  authoring_only: true,
   authoring_resource: "workflow",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const parsed = DryRunInput.safeParse(rawArgs);

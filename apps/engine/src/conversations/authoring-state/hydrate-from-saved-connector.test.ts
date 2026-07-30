@@ -27,6 +27,8 @@ function makeView(overrides: Partial<ConnectorView> = {}): ConnectorView {
     self_description: {},
     created_at: new Date("2024-01-01"),
     updated_at: new Date("2024-01-02"),
+    enabled: true,
+    last_error: null,
     circuit_state: "closed",
     circuit_opened_at: null,
     circuit_failure_count: 0,

@@ -30,7 +30,14 @@ compiled binary can't find. A boot smoke test fails the release if this regresse
 ## What it cannot do — design limits
 
 - **No `Intl` / ECMA-402.** No locale-aware formatting, collation, or number/date
-  formatting. Do this in a request step or upstream.
+  formatting. Use `sk.fmt.number(value, { locale: "de", digits: 1 })` for numbers,
+  or format in a request step / upstream. Passing a locale **or an options object**
+  to `toLocaleString` **throws** since stdlib 1.7.0: QuickJS accepts both and
+  ignores both, so the call used to return C-locale output that looked right in
+  Node and shipped "+9.2 %" to a German production page. `toLocaleString(undefined,
+  { style: "percent" })` names no locale but still asks for Intl behaviour, so it
+  throws as well — otherwise it would silently return `0.5` where Node returns
+  `50 %`. The argument-less call keeps working; it is not locale-aware.
 - **No async, no I/O.** The sync variant has no event loop: no `await`, no
   Promises that need to settle against a host, no async host calls. Transforms are
   pure functions of their input — to fetch data, use a `request`/`call` step.

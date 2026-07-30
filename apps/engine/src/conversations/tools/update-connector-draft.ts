@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { recordConnectorDraftCredentialRejected } from "../../audit/recorders/index.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
+import { DriverEnum } from "../../connectors/types.ts";
 import { log } from "../../logging/logger.ts";
 import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
@@ -117,7 +118,7 @@ const inputSchema = z
     name: z.string().min(1).optional(),
     slug: z.string().min(1).optional(),
     description: z.string().min(1).optional(),
-    driver: z.enum(["http", "postgres", "s3", "graphql"]).optional(),
+    driver: DriverEnum.optional(),
     environment: z.enum(["dev", "prod"]).optional(),
     base_url: z.string().optional(),
     dsn: z.string().optional(),

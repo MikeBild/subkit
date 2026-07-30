@@ -14,7 +14,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { bytea, tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
-import { mcpServers } from "./mcp_servers.ts";
 
 export const environmentEnum = pgEnum("environment", ["dev", "prod"]);
 export const credentialModeEnum = pgEnum("credential_mode", [
@@ -87,6 +86,21 @@ export const connectors = pgTable(
     template_snapshot: jsonb("template_snapshot").$type<Record<string, unknown>>(),
     auto_refresh_cron: text("auto_refresh_cron"),
     last_ingested_at: timestamp("last_ingested_at", { withTimezone: true }),
+    // Operator on/off switch, driver-agnostic. A disabled connector stays
+    // fully configured and keeps its credentials; it is simply not offered
+    // for use. Distinct from `deleted_at` (gone) and from `health_state`
+    // (a verdict the engine derives from observed behaviour): `enabled` is
+    // the one bit only a human sets.
+    enabled: boolean("enabled").notNull().default(true),
+    // The ENGINE's own account of the most recent failed interaction:
+    // `[<error_code>] <sentence>`. Never the remote's text — a column
+    // operators read, export and render cannot depend on recognising every
+    // vendor's token shape, so the upstream body stays in the structured
+    // log (retention + access control) and only the status is read out of
+    // it. Today the MCP handshake path is the only writer; on the other
+    // drivers the column is null and `health_reason` carries the verdict.
+    // Cleared on the next success.
+    last_error: text("last_error"),
     circuit_state: text("circuit_state").notNull().default("closed"),
     circuit_opened_at: timestamp("circuit_opened_at", { withTimezone: true }),
     circuit_failure_count: integer("circuit_failure_count").notNull().default(0),
@@ -131,6 +145,41 @@ export const connectors = pgTable(
       .on(t.tenant_id, t.slug, t.environment)
       .where(sql`${t.deleted_at} IS NULL`),
     index("connectors_needs_reauth_idx").on(t.tenant_id).where(sql`${t.needs_reauth} = true`),
+    // Slug shape gate. The tool palette names an external MCP tool
+    // `mcp_<slug>__<tool>`, so the `__` separator is only an unambiguous
+    // split point while no slug may contain a `__` run. Slug must start
+    // and end alphanumeric, allow `_`/`-` inside, and stay within 64
+    // chars. Defence in depth: the API Zod schemas validate slugs, but
+    // internal writers (seeds, migrations, repair flows) bypass them, and
+    // a caller-supplied slug reaches the INSERT unmodified.
+    // Runtime mirror: CONNECTOR_SLUG_RE in
+    // apps/engine/src/connectors/types.ts.
+    check(
+      "connectors_slug_shape_check",
+      sql`${t.slug} ~ '^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$' AND ${t.slug} !~ '__'`,
+    ),
+    // SECRET-BY-REFERENCE gate for the mcp driver's auth block. Secret
+    // material belongs in the AES-256-GCM `credentials` table and is
+    // referenced from `config.mcp.auth` by `token_ref` / `credential_id`.
+    // Scoped to `config->'mcp'->'auth'` rather than the whole config
+    // root because other drivers legitimately carry header *names* and
+    // query-parameter *names* there. PostgreSQL forbids subqueries in
+    // CHECK, so the denied key-names are an explicit allowlist (the
+    // jsonb `?` operator is immutable and allowed).
+    check(
+      "connectors_mcp_auth_no_inline_secrets_check",
+      sql`${t.config} -> 'mcp' -> 'auth' IS NULL OR NOT (
+        ${t.config} -> 'mcp' -> 'auth' ? 'client_secret' OR
+        ${t.config} -> 'mcp' -> 'auth' ? 'password' OR
+        ${t.config} -> 'mcp' -> 'auth' ? 'passphrase' OR
+        ${t.config} -> 'mcp' -> 'auth' ? 'api_key' OR
+        ${t.config} -> 'mcp' -> 'auth' ? 'apikey' OR
+        ${t.config} -> 'mcp' -> 'auth' ? 'access_token' OR
+        ${t.config} -> 'mcp' -> 'auth' ? 'refresh_token' OR
+        ${t.config} -> 'mcp' -> 'auth' ? 'bearer_token' OR
+        ${t.config} -> 'mcp' -> 'auth' ? 'secret'
+      )`,
+    ),
   ],
 );
 
@@ -274,13 +323,13 @@ export const credentials = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    // Owning resource — EXACTLY ONE of (connector_id, mcp_server_id) is
-    // non-null (enforced by the `credentials_owner_xor_check` below).
-    // Connector credentials reference `connectors`; external-MCP-server
-    // credentials (bearer / OAuth tokens referenced from a server's
-    // `auth_config.token_ref`) reference `mcp_servers`.
-    connector_id: uuid("connector_id").references(() => connectors.id, { onDelete: "cascade" }),
-    mcp_server_id: uuid("mcp_server_id").references(() => mcpServers.id, { onDelete: "cascade" }),
+    // Owning resource. A credential belongs to exactly one connector —
+    // including an external MCP server, which is a connector whose driver
+    // is `mcp`. There is no second owner column and therefore no owner
+    // XOR to keep honest.
+    connector_id: uuid("connector_id")
+      .notNull()
+      .references(() => connectors.id, { onDelete: "cascade" }),
     environment: environmentEnum("environment").notNull(),
     mode: credentialModeEnum("mode").notNull(),
     // AES-256-GCM ciphertext (see apps/engine/src/crypto/aes-gcm.ts). Writers call encryptSecret(), readers decryptSecret(), keyed by env.MASTER_KEY.
@@ -302,24 +351,10 @@ export const credentials = pgTable(
     ...timestamps,
   },
   (t) => [
-    // Connector-credential slot uniqueness. Partial so it only governs
-    // rows that actually belong to a connector — the XOR check guarantees
-    // such rows have a null `mcp_server_id`, and the predicate keeps the
-    // index from spanning MCP-server credential rows.
-    uniqueIndex("credentials_connector_env_mode_key")
-      .on(t.connector_id, t.environment, t.mode)
-      .where(sql`${t.connector_id} IS NOT NULL`),
-    // External-MCP-server credential slot uniqueness — mirrors the
-    // connector index for rows owned by an `mcp_servers` row.
-    uniqueIndex("credentials_mcp_server_env_mode_key")
-      .on(t.mcp_server_id, t.environment, t.mode)
-      .where(sql`${t.mcp_server_id} IS NOT NULL`),
-    // Owner XOR: EXACTLY ONE of (connector_id, mcp_server_id) is set.
-    // Postgres `<>` on booleans is logical XOR.
-    check(
-      "credentials_owner_xor_check",
-      sql`(${t.connector_id} IS NOT NULL) <> (${t.mcp_server_id} IS NOT NULL)`,
-    ),
+    // One credential slot per (connector, environment, mode). No longer
+    // partial: `connector_id` is NOT NULL, so the former
+    // `WHERE connector_id IS NOT NULL` predicate was always true.
+    uniqueIndex("credentials_connector_env_mode_key").on(t.connector_id, t.environment, t.mode),
   ],
 );
 

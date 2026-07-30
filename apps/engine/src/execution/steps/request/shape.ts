@@ -40,7 +40,16 @@ function pickModelField(v: unknown): string | null {
  *  distinguishes oauth2_refreshed vs oauth2_static). GraphQL/S3 paths
  *  use this directly since they don't do inline oauth2 refresh. */
 export function deriveAuthMethodFromAuthType(
-  authType: "none" | "bearer" | "basic" | "oauth2" | "header" | "query" | "aws_sigv4",
+  authType:
+    | "none"
+    | "bearer"
+    | "basic"
+    | "oauth2"
+    | "oauth2_client"
+    | "oauth2_private_key"
+    | "header"
+    | "query"
+    | "aws_sigv4",
 ):
   | "none"
   | "bearer"
@@ -49,7 +58,12 @@ export function deriveAuthMethodFromAuthType(
   | "basic"
   | "oauth2_static"
   | "oauth2_refreshed"
+  | "oauth2_client"
+  | "oauth2_private_key"
   | "aws_sigv4" {
+  // The two machine-to-machine grants keep their own names: collapsing
+  // them into `oauth2_static` would tell a debugger the token came from a
+  // user-consented flow when nobody consented to anything.
   if (authType === "oauth2") return "oauth2_static";
   return authType;
 }

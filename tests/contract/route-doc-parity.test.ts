@@ -86,6 +86,11 @@ const ENGINE_ROUTE_FILES = [
   "apps/engine/src/http/routes/connectors/oauth.ts",
   "apps/engine/src/http/routes/connectors/credentials.ts",
   "apps/engine/src/http/routes/connectors/promotion.ts",
+  // The mcp driver's own connector routes. The interactive OAuth flow moved
+  // here from a standalone mcp-servers module when an external MCP server
+  // became an ordinary connector; this entry is what keeps the docs' route
+  // list checkable against the file that now mounts them.
+  "apps/engine/src/http/routes/connectors/mcp.ts",
   "apps/engine/src/http/routes/connector-discovery.ts",
   "apps/engine/src/http/routes/connector-templates/import-spec.ts",
   "apps/engine/src/http/routes/identity/providers.ts",

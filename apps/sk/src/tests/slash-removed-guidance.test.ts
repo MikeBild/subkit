@@ -10,8 +10,10 @@ import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
+import { SUB_COMMANDS } from "../index.ts";
 import { removedSlashGuidance } from "../repl/slash/dispatcher.ts";
 import { handleSlash, type SlashHandlerContext } from "../repl/slash/handler.ts";
+import { SLASH_COMMANDS } from "../slash.ts";
 
 describe("removedSlashGuidance map", () => {
   test("returns the agentic-coding rationale for /agents", () => {
@@ -50,6 +52,19 @@ describe("removedSlashGuidance map", () => {
     expect(removedSlashGuidance("notarealcommand")).toBeNull();
   });
 
+  // An external MCP server is a connector whose driver is `mcp`; the
+  // separate registry it used to have is gone from every surface. A
+  // command that half-exists — a slash that still redirects to a CLI verb
+  // nobody can run, or a verb whose slash vanished — is worse than either
+  // outcome, so both halves are asserted together.
+  test("mcp-servers is gone from both surfaces, and the slash says where to go", () => {
+    const hint = removedSlashGuidance("mcp-servers");
+    expect(hint).toContain("/connectors");
+    expect(hint).toContain("sk connectors");
+    expect(SLASH_COMMANDS.some((c) => c.name === "mcp-servers")).toBe(false);
+    expect(Object.keys(SUB_COMMANDS)).not.toContain("mcp-servers");
+  });
+
   test("/rewind points to /resume → t (and not /workflows restore)", () => {
     const hint = removedSlashGuidance("rewind");
     expect(hint).toMatch(/\/resume/);
@@ -84,6 +99,12 @@ describe("dispatcher short-circuit for removed slashes", () => {
     const out = await handleSlash("install-slack", [], makeCtx());
     expect(out).toMatch(/^\/install-slack /);
     expect(out).toContain("/install");
+  });
+
+  test("/mcp-servers short-circuits to the connector surface", async () => {
+    const out = await handleSlash("mcp-servers", [], makeCtx());
+    expect(out).toMatch(/^\/mcp-servers /);
+    expect(out).toContain("/connectors");
   });
 
   test("a registered slash is NOT shadowed by the guidance map", async () => {

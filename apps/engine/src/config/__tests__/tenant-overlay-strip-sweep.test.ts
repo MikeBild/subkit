@@ -144,18 +144,9 @@ describe(`tenant overlay strip sweep — ${GLOBAL_LEAVES.length} global leaves, 
         case "enum":
           value = leaf.enumValues?.[1] ?? leaf.enumValues?.[0];
           break;
-        case "string-array": {
-          // Object-array leaves (e.g. `mcp.servers`) need a structured
-          // candidate the leaf schema accepts; fall back to a string array
-          // for genuine string-list-shaped leaves.
-          const t = `tenant-${salt++}`;
-          const slug = t.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40) || "srv";
-          const objCandidate = [
-            { name: t, namespace: slug, transport: "http", url: "https://example.com/mcp" },
-          ];
-          value = leaf.schema.safeParse(objCandidate).success ? objCandidate : [t];
+        case "string-array":
+          value = [`tenant-${salt++}`];
           break;
-        }
         default:
           value = `tenant-${salt++}`;
       }
