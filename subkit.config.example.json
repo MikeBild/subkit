@@ -170,12 +170,7 @@
   },
   "mcp": {
     "api_key": "",
-    "read_only": false,
-    "servers": [],
-    "client": {
-      "per_server_manifest_byte_cap": 30000,
-      "remote_tool_call_timeout_ms": 30000
-    }
+    "read_only": false
   },
   "errors": {
     "ring_size": 100
@@ -246,6 +241,11 @@
     },
     "http": {
       "max_response_bytes": 104857600
+    },
+    "mcp": {
+      "per_server_manifest_byte_cap": 30000,
+      "remote_tool_call_timeout_ms": 30000,
+      "tools_list_max_pages": 5
     }
   },
   "tenants": {}

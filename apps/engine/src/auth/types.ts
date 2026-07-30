@@ -14,6 +14,11 @@ export interface ResolvedPrincipal {
   roles: string[];
   api_key_id?: string;
   session_id?: string;
+  /** OAuth client registration this token was issued to (`mcp_oauth` only).
+   *  Credential-bound, so unlike a client's self-reported `clientInfo` it cannot
+   *  be spoofed — which is what makes it usable for per-channel decisions and
+   *  for splitting telemetry by the client that actually connected. */
+  oauth_client_id?: string;
   scopes?: string[];
   allowed_workflows?: AllowList;
   allowed_connectors?: AllowList;

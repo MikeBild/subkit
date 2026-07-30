@@ -10,9 +10,10 @@ import * as credsvc from "../../../credentials/index.ts";
 import { runClientCredentialsGrant } from "../../../credentials/index.ts";
 import { encryptSecret } from "../../../crypto/aes-gcm.ts";
 import { credentials, endUserCredentials } from "../../../db/schema/index.ts";
-import { BadRequestError, NotFoundError } from "../../errors.ts";
+import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { credentialBodyToValue } from "./credential-body.ts";
 import { CredentialBody, EndUserCredentialBody } from "./schemas.ts";
 
 const credentialsRoute = createRoute({
@@ -63,41 +64,7 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
     const connector = await connectorSvc.getConnector(principal.tenant_id, id, db);
     if (!connector) throw new NotFoundError("connector");
 
-    let value: Parameters<typeof credsvc.upsertCredential>[0]["value"];
-    switch (body.mode) {
-      case "none":
-        value = { mode: "none" };
-        break;
-      case "header":
-        if (!body.headers) throw new BadRequestError("header mode requires headers");
-        value = { mode: "header", headers: body.headers };
-        break;
-      case "query":
-        if (!body.query) throw new BadRequestError("query mode requires query");
-        value = { mode: "query", query: body.query };
-        break;
-      case "bearer":
-        if (!body.token) throw new BadRequestError("bearer mode requires token");
-        value = { mode: "bearer", token: body.token };
-        break;
-      case "basic":
-        if (!body.username || body.password === undefined) {
-          throw new BadRequestError("basic mode requires username and password");
-        }
-        value = { mode: "basic", username: body.username, password: body.password };
-        break;
-      case "aws_sigv4":
-        if (!body.access_key_id || !body.secret_access_key) {
-          throw new BadRequestError("aws_sigv4 mode requires access_key_id and secret_access_key");
-        }
-        value = {
-          mode: "aws_sigv4",
-          access_key_id: body.access_key_id,
-          secret_access_key: body.secret_access_key,
-          ...(body.session_token ? { session_token: body.session_token } : {}),
-        };
-        break;
-    }
+    const value = credentialBodyToValue(body);
 
     // If connector auth_type differs, keep them consistent by updating connector too.
     if (connector.auth_type !== body.mode) {

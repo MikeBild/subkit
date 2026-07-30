@@ -50,6 +50,10 @@ export const ApiKeySchema = z
     id: z.string().uuid(),
     tenant_id: z.string().uuid(),
     prefix: z.string(),
+    name: z
+      .string()
+      .nullable()
+      .describe("Operator-facing label, or null for keys issued before labels were kept."),
     scopes: z.array(z.string()),
     user_id: z.string().uuid().nullable(),
     system_account_id: z.string().uuid().nullable(),

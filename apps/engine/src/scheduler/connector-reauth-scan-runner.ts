@@ -25,6 +25,32 @@
 // hourly claim: it enqueues proactive `connector.refresh-oauth` jobs for
 // oauth2 credentials idle for days, so refresh tokens survive IdP
 // idle-expiry on connectors that neither traffic nor probes exercise.
+//
+// DRIVER `mcp` IS NOT PROBED HERE, and that is a hard exclusion rather than
+// a tuning choice. For every other driver a probe is one cheap stateless
+// request. For `mcp` it is a full session handshake through the client pool
+// (`connectServerById`), which by design CLEARS the connector's armed
+// backoff window, negotiates `initialize`, lists the remote's tools, and on
+// failure writes `connectors.last_error`, arms a fresh backoff and flips
+// health to `degraded`. Sweeping that hourly across every remote a tenant
+// registered turns a health check into a load generator against third-party
+// servers, and — worse — lets the sweep itself park a server the tenant
+// never called, so the scan would report a failure it manufactured.
+//
+// Nothing is lost by excluding it. The mcp driver already records its own
+// credential verdict where the evidence is real: the pool parks a failed
+// handshake with the remote's own message and drops the oauth2 token on a
+// mid-session 401, both on the path a tenant actually exercises. The sweep
+// could only re-observe that at the cost of new outbound traffic.
+//
+// And what it would produce would be WRONG. `flagConnectorAuthFailure` builds
+// its operator notification through `buildReauthUrl`, which routes an
+// `auth_type = oauth2` connector to `/v1/connectors/{id}/oauth/start` — a
+// flow that reads a pre-declared issuer out of the connector config. An MCP
+// server discovers its authorization server through protected-resource
+// metadata and often registers the client dynamically, which is why it has
+// its own `/mcp/authorize` route. Flagging one here would hand the operator
+// a link that cannot complete the re-auth it is asking them to perform.
 
 import { and, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -52,6 +78,8 @@ const AUTH_FAILED_STREAK_THRESHOLD = 3;
  *     already known-broken; probing it again is unhelpful)
  *   - have an auth_type other than "none" (no credential to check on
  *     auth_type=none connectors)
+ *   - are not driver `mcp` — probing one establishes a session and can park
+ *     the server (see the module header)
  *
  * For each candidate, issues a driver-native probe via `probeConnector`
  * and flags the connector when the result carries `error_code` of
@@ -75,9 +103,18 @@ export async function runConnectorReauthScanForTenant(
       and(
         eq(connectors.tenant_id, tenant_id),
         isNull(connectors.deleted_at),
+        // A disabled connector is one an operator switched off. Probing it
+        // would make a real outbound request on behalf of something the
+        // tenant said not to use — and for the mcp driver that request is a
+        // full handshake that can park the connector in backoff.
+        eq(connectors.enabled, true),
         eq(connectors.needs_reauth, false),
         ne(connectors.circuit_state, "open"),
         ne(connectors.auth_type, "none"),
+        // See the module header: an mcp probe is a session handshake that
+        // clears the connector's backoff and parks it on failure. A health
+        // sweep must not be the thing that takes a server down.
+        ne(connectors.driver, "mcp"),
       ),
     );
 
@@ -100,6 +137,24 @@ export async function runConnectorReauthScanForTenant(
     );
   const known_auth_failed = knownBroken?.n ?? 0;
 
+  // Connectors this sweep deliberately never asks about. Counted and
+  // reported so `candidate_count: 0` alongside `probed: 0` cannot read as
+  // "this tenant has nothing to check" when it has MCP remotes the sweep is
+  // structurally blind to — the same misread `known_auth_failed` exists to
+  // prevent.
+  const [mcpExcluded] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.tenant_id, tenant_id),
+        isNull(connectors.deleted_at),
+        eq(connectors.driver, "mcp"),
+        eq(connectors.enabled, true),
+      ),
+    );
+  const mcp_not_probed = mcpExcluded?.n ?? 0;
+
   logger.info({
     module: "scheduler",
     action: "connector_reauth_scan.started",
@@ -107,6 +162,7 @@ export async function runConnectorReauthScanForTenant(
     tenant_id,
     candidate_count: candidates.length,
     known_auth_failed,
+    mcp_not_probed,
   });
 
   let probed = 0;
@@ -136,6 +192,8 @@ export async function runConnectorReauthScanForTenant(
       self_description: (row.self_description as ConnectorView["self_description"]) ?? {},
       created_at: row.created_at,
       updated_at: row.updated_at,
+      enabled: row.enabled,
+      last_error: row.last_error,
       circuit_state: row.circuit_state as "closed" | "open" | "half-open",
       circuit_opened_at: row.circuit_opened_at,
       circuit_failure_count: row.circuit_failure_count,
@@ -214,6 +272,7 @@ export async function runConnectorReauthScanForTenant(
     probed,
     auth_failed,
     known_auth_failed,
+    mcp_not_probed,
     workflow_auth_failure_streaks: streaks,
     duration_ms,
   });

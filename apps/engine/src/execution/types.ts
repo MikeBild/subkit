@@ -133,6 +133,10 @@ export type StepWarningCode =
   // response carries both data and errors. The step succeeds; errors surface
   // here so the operator sees them without the step failing.
   | "graphql_partial_errors"
+  // Emitted by the mcp driver when error_policy:"all" is set and the remote
+  // reported the call itself failed. The step succeeds carrying whatever the
+  // server returned; the error text surfaces here so the operator sees it.
+  | "mcp_remote_error"
   // Emitted by the engine when a step fails but declared
   // on_error:"continue". The run continues and status stays succeeded;
   // the failure surfaces here instead of on RunResult.error. This is
@@ -271,6 +275,19 @@ export type RequestMeta =
       status: number;
       key?: string;
       prefix?: string;
+      connector: ConnectorResolutionSummary;
+      extras?: Record<string, unknown>;
+    }
+  | {
+      driver: "mcp";
+      /** The MCP method issued: `tools/call`, `resources/read` or
+       *  `prompts/get`. No `status` — a JSON-RPC result has none, and
+       *  inventing one would make the trail lie about what was observed. */
+      operation: string;
+      /** Raw byte count of the verbatim remote content. */
+      bytes_in: number;
+      /** Model-facing `mcp_<slug>__<tool>` name, on tool calls only. */
+      tool_name?: string;
       connector: ConnectorResolutionSummary;
       extras?: Record<string, unknown>;
     }
@@ -485,7 +502,13 @@ export type AppliedAuthMethod =
   | "oauth2_refreshed"
   | "aws_sigv4"
   | "token_mint_static"
-  | "token_mint_refreshed";
+  | "token_mint_refreshed"
+  // Machine-to-machine OAuth2. `oauth2_client` is the client-credentials
+  // grant, `oauth2_private_key` the private-key-JWT one. Distinct from
+  // `oauth2_static` / `oauth2_refreshed`, which describe a token minted by
+  // a user-consented authorization-code flow.
+  | "oauth2_client"
+  | "oauth2_private_key";
 
 /** Per-connector rollup in `RunResult.connector_resolutions`. One entry per
  *  unique (step_key, connector_id) pair — lets debuggers see at a glance

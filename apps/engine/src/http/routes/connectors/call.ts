@@ -25,7 +25,7 @@ const callRoute = createRoute({
   tags: ["connectors"],
   summary: "Invoke an HTTP/GraphQL endpoint against a persisted connector",
   description:
-    "Programmatic surface for ad-hoc connector invocation. Mirrors the call_connector conversation tool: applies the saved credential, audits as connector.invoked, and returns {status, headers, body, latency_ms} with truncation flags for response bodies > 8KB. Driver coverage at this surface is HTTP and GraphQL only — Postgres / SFTP / S3 connectors return a 422 envelope pointing at workflow-step authoring.",
+    "Programmatic surface for ad-hoc connector invocation. Mirrors the call_connector conversation tool: applies the saved credential, audits as connector.invoked, and returns {status, headers, body, latency_ms} with truncation flags for response bodies > 8KB. Driver coverage at this surface is HTTP and GraphQL only — a `postgres` or `s3` connector returns a 422 envelope pointing at workflow-step authoring, and an `mcp` connector one naming the request step's `mcp` sub-block, because an MCP call names a tool and its arguments rather than a method and a path.",
   security: [{ bearerAuth: [] }],
   request: {
     params: IdParam,

@@ -43,7 +43,7 @@ export async function createOutboundCtx(label: string): Promise<OutboundTestCtx>
     boss,
     tenantId: tenant.id,
     cleanup: async () => {
-      await disposeBoss(boss, 5_000);
+      await disposeBoss(boss);
       await testDb.cleanup();
     },
     createSub: async (params) => {

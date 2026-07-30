@@ -1,20 +1,23 @@
-// Shared `call_connector` execution helper.
+// `call_connector` execution helper behind `POST /v1/connectors/{id}/call`.
 //
-// Two surfaces invoke this:
-//   - the `call_connector` conversation tool (LLM-driven iteration)
-//   - the `POST /v1/connectors/{id}/call` HTTP route (CI / SDK callers)
+// The `call_connector` conversation tool answers the same question for the
+// authoring loop but does NOT run through here — it has its own dispatch in
+// `conversations/tools/call-connector.ts` and reaches two drivers this one
+// does not (postgres, s3). The one thing the two do share is
+// `callConnectorDriverRefusal` below: what an author is told when the driver
+// is not callable this way has to be the same sentence on both surfaces,
+// because it is the same fact about the driver.
 //
-// Both surfaces handle their own RBAC up front (the tool resolves a
-// principal from `engineClient.context`; the route uses the standard
+// RBAC is handled by the caller (the route uses the standard
 // `requirePermission` middleware). This helper takes over once the
 // connector + tenant have been authenticated, and is responsible for:
 //
 //   1. Connector lookup (tenant-scoped).
 //   2. Credential check — return `credential_required` when the
 //      connector requires auth and no row is persisted.
-//   3. Driver routing — currently HTTP and GraphQL only. Postgres /
-//      S3 / SFTP etc. surface `driver_not_supported_for_call_connector`
-//      so callers can hand off to a workflow step.
+//   3. Driver routing — HTTP and GraphQL only here. Every other driver
+//      surfaces `driver_not_supported_for_call_connector` so callers can
+//      hand off to a workflow step.
 //   4. Audit row via `recordConnectorInvoked`.
 //   5. Body truncation envelope (`truncated`, `body_byte_count`,
 //      optional `raw_ref`) so prompt budgets stay bounded for the LLM
@@ -115,6 +118,38 @@ export interface CallConnectorErr {
 }
 
 export type CallConnectorResult = CallConnectorOk | CallConnectorErr;
+
+/**
+ * What to tell an author whose connector `call_connector` will not dispatch.
+ *
+ * Shared by both `call_connector` surfaces so the two cannot answer the same
+ * question differently. They deliberately allow different driver sets — this
+ * one dispatches http + graphql, the conversation tool also dispatches
+ * postgres + s3 — but a driver refused by either is refused for the same
+ * reason, and that reason belongs in one place.
+ *
+ * `mcp` is refused permanently, not "not yet". `call_connector` takes a method,
+ * a path and a body; an MCP call names a tool and passes arguments. There is no
+ * method to choose and no path to hit, so widening the allowlist would mean
+ * inventing a mapping from one shape to the other. The request step's `mcp`
+ * sub-block is the shape that already fits, so the refusal names it.
+ */
+export function callConnectorDriverRefusal(driver: string): {
+  message: string;
+  next_best_actions: string[];
+} {
+  if (driver === "mcp") {
+    return {
+      message:
+        'an mcp connector is not called with method+path — an MCP call names a tool and its arguments. Author a request step with an `mcp` block: { connector_id, mcp: { operation: "call_tool", tool, arguments } }.',
+      next_best_actions: ["author_workflow"],
+    };
+  }
+  return {
+    message: `call_connector does not support ${driver} connectors; use a workflow step`,
+    next_best_actions: ["author_workflow"],
+  };
+}
 
 function approximateByteLength(value: unknown): number {
   if (value === undefined || value === null) return 0;
@@ -298,13 +333,14 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
       error_code: "driver_not_supported_for_call_connector",
       driver,
     });
+    const refusal = callConnectorDriverRefusal(driver);
     return {
       kind: "error",
       error_code: "driver_not_supported_for_call_connector",
-      message: `call_connector is currently HTTP/GraphQL only; use a workflow step for ${driver} connectors`,
+      message: refusal.message,
       driver,
       latency_ms: 0,
-      next_best_actions: ["author_workflow"],
+      next_best_actions: refusal.next_best_actions,
     };
   }
 

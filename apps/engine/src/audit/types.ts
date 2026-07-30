@@ -568,21 +568,29 @@ export const AuditAction = {
   ENGINE_UPDATE_ROLLED_BACK: "engine.update.rolled_back",
 
   // ---------------------------------------------------------------------
-  // External MCP servers. Reserve the typed constants here so the
-  // writer cannot mint free-string action values. Vocabulary mirrors
-  // the doc-block at the top of apps/engine/src/db/schema/mcp_servers.ts.
+  // External MCP servers. An external MCP server is a connector whose
+  // driver is `mcp`, so its lifecycle (created / updated / deleted /
+  // health_changed) lands on the `connector.*` actions above and is NOT
+  // duplicated here. What remains are the four events that only an MCP
+  // session produces, plus the two invocation rows.
   // ---------------------------------------------------------------------
-  MCP_SERVER_REGISTERED: "mcp_server.registered",
-  MCP_SERVER_CONFIG_UPDATED: "mcp_server.config_updated",
-  MCP_SERVER_DISABLED: "mcp_server.disabled",
-  MCP_SERVER_RE_ENABLED: "mcp_server.re_enabled",
-  MCP_SERVER_ERRORED: "mcp_server.errored",
-  MCP_SERVER_DELETED: "mcp_server.deleted",
-  MCP_SERVER_HANDSHAKE_OK: "mcp_server.handshake_ok",
+  // A handshake against the remote succeeded. Metadata carries the tool
+  // count and the manifest hash — non-secret integrity/sizing signals.
+  CONNECTOR_MCP_HANDSHAKE_OK: "connector.mcp_handshake_ok",
+  // The remote reshaped its tool manifest between two handshakes. This is
+  // its OWN action rather than a `connector.updated` row carrying a
+  // `changed_fields: ["tools_manifest_hash"]` convention: the hash lives
+  // on `connector_mcp_sessions`, which no operator surface can write, so
+  // "this row exists" already means "the remote changed", structurally.
+  CONNECTOR_MCP_MANIFEST_DRIFT: "connector.mcp_manifest_drift",
+  // An OAuth client was registered with the remote's IdP (RFC 7591
+  // dynamic registration) and its non-secret client_id mirrored onto the
+  // connector's config. The client_secret never appears here.
+  CONNECTOR_MCP_CLIENT_REGISTERED: "connector.mcp_client_registered",
   // A tool exposed by a registered external MCP server was invoked from
   // the conversation loop. Distinct resource_type ("mcp_external_tool")
-  // so invocation volume can be aggregated apart from the lifecycle
-  // configuration rows above.
+  // so invocation volume can be aggregated apart from the connector
+  // configuration rows.
   MCP_EXTERNAL_TOOL_INVOKED: "mcp_external_tool.invoked",
   // Assembling the external-MCP tool palette for a conversation turn
   // failed (a DB error enumerating connectable servers, or a pool fault).
@@ -591,15 +599,15 @@ export const AuditAction = {
   // operator isn't left with only a transient log line.
   MCP_EXTERNAL_TOOL_PALETTE_ASSEMBLY_FAILED: "mcp_external_tool.palette_assembly_failed",
   // Interactive browser OAuth 2.1 onboarding for an OAuth-only external
-  // MCP server. `authorization_started` is emitted when
-  // a pending `mcp_oauth_states` flow row is created; `authorized` on a
-  // successful callback + token write; `authorization_failed` when the
-  // callback is rejected (bad state, issuer mismatch, exchange error).
-  // Metadata carries `issuer_host` (HOST ONLY — never the token or full
-  // authorization URL), secret-by-reference like every mcp_server.* row.
-  MCP_SERVER_AUTHORIZATION_STARTED: "mcp_server.authorization_started",
-  MCP_SERVER_AUTHORIZED: "mcp_server.authorized",
-  MCP_SERVER_AUTHORIZATION_FAILED: "mcp_server.authorization_failed",
+  // MCP server. `authorization_started` is emitted when a pending
+  // `mcp_oauth_states` flow row is created; `authorized` on a successful
+  // callback + token write; `authorization_failed` when the callback is
+  // rejected (bad state, issuer mismatch, exchange error). Metadata
+  // carries `issuer_host` (HOST ONLY — never the token or full
+  // authorization URL), secret-by-reference like every connector row.
+  CONNECTOR_MCP_AUTHORIZATION_STARTED: "connector.mcp_authorization_started",
+  CONNECTOR_MCP_AUTHORIZED: "connector.mcp_authorized",
+  CONNECTOR_MCP_AUTHORIZATION_FAILED: "connector.mcp_authorization_failed",
 
   // ---------------------------------------------------------------------
   // External non-LLM provider calls reserved for future opt-in,

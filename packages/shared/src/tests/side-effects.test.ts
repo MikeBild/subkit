@@ -7,6 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   classifyHttpSideEffect,
+  classifyMcpToolSideEffect,
   httpMethodIsRead,
   inferGraphqlOperation,
   sqlIsSelect,
@@ -117,5 +118,47 @@ describe("helpers", () => {
   test("sqlIsSelect", () => {
     expect(sqlIsSelect("  SELECT 1")).toBe(true);
     expect(sqlIsSelect("UPDATE t SET x=1")).toBe(false);
+  });
+});
+
+describe("classifyMcpToolSideEffect — the remote's own annotations", () => {
+  test("no annotations at all is a write", () => {
+    // Silence is not a claim of harmlessness. A tool that says nothing
+    // about itself gets the treatment a tool that says nothing deserves.
+    expect(classifyMcpToolSideEffect(undefined)).toBe("write");
+    expect(classifyMcpToolSideEffect(null)).toBe("write");
+    expect(classifyMcpToolSideEffect({})).toBe("write");
+  });
+
+  test("annotations that do not assert read-only are a write", () => {
+    expect(classifyMcpToolSideEffect({ readOnlyHint: false })).toBe("write");
+    // Partial annotations — the server answered other questions and left
+    // this one open — do not answer it by omission.
+    expect(classifyMcpToolSideEffect({ idempotentHint: true, openWorldHint: false })).toBe("write");
+  });
+
+  test("only an uncontradicted readOnlyHint yields read", () => {
+    expect(classifyMcpToolSideEffect({ readOnlyHint: true })).toBe("read");
+    expect(classifyMcpToolSideEffect({ readOnlyHint: true, destructiveHint: false })).toBe("read");
+  });
+
+  test("destructiveHint overrides a readOnlyHint rather than being averaged with it", () => {
+    // A server contradicting itself is not evidence of safety. The hint
+    // can only escalate.
+    expect(classifyMcpToolSideEffect({ readOnlyHint: true, destructiveHint: true })).toBe("write");
+  });
+
+  test("THE GATE DOES NOT READ IT: a tools/call stays a write however the tool is annotated", () => {
+    // This is the whole security property. `classifyHttpSideEffect` is
+    // what the hold-writes mechanism and the confirm gate consult, and it
+    // takes no annotations — so there is no argument a third-party server
+    // can send that turns its own write into an unconfirmed call. If this
+    // ever fails, a remote has been handed the power to gate itself.
+    expect(classifyHttpSideEffect({ mcp: { operation: "call_tool" } })).toBe("write");
+    // The author's override still works, because that claim comes from
+    // inside the tenant rather than from the party being gated.
+    expect(classifyHttpSideEffect({ mcp: { operation: "call_tool" }, override: "read" })).toBe(
+      "read",
+    );
   });
 });

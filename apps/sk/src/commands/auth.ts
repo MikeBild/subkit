@@ -23,7 +23,8 @@ function makeClient() {
 export const authCommand = defineCommand({
   meta: {
     name: "auth",
-    description: "Start a reauthentication flow for a connector (OAuth2 authorize URL)",
+    description:
+      "Start a reauthentication flow for a connector (OAuth2 authorize URL). An mcp connector authorizes through `sk connectors mcp-authorize` instead — it discovers its authorization server rather than reading one from config.",
   },
   args: {
     "connector-id": {

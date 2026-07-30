@@ -43,6 +43,8 @@ const ConnectorResolutionSummarySchema = z
       "aws_sigv4",
       "token_mint_static",
       "token_mint_refreshed",
+      "oauth2_client",
+      "oauth2_private_key",
     ]),
     base_url: z.string().nullable().optional(),
   })
@@ -107,6 +109,19 @@ const S3RequestMetaSchema = z
   })
   .openapi("S3RequestMeta");
 
+const McpRequestMetaSchema = z
+  .object({
+    driver: z.literal("mcp"),
+    /** The MCP method issued. Deliberately no `status`: a JSON-RPC result
+     *  carries none, and an invented one would misreport what happened. */
+    operation: z.string(),
+    bytes_in: z.number().int().min(0),
+    tool_name: z.string().optional(),
+    connector: ConnectorResolutionSummarySchema,
+    extras: z.record(z.string(), z.unknown()).optional(),
+  })
+  .openapi("McpRequestMeta");
+
 const ConnectorlessRequestMetaSchema = z
   .object({
     driver: z.literal("connectorless"),
@@ -142,6 +157,7 @@ export const RequestMetaSchema = z
     GraphqlRequestMetaSchema,
     PostgresRequestMetaSchema,
     S3RequestMetaSchema,
+    McpRequestMetaSchema,
     ConnectorlessRequestMetaSchema,
     ErrorRequestMetaSchema,
   ])

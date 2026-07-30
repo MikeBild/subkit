@@ -76,7 +76,7 @@ export async function createInboundCtx(label: string): Promise<InboundTestCtx> {
     tenantId: tenant.id,
     workflowId: wf.id,
     cleanup: async () => {
-      await disposeBoss(boss, 5_000);
+      await disposeBoss(boss);
       await testDb.cleanup();
     },
     createBinding: async (params) => {

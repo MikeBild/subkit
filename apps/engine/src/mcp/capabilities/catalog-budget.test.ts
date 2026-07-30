@@ -7,8 +7,9 @@
 //
 // Contracts pinned here:
 //   1. The mode hierarchy is monotone: authoring publishes every tool
-//      product publishes, plus the long tail product omits (`call_connector`,
-//      `list_skills`, …). Product stays bounded to its allow-list.
+//      product publishes, plus the tools that BUILD definitions — the
+//      conversation cluster and everything declaring `authoring_only`.
+//      Product is the read-and-execute tier: reads plus the run tools.
 //   2. `confirm_tool_call` is GONE from the catalog: MCP writes execute
 //      directly, gated by the client's own `destructiveHint` dialog, never
 //      by a server-side confirm responder (`tools/policy.ts`).
@@ -81,12 +82,28 @@ describe("mode hierarchy is monotone · authoring ⊇ product", () => {
     }
   });
 
-  test("authoring publishes the long tail product omits (call_connector, list_skills)", () => {
+  test("product carries reads and runs; authoring adds the tools that build definitions", () => {
     const product = namesFor("product");
     const authoring = namesFor("authoring");
-    for (const longTail of ["call_connector", "list_skills"]) {
-      expect(product.has(longTail)).toBe(false);
-      expect(authoring.has(longTail)).toBe(true);
+
+    // Reading the tenant and calling an existing connector is what the
+    // read-and-execute tier is FOR. These used to be authoring-only, which
+    // left a plain credential with an 8-tool floor and no way to see anything.
+    for (const readOrRun of ["call_connector", "list_skills", "list_workflows"]) {
+      expect(product.has(readOrRun)).toBe(true);
+      expect(authoring.has(readOrRun)).toBe(true);
+    }
+
+    // What authoring adds is the composing: discovering an API's shape,
+    // dry-running a transform, opening an authoring conversation. Each of
+    // these declares `authoring_only` at its definition site.
+    for (const buildsDefinitions of [
+      "discover_connector_endpoints",
+      "dry_run_transform",
+      "conversation_start",
+    ]) {
+      expect(product.has(buildsDefinitions)).toBe(false);
+      expect(authoring.has(buildsDefinitions)).toBe(true);
     }
   });
 

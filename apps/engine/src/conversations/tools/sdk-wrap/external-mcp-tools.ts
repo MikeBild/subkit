@@ -1,12 +1,12 @@
-// Synthetic `mcp_<ns>__<tool>` tools for the chat palette.
+// Synthetic `mcp_<ns>__<entry>` tools for the chat palette.
 //
-// Every active external MCP server a tenant registered has its tools
+// Every active external MCP server a tenant registered has its surface
 // merged into the chat LLM's palette so a user message that names a
 // remote tool dispatches in ONE tool call. The per-tenant Client pool
 // (`apps/engine/src/mcp/client/pool.ts`) owns the live connections,
 // manifests, credentials, and result truncation; this module converts
-// each `RemoteToolDescriptor` into an AI SDK `Tool` whose `execute`
-// follows the EXACT side-effect sequence the in-repo wrappers use:
+// each palette entry into an AI SDK `Tool` whose `execute` follows the
+// EXACT side-effect sequence the in-repo wrappers use:
 //
 //   1. acquire the `signals.toolChain` mutex (serialise the turn)
 //   2. enforce `mcp_external_tool:invoke` (RBAC `can`)
@@ -20,22 +20,41 @@
 //      is deterministic), and feed only a TRUNCATED view to the model
 //   6. emit `tool_call_start` / `tool_call_end` / `tool_result`
 //
-// Tool name grammar is `mcp_<namespace>__<remote_tool>`. The namespace
-// is `__`-free by a DB CHECK on `mcp_servers`, so the `__` separator is
-// an unambiguous split point. The `mcp_` prefix is what the policy
+// Tool name grammar is `mcp_<connector_slug>__<entry>`. The slug half is
+// `__`-free by a DB CHECK, so the `__` separator is an unambiguous split
+// point; `buildMcpToolName` owns the grammar and REFUSES a pair it cannot
+// address rather than truncating one. The `mcp_` prefix is what the policy
 // resolver keys on (`isDangerousTool` + `getApprovalMode`) to force
 // "asks before running" under auto/ask/plan.
+//
+// AN ENTRY IS NOT ALWAYS A REMOTE TOOL. Each palette entry is a
+// `PaletteOperationSpec`: a name, a schema, and the ONE remote operation
+// it issues. Remote tools supply one each; the read-only resource and
+// prompt adapters (`external-mcp-readonly.ts`) supply the rest. They share
+// this pipeline deliberately — the mutex, the RBAC check, the confirm
+// gate, the persisted raw payload and the truncated model view are the
+// governance, and a second copy of them for reads is a second place for
+// them to drift.
+//
+// WHAT THE SERVER SAYS vs WHAT THE ENGINE DOES. A remote's `annotations`
+// reach the model in the entry's description and the audit trail, and they
+// reach NO gate: every `tools/call` confirms, whatever the server claims
+// about itself. `classifyMcpToolSideEffect` carries that rule.
 
+import { classifyMcpToolSideEffect } from "@shared/index.ts";
 import { jsonSchema, type Tool, tool } from "ai";
 import { recordMcpExternalToolPaletteAssemblyFailed } from "../../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
+import { buildMcpToolName } from "../../../connectors/drivers/mcp.ts";
 import type { Db } from "../../../db/client.ts";
 import { logger } from "../../../logging/logger.ts";
 import {
   getTenantMcpTools,
   invokeRemoteTool,
   type RemoteToolDescriptor,
+  type TenantMcpToolSet,
 } from "../../../mcp/client/pool.ts";
+import type { RemoteCall } from "../../../mcp/client/remote-call.ts";
 import { recordConversationToolCall } from "../../../observability/instrumentation.ts";
 import { can } from "../../../rbac/evaluator.ts";
 import {
@@ -56,11 +75,83 @@ import type { TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import type { ToolContext } from "../index.ts";
 import { truncateForLlm } from "../truncate.ts";
+import { readOnlyPaletteSpecs } from "./external-mcp-readonly.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
 
-const TOOL_PREFIX = "mcp_";
-const NAMESPACE_SEP = "__";
+/**
+ * One palette entry, reduced to what the governed pipeline needs: what to
+ * call it, what to tell the model, what arguments it takes, and which ONE
+ * remote operation it issues.
+ *
+ * `toCall` returns a result rather than throwing so a malformed argument
+ * is answered as a tool error the model can correct, and — because it runs
+ * BEFORE the confirm gate — a human is never asked to approve a call that
+ * could not have been made.
+ */
+export interface PaletteOperationSpec {
+  /** The part after `mcp_<connector_slug>__`. */
+  suffix: string;
+  /** Audit and operator-facing identity of what is being called. */
+  target: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  toCall: (args: Record<string, unknown>) =>
+    | { ok: true; call: RemoteCall }
+    | {
+        ok: false;
+        error: string;
+      };
+}
+
+/**
+ * The palette entry for one remote tool.
+ *
+ * The description carries three things the model could not otherwise see:
+ * the server's own display title, what the server CLAIMS about the tool's
+ * effects, and the shape of the typed reply it promises. The claim is
+ * reported as a claim ("the server describes this as read-only"), never as
+ * a permission — the sentence after it says the confirmation happens
+ * regardless, so a model reading the palette is not told something the
+ * gate will contradict.
+ */
+function toolPaletteSpec(
+  connector_slug: string,
+  descriptor: RemoteToolDescriptor,
+): PaletteOperationSpec {
+  const advertised = classifyMcpToolSideEffect(descriptor.annotations);
+  const title = descriptor.annotations?.title ?? descriptor.title;
+  const parts = [
+    descriptor.description,
+    title && title !== descriptor.name ? `Titled "${title}".` : "",
+    advertised === "read"
+      ? "The server describes this tool as read-only."
+      : "The server does not describe this tool as read-only.",
+    descriptor.outputSchema
+      ? `Returns structured output shaped like ${JSON.stringify(descriptor.outputSchema)}.`
+      : "",
+    `External MCP tool (connector ${connector_slug}). Asks for confirmation before running, whatever the server claims about it.`,
+  ].filter((s) => s.length > 0);
+  return {
+    suffix: descriptor.name,
+    target: descriptor.name,
+    description: parts.join(" — "),
+    inputSchema: descriptor.inputSchema,
+    toCall: (args) => ({
+      ok: true,
+      call: { operation: "call_tool", tool: descriptor.name, arguments: args },
+    }),
+  };
+}
+
+/** Every palette entry one connected server contributes: its remote tools
+ *  plus whichever read-only adapters its declared capabilities earn. */
+function paletteSpecsFor(server: TenantMcpToolSet): PaletteOperationSpec[] {
+  return [
+    ...server.tools.map((d) => toolPaletteSpec(server.slug, d)),
+    ...readOnlyPaletteSpecs(server.slug, server.capabilities),
+  ];
+}
 
 export interface BuildExternalMcpToolsParams {
   db: Db;
@@ -90,11 +181,13 @@ export function __setExternalMcpToolsBuilderForTests(fn: ExternalMcpToolsBuilder
 }
 
 /**
- * Build `mcp_<ns>__<tool>` SDK tools for the principal's tenant. Returned
+ * Build `mcp_<ns>__<entry>` SDK tools for the principal's tenant: the
+ * remote tools each connected server advertises, plus the read-only
+ * resource and prompt adapters its declared capabilities earn. Returned
  * map is keyed by the prefixed name and ready to splice into the AI SDK
  * `toolSet`. Empty when the tenant has no active external MCP servers (or
  * all are inside a backoff window). A handshake failure for one server is
- * swallowed by the pool — its tools are simply absent this turn.
+ * swallowed by the pool — its entries are simply absent this turn.
  */
 export async function buildExternalMcpTools(
   p: BuildExternalMcpToolsParams,
@@ -105,14 +198,33 @@ export async function buildExternalMcpTools(
   const servers = await getTenantMcpTools(p.db, p.principal.tenant_id, { requestSource: "chat" });
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   for (const server of servers) {
-    for (const descriptor of server.tools) {
-      const name = `${TOOL_PREFIX}${server.namespace}${NAMESPACE_SEP}${descriptor.name}`;
+    for (const spec of paletteSpecsFor(server)) {
+      // The grammar refuses a pair it cannot address rather than
+      // truncating it — a truncated name still routes, to whichever
+      // server shares the prefix. Skipping ONE entry is the whole cost;
+      // letting the throw escape would abort palette assembly and cost
+      // the tenant every external tool it has.
+      let name: string;
+      try {
+        name = buildMcpToolName(server.slug, spec.suffix);
+      } catch (err) {
+        logger.warn({
+          module: "conversation_tool",
+          action: "external_mcp.entry_unaddressable",
+          msg: "external MCP palette entry has no legal tool name; it is absent from this turn's palette",
+          tenant_id: p.principal.tenant_id,
+          connector_slug: server.slug,
+          entry: spec.suffix,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
       out[name] = buildOneExternalMcpTool({
         ...p,
         name,
-        namespace: server.namespace,
-        mcp_server_id: server.mcp_server_id,
-        descriptor,
+        connector_slug: server.slug,
+        connector_id: server.connector_id,
+        spec,
       });
     }
   }
@@ -121,26 +233,34 @@ export async function buildExternalMcpTools(
 
 interface BuildOneParams extends BuildExternalMcpToolsParams {
   name: string;
-  namespace: string;
-  mcp_server_id: string;
-  descriptor: RemoteToolDescriptor;
+  connector_slug: string;
+  connector_id: string;
+  spec: PaletteOperationSpec;
 }
 
 function buildOneExternalMcpTool(
   p: BuildOneParams,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
-  const { descriptor, signals } = p;
+  const { spec, signals } = p;
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
     // AI SDK 7: coerce tool output to JSON-safe for the model (see json-safe-output.ts).
     toModelOutput: jsonSafeModelOutput,
-    description: `${descriptor.description} — external MCP tool (namespace ${p.namespace}). Asks for confirmation before running.`,
-    // The remote server's schema plus the confirm markers — this tool always
+    description: spec.description,
+    // The entry's argument schema plus the confirm markers — this tool always
     // pauses, so the model needs a declared slot to carry the `confirm_id`
     // back. The markers are stripped again before the args leave the perimeter.
     inputSchema: jsonSchema(
-      withConfirmMarkerProperties(descriptor.inputSchema) as Parameters<typeof jsonSchema>[0],
+      withConfirmMarkerProperties(spec.inputSchema) as Parameters<typeof jsonSchema>[0],
     ),
-    async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {
+    async execute(
+      rawArgs: Record<string, unknown>,
+      // The SDK hands every `execute` the turn's abort signal here. It was
+      // ignored, so stopping a turn left the outbound remote request
+      // running to its own timeout while the caller had already walked
+      // away. Threaded through to the pool, which cancels THIS request and
+      // leaves the tenant's shared session alone.
+      opts?: { abortSignal?: AbortSignal | undefined },
+    ): Promise<WrappedToolOutput> {
       // Serialise against other tool executions in this turn — identical
       // to the `wf_<slug>` synthetic wrapper and `wrapOne`'s mutex.
       const prevChain = signals.toolChain;
@@ -150,7 +270,11 @@ function buildOneExternalMcpTool(
       });
       await prevChain;
       try {
-        return await executeExternalMcpTool({ ...p, rawArgs });
+        return await executeExternalMcpTool({
+          ...p,
+          rawArgs,
+          ...(opts?.abortSignal ? { abortSignal: opts.abortSignal } : {}),
+        });
       } finally {
         release();
       }
@@ -159,20 +283,10 @@ function buildOneExternalMcpTool(
 }
 
 async function executeExternalMcpTool(
-  p: BuildOneParams & { rawArgs: Record<string, unknown> },
+  p: BuildOneParams & { rawArgs: Record<string, unknown>; abortSignal?: AbortSignal },
 ): Promise<WrappedToolOutput> {
-  const {
-    ctx,
-    signals,
-    events,
-    db,
-    name,
-    namespace,
-    mcp_server_id,
-    descriptor,
-    principal,
-    rawArgs,
-  } = p;
+  const { ctx, signals, events, db, name, connector_slug, connector_id, spec, principal, rawArgs } =
+    p;
   const startedAt = Date.now();
 
   // Defence in depth — production callers always source ctx.tenant_id and
@@ -317,14 +431,45 @@ async function executeExternalMcpTool(
     parent_message_id: assistantMessageId,
   });
 
+  // Resolve the arguments into the remote operation BEFORE the confirm
+  // gate. A malformed call must never become a question a human is asked
+  // to approve: they would be granting a call that cannot be made, and the
+  // grant would be spent when the model corrected itself.
+  const resolved = spec.toCall(effectiveInput);
+  if (!resolved.ok) {
+    const output: Record<string, unknown> = {
+      ok: false,
+      status: "failed",
+      error_code: "invalid_arguments",
+      error: `${name} was not called: ${resolved.error}`,
+      connector_slug,
+      remote_tool: spec.target,
+    };
+    await updateToolCallOutput(db, toolCallId, output);
+    events.push({
+      type: "tool_result",
+      call_id: toolCallId,
+      tool: name,
+      output,
+      parent_message_id: assistantMessageId,
+    });
+    recordConversationToolCall({
+      category: "tenant_write",
+      tool: name,
+      outcome: "error",
+      duration_ms: Date.now() - startedAt,
+    });
+    return { ok: false, data: output };
+  }
+
   if (claim && !claim.ok) {
     const output: Record<string, unknown> = {
       ok: false,
       status: "failed",
       error_code: claim.code,
       error: claim.message,
-      namespace,
-      remote_tool: descriptor.name,
+      connector_slug,
+      remote_tool: spec.target,
     };
     await updateToolCallOutput(db, toolCallId, output);
     events.push({
@@ -369,8 +514,8 @@ async function executeExternalMcpTool(
           status: "failed",
           error_code: "duplicate_pending_elicitation_in_turn",
           error: `Another tool call in this turn already staged an ask_user_confirm (${signals.pendingElicitation.tool_name}). Wait for the operator to resolve it, then re-issue ${name}.`,
-          namespace,
-          remote_tool: descriptor.name,
+          connector_slug,
+          remote_tool: spec.target,
         };
         await updateToolCallOutput(db, toolCallId, dupOutput);
         events.push({
@@ -423,9 +568,9 @@ async function executeExternalMcpTool(
       // client-facing projection strips it via `withoutApprovalHandle`.
       const elicitationInput: Record<string, unknown> = {
         kind: "external_write",
-        question: `Policy requires confirmation before running the external MCP tool ${name} (server ${namespace}). Proceed?`,
-        target: { tool: name, namespace, remote_tool: descriptor.name },
-        pending_output: { namespace, remote_tool: descriptor.name, input_keys: inputKeys },
+        question: `Policy requires confirmation before running the external MCP tool ${name} (server ${connector_slug}). Proceed?`,
+        target: { tool: name, connector_slug, remote_tool: spec.target },
+        pending_output: { connector_slug, remote_tool: spec.target, input_keys: inputKeys },
         commit_intent: {
           kind: "grant_relayed_tool_call",
           payload: { tool: name, approval_id: confirm_id },
@@ -437,7 +582,7 @@ async function executeExternalMcpTool(
         // bridge unable to recognise the row.
         ...(requested.approval_url ? { approval_url: requested.approval_url } : {}),
       };
-      const elicitationSummary = `Run external MCP tool ${name} (server ${namespace})`;
+      const elicitationSummary = `Run external MCP tool ${name} (server ${connector_slug})`;
       const elicitation = await createElicitation(
         {
           tenant_id: ctx.tenant_id,
@@ -455,7 +600,7 @@ async function executeExternalMcpTool(
       // The approval handle stays on the persisted row; the model and every
       // client see the prompt minus the capability.
       const operatorInput = withoutApprovalHandle(elicitationInput);
-      const pendingOutput = { namespace, remote_tool: descriptor.name, input_keys: inputKeys };
+      const pendingOutput = { connector_slug, remote_tool: spec.target, input_keys: inputKeys };
       // The model-facing tool result. `confirm_id` is the re-issue TRIGGER, not
       // a gate — the claim still requires the human grant — so it is safe to
       // show; `approval_url` is a human-only link the model cannot click. The
@@ -470,8 +615,8 @@ async function executeExternalMcpTool(
         note: `Nothing ran. The operator must approve ${name} before it runs — they will see a confirmation in chat${
           requested.approval_url ? ` (or open ${requested.approval_url})` : ""
         }. After they approve, re-issue ${name} with __policy_confirmed: true and __policy_confirm_id: "${confirm_id}" to perform it — the engine replays the arguments it already holds. You cannot approve on their behalf.`,
-        namespace,
-        remote_tool: descriptor.name,
+        connector_slug,
+        remote_tool: spec.target,
         pending_output: pendingOutput,
       };
       await updateToolCallOutput(db, toolCallId, output);
@@ -533,8 +678,8 @@ async function executeExternalMcpTool(
       status: "failed",
       error_code: "unexpected_gate_decision",
       error: `Policy returned ${gate.kind} for an unconfirmed ${name}; a remote write must pause for human approval. Nothing was invoked.`,
-      namespace,
-      remote_tool: descriptor.name,
+      connector_slug,
+      remote_tool: spec.target,
     };
     await updateToolCallOutput(db, toolCallId, output);
     events.push({
@@ -578,8 +723,8 @@ async function executeExternalMcpTool(
         status: "failed",
         error_code: "approval_audit_failed",
         error: `Confirmation ${claim.approval_id} could not be recorded in the audit log; ${name} was not invoked. Re-issue ${name} to obtain a fresh confirmation.`,
-        namespace,
-        remote_tool: descriptor.name,
+        connector_slug,
+        remote_tool: spec.target,
       };
       await updateToolCallOutput(db, toolCallId, output);
       events.push({
@@ -606,11 +751,26 @@ async function executeExternalMcpTool(
     // Attribute the `mcp_external_tool.invoked` audit row to the chat
     // principal that drove this turn — never a blurred system actor.
     actor_id: principal.id,
-    mcp_server_id,
-    namespace,
-    remote_tool: descriptor.name,
-    input: effectiveInput,
+    connector_id,
+    connector_slug,
+    // Which operation this entry issues is the spec's decision, resolved
+    // above from the arguments the human approved.
+    call: resolved.call,
     requestSource: "chat",
+    // Stopping the turn stops the outbound request. The pool cancels this
+    // ONE request; the tenant's pooled session is not torn down.
+    ...(p.abortSignal ? { signal: p.abortSignal } : {}),
+    // Remote progress becomes a `tool_log` event, so a long remote call
+    // renders as it runs instead of as a silence. It buys the remote no
+    // extra time: the bounded timeout is unaffected by progress.
+    ...(ctx.onLog
+      ? {
+          onProgress: (prog: { progress: number; total?: number; message?: string }) => {
+            const of = prog.total !== undefined ? `/${prog.total}` : "";
+            ctx.onLog?.("info", `${name}: ${prog.message ?? "progress"} (${prog.progress}${of})`);
+          },
+        }
+      : {}),
     // `recordMcpExternalToolInvoked` is emitted INSIDE `invokeRemoteTool`
     // with outcome / duration_ms / byte_count — the pool owns that audit
     // so the byte count is the raw remote size, not the truncated view.
@@ -620,12 +780,20 @@ async function executeExternalMcpTool(
   // pool injects no wall-clock / random, so a replay rehydrates the exact
   // same payload (the determinism contract `buildModelMessages` relies
   // on). The model is fed only a truncated view below.
+  //
+  // `structured_content` is persisted ALONGSIDE `content`, not merged into
+  // it: it is the half the SDK validated against the tool's own declared
+  // output schema, and a reader who cannot tell them apart cannot tell
+  // which half carried that guarantee. `get_raw_result` reaches both.
   const fullPayload: Record<string, unknown> = {
     ok: invoked.ok,
     status: invoked.ok ? "succeeded" : "failed",
-    namespace,
-    remote_tool: descriptor.name,
+    connector_slug,
+    remote_tool: spec.target,
     content: invoked.content,
+    ...(invoked.structured_content !== undefined
+      ? { structured_content: invoked.structured_content }
+      : {}),
   };
   await updateToolCallOutput(db, toolCallId, fullPayload);
   await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "tool", {

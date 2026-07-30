@@ -418,6 +418,53 @@ metadata, transiently, persisting nothing. It is **not** an HTTP route, so it do
 (`llms_txt`, `llms_full`, `openapi`, `graphql`) are described in
 [Connectors → Connector Self-Description](../concepts/connectors.md#connector-self-description).
 
+### Remote MCP entries: sk as an MCP client
+
+sk is an MCP *server* to its own clients and an MCP *client* to servers a tenant
+connects. The second half lands in this same palette. Every enabled connector
+whose driver is `mcp` has its remote surface merged in, so a message naming a
+remote tool dispatches in one call rather than a lookup-then-invoke pair.
+
+**Where the servers live.** In `connectors`, like every other integration.
+There is no separate MCP registry table, no separate CRUD surface, and no
+separate credential store — an external MCP server is created, patched,
+enabled, disabled, and deleted through `/v1/connectors` and `sk connectors`.
+
+**Naming.** `mcp_<connector_slug>__<entry>`. The slug half cannot contain `__`
+(a DB `CHECK` on `connectors.slug` enforces it), which is what makes the double
+underscore an unambiguous split point. `buildMcpToolName` owns the grammar and
+**refuses** a pair it cannot address rather than truncating it — a truncated
+name still routes, just possibly to a different server. The composed name is
+bounded at 64 characters and matches `^[a-zA-Z0-9_-]{1,64}$`; no dots.
+
+**Entries are not all remote tools.** Each entry is a `PaletteOperationSpec` —
+a name, a schema, and the one remote operation it issues. A remote tool supplies
+one each. Where the negotiated capabilities declare resources or prompts, four
+engine-minted adapters are added per server: `list_resources`, `read_resource`,
+`list_prompts`, `get_prompt`. Adapters appear **only** where the capability was
+declared, so the model is never offered an entry whose every call is a protocol
+error.
+
+**They are ordinary palette entries.** Same registry, same `policyDecide()`
+gate, same durable approval handle, same `tool.dispatch.invoke` audit, same
+turn mutex, and an `mcp_external_tool:invoke` RBAC check. The `mcp_` prefix is
+what `isDangerousTool` and `getApprovalMode` key on, so every remote entry
+confirms before running under `auto` / `ask` / `plan`.
+
+**A server's self-description reaches the model, never the gate.** A remote's
+`annotations` (`readOnlyHint`, `destructiveHint`) are carried into the entry
+description and the audit metadata, and are consulted by no gate whatsoever. A
+`tools/call` is a write no matter what the server claims about itself —
+`readOnlyHint` is optional, unverified, and asserted by the party whose side
+effects it describes. The engine-minted read adapters are the one exception,
+and they are reads by the engine's own construction: each is pinned to one
+retrieval method and none can reach `tools/call`. Only a tenant-side author can
+reclassify a call, with `side_effects: "read"` on a workflow step.
+
+**Results are persisted whole, truncated for the model.** The full remote
+payload goes into the tool-call row; the model sees a truncated view, and
+`get_raw_result` retrieves the rest.
+
 ### Status-discriminated envelope vs. flat `ok` boolean
 
 The legacy `ToolResult` carried `pause` on both `ok:true` and `ok:false`

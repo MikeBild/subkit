@@ -169,6 +169,9 @@ export const fetchConnectorSelfDescriptionTool: ConversationTool = {
     "Live-fetch the machine docs a connector publishes ABOUT ITSELF — its llms.txt / llms-full.txt, OpenAPI spec, or GraphQL schema (via introspection) — using the self-description links recorded on the connector. The body is fetched fresh on demand and returned transiently; nothing is persisted. Call this when the authoring context shows a connector that 'publishes its own docs' and you need the actual endpoint / type / field details before drafting a `request` step. Pass `kind` to narrow to one form (`llms`, `openapi`, `graphql`) or `all` (default). Requires a connector in scope (or pass `connector_id`). If no matching link is recorded, run `discover_connector_endpoints` first to populate them.",
   inputSchema,
   category: "tenant_read",
+  // Builds a definition rather than using one: withheld from the
+  // read-and-execute tier even though it only reads.
+  authoring_only: true,
   use_case:
     "When a connector advertises self-description links, fetch its llms.txt / OpenAPI / GraphQL schema on demand to ground request steps in the real surface instead of guessing.",
   important_notes: [

@@ -33,6 +33,11 @@ export interface ToolDescriptor {
   /** Slug of a skill that must be loaded before this tool is visible.
    *  Mirrors the conversation registry's `requires_skill`. */
   readonly requires_skill?: string;
+  /** This tool builds definitions rather than using them, so it belongs to the
+   *  authoring tiers even when its category is `tenant_read`. Mirrors
+   *  `ConversationTool.authoring_only` — see there for why category alone
+   *  cannot carry this. */
+  readonly authoring_only?: boolean;
   /** True when the tool depends on the conversation's working draft
    *  (`ctx.getDraft()`). The dispatcher rejects such a tool on the MCP
    *  stub-context path with `not_available_on_surface` rather than let it

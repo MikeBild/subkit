@@ -247,6 +247,7 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         tenant_id: row.tenant_id,
         roles,
         scopes,
+        oauth_client_id: row.client_id,
         email: u.email,
       };
 
@@ -256,6 +257,7 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         principal_id: row.user_id,
         token_id: row.id,
         tenant_id: row.tenant_id,
+        oauth_client_id: row.client_id,
       });
 
       await maybeFlushLastUsed(db, row.id, row.tenant_id, prefix, row.user_id);

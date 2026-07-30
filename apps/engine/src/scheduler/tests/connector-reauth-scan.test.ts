@@ -16,11 +16,14 @@
 //   - Runtime streak escalation: 3 consecutive auth_failed scheduler runs on
 //     a schedule-bound workflow emit a level:"error" line naming workflow +
 //     connector; shorter/broken streaks and paused schedules stay silent.
+//   - Driver `mcp` is excluded outright: the sweep must not handshake a remote
+//     MCP server, and must not be the thing that parks one.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
 import {
+  connectorMcpSessions,
   connectors,
   events,
   executionSteps,
@@ -413,5 +416,89 @@ describe("runConnectorReauthScanForTenant — tenant isolation", () => {
     const rows = await db.db.select().from(connectors).where(eq(connectors.id, otherConnectorId));
     expect(rows[0]!.needs_reauth).toBe(false);
     expect(rows[0]!.auth_failed_at).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// driver mcp is never probed by the sweep
+// ---------------------------------------------------------------------------
+
+describe("runConnectorReauthScanForTenant — driver mcp is excluded", () => {
+  test("an enabled mcp connector gets no handshake and is not parked by the sweep", async () => {
+    // An mcp probe is a session handshake through the client pool: it clears
+    // the connector's armed backoff, negotiates `initialize`, and on failure
+    // writes last_error, arms a fresh backoff and flips health to degraded.
+    // Running that hourly against every remote a tenant registered makes the
+    // health sweep a load generator, and lets it park a server nobody called.
+    //
+    // The mock server counts hits, so this asserts the ABSENCE of outbound
+    // traffic rather than merely the absence of a recorded verdict — a driver
+    // that handshook and then swallowed the failure would still fail here.
+    let hits = 0;
+    const mcpServer = await createMockServer((_req, res) => {
+      hits += 1;
+      jsonResponse(res, 500, { error: "should never be asked" });
+    });
+    try {
+      const [c] = await db.db
+        .insert(connectors)
+        .values({
+          tenant_id: tenantId,
+          slug: "scan-mcp-remote",
+          display_name: "scan-mcp-remote",
+          driver: "mcp",
+          // MCP credentials are written and resolved under one pinned
+          // environment (MCP_CREDENTIAL_ENVIRONMENT), so the row and its
+          // credential both live in prod — otherwise the handshake would fail
+          // on a missing credential before reaching the socket and the hit
+          // count would prove nothing.
+          environment: "prod",
+          auth_type: "bearer",
+          base_url: mcpServer.baseUrl,
+          config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
+        })
+        .returning();
+      const connectorId = c!.id;
+      await upsertCredential(
+        {
+          tenant_id: tenantId,
+          connector_id: connectorId,
+          environment: "prod",
+          mode: "bearer",
+          value: { mode: "bearer", token: "test-token" },
+          actor_id: null,
+        },
+        db.db,
+      );
+
+      logRing.clear();
+      await runConnectorReauthScanForTenant(tenantId, NOW, db.db);
+
+      expect(hits).toBe(0);
+
+      const [row] = await db.db.select().from(connectors).where(eq(connectors.id, connectorId));
+      // Not parked: no failure text, health untouched, no re-auth flag.
+      expect(row!.last_error).toBeNull();
+      expect(row!.health_state).toBe("ok");
+      expect(row!.needs_reauth).toBe(false);
+
+      // A session row asserts a negotiated session. The sweep must not have
+      // created one, and must not have armed a backoff window.
+      const sessions = await db.db
+        .select()
+        .from(connectorMcpSessions)
+        .where(eq(connectorMcpSessions.connector_id, connectorId));
+      expect(sessions).toHaveLength(0);
+
+      // The summary must SAY it skipped, so `probed: 0` cannot read as
+      // "nothing to check" on a tenant whose only remotes are MCP ones.
+      const completed = logRing.tail({
+        module: "scheduler",
+        action: "connector_reauth_scan.completed",
+      });
+      expect(completed.at(-1)?.fields.mcp_not_probed).toBe(1);
+    } finally {
+      await mcpServer.close();
+    }
   });
 });

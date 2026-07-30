@@ -149,8 +149,6 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   // ── MCP transport ──────────────────────────────────────────────
   "mcp.api_key": "MCP API key",
   "mcp.read_only": "Read-only MCP",
-  "mcp.client.per_server_manifest_byte_cap": "External MCP manifest cap",
-  "mcp.client.remote_tool_call_timeout_ms": "External MCP call timeout",
 
   // ── Errors / spec / queue / tokens ─────────────────────────────
   "errors.ring_size": "Error buffer size",
@@ -183,6 +181,10 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
 
   // ── Connectors / HTTP + GraphQL transport ────────────────
   "connectors.http.max_response_bytes": "Max response size (bytes)",
+  // ── Connectors / external MCP client pool ────────────────
+  "connectors.mcp.per_server_manifest_byte_cap": "External MCP manifest cap",
+  "connectors.mcp.remote_tool_call_timeout_ms": "External MCP call timeout",
+  "connectors.mcp.tools_list_max_pages": "External MCP manifest page limit",
   // ── Connectors / web-scraper ─────────────────────────────
   "connectors.web_scraper.runtime.respect_robots": "Respect robots.txt",
   "connectors.web_scraper.runtime.user_agent": "User-Agent header",

@@ -165,6 +165,8 @@ const AppliedAuthMethodEnum = z.enum([
   "aws_sigv4",
   "token_mint_static",
   "token_mint_refreshed",
+  "oauth2_client",
+  "oauth2_private_key",
 ]);
 
 const ConnectorResolutionSummarySchema = z

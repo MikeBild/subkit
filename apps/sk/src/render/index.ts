@@ -2,6 +2,8 @@ import { basename } from "node:path";
 import pc from "picocolors";
 import { STATUS_GLYPH } from "../repl/plan-cell.tsx";
 import {
+  connectorHeading,
+  connectorTemplateSuffix,
   humanBytes,
   isConnectorIntent,
   isConnectorSummary,
@@ -54,9 +56,9 @@ function plainIntent(intent: AnyIntent): string {
     out.push(`  ${pc.dim(`Size: ${humanBytes(intent.size_bytes)}`)}`);
     out.push(`  ${pc.dim(`MIME: ${intent.mime_type}`)}`);
   } else if (isConnectorIntent(intent)) {
-    const heading = intent.name ? `${intent.name} (${intent.template_slug})` : intent.template_slug;
+    const heading = connectorHeading(intent);
     out.push(`${pc.cyan(pc.bold("●"))} ${pc.bold(`Create connector ${heading}`)}`);
-    out.push(`  ${pc.dim(`Template: ${intent.template_slug}`)}`);
+    if (intent.template_slug) out.push(`  ${pc.dim(`Template: ${intent.template_slug}`)}`);
     if (intent.environment) out.push(`  ${pc.dim(`Environment: ${intent.environment}`)}`);
     if (intent.auth_type) out.push(`  ${pc.dim(`Auth: ${intent.auth_type}`)}`);
     if (intent.base_url) out.push(`  ${pc.dim(`Base URL: ${intent.base_url}`)}`);
@@ -127,7 +129,7 @@ function plainSummary(summary: AnySummary): string {
   } else if (isConnectorSummary(summary)) {
     out.push(
       `${pc.green(pc.bold("✓"))} ${pc.bold(
-        `Created connector "${summary.slug}" · id=${summary.id} · template=${summary.template_slug}`,
+        `Created connector "${summary.slug}" · id=${summary.id}${connectorTemplateSuffix(summary)}`,
       )}`,
     );
     if (summary.probe) {

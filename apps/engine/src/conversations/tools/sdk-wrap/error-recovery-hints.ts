@@ -59,6 +59,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "an unconfirmed write must pause for human approval and did not resolve to that state, so it was refused rather than run unaudited — do not retry; report that the tool could not be gated.",
   duplicate_pending_elicitation_in_turn:
     "another approval is already pending in this turn — one confirmation at a time. Wait for the operator to answer the outstanding prompt before issuing another write.",
+  invalid_arguments:
+    "the arguments could not be turned into a call, so nothing was sent and no approval was requested — read the message for the field at fault, correct it, and re-issue. Retrying the same arguments reproduces this.",
   // Connector self-description / lazy-fetch signals (fetch_connector_self_description).
   no_connector_in_scope:
     "no connector is in scope — pass an explicit connector_id (find it via find_connector / list_connectors), or run the call from a conversation already bound to a connector",

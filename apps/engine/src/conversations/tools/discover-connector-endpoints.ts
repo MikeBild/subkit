@@ -72,6 +72,9 @@ export const discoverConnectorEndpointsTool: ConversationTool = {
     "Discovers what an API can do BEFORE you author against it. For REST it fetches the OpenAPI/Swagger spec; for a GraphQL connector it runs `__schema` introspection (pass the GraphQL endpoint as `base_url`) and returns every query/mutation root field flattened with its args, enum values, and input-field shapes — AND ingests the full schema (SDL) as searchable knowledge you can then `search_knowledge`. Either way you get a curated list of endpoints with auth schemes, parameters, and pagination hints. Call this **before** probing or proposing workflow steps so field names, enum values (casing matters), and filter/connection shapes come from the real schema instead of guesses — essential for GraphQL, where list fields are usually Relay connections (`edges{node}`) and orderBy/enum values are schema-defined. To introspect a connector you already have in scope, pass its `connector_id` — the tool uses that connector's stored base_url (no need to re-type the URL or guess a template slug). Cached per-tenant for 24h; pass `force_refresh: true` to re-fetch.",
   inputSchema,
   category: "tenant_read",
+  // Builds a definition rather than using one: withheld from the
+  // read-and-execute tier even though it only reads.
+  authoring_only: true,
   use_case:
     "Before drafting a workflow step that hits a third-party API, run this so endpoint paths, auth schemes, and pagination come from the vendor's spec instead of guesses.",
   important_notes: [

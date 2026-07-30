@@ -13,6 +13,39 @@ binary, restart the unit. In-flight pg-boss jobs resume automatically.
   `SHA256SUMS`, `SHA256SUMS.sig`).
 - The running version is reported by `GET /v1/health` (`"version"`).
 
+## Before a major-version upgrade
+
+A major bump means at least one surface was removed rather than deprecated —
+this project ships no backwards-compatibility shims, so an old path is gone in
+the same release that replaces it. **Read that version's `CHANGELOG.md` entry
+before you swap the binary**, and expect one of two failure shapes if you do not:
+
+- **The engine refuses to boot.** Config the engine no longer has is a refusal,
+  not a warning — the schema would strip an unknown section silently and the
+  next settings write would erase it from disk, so a stale section is data at
+  risk, and only stopping is honest. The error names every offending path, how
+  many declarations are at stake, and the migration. Fix the config, then start.
+- **A caller gets a 404.** A removed route or CLI command is removed. Check the
+  CHANGELOG entry for what replaced it.
+
+The pre-flight, run on the staged binary before it replaces the live one:
+
+```bash
+# Loads config FIRST, then applies migrations, then exits — without ever
+# starting the HTTP listener. A config section the new version dropped
+# fails here, on a unit that is still serving the old binary.
+ssh root@<engine-host> '/tmp/engine-new --migrate'
+```
+
+`--version` is not a substitute: it prints and exits before any config work, by
+design, so a version probe never needs a configured environment.
+
+Note what `--migrate` really does — it *applies* the migrations rather than
+rehearsing them, and migrations are forward-only. That is the same work the boot
+path would do moments later, so it costs nothing extra; it does mean the
+database has moved before the binary does. Take the backup before this step, not
+after: [Rollback](#rollback) restores the binary, not the schema.
+
 ## Standard deploy — published-asset scp (supported path)
 
 This is the reliable path and the one to use when self-update is not configured

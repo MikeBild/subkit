@@ -19,6 +19,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
 import { runMigrations } from "../migrate.ts";
+import { EMBEDDED_MIGRATIONS } from "../migrations/embedded.ts";
 import * as schema from "../schema/index.ts";
 
 const { Client, Pool } = pg;
@@ -106,6 +107,18 @@ function rewriteDbName(url: string, newName: string): string {
   return parsed.toString();
 }
 
+export interface CreateTestDbOptions {
+  /**
+   * Stop after the migration with this index, leaving the database in
+   * the state a deployment had before the next one ran. Without it a
+   * data migration can only be inspected after the fact — by which time
+   * the rows it read are gone and the transform itself is unprovable.
+   * The runner applies migrations by tag membership, so a later
+   * `runMigrations(db)` with the full set applies exactly the remainder.
+   */
+  upToIdx?: number;
+}
+
 export type TestDb = {
   dbName: string;
   url: string;
@@ -119,7 +132,10 @@ export type TestDb = {
  * drizzle client bound to it. Caller must invoke `cleanup()` in
  * afterAll.
  */
-export async function createTestDb(label: string): Promise<TestDb> {
+export async function createTestDb(
+  label: string,
+  options: CreateTestDbOptions = {},
+): Promise<TestDb> {
   const rand = randomBytes(6).toString("hex");
   const dbName = `test_${label}_${process.pid}_${rand}`.toLowerCase().replace(/[^a-z0-9_]/g, "_");
 
@@ -147,7 +163,13 @@ export async function createTestDb(label: string): Promise<TestDb> {
   const db = drizzle(pool, { schema });
   // The embedded migration runner installs pgcrypto + the drizzle journal
   // table itself; no extra prep needed.
-  await runMigrations(db);
+  const upToIdx = options.upToIdx;
+  await runMigrations(
+    db,
+    upToIdx === undefined
+      ? EMBEDDED_MIGRATIONS
+      : EMBEDDED_MIGRATIONS.filter((m) => m.idx <= upToIdx),
+  );
 
   // Seed the RBAC catalog + built-in roles so `can()` has something to
   // evaluate even in unit tests that bypass the journey harness.

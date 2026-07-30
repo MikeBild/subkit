@@ -15,6 +15,7 @@
 
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { getCredentialForConnector } from "../../credentials/service.ts";
+import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
@@ -98,6 +99,9 @@ async function resolveS3Credentials(
   db: Db,
   tenant_id: string,
   connector: ConnectorView,
+  /** Stands in for the persisted row when the connector is not saved yet.
+   *  `undefined` keeps the lookup; `null` means "no credential". */
+  override?: DecryptedCredential | null,
 ): Promise<{ creds: S3Credentials | null; credential_id: string | null }> {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
   if (connector.auth_type === "none") {
@@ -117,8 +121,13 @@ async function resolveS3Credentials(
     }
     return { creds: null, credential_id: null };
   }
-  // auth_type !== "none": credentials must come from the encrypted store.
-  const row = await getCredentialForConnector(tenant_id, connector.id, connector.environment, db);
+  // auth_type !== "none": credentials come from the encrypted store, or from
+  // the caller when probing a connector that has not been saved yet. The
+  // override is never written anywhere — it signs this one request.
+  const row =
+    override !== undefined
+      ? override && { value: override, row: { id: null as string | null } }
+      : await getCredentialForConnector(tenant_id, connector.id, connector.environment, db);
   if (!row) {
     throw new S3CredentialError(
       `s3 connector ${connector.slug} (auth_type ${connector.auth_type}) has no stored credential for environment ${connector.environment}`,
@@ -228,11 +237,15 @@ export async function executeS3Request(p: {
    *  presigned URL that grants temporary access to the operation
    *  caller. Supported on GET / PUT. */
   presignExpiresIn?: number;
+  /** See `probeConnector` — signs this request with a credential the caller
+   *  supplies instead of the stored row, for a connector that is not saved yet. */
+  credential_override?: DecryptedCredential | null;
 }): Promise<S3Response> {
   const { creds: credentials, credential_id } = await resolveS3Credentials(
     p.db,
     p.tenant_id,
     p.connector,
+    p.credential_override,
   );
   const client = buildS3Client({ connector: p.connector, credentials });
   const key = trimKey(p.path);
@@ -524,17 +537,23 @@ export async function probeS3Connector(p: {
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
+  /** See `probeConnector` — a credential for a connector that is not saved yet. */
+  credential_override?: DecryptedCredential | null;
 }): Promise<DriverProbeResult> {
   const start = Date.now();
   try {
-    // Guard: auth-required connectors must have a persisted credential row.
+    // Guard: auth-required connectors need a credential — the stored row, or
+    // the caller's override when the connector is not saved yet.
     if (p.connector.auth_type !== "none") {
-      const row = await getCredentialForConnector(
-        p.tenant_id,
-        p.connector.id,
-        p.connector.environment,
-        p.db,
-      );
+      const row =
+        p.credential_override !== undefined
+          ? p.credential_override && { value: p.credential_override }
+          : await getCredentialForConnector(
+              p.tenant_id,
+              p.connector.id,
+              p.connector.environment,
+              p.db,
+            );
       if (!row) {
         return {
           ok: false,
@@ -551,6 +570,11 @@ export async function probeS3Connector(p: {
       connector: p.connector,
       method: "LIST",
       path: "/",
+      // Sign with the same material the guard above accepted, so a probe of an
+      // unsaved connector does not fall back to an anonymous request.
+      ...(p.credential_override !== undefined
+        ? { credential_override: p.credential_override }
+        : {}),
     });
     const latency_ms = Date.now() - start;
     if (res.status < 200 || res.status >= 300) {

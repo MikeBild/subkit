@@ -47,6 +47,7 @@ import {
 import { now } from "../../utils/clock.ts";
 import { createMcpServer } from "../server.ts";
 import { validateMcpStreamableHttpRequest } from "./guards.ts";
+import { classifyMcpRequest, type McpRequestClass, mcpOutcome } from "./request-labels.ts";
 
 // A session is a lease, not a permanent allocation. The spec has clients send
 // `DELETE /mcp` when they are done and almost none do, so `onsessionclosed`
@@ -124,80 +125,6 @@ export interface Session {
   };
 }
 
-interface McpRequestClass {
-  operation: string;
-  taskPhase?: "working" | "cancelled" | "none" | undefined;
-}
-
-const JSON_RPC_METHODS = new Set([
-  "initialize",
-  "ping",
-  "tools/list",
-  "tools/call",
-  "resources/list",
-  "resources/templates/list",
-  "resources/read",
-  "resources/subscribe",
-  "resources/unsubscribe",
-  "prompts/list",
-  "prompts/get",
-  "completion/complete",
-  "tasks/get",
-  "tasks/result",
-  "tasks/list",
-  "tasks/cancel",
-  "notifications/initialized",
-  "notifications/cancelled",
-  "notifications/progress",
-]);
-
-function toolClass(name: unknown): string {
-  if (typeof name !== "string") return "other";
-  if (name.startsWith("conversation_")) return "conversation";
-  if (name.includes("workflow")) return "workflow";
-  if (name.includes("knowledge") || name.includes("search_")) return "knowledge";
-  if (name.includes("connector") || name.includes("probe")) return "connector";
-  if (name.includes("execution") || name.startsWith("run_")) return "execution";
-  return "other";
-}
-
-async function classifyMcpRequest(request: Request): Promise<McpRequestClass> {
-  if (request.method === "GET") return { operation: "notifications/stream" };
-  if (request.method === "DELETE") return { operation: "session/close" };
-  if (request.method !== "POST") return { operation: "transport/other" };
-  try {
-    const value = (await request.clone().json()) as unknown;
-    if (Array.isArray(value)) return { operation: "jsonrpc/batch" };
-    if (!value || typeof value !== "object") return { operation: "jsonrpc/invalid" };
-    const envelope = value as { method?: unknown; params?: unknown };
-    const rawMethod = typeof envelope.method === "string" ? envelope.method : "";
-    const method = JSON_RPC_METHODS.has(rawMethod) ? rawMethod : "jsonrpc/other";
-    if (method === "tools/call") {
-      const params =
-        envelope.params && typeof envelope.params === "object"
-          ? (envelope.params as { name?: unknown; task?: unknown })
-          : {};
-      return {
-        operation: `tools/call:${toolClass(params.name)}`,
-        taskPhase: params.task === undefined ? "none" : "working",
-      };
-    }
-    if (method === "tasks/cancel") return { operation: method, taskPhase: "cancelled" };
-    return { operation: method };
-  } catch {
-    return { operation: "jsonrpc/invalid" };
-  }
-}
-
-function mcpOutcome(status: number): string {
-  if (status === 503) return "capacity_rejected";
-  if (status === 401 || status === 403) return "denied";
-  if (status === 404) return "not_found";
-  if (status >= 500) return "server_error";
-  if (status >= 400) return "client_error";
-  return "success";
-}
-
 function trackMcpUsageStream(
   body: ReadableStream<Uint8Array>,
   onEnd: (outcome: "completed" | "cancelled" | "errored", bytes: number) => void,
@@ -235,10 +162,21 @@ function trackMcpUsageStream(
 
 // Stable key for the principal that owns a session. Ties the session to the
 // authenticated identity (tenant + actor + credential), not to the session id
-// alone. Two distinct tokens — even for the same user — produce different keys
-// so a token swap cannot ride an existing session.
+// alone, so a credential swap cannot ride an existing session.
+//
+// How far the credential term actually discriminates, per provider:
+//   - api_key      — per key (`api_key_id`).
+//   - session-based — per session (`session_id`).
+//   - mcp_oauth    — per registered OAuth client (`oauth_client_id`), so two
+//                    different clients authorised by the same user get separate
+//                    sessions. Two tokens issued to the SAME client for the same
+//                    user still share a key: the access-token id is not carried
+//                    on the principal, so this stops cross-client reuse, not
+//                    same-client token rotation.
+//   - anything else — falls back to the provider name, which does not
+//                    discriminate at all. No such provider reaches MCP today.
 function ownerKey(p: ResolvedPrincipal): string {
-  return `${p.tenant_id}:${p.id}:${p.api_key_id ?? p.session_id ?? p.provider}`;
+  return `${p.tenant_id}:${p.id}:${p.api_key_id ?? p.session_id ?? p.oauth_client_id ?? p.provider}`;
 }
 
 export interface SessionLeaseManager {

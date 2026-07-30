@@ -26,7 +26,7 @@ import { recordMcpExternalToolPaletteAssemblyFailed } from "../../audit/recorder
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
-import { redactLastError } from "../../mcp/client/registry.ts";
+import { redactUpstreamDetail } from "../../mcp/client/registry.ts";
 import type { PermissionMode, ToolPolicies } from "../tool-policies.ts";
 import type { TurnEvent } from "../types.ts";
 import { filterByAuthoringPalette, filterByChatReadOnlyPalette } from "./authoring-palette.ts";
@@ -115,7 +115,7 @@ export async function wrapTools(
   // `call_connector`.
   if (principal && !isChatSurface) {
     // Best-effort: external MCP tools are an enrichment, not load-bearing.
-    // A DB error in `listConnectableMcpServersForTenant` or a pool failure
+    // A DB error in `listConnectableMcpConnectorsForTenant` or a pool failure
     // must NEVER abort the whole turn or drop the in-repo + `wf_` tools
     // already assembled above. Degrade to ZERO external tools and log.
     try {
@@ -127,7 +127,7 @@ export async function wrapTools(
       // Reduce any URL embedded in the raw pool/DB error to host-only and
       // length-cap it BEFORE it reaches the log line or the audit row — a
       // transport error can echo a server URL with its query string.
-      const detail = redactLastError(err instanceof Error ? err.message : String(err));
+      const detail = redactUpstreamDetail(err instanceof Error ? err.message : String(err));
       logger.warn({
         module: "conversation_tool",
         action: "external_mcp.assembly_failed",

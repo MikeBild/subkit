@@ -21,6 +21,7 @@ import { deliverPendingNativeElicitation } from "./capabilities/conversations.ts
 import { registerPromptsCapability } from "./capabilities/prompts.ts";
 import { registerResourcesCapability } from "./capabilities/resources.ts";
 import { registerToolsCapability } from "./capabilities/tools.ts";
+import { resolveMcpMode } from "./mode-resolver.ts";
 import { ConversationTaskStore } from "./tasks/task-store.ts";
 
 export interface CreateMcpServerParams {
@@ -40,22 +41,23 @@ function resolveEngineVersion(): string {
   return VERSION ?? "0.0.0-dev";
 }
 
-// Always-present connect introduction handed to every principal via the SDK
-// `initialize` `instructions` field. Principal-independent (no tenant data),
-// so it is a module const built once. Leads with the operator outcome sk
-// delivers, names the canonical first move, and sketches how the tools are
-// grouped. The tenant-specific operator health digest is appended only when
-// the caller holds `stats:read` (see the gated assembly below).
-const BASE_INTRO = [
+// Connect introduction handed to every principal via the SDK `initialize`
+// `instructions` field. The tenant-specific operator health digest is appended
+// only when the caller holds `stats:read` (see the gated assembly below).
+//
+// TIER-DEPENDENT, because authoring is opt-in per credential. It used to open
+// with "Start with `conversation_start`" for everyone — including credentials
+// that do not carry `mcp:authoring` and therefore cannot call it. Naming a tool
+// the caller does not have is worse than saying nothing: the model tries it,
+// gets refused, and spends the turn recovering from advice the server gave it.
+//
+// So the first move named here is one the reader can actually make.
+const SHARED_INTRO = [
   "sk runs your business workflows as governed, audited, versioned executions —",
   "every run is permission-checked, recorded, and replayable.",
-  "",
-  "Start with `conversation_start`: describe the outcome you want in plain language",
-  "and sk turns it into a runnable, governed workflow.",
-  "",
-  "Tools are grouped into workflow tools (find, inspect, and run your workflows) and",
-  "conversation/session tools (author, refine, and commit workflows through a guided chat).",
-  "",
+];
+
+const CATALOG_AND_GROUNDING = [
   "The catalog itself is grouped: `list_workflows` and `find_workflow` report a `category`",
   "(the block a workflow belongs to) and the `connectors` it uses, and both are filters —",
   "ask for one block, or for everything that touches a given connector.",
@@ -63,6 +65,38 @@ const BASE_INTRO = [
   "Grounding: for questions about the tenant's business domains (conventions, runbooks,",
   "internal APIs), call `search_knowledge_v2` FIRST and answer from the hits — do not",
   "answer from prior knowledge. If the search returns nothing, say so instead of guessing.",
+];
+
+/** The intro for a credential that may author over MCP. */
+const AUTHORING_INTRO = [
+  ...SHARED_INTRO,
+  "",
+  "Start with `conversation_start`: describe the outcome you want in plain language",
+  "and sk turns it into a runnable, governed workflow.",
+  "",
+  "Tools are grouped into workflow tools (find, inspect, and run your workflows) and",
+  "conversation/session tools (author, refine, and commit workflows through a guided chat).",
+  "",
+  ...CATALOG_AND_GROUNDING,
+].join("\n");
+
+/** The intro for a read-and-execute credential — the default.
+ *
+ *  It names the CLI rather than apologising for a missing tool, because that is
+ *  where the work actually happens: a definition edit should arrive as a file
+ *  someone can read, not as a sentence a second model paraphrased into a patch. */
+const READ_EXECUTE_INTRO = [
+  ...SHARED_INTRO,
+  "",
+  "Start by finding what already exists: `find_workflow` to search, `run_workflow` to",
+  "execute, `get_execution` to follow a run that outlives the call.",
+  "",
+  "This credential reads and runs; it does not author. Creating or changing a workflow,",
+  "connector, knowledge source or skill happens in the `sk` CLI — `sk workflows --help`,",
+  "`sk connectors --help` — where the change is a file that can be reviewed before it",
+  "lands. Do not describe an authoring tool you cannot see here; point at the CLI instead.",
+  "",
+  ...CATALOG_AND_GROUNDING,
 ].join("\n");
 
 export async function createMcpServer(p: CreateMcpServerParams): Promise<Server> {
@@ -88,9 +122,11 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
   // short timeout and falls through to no-instructions. Best-effort end to end
   // — a throw, a denied gate, or a timeout never fails initialize.
   const INSTRUCTIONS_TIMEOUT_MS = 400;
-  // Every principal gets the base intro; the operator digest is appended on
-  // top only when the gate allows and the digest resolves in time.
-  let instructions: string = BASE_INTRO;
+  // The intro matches what this credential can actually do; the operator
+  // digest is appended on top only when the gate allows and the digest
+  // resolves in time.
+  const baseIntro = resolveMcpMode(principal) === "product" ? READ_EXECUTE_INTRO : AUTHORING_INTRO;
+  let instructions: string = baseIntro;
   try {
     const decision = await can(db, {
       tenant_id: principal.tenant_id,
@@ -131,7 +167,7 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
       ]);
       if (timer) clearTimeout(timer);
       if (text) {
-        instructions = `${BASE_INTRO}\n\n${text}`;
+        instructions = `${baseIntro}\n\n${text}`;
       } else {
         logger.warn({
           module: "mcp",

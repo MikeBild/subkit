@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [onboarding, skills, knowledge-sources, domain-modeling, authoring-only]
-version: 2
+version: 3
 ---
 
 # Modeling a Domain with Skills and Knowledge Sources
@@ -44,7 +44,10 @@ only — committed workflow execution queries neither.
 A domain is modeled with three primitives working together:
 
 - **Connector** — the domain's system of record or API. Grounds workflow
-  requests against a real, discovered surface.
+  requests against a real, discovered surface. Five drivers: `http`, `graphql`,
+  `postgres`, `s3`, and `mcp`. If the domain's system already speaks MCP, it is
+  a connector like any other (`driver: "mcp"`) — not a separate kind of thing
+  to register somewhere else.
 - **Skill** — the house conventions the AI must obey in that domain: required
   validations, error handling, approval gates, tone. Keep each Skill tight and
   single-purpose.

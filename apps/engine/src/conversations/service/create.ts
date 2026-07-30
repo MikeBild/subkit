@@ -37,6 +37,13 @@ export interface CreateConversationParams {
   /** Client-supplied permission mode — persisted on the draft session. */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   /**
+   * Channel that opened this conversation, from `principalOrigin(principal)`.
+   * Persisted so elicitation outcomes can be attributed to the client that
+   * actually connected. Omit when the caller has no principal (internal or
+   * test paths); a missing value is recorded as null, never guessed.
+   */
+  origin_client?: string | null;
+  /**
    * Start this conversation as a playground/sandbox authoring surface.
    * Durable (persisted on `draft.session.playground`, not an env flag):
    * the workflow-authoring skill is preloaded so the author_workflow /
@@ -122,6 +129,7 @@ export async function createConversation(
       status: "active",
       draft: initialDraft,
       owner_id: p.actor_id ?? null,
+      origin_client: p.origin_client ?? null,
       // Seed at last_turn 0 (turn_count defaults to 0; the first turn
       // becomes 1, so baseline skills satisfy the K-turn full-body window
       // immediately).

@@ -16,7 +16,7 @@ import { HttpError } from "../http/errors.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../workflows/types.ts";
 import templateSkillsJson from "./template-skills.json" with { type: "json" };
 import builtinJson from "./templates.json" with { type: "json" };
-import { OperatorQuirksSchema } from "./types.ts";
+import { DriverEnum, OperatorQuirksSchema } from "./types.ts";
 
 export const TemplateAuthTypeEnum = z.enum([
   "none",
@@ -385,7 +385,10 @@ export const ConnectorTemplateSchema = z
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/),
     name: z.string().min(1),
-    driver: z.enum(["http", "postgres", "s3", "graphql"]),
+    // References DriverEnum rather than restating it: a hand-copied
+    // literal list here would narrow silently the next time a driver is
+    // added, and the compiler would never say so.
+    driver: DriverEnum,
     /** Operator-supplied or template-default base URL. Nullable for
      *  templates whose endpoint is per-tenant / per-region (e.g.
      *  AppSync, API Gateway, GCP service-account-driven APIs). The

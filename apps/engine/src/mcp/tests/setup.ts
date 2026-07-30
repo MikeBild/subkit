@@ -22,6 +22,7 @@ import {
   type ElicitResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { eq } from "drizzle-orm";
+import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
 import {
   apiKeys,
   connectors,
@@ -144,8 +145,21 @@ export async function startMcpTestSuite(
   // Track clients we open so we can clean them up.
   const openClients: Client[] = [];
 
+  // Authoring over MCP is opt-in per credential, so a suite that drives the
+  // conversation cluster has to say so — the scaffold key is wildcard-scoped,
+  // and a wildcard resolves to the read-and-execute tier, not to authoring.
+  //
+  // Minted once and shared by every default connection. Suites that assert the
+  // read tier issue their own narrow key via `issueApiKey`, so this default
+  // never hides the boundary from the tests whose job is to check it.
+  let authoringKey: string | null = null;
+  const defaultApiKey = async (): Promise<string> => {
+    if (!authoringKey) authoringKey = (await issueApiKey([MCP_AUTHORING_SCOPE])).plaintext;
+    return authoringKey;
+  };
+
   const connect = async (): Promise<Client> => {
-    return connectWithApiKey(http.apiKey);
+    return connectWithApiKey(await defaultApiKey());
   };
 
   const connectWithApiKey = async (apiKey: string): Promise<Client> => {
@@ -161,7 +175,7 @@ export async function startMcpTestSuite(
   };
 
   const connectTasks = async (): Promise<Client> => {
-    return connectTasksWithApiKey(http.apiKey);
+    return connectTasksWithApiKey(await defaultApiKey());
   };
 
   const connectTasksElicitation = async (
@@ -169,7 +183,7 @@ export async function startMcpTestSuite(
   ): Promise<Client> => {
     const transport = new StreamableHTTPClientTransport(new URL(`${http.baseUrl}/mcp`), {
       requestInit: {
-        headers: { authorization: `Bearer ${http.apiKey}` },
+        headers: { authorization: `Bearer ${await defaultApiKey()}` },
       },
     });
     const client = new Client(
@@ -192,7 +206,7 @@ export async function startMcpTestSuite(
   ): Promise<Client> => {
     const transport = new StreamableHTTPClientTransport(new URL(`${http.baseUrl}/mcp`), {
       requestInit: {
-        headers: { authorization: `Bearer ${http.apiKey}` },
+        headers: { authorization: `Bearer ${await defaultApiKey()}` },
       },
     });
     const client = new Client(
@@ -210,7 +224,7 @@ export async function startMcpTestSuite(
   ): Promise<Client> => {
     const transport = new StreamableHTTPClientTransport(new URL(`${http.baseUrl}/mcp`), {
       requestInit: {
-        headers: { authorization: `Bearer ${http.apiKey}` },
+        headers: { authorization: `Bearer ${await defaultApiKey()}` },
       },
     });
     const client = new Client(

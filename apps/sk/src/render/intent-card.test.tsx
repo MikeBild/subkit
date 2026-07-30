@@ -143,6 +143,18 @@ describe("IntentCard · connector", () => {
     ui.unmount();
   });
 
+  // The `--file` authoring path has no template. Interpolating the absent
+  // slug rendered `Loop MCP (undefined)` plus a `Template: undefined` line.
+  test("file-authored connector shows its name and no template line", () => {
+    const intent: ConnectorIntent = { kind: "connector", name: "Loop MCP" };
+    const ui = renderIntent(intent);
+    const out = snapshot(ui);
+    expect(out).toContain("Create connector Loop MCP");
+    expect(out).not.toContain("Template:");
+    expect(out).not.toContain("undefined");
+    ui.unmount();
+  });
+
   test("full connector shows name, environment, auth, base_url", () => {
     const intent: ConnectorIntent = {
       kind: "connector",

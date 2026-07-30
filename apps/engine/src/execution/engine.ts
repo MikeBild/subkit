@@ -21,6 +21,8 @@ import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../connectors
 import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
+import { parsePlaceholders } from "../llm/substitution/parser.ts";
+import { resolvePlaceholdersTypePreserving } from "../llm/substitution/resolver.ts";
 import { logger } from "../logging/logger.ts";
 import {
   recordForEachExecution,
@@ -696,8 +698,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
           thresholdMs: 1000,
           fields: { step_id: step.id, step_kind: step.kind, for_each_index: itemIdx },
           fn: () =>
-            runStep(iterCtx, childScope, normalizedInput, async ({ ctx: cctx, step: cstep }) =>
-              runCallStep(db, cctx, cstep as CallStep),
+            runStep(
+              iterCtx,
+              childScope,
+              normalizedInput,
+              async ({ ctx: cctx, step: cstep, scope: cscope }) =>
+                runCallStep(db, cctx, cstep as CallStep, cscope),
             ),
         });
         // Retain $item + $loop_index on the scope for downstream
@@ -901,8 +907,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         thresholdMs: 1000,
         fields: { step_id: step.id, step_kind: step.kind },
         fn: () =>
-          runStep(ctx, scope, normalizedInput, async ({ ctx: cctx, step: cstep }) =>
-            runCallStep(db, cctx, cstep as CallStep),
+          runStep(ctx, scope, normalizedInput, async ({ ctx: cctx, step: cstep, scope: cscope }) =>
+            runCallStep(db, cctx, cstep as CallStep, cscope),
           ),
       });
     } catch (err) {
@@ -1044,8 +1050,12 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               thresholdMs: 1000,
               fields: { step_id: bodyStep.id, step_kind: bodyStep.kind },
               fn: () =>
-                runStep(bodyCtx, childScope, normalizedInput, async ({ ctx: cctx, step: cstep }) =>
-                  runCallStep(db, cctx, cstep as CallStep),
+                runStep(
+                  bodyCtx,
+                  childScope,
+                  normalizedInput,
+                  async ({ ctx: cctx, step: cstep, scope: cscope }) =>
+                    runCallStep(db, cctx, cstep as CallStep, cscope),
                 ),
             });
             // Per-iteration trace: surface the post-substitution URL +
@@ -1312,8 +1322,8 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                       branchCtx,
                       branchScope,
                       normalizedInput,
-                      async ({ ctx: cctx, step: cstep }) =>
-                        runCallStep(db, cctx, cstep as CallStep),
+                      async ({ ctx: cctx, step: cstep, scope: cscope }) =>
+                        runCallStep(db, cctx, cstep as CallStep, cscope),
                     ),
                 });
                 branchScope[branchStepId] = envelopeFor(branchOutcome);
@@ -1888,7 +1898,35 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
  *  connector regardless of how many steps touched it. First occurrence wins
  *  — the step_key on the summary is the first step that used that connector.
  *  Exported for unit testing. */
-async function runCallStep(db: Db, ctx: StepRunContext, step: CallStep): Promise<StepResult> {
+/** Every `${cred.…}` token anywhere in a value, by raw name. Walks the whole
+ *  structure because the token can sit at any depth of the call input. */
+function collectCredentialTokens(value: unknown): string[] {
+  const found: string[] = [];
+  const walk = (v: unknown): void => {
+    if (typeof v === "string") {
+      for (const tok of parsePlaceholders(v).tokens) {
+        if (tok.kind === "cred") found.push(tok.raw);
+      }
+      return;
+    }
+    if (Array.isArray(v)) {
+      for (const item of v) walk(item);
+      return;
+    }
+    if (v && typeof v === "object") {
+      for (const item of Object.values(v)) walk(item);
+    }
+  };
+  walk(value);
+  return [...new Set(found)];
+}
+
+async function runCallStep(
+  db: Db,
+  ctx: StepRunContext,
+  step: CallStep,
+  scope?: Record<string, unknown>,
+): Promise<StepResult> {
   const start = Date.now();
   if (ctx.depth + 1 > MAX_CALL_DEPTH) {
     return {
@@ -1922,12 +1960,68 @@ async function runCallStep(db: Db, ctx: StepRunContext, step: CallStep): Promise
       error: { code: "call_target_missing", message: "workflow not found" },
     };
   }
+  // Interpolate the call input against the caller's scope. Type-preserving
+  // because a resolved `${scope.x.data.ids}` must reach the child as an array,
+  // not as its JSON text — the same reason the request body uses this walker.
+  let resolvedInput: unknown = step.input ?? null;
+  if (step.input !== undefined && step.input !== null && scope) {
+    // A credential must not travel through a call input, because unlike a
+    // request body this value is PERSISTED: `createExecution` stores the child's
+    // input verbatim so a rerun can default to it, and the execution read schema
+    // serves that column to anything holding execution:read — including the
+    // read-and-execute MCP tier. Resolving `${cred.…}` here would write a secret
+    // in clear text into a row that outlives the run and is visible from a lower
+    // tier than the one that could read the credential in the first place.
+    //
+    // Refusing costs nothing: a child resolves `${cred.…}` itself, against its
+    // own connectors, at the step that actually needs it. The parent never has
+    // to hand it over.
+    const credTokens = collectCredentialTokens(step.input);
+    if (credTokens.length > 0) {
+      return {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: Date.now() - start,
+        error: {
+          code: "call_input_credential_forbidden",
+          message:
+            "call input may not carry credential placeholders (it is persisted with the child execution): " +
+            credTokens.join(", ") +
+            " — reference the credential inside the called workflow instead",
+        },
+      };
+    }
+    const resolverCtx = {
+      tenant_id: ctx.tenant_id,
+      environment: ctx.execution_mode,
+      db: ctx.db,
+      input: (scope as Record<string, unknown>).$input,
+      scope,
+      ...(ctx.principal ? { principal: ctx.principal } : {}),
+    };
+    const res = await resolvePlaceholdersTypePreserving(step.input, resolverCtx);
+    if (res.unresolved.length > 0) {
+      return {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: Date.now() - start,
+        error: {
+          code: "call_input_unresolved",
+          message:
+            "call input has unresolved placeholders: " +
+            res.unresolved.map((u: { token: string }) => u.token).join(", "),
+        },
+      };
+    }
+    resolvedInput = res.value;
+  }
+
   try {
     const child = await runExecution({
       db,
       tenant_id: ctx.tenant_id,
       source: { kind: "saved", workflow_id: targetId },
-      input: step.input ?? null,
+      input: resolvedInput,
       options: {
         request_source: "tool-chain",
         parent_execution_id: ctx.execution_id,

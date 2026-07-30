@@ -25,6 +25,7 @@
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { principalOrigin } from "../../auth/origin.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { persistedWorkflowResource } from "../../conversations/authoring-state/summary.ts";
 import { loadDraft } from "../../conversations/draft.ts";
@@ -525,6 +526,7 @@ export async function handleConversationTool(
           initial_message: parsed.data.message,
           ...(permission_mode ? { permission_mode } : {}),
           ...(playground ? { playground } : {}),
+          origin_client: principalOrigin(principal),
         },
         db,
       );

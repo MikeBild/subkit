@@ -150,6 +150,21 @@ export interface Sk {
   isObject(v: unknown): v is Record<string, unknown>;
   isNil(v: unknown): v is null | undefined;
 
+  /**
+   * Locale-aware number formatting. This sandbox has no Intl/ECMA-402, and
+   * `toLocaleString(locale)` would silently ignore the locale — so formatting
+   * lives here instead. Known locales: `de`, `en`.
+   */
+  readonly fmt: {
+    /** `number(9.15, { locale: "de", digits: 1 })` → `"9,2"`. Throws on an unknown locale or a non-finite value. */
+    number(
+      value: unknown,
+      options?: { locale?: string; digits?: number; grouping?: boolean },
+    ): string;
+    /** Shorthand for German formatting: `de(35606)` → `"35.606"`, `de(9.15, 1)` → `"9,2"`. */
+    de(value: unknown, digits?: number): string;
+  };
+
   readonly version: string;
 }
 

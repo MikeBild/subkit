@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { PlanCard } from "../repl/plan-cell.tsx";
 import {
+  connectorHeading,
   humanBytes,
   isConnectorIntent,
   isKnowledgeSourceIntent,
@@ -37,7 +38,7 @@ const WorkflowIntentCard: React.FC<{ intent: WorkflowIntent }> = ({ intent }) =>
 };
 
 const ConnectorIntentCard: React.FC<{ intent: ConnectorIntent }> = ({ intent }) => {
-  const heading = intent.name ? `${intent.name} (${intent.template_slug})` : intent.template_slug;
+  const heading = connectorHeading(intent);
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
@@ -46,9 +47,11 @@ const ConnectorIntentCard: React.FC<{ intent: ConnectorIntent }> = ({ intent }) 
         </Text>
         <Text bold>{`Create connector ${heading}`}</Text>
       </Box>
-      <Box marginLeft={2}>
-        <Text dimColor>Template: {intent.template_slug}</Text>
-      </Box>
+      {intent.template_slug ? (
+        <Box marginLeft={2}>
+          <Text dimColor>Template: {intent.template_slug}</Text>
+        </Box>
+      ) : null}
       {intent.environment ? (
         <Box marginLeft={2}>
           <Text dimColor>Environment: {intent.environment}</Text>

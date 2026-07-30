@@ -36,16 +36,16 @@ import {
   getTenantMcpTools,
   type McpClientLike,
 } from "./pool.ts";
-import { createMcpServer } from "./registry.ts";
+import { seedMcpConnector } from "./test-fixtures.ts";
 
 // The factory seam hands the fake client its server row, so the fake can
 // branch per server: the oauth2 server (namespace "oauth2server") fails its
 // handshake with the SDK's real UnauthorizedError; the bearer server
 // connects and lists one tool.
-function makeFakeClient(namespace: string): McpClientLike {
+function makeFakeClient(slug: string): McpClientLike {
   return {
     async connect() {
-      if (namespace === "oauth2server") {
+      if (slug === "oauth2server") {
         // No usable token → the transport surfaces the SDK's typed error.
         throw new UnauthorizedError("no usable token");
       }
@@ -65,6 +65,12 @@ function makeFakeClient(namespace: string): McpClientLike {
     async callTool() {
       return { content: [], isError: false };
     },
+    async readResource() {
+      return { contents: [] };
+    },
+    async getPrompt() {
+      return { messages: [] };
+    },
     async close() {},
   };
 }
@@ -74,19 +80,11 @@ function makeFakeClient(namespace: string): McpClientLike {
 let ctx: TestDb;
 let tenantId: string;
 
-function auditCtx() {
-  return {
-    actor_id: "00000000-0000-0000-0000-000000000001",
-    request_source: "api" as const,
-    executor: ctx.db,
-  };
-}
-
 // Keep the original DATABASE_URL so we can restore it in afterAll.
 const _origDatabaseUrl = process.env.DATABASE_URL;
 
 beforeAll(async () => {
-  __setMcpPoolFactoriesForTests({ makeClient: (row) => makeFakeClient(row.namespace) });
+  __setMcpPoolFactoriesForTests({ makeClient: (row) => makeFakeClient(row.slug) });
   ctx = await createTestDb("mcp-pool-needs-auth");
 
   // Pin DATABASE_URL + reset the global pool so getDb() inside pool.ts →
@@ -143,40 +141,30 @@ describe("pool: oauth2 server with no tokens is parked; bearer server still retu
     __resetMcpClientPoolForTests();
 
     // Seed the oauth2 server — no credential row (no tokens).
-    const oauth2Server = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantId,
-        name: "AcmeAuth OAuth2 Server",
-        namespace: "oauth2server",
-        transport: "http",
-        url: "https://oauth2server.acmeauth.test/mcp",
-        auth_config: {
-          kind: "oauth2",
-          issuer: "https://auth.acmeauth.test",
-        },
+    const oauth2Server = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantId,
+      slug: "oauth2server",
+      transport: "http",
+      url: "https://oauth2server.acmeauth.test/mcp",
+      auth: {
+        kind: "oauth2",
+        issuer: "https://auth.acmeauth.test",
       },
-      auditCtx(),
-    );
+    });
 
     // Seed the bearer server WITH a credential row (healthy server).
-    const bearerServer = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantId,
-        name: "AcmeBearer Server",
-        namespace: "bearerserver",
-        transport: "http",
-        url: "https://bearerserver.acmeauth.test/mcp",
-        auth_config: { kind: "bearer" },
-      },
-      auditCtx(),
-    );
+    const bearerServer = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantId,
+      slug: "bearerserver",
+      transport: "http",
+      url: "https://bearerserver.acmeauth.test/mcp",
+      auth: { kind: "bearer" },
+    });
 
     await upsertCredential(
       {
         tenant_id: tenantId,
-        mcp_server_id: bearerServer.id,
+        connector_id: bearerServer.id,
         environment: "prod",
         mode: "bearer",
         value: { mode: "bearer", token: "bearer-token-abc" },
@@ -190,25 +178,25 @@ describe("pool: oauth2 server with no tokens is parked; bearer server still retu
     const sets = await getTenantMcpTools(ctx.db, tenantId, { environment: "prod" });
 
     // The bearer server's tools must be present.
-    const bearerSet = sets.find((s) => s.mcp_server_id === bearerServer.id);
+    const bearerSet = sets.find((s) => s.connector_id === bearerServer.id);
     expect(bearerSet).toBeDefined();
     expect(bearerSet!.tools.length).toBeGreaterThan(0);
     expect(bearerSet!.tools[0]!.name).toBe("acme_tool");
 
     // The oauth2 server must NOT be in the result set (it was parked).
-    const oauth2Set = sets.find((s) => s.mcp_server_id === oauth2Server.id);
+    const oauth2Set = sets.find((s) => s.connector_id === oauth2Server.id);
     expect(oauth2Set).toBeUndefined();
   });
 
-  test("oauth2 server status is set to 'error' and last_error is redact-safe after UnauthorizedError", async () => {
-    const { mcpServers } = await import("../../db/schema/index.ts");
+  test("oauth2 connector is parked degraded and last_error is redact-safe after UnauthorizedError", async () => {
+    const { connectors } = await import("../../db/schema/index.ts");
     const rows = await ctx.db
-      .select({ status: mcpServers.status, last_error: mcpServers.last_error })
-      .from(mcpServers)
-      .where(and(eq(mcpServers.tenant_id, tenantId), eq(mcpServers.namespace, "oauth2server")))
+      .select({ health_state: connectors.health_state, last_error: connectors.last_error })
+      .from(connectors)
+      .where(and(eq(connectors.tenant_id, tenantId), eq(connectors.slug, "oauth2server")))
       .limit(1);
     expect(rows.length).toBe(1);
-    expect(rows[0]!.status).toBe("error");
+    expect(rows[0]!.health_state).toBe("degraded");
 
     // last_error must be redact-safe: no URL-with-query-string leakage.
     const lastError = rows[0]!.last_error ?? "";
@@ -225,11 +213,11 @@ describe("pool: within backoff window the tokenless server stays absent", () => 
     const sets = await getTenantMcpTools(ctx.db, tenantId, { environment: "prod" });
 
     // Bearer server is still present (cached from prior handshake).
-    const bearerSet = sets.find((s) => s.namespace === "bearerserver");
+    const bearerSet = sets.find((s) => s.slug === "bearerserver");
     expect(bearerSet).toBeDefined();
 
     // OAuth2 server is still absent (inside backoff window).
-    const oauth2Set = sets.find((s) => s.namespace === "oauth2server");
+    const oauth2Set = sets.find((s) => s.slug === "oauth2server");
     expect(oauth2Set).toBeUndefined();
   });
 });
@@ -248,30 +236,25 @@ describe("pool: oauth2 server with no public_base_url parks with a redirect-URI 
     await setConfigKey("server.public_base_url", "", { force: true });
     __resetMcpClientPoolForTests();
 
-    const server = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantId,
-        name: "AcmeAuth No-Origin OAuth2 Server",
-        namespace: "noorigin",
-        transport: "http",
-        url: "https://noorigin.acmeauth.test/mcp",
-        auth_config: { kind: "oauth2", issuer: "https://auth.acmeauth.test" },
-      },
-      auditCtx(),
-    );
+    const server = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantId,
+      slug: "noorigin",
+      transport: "http",
+      url: "https://noorigin.acmeauth.test/mcp",
+      auth: { kind: "oauth2", issuer: "https://auth.acmeauth.test" },
+    });
 
     // Must not throw — the server is simply absent from the palette.
     const sets = await getTenantMcpTools(ctx.db, tenantId, { environment: "prod" });
-    expect(sets.find((s) => s.mcp_server_id === server.id)).toBeUndefined();
+    expect(sets.find((s) => s.connector_id === server.id)).toBeUndefined();
 
-    const { mcpServers } = await import("../../db/schema/index.ts");
+    const { connectors } = await import("../../db/schema/index.ts");
     const rows = await ctx.db
-      .select({ status: mcpServers.status, last_error: mcpServers.last_error })
-      .from(mcpServers)
-      .where(and(eq(mcpServers.tenant_id, tenantId), eq(mcpServers.id, server.id)))
+      .select({ health_state: connectors.health_state, last_error: connectors.last_error })
+      .from(connectors)
+      .where(and(eq(connectors.tenant_id, tenantId), eq(connectors.id, server.id)))
       .limit(1);
-    expect(rows[0]!.status).toBe("error");
+    expect(rows[0]!.health_state).toBe("degraded");
     const lastError = rows[0]!.last_error ?? "";
     expect(lastError).toContain("no canonical OAuth redirect URI");
     expect(lastError).toContain("server.public_base_url");

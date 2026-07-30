@@ -105,7 +105,15 @@ export async function runStep(
   ctx: StepRunContext,
   scope: Record<string, unknown>,
   workflowInput: unknown,
-  callRunner: (sub: { ctx: StepRunContext; step: StepDef }) => Promise<StepResult>,
+  // The scope travels with the sub-step so a call can interpolate
+  // `${scope.…}` in its input, exactly like a request step does for its
+  // path/headers/body. Without it a call step could only pass literals.
+  callRunner: (sub: {
+    ctx: StepRunContext;
+    step: StepDef;
+    scope: Record<string, unknown>;
+    workflowInput: unknown;
+  }) => Promise<StepResult>,
 ): Promise<RunStepOutcome> {
   const step = ctx.step;
   let result: StepResult;
@@ -307,7 +315,7 @@ export async function runStep(
       result = await runLoopStep({ ctx, step, scope });
       break;
     case "call":
-      result = await callRunner({ ctx, step });
+      result = await callRunner({ ctx, step, scope, workflowInput });
       break;
     default: {
       const _exhaustive: never = step;

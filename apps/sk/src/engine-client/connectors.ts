@@ -189,6 +189,36 @@ export const connectorsMethods = {
   deleteConnector(this: EngineClient, id: string): Promise<void> {
     return this.request("DELETE", `/v1/connectors/${encodeURIComponent(id)}`);
   },
+
+  // -------------------- Authoring (nothing is persisted) --------------------
+  // The declarative counterparts to `sk workflows validate` / `preview`. Each
+  // one answers a question about a definition that does not exist yet, so an
+  // author can find a mistake before a connector is created rather than after.
+
+  /** Check a definition against its driver's config schema. A definition that
+   *  is invalid still comes back 200 — read `ok`. */
+  validateConnectorDraft(
+    this: EngineClient,
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; issues: { path: string; message: string }[] }> {
+    return this.request("POST", "/v1/connectors/validate", body);
+  },
+  /** Run the driver probe against an unsaved definition. The credential, when
+   *  supplied, signs that one request and is never stored. */
+  probeConnectorDraft(
+    this: EngineClient,
+    body: { connector: Record<string, unknown>; credential?: Record<string, unknown> },
+  ): Promise<Record<string, unknown> & { ok?: boolean }> {
+    return this.request("POST", "/v1/connectors/probe", body);
+  },
+  /** Parse an API specification into a connector draft. Returns the draft for
+   *  review; saving it is a separate, deliberate step. */
+  importConnectorFromSpec(
+    this: EngineClient,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown> & { draft?: Record<string, unknown> }> {
+    return this.request("POST", "/v1/connectors/import", body);
+  },
   testConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
     return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/test`);
   },
@@ -263,54 +293,28 @@ export const connectorsMethods = {
     return this.request("DELETE", `/v1/credentials/${encodeURIComponent(credentialId)}`);
   },
 
-  // -------------------- External MCP servers --------------------
-  // Inverse of sk's own MCP server: tenants register external MCP servers
-  // whose tools the conversation loop can call. The auth secret (token /
-  // refresh_token) is a write-only create/patch field stored encrypted in
-  // the credentials table; `auth_config` is redacted server-side to
-  // `{ kind, has_credential }` on every read path and never echoes a secret.
-  listMcpServers(
-    this: EngineClient,
-    query: Record<string, string | number | undefined> = {},
-  ): Promise<{ items: Record<string, unknown>[] }> {
-    return this.request("GET", "/v1/mcp-servers", undefined, query);
+  // Operator on/off switch. Driver-agnostic: the engine evicts whatever
+  // live state the driver holds (an mcp pooled session, a postgres pool)
+  // so a disabled connector stops serving immediately.
+  enableConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/enable`);
   },
-  getMcpServer(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/v1/mcp-servers/${encodeURIComponent(id)}`);
+  disableConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/disable`);
   },
-  createMcpServer(
-    this: EngineClient,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    return this.request("POST", "/v1/mcp-servers", body);
+  // mcp driver only: force one handshake and report what the remote
+  // actually serves. 422 when the connector is not an mcp connector.
+  inspectMcpConnector(this: EngineClient, id: string): Promise<Record<string, unknown>> {
+    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/mcp/inspect`);
   },
-  patchMcpServer(
-    this: EngineClient,
-    id: string,
-    body: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    return this.request("PATCH", `/v1/mcp-servers/${encodeURIComponent(id)}`, body);
-  },
-  enableMcpServer(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/enable`);
-  },
-  disableMcpServer(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/disable`);
-  },
-  inspectMcpServer(this: EngineClient, id: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/inspect`);
-  },
-  // Start the interactive OAuth consent flow for an oauth2-auth MCP server.
-  // The engine returns the authorize URL the user opens in a browser; the
-  // callback completes server-side and flips `status` to "active".
-  authorizeMcpServer(
+  // Start the interactive OAuth consent flow for an mcp connector whose
+  // config.mcp.auth.kind is "oauth2". The engine returns the authorize URL
+  // the user opens in a browser; the callback completes server-side.
+  authorizeMcpConnector(
     this: EngineClient,
     id: string,
   ): Promise<{ authorization_url: string; state: string }> {
-    return this.request("POST", `/v1/mcp-servers/${encodeURIComponent(id)}/authorize`);
-  },
-  deleteMcpServer(this: EngineClient, id: string): Promise<void> {
-    return this.request("DELETE", `/v1/mcp-servers/${encodeURIComponent(id)}`);
+    return this.request("POST", `/v1/connectors/${encodeURIComponent(id)}/mcp/authorize`);
   },
 
   // -------------------- Connector Templates --------------------

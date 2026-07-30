@@ -4,6 +4,7 @@ import { recognizeAuthFromSchemes } from "../../connectors/discovery/recognize-a
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { matchTemplatesByUrl } from "../../connectors/template-url-match.ts";
+import { DriverEnum } from "../../connectors/types.ts";
 import { logger } from "../../logging/logger.ts";
 import { withConnectorDraft } from "../authoring-state.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
@@ -24,7 +25,7 @@ const inputSchema = z
   .object({
     name: z.string().min(1),
     description: z.string().min(1).optional(),
-    driver: z.enum(["http", "postgres", "s3", "graphql"]).optional(),
+    driver: DriverEnum.optional(),
     environment: z.enum(["dev", "prod"]).default("dev"),
     base_url: z.string().optional(),
     dsn: z.string().optional(),

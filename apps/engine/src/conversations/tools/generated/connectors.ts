@@ -10,7 +10,7 @@ const ListInput = z
       .string()
       .optional()
       .describe(
-        "Only connectors in this catalog block. A connector's block is its driver (http, graphql, postgres, s3) and is reported as `category` on every item.",
+        "Only connectors in this catalog block. A connector's block is its driver (http, graphql, postgres, s3, mcp) and is reported as `category` on every item.",
       ),
   })
   .openapi("ListConnectorsToolInput");

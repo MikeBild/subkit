@@ -1,12 +1,13 @@
 WORKFLOW STEP KINDS (for author_workflow / edit_workflow_patch):
 - A workflow has `steps[]`. Each step has a unique `id` and a `kind`. The discriminator is ALWAYS `kind` — never `type`, `@type`, `step_type`, or invented namespaces (`trigger.*`, `flow.*`, `util.*`).
-- Valid kinds (7 total) and their required fields:
-  - `request`: id, kind, (url OR connector_id) — HTTP / GraphQL / connector calls
+- Valid kinds (8 total) and their required fields:
+  - `request`: id, kind, (url OR connector_id) — every outbound call. A non-HTTP protocol is an optional SUB-BLOCK of it, never a kind: `graphql`, `sql`, `s3`, `mcp`. `mcp` calls a remote MCP server (a connector with `driver: "mcp"`, so `connector_id` is required) as `{ operation: "call_tool"|"read_resource"|"get_prompt", tool|uri|prompt, arguments? }`; every `call_tool` is a write whatever the remote claims, and its output is always `{ content, structured_content }` (the typed half is `null` unless the tool declares an `outputSchema`), while `read_resource` / `get_prompt` output their payload verbatim. `timeout_ms` is REFUSED on an mcp step — the deadline for a remote call is the connector's `config.mcp.remote_tool_call_timeout_ms` (tenant default `connectors.mcp.remote_tool_call_timeout_ms`, ceiling 300000ms), so setting it on the step would look like a bound that holds and is not one.
   - `transform`: id, kind, expression — JSONata or JS data shaping
   - `call`: id, kind, (workflow_id OR workflow_slug) — invoke another workflow
   - `wait`: id, kind, duration_ms — sleep
+  - `wait_for_event`: id, kind, event_name, timeout_ms — park until an inbound signal arrives
   - `branch`: id, kind, when, then_steps — conditional fan-out (children referenced by id)
   - `parallel`: id, kind, branches — parallel arms (each arm an array of step ids)
-  - `loop`: id, kind, over, body — iterate, body referenced by id
+  - `loop`: id, kind, (over OR data_selector), body — iterate, body referenced by id
 - Approvals / human gates: there is NO `approval` kind. Use `ask_user_confirm` (during authoring) or model the human gate as a `request` to your approval system + a `branch` on its outcome.
 - If a step is malformed, `author_workflow` / `edit_workflow_patch` return ok=false with the schema errors — read them and re-issue the corrected step shape (via `edit_workflow_patch` for a targeted fix).

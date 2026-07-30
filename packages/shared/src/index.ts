@@ -33,9 +33,16 @@ export {
   scrubSecrets,
   scrubString,
 } from "./redaction.ts";
-export type { GraphqlOperation, SideEffect, SideEffectInput } from "./side-effects.ts";
+export type {
+  GraphqlOperation,
+  McpOperation,
+  McpToolAnnotationHints,
+  SideEffect,
+  SideEffectInput,
+} from "./side-effects.ts";
 export {
   classifyHttpSideEffect,
+  classifyMcpToolSideEffect,
   httpMethodIsRead,
   inferGraphqlOperation,
   sqlIsSelect,
