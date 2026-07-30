@@ -10,6 +10,10 @@ export const CATEGORY_ICON: Readonly<Record<string, string>> = Object.freeze({
   graphql: "◈",
   postgres: "◯",
   s3: "□",
+  // A connector whose driver is `mcp` is catalogued under `mcp` like every
+  // other driver, so it needs a glyph of its own — without one it is the
+  // only driver that renders as the unknown-category dot.
+  mcp: "◇",
   webhook: "▶",
   default: "•",
 });

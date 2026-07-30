@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [chat, integration, sk-platform-reference]
-version: 1
+version: 2
 ---
 
 # Bringing sk into Slack, Teams, and Google Chat
@@ -46,6 +46,13 @@ not a second authoring stack.
 - **Notifications route through Notification Rules** by event, severity, and
   quiet hours. Chat is sk's primary notification channel; email notifications
   are not supported.
+- **The chat palette is read-only, and that excludes remote MCP tools.** A
+  tenant's external MCP servers are connectors with `driver: "mcp"`, and their
+  remote tools (`mcp_<connector_slug>__<remote_tool>`) are merged into the
+  palette on authoring surfaces only — never on Slack, Teams, or Google Chat,
+  the same posture as `call_connector`. On this channel, explain what the
+  connector does and point the operator at the `sk` CLI or the web portal;
+  do not offer to call a remote MCP tool you cannot reach.
 
 ## Get the full reference before you act
 

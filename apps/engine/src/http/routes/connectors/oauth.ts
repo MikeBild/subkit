@@ -261,7 +261,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     // resolved tenant_id comes from the matched row and is used for
     // every subsequent write.
     // pattern: state-token-auth-callback — see also the external MCP
-    // server OAuth callback (http/routes/mcp-servers-oauth.ts), which
+    // server OAuth callback (http/routes/connectors/mcp.ts), which
     // applies the same claim-then-derive-tenant discipline.
     const claimed = await db
       .delete(connectorOauthStates)

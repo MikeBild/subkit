@@ -9,19 +9,39 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { connectors, credentials } from "../db/schema/index.ts";
+import { BadRequestError } from "../http/errors.ts";
+import { evictServer as evictMcpServer } from "../mcp/client/pool.ts";
+import { validateConnectorAuthType, validateConnectorConfigOrThrow } from "./config-schemas.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
-import {
-  type ConnectorSelfDescription,
-  type ConnectorSelfDescriptionLink,
-  type ConnectorView,
-  type CreateConnectorInput,
-  type DriverName,
-  type Environment,
-  HttpConnectorConfig,
-  type UpdateConnectorInput,
+import type {
+  ConnectorSelfDescription,
+  ConnectorSelfDescriptionLink,
+  ConnectorView,
+  CreateConnectorInput,
+  DriverName,
+  Environment,
+  UpdateConnectorInput,
 } from "./types.ts";
+
+/**
+ * Refuse an auth kind the driver cannot honour.
+ *
+ * A `BadRequestError` rather than a bare domain error because the plain
+ * `Object.assign(new Error(), { code })` shape used elsewhere in this file is
+ * not mapped by the HTTP error middleware and would surface as a 500 — a
+ * misconfiguration the caller can fix must not read as an engine fault.
+ */
+function assertAuthTypeAllowedForDriver(
+  driver: DriverName,
+  auth_type: ConnectorView["auth_type"] | undefined,
+): void {
+  const issues = validateConnectorAuthType(driver, auth_type);
+  const first = issues[0];
+  if (!first) return;
+  throw new BadRequestError(first.message, { field: first.path, driver });
+}
 
 function slugify(name: string): string {
   return (
@@ -55,6 +75,8 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
     self_description: (row.self_description as ConnectorView["self_description"]) ?? {},
     created_at: row.created_at,
     updated_at: row.updated_at,
+    enabled: row.enabled ?? true,
+    last_error: row.last_error ?? null,
     circuit_state: (row.circuit_state as ConnectorView["circuit_state"]) ?? "closed",
     circuit_opened_at: row.circuit_opened_at ?? null,
     circuit_failure_count: row.circuit_failure_count ?? 0,
@@ -71,16 +93,10 @@ function toView(row: typeof connectors.$inferSelect): ConnectorView {
   };
 }
 
-function validateHttpConfig(driver: DriverName, config: Record<string, unknown> | undefined): void {
-  if (driver !== "http" || !config) return;
-  const parsed = HttpConnectorConfig.safeParse(config);
-  if (!parsed.success) {
-    throw Object.assign(new Error("invalid http connector config"), {
-      code: "connector_config_invalid",
-      details: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
-    });
-  }
-}
+// Config validation lives in `config-schemas.ts` so the write path, the
+// validate endpoint and the CLI all reach the same verdict. This used to be an
+// HTTP-only check that returned early for every other driver, which is how a
+// graphql or s3 config could be stored and then fail at call time instead.
 
 async function resolveCreateTemplateBinding(
   tenant_id: string,
@@ -145,7 +161,8 @@ export async function createConnector(
     const slug = effective.slug ?? slugify(effective.name);
     const environment = effective.environment ?? "dev";
     const auth_type = effective.auth_type ?? "none";
-    validateHttpConfig(effective.driver, effective.config);
+    assertAuthTypeAllowedForDriver(effective.driver, auth_type);
+    validateConnectorConfigOrThrow(effective.driver, effective.config);
     // Upsert semantics on (tenant_id, environment, slug): when a
     // connector with the same slug already exists in the same
     // environment, treat the call as an update rather than letting the
@@ -508,8 +525,22 @@ export async function updateConnector(
         set.auth_type = enriched.auth_type;
       }
     }
-    validateHttpConfig(
-      (prior.driver as DriverName) ?? "http",
+    // `set.config` is only populated when the patch actually carries one, so a
+    // patch that leaves config alone validates nothing — an existing connector
+    // whose stored config predates this check stays patchable on other fields.
+    // `connectors.driver` is NOT NULL, so there is no absent case to
+    // default. A `?? "http"` here would validate (say) an mcp config
+    // against the strict HTTP schema and reject it with HTTP field names —
+    // a wrong error pointing at the wrong layer.
+    // `prior.driver` and not the patch: `driver` is not patchable, so the
+    // connector's driver at rest is the one that will have to honour whatever
+    // auth kind this patch lands.
+    assertAuthTypeAllowedForDriver(
+      prior.driver as DriverName,
+      set.auth_type as ConnectorView["auth_type"] | undefined,
+    );
+    validateConnectorConfigOrThrow(
+      prior.driver as DriverName,
       set.config as Record<string, unknown>,
     );
     const [row] = await tx.update(connectors).set(set).where(eq(connectors.id, id)).returning();
@@ -534,6 +565,65 @@ export async function updateConnector(
   return updated;
 }
 
+/**
+ * Flip the operator on/off switch, driver-agnostic.
+ *
+ * `enabled` is the one bit only a human sets — distinct from `health_state`
+ * (a verdict the engine derives) and from `deleted_at` (gone). Disabling
+ * keeps the row and its credentials intact and simply stops offering the
+ * connector for use.
+ *
+ * DRIVER DISPATCH ON THE WAY OUT: an `mcp` connector holds a live pooled
+ * SDK session and a cached tool manifest that outlive the row read, and a
+ * `postgres` connector holds a live pg pool. Neither notices a column
+ * change, so a disable that did not evict would keep serving the thing it
+ * just turned off until the process restarted.
+ *
+ * Returns null when no live connector matches, and the updated view
+ * otherwise — including when the bit was already in the requested state,
+ * because "disable an already-disabled connector" is a success, not a
+ * missing row.
+ */
+export async function setConnectorEnabled(
+  tenant_id: string,
+  id: string,
+  enabled: boolean,
+  actor_id: string | null,
+  exec?: Executor,
+): Promise<ConnectorView | null> {
+  const db = exec ?? getDb();
+  const [row] = await db
+    .update(connectors)
+    .set({ enabled, updated_at: new Date() })
+    .where(
+      and(
+        eq(connectors.tenant_id, tenant_id),
+        eq(connectors.id, id),
+        isNull(connectors.deleted_at),
+      ),
+    )
+    .returning();
+  if (!row) return null;
+  await auditAwait(
+    {
+      tenant_id,
+      actor_type: actor_id ? "user" : "system",
+      actor_id,
+      action: AuditAction.CONNECTOR_UPDATED,
+      resource_type: "connector",
+      resource_id: id,
+      result: "success",
+      reason: enabled ? "enabled" : "disabled",
+      metadata: { driver: row.driver, enabled },
+    },
+    db,
+  );
+  if (row.driver === "mcp") evictMcpServer(tenant_id, id);
+  const view = toView(row);
+  if (row.driver === "postgres") await closePoolForConnector(view);
+  return view;
+}
+
 export async function deleteConnector(
   tenant_id: string,
   id: string,
@@ -555,7 +645,7 @@ export async function deleteConnector(
     dsn: string | null;
     driver: string;
   };
-  type DeleteResult = { ok: boolean; evict: EvictRow | null };
+  type DeleteResult = { ok: boolean; evict: EvictRow | null; evict_mcp: boolean };
   const result: DeleteResult = await db.transaction(async (tx) => {
     const existing = await tx
       .select()
@@ -568,8 +658,13 @@ export async function deleteConnector(
         ),
       )
       .limit(1);
-    if (!existing[0]) return { ok: false, evict: null };
+    if (!existing[0]) return { ok: false, evict: null, evict_mcp: false };
     const evict = existing[0].driver === "postgres" ? (existing[0] as unknown as EvictRow) : null;
+    // An mcp connector's live SDK client and cached manifest live in the
+    // per-tenant MCP pool, not in this process's connector row. Deleting
+    // the row without evicting would leave the socket open and the
+    // manifest servable until the process restarts.
+    const evict_mcp = existing[0].driver === "mcp";
     await tx
       .update(connectors)
       .set({ deleted_at: new Date(), updated_at: new Date() })
@@ -596,13 +691,16 @@ export async function deleteConnector(
       },
       tx,
     );
-    return { ok: true, evict };
+    return { ok: true, evict, evict_mcp };
   });
   const ok = result.ok;
   // After the row is soft-deleted, evict the postgres pool so the
   // connector's connection pool doesn't linger until process restart.
   if (ok && result.evict) {
     await closePoolForConnector(result.evict as never).catch(() => {});
+  }
+  if (ok && result.evict_mcp) {
+    evictMcpServer(tenant_id, id);
   }
   return ok;
 }

@@ -22,7 +22,12 @@ const IssueApiKeyBody = z
   .object({
     owner_kind: z.enum(["user", "system_account"]),
     owner_id: z.string().uuid(),
-    name: z.string().optional(), // accepted but currently unused — see Deviations
+    name: z
+      .string()
+      .optional()
+      .describe(
+        'Operator-facing label, e.g. "claude-code". Useful when running one key per channel — a read-and-execute key for a browser client, an mcp:authoring key for a coding agent.',
+      ),
     scopes: z.array(z.string()).optional(),
     allowed_workflows: z.array(z.string()).optional(),
     allowed_connectors: z.array(z.string()).optional(),
@@ -122,6 +127,7 @@ function serialize(v: identity.ApiKeyView) {
     id: v.id,
     tenant_id: v.tenant_id,
     prefix: v.prefix,
+    name: v.name,
     scopes: v.scopes,
     user_id: v.user_id,
     system_account_id: v.system_account_id,
@@ -198,6 +204,7 @@ export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         owner_kind: body.owner_kind,
         owner_id: body.owner_id,
+        ...(body.name ? { name: body.name } : {}),
         ...(body.scopes ? { scopes: body.scopes } : {}),
         ...(body.allowed_workflows ? { allowed_workflows: body.allowed_workflows } : {}),
         ...(body.allowed_connectors ? { allowed_connectors: body.allowed_connectors } : {}),

@@ -190,12 +190,15 @@ export function contextCapFor(model: string): number {
   // bundle (turn-rhythm + chat-first + confirmation-discipline +
   // error-recovery-and-rbac + conversational-authoring + …) plus a
   // sample tenant snapshot, with a small headroom so genuine prompt
-  // overflow still surfaces. Pre-bump this was 8_000, which fit the
-  // older agent-skill bundle but not the current reference-aligned
-  // version (Build Recipe + 5-failure cap + structured recovery
-  // rules). Bumping to 12_000 keeps overflow detection alive while
-  // matching the bundled rules' real footprint.
-  if (id.includes("mock")) return 12_000;
+  // overflow still surfaces. It is recalibrated whenever the bundle
+  // grows: at 8_000 it fit the pre-reference-aligned rules, at 12_000
+  // the Build Recipe + 5-failure cap + structured recovery rules, and
+  // the workflow-authoring persona's irreducible prompt has since
+  // reached ~12.2k, which left the knob with no headroom at all — any
+  // added contract rule then failed the drop-ladder tests instead of
+  // the size guard that exists for it. The real size regression net is
+  // the budget-baseline fixture (G1-G3), not this number.
+  if (id.includes("mock")) return 13_000;
   // Sane default for unknown models — Anthropic-ish.
   return 100_000;
 }

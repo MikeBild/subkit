@@ -197,6 +197,65 @@ describe("classifyRequestStepSideEffects · SQL", () => {
   });
 });
 
+describe("classifyRequestStepSideEffects · MCP", () => {
+  // The remote's own `readOnlyHint` is deliberately NOT consulted: it is
+  // optional, unverified, and asserted by the party whose side effects it
+  // describes. Reading it would let a remote decide which of its own calls
+  // the engine gates.
+  test("call_tool is a write — a missing annotation gets no benefit of the doubt", () => {
+    expect(
+      classifyRequestStepSideEffects(
+        step({ connector_id: CONNECTOR_ID, mcp: { operation: "call_tool", tool: "send_email" } }),
+      ),
+    ).toBe("write");
+  });
+
+  test("call_tool is a write even though the step method defaults to GET", () => {
+    // The HTTP arm would classify this read. The mcp arm must run first,
+    // or every remote tool call would slip the hold-writes gate silently.
+    const parsed = step({
+      connector_id: CONNECTOR_ID,
+      mcp: { operation: "call_tool", tool: "anything" },
+    });
+    expect(parsed.method).toBe("GET");
+    expect(classifyRequestStepSideEffects(parsed)).toBe("write");
+  });
+
+  test("read_resource and get_prompt are reads by the operation alone", () => {
+    expect(
+      classifyRequestStepSideEffects(
+        step({ connector_id: CONNECTOR_ID, mcp: { operation: "read_resource", uri: "file:///a" } }),
+      ),
+    ).toBe("read");
+    expect(
+      classifyRequestStepSideEffects(
+        step({ connector_id: CONNECTOR_ID, mcp: { operation: "get_prompt", prompt: "summarise" } }),
+      ),
+    ).toBe("read");
+  });
+
+  test("the author override still wins in both directions", () => {
+    expect(
+      classifyRequestStepSideEffects(
+        step({
+          connector_id: CONNECTOR_ID,
+          side_effects: "read",
+          mcp: { operation: "call_tool", tool: "search" },
+        }),
+      ),
+    ).toBe("read");
+    expect(
+      classifyRequestStepSideEffects(
+        step({
+          connector_id: CONNECTOR_ID,
+          side_effects: "write",
+          mcp: { operation: "read_resource", uri: "file:///a" },
+        }),
+      ),
+    ).toBe("write");
+  });
+});
+
 describe("classifyRequestStepSideEffects · S3", () => {
   test("GET → read", () => {
     expect(

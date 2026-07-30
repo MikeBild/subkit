@@ -9,7 +9,7 @@ instruction files are compatibility layers or indexes — not competing sources 
 - **subkit is a self-hostable, multi-tenant engine for governed, versioned, AI-assisted
   workflow execution.** It is not a chat product, not an LLM provider, and not a general
   workflow-automation tool. It owns: identity & access (RBAC/ABAC, encrypted credentials,
-  portal tokens, API keys), unified data/tool interfaces (4 typed drivers, 56 connector
+  portal tokens, API keys), unified data/tool interfaces (5 typed drivers, 56 connector
   templates), governed execution (append-only audit log, human-in-the-loop approvals,
   versioned workflows with full snapshots), observability (Prometheus, structured logs,
   drift detection), and multi-tenant conversation-first surfaces (CLI, `sk`, Slack, Teams,
@@ -46,7 +46,7 @@ Priority when sources conflict:
 
 1. Code, types, tests, and verified inline decisions.
 2. Canonical docs in `docs/` (numbered) and workflow/config files.
-3. Existing implementation examples (e.g. the 56 templates, the 4 drivers).
+3. Existing implementation examples (e.g. the 57 templates, the 5 drivers).
 
 High-value references (by task type):
 
@@ -166,7 +166,7 @@ Subsystem map inside `apps/engine/src/` (46 directories + 5 loose root files):
 | Auth providers (OIDC, API key, portal token) | `auth/` | `docs/admins/rbac-and-roles.md` |
 | Chat adapters (Slack, Teams, Google Chat) | `chat/` | `docs/developers/input-surfaces.md` |
 | Layered config loader (override → tenant → global → default) | `config/` | `docs/admins/configuration.md` |
-| 4 drivers + 56 templates | `connectors/` | `docs/concepts/connectors.md` |
+| 5 drivers + 57 templates | `connectors/` | `docs/concepts/connectors.md` |
 | AI authoring loop + tool use | `conversations/` | `docs/authors/authoring-workflows.md` |
 | Encrypted secret storage + OAuth2 refresh + credential rotation | `credentials/` (incl. `credentials/oauth2/`) | `docs/admins/credentials-and-keys.md` |
 | AES-256-GCM + redaction | `crypto/` | `docs/concepts/governance-and-audit.md` |
@@ -253,6 +253,12 @@ Three test layers (picked by subsystem and command):
 - Unit tests co-located as `*.test.ts` alongside source.
 - Integration tests use a disposable Postgres database per test file (`createTestDb`) against the running compose instance.
 - E2E tests drive compiled CLIs — they will build them if missing.
+- `bun run test:e2e` is the ONLY supported way to run the e2e layer, and it is what CI runs:
+  it delegates to `scripts/test-e2e-isolated.ts`, one `bun test` process per file. Never run
+  `bun test tests/e2e/` — that puts all e2e files in one process, where suites contend for
+  process-global state (config leaves, env vars, LLM provider, pg-boss workers, listening
+  servers) and roughly half the runs fail on interference unrelated to the change. A single
+  file by name is fine: one file is one process.
 - CI currently runs lint, typecheck, migrations, `bun test apps/ packages/`, `build:all`, e2e,
   engine smoke, and compose validation. The local `bun run verify` gate is stricter: it also runs
   the determinism lint and the AI/eval contract suite.

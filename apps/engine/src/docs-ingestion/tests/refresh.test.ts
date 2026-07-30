@@ -156,7 +156,7 @@ describe("docs-ingestion/refresh", () => {
       const ids = (jobs ?? []).map((j) => j.data?.connector_id);
       expect(ids).toContain(ctx.connectorId);
     } finally {
-      await disposeBoss(boss, 5_000);
+      await disposeBoss(boss);
     }
   }, 30_000);
 });

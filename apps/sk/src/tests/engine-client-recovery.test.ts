@@ -31,7 +31,9 @@ beforeEach(() => {
 afterEach(() => {
   process.env = originalEnv;
   delete require.cache[require.resolve("../debug.ts")];
-  delete require.cache[require.resolve("../engine-client.ts")];
+  // Never evict `engine-client.ts`: that drops any `mock.module` override
+  // another test file installed for it in this process, leaving the next
+  // importer with the real client and a live socket.
   delete require.cache[require.resolve("../repl/error-humanize.ts")];
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });

@@ -41,6 +41,9 @@ export const proposeSchemaMigrationTool: ConversationTool = {
     "Use when an operator asks why an endpoint started returning a different shape, or to preview the data-level effect of accepting a recent rename. The plan is advisory; nothing is persisted.",
   inputSchema,
   category: "tenant_read",
+  // Builds a definition rather than using one: withheld from the
+  // read-and-execute tier even though it only reads.
+  authoring_only: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const plan = await proposeSchemaMigration(

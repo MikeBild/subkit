@@ -22,7 +22,10 @@ export interface WorkflowIntent {
 
 export interface ConnectorIntent {
   kind: "connector";
-  template_slug: string;
+  /** Absent for a connector authored from a definition file: `sk connectors
+   *  create --file` has no template, and a required field here is what let
+   *  the literal string "undefined" reach the operator's terminal. */
+  template_slug?: string;
   name?: string;
   environment?: "dev" | "prod";
   auth_type?: string;
@@ -82,7 +85,8 @@ export interface ConnectorSummary {
   kind: "connector";
   id: string;
   slug: string;
-  template_slug: string;
+  /** Absent for a file-authored connector — see `ConnectorIntent`. */
+  template_slug?: string;
   probe?: { ok: boolean; status_code?: number; duration_ms?: number };
   usage?: ResourceUsage;
 }

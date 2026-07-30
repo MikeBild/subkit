@@ -65,4 +65,4 @@
 - [subkit runtime settings](admins/settings-reference.md): Every value below lives in subkit.config.json and is editable via sk settings configure or sk settings set .
 - [sk settings](authors/settings.md): Settings for the sk CLI itself — separate from the engine's runtime settings (see settings-reference).
 - [Slash commands](authors/slash-commands.md): Slash commands run from the sk REPL.
-- [sk CLI reference](developers/cli-reference.md): Non-interactive commands for the sk CLI.
+- [sk CLI reference](developers/cli-reference.md): Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run.

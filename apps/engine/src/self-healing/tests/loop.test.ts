@@ -190,7 +190,7 @@ describe("self-healing/loop — workflow.repair queue", () => {
     await registerWorkflowRepairHandler({ boss, db: ctx.testDb.db });
   });
   afterAll(async () => {
-    await disposeBoss(boss, 5_000);
+    await disposeBoss(boss);
   });
 
   test("enqueue -> worker consumes -> same-fingerprint candidate refreshed, not duplicated", async () => {

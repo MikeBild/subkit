@@ -5,6 +5,24 @@
 // a `cli()` helper that invokes the compiled sk binary as a subprocess
 // with per-persona config directories.
 //
+// HOW TO RUN THESE TESTS
+//
+//   bun run test:e2e          # the ONLY supported command
+//
+// It builds `sk` and then runs `scripts/test-e2e-isolated.ts`, which
+// spawns ONE `bun test` process PER FILE. CI runs that same script.
+//
+//   bun test tests/e2e/       # NOT supported — do not use
+//
+// That form loads every e2e file into a SINGLE process. Each suite boots
+// a real engine and mutates process-global state (config leaves, env
+// vars, the LLM provider, pg-boss workers, listening servers); the
+// harness gives back what it can, but suites still contend for one
+// process, and roughly half of those runs fail on interference that has
+// nothing to do with the code under test. To run a single file, name it:
+// `bun test tests/e2e/<file>.e2e.test.ts` — one file is one process, so
+// that is fine.
+//
 // Usage:
 //   import { boot, shutdown, cli, Persona } from "./setup.ts";
 //
@@ -30,6 +48,7 @@ import {
   loadConfig as loadEngineConfig,
   setConfigKey,
 } from "../../apps/engine/src/config/loader.ts";
+import { setChromiumProviderForTesting } from "../../apps/engine/src/connectors/discovery/index.ts";
 import type { Db } from "../../apps/engine/src/db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../apps/engine/src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../apps/engine/src/db/tests/setup.ts";
@@ -93,6 +112,32 @@ export interface E2EEnv {
 export interface BootOpts {
   /** Pin the in-process mock LLM. Default: real provider from .env. */
   llm?: "mock";
+  /**
+   * Let connector discovery launch a real Chromium and navigate to the
+   * live target. The mock track disables it by default (see
+   * `disableBrowserDiscovery`); set this when the browser crawl is the
+   * behaviour under test.
+   */
+  browser_discovery?: true;
+}
+
+/**
+ * Make the mock track hermetic by declaring playwright unloadable.
+ *
+ * `llm: "mock"` reads as a promise that the suite reaches nothing, but
+ * the `playwright-crawl` discovery strategy is the tail of the strategy
+ * chain and claims any URL — so any mock suite that discovered a
+ * connector launched Chromium and navigated to the live target, at
+ * roughly four seconds a call. A provider that rejects makes `canHandle`
+ * resolve false, so the dispatcher records a clean `strategy_skipped` —
+ * the same path a host without playwright installed already takes —
+ * instead of launching a browser and fetching a third party.
+ * Authority: `tests/e2e/harness-isolation.e2e.test.ts`.
+ */
+function disableBrowserDiscovery(): void {
+  setChromiumProviderForTesting(() =>
+    Promise.reject(new Error("browser discovery is disabled on the hermetic e2e mock track")),
+  );
 }
 
 async function withTeardownTimeout<T>(
@@ -128,7 +173,39 @@ async function bestEffortTeardown(
   }
 }
 
-async function closeHttpServer(server: ServerType): Promise<void> {
+/** Minimal shape of the sockets we have to be able to destroy. */
+interface TrackedSocket {
+  destroy: () => void;
+  on: (event: "close", listener: () => void) => void;
+}
+
+/**
+ * Remember every accepted connection so teardown can destroy it.
+ *
+ * `Server.close()` stops accepting and calls back only once every open
+ * connection has ended, and `closeAllConnections()` does not end a
+ * connection whose response is still streaming — so a suite that leaves an
+ * SSE stream open (`sk --p`, `/v1/events`) burned the whole teardown budget
+ * and left a live server registered for the rest of the test process.
+ * Authority for both halves of that claim:
+ * `tests/e2e/harness-isolation.e2e.test.ts`.
+ */
+export function trackConnections(server: ServerType): Set<TrackedSocket> {
+  const sockets = new Set<TrackedSocket>();
+  (server as unknown as { on: (e: "connection", l: (s: TrackedSocket) => void) => void }).on(
+    "connection",
+    (socket) => {
+      sockets.add(socket);
+      socket.on("close", () => sockets.delete(socket));
+    },
+  );
+  return sockets;
+}
+
+export async function closeHttpServer(
+  server: ServerType,
+  sockets: Set<TrackedSocket>,
+): Promise<void> {
   const s = server as unknown as {
     close: (cb: (err?: Error) => void) => void;
     closeAllConnections?: () => void;
@@ -148,6 +225,13 @@ async function closeHttpServer(server: ServerType): Promise<void> {
           });
           s.closeIdleConnections?.();
           s.closeAllConnections?.();
+          for (const socket of [...sockets]) {
+            try {
+              socket.destroy();
+            } catch {
+              /* already gone */
+            }
+          }
         } catch (err) {
           reject(err);
         }
@@ -270,6 +354,9 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
     }
   }
 
+  const hermeticBrowser = opts.llm === "mock" && !opts.browser_discovery;
+  if (hermeticBrowser) disableBrowserDiscovery();
+
   const safeLabel = label.toLowerCase().replace(/[^a-z0-9]/g, "-");
   const testDb = await createTestDb(`e2e-${safeLabel}`);
   const rbacRoleIds = await seedBuiltinRolesAndPermissions(testDb.db);
@@ -340,6 +427,7 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   const registry = buildDefaultRegistry(testDb.db);
   const app = createApp({ db: testDb.db, registry, boss });
   const server: ServerType = serve({ fetch: app.fetch, port: 0 });
+  const sockets = trackConnections(server);
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") throw new Error("failed to get server port");
   const baseUrl = `http://127.0.0.1:${addr.port}`;
@@ -351,6 +439,11 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   const priorPublicBaseUrlEnv = process.env.SUBKIT_PUBLIC_BASE_URL;
   process.env.SUBKIT_PUBLIC_BASE_URL = baseUrl;
   // v3.5: routes/services read public_base_url via getConfig().
+  // Capture the leaf's pre-boot value, not a constant: restoring a
+  // process-global to a guessed default is a leak of its own, and any
+  // suite in the same process that had configured an origin would find it
+  // silently blanked. Authority: `tests/e2e/harness-isolation.e2e.test.ts`.
+  const priorPublicBaseUrlConfig = getEngineConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", baseUrl, { force: true });
 
   return {
@@ -367,15 +460,20 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
       // that run after this one see the pre-boot state.
       if (priorPublicBaseUrlEnv === undefined) delete process.env.SUBKIT_PUBLIC_BASE_URL;
       else process.env.SUBKIT_PUBLIC_BASE_URL = priorPublicBaseUrlEnv;
+      // Same reasoning for the chromium provider, which is process-global
+      // too. `null` is the production default, and no e2e suite installs a
+      // provider of its own — the discovery unit tests that do never share
+      // a process with this harness.
+      if (hermeticBrowser) setChromiumProviderForTesting(null);
       await bestEffortTeardown(
         "public_base_url config restore",
-        () => setConfigKey("server.public_base_url", "", { force: true }),
+        () => setConfigKey("server.public_base_url", priorPublicBaseUrlConfig, { force: true }),
         3_000,
       );
-      // 1. Close HTTP server.
-      await closeHttpServer(server);
+      // 1. Close HTTP server, destroying its live connections.
+      await closeHttpServer(server, sockets);
       // 2. Stop this suite's pg-boss and close all its Postgres connections.
-      await bestEffortTeardown("suite pg-boss dispose", () => disposeBoss(boss, 5_000), 8_000);
+      await bestEffortTeardown("suite pg-boss dispose", () => disposeBoss(boss), 8_000);
       // 3. Give pg-boss connections time to fully close before dropping DB.
       // allow-wall-clock: socket teardown requires real I/O time.
       await new Promise((r) => setTimeout(r, 200));

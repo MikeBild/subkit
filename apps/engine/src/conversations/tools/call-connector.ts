@@ -56,6 +56,7 @@ import {
   parseDeprecation,
 } from "../../connectors/health.ts";
 import { getConnector } from "../../connectors/service.ts";
+import { callConnectorDriverRefusal } from "../../connectors/services/call-connector.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
@@ -307,11 +308,10 @@ export const callConnectorTool: ConversationTool = {
         error_code: "driver_not_supported_for_call_connector",
         driver,
       });
-      return structuredError(
-        "driver_not_supported_for_call_connector",
-        `call_connector does not support ${driver} connectors yet; use a workflow step`,
-        { next_best_actions: ["author_workflow"] },
-      );
+      const refusal = callConnectorDriverRefusal(driver);
+      return structuredError("driver_not_supported_for_call_connector", refusal.message, {
+        next_best_actions: refusal.next_best_actions,
+      });
     }
 
     // Cross-driver input validation: reject obvious shape mismatches BEFORE

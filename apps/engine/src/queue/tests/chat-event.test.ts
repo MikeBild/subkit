@@ -127,7 +127,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await disposeBoss(boss, 5_000);
+  await disposeBoss(boss);
   await testDb.cleanup();
 });
 

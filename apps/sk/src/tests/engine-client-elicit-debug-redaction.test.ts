@@ -24,8 +24,10 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env = originalEnv;
+  // `debug.ts` only. Evicting `engine-client.ts` would drop any `mock.module`
+  // override another test file installed for it in this process, leaving the
+  // next importer with the real client and a live socket.
   delete require.cache[require.resolve("../debug.ts")];
-  delete require.cache[require.resolve("../engine-client.ts")];
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   } catch {

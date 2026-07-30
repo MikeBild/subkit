@@ -398,6 +398,12 @@ async function scanValidationDriftForTenant(
 
     if (execRows.length < 2) continue;
     const newest = execRows[0];
+    // `failed` ONLY. `aborted` (and `timed_out`) are excluded here, and that
+    // exclusion is a contract, not an omission: a cancelled run says nothing
+    // about the workflow, so it must never become a repair candidate. Every
+    // driver's cancellation path is written against this — the guarantee that
+    // stopping a run cannot manufacture a Patch Candidate for it. Widening
+    // this predicate would silently break all of them at once.
     if (newest?.status !== "failed") continue;
     const priorSucceeded = execRows.slice(1).some((e) => e.status === "succeeded");
     if (!priorSucceeded) continue;

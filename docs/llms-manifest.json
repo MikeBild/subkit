@@ -196,7 +196,7 @@
       "audience": "developers",
       "path": "docs/developers/cli-reference.md",
       "title": "sk CLI reference",
-      "summary": "Non-interactive commands for the sk CLI."
+      "summary": "Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run."
     },
     {
       "audience": "developers",

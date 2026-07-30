@@ -12,6 +12,7 @@ import {
 } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { principalOrigin } from "../../../auth/index.ts";
 import type { ConversationStatus, TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import {
@@ -148,6 +149,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(body.title ? { title: body.title } : {}),
       ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       ...(body.playground ? { playground: body.playground } : {}),
+      origin_client: principalOrigin(principal),
     } as const;
     const runtimeContext = buildRuntimeContextFromRequest(c, principal);
 

@@ -1,708 +1,391 @@
-// Registry integration tests for external MCP server CRUD + audit.
+// The MCP-shaped read over `connectors`, and the two writes only a
+// handshake may perform.
 //
-// Uses a real Postgres database via createTestDb (no mocks). Verifies:
-//   - createMcpServer persists a row and emits mcp_server.registered audit.
-//   - getMcpServerByNamespace / listMcpServers / listActiveMcpServersForTenant.
-//   - updateMcpServer with changed_fields audit (mcp_server.config_updated).
-//   - setMcpServerStatus: disabled/re-enabled/errored with matching audit rows.
-//   - deleteMcpServer removes the row and emits mcp_server.deleted.
-//   - Secret-by-reference: an inline secret key in auth_config is rejected.
-//   - bearer auth_config round-trips (kind only; no inline secret).
-//   - Tenant isolation: tenant A cannot read/update/delete tenant B's server.
+// There is no MCP CRUD any more: an external MCP server is created,
+// patched and deleted through the connector service like every other
+// driver, and those paths have their own tests. What this suite covers is
+// what is specific to `mcp` — that a connector row projects into the shape
+// the pool consumes, that the connectable filter honours the operator's
+// on/off bit, and that a handshake's success and failure land on BOTH the
+// session row and the connector row without the two disagreeing.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { auditLog, tenants } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { setConnectorEnabled } from "../../connectors/service.ts";
+import { auditLog, connectorMcpSessions, connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
-  createMcpServer,
-  deleteMcpServer,
-  getMcpServer,
-  getMcpServerByNamespace,
-  listActiveMcpServersForTenant,
-  listConnectableMcpServersForTenant,
-  listMcpServers,
-  type McpServerAuditCtx,
-  parseAuthConfig,
-  recordMcpServerHandshakeState,
-  setMcpServerStatus,
-  updateMcpServer,
+  getMcpConnector,
+  getMcpSessionBackoff,
+  listConnectableMcpConnectorsForTenant,
+  parkMcpConnectorFailure,
+  recordMcpHandshakeState,
+  redactUpstreamDetail,
 } from "./registry.ts";
+import { seedMcpConnector } from "./test-fixtures.ts";
 
 let ctx: TestDb;
 let tenantA: string;
 let tenantB: string;
 
-// Build the audit context lazily so `executor` uses the test DB.
-// This avoids cross-file DATABASE_URL contamination when tests run in
-// parallel workers (the fallback getDb() path is not used at all).
-function auditCtx(): McpServerAuditCtx {
-  return {
-    actor_id: "00000000-0000-0000-0000-000000000001",
-    request_source: "api",
-    executor: ctx.db,
-  };
-}
-
 beforeAll(async () => {
   ctx = await createTestDb("mcp-registry");
-
   const [a] = await ctx.db
     .insert(tenants)
-    .values({ slug: "t-reg-a", display_name: "Registry Tenant A" })
+    .values({ slug: "mcp-reg-a", display_name: "A" })
     .returning();
   const [b] = await ctx.db
     .insert(tenants)
-    .values({ slug: "t-reg-b", display_name: "Registry Tenant B" })
+    .values({ slug: "mcp-reg-b", display_name: "B" })
     .returning();
-  tenantA = a!.id;
-  tenantB = b!.id;
-}, 30_000);
+  if (!a || !b) throw new Error("tenant seed failed");
+  tenantA = a.id;
+  tenantB = b.id;
+}, 60_000);
 
 afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-async function auditActionsFor(_tenant_id: string, resource_id: string): Promise<string[]> {
-  const rows = await ctx.db
-    .select({ action: auditLog.action })
-    .from(auditLog)
-    .where(eq(auditLog.resource_id, resource_id));
-  return rows.map((r) => r.action);
-}
-
-// ── createMcpServer ──────────────────────────────────────────────────────────
-
-describe("createMcpServer", () => {
-  test("inserts a row with correct fields", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Acme MCP",
-        namespace: "acme",
-        transport: "http",
-        url: "https://mcp.acme.example.com",
-      },
-      auditCtx(),
-    );
-    expect(row.id).toBeDefined();
-    expect(row.tenant_id).toBe(tenantA);
-    expect(row.name).toBe("Acme MCP");
-    expect(row.namespace).toBe("acme");
-    expect(row.transport).toBe("http");
-    expect(row.status).toBe("active");
-    expect(row.auth_config).toBeNull();
-  });
-
-  test("emits mcp_server.registered audit row", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Audit Test MCP",
-        namespace: "auditns",
-        transport: "http",
-        url: "https://audit.example.com",
-      },
-      auditCtx(),
-    );
-    const actions = await auditActionsFor(tenantA, row.id);
-    expect(actions).toContain("mcp_server.registered");
-  });
-
-  test("bearer auth_config round-trips via parseAuthConfig (no inline secret)", async () => {
-    // The bearer secret lives in the credentials table keyed by
-    // mcp_server_id — auth_config persists ONLY the kind.
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Bearer MCP",
-        namespace: "bearerns",
-        transport: "sse",
-        url: "https://bearer.example.com",
-        auth_config: { kind: "bearer" },
-      },
-      auditCtx(),
-    );
-    const parsed = parseAuthConfig(row.auth_config ?? null);
-    expect(parsed.kind).toBe("bearer");
-    // No secret-by-value key is ever persisted on the row.
-    expect(JSON.stringify(row.auth_config)).not.toContain("token");
-  });
-
-  test("inline secret key in auth_config is rejected (DB CHECK)", async () => {
-    // The mcp_servers_auth_config_no_inline_secrets_check constraint
-    // rejects any auth_config with a `client_secret`, `api_key`, etc.
-    // Use the pg pool directly to bypass Zod and hit the DB-level constraint.
-    const authJson = JSON.stringify({ kind: "bearer", api_key: "SHOULD_BE_REJECTED" });
-    await expect(
-      ctx.pool.query(
-        `INSERT INTO mcp_servers (tenant_id, name, namespace, transport, url, auth_config, status)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'active')`,
-        [
-          tenantA,
-          "Sneaky Secret MCP",
-          "sneakysecretns",
-          "http",
-          "https://evil.example.com",
-          authJson,
-        ],
-      ),
-    ).rejects.toThrow();
-  });
-});
-
-// ── getMcpServerByNamespace ───────────────────────────────────────────────────
-
-describe("getMcpServerByNamespace", () => {
-  test("returns the row for the right tenant + namespace", async () => {
-    await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Lookup MCP",
-        namespace: "lookupns",
-        transport: "http",
-        url: "https://lookup.example.com",
-      },
-      auditCtx(),
-    );
-    const found = await getMcpServerByNamespace(ctx.db, tenantA, "lookupns");
-    expect(found).not.toBeNull();
-    expect(found!.namespace).toBe("lookupns");
-  });
-
-  test("returns null for wrong tenant (isolation)", async () => {
-    await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Tenant-A-only",
-        namespace: "atenantonly",
-        transport: "http",
-        url: "https://a-only.example.com",
-      },
-      auditCtx(),
-    );
-    // tenant B should NOT see it
-    const fromB = await getMcpServerByNamespace(ctx.db, tenantB, "atenantonly");
-    expect(fromB).toBeNull();
-  });
-});
-
-// ── listMcpServers ────────────────────────────────────────────────────────────
-
-describe("listMcpServers", () => {
-  test("returns only the calling tenant's rows", async () => {
-    // Seed one for A, one for B.
-    await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "List A MCP",
-        namespace: "listans",
-        transport: "http",
-        url: "https://list-a.example.com",
-      },
-      auditCtx(),
-    );
-    await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantB,
-        name: "List B MCP",
-        namespace: "listbns",
-        transport: "http",
-        url: "https://list-b.example.com",
-      },
-      auditCtx(),
-    );
-
-    const aRows = await listMcpServers(ctx.db, tenantA);
-    const bRows = await listMcpServers(ctx.db, tenantB);
-    const aIds = aRows.map((r) => r.namespace);
-    const bIds = bRows.map((r) => r.namespace);
-    // A's list must NOT contain B's namespace and vice versa.
-    expect(aIds).not.toContain("listbns");
-    expect(bIds).not.toContain("listans");
-    expect(aIds).toContain("listans");
-    expect(bIds).toContain("listbns");
-  });
-});
-
-// ── updateMcpServer ───────────────────────────────────────────────────────────
-
-describe("updateMcpServer", () => {
-  test("updates changed fields and emits config_updated audit", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Update MCP",
-        namespace: "updatns",
-        transport: "http",
-        url: "https://update-before.example.com",
-      },
-      auditCtx(),
-    );
-
-    const updated = await updateMcpServer(
-      ctx.db,
-      tenantA,
-      row.id,
-      { url: "https://update-after.example.com", name: "Updated MCP" },
-      auditCtx(),
-    );
-
-    expect(updated).not.toBeNull();
-    expect(updated!.url).toBe("https://update-after.example.com");
-    expect(updated!.name).toBe("Updated MCP");
-
-    const actions = await auditActionsFor(tenantA, row.id);
-    expect(actions).toContain("mcp_server.config_updated");
-  });
-
-  test("no-op update returns existing row without audit", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Noop MCP",
-        namespace: "noopns",
-        transport: "http",
-        url: "https://noop.example.com",
-      },
-      auditCtx(),
-    );
-
-    const priorAudits = await auditActionsFor(tenantA, row.id);
-    const priorCount = priorAudits.length;
-
-    // Same values — should be a no-op.
-    const result = await updateMcpServer(
-      ctx.db,
-      tenantA,
-      row.id,
-      { name: "Noop MCP" }, // unchanged
-      auditCtx(),
-    );
-    expect(result).not.toBeNull();
-
-    const afterAudits = await auditActionsFor(tenantA, row.id);
-    // No new audit rows since nothing changed.
-    expect(afterAudits.length).toBe(priorCount);
-  });
-
-  test("cross-tenant update returns null (isolation)", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Cross-tenant target",
-        namespace: "crosstns",
-        transport: "http",
-        url: "https://cross-tenant.example.com",
-      },
-      auditCtx(),
-    );
-
-    // Tenant B tries to update Tenant A's row — must return null.
-    const result = await updateMcpServer(ctx.db, tenantB, row.id, { name: "Hijacked" }, auditCtx());
-    expect(result).toBeNull();
-
-    // Row must still have the original name.
-    const unchanged = await getMcpServer(ctx.db, tenantA, row.id);
-    expect(unchanged!.name).toBe("Cross-tenant target");
-  });
-});
-
-// ── setMcpServerStatus ────────────────────────────────────────────────────────
-
-describe("setMcpServerStatus", () => {
-  test("active → disabled emits mcp_server.disabled audit", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Disable MCP",
-        namespace: "disabns",
-        transport: "http",
-        url: "https://disable.example.com",
-      },
-      auditCtx(),
-    );
-
-    const result = await setMcpServerStatus(ctx.db, tenantA, row.id, "disabled", auditCtx());
-    expect(result).not.toBeNull();
-    expect(result!.status).toBe("disabled");
-
-    const actions = await auditActionsFor(tenantA, row.id);
-    expect(actions).toContain("mcp_server.disabled");
-  });
-
-  test("disabled → active emits mcp_server.re_enabled audit", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "ReEnable MCP",
-        namespace: "reenns",
-        transport: "http",
-        url: "https://re-enable.example.com",
-      },
-      auditCtx(),
-    );
-    // First disable.
-    await setMcpServerStatus(ctx.db, tenantA, row.id, "disabled", auditCtx());
-    // Then re-enable.
-    const result = await setMcpServerStatus(ctx.db, tenantA, row.id, "active", auditCtx());
-    expect(result!.status).toBe("active");
-
-    const actions = await auditActionsFor(tenantA, row.id);
-    expect(actions).toContain("mcp_server.re_enabled");
-  });
-
-  test("error status emits mcp_server.errored with last_error", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Error MCP",
-        namespace: "errorns",
-        transport: "http",
-        url: "https://error.example.com",
-      },
-      auditCtx(),
-    );
-
-    const result = await setMcpServerStatus(ctx.db, tenantA, row.id, "error", auditCtx(), {
-      last_error: "connection refused",
+describe("getMcpConnector", () => {
+  test("projects transport, url and the non-secret auth block off the connector row", async () => {
+    const seeded = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantA,
+      slug: "proj",
+      url: "https://proj.example.test/mcp",
+      auth: { kind: "bearer" },
+      auth_type: "bearer",
     });
-    expect(result!.status).toBe("error");
-    expect(result!.last_error).toBe("connection refused");
-
-    const actions = await auditActionsFor(tenantA, row.id);
-    expect(actions).toContain("mcp_server.errored");
+    const row = await getMcpConnector(ctx.db, tenantA, seeded.id);
+    expect(row?.slug).toBe("proj");
+    expect(row?.transport).toBe("http");
+    expect(row?.url).toBe("https://proj.example.test/mcp");
+    expect(row?.auth.kind).toBe("bearer");
+    expect(row?.environment).toBe("prod");
+    expect(row?.enabled).toBe(true);
   });
 
-  test("cross-tenant status change returns null (isolation)", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Cross-Tenant Disable",
-        namespace: "ctdisabns",
-        transport: "http",
-        url: "https://ct-disable.example.com",
-      },
-      auditCtx(),
-    );
-
-    const result = await setMcpServerStatus(ctx.db, tenantB, row.id, "disabled", auditCtx());
-    expect(result).toBeNull();
-
-    // Row must still be active for tenant A.
-    const unchanged = await getMcpServer(ctx.db, tenantA, row.id);
-    expect(unchanged!.status).toBe("active");
-  });
-});
-
-// ── deleteMcpServer ───────────────────────────────────────────────────────────
-
-describe("deleteMcpServer", () => {
-  test("deletes the row and emits mcp_server.deleted audit", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Delete MCP",
-        namespace: "deletns",
-        transport: "http",
-        url: "https://delete.example.com",
-      },
-      auditCtx(),
-    );
-
-    const deleted = await deleteMcpServer(ctx.db, tenantA, row.id, auditCtx());
-    expect(deleted).toBe(true);
-
-    // Row is gone.
-    const gone = await getMcpServer(ctx.db, tenantA, row.id);
-    expect(gone).toBeNull();
-
-    // Audit row for deleted — read from all audit rows (resource_id won't exist).
-    const actions = await auditActionsFor(tenantA, row.id);
-    expect(actions).toContain("mcp_server.deleted");
-  });
-
-  test("cross-tenant delete returns false (isolation)", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "CT Delete MCP",
-        namespace: "ctdeletns",
-        transport: "http",
-        url: "https://ct-delete.example.com",
-      },
-      auditCtx(),
-    );
-
-    // Tenant B attempts to delete Tenant A's row.
-    const result = await deleteMcpServer(ctx.db, tenantB, row.id, auditCtx());
-    expect(result).toBe(false);
-
-    // Row still exists for tenant A.
-    const still = await getMcpServer(ctx.db, tenantA, row.id);
-    expect(still).not.toBeNull();
-  });
-
-  test("double-delete returns false (idempotent)", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Double Delete MCP",
-        namespace: "deldel",
-        transport: "http",
-        url: "https://double-delete.example.com",
-      },
-      auditCtx(),
-    );
-
-    const first = await deleteMcpServer(ctx.db, tenantA, row.id, auditCtx());
-    expect(first).toBe(true);
-    const second = await deleteMcpServer(ctx.db, tenantA, row.id, auditCtx());
-    expect(second).toBe(false);
-  });
-});
-
-// ── listActiveMcpServersForTenant ─────────────────────────────────────────────
-
-describe("listActiveMcpServersForTenant", () => {
-  test("only returns active rows, not disabled or error", async () => {
-    const active = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Active MCP",
-        namespace: "activens",
-        transport: "http",
-        url: "https://active.example.com",
-      },
-      auditCtx(),
-    );
-    const disabled = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Disabled MCP",
-        namespace: "disabledns",
-        transport: "http",
-        url: "https://disabled.example.com",
-      },
-      auditCtx(),
-    );
-    await setMcpServerStatus(ctx.db, tenantA, disabled.id, "disabled", auditCtx());
-
-    const rows = await listActiveMcpServersForTenant(ctx.db, tenantA);
-    const ids = rows.map((r) => r.id);
-    expect(ids).toContain(active.id);
-    expect(ids).not.toContain(disabled.id);
-  });
-});
-
-// ── listConnectableMcpServersForTenant (error-status recovery) ─────────────────
-
-describe("listConnectableMcpServersForTenant", () => {
-  test("returns active AND error rows but never disabled", async () => {
-    const active = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Connectable Active",
-        namespace: "connactive",
-        transport: "http",
-        url: "https://conn-active.example.com",
-      },
-      auditCtx(),
-    );
-    const errored = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Connectable Errored",
-        namespace: "connerror",
-        transport: "http",
-        url: "https://conn-error.example.com",
-      },
-      auditCtx(),
-    );
-    const disabled = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Connectable Disabled",
-        namespace: "conndisabled",
-        transport: "http",
-        url: "https://conn-disabled.example.com",
-      },
-      auditCtx(),
-    );
-    await setMcpServerStatus(ctx.db, tenantA, errored.id, "error", auditCtx(), {
-      last_error: "boom",
+  test("another tenant's connector is invisible", async () => {
+    const seeded = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantA,
+      slug: "isolated",
+      url: "https://isolated.example.test/mcp",
     });
-    await setMcpServerStatus(ctx.db, tenantA, disabled.id, "disabled", auditCtx());
+    expect(await getMcpConnector(ctx.db, tenantB, seeded.id)).toBeNull();
+  });
 
-    const ids = (await listConnectableMcpServersForTenant(ctx.db, tenantA)).map((r) => r.id);
-    // An error-status server is still connectable (retry past backoff) so it
-    // is never permanently dark; a disabled one stays out.
-    expect(ids).toContain(active.id);
-    expect(ids).toContain(errored.id);
-    expect(ids).not.toContain(disabled.id);
+  test("a connector of another driver is not an mcp connector", async () => {
+    const [row] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id: tenantA,
+        slug: "plain-http",
+        display_name: "Plain HTTP",
+        driver: "http",
+        environment: "prod",
+        base_url: "https://plain.example.test",
+      })
+      .returning();
+    if (!row) throw new Error("seed failed");
+    expect(await getMcpConnector(ctx.db, tenantA, row.id)).toBeNull();
   });
 });
 
-// ── SSRF egress guard at registration ─────────────────────────────────────────
+describe("listConnectableMcpConnectorsForTenant", () => {
+  test("includes a degraded connector and excludes a disabled one", async () => {
+    const healthy = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantB,
+      slug: "healthy",
+      url: "https://healthy.example.test/mcp",
+    });
+    const degraded = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantB,
+      slug: "degraded",
+      url: "https://degraded.example.test/mcp",
+    });
+    const off = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantB,
+      slug: "switched-off",
+      url: "https://off.example.test/mcp",
+    });
 
-describe("createMcpServer egress guard", () => {
-  test("rejects a loopback / metadata URL at registration", async () => {
-    // The egress guard runs after Zod parse; in non-production (permissive)
-    // mode a bare localhost / unspecified address is still blocked.
-    await expect(
-      createMcpServer(
+    const degradedRow = await getMcpConnector(ctx.db, tenantB, degraded.id);
+    if (!degradedRow) throw new Error("projection failed");
+    await parkMcpConnectorFailure(
+      ctx.db,
+      degradedRow,
+      "handshake failed",
+      () => new Date(Date.now() + 60_000), // allow-wall-clock
+    );
+    await setConnectorEnabled(tenantB, off.id, false, null, ctx.db);
+
+    const ids = (await listConnectableMcpConnectorsForTenant(ctx.db, tenantB)).map((r) => r.id);
+    // A remote that is down must stay retryable — excluding it would leave
+    // it permanently dark after it recovers.
+    expect(ids).toContain(healthy.id);
+    expect(ids).toContain(degraded.id);
+    // Disabled is an operator decision and is never auto-retried.
+    expect(ids).not.toContain(off.id);
+  });
+});
+
+describe("handshake state", () => {
+  test("a failure parks the connector degraded, arms a persisted backoff, and counts in the database", async () => {
+    const seeded = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantA,
+      slug: "parking",
+      url: "https://parking.example.test/mcp",
+    });
+    const row = await getMcpConnector(ctx.db, tenantA, seeded.id);
+    if (!row) throw new Error("projection failed");
+
+    const first = await parkMcpConnectorFailure(
+      ctx.db,
+      row,
+      "connect ECONNREFUSED https://parking.example.test/mcp?token=SECRET",
+      (n) => new Date(Date.now() + n * 1_000), // allow-wall-clock
+    );
+    const second = await parkMcpConnectorFailure(
+      ctx.db,
+      row,
+      "connect ECONNREFUSED",
+      (n) => new Date(Date.now() + n * 1_000), // allow-wall-clock
+    );
+    // Counted by the database, not read-then-written: two turns failing
+    // concurrently must not both observe the same prior value.
+    expect(first).toBe(1);
+    expect(second).toBe(2);
+
+    const [connector] = await ctx.db
+      .select({ health_state: connectors.health_state, last_error: connectors.last_error })
+      .from(connectors)
+      .where(eq(connectors.id, seeded.id));
+    expect(connector?.health_state).toBe("degraded");
+    // The persisted failure text is redacted: no query string, no token.
+    expect(connector?.last_error ?? "").not.toContain("SECRET");
+    expect(connector?.last_error ?? "").not.toContain("?");
+
+    const backoff = await getMcpSessionBackoff(ctx.db, tenantA, seeded.id);
+    expect(backoff?.consecutive_failures).toBe(2);
+    // Survives a process restart, which the pool's in-memory window does not.
+    expect(backoff?.backoff_until).not.toBeNull();
+  });
+
+  test("a success clears the failure text, resets the backoff and recovers health in one go", async () => {
+    const seeded = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantA,
+      slug: "recovering",
+      url: "https://recovering.example.test/mcp",
+    });
+    const row = await getMcpConnector(ctx.db, tenantA, seeded.id);
+    if (!row) throw new Error("projection failed");
+    await parkMcpConnectorFailure(
+      ctx.db,
+      row,
+      "handshake failed",
+      () => new Date(Date.now() + 300_000), // allow-wall-clock
+    );
+
+    await recordMcpHandshakeState(ctx.db, row, "v1:manifest-hash");
+
+    const [connector] = await ctx.db
+      .select({ health_state: connectors.health_state, last_error: connectors.last_error })
+      .from(connectors)
+      .where(eq(connectors.id, seeded.id));
+    // A session that says healthy beside a connector still carrying the
+    // failure text is the disagreement effectiveConnectorHealth exists to
+    // prevent, so both move together.
+    expect(connector?.health_state).toBe("ok");
+    expect(connector?.last_error).toBeNull();
+
+    const [session] = await ctx.db
+      .select()
+      .from(connectorMcpSessions)
+      .where(eq(connectorMcpSessions.connector_id, seeded.id));
+    expect(session?.tools_manifest_hash).toBe("v1:manifest-hash");
+    expect(session?.consecutive_failures).toBe(0);
+    expect(session?.backoff_until).toBeNull();
+    expect(session?.last_handshake_at).not.toBeNull();
+  });
+
+  test("no failure shape a handshake throws puts remote-authored text ON THE ROW", async () => {
+    // The claim an operator depends on is about the COLUMN: whatever the
+    // handshake threw, what `parkMcpConnectorFailure` persisted is the
+    // ENGINE's sentence. Redacting the remote's own body would mean
+    // recognising every vendor's token shape — so none of it is carried
+    // forward, and these are the shapes that actually reach this function.
+    const seeded = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantA,
+      slug: "shapes",
+      url: "https://shapes.example.test/mcp",
+    });
+    const row = await getMcpConnector(ctx.db, tenantA, seeded.id);
+    if (!row) throw new Error("projection failed");
+    const persist = async (
+      raw: string,
+    ): Promise<{ last_error: string; health_reason: string; health_error_code: string }> => {
+      await parkMcpConnectorFailure(
         ctx.db,
-        {
-          tenant_id: tenantA,
-          name: "SSRF MCP",
-          namespace: "ssrfns",
-          transport: "http",
-          url: "http://localhost:9000/mcp",
-        },
-        auditCtx(),
-      ),
-    ).rejects.toThrow();
+        row,
+        raw,
+        () => new Date(Date.now() + 1_000), // allow-wall-clock
+      );
+      const [c] = await ctx.db
+        .select({
+          last_error: connectors.last_error,
+          health_reason: connectors.health_reason,
+          health_error_code: connectors.health_error_code,
+        })
+        .from(connectors)
+        .where(eq(connectors.id, seeded.id));
+      return {
+        last_error: c?.last_error ?? "",
+        health_reason: c?.health_reason ?? "",
+        health_error_code: c?.health_error_code ?? "",
+      };
+    };
+
+    // The dominant shape: the SDK reports a refused handshake as
+    // `Error POSTing to endpoint: <raw response body>`, so the remote we
+    // just failed to authenticate against decides what that string says —
+    // and an OAuth error body routinely echoes the token it rejected.
+    const echoed = await persist(
+      'Error POSTing to endpoint (HTTP 401): {"error":"invalid_token","error_description":"Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk is expired"}',
+    );
+    expect(echoed.last_error).not.toContain("eyJhbGciOiJIUzI1NiJ9");
+    expect(echoed.last_error).not.toContain("invalid_token");
+    // `health_reason` is published beside it now, so it carries no remote
+    // text either.
+    expect(echoed.health_reason).not.toContain("invalid_token");
+    // What the operator gets instead: the branchable code plus a sentence
+    // naming the endpoint and the status.
+    expect(echoed.health_error_code).toBe("auth_rejected");
+    expect(echoed.last_error).toContain("[auth_rejected]");
+    expect(echoed.last_error).toContain("shapes.example.test");
+    expect(echoed.last_error).toContain("401");
+
+    // `undici` reports a dead host with the request URL inline, query
+    // string included — which is where a pre-signed credential rides.
+    const inlineUrl = await persist(
+      "fetch failed for https://shapes.example.test/mcp?access_token=SECRET123: ECONNRESET",
+    );
+    expect(inlineUrl.last_error).not.toContain("SECRET123");
+    expect(inlineUrl.last_error).not.toContain("access_token");
+
+    // A verbose remote body cannot bloat the row it is stored in — the
+    // engine's sentence is bounded by construction.
+    expect((await persist("x".repeat(2_000))).last_error.length).toBeLessThanOrEqual(301);
+
+    // `last_error` re-classifies on every attempt, while `health_reason` /
+    // `health_error_code` stay what the TRANSITION recorded: the health
+    // columns are edge-guarded (one notification for a remote that has been
+    // refusing for an hour), so the two answer different questions and an
+    // operator reading both is not looking at a contradiction.
+    const gone = await persist("Error POSTing to endpoint (HTTP 410): endpoint retired");
+    expect(gone.last_error).toContain("[resource_not_found]");
+    expect(gone.last_error).not.toContain("retired");
+    expect(gone.health_error_code).toBe("auth_rejected");
+  });
+
+  test("the failure park emits exactly one health-changed row for a remote that keeps failing", async () => {
+    const seeded = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantA,
+      slug: "noisy",
+      url: "https://noisy.example.test/mcp",
+    });
+    const row = await getMcpConnector(ctx.db, tenantA, seeded.id);
+    if (!row) throw new Error("projection failed");
+    for (let i = 0; i < 3; i++) {
+      await parkMcpConnectorFailure(
+        ctx.db,
+        row,
+        "handshake failed",
+        () => new Date(Date.now() + 1_000), // allow-wall-clock
+      );
+    }
+    const rows = await ctx.db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.resource_id, seeded.id), eq(auditLog.action, "connector.health_changed")),
+      );
+    // Edge-guarded: three failures, one transition.
+    expect(rows.length).toBe(1);
   });
 });
 
-// ── last_error redaction ──────────────────────────────────────────────────────
-
-describe("setMcpServerStatus last_error redaction", () => {
-  test("strips URL query/path from a persisted last_error", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Redact MCP",
-        namespace: "redactns",
-        transport: "http",
-        url: "https://redact.example.com",
-      },
-      auditCtx(),
+// `redactUpstreamDetail` no longer feeds a column: it sanitizes the text
+// handed back IN FLIGHT (the probe envelope, the step result, the log
+// line), where an operator reads the upstream's own words in the same
+// breath as the failure. The shapes asserted below are the ones that
+// actually reach it, not one convenient example:
+//
+//   * the SDK's streamable-HTTP transport reports a refused handshake as
+//     `Error POSTing to endpoint: <raw response body>` — the body is the
+//     remote's text, and an OAuth error body routinely echoes the token
+//     that was presented;
+//   * `undici` reports a dead host with the request URL inline;
+//   * a URL can carry credentials in its userinfo as well as its query;
+//   * `connectClient` collapses the SDK's `UnauthorizedError` to a fixed
+//     sentence, which must survive intact — the probe's error-code mapping
+//     reads it.
+describe("redactUpstreamDetail", () => {
+  test("reduces every embedded URL to its origin, userinfo and query included", () => {
+    const out = redactUpstreamDetail(
+      "fetch failed for https://remote.example.test/mcp?access_token=SECRET while connecting",
     );
-    await setMcpServerStatus(ctx.db, tenantA, row.id, "error", auditCtx(), {
-      last_error: "fetch https://redact.example.com/call?token=LEAKED_SECRET failed",
-    });
-    const after = await getMcpServer(ctx.db, tenantA, row.id);
-    expect(after!.last_error).not.toContain("LEAKED_SECRET");
-    expect(after!.last_error).not.toContain("?token");
-    expect(after!.last_error).toContain("https://redact.example.com");
-  });
-});
+    expect(out).toContain("https://remote.example.test");
+    expect(out).not.toContain("SECRET");
+    expect(out).not.toContain("access_token");
 
-// ── recordMcpServerHandshakeState — auto-recovery audit ────────────────────
-
-describe("recordMcpServerHandshakeState auto-recovery audit", () => {
-  test("error → active flip emits mcp_server.re_enabled with reason auto_recovered_via_handshake", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Recover MCP",
-        namespace: "recoverns",
-        transport: "http",
-        url: "https://recover.example.com",
-      },
-      auditCtx(),
+    // Userinfo is credential material too, and `URL.host` excludes it.
+    const userinfo = redactUpstreamDetail(
+      "connect ECONNREFUSED https://svc:hunter2@remote.example.test/mcp",
     );
-    // Park it in error first (the prior state the recovery edge fires on).
-    await setMcpServerStatus(ctx.db, tenantA, row.id, "error", auditCtx(), {
-      last_error: "transient handshake failure",
-    });
+    expect(userinfo).toContain("https://remote.example.test");
+    expect(userinfo).not.toContain("hunter2");
+    expect(userinfo).not.toContain("svc:");
 
-    // A successful handshake recovers it to active — this MUST audit the edge.
-    const recovered = await recordMcpServerHandshakeState(
-      ctx.db,
-      tenantA,
-      row.id,
-      "sha256:recovered-hash",
-      auditCtx(),
+    // Several URLs in one message: every one of them, not just the first.
+    const many = redactUpstreamDetail(
+      "redirected from https://a.example.test/mcp?t=AAA to https://b.example.test/cb?code=BBB",
     );
-    expect(recovered!.status).toBe("active");
-    expect(recovered!.tools_manifest_hash).toBe("sha256:recovered-hash");
-
-    const reEnabledRows = await ctx.db
-      .select({ action: auditLog.action, reason: auditLog.reason })
-      .from(auditLog)
-      .where(eq(auditLog.resource_id, row.id));
-    const reEnabled = reEnabledRows.filter((r) => r.action === "mcp_server.re_enabled");
-    expect(reEnabled.length).toBe(1);
-    expect(reEnabled[0]!.reason).toBe("auto_recovered_via_handshake");
+    expect(many).not.toContain("AAA");
+    expect(many).not.toContain("BBB");
   });
 
-  test("concurrent handshakes on one errored server emit exactly ONE re_enabled row", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Race MCP",
-        namespace: "racens",
-        transport: "http",
-        url: "https://race.example.com",
-      },
-      auditCtx(),
+  test("a token the remote echoed back in its error BODY is redacted", () => {
+    // The dominant shape: no URL to strip, and the text is authored by the
+    // server we just failed to authenticate against. It is redacted here
+    // and it is not persisted anywhere — a shape-matching redactor is a
+    // best effort in flight, never the guarantee a column depends on.
+    const bearer = redactUpstreamDetail(
+      'Error POSTing to endpoint: {"error":"invalid_token","error_description":"Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk is expired"}',
     );
-    await setMcpServerStatus(ctx.db, tenantA, row.id, "error", auditCtx(), {
-      last_error: "transient handshake failure",
-    });
+    expect(bearer).not.toContain("eyJhbGciOiJIUzI1NiJ9");
+    expect(bearer).toContain("invalid_token");
 
-    // The prior status is captured atomically inside the UPDATE (FOR UPDATE
-    // subselect): the second caller blocks on the row lock and re-reads the
-    // already-recovered status, so only one caller observes `error`.
-    await Promise.all([
-      recordMcpServerHandshakeState(ctx.db, tenantA, row.id, "sha256:race-a", auditCtx()),
-      recordMcpServerHandshakeState(ctx.db, tenantA, row.id, "sha256:race-b", auditCtx()),
-    ]);
-
-    const reEnabledRows = await ctx.db
-      .select({ action: auditLog.action, reason: auditLog.reason })
-      .from(auditLog)
-      .where(eq(auditLog.resource_id, row.id));
-    const reEnabled = reEnabledRows.filter((r) => r.action === "mcp_server.re_enabled");
-    expect(reEnabled.length).toBe(1);
-    expect(reEnabled[0]!.reason).toBe("auto_recovered_via_handshake");
+    const vendorKey = redactUpstreamDetail(
+      'Error POSTing to endpoint: {"message":"key sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789 is revoked"}',
+    );
+    expect(vendorKey).not.toContain("sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789");
   });
 
-  test("active → active handshake does NOT emit a re_enabled row (no spurious recovery audit)", async () => {
-    const row = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantA,
-        name: "Steady MCP",
-        namespace: "steadyns",
-        transport: "http",
-        url: "https://steady.example.com",
-      },
-      auditCtx(),
+  test("the shapes that carry no secret survive verbatim", () => {
+    // `probeErrorFor` maps a handshake failure onto a probe error code by
+    // reading this text. Mangling it would silently downgrade every
+    // credential failure to `unknown_upstream_error`.
+    expect(redactUpstreamDetail("authorization required")).toBe("authorization required");
+    expect(redactUpstreamDetail("Error POSTing to endpoint (HTTP 401): unauthorized")).toContain(
+      "401",
     );
-    // Row is created `active`; a handshake from active must not re-enable.
-    await recordMcpServerHandshakeState(ctx.db, tenantA, row.id, "sha256:steady", auditCtx());
+    // A bare host:port is not a URL and has nothing to strip.
+    expect(redactUpstreamDetail("connect ECONNREFUSED 93.184.216.34:443")).toBe(
+      "connect ECONNREFUSED 93.184.216.34:443",
+    );
+  });
 
-    const actions = await auditActionsFor(tenantA, row.id);
-    expect(actions).not.toContain("mcp_server.re_enabled");
+  test("a verbose remote body cannot bloat the response it rides in", () => {
+    expect(redactUpstreamDetail("x".repeat(500)).length).toBeLessThanOrEqual(301);
   });
 });

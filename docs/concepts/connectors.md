@@ -8,7 +8,7 @@ A Connector combines three independently-evolving layers: a **Driver** (protocol
 
 ```mermaid
 flowchart LR
-    Driver["Driver<br/>http · graphql · postgres · s3"]
+    Driver["Driver<br/>http · graphql · postgres · s3 · mcp"]
     Template["Connector Template<br/>auth + docs + skill"]
     Cred["Credential<br/>AEAD-encrypted in vault"]
     Conn["Connector<br/>tenant-scoped · versioned"]
@@ -34,9 +34,9 @@ This separation has practical consequences. Multiple Connectors can share the sa
 
 ---
 
-## The Four Drivers
+## The Five Drivers
 
-Drivers are the protocol layer. Every Connector in sk uses one of four built-in drivers: `http`, `graphql`, `postgres`, and `s3`. These are the protocols the execution engine dispatches end-to-end at runtime.
+Drivers are the protocol layer. Every Connector in sk uses one of five built-in drivers: `http`, `graphql`, `postgres`, `s3`, and `mcp`. These are the protocols the execution engine dispatches end-to-end at runtime.
 
 The **HTTP driver** handles REST APIs. It manages request construction, response parsing, pagination patterns, and error normalization. When a Step calls an HTTP Connector, the driver handles the protocol details so the workflow step only needs to describe what to call and what to do with the result.
 
@@ -46,7 +46,11 @@ The **PostgreSQL driver** handles direct database connections. It manages query 
 
 The **S3 driver** handles object storage. It manages bucket operations, presigned URL generation, and streaming transfers. This covers not just AWS S3 but any S3-compatible object store.
 
-Every Connector in sk uses one of these four drivers. Custom drivers are not part of it.
+The **MCP driver** handles a remote Model Context Protocol server over streamable HTTP. It negotiates the session, keeps the remote's tool manifest, and exposes each remote tool under the connector's own name. Unlike the four above it holds a live session between calls rather than opening one per request — an MCP handshake is expensive enough that paying for it per step would cost more than the call itself.
+
+An external MCP server is therefore a connector like any other: it is created, listed, patched, enabled, disabled and deleted through the same connector surface, appears in the same catalog and the same tenant snapshot, and carries its credential in the same vault. Two operations are driver-specific because no other driver has them — `POST /v1/connectors/{id}/mcp/inspect` forces one handshake and reports what the remote actually serves, and `POST /v1/connectors/{id}/mcp/authorize` begins the interactive OAuth 2.1 round-trip for a server that publishes its authorization server through protected-resource metadata rather than declaring one in config.
+
+Every Connector in sk uses one of these five drivers. The set is closed — you cannot register a sixth protocol at runtime — but the MCP driver is the extension point that closure used to foreclose. Anything that speaks MCP is reachable by pointing a connector at it: no driver to write, no engine build, no deploy. Where the other four drivers each cover one wire protocol, the MCP driver covers a whole ecosystem of servers, and a vendor shipping an MCP server is a connector you create in a minute rather than an integration you wait for.
 
 The driver is also how the connector catalog is grouped: listings present connectors in blocks by driver, and `category` on each entry (plus a `category` filter) mirrors the workflow catalog so both inventories read the same way on every surface. Unlike workflows — whose blocks are derived from naming — a connector needs nothing derived: it already carries the axis that groups it usefully.
 
@@ -272,7 +276,9 @@ Once a connector is persisted, the agent can invoke any endpoint against it for 
 
 `call_connector` is RBAC-checked (`connector:read`), audited (`connector.invoked`), and always confirm-before-execution per the conversational tool policies. Response bodies above ~8 KB are truncated in the tool result with `truncated: true` and `body_byte_count` so the prompt budget stays bounded; the full response is available via the egress telemetry.
 
-Driver coverage: HTTP and GraphQL. For Postgres and S3 connectors, `call_connector` returns a structured `driver_not_supported_for_call_connector` envelope and points at `author_workflow` as the path to author a single-step workflow that invokes the driver.
+Driver coverage differs between the two surfaces. The conversational `call_connector` tool covers HTTP, GraphQL, Postgres, and S3; the REST route below covers HTTP and GraphQL. An unsupported driver returns a structured `driver_not_supported_for_call_connector` envelope and points at `author_workflow` as the path to author a single-step workflow that invokes the driver.
+
+**MCP connectors are not reachable through `call_connector` on either surface.** A remote MCP tool needs a tool name and typed arguments rather than a method and a path, so it is invoked one of two ways: as a `request` step carrying an `mcp` block (see [Workflows → step kinds](./workflows.md#step-kinds)), or from chat, where every tool the connected server publishes already appears in the palette as `mcp_<connector-slug>__<tool>`. To ask what a server serves without calling anything, use `POST /v1/connectors/{id}/mcp/inspect` (`sk connectors mcp-inspect`).
 
 The same surface is reachable as `POST /v1/connectors/{id}/call` for CI scripts and SDK callers. The route applies the saved credential, emits a `connector.invoked` audit row, and returns `{ status, headers, body, latency_ms, body_byte_count, truncated, health, metadata }`.
 
@@ -382,7 +388,7 @@ Per-vendor backoff escalates exponentially on 429/5xx (cap 30s, 4 attempts). Out
 The Layer-1 test emits a `console.warn` (it does **not** fail the suite) when a template's `verified_at` is `null` or older than 90 days. Sample output:
 
 ```
-[connector-templates] vendor-drift sweep stale on 44/56 templates.
+[connector-templates] vendor-drift sweep stale on 44/57 templates.
 Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1 bun scripts/template-vendor-sweep.ts) to refresh verified_at.
   - airtable (verified_at=null, never swept)
   - hubspot (verified_at=null, never swept)

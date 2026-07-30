@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import {
+  connectorTemplateSuffix,
   humanBytes,
   isConnectorSummary,
   isKnowledgeSourceSummary,
@@ -104,7 +105,7 @@ const ConnectorSummaryCard: React.FC<{ summary: ConnectorSummary }> = ({ summary
         </Text>
         <Text
           bold
-        >{`Created connector "${summary.slug}" · id=${summary.id} · template=${summary.template_slug}`}</Text>
+        >{`Created connector "${summary.slug}" · id=${summary.id}${connectorTemplateSuffix(summary)}`}</Text>
       </Box>
       {probeLine ? (
         <Box marginLeft={2}>

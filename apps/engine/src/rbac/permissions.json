@@ -283,11 +283,6 @@
     "resource_type": "mcp"
   },
   {
-    "name": "mcp_server:manage",
-    "description": "Register, configure, enable, disable, and remove external MCP servers",
-    "resource_type": "mcp_server"
-  },
-  {
     "name": "mcp_external_tool:invoke",
     "description": "Invoke a tool exposed by a registered external MCP server",
     "resource_type": "mcp_external_tool"

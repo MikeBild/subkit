@@ -2,10 +2,10 @@
 // pending envelope surfaces the tool identity + input FIELD NAMES only.
 // External tool args are bound for a third-party server and may carry
 // sensitive data, so the pending output must NEVER echo input values —
-// the operator sees `pending_output: { namespace, remote_tool, input_keys }`
+// the operator sees `pending_output: { connector_slug, remote_tool, input_keys }`
 // (mirroring run_workflow's buildPendingOutput) instead of a raw JSON blob.
 //
-// INJECTION PATTERN: a REAL mcp_servers row is registered and the pool's
+// INJECTION PATTERN: a REAL mcp connector row is registered and the pool's
 // documented TEST SEAM (`__setMcpPoolFactoriesForTests`) swaps only the SDK
 // Client construction for an in-process fake — NO bun `mock.module` (module
 // mocks are process-global and leak into every other test file in the same
@@ -25,7 +25,7 @@ import {
   __setMcpPoolFactoriesForTests,
   type McpClientLike,
 } from "../../../mcp/client/pool.ts";
-import { createMcpServer } from "../../../mcp/client/registry.ts";
+import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
@@ -51,6 +51,12 @@ const fakeClient: McpClientLike = {
   async callTool() {
     remoteCallToolCalls += 1;
     return { content: [], isError: false };
+  },
+  async readResource() {
+    return { contents: [] };
+  },
+  async getPrompt() {
+    return { messages: [] };
   },
   async close() {},
 };
@@ -100,17 +106,12 @@ beforeAll(async () => {
   conversation_id = conv!.id;
 
   // Real server row — `none` auth so the (fake) handshake needs no credential.
-  await createMcpServer(
-    ctx.db,
-    {
-      tenant_id,
-      name: "Example MCP",
-      namespace: "examplemcp",
-      transport: "http",
-      url: "https://examplemcp.pendingtest.example.com/mcp",
-    },
-    { actor_id, request_source: "api", executor: ctx.db },
-  );
+  await seedMcpConnector(ctx.db, {
+    tenant_id,
+    slug: "examplemcp",
+    transport: "http",
+    url: "https://examplemcp.pendingtest.example.com/mcp",
+  });
 }, 30_000);
 
 afterAll(async () => {
@@ -183,7 +184,7 @@ describe("external MCP tool confirm envelope", () => {
     // is sorted, so the envelope is deterministic regardless of the order
     // the LLM emitted the argument keys in.
     expect(data.pending_output).toEqual({
-      namespace: "examplemcp",
+      connector_slug: "examplemcp",
       remote_tool: "create_page",
       input_keys: ["body", "title"],
     });

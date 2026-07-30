@@ -211,6 +211,52 @@ There is no argument on any tool, and no `_meta` flag a model-driven client can 
 
 **Resource update notifications.** When a client subscribes to a resource URI (`workflow://<id>`, `connector://<id>`, `knowledge://<id>`, `skill-candidate://<id>`), the engine emits `notifications/resources/updated` on every committed state change in that resource. The notification follows the MCP spec exactly: it carries only the URI — no event-type discriminator, no payload diff, no actor. Clients that need to distinguish a delete from a rename must re-fetch via `readResource`, or for workflows specifically observe the lifecycle audit row directly through `/v1/audit-log`. Delivery is at-most-once — a transient `sendResourceUpdated` failure is logged and dropped — so clients on critical paths should also poll. Subscriptions are subject to the same RBAC check as `readResource`: a portal token or custom role lacking `workflow:read` on the underlying resource receives no notifications, even if it knew the URI to subscribe.
 
+### The other direction: sk as an MCP client
+
+Everything above describes sk as an MCP **server**. sk is also an MCP **client**,
+and that half is not a separate subsystem — a remote MCP server is a Connector
+whose driver is `mcp`.
+
+**No separate registry.** There is no MCP-server table, no MCP-server routes, and
+no MCP-server CLI namespace. You create, list, patch, enable, disable, and delete
+a remote server through `/v1/connectors` and `sk connectors`, exactly like an HTTP
+or Postgres integration. Its secret lives in the same credential vault, and it
+appears in the same catalog, grouped under the `mcp` driver.
+
+```bash
+sk connectors create --file server.json     # driver "mcp", base_url = the endpoint
+sk credentials set <CONNECTOR_ID> --mode bearer --token '<TOKEN>'
+sk connectors mcp-inspect <CONNECTOR_ID>    # one handshake: what does it actually serve?
+sk connectors disable <CONNECTOR_ID>        # operator off switch, any driver
+```
+
+**Two driver-specific operations**, because no other driver has an equivalent:
+`POST /v1/connectors/{id}/mcp/inspect` forces a single handshake and reports the
+remote's negotiated capabilities, instructions, and tool manifest; and
+`POST /v1/connectors/{id}/mcp/authorize` starts the interactive OAuth 2.1
+round-trip for a server that publishes its authorization server through
+protected-resource metadata instead of declaring one in config. The generic
+connector OAuth flow cannot serve that case — it reads a declared issuer out of
+config, and an MCP server does not have one.
+
+**What the remote surface becomes.** Every tool the connected server publishes
+joins the conversation palette as `mcp_<connector-slug>__<tool>`; resources and
+prompts get four engine-minted read adapters where the server declares those
+capabilities. Each entry passes the same RBAC check, the same confirm gate, and
+the same audit trail as an in-repo tool — see
+[Tool palette → Remote MCP entries](./tool-palette.md#remote-mcp-entries-sk-as-an-mcp-client).
+From a workflow, the same server is reached as a `request` step carrying an `mcp`
+block.
+
+**A remote's claims about itself do not move a gate.** `readOnlyHint` and
+`destructiveHint` reach the model's description and the audit row and nothing
+else: a `tools/call` is a write regardless. Only a tenant-side author can
+reclassify one.
+
+**Session, not request.** Unlike every other driver, the MCP client pool keeps a
+live handshaken session per server with its own backoff and manifest cache. A
+disable evicts it immediately rather than letting it serve past the switch.
+
 ### MCP OAuth 2.1 (ChatGPT / Claude.ai / Cursor)
 
 The sk engine is a full OAuth 2.1 authorization server and resource server for `/mcp`. This lets OAuth-only clients — including the ChatGPT custom connector, Claude.ai, and Cursor — authenticate without a static API key.
@@ -314,15 +360,24 @@ sequenceDiagram
 
 | Scope | MCP mode | What the token unlocks |
 |---|---|---|
-| `mcp:read` | product | Callable workflow entries and the `authenticate` tool only. |
-| `mcp:authoring` | authoring | Adds `conversation.*` authoring tools and tenant **reads** — plus `run_workflow`, and **no other tenant write**. |
+| none, a narrowed set, `mcp:read`, or a plain `*` | product | **Read and execute.** Every tenant read (`list_*`, `get_*`, `find_*`, `inspect_*`, `search_*`), plus `run_workflow`, `get_execution`, the `wf_<slug>` palette, `call_connector` and `probe_connector`. |
+| `mcp:authoring` | authoring | Adds the tools that **build** definitions: the `conversation_*` cluster and the authoring helpers (`discover_connector_endpoints`, `dry_run_transform`, `suggest_*`, …). Still **no tenant writes** beyond `run_workflow`. |
 | `mcp:admin` | admin | Adds the tenant writes authoring withholds (subject to RBAC, and to the read-only config switch). |
 
 The scope granted at consent is the intersection of what the client requested, what the server supports and what the consenting user's current role permits. An unrequested scope is never displayed or granted, including when a form is tampered with. A role/session downgrade is rechecked at decision time.
 
-**Authoring mode is not a write surface for definitions.** The name is about *driving an authoring conversation*, not about editing definitions directly. `modeFlags` pins `showTenantWrites: false` for authoring unconditionally, so `restore_workflow_version`, `update_workflow`, and the rest never reach `tools/list` — a client that asks for one gets "no tool named that is available on this surface". `run_workflow` is the single deliberate exception (it runs a workflow rather than mutating config). On top of that, the step-level draft editors (`edit_workflow_patch`, `save_workflow_draft`, `dry_run_workflow`, `validate_draft`) are omitted in **every** mode, admin included, and refused on a direct call — see [Tool palette → `save_workflow_draft` and `dry_run_workflow` are MCP-hidden](./tool-palette.md#save_workflow_draft-and-dry_run_workflow-are-mcp-hidden). A definition edit over MCP therefore always passes through the engine's own authoring loop.
+**Authoring is opt-in per credential, and breadth is not an opt-in.** A wildcard `*` asserts "no narrowing of role-derived access" — it does not assert consent to author. A credential authors over MCP when someone wrote `mcp:authoring` on it, and not otherwise. This is enforced on the call, not just in the catalogue: a `conversation_*` call from a credential without the scope is refused, with a message naming the `sk` CLI and the scope that would enable it.
 
-**A broad credential does not widen this.** A wildcard-scoped principal resolves to `authoring`, never `admin`, and authoring withholds tenant writes no matter how broad the credential is. To write definitions directly, use the `sk` CLI or the REST API — see [Choosing your surface](../authors/choosing-your-surface.md).
+Issue one key per channel and label it, so the right one can be revoked later:
+
+```bash
+sk apikeys create --name claude-code       --scopes "*,mcp:authoring"   # a coding agent
+sk apikeys create --name claude-ai-readonly --scopes "*"                # a browser client
+```
+
+**Authoring mode is still not a write surface for definitions.** The name is about *driving an authoring conversation*, not about editing definitions directly. `modeFlags` pins `showTenantWrites: false` for authoring unconditionally, so `restore_workflow_version`, `update_workflow`, and the rest never reach `tools/list` — a client that asks for one gets "no tool named that is available on this surface". `run_workflow` is the single deliberate exception (it runs a workflow rather than mutating config). On top of that, the step-level draft editors (`edit_workflow_patch`, `save_workflow_draft`, `dry_run_workflow`, `validate_draft`) are omitted in **every** mode, admin included, and refused on a direct call — see [Tool palette → `save_workflow_draft` and `dry_run_workflow` are MCP-hidden](./tool-palette.md#save_workflow_draft-and-dry_run_workflow-are-mcp-hidden).
+
+To write definitions, use the `sk` CLI — `sk workflows create --file`, `sk connectors create --file`, `sk connectors import --spec` — or the REST API it runs on. See [Choosing your surface](../authors/choosing-your-surface.md).
 
 **Connecting ChatGPT custom connector.**
 

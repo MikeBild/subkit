@@ -529,26 +529,36 @@ function collectAddressingPlaceholderErrors(
   addSurface("url", step.url);
   addSurface("s3.key", step.s3?.key);
   addSurface("s3.prefix", step.s3?.prefix);
+  const walkVariables = (value: unknown, at: string): void => {
+    if (typeof value === "string") {
+      addSurface(at, value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((v, i) => {
+        walkVariables(v, `${at}.${i}`);
+      });
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        walkVariables(v, `${at}.${k}`);
+      }
+    }
+  };
   if (step.graphql && typeof step.graphql === "object") {
     addSurface("graphql.query", step.graphql.query);
-    const walkVariables = (value: unknown, at: string): void => {
-      if (typeof value === "string") {
-        addSurface(at, value);
-        return;
-      }
-      if (Array.isArray(value)) {
-        value.forEach((v, i) => {
-          walkVariables(v, `${at}.${i}`);
-        });
-        return;
-      }
-      if (value && typeof value === "object") {
-        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-          walkVariables(v, `${at}.${k}`);
-        }
-      }
-    };
     if (step.graphql.variables) walkVariables(step.graphql.variables, "graphql.variables");
+  }
+  if (step.mcp) {
+    // The MCP target is an addressing surface exactly like `path` and
+    // `s3.key`: a malformed placeholder in it fails the step at runtime
+    // with `placeholder_unresolved`, so the author should hear about it
+    // at authoring time instead.
+    addSurface("mcp.tool", step.mcp.tool);
+    addSurface("mcp.uri", step.mcp.uri);
+    addSurface("mcp.prompt", step.mcp.prompt);
+    if (step.mcp.arguments) walkVariables(step.mcp.arguments, "mcp.arguments");
   }
   for (const { field, text } of surfaces) {
     const parsed = parsePlaceholders(text);

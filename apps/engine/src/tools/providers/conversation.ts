@@ -378,6 +378,7 @@ function descriptorFor(t: ConversationTool, surface: ToolSurface): ToolDescripto
     ...(disabled ? { disabled } : {}),
     ...(t.requires_skill ? { requires_skill: t.requires_skill } : {}),
     ...(t.requires_draft ? { requires_draft: true } : {}),
+    ...(t.authoring_only ? { authoring_only: true } : {}),
     ...(rbac ? { rbac } : {}),
   };
 }
@@ -401,11 +402,17 @@ function isVisibleForFilter(t: ConversationTool, filter: ToolListFilter): boolea
   // `resolve()` keeps returning its disabled descriptor (the call-time
   // not_available_on_surface backstop); the catalog drop happens in
   // `list()` above, not here.
-  // Apply mode visibility for non-draft_write tools.
-  if (t.category !== "draft_write") {
-    if (filter.mcpMode === "product" && !PRODUCT_MODE_ALLOW_LIST.has(t.name)) {
-      return false;
-    }
+  //
+  // `product` is the read-and-execute tier: read the tenant, run what is
+  // already there. It withholds the tools that BUILD definitions — declared
+  // per tool via `authoring_only`, because category cannot tell
+  // `discover_connector_endpoints` from `list_workflows` when both are
+  // `tenant_read`. `PRODUCT_MODE_ALLOW_LIST` remains for the handful of tools
+  // that are neither plain reads nor authoring steps and still belong here.
+  if (t.category !== "draft_write" && filter.mcpMode === "product") {
+    if (t.authoring_only) return false;
+    const readable = t.category === "tenant_read" || t.visible_when_readonly === true;
+    if (!readable && !PRODUCT_MODE_ALLOW_LIST.has(t.name)) return false;
   }
 
   // readOnly hides every tenant_write regardless of mode — except tools

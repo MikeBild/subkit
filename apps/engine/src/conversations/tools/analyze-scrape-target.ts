@@ -82,6 +82,9 @@ export const analyzeScrapeTargetTool: ConversationTool = {
     "Probe a target URL before authoring a web-scraper workflow. Returns a Green / Yellow / Red verdict based on sitemap size and robots.txt, with per-tenant thresholds. Red verdicts refuse to author the recipe; Yellow pauses for operator confirmation; Green is the green-light.",
   inputSchema,
   category: "tenant_read" as const,
+  // Builds a definition rather than using one: withheld from the
+  // read-and-execute tier even though it only reads.
+  authoring_only: true,
   use_case:
     "Run before `start_workflow_from_recipe` on the `crawl-sitemap-to-markdown` recipe so the authoring loop does not draft against a 100K-page sitemap or a robots-disallowed origin.",
   important_notes: [

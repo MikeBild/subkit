@@ -2758,623 +2758,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/mcp-servers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List registered external MCP servers (auth_config redacted) */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["McpServerListResponse"];
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        /** Register an external MCP server */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CreateMcpServerBody"];
-                };
-            };
-            responses: {
-                /** @description Created */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["McpServer"];
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Invalid */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/mcp-servers/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a registered external MCP server (auth_config redacted) */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["McpServer"];
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /** Delete an external MCP server and evict its live clients */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Deleted */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /** Update a registered external MCP server */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["PatchMcpServerBody"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["McpServer"];
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Invalid */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/v1/mcp-servers/{id}/enable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Re-enable a disabled external MCP server */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["McpServer"];
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/mcp-servers/{id}/disable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Disable an external MCP server and evict its live clients */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["McpServer"];
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/mcp-servers/{id}/inspect": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Force a handshake and return the server's live tool manifest */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["InspectMcpServerResponse"];
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/mcp-servers/{id}/authorize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Begin an interactive OAuth 2.1 authorization for an external MCP server */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["McpServerAuthorizeResponse"];
-                    };
-                };
-                /** @description Bad request */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Unauthorized */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Forbidden */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Not found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Invalid */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-                /** @description Authorization-server discovery failed */
-                502: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/mcp-servers/oauth/callback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Complete an interactive OAuth 2.1 authorization for an external MCP server */
-        get: {
-            parameters: {
-                query: {
-                    code?: string;
-                    state: string;
-                    iss?: string;
-                    error?: string;
-                    error_description?: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK (HTML) */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/html": string;
-                    };
-                };
-                /** @description Bad request (HTML) */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/html": string;
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/identity/whoami": {
         parameters: {
             query?: never;
@@ -5087,6 +4470,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/connectors/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate a connector definition without saving it
+         * @description Checks the definition against its driver's config schema. Persists nothing. Use before `POST /v1/connectors`; `sk connectors validate --file` calls this.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateConnectorBody"];
+                };
+            };
+            responses: {
+                /** @description Validation verdict — check `ok`; a well-formed request with an invalid definition is still a 200 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidateConnectorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connectors/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe a connector definition without saving it
+         * @description Runs the driver's health probe against a definition that does not exist yet. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. Driver `mcp` is not probeable before it is saved: probe it afterwards with `POST /v1/connectors/{id}/mcp/inspect`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ProbeConnectorBody"];
+                };
+            };
+            responses: {
+                /** @description Probe outcome — check `ok`; an unreachable upstream is still a 200 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProbeConnectorResponse"];
+                    };
+                };
+                /** @description The request cannot be served — a malformed credential, or a driver with no draft probe (`mcp`). Distinct from a 200 `ok:false`, which means the upstream was reached and answered badly. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connectors/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn an API specification into a connector draft
+         * @description Parses an OpenAPI/Google Discovery document, a request collection, a HAR, GraphQL SDL or introspection endpoint, or a curl command into a connector definition. Persists nothing — review the returned draft, then save it with `POST /v1/connectors`. `sk connectors import --spec` calls this.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ImportConnectorFromSpecToolInput"];
+                };
+            };
+            responses: {
+                /** @description The parsed draft, or a pointer to an equivalent connector that already exists */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ImportConnectorResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connectors": {
         parameters: {
             query?: never;
@@ -5271,6 +4801,100 @@ export interface paths {
         };
         trace?: never;
     };
+    "/v1/connectors/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable a connector */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Connector"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connectors/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable a connector */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Connector"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/connectors/{id}/test": {
         parameters: {
             query?: never;
@@ -5409,7 +5033,7 @@ export interface paths {
         put?: never;
         /**
          * Invoke an HTTP/GraphQL endpoint against a persisted connector
-         * @description Programmatic surface for ad-hoc connector invocation. Mirrors the call_connector conversation tool: applies the saved credential, audits as connector.invoked, and returns {status, headers, body, latency_ms} with truncation flags for response bodies > 8KB. Driver coverage at this surface is HTTP and GraphQL only — Postgres / SFTP / S3 connectors return a 422 envelope pointing at workflow-step authoring.
+         * @description Programmatic surface for ad-hoc connector invocation. Mirrors the call_connector conversation tool: applies the saved credential, audits as connector.invoked, and returns {status, headers, body, latency_ms} with truncation flags for response bodies > 8KB. Driver coverage at this surface is HTTP and GraphQL only — a `postgres` or `s3` connector returns a 422 envelope pointing at workflow-step authoring, and an `mcp` connector one naming the request step's `mcp` sub-block, because an MCP call names a tool and its arguments rather than a method and a path.
          */
         post: {
             parameters: {
@@ -5915,6 +5539,232 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connectors/{id}/mcp/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Force one handshake against an mcp connector and report what it serves */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorMcpInspectResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Handshake failed */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connectors/{id}/mcp/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Begin an interactive OAuth 2.1 authorization for an mcp connector */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConnectorMcpAuthorizeResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Invalid */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Authorization-server discovery failed */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/connectors/mcp/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Complete an interactive OAuth 2.1 authorization for an mcp connector */
+        get: {
+            parameters: {
+                query: {
+                    code?: string;
+                    state: string;
+                    iss?: string;
+                    error?: string;
+                    error_description?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK (HTML) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Bad request (HTML) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -14037,6 +13887,8 @@ export interface components {
             /** Format: uuid */
             tenant_id: string;
             prefix: string;
+            /** @description Operator-facing label, or null for keys issued before labels were kept. */
+            name: string | null;
             scopes: string[];
             /** Format: uuid */
             user_id: string | null;
@@ -14061,6 +13913,7 @@ export interface components {
             owner_kind: "user" | "system_account";
             /** Format: uuid */
             owner_id: string;
+            /** @description Operator-facing label, e.g. "claude-code". Useful when running one key per channel — a read-and-execute key for a browser client, an mcp:authoring key for a coding agent. */
             name?: string;
             scopes?: string[];
             allowed_workflows?: string[];
@@ -14133,92 +13986,6 @@ export interface components {
             registration_source: "dcr" | "manual";
             disabled_at: string | null;
             created_at: string;
-        };
-        McpServerListResponse: {
-            items: components["schemas"]["McpServer"][];
-        };
-        McpServer: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            namespace: string;
-            /** @enum {string} */
-            transport: "http" | "sse" | "stdio";
-            url: string;
-            auth_config: components["schemas"]["McpServerRedactedAuthConfig"];
-            /** @enum {string} */
-            status: "active" | "disabled" | "error";
-            last_handshake_at: string | null;
-            last_error: string | null;
-            tools_manifest_hash: string | null;
-            created_at: string;
-            updated_at: string;
-        };
-        McpServerRedactedAuthConfig: {
-            /** @enum {string} */
-            kind: "none" | "bearer" | "basic" | "oauth2" | "oauth2_client_credentials" | "oauth2_private_key_jwt";
-            has_credential: boolean;
-        };
-        CreateMcpServerBody: {
-            name: string;
-            namespace: string;
-            /** @enum {string} */
-            transport: "http" | "sse";
-            /** Format: uri */
-            url: string;
-            auth_config?: components["schemas"]["McpServerAuthConfigInput"];
-            token?: string;
-            username?: string;
-            refresh_token?: string;
-            client_secret?: string;
-            private_key?: string;
-        };
-        McpServerAuthConfigInput: {
-            /** @enum {string} */
-            kind: "none" | "bearer" | "basic" | "oauth2" | "oauth2_client_credentials" | "oauth2_private_key_jwt";
-            /** Format: uri */
-            issuer?: string;
-            client_id?: string;
-            scope?: string;
-            algorithm?: string;
-        } | null;
-        PatchMcpServerBody: {
-            name?: string;
-            namespace?: string;
-            /** @enum {string} */
-            transport?: "http" | "sse";
-            /** Format: uri */
-            url?: string;
-            auth_config?: components["schemas"]["McpServerAuthConfigInput"];
-            token?: string;
-            username?: string;
-            refresh_token?: string;
-            client_secret?: string;
-            private_key?: string;
-        };
-        InspectMcpServerResponse: {
-            tools: components["schemas"]["McpRemoteToolDescriptor"][];
-            manifest_hash: string | null;
-            last_handshake_at: string | null;
-            /** @enum {string} */
-            status: "active" | "disabled" | "error";
-            last_error: string | null;
-        };
-        McpRemoteToolDescriptor: {
-            name: string;
-            description: string;
-            inputSchema: {
-                [key: string]: unknown;
-            };
-        };
-        McpServerAuthorizeResponse: {
-            /**
-             * Format: uri
-             * @description URL the operator's browser must open to grant access.
-             */
-            authorization_url: string;
-            /** @description Opaque single-use correlation token for this flow. */
-            state: string;
         };
         Whoami: {
             id: string;
@@ -14525,7 +14292,7 @@ export interface components {
             error?: unknown;
             request_meta?: components["schemas"]["RequestMeta"];
         };
-        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | null;
+        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["McpRequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | null;
         HttpRequestMeta: {
             /** @enum {string} */
             driver: "http";
@@ -14555,7 +14322,7 @@ export interface components {
             /** @enum {string} */
             resolved_environment: "dev" | "prod";
             /** @enum {string} */
-            auth_method: "none" | "bearer" | "header" | "query" | "basic" | "oauth2_static" | "oauth2_refreshed" | "aws_sigv4" | "token_mint_static" | "token_mint_refreshed";
+            auth_method: "none" | "bearer" | "header" | "query" | "basic" | "oauth2_static" | "oauth2_refreshed" | "aws_sigv4" | "token_mint_static" | "token_mint_refreshed" | "oauth2_client" | "oauth2_private_key";
             base_url?: string | null;
         };
         RequestDigest: {
@@ -14599,6 +14366,17 @@ export interface components {
             status: number;
             key?: string;
             prefix?: string;
+            connector: components["schemas"]["ConnectorResolutionSummary"];
+            extras?: {
+                [key: string]: unknown;
+            };
+        };
+        McpRequestMeta: {
+            /** @enum {string} */
+            driver: "mcp";
+            operation: string;
+            bytes_in: number;
+            tool_name?: string;
             connector: components["schemas"]["ConnectorResolutionSummary"];
             extras?: {
                 [key: string]: unknown;
@@ -14883,7 +14661,7 @@ export interface components {
                 slug: string;
                 name: string;
                 /** @enum {string} */
-                driver: "http" | "postgres" | "s3" | "graphql";
+                driver: "http" | "postgres" | "s3" | "graphql" | "mcp";
                 base_url: string | null;
                 /** @enum {string} */
                 auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
@@ -15084,7 +14862,7 @@ export interface components {
             slug: string;
             name: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql";
+            driver: "http" | "postgres" | "s3" | "graphql" | "mcp";
             base_url: string | null;
             /** @enum {string} */
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
@@ -15139,7 +14917,7 @@ export interface components {
             slug: string;
             name: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql";
+            driver: "http" | "postgres" | "s3" | "graphql" | "mcp";
             base_url: string | null;
             /** @enum {string} */
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
@@ -15243,6 +15021,101 @@ export interface components {
             base_url_environment?: string;
             ingest_now?: boolean;
         };
+        ValidateConnectorResponse: {
+            ok: boolean;
+            issues: components["schemas"]["ConnectorIssue"][];
+        };
+        ConnectorIssue: {
+            /** @description Dotted path to the offending field */
+            path: string;
+            message: string;
+        };
+        CreateConnectorBody: {
+            name: string;
+            slug?: string;
+            /** @enum {string} */
+            driver: "http" | "postgres" | "s3" | "graphql" | "mcp";
+            /**
+             * @default dev
+             * @enum {string}
+             */
+            environment: "dev" | "prod";
+            /** Format: uri */
+            base_url?: string;
+            dsn?: string;
+            /**
+             * @description How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400.
+             * @default none
+             * @enum {string}
+             */
+            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "oauth2_client" | "oauth2_private_key" | "aws_sigv4";
+            config?: {
+                [key: string]: unknown;
+            };
+            operator_quirks?: components["schemas"]["OperatorQuirks"];
+            template_slug?: string;
+            /** @enum {string} */
+            template_source?: "builtin" | "tenant";
+            template_base_url_environment?: string;
+        };
+        ProbeConnectorResponse: {
+            ok: boolean;
+            latency_ms: number;
+            status?: number;
+            detail?: string;
+            error_code?: string;
+            body_snippet?: string;
+            provider_action_url?: string;
+        };
+        ProbeConnectorBody: {
+            connector: components["schemas"]["CreateConnectorBody"] & unknown;
+            credential?: components["schemas"]["CredentialBody"];
+        };
+        /** @description Credential to sign the probe with. Used for this request only and never stored. Required when the definition sets an auth_type other than 'none'. */
+        CredentialBody: {
+            /** @enum {string} */
+            mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4";
+            headers?: {
+                [key: string]: string;
+            };
+            query?: {
+                [key: string]: string;
+            };
+            token?: string;
+            username?: string;
+            password?: string;
+            access_key_id?: string;
+            secret_access_key?: string;
+            session_token?: string;
+        };
+        ImportConnectorResponse: {
+            draft?: {
+                [key: string]: unknown;
+            };
+            template_match?: {
+                [key: string]: unknown;
+            } | null;
+            recommended_next?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        ImportConnectorFromSpecToolInput: {
+            /** @enum {string} */
+            source: "postman" | "har" | "openapi" | "google_discovery" | "graphql" | "graphql_introspection" | "curl";
+            content: string;
+            headers?: {
+                [key: string]: string;
+            };
+            name?: string;
+            /**
+             * @default dev
+             * @enum {string}
+             */
+            environment: "dev" | "prod";
+            base_url_environment?: string;
+            /** @description Set true only when the operator explicitly wants a SEPARATE connector on a base_url that already has one. Skips URL reuse and mints an independent draft. */
+            force_new?: boolean;
+        };
         ConnectorListResponse: {
             items: components["schemas"]["ConnectorListItem"][];
             total: number;
@@ -15254,6 +15127,8 @@ export interface components {
         ConnectorListItem: components["schemas"]["Connector"] & {
             category: string;
         };
+        /** @enum {string} */
+        ConnectorHealthState: "ok" | "degraded" | "needs_update" | "needs_reauth";
         CredentialSummary: {
             id: string;
             mode: string;
@@ -15296,6 +15171,11 @@ export interface components {
                     discovered_at: string;
                 }[];
             };
+            enabled: boolean;
+            last_error: string | null;
+            health_state: components["schemas"]["ConnectorHealthState"];
+            health_reason: string | null;
+            health_error_code: string | null;
             needs_reauth: boolean;
             /** Format: date-time */
             auth_failed_at: string | null;
@@ -15304,40 +15184,16 @@ export interface components {
             updated_at: string;
             credentials?: components["schemas"]["CredentialSummary"][];
         };
-        CreateConnectorBody: {
-            name: string;
-            slug?: string;
-            /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql";
-            /**
-             * @default dev
-             * @enum {string}
-             */
-            environment: "dev" | "prod";
-            /** Format: uri */
-            base_url?: string;
-            dsn?: string;
-            /**
-             * @default none
-             * @enum {string}
-             */
-            auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
-            config?: {
-                [key: string]: unknown;
-            };
-            operator_quirks?: components["schemas"]["OperatorQuirks"];
-            template_slug?: string;
-            /** @enum {string} */
-            template_source?: "builtin" | "tenant";
-            template_base_url_environment?: string;
-        };
         UpdateConnectorBody: {
             name?: string;
             /** Format: uri */
             base_url?: string;
             dsn?: string;
-            /** @enum {string} */
-            auth_type?: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "aws_sigv4";
+            /**
+             * @description How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400.
+             * @enum {string}
+             */
+            auth_type?: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "oauth2_client" | "oauth2_private_key" | "aws_sigv4";
             config?: {
                 [key: string]: unknown;
             };
@@ -15362,7 +15218,7 @@ export interface components {
             partial_grant_note?: string;
         };
         /** @enum {string} */
-        ProbeErrorCode: "credential_missing" | "credential_invalid" | "credential_expired" | "scope_insufficient" | "remote_api_disabled" | "remote_resource_not_found" | "unknown_upstream_error";
+        ProbeErrorCode: "credential_missing" | "credential_invalid" | "credential_expired" | "scope_insufficient" | "remote_api_disabled" | "remote_resource_not_found" | "connector_disabled" | "unknown_upstream_error";
         ConnectorPromotionResponse: {
             /** @enum {string} */
             strategy: "copy" | "move";
@@ -15435,22 +15291,6 @@ export interface components {
             authorization_url: string;
             state: string;
         };
-        CredentialBody: {
-            /** @enum {string} */
-            mode: "none" | "header" | "query" | "bearer" | "basic" | "aws_sigv4";
-            headers?: {
-                [key: string]: string;
-            };
-            query?: {
-                [key: string]: string;
-            };
-            token?: string;
-            username?: string;
-            password?: string;
-            access_key_id?: string;
-            secret_access_key?: string;
-            session_token?: string;
-        };
         EndUserCredentialBody: {
             enduser_ref: string;
             /** @enum {string} */
@@ -15458,6 +15298,35 @@ export interface components {
             payload: {
                 [key: string]: unknown;
             };
+        };
+        ConnectorMcpInspectResponse: {
+            connector_id: string;
+            slug: string;
+            tools: {
+                name: string;
+                title?: string;
+                description?: string;
+                /** @enum {string} */
+                claims?: "read" | "write";
+            }[];
+            capabilities: {
+                tools: boolean;
+                resources: boolean;
+                prompts: boolean;
+            } | null;
+            instructions: string | null;
+            server_version: {
+                [key: string]: unknown;
+            } | null;
+        };
+        ConnectorMcpAuthorizeResponse: {
+            /**
+             * Format: uri
+             * @description URL the operator's browser must open to grant access.
+             */
+            authorization_url: string;
+            /** @description Opaque single-use correlation token for this flow. */
+            state: string;
         };
         ConnectorDiscoverResponse: {
             /** @enum {string} */

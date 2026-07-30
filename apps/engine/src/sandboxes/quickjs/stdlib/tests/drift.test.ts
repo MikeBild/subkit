@@ -25,10 +25,12 @@ describe("detectStdlibDrift", () => {
     // (mimeEncodeHeaderValue / buildMimeMessage) as 1.5.0; the vendor
     // payload shaping surface (emailBody / rfc3339Parts /
     // documentToMarkdown — generic names, vendor wire formats detected
-    // by shape behind them) as 1.6.0. A workflow recorded against any
-    // earlier 1.x must NOT spawn a Patch Candidate — the surface is
-    // purely additive.
-    expect(STDLIB_VERSION).toBe("1.6.0");
+    // by shape behind them) as 1.6.0; sk.fmt plus the toLocaleString locale
+    // guard as 1.7.0. A workflow recorded against any earlier 1.x must NOT
+    // spawn a Patch Candidate — the surface is additive, and the guard only
+    // fails code that was already producing wrong output.
+    expect(STDLIB_VERSION).toBe("1.7.0");
+    expect(detectStdlibDrift("1.6.0")).toBeNull();
     expect(detectStdlibDrift("1.5.0")).toBeNull();
     expect(detectStdlibDrift("1.4.0")).toBeNull();
     expect(detectStdlibDrift("1.0.0")).toBeNull();

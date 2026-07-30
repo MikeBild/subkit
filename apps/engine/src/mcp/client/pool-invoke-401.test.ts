@@ -30,7 +30,7 @@ import {
   invokeRemoteTool,
   type McpClientLike,
 } from "./pool.ts";
-import { createMcpServer } from "./registry.ts";
+import { seedMcpConnector } from "./test-fixtures.ts";
 
 const fakeClient: McpClientLike = {
   async connect() {
@@ -51,6 +51,12 @@ const fakeClient: McpClientLike = {
     // The IdP revoked the token mid-session → 401 on the actual call.
     throw new UnauthorizedError("401 Unauthorized");
   },
+  async readResource() {
+    return { contents: [] };
+  },
+  async getPrompt() {
+    return { messages: [] };
+  },
   async close() {},
 };
 
@@ -63,14 +69,6 @@ const _origDatabaseUrl = process.env.DATABASE_URL;
 // `now()`, so a fixed far-future absolute instant keeps it valid without
 // reading the wall clock.
 const TOKEN_VALID_UNTIL = new Date("2999-01-01T00:00:00.000Z");
-
-function auditCtx() {
-  return {
-    actor_id: "00000000-0000-0000-0000-000000000001",
-    request_source: "api" as const,
-    executor: ctx.db,
-  };
-}
 
 beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
@@ -112,25 +110,20 @@ describe("pool: mid-session 401 invalidates the oauth2 token credential", () => 
   test("callTool 401 → tool error + the oauth2 token row is deleted", async () => {
     __resetMcpClientPoolForTests();
 
-    const server = await createMcpServer(
-      ctx.db,
-      {
-        tenant_id: tenantId,
-        name: "AcmeAuth OAuth2 401 Server",
-        namespace: "oauth401server",
-        transport: "http",
-        url: "https://oauth401server.acmeauth.test/mcp",
-        auth_config: { kind: "oauth2", issuer: "https://auth.acmeauth.test" },
-      },
-      auditCtx(),
-    );
+    const server = await seedMcpConnector(ctx.db, {
+      tenant_id: tenantId,
+      slug: "oauth401server",
+      transport: "http",
+      url: "https://oauth401server.acmeauth.test/mcp",
+      auth: { kind: "oauth2", issuer: "https://auth.acmeauth.test" },
+    });
 
     // Seed an oauth2 token credential so connect() can replay it (the IdP
     // then 401s on the actual tool call).
     await upsertCredential(
       {
         tenant_id: tenantId,
-        mcp_server_id: server.id,
+        connector_id: server.id,
         environment: "prod",
         mode: "oauth2",
         value: { mode: "oauth2", access_token: "stale-access-token", token_type: "Bearer" },
@@ -148,7 +141,7 @@ describe("pool: mid-session 401 invalidates the oauth2 token credential", () => 
       .where(
         and(
           eq(credentials.tenant_id, tenantId),
-          eq(credentials.mcp_server_id, server.id),
+          eq(credentials.connector_id, server.id),
           eq(credentials.mode, "oauth2"),
         ),
       );
@@ -159,10 +152,9 @@ describe("pool: mid-session 401 invalidates the oauth2 token credential", () => 
       db: ctx.db,
       tenant_id: tenantId,
       actor_id: INVOKING_ACTOR,
-      mcp_server_id: server.id,
-      namespace: "oauth401server",
-      remote_tool: "acme_tool",
-      input: {},
+      connector_id: server.id,
+      connector_slug: "oauth401server",
+      call: { operation: "call_tool", tool: "acme_tool", arguments: {} },
       environment: "prod",
     });
 
@@ -193,7 +185,7 @@ describe("pool: mid-session 401 invalidates the oauth2 token credential", () => 
       .where(
         and(
           eq(credentials.tenant_id, tenantId),
-          eq(credentials.mcp_server_id, server.id),
+          eq(credentials.connector_id, server.id),
           eq(credentials.mode, "oauth2"),
         ),
       );

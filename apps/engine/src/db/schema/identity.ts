@@ -236,6 +236,13 @@ export const apiKeys = pgTable(
     system_account_id: uuid("system_account_id"),
     prefix: text("prefix").notNull(),
     token_sha256: text("token_sha256").notNull(),
+    // Operator-facing label. The issue route always accepted a `name` and
+    // dropped it, so every key was identified only by a UUID and a prefix.
+    // That was survivable while one key did everything; it is not now that
+    // scopes decide what a key may do — an operator running one key per
+    // channel (a read key in a browser client, an authoring key in a coding
+    // agent) needs to tell them apart to revoke the right one.
+    name: text("name"),
     scopes: jsonb("scopes").$type<string[]>().notNull(),
     allowed_workflows: jsonb("allowed_workflows").$type<string[]>(),
     allowed_connectors: jsonb("allowed_connectors").$type<string[]>(),

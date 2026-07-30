@@ -56,4 +56,14 @@ export * from "./tool-policies.ts";
 // Re-exported so http/routes/conversations/* reach it through the subsystem
 // entry point (route_layering invariant) rather than the deep tools path.
 export { withoutApprovalHandle } from "./tools/ask-user/commit-intent.ts";
+// Same reason, for POST /v1/connectors/import. Worth noting where it sits: this
+// function turns a specification into a connector draft and depends on
+// connectors/ and llm/flows/document-parsers/ almost exclusively — it lives
+// under tools/ because that is where its ConversationTool wrapper is, not
+// because it is a conversation concern. Moving the core to connectors/ would be
+// the tidier home; until then the barrel is what keeps the route honest.
+export {
+  importConnectorDraftFromSpec,
+  importConnectorFromSpecInputSchema,
+} from "./tools/import-connector-from-spec.ts";
 export * from "./types.ts";

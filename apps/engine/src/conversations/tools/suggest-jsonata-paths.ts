@@ -98,6 +98,9 @@ export const suggestJsonataPathsTool: ConversationTool = {
   requires_skill: "workflow-authoring",
   inputSchema,
   category: "tenant_read",
+  // Builds a definition rather than using one: withheld from the
+  // read-and-execute tier even though it only reads.
+  authoring_only: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = ctx.getDraft();

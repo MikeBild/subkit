@@ -30,6 +30,7 @@ export function classifyRequestStepSideEffects(step: RequestStep): StepSideEffec
       ? { query: step.sql.query, ...(step.sql.also ? { also: step.sql.also } : {}) }
       : null,
     s3: Boolean(step.s3),
+    mcp: step.mcp ? { operation: step.mcp.operation } : null,
   });
 }
 

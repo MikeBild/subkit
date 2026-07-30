@@ -2,16 +2,26 @@
 slug: mcp-server-setup
 scope: global
 title: MCP Server Setup
-description: Protocol-level facts for connecting any MCP client (Codex, Claude Desktop, Cursor, Continue, Zed, Goose, …) to sk as an MCP server. Vendor-specific config shapes live in the VendorRecipeManifest and must be fetched via `get_vendor_recipe`, not reproduced in prose.
+description: Protocol-level facts for connecting any MCP client (Codex, Claude Desktop, Cursor, Continue, Zed, Goose, …) to sk as an MCP server, and how to tell that direction apart from registering a remote MCP server (which is a connector with driver `mcp`). Vendor-specific config shapes live in the VendorRecipeManifest and must be fetched via `get_vendor_recipe`, not reproduced in prose.
 activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp"},{"kind":"intent_keyword","word":"mcp server"},{"kind":"intent_keyword","word":"mcp client"},{"kind":"intent_keyword","word":"model context protocol"},{"kind":"intent_keyword","word":"codex"},{"kind":"intent_keyword","word":"claude code"},{"kind":"intent_keyword","word":"claude desktop"},{"kind":"intent_keyword","word":"cursor"},{"kind":"intent_keyword","word":"continue"},{"kind":"intent_keyword","word":"zed"},{"kind":"intent_keyword","word":"goose"},{"kind":"intent_keyword","word":"sk mcp"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [mcp, integration]
-version: 4
+version: 5
 ---
 
 # Connecting a client to sk as an MCP server
+
+**Check the direction first.** This skill covers sk *serving* MCP to a client.
+If the user wants sk to CALL a remote MCP server ("add the Atlassian MCP
+server", "connect our internal MCP server", "register an MCP server"), that is
+the other direction and none of the steps below apply: a remote MCP server is a
+**connector with `driver: "mcp"`**, created and managed through the connector
+tools, `POST /v1/connectors`, or `sk connectors` (`mcp-inspect`,
+`mcp-authorize`, `enable`, `disable`). There is no separate MCP-server
+registry, no `sk mcp-servers` command and no `/v1/mcp-servers` route — never
+send a user to one. The `connector-creation-guidance` skill carries that path.
 
 sk exposes MCP at two transports:
 

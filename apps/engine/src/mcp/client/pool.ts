@@ -6,59 +6,82 @@
 // cached tool manifests, handshake/credential resolution, backoff on
 // failure, and per-server token-budget truncation.
 //
+// THIS MODULE OWNS THE CONNECTION. The `mcp` connector driver
+// (connectors/drivers/mcp.ts) is a thin facade in front of this pool and
+// holds no socket, no manifest and no backoff of its own. Every other
+// connector driver is stateless per request and opens its own transport;
+// this one deliberately is not, because an MCP session is a negotiated
+// handshake plus a cached tool manifest that would be re-paid on every
+// step. Keep the state here — a second owner would be a second answer to
+// "is this server connected?".
+//
 // HARD ISOLATION INVARIANT: the pool is keyed STRICTLY by `tenant_id`. A
 // Client is NEVER shared across tenants — each tenant's Clients carry that
 // tenant's resolved credentials, and a cross-tenant leak would expose one
 // workspace's bearer token / OAuth access token to another's turn. Every
 // connection, manifest, and tool result lives under its tenant's bucket.
 
-import { createHash } from "node:crypto";
+import type { lookup as dnsLookup } from "node:dns/promises";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
-import {
-  ClientCredentialsProvider,
-  PrivateKeyJwtProvider,
-} from "@modelcontextprotocol/sdk/client/auth-extensions.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { classifyMcpToolSideEffect, type SideEffect } from "@shared/index.ts";
 import {
+  recordConnectorMcpHandshakeOk,
   recordMcpExternalToolInvoked,
-  recordMcpServerHandshakeOk,
 } from "../../audit/recorders/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
-import { assertEgressAllowed } from "../../connectors/egress-guard.ts";
-import {
-  getCredentialForMcpServer,
-  getOAuth2ClientCredentialForMcpServer,
-  getOAuth2PrivateKeyCredentialForMcpServer,
-} from "../../credentials/service.ts";
+import { assertEgressAllowed, assertEgressAllowedResolved } from "../../connectors/egress-guard.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
-import { McpDbOAuthClientProvider } from "./oauth-provider.ts";
-import { buildMcpOAuthRedirectUri } from "./oauth-redirect.ts";
 import {
-  getMcpServer,
-  listConnectableMcpServersForTenant,
+  capManifest,
+  hashManifest,
+  listAllRemoteTools,
+  PER_SERVER_MANIFEST_BYTE_CAP,
+  parseRemoteManifest,
+  type RemoteToolDescriptor,
+} from "./manifest.ts";
+import {
+  CLIENT_CAPABILITIES,
+  captureNegotiatedProtocolVersion,
+  negotiatedCapabilities,
+} from "./negotiation.ts";
+import {
+  getMcpConnector,
+  getMcpSessionBackoff,
+  listConnectableMcpConnectorsForTenant,
   MCP_CREDENTIAL_ENVIRONMENT,
-  type McpServerAuthConfig,
-  type McpServerRow,
-  parseAuthConfig,
-  recordMcpServerHandshakeState,
-  setMcpServerStatus,
+  type McpConnectorRow,
+  McpPreflightError,
+  parkMcpConnectorFailure,
+  recordMcpHandshakeState,
+  recordMcpNegotiation,
+  redactUpstreamDetail,
+  UNAUTHORIZED_HANDSHAKE_MESSAGE,
 } from "./registry.ts";
+import {
+  MCP_REQUIRED_CAPABILITY,
+  MCP_WIRE_METHOD,
+  performRemoteCall,
+  type RemoteCall,
+  type RemoteCallClient,
+  remoteCallTarget,
+} from "./remote-call.ts";
 import { reconcileManifestHash } from "./schema-drift.ts";
+import {
+  invalidateOAuth2TokenForServer,
+  isUnauthorized,
+  resolveAuthHeaders,
+  resolveAuthProvider,
+} from "./session-auth.ts";
 
-// A tool manifest, serialized, larger than this is truncated before it is
-// handed to the loop layer (which spends it on the prompt budget). ~30 KB
-// per server keeps a handful of registered servers from blowing the
-// context window on their own. DEFAULT for the tenant-scoped
-// `mcp.client.per_server_manifest_byte_cap` config leaf (read at use via
-// `manifestByteCap`); the schema default mirrors this value.
-const PER_SERVER_MANIFEST_BYTE_CAP = 30_000;
 // Exponential backoff on handshake failure: base * 2^(failures-1), capped.
 const BACKOFF_BASE_MS = 5_000;
 const BACKOFF_MAX_MS = 5 * 60_000;
@@ -68,39 +91,19 @@ const BACKOFF_MAX_MS = 5 * 60_000;
 // long enough for a legitimately slow tool, short enough that a dead
 // remote surfaces a clean tool error instead of an indefinite hang. On
 // expiry the SDK raises an McpError(RequestTimeout) we catch below.
-// DEFAULT for the tenant-scoped `mcp.client.remote_tool_call_timeout_ms`
+// DEFAULT for the tenant-scoped `connectors.mcp.remote_tool_call_timeout_ms`
 // config leaf (read at use via `remoteToolCallTimeoutMs`); the schema
 // default mirrors this value.
 const REMOTE_TOOL_CALL_TIMEOUT_MS = 30_000;
-
-/** Effective per-server manifest byte cap for a tenant. Falls back to the
- *  module default when the config loader is not initialised (unit tests) —
- *  same guard pattern as loop.ts's `webSearchSetting`. */
-function manifestByteCap(tenant_id: string): number {
-  try {
-    return getConfig(tenant_id).mcp.client.per_server_manifest_byte_cap;
-  } catch {
-    return PER_SERVER_MANIFEST_BYTE_CAP;
-  }
-}
 
 /** Effective remote `tools/call` timeout for a tenant. Falls back to the
  *  module default when the config loader is not initialised (unit tests). */
 function remoteToolCallTimeoutMs(tenant_id: string): number {
   try {
-    return getConfig(tenant_id).mcp.client.remote_tool_call_timeout_ms;
+    return getConfig(tenant_id).connectors.mcp.remote_tool_call_timeout_ms;
   } catch {
     return REMOTE_TOOL_CALL_TIMEOUT_MS;
   }
-}
-
-/** A remote tool, reduced to the fields the loop layer needs to convert
- *  it into an AI SDK `Tool`. `ai@6` ships no `createMCPClient`, so the
- *  loop does that conversion by hand from this descriptor. */
-export interface RemoteToolDescriptor {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
 }
 
 // ── TEST SEAM ────────────────────────────────────────────────────────────────
@@ -112,27 +115,79 @@ export interface RemoteToolDescriptor {
 // MUST still restore null in afterAll so a fake doesn't bleed into sibling
 // test files that also set the seam.
 
-/** Structural slice of the SDK `Client` the pool actually uses. */
-export interface McpClientLike {
+// Re-exported so the loop and route layers keep one import path for the
+// descriptor even though the shape now lives with the manifest logic.
+export type { RemoteToolDescriptor } from "./manifest.ts";
+
+/** Structural slice of the SDK `Client` the pool actually uses: the
+ *  session verbs it owns, plus the operation methods declared by
+ *  `RemoteCallClient` — that module decides which of them an operation
+ *  needs, so restating them here would be a second list to keep in sync.
+ *
+ *  `listTools` is typed loosely on purpose: what comes back is a remote's
+ *  claim about itself, and `parseRemoteManifest` is what turns it into
+ *  descriptors. Declaring the wire shape here would put the validation in
+ *  the type system, where a lying server is not bound by it.
+ *
+ *  The three negotiation accessors are OPTIONAL. The real SDK `Client`
+ *  implements all three; an in-process fake need not, and a client that
+ *  cannot answer "what did the server declare" is treated exactly like a
+ *  server that declared nothing — which is the conservative direction, so
+ *  the resource and prompt adapters are never minted on an unanswered
+ *  capability. */
+export interface McpClientLike extends RemoteCallClient {
   connect(transport: Transport): Promise<void>;
-  listTools(): Promise<{
-    tools: Array<{ name: string; description?: string | undefined; inputSchema: unknown }>;
+  listTools(params?: { cursor?: string }): Promise<{
+    tools: unknown[];
+    nextCursor?: string | undefined;
   }>;
-  callTool(
-    params: { name: string; arguments?: Record<string, unknown> },
-    resultSchema?: undefined,
-    options?: { timeout?: number },
-  ): Promise<{ [key: string]: unknown; content?: unknown; isError?: unknown }>;
   close(): Promise<void>;
+  getServerCapabilities?(): ServerCapabilitiesLike | undefined;
+  /** The server's `implementation` block, verbatim. Typed as a bag rather
+   *  than a shape: it is the remote's self-description, we only ever hand
+   *  it to an operator, and pinning a shape here would break on the next
+   *  field the specification adds without buying anything. */
+  getServerVersion?(): Record<string, unknown> | undefined;
+  getInstructions?(): string | undefined;
 }
+
+/** The parts of the server's `initialize` reply the engine acts on. */
+export interface ServerCapabilitiesLike {
+  tools?: unknown;
+  resources?: unknown;
+  prompts?: unknown;
+  [key: string]: unknown;
+}
+
+/**
+ * What the remote declared it serves, reduced to the three the engine
+ * calls. `null` means the client could not be asked (see `McpClientLike`),
+ * which is treated as "declared nothing" everywhere it is read.
+ */
+export interface NegotiatedServerCapabilities {
+  tools: boolean;
+  resources: boolean;
+  prompts: boolean;
+}
+
+/** The DNS resolver shape the pre-connect egress gate accepts. */
+type DnsLookup = typeof dnsLookup;
 
 export interface McpPoolTestFactories {
   /** Replaces `new Client(...)`. Receives the server row so a fake can
-   *  branch per server (URL / namespace) without touching the transport. */
-  makeClient?: (row: McpServerRow) => McpClientLike;
-  /** Replaces `buildTransport(...)` (including its egress guard — the guard
-   *  has its own dedicated tests). */
-  makeTransport?: (row: McpServerRow, headers: Record<string, string>) => Transport;
+   *  branch per server (URL / slug) without touching the transport. */
+  makeClient?: (row: McpConnectorRow) => McpClientLike;
+  /** Replaces `buildTransport(...)` (including its synchronous literal egress
+   *  guard — the guard has its own dedicated tests). Does NOT bypass the
+   *  DNS-resolved gate in `connectClient`: that one runs on every handshake,
+   *  and a seam that skipped it would make the rebinding protection untestable
+   *  precisely where it is enforced. */
+  makeTransport?: (row: McpConnectorRow, headers: Record<string, string>) => Transport;
+  /** Resolver for the pre-connect DNS gate. Lets a test express the case the
+   *  gate exists for: a hostname that is public at registration and private at
+   *  connect time. Defaults to the real DNS lookup, where an unresolvable
+   *  fixture hostname is deliberately not a block. */
+  lookupDns?: DnsLookup;
 }
 
 let testFactories: McpPoolTestFactories | null = null;
@@ -143,10 +198,20 @@ export function __setMcpPoolFactoriesForTests(f: McpPoolTestFactories | null): v
 
 interface PooledClient {
   client: McpClientLike;
-  namespace: string;
-  mcp_server_id: string;
+  slug: string;
+  connector_id: string;
   tools: RemoteToolDescriptor[];
   manifest_hash: string;
+  /** What the server declared at `initialize`, captured once per
+   *  handshake. Read before every resources/prompts call and before the
+   *  read-only adapters are minted; `null` when the client could not be
+   *  asked. */
+  capabilities: NegotiatedServerCapabilities | null;
+  /** The server's self-reported name/version and free-text instructions,
+   *  carried for the operator-facing inspect surface. Neither is trusted
+   *  for any decision. */
+  server_version: Record<string, unknown> | null;
+  instructions: string | null;
   last_heartbeat_at: number;
   /** Epoch ms before which this server is skipped (set on failure). */
   backoff_until: number;
@@ -154,7 +219,7 @@ interface PooledClient {
 }
 
 interface TenantMcpPool {
-  // Keyed by mcp_server_id. A failed server keeps a placeholder entry
+  // Keyed by connector_id. A failed server keeps a placeholder entry
   // carrying its backoff window so `getTenantMcpTools` can honour it
   // without re-attempting a connect every turn.
   clients: Map<string, PooledClient>;
@@ -175,221 +240,14 @@ function tenantBucket(tenant_id: string): TenantMcpPool {
   return bucket;
 }
 
-/** Canonical JSON of a value with object keys sorted recursively, so the
- *  manifest hash is stable regardless of remote key ordering. */
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(",")}}`;
-}
-
-function hashManifest(tools: RemoteToolDescriptor[]): string {
-  return createHash("sha256").update(canonicalJson(tools)).digest("hex");
-}
-
-/**
- * Apply the per-server manifest token cap. When the serialized tool list
- * exceeds the cap, keep the MOST tools that fit, preferring to keep the
- * lighter ones (so the heaviest tools are dropped first). A server that
- * exposes at least one tool ALWAYS keeps at least its smallest tool —
- * even if that one tool alone is over the cap — so the server is never
- * silently reduced to an empty palette (it would then look like it has no
- * tools at all). Returns the (possibly truncated) tool list.
- */
-function capManifest(
-  tenant_id: string,
-  namespace: string,
-  mcp_server_id: string,
-  tools: RemoteToolDescriptor[],
-): RemoteToolDescriptor[] {
-  // Per-tenant cap from `mcp.client.per_server_manifest_byte_cap`; the
-  // same value drives the admission loop and the log line below.
-  const effectiveCapBytes = manifestByteCap(tenant_id);
-  if (canonicalJson(tools).length <= effectiveCapBytes) return tools;
-  // Sort ascending by serialized weight so we greedily admit the lightest
-  // tools first and the heaviest are the ones dropped when the budget runs
-  // out — fitting the most tools under the cap.
-  const weighted = tools
-    .map((t) => ({ tool: t, weight: canonicalJson(t).length }))
-    .sort((a, b) => a.weight - b.weight);
-  const kept: RemoteToolDescriptor[] = [];
-  let dropped = 0;
-  for (const { tool } of weighted) {
-    const candidate = [...kept, tool];
-    if (canonicalJson(candidate).length > effectiveCapBytes) {
-      dropped += 1;
-      continue;
-    }
-    kept.push(tool);
-  }
-  // Never return empty: if even the single lightest tool is over the cap,
-  // keep it anyway. An over-cap-but-present tool is recoverable downstream
-  // (the loop's own truncation still applies); an empty manifest makes the
-  // whole server vanish from the palette with no signal to the model.
-  if (kept.length === 0 && weighted[0]) {
-    kept.push(weighted[0].tool);
-    dropped = tools.length - 1;
-  }
-  logger.warn({
-    module: "mcp_client",
-    action: "manifest.token_cap_truncated",
-    msg: "external MCP tool manifest exceeded per-server token cap; dropped heaviest tools, kept the lightest that fit",
-    tenant_id,
-    mcp_server_id,
-    namespace,
-    cap_bytes: effectiveCapBytes,
-    original_tool_count: tools.length,
-    kept_tool_count: kept.length,
-    dropped_tool_count: dropped,
-  });
-  return kept;
-}
-
 function backoffWindow(failures: number): number {
   const delay = Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS);
   return Date.now() + delay;
 }
 
-/**
- * Resolve the static `Authorization` header (if any) for a server's
- * auth_config, reading the secret by reference from the AES-256-GCM
- * credentials table. Handles ONLY the static-header kinds — `none` (empty),
- * `bearer`, and `basic`. The `oauth2` kind is NOT resolved here: it is
- * driven end to end by the SDK transport's `authProvider` (see
- * `McpDbOAuthClientProvider`), which owns token replay, pre-expiry
- * refresh, and persistence. Returns the header map to mount on the
- * transport's `requestInit`, or `{}` for none.
- */
-async function resolveAuthHeaders(
-  db: Db,
-  tenant_id: string,
-  mcp_server_id: string,
-  auth: McpServerAuthConfig,
-  environment: "dev" | "prod",
-): Promise<Record<string, string>> {
-  if (auth.kind === "none") return {};
-  // oauth2 / M2M kinds carry no static header — the authProvider supplies
-  // the token via the SDK's non-interactive fetch path.
-  if (
-    auth.kind === "oauth2" ||
-    auth.kind === "oauth2_client_credentials" ||
-    auth.kind === "oauth2_private_key_jwt"
-  )
-    return {};
-
-  const resolved = await getCredentialForMcpServer(tenant_id, mcp_server_id, environment, db);
-  if (!resolved) {
-    throw new Error(
-      `auth_config.kind '${auth.kind}' references a credential that does not exist for this server`,
-    );
-  }
-  const { value } = resolved;
-
-  switch (auth.kind) {
-    case "bearer": {
-      if (value.mode !== "bearer") {
-        throw new Error(`expected bearer credential for server, got mode '${value.mode}'`);
-      }
-      return { Authorization: `Bearer ${value.token}` };
-    }
-    case "basic": {
-      if (value.mode !== "basic") {
-        throw new Error(`expected basic credential for server, got mode '${value.mode}'`);
-      }
-      // RFC 7617 — the userid:password pair, base64. Used by remote MCP
-      // servers that accept non-interactive personal API tokens (e.g.
-      // Atlassian Rovo: base64(email:api_token)).
-      const pair = Buffer.from(`${value.username}:${value.password}`, "utf8").toString("base64");
-      return { Authorization: `Basic ${pair}` };
-    }
-  }
-}
-
-/**
- * Canonical OAuth callback URL handed to the (non-interactive) handshake
- * provider as its `redirect_uri`. The palette handshake never opens a
- * browser or runs a code exchange, so this value is only used to populate
- * the SDK's `clientMetadata.redirect_uris` on a DCR (RFC 7591) registration.
- *
- * CRITICAL (redirect_uri parity): this MUST be byte-identical to the value
- * the interactive authorize route registers (both go through
- * `buildMcpOAuthRedirectUri` → `MCP_OAUTH_CALLBACK_PATH`). If the pool's DCR
- * registered any other redirect_uri while the authorize flow used the MCP
- * callback, the IdP would reject the authorization request with
- * `redirect_uri_mismatch`. There is deliberately NO fallback when no public
- * origin is configured: the interactive /authorize route 400s in the same
- * condition, so a fallback here would DCR-register a redirect_uri the
- * authorize flow can never use — a permanent `redirect_uri_mismatch`.
- * Instead we throw; `connectClient`'s catch parks the server in
- * error+backoff with this message as its redact-safe `last_error`, the
- * same degradation as any other handshake failure.
- */
-function oauthRedirectUriFor(): string {
-  const canonical = buildMcpOAuthRedirectUri();
-  if (canonical) return canonical;
-  throw new Error("no canonical OAuth redirect URI — set server.public_base_url");
-}
-
-/** Detect an Unauthorized/401 from a remote tool call. Matches both the
- *  SDK's typed `UnauthorizedError` and a generic 401 surfaced as a message
- *  (some transports raise a plain Error carrying the HTTP status). */
-function isUnauthorized(err: unknown): boolean {
-  if (err instanceof UnauthorizedError) return true;
-  if (err instanceof Error) {
-    if (err.name === "UnauthorizedError") return true;
-    if (/\b401\b|\bunauthorized\b/i.test(err.message)) return true;
-  }
-  return false;
-}
-
-/**
- * Drop the oauth2 access/refresh token credential for a server after a
- * mid-session 401, so the next handshake re-authorizes instead of replaying
- * the dead token. No-op for non-oauth2 servers (no token to invalidate) or
- * a vanished server row. Tenant/server-scoped via the provider's own
- * tenant-filtered delete.
- */
-async function invalidateOAuth2TokenForServer(
-  db: Db,
-  tenant_id: string,
-  mcp_server_id: string,
-  environment: "dev" | "prod",
-  requestSource: RequestSource,
-): Promise<void> {
-  const row = await getMcpServer(db, tenant_id, mcp_server_id);
-  if (!row) return;
-  const auth = parseAuthConfig(row.auth_config ?? null);
-  if (auth.kind !== "oauth2") return;
-  const provider = new McpDbOAuthClientProvider({
-    db,
-    tenant_id,
-    mcp_server_id,
-    environment,
-    // Reaching a mid-session 401 implies this oauth2 server connected in
-    // this process, which requires the canonical redirect URI to resolve —
-    // so this cannot throw here (config is fixed for the process lifetime).
-    redirect_uri: oauthRedirectUriFor(),
-    state: "",
-    auth,
-    interactive: false,
-    request_source: requestSource,
-  });
-  await provider.invalidateCredentials("tokens");
-  logger.warn({
-    module: "mcp_client",
-    action: "tool.invoke.token_invalidated",
-    msg: "external MCP tool call returned 401; invalidated oauth2 token so the next handshake re-authorizes",
-    tenant_id,
-    mcp_server_id,
-    namespace: row.namespace,
-  });
-}
-
 function buildTransport(
   tenant_id: string,
-  row: McpServerRow,
+  row: McpConnectorRow,
   headers: Record<string, string>,
   authProvider?: OAuthClientProvider,
 ): StreamableHTTPClientTransport | SSEClientTransport {
@@ -401,9 +259,11 @@ function buildTransport(
   // been seeded out-of-band or the guard mode tightened since; this is the
   // last gate before connect. Throws EgressBlockedError, caught by
   // connectClient's handler which parks the server in backoff.
-  // Synchronous literal gate here (this builder is sync). DNS-resolved
-  // checking happens at registration time in registry.ts, the authoritative
-  // validation point for an MCP server URL.
+  // Synchronous literal gate here (this builder is sync). The DNS-RESOLVED
+  // check runs in `connectClient` immediately before this call, so a hostname
+  // that re-points at a private address after registration is caught on every
+  // handshake rather than only at registration. This literal check remains as
+  // the last backstop on the synchronous path.
   assertEgressAllowed(url, { tenant_id });
   const requestInit: RequestInit = Object.keys(headers).length > 0 ? { headers } : {};
   switch (row.transport) {
@@ -419,108 +279,19 @@ function buildTransport(
         eventSourceInit: { fetch: (u, init) => getDriverFetch()(u, { ...init, headers }) },
       });
     case "stdio":
-      // stdio spawns a local subprocess; not a v1 transport for a
+      // stdio spawns a local subprocess; not a transport for a
       // multi-tenant hosted engine (no sandbox, no per-tenant fs).
-      throw new Error("stdio transport is not supported for external MCP servers in v1");
+      throw new McpPreflightError(
+        "mcp_transport_unsupported",
+        "stdio transport is not supported for external MCP servers",
+      );
     default: {
       const exhaustive: never = row.transport;
-      throw new Error(`unknown transport: ${String(exhaustive)}`);
-    }
-  }
-}
-
-/**
- * Resolve the SDK `OAuthClientProvider` for a server row, or `undefined`
- * when the auth kind uses a static header (bearer / basic / none).
- *
- * - `oauth2` → `McpDbOAuthClientProvider` in non-interactive mode (no
- *   browser, no code exchange; a missing token surfaces as
- *   `UnauthorizedError` on connect and is caught by `connectClient`).
- * - `oauth2_client_credentials` → SDK `ClientCredentialsProvider`. Reads
- *   the client_id + client_secret from the `oauth2_client` credential
- *   slot (same slot used by the interactive oauth2 path). If absent →
- *   throws a clear error (caught → parked in error+backoff).
- * - `oauth2_private_key_jwt` → SDK `PrivateKeyJwtProvider`. Reads the
- *   client_id, private_key, and algorithm from the `oauth2_private_key`
- *   credential slot. If absent → throws (caught → parked).
- *
- * Both M2M providers discover the token endpoint via RFC 9728 off
- * `row.url` — the `issuer` field in `auth_config` is documentation-only.
- * Both cache their access token in-memory (no `saveTokens` persistence);
- * only the long-lived secret (client_secret / private_key) is stored
- * encrypted in `credentials`.
- */
-async function resolveAuthProvider(
-  db: Db,
-  tenant_id: string,
-  row: McpServerRow,
-  auth: McpServerAuthConfig,
-  environment: "dev" | "prod",
-  requestSource: RequestSource,
-): Promise<OAuthClientProvider | undefined> {
-  switch (auth.kind) {
-    case "oauth2":
-      return new McpDbOAuthClientProvider({
-        db,
-        tenant_id,
-        mcp_server_id: row.id,
-        environment,
-        // Throws when no canonical redirect URI is configured — caught
-        // by connectClient and parked as a redact-safe last_error + backoff.
-        redirect_uri: oauthRedirectUriFor(),
-        // No mcp_oauth_states row exists for the palette handshake; the
-        // state value is unused in non-interactive mode.
-        state: "",
-        auth,
-        interactive: false,
-        request_source: requestSource,
-      });
-
-    case "oauth2_client_credentials": {
-      // Read the client_secret from the `oauth2_client` credential slot,
-      // which is where the route handler writes it (same slot as DCR
-      // for the interactive oauth2 path).
-      const cred = await getOAuth2ClientCredentialForMcpServer(tenant_id, row.id, environment, db);
-      if (cred == null) {
-        throw new Error(
-          "oauth2_client_credentials server has no client credential — register the client_id and client_secret first",
-        );
-      }
-      if (!cred.client_secret) {
-        throw new Error("oauth2_client_credentials server credential is missing client_secret");
-      }
-      return new ClientCredentialsProvider({
-        clientId: cred.client_id,
-        clientSecret: cred.client_secret,
-        ...(auth.scope ? { scope: auth.scope } : {}),
-      });
-    }
-
-    case "oauth2_private_key_jwt": {
-      // Read the private_key + algorithm from the `oauth2_private_key`
-      // credential slot (distinct from the `oauth2_client` slot).
-      const cred = await getOAuth2PrivateKeyCredentialForMcpServer(
-        tenant_id,
-        row.id,
-        environment,
-        db,
+      throw new McpPreflightError(
+        "mcp_transport_unsupported",
+        `unknown transport: ${String(exhaustive)}`,
       );
-      if (cred == null) {
-        throw new Error(
-          "oauth2_private_key_jwt server has no private key credential — register the client_id, private_key, and algorithm first",
-        );
-      }
-      return new PrivateKeyJwtProvider({
-        clientId: cred.client_id,
-        privateKey: cred.private_key,
-        algorithm: cred.algorithm,
-        ...(auth.scope ? { scope: auth.scope } : {}),
-      });
     }
-
-    default:
-      // bearer / basic / none — no provider; static header path.
-      return undefined;
   }
 }
 
@@ -531,16 +302,18 @@ async function resolveAuthProvider(
  * the server in `error` status and arms exponential backoff. Returns the
  * live PooledClient, or null if the connect failed.
  */
+type ConnectClientOutcome = { pooled: PooledClient } | { pooled: null; error: string };
+
 async function connectClient(
   db: Db,
   tenant_id: string,
-  row: McpServerRow,
+  row: McpConnectorRow,
   environment: "dev" | "prod",
   requestSource: RequestSource,
-): Promise<PooledClient | null> {
+): Promise<ConnectClientOutcome> {
   const bucket = tenantBucket(tenant_id);
   try {
-    const auth = parseAuthConfig(row.auth_config ?? null);
+    const auth = row.auth;
     const headers = await resolveAuthHeaders(db, tenant_id, row.id, auth, environment);
     // For oauth2 / M2M kinds the SDK transport's authProvider owns the whole
     // token lifecycle. bearer/basic/none keep the static header instead.
@@ -565,25 +338,77 @@ async function connectClient(
       environment,
       requestSource,
     );
+    // DNS-resolved egress gate, immediately before connecting.
+    //
+    // Registration resolves the hostname and rejects private targets, but that
+    // verdict is only true for the DNS answer at registration time. A hostname
+    // that resolved publicly then can resolve to 127.0.0.1 or 169.254.169.254
+    // later — the attacker controls the zone, not the row. The literal check
+    // inside `buildTransport` cannot see that: it only reads the URL text.
+    //
+    // So the resolving check runs here, on every handshake, where the bytes are
+    // actually about to leave carrying the tenant's bearer token. The literal
+    // gate inside the builder stays as the last synchronous backstop.
+    //
+    // Runs on every handshake, including when a test factory supplies the
+    // transport — a gate a seam can switch off is not a gate. Fixture
+    // hostnames pass because an unresolvable name is deliberately not a block,
+    // and IP literals short-circuit to the synchronous check.
+    await assertEgressAllowedResolved(
+      new URL(row.url),
+      { tenant_id },
+      testFactories?.lookupDns ? { lookupImpl: testFactories.lookupDns } : {},
+    );
     // TEST SEAM consumption (see header above `McpPoolTestFactories`):
     // production always takes the `??` fallback — real transport, real Client.
     const transport =
       testFactories?.makeTransport?.(row, headers) ??
       buildTransport(tenant_id, row, headers, authProvider);
+    // Armed BEFORE connect: the SDK sets the negotiated version from
+    // inside `initialize`, so a wrapper installed afterwards would only
+    // ever read null.
+    const readNegotiatedProtocolVersion = captureNegotiatedProtocolVersion(transport as Transport);
     const client: McpClientLike =
-      testFactories?.makeClient?.(row) ?? new Client({ name: "subkit-mcp-client", version: "1" });
+      testFactories?.makeClient?.(row) ??
+      new Client(
+        { name: "subkit-mcp-client", version: "1" },
+        { capabilities: CLIENT_CAPABILITIES },
+      );
     // The concrete transport classes implement `Transport`; the cast
     // satisfies `exactOptionalPropertyTypes`, where the class's optional
     // `requestInit?` props don't structurally widen to the interface's.
     await client.connect(transport as Transport);
 
-    const listed = await client.listTools();
-    const allTools: RemoteToolDescriptor[] = listed.tools.map((t) => ({
-      name: t.name,
-      description: t.description ?? "",
-      inputSchema: t.inputSchema as Record<string, unknown>,
-    }));
-    const tools = capManifest(tenant_id, row.namespace, row.id, allTools);
+    // Capture what the server declared before issuing anything that
+    // depends on it. `tools/list` itself requires the `tools` capability;
+    // a server that declared none is a server with nothing to offer, and
+    // asking anyway would make the SDK throw a plain Error that this
+    // catch would park as a handshake failure — true, but with a reason
+    // an operator cannot act on.
+    const capabilities = negotiatedCapabilities(client);
+    const server_version = client.getServerVersion?.() ?? null;
+    const instructions = client.getInstructions?.() ?? null;
+
+    const raw =
+      capabilities && !capabilities.tools
+        ? []
+        : await listAllRemoteTools(tenant_id, row.slug, row.id, client);
+    const parsed = parseRemoteManifest(raw);
+    if (parsed.rejected.length > 0) {
+      // A dropped tool is a hole in the palette the operator will
+      // otherwise only notice as "the model says it cannot do that".
+      logger.warn({
+        module: "mcp_client",
+        action: "manifest.tools_rejected",
+        msg: "external MCP server advertised tools that could not be admitted; they are absent from the palette",
+        tenant_id,
+        connector_id: row.id,
+        connector_slug: row.slug,
+        rejected_count: parsed.rejected.length,
+        rejected: parsed.rejected,
+      });
+    }
+    const tools = capManifest(tenant_id, row.slug, row.id, parsed.tools);
     const manifest_hash = hashManifest(tools);
 
     // Reconcile against the last-observed hash (drift detection + audit).
@@ -592,22 +417,33 @@ async function connectClient(
     await reconcileManifestHash({
       db,
       tenant_id,
-      mcp_server_id: row.id,
+      connector_id: row.id,
+      connector_slug: row.slug,
       observed_hash: manifest_hash,
       observed_tool_count: tools.length,
       auditCtx: { actor_id: null, request_source: requestSource, executor: db },
     });
 
-    await recordMcpServerHandshakeState(db, tenant_id, row.id, manifest_hash, {
-      actor_id: null,
-      request_source: requestSource,
-      executor: db,
+    await recordMcpHandshakeState(db, row, manifest_hash);
+    // What the remote agreed to, persisted so an operator can read it
+    // without forcing a fresh handshake. Written after the session row
+    // exists — `recordMcpHandshakeState` is what creates it.
+    // A client that never told the transport a version leaves the column
+    // NULL rather than being backfilled with the version we ASKED for:
+    // "what we proposed" and "what the two sides agreed" are different
+    // claims, and an operator reading this column is asking the second.
+    await recordMcpNegotiation(db, row, {
+      protocol_version: readNegotiatedProtocolVersion(),
+      server_capabilities: (client.getServerCapabilities?.() ?? null) as Record<
+        string,
+        unknown
+      > | null,
     });
-    await recordMcpServerHandshakeOk({
+    await recordConnectorMcpHandshakeOk({
       tenant_id,
       actor_id: null,
-      mcp_server_id: row.id,
-      namespace: row.namespace,
+      connector_id: row.id,
+      connector_slug: row.slug,
       tool_count: tools.length,
       manifest_hash,
       request_source: requestSource,
@@ -616,17 +452,20 @@ async function connectClient(
 
     const pooled: PooledClient = {
       client,
-      namespace: row.namespace,
-      mcp_server_id: row.id,
+      slug: row.slug,
+      connector_id: row.id,
       tools,
       manifest_hash,
+      capabilities,
+      server_version,
+      instructions,
       last_heartbeat_at: Date.now(),
       backoff_until: 0,
       consecutive_failures: 0,
     };
     bucket.clients.set(row.id, pooled);
     bucket.backoff.delete(row.id);
-    return pooled;
+    return { pooled };
   } catch (err) {
     // An oauth2 server with no usable token makes the SDK transport raise
     // UnauthorizedError on connect (its authProvider.redirectToAuthorization
@@ -638,7 +477,7 @@ async function connectClient(
     // flow (owned by the route layer) to mint a token.
     const message =
       err instanceof UnauthorizedError
-        ? "authorization required"
+        ? UNAUTHORIZED_HANDSHAKE_MESSAGE
         : err instanceof Error
           ? err.message
           : String(err);
@@ -657,32 +496,62 @@ async function connectClient(
       bucket.clients.delete(row.id);
       void stale.client.close().catch(() => {});
     }
-    await setMcpServerStatus(
-      db,
-      tenant_id,
-      row.id,
-      "error",
-      { actor_id: null, request_source: requestSource, executor: db },
-      { last_error: message },
-    );
+    // Persist the failure alongside the in-memory window: the backoff a
+    // process holds dies with it, and a server that has been refusing for
+    // an hour should not be re-tried at full rate because the engine
+    // restarted. The DB counter is the durable one; the map is the
+    // per-process fast path that avoids a read per turn.
+    // The thrown value, not `message`: only the error's TYPE says whether
+    // the engine or the remote authored the text, and the column may carry
+    // ours.
+    await parkMcpConnectorFailure(db, row, err, (n) => new Date(backoffWindow(n)));
     logger.warn({
       module: "mcp_client",
       action: "handshake.failed",
       msg: "external MCP server handshake failed; armed backoff",
       tenant_id,
-      mcp_server_id: row.id,
-      namespace: row.namespace,
+      connector_id: row.id,
+      connector_slug: row.slug,
       consecutive_failures: failures,
       error: message,
     });
-    return null;
+    // The message is handed back (redacted) rather than only logged: an
+    // operator-driven probe has to say WHY the handshake failed, and
+    // `last_error` on the row is the engine's own rolled-up verdict, not
+    // this attempt's upstream detail.
+    return { pooled: null, error: redactUpstreamDetail(message) };
   }
 }
 
 export interface TenantMcpToolSet {
-  namespace: string;
-  mcp_server_id: string;
+  slug: string;
+  connector_id: string;
   tools: RemoteToolDescriptor[];
+  /** What the server declared it serves. Carried out of the pool so the
+   *  palette can mint a resources or prompts adapter ONLY for a server
+   *  that said it has them — the alternative is offering the model a tool
+   *  whose every call is a protocol error. `null` when unknown, which
+   *  mints nothing. */
+  capabilities: NegotiatedServerCapabilities | null;
+  /** The remote's free-text `instructions`, verbatim. Third-party prose:
+   *  useful to show an operator, never an instruction the engine follows. */
+  instructions: string | null;
+  /** The remote's self-reported `implementation` block — which build of
+   *  which server this session is actually talking to. Carried for the
+   *  operator surface; nothing branches on it, because a server naming
+   *  itself proves nothing. */
+  server_version: Record<string, unknown> | null;
+}
+
+function toolSetOf(pooled: PooledClient): TenantMcpToolSet {
+  return {
+    slug: pooled.slug,
+    connector_id: pooled.connector_id,
+    tools: pooled.tools,
+    capabilities: pooled.capabilities,
+    instructions: pooled.instructions,
+    server_version: pooled.server_version,
+  };
 }
 
 /**
@@ -691,7 +560,7 @@ export interface TenantMcpToolSet {
  * inside a backoff window is skipped; one not yet connected is connected
  * now. Consumed by the loop layer to assemble the merged tool palette.
  *
- * RECOVERY: we enumerate `listConnectableMcpServersForTenant` (active OR
+ * RECOVERY: we enumerate `listConnectableMcpConnectorsForTenant` (active OR
  * error), NOT just active. A transient handshake failure parks a server
  * in `error` status; a plain active-only filter would then exclude it
  * forever (permanently dark) even after the remote recovers. Error-status
@@ -707,32 +576,38 @@ export async function getTenantMcpTools(
   const environment = opts?.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
   const requestSource: RequestSource = opts?.requestSource ?? "chat";
   const bucket = tenantBucket(tenant_id);
-  const servers = await listConnectableMcpServersForTenant(db, tenant_id);
+  const servers = await listConnectableMcpConnectorsForTenant(db, tenant_id);
   const now = Date.now();
   const out: TenantMcpToolSet[] = [];
 
   for (const row of servers) {
     const cached = bucket.clients.get(row.id);
     if (cached) {
-      out.push({
-        namespace: cached.namespace,
-        mcp_server_id: cached.mcp_server_id,
-        tools: cached.tools,
-      });
+      out.push(toolSetOf(cached));
       continue;
     }
     // Respect an armed backoff window: skip this server this turn.
     const window = bucket.backoff.get(row.id);
     if (window && window.backoff_until > now) continue;
-
-    const pooled = await connectClient(db, tenant_id, row, environment, requestSource);
-    if (pooled) {
-      out.push({
-        namespace: pooled.namespace,
-        mcp_server_id: pooled.mcp_server_id,
-        tools: pooled.tools,
-      });
+    // The in-memory window dies with the process. A restart must not
+    // reset a server that has been refusing for an hour back to full
+    // rate, so the persisted window is consulted whenever this process
+    // holds none — and adopted into the map so the next turn costs no
+    // read.
+    if (!window) {
+      const persisted = await getMcpSessionBackoff(db, tenant_id, row.id);
+      const until = persisted?.backoff_until?.getTime() ?? 0;
+      if (until > now) {
+        bucket.backoff.set(row.id, {
+          backoff_until: until,
+          consecutive_failures: persisted?.consecutive_failures ?? 1,
+        });
+        continue;
+      }
     }
+
+    const outcome = await connectClient(db, tenant_id, row, environment, requestSource);
+    if (outcome.pooled) out.push(toolSetOf(outcome.pooled));
   }
   return out;
 }
@@ -745,29 +620,37 @@ export async function getTenantMcpTools(
  * a deliberate operator-driven inspect. `disabled` servers are not
  * connected (an operator disabled them on purpose); the caller gets null.
  * On success the server is recovered to `active`; on failure it is parked
- * in `error` + backoff exactly as the palette path does. Returns the live
- * tool set, or null if the server doesn't exist, is disabled, or the
- * handshake failed.
+ * in `error` + backoff exactly as the palette path does.
+ *
+ * The three failure modes are DISTINCT in the return value rather than
+ * collapsed into a null. A caller that has to pick an error code — the
+ * connector probe does — cannot tell "no such row" from "an operator
+ * disabled it" from "the remote refused the handshake" without them, and
+ * re-deriving the reason means a second read that can disagree with the
+ * one this call just performed.
  */
+export type ConnectServerOutcome =
+  | { ok: true; tools: TenantMcpToolSet }
+  | { ok: false; reason: "not_found" | "disabled" | "handshake_failed"; detail: string | null };
+
 export async function connectServerById(
   db: Db,
   tenant_id: string,
-  mcp_server_id: string,
+  connector_id: string,
   opts?: { environment?: "dev" | "prod"; requestSource?: RequestSource },
-): Promise<TenantMcpToolSet | null> {
+): Promise<ConnectServerOutcome> {
   const environment = opts?.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
   const requestSource: RequestSource = opts?.requestSource ?? "chat";
-  const row = await getMcpServer(db, tenant_id, mcp_server_id);
-  if (!row || row.status === "disabled") return null;
+  const row = await getMcpConnector(db, tenant_id, connector_id);
+  if (!row) return { ok: false, reason: "not_found", detail: null };
+  if (!row.enabled) return { ok: false, reason: "disabled", detail: null };
   // Clear any armed backoff so the operator's inspect is honoured now.
-  tenantBucket(tenant_id).backoff.delete(mcp_server_id);
-  const pooled = await connectClient(db, tenant_id, row, environment, requestSource);
-  if (!pooled) return null;
-  return {
-    namespace: pooled.namespace,
-    mcp_server_id: pooled.mcp_server_id,
-    tools: pooled.tools,
-  };
+  tenantBucket(tenant_id).backoff.delete(connector_id);
+  const outcome = await connectClient(db, tenant_id, row, environment, requestSource);
+  if (!outcome.pooled) {
+    return { ok: false, reason: "handshake_failed", detail: outcome.error };
+  }
+  return { ok: true, tools: toolSetOf(outcome.pooled) };
 }
 
 export interface InvokeRemoteToolInput {
@@ -778,12 +661,27 @@ export interface InvokeRemoteToolInput {
    *  `mcp_external_tool.invoked` audit row so a real user's invocation is
    *  attributed to that user, not blurred into a system actor. */
   actor_id: string | null;
-  mcp_server_id: string;
-  namespace: string;
-  remote_tool: string;
-  input: Record<string, unknown>;
+  connector_id: string;
+  connector_slug: string;
+  /** Which of the three MCP operations to issue, with its target and
+   *  arguments already resolved. See `RemoteCall`. */
+  call: RemoteCall;
   environment?: "dev" | "prod";
   requestSource?: RequestSource;
+  /** Per-call bound, overriding the tenant's
+   *  `connectors.mcp.remote_tool_call_timeout_ms`. Present so a connector can
+   *  carry its own value for a remote that is legitimately slower than the
+   *  tenant default — the caller supplies an already-validated number; the
+   *  bound itself is enforced where the value is authored. */
+  timeout_ms?: number;
+  /** Cancels THIS call. The turn's abort signal reaches the remote here,
+   *  so a user who stops a turn stops the outbound request rather than
+   *  waiting out its timeout. The pooled session is shared by every call
+   *  in the tenant and is NOT torn down on an abort. */
+  signal?: AbortSignal;
+  /** Remote progress notifications, forwarded verbatim. Reporting
+   *  progress does not extend the deadline — see `RemoteCallOptions`. */
+  onProgress?: (p: { progress: number; total?: number; message?: string }) => void;
 }
 
 export interface InvokeRemoteToolResult {
@@ -796,16 +694,64 @@ export interface InvokeRemoteToolResult {
    *  pool must not pre-truncate, or `get_raw_result` would hand back an
    *  already-clipped payload and break the raw-recovery contract. */
   content: unknown;
+  /** The tool's typed reply, when it sent one — verbatim, and only for a
+   *  tool that declared an `outputSchema`, since the SDK validated it
+   *  against that schema before it got here. Absent otherwise. */
+  structured_content?: unknown;
   bytes: number;
+  /**
+   * WHICH LAYER failed, or null on success. A single `ok:false` collapsed
+   * outcomes a caller has to tell apart: a retry is worth issuing against
+   * `not_connected` and `transport`, pointless against `remote_error`, and
+   * WRONG against `cancelled`. Only the first two are evidence about the
+   * remote's availability — counting a tool that answered "that argument
+   * is wrong" would open the connector's breaker on the author's own
+   * mistake, and counting a call the user stopped would punish the
+   * connector for the user's decision.
+   */
+  failure: "not_connected" | "transport" | "remote_error" | "cancelled" | null;
 }
 
 /**
- * Invoke a tool on a tenant's already-connected external MCP server.
- * Returns the FULL, verbatim remote content (the caller persists it for
- * determinism and derives the truncated model view itself). The remote
- * call is bounded by `REMOTE_TOOL_CALL_TIMEOUT_MS`; on timeout / transport
- * error the result is `ok:false` with a tool error and the (now likely
- * dead) pooled client is evicted so the next turn reconnects.
+ * Which layer a thrown call failed at.
+ *
+ * The distinction that was missing and is already live: the SDK validates
+ * `structuredContent` against the tool's own declared `outputSchema`
+ * INSIDE `callTool`, and raises an `McpError` when it does not conform.
+ * Read as a transport failure that would evict a healthy pooled session,
+ * arm backoff, and — because the 401 detector matches the digit sequence
+ * `401` anywhere in a message — delete the server's OAuth token if the
+ * validator's complaint happened to mention it. A peer that answered is
+ * not a dead socket, whatever it answered.
+ *
+ * So: only the two codes that mean "no answer arrived" are transport. Any
+ * other `McpError` came back over a working connection and is the
+ * remote's answer about the call. An abort is neither — the caller stopped
+ * it, and the session it rode on is still good.
+ */
+function classifyCallFailure(
+  err: unknown,
+  signal: AbortSignal | undefined,
+): "transport" | "remote_error" | "cancelled" {
+  if (signal?.aborted === true) return "cancelled";
+  if (err instanceof Error && err.name === "AbortError") return "cancelled";
+  if (err instanceof McpError) {
+    return err.code === ErrorCode.ConnectionClosed || err.code === ErrorCode.RequestTimeout
+      ? "transport"
+      : "remote_error";
+  }
+  return "transport";
+}
+
+/**
+ * Issue one operation against a tenant's external MCP server, connecting
+ * on demand. Returns the FULL, verbatim remote content (the caller
+ * persists it for determinism and derives the truncated model view
+ * itself). The call is bounded by the tenant's
+ * `connectors.mcp.remote_tool_call_timeout_ms` unless the caller supplies its
+ * own bound; on timeout / transport error the result is `ok:false` with
+ * `failure:"transport"` and the (now likely dead) pooled client is evicted
+ * so the next call reconnects.
  */
 export async function invokeRemoteTool(
   args: InvokeRemoteToolInput,
@@ -813,52 +759,91 @@ export async function invokeRemoteTool(
   const environment = args.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
   const requestSource: RequestSource = args.requestSource ?? "chat";
   const bucket = tenantBucket(args.tenant_id);
-  let pooled = bucket.clients.get(args.mcp_server_id);
+  let pooled = bucket.clients.get(args.connector_id);
   if (!pooled) {
     // Lazily (re)connect on demand if the palette was assembled in a prior
     // turn that didn't warm this server. Enumerate connectable rows (active
     // OR error) so an error-status server past its backoff is still
     // invokable rather than permanently dark.
-    const servers = await listConnectableMcpServersForTenant(args.db, args.tenant_id);
-    const row = servers.find((s) => s.id === args.mcp_server_id);
+    const servers = await listConnectableMcpConnectorsForTenant(args.db, args.tenant_id);
+    const row = servers.find((s) => s.id === args.connector_id);
     if (!row) {
-      return { ok: false, content: { error: "mcp_server not found or not active" }, bytes: 0 };
+      return {
+        ok: false,
+        content: { error: "no enabled mcp connector with this id" },
+        bytes: 0,
+        failure: "not_connected",
+      };
     }
-    pooled =
-      (await connectClient(args.db, args.tenant_id, row, environment, requestSource)) ?? undefined;
-    if (!pooled) {
-      return { ok: false, content: { error: "mcp_server handshake failed" }, bytes: 0 };
+    const outcome = await connectClient(args.db, args.tenant_id, row, environment, requestSource);
+    if (!outcome.pooled) {
+      return {
+        ok: false,
+        content: { error: `mcp connector handshake failed: ${outcome.error}` },
+        bytes: 0,
+        failure: "not_connected",
+      };
     }
+    pooled = outcome.pooled;
+  }
+
+  // The capability gate. A server that never declared `resources` cannot
+  // serve `resources/read`, and asking anyway makes the SDK throw a plain
+  // Error the catch below would read as a dead socket — evicting a healthy
+  // session and arming backoff because a step named the wrong operation.
+  // Answering here says what actually happened. A `null` capability set
+  // (the client could not be asked) passes: refusing on an unanswered
+  // question would break every in-process fake that only implements the
+  // tool path.
+  const required = MCP_REQUIRED_CAPABILITY[args.call.operation];
+  if (pooled.capabilities && !pooled.capabilities[required]) {
+    return {
+      ok: false,
+      content: {
+        error: `mcp server declared no '${required}' capability, so it cannot serve ${MCP_WIRE_METHOD[args.call.operation]}`,
+      },
+      bytes: 0,
+      failure: "remote_error",
+    };
   }
 
   const started = Date.now();
-  let outcome: "success" | "error" = "success";
+  let outcome: "success" | "error" | "cancelled" = "success";
+  let failure: InvokeRemoteToolResult["failure"] = null;
   let transportFailed = false;
   let unauthorized = false;
   let content: unknown;
+  let structured_content: unknown;
+  let hasStructured = false;
   try {
     // Bounded timeout via the SDK RequestOptions. Without it a hung remote
     // never returns and the held toolChain mutex wedges the entire turn.
-    // Per-tenant value from `mcp.client.remote_tool_call_timeout_ms`.
-    const res = await pooled.client.callTool(
-      {
-        name: args.remote_tool,
-        arguments: args.input,
-      },
-      undefined,
-      { timeout: remoteToolCallTimeoutMs(args.tenant_id) },
-    );
+    // Per-tenant value from `connectors.mcp.remote_tool_call_timeout_ms`.
+    const res = await performRemoteCall(pooled.client, args.call, {
+      timeout_ms: args.timeout_ms ?? remoteToolCallTimeoutMs(args.tenant_id),
+      ...(args.signal ? { signal: args.signal } : {}),
+      ...(args.onProgress ? { onProgress: args.onProgress } : {}),
+    });
     content = res.content;
-    if (res.isError) outcome = "error";
+    if (res.structured_content !== undefined) {
+      structured_content = res.structured_content;
+      hasStructured = true;
+    }
+    if (res.remote_error) {
+      outcome = "error";
+      failure = "remote_error";
+    }
     pooled.last_heartbeat_at = Date.now();
   } catch (err) {
-    // A timeout or transport error means the socket is likely dead. Surface
-    // a tool error (never throw out of the turn) and EVICT the pooled
-    // client so the next invoke reconnects instead of re-failing forever
-    // against a stale connection.
-    outcome = "error";
-    transportFailed = true;
-    unauthorized = isUnauthorized(err);
+    // Never throw out of the turn: every failure becomes a tool error. Only
+    // a genuine TRANSPORT failure evicts the pooled client — a remote that
+    // answered (including one whose structured output failed its own
+    // schema) leaves the session alone, and a cancelled call leaves the
+    // session alone because the session was never the problem.
+    failure = classifyCallFailure(err, args.signal);
+    outcome = failure === "cancelled" ? "cancelled" : "error";
+    transportFailed = failure === "transport";
+    unauthorized = transportFailed && isUnauthorized(err);
     content = { error: err instanceof Error ? err.message : String(err) };
   }
 
@@ -868,7 +853,7 @@ export async function invokeRemoteTool(
   // get_raw_result / replay determinism.
   const serialized = (() => {
     try {
-      return JSON.stringify(content) ?? "";
+      return JSON.stringify(hasStructured ? { content, structured_content } : content) ?? "";
     } catch {
       return "";
     }
@@ -876,7 +861,7 @@ export async function invokeRemoteTool(
   const rawBytes = Buffer.byteLength(serialized, "utf8");
 
   if (transportFailed) {
-    invalidateCachedManifest(args.tenant_id, args.mcp_server_id);
+    invalidateCachedManifest(args.tenant_id, args.connector_id);
     // A mid-session 401 means the cached token is dead. Evicting the client
     // alone is not enough: the next connect would replay the SAME
     // locally-not-yet-expired token and 401 forever. Invalidate the oauth2
@@ -888,27 +873,51 @@ export async function invokeRemoteTool(
       await invalidateOAuth2TokenForServer(
         args.db,
         args.tenant_id,
-        args.mcp_server_id,
+        args.connector_id,
         environment,
         requestSource,
       );
     }
   }
 
+  const advertised = advertisedSideEffect(pooled, args.call);
   await recordMcpExternalToolInvoked({
     tenant_id: args.tenant_id,
     actor_id: args.actor_id,
-    mcp_server_id: args.mcp_server_id,
-    namespace: args.namespace,
-    remote_tool: args.remote_tool,
+    connector_id: args.connector_id,
+    connector_slug: args.connector_slug,
+    remote_tool: remoteCallTarget(args.call),
+    operation: MCP_WIRE_METHOD[args.call.operation],
     outcome,
+    // What the server CLAIMS about the tool it just ran, when it claimed
+    // anything. Recorded so an operator can reconcile "the remote said
+    // this was read-only" against "the engine gated it as a write" —
+    // which is the whole point of not letting the claim decide.
+    ...(advertised !== null ? { advertised_side_effect: advertised } : {}),
+    structured: hasStructured,
     duration_ms: Date.now() - started,
     byte_count: rawBytes,
     request_source: requestSource,
     executor: args.db,
   });
 
-  return { ok: outcome === "success", content, bytes: rawBytes };
+  return {
+    ok: outcome === "success",
+    content,
+    ...(hasStructured ? { structured_content } : {}),
+    bytes: rawBytes,
+    failure,
+  };
+}
+
+/** What the remote's own annotations claim about this call, or null when
+ *  it made no claim (or the call addresses no tool). Advisory only — the
+ *  gate never reads it, see `classifyMcpToolSideEffect`. */
+function advertisedSideEffect(pooled: PooledClient, call: RemoteCall): SideEffect | null {
+  if (call.operation !== "call_tool") return null;
+  const descriptor = pooled.tools.find((t) => t.name === call.tool);
+  if (!descriptor?.annotations) return null;
+  return classifyMcpToolSideEffect(descriptor.annotations);
 }
 
 /** Drop + close every Client for a tenant — the tenant-wide eviction
@@ -934,26 +943,26 @@ export function evictTenant(tenant_id: string): void {
  * operations. Closes the live socket and clears any armed backoff so the
  * next `getTenantMcpTools` reconnects this server fresh.
  */
-export function evictServer(tenant_id: string, mcp_server_id: string): void {
+export function evictServer(tenant_id: string, connector_id: string): void {
   const bucket = POOL.get(tenant_id);
   if (!bucket) return;
-  const pooled = bucket.clients.get(mcp_server_id);
+  const pooled = bucket.clients.get(connector_id);
   if (pooled) {
-    bucket.clients.delete(mcp_server_id);
+    bucket.clients.delete(connector_id);
     void pooled.client.close().catch(() => {});
   }
-  bucket.backoff.delete(mcp_server_id);
+  bucket.backoff.delete(connector_id);
 }
 
 /** Drop the cached manifest (and live Client) for a single server so the
  *  next `getTenantMcpTools` re-lists tools. Called by the schema-drift
  *  reconciler when the remote manifest changed. */
-export function invalidateCachedManifest(tenant_id: string, mcp_server_id: string): void {
+export function invalidateCachedManifest(tenant_id: string, connector_id: string): void {
   const bucket = POOL.get(tenant_id);
   if (!bucket) return;
-  const pooled = bucket.clients.get(mcp_server_id);
+  const pooled = bucket.clients.get(connector_id);
   if (pooled) {
-    bucket.clients.delete(mcp_server_id);
+    bucket.clients.delete(connector_id);
     void pooled.client.close().catch(() => {});
   }
 }

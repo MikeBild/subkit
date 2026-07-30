@@ -1239,6 +1239,8 @@ export async function probeHttpConnector(p: {
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
+  /** See `probeConnector` — a credential for a connector that is not saved yet. */
+  credential_override?: DecryptedCredential | null;
 }): Promise<HttpProbeResult> {
   const start = Date.now();
   try {
@@ -1257,12 +1259,19 @@ export async function probeHttpConnector(p: {
     // way that is indistinguishable from a genuine connectivity failure.
     let probeCredential: DecryptedCredential | null = null;
     if (p.connector.auth_type !== "none") {
-      const credRow = await getCredentialForConnector(
-        p.tenant_id,
-        p.connector.id,
-        p.connector.environment,
-        p.db,
-      );
+      // An override stands in for the persisted row when the connector is not
+      // saved yet. `undefined` means "look it up"; an explicit `null` is a
+      // caller saying there is no credential, and falls into the same
+      // `credential_missing` answer as an absent row.
+      const credRow =
+        p.credential_override !== undefined
+          ? p.credential_override && { value: p.credential_override }
+          : await getCredentialForConnector(
+              p.tenant_id,
+              p.connector.id,
+              p.connector.environment,
+              p.db,
+            );
       if (!credRow) {
         return {
           ok: false,
@@ -1296,6 +1305,12 @@ export async function probeHttpConnector(p: {
       method,
       path_or_url: pathOrUrl,
       ...(probeConfig?.headers ? { headers: probeConfig.headers } : {}),
+      // Forward the override so the request itself authenticates with the same
+      // material the guard above checked. Without this the guard would pass and
+      // the request would then resolve nothing and go out unauthenticated.
+      ...(p.credential_override !== undefined
+        ? { credential_override: p.credential_override }
+        : {}),
     });
 
     const latency_ms = Date.now() - start;

@@ -410,6 +410,84 @@ export const RequestStepSchema = z
           .optional(),
       })
       .optional(),
+    /**
+     * Optional MCP operation. When present, the request step routes
+     * through the MCP driver — a remote Model Context Protocol server
+     * addressed as a connector.
+     *
+     * A SUB-BLOCK, not a step kind: `graphql`, `sql` and `s3` already
+     * established that a driver is a shape inside `request`, not a new
+     * member of the step union, and everything a request step gives an
+     * author (retry, backoff, `error_policy`, `response_filters`,
+     * `for_each`, the versioned output envelope) comes for free that way.
+     *
+     * Three operations, matching the three things an MCP server exposes:
+     *   - `call_tool`    → `tools/call`     (needs `tool`, takes `arguments`)
+     *   - `read_resource`→ `resources/read` (needs `uri`)
+     *   - `get_prompt`   → `prompts/get`    (needs `prompt`, takes `arguments`)
+     *
+     * SIDE EFFECTS: `call_tool` is classified WRITE and therefore passes
+     * through the same hold-writes / approval gate as a POST — see
+     * `SideEffectInput.mcp` in packages/shared/src/side-effects.ts for
+     * why the remote's own `readOnlyHint` is not consulted. Set
+     * `side_effects: "read"` on the step to declare otherwise.
+     */
+    mcp: z
+      .object({
+        operation: z.enum(["call_tool", "read_resource", "get_prompt"]).default("call_tool"),
+        /** Remote tool name for `call_tool`. The UNPREFIXED name as the
+         *  server publishes it — the `mcp_<slug>__<tool>` palette name is
+         *  a model-facing address, not a workflow one. */
+        tool: z.string().min(1).optional(),
+        /** Resource URI for `read_resource`, verbatim as the server
+         *  published it (`file://`, `https://`, or any custom scheme). */
+        uri: z.string().min(1).optional(),
+        /** Prompt name for `get_prompt`. */
+        prompt: z.string().min(1).optional(),
+        /** Arguments for `call_tool` / `get_prompt`. Placeholders resolve
+         *  type-preservingly, like `graphql.variables` — a whole-value
+         *  `"${input.limit}"` stays a number. */
+        arguments: z.record(z.string(), JsonValueSchema).optional(),
+      })
+      .superRefine((m, ctx) => {
+        // Each operation names its target in a different field, and a step
+        // that sets the wrong one would otherwise fail at dispatch with
+        // "tool is required" against a step that clearly meant to read a
+        // resource. Naming the field here costs the author one edit.
+        const required = {
+          call_tool: "tool",
+          read_resource: "uri",
+          get_prompt: "prompt",
+        } as const;
+        const field = required[m.operation];
+        if (m[field] === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `mcp.operation "${m.operation}" requires mcp.${field}`,
+          });
+        }
+        for (const [other, forOp] of Object.entries(required) as Array<
+          [keyof typeof required, (typeof required)[keyof typeof required]]
+        >) {
+          if (other === m.operation) continue;
+          if (m[forOp] !== undefined) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [forOp],
+              message: `mcp.${forOp} belongs to operation "${other}", not "${m.operation}"`,
+            });
+          }
+        }
+        if (m.operation === "read_resource" && m.arguments !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["arguments"],
+            message: "mcp.arguments is not accepted by read_resource — a resource is named by uri",
+          });
+        }
+      })
+      .optional(),
     body_schema: z.record(z.string(), z.unknown()).optional(),
     response_schema: z.record(z.string(), z.unknown()).optional(),
     /**
@@ -576,6 +654,7 @@ export const RequestStepSchema = z
       s.s3 === undefined &&
       s.sql === undefined &&
       s.graphql === undefined &&
+      s.mcp === undefined &&
       s.expected_row_count !== undefined
     ) {
       ctx.addIssue({
@@ -620,18 +699,64 @@ export const RequestStepSchema = z
       }
     }
 
-    // Pure HTTP path: no s3 / sql / graphql block ⇒ method must be HTTP.
+    if (s.mcp !== undefined) {
+      // An MCP session is negotiated against a registered server, and the
+      // connector row is what carries the transport, the credential and
+      // the slug the tool name is namespaced by. A bare `url` has none of
+      // those, so there is nothing to hand the pool.
+      if (s.connector_id === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["connector_id"],
+          message: "mcp step requires connector_id — an MCP server is addressed as a connector",
+        });
+      }
+      // Both assertions read an HTTP/SQL result shape an MCP call never
+      // produces: there is no status code on a JSON-RPC result and no
+      // row count on remote content.
+      if (s.expected_statuses !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expected_statuses"],
+          message: "expected_statuses is HTTP/S3 only; an MCP call has no HTTP status",
+        });
+      }
+      if (s.expected_row_count !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expected_row_count"],
+          message: "expected_row_count is postgres-only; an MCP call returns content, not rows",
+        });
+      }
+      // `timeout_ms` bounds nothing on this path. An MCP call's deadline
+      // belongs to the session that carries it and is set per connector;
+      // keeping the step timer out of it is what makes `signal.aborted`
+      // there mean "the run was cancelled" and nothing else. A bound that
+      // never fires is worse than no field at all — it reads as a bound
+      // that holds — so refuse it, and name the lever that does work.
+      if (s.timeout_ms !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["timeout_ms"],
+          message:
+            "timeout_ms does not bound an mcp step; the deadline for a remote call is the connector's `config.mcp.remote_tool_call_timeout_ms` (tenant default: `connectors.mcp.remote_tool_call_timeout_ms`, ceiling 300000ms)",
+        });
+      }
+    }
+
+    // Pure HTTP path: no s3 / sql / graphql / mcp block ⇒ method must be HTTP.
     if (
       s.s3 === undefined &&
       s.sql === undefined &&
       s.graphql === undefined &&
+      s.mcp === undefined &&
       s.method !== undefined &&
       !HTTP_VERBS.has(s.method)
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["method"],
-        message: `http request step requires method ∈ ${[...HTTP_VERBS].join("|")}, got ${s.method}; add an \`s3\` or \`sql\` block to dispatch through those drivers`,
+        message: `http request step requires method ∈ ${[...HTTP_VERBS].join("|")}, got ${s.method}; add an \`s3\`, \`sql\` or \`mcp\` block to dispatch through those drivers`,
       });
     }
   })

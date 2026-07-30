@@ -66,6 +66,9 @@ export const testRbacExpressionTool: ConversationTool = {
     "Check whether a specific actor would be allowed to perform a given permission, optionally against a named resource. Pure probe — writes nothing. Useful for answering 'would user X be able to approve patch candidate Y?' before granting a role.",
   inputSchema: Input,
   category: "tenant_read",
+  // Builds a definition rather than using one: withheld from the
+  // read-and-execute tier even though it only reads.
+  authoring_only: true,
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
 

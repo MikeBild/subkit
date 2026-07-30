@@ -1,10 +1,10 @@
 ---
 slug: sk-ref-mcp-tools
 name: sk Platform Reference — MCP Tool Catalog
-description: The public MCP callable surface of sk — every tool name (underscore form) tagged with the MCP mode that can call it, plus the write approval gate, warnings envelope, OAuth scopes, and resource URI schemes.
+description: The public MCP callable surface of sk — every tool name (underscore form) tagged with the MCP mode that can call it, plus the write approval gate, warnings envelope, OAuth scopes, resource URI schemes, and how a remote MCP server the tenant registered (a connector with driver `mcp`) relates to this catalog.
 tags: [sk-platform-reference, mcp, tools, oauth, resources]
 scope: global
-version: 3
+version: 5
 ---
 
 # MCP Tool Catalog — Overview
@@ -21,8 +21,8 @@ Workflow slugs are kebab-case (`wf_daily-price-report`).
 The catalog is shaped by the caller's MCP mode (OAuth scope). The FULL catalog
 for the mode is advertised — `tools/list` publishes every tool the mode exposes,
 with no server-side trim. A small **core floor** is always present:
-`find_workflow`, `run_workflow`, `authenticate`, `confirm_tool_call`,
-`list_recipes`. The per-workflow `wf_<slug>` palette rides alongside (Top-40);
+`find_workflow`, `run_workflow`, `authenticate`, `list_recipes`.
+The per-workflow `wf_<slug>` palette rides alongside (Top-40);
 workflows past the cap stay reachable via `find_workflow` → `run_workflow(slug)`.
 
 When a client caps how many tools it preloads, its OWN native tool-search /
@@ -40,8 +40,11 @@ cache is the cause.
 
 Every tool below carries the **lowest MCP mode that can call it**:
 
-- **[product]** — every client, including the default `mcp:read` principal.
-- **[authoring]** — `mcp:authoring` and above.
+- **[product]** — read and execute. The default for every credential without an
+  explicit `mcp:*` marker, including a plain wildcard `*`. Reads the tenant and
+  runs what is already there.
+- **[authoring]** — `mcp:authoring` and above. Adds the tools that BUILD
+  definitions: the `conversation_*` cluster and the authoring helpers.
 - **[admin]** — `mcp:admin` only, and suppressed entirely when the deployment
   sets `mcp.read_only`.
 
@@ -74,21 +77,21 @@ Run saved workflows and read their executions.
   is what resolves the poll handle a long run hands back.
 - `list_recipes` **[product]** / `inspect_recipe` **[product]** — browse and read
   the workflow recipe catalog.
-- `get_workflow` **[authoring]** — fetch a saved workflow's metadata by id.
-- `list_workflows` **[authoring]** — enumerate workflows. Prefer `find_workflow`.
-- `inspect_execution` **[authoring]** — full execution detail (steps, timings,
+- `get_workflow` **[product]** — fetch a saved workflow's metadata by id.
+- `list_workflows` **[product]** — enumerate workflows. Prefer `find_workflow`.
+- `inspect_execution` **[product]** — full execution detail (steps, timings,
   errors). This is how you diagnose a failed run over MCP.
-- `inspect_execution_step` **[authoring]** — drill into a single step's
+- `inspect_execution_step` **[product]** — drill into a single step's
   input/output.
-- `list_executions` **[authoring]** — list past executions.
-- `get_raw_result` **[authoring]** — fetch an offloaded/oversize result payload.
-- `list_attachments` / `preview_attachment` **[authoring]** — execution-produced
+- `list_executions` **[product]** — list past executions.
+- `get_raw_result` **[product]** — fetch an offloaded/oversize result payload.
+- `list_attachments` / `preview_attachment` **[product]** — execution-produced
   files.
-- `list_schedules` **[authoring]**; `create_schedule`, `update_schedule`,
+- `list_schedules` **[product]**; `create_schedule`, `update_schedule`,
   `delete_schedule` **[admin]**.
 - `rerun_execution` **[admin]** — re-run a prior execution.
 
-`inspect_workflow` **[authoring]** reads the conversation DRAFT, not a saved
+`inspect_workflow` **[product]** reads the conversation DRAFT, not a saved
 workflow; over MCP that draft is always empty. Use `get_workflow` for a saved
 definition and `inspect_execution` for what a run actually did.
 
@@ -99,19 +102,10 @@ definition and `inspect_execution` for what a run actually did.
   real send. The result comes back `preview: true`, `writes_held: true`, and a
   `would_write` / `held_steps` list of exactly what a release would do. Nothing
   was written.
-- **Releasing those writes is a person's decision, and you cannot make it.** The
-  preview carries `awaiting_human_approval: true`, an `approval_url`, a
-  `confirm_id`, and a `confirm_reason`. Send the `approval_url` to the person who
-  must approve; they open it, read the `would_write` list, and approve or decline.
-  It is `null` only when the deployment has no `server.public_base_url`, and then
-  the writes cannot be approved at all — say so instead of re-running the tool.
-- Once they have approved, `confirm_tool_call({ tool: "wf_<slug>", confirm_id })`
-  performs the held writes. It approves nothing — before they decide it answers
-  `approval_not_granted`. Never call it on your own initiative, and never in the
-  same turn as the preview.
-- `confirm_reason` is `portal_grant_required`: the held writes wait on a person
-  who opens the `approval_url` and grants. Approval over MCP is **portal-only** —
-  there is no in-band prompt, and nothing you send releases the writes.
+- **Releasing those writes is a person's decision, and you cannot make it.**
+  Report the `would_write` list to the operator and stop there. There is no
+  `approval_url`, no `confirm_id` and no `confirm_tool_call` on this surface —
+  those were removed; do not tell the operator to expect a link.
 - The engine replays the inputs it already holds. There is no `execute_writes`
   parameter on this surface, and re-running the tool only reproduces the preview.
 - `_meta.environment` selects `"dev"` (default) or `"prod"`.
@@ -146,14 +140,18 @@ poll `conversation_get` until the turn settles (answer or elicitation).
 
 ## Authoring-mode helper tools
 
-Authoring mode can also call the engine's own authoring building blocks — all
-advertised in `tools/list`: `call_connector`, `probe_connector`,
-`discover_connector_endpoints`, `discover_systems_from_files`,
-`analyze_scrape_target`, `suggest_connector_templates`, `dry_run_transform`,
-`dry_run_patch_candidate`, `suggest_jsonata_paths`, `propose_schema_migration`,
-`test_rbac_expression`, `inspect_authoring_context`, `cannot_help` — all
-**[authoring]**. Prefer the `conversation_*` entry point; these are building
-blocks, not the front door.
+Authoring mode adds the engine's own building blocks for composing a definition
+— all **[authoring]**: `discover_connector_endpoints`,
+`discover_systems_from_files`, `analyze_scrape_target`,
+`suggest_connector_templates`, `match_connector_template_by_url`,
+`dry_run_transform`, `suggest_jsonata_paths`, `propose_schema_migration`,
+`test_rbac_expression`, `inspect_authoring_context`, `fetch_connector_docs`,
+`fetch_connector_self_description`. Prefer the `conversation_*` entry point;
+these are building blocks, not the front door.
+
+`call_connector` and `probe_connector` are **[product]**, not authoring helpers:
+calling and testing a connector that already exists is execution, and that is
+what the read-and-execute tier is for.
 
 # Connectors
 
@@ -163,18 +161,51 @@ Inspect connectors and their docs (credentials are never returned).
   connector.
 - `match_connector_template_by_url` **[product]** — find the template for a target
   system's base URL.
-- `find_connector` **[authoring]** — search connectors by name/intent.
-- `list_connectors` **[authoring]** — enumerate connectors.
-- `get_connector` **[authoring]** — connector metadata, incl. re-auth health
+- `find_connector` **[product]** — search connectors by name/intent.
+- `list_connectors` **[product]** — enumerate connectors.
+- `get_connector` **[product]** — connector metadata, incl. re-auth health
   (never secrets).
 - `fetch_connector_docs` **[authoring]** — pull a connector's documentation/recipe
   text.
 - `fetch_connector_self_description` **[authoring]** — pull the target system's own
   machine-readable description.
-- `probe_connector` **[authoring]** — live reachability/auth probe.
+- `probe_connector` **[product]** — one-shot HTTP request the caller shapes
+  (method + path + headers), for sniffing a response before writing a step. It
+  always speaks HTTP, so it is not the right probe for a non-HTTP driver.
 - `suggest_connector_templates` **[authoring]** — rank templates for a system.
 - `update_connector`, `delete_connector`, `import_connector_from_spec`,
   `authenticate_oauth` **[admin]** — mutate.
+
+## External MCP servers are connectors
+
+A remote MCP server the tenant talks to is a **connector with `driver: "mcp"`**
+— five drivers exist: `http`, `graphql`, `postgres`, `s3`, `mcp`. Its endpoint
+is `base_url`; its transport and non-secret auth shape live under
+`config.mcp` (`transport`, `auth.kind`, an optional
+`remote_tool_call_timeout_ms`); its secret is an ordinary credential row keyed
+on `(tenant, connector, environment)`. It is created, listed, patched, enabled,
+disabled and deleted with the connector tools above and the connector REST
+routes — there is no separate MCP-server registry, no `mcp-servers` tool
+family, and no `mcp_server:manage` permission. A caller asking to "add an MCP
+server" is asking for a connector.
+
+`test_connector` **[product]** is what checks one: for an `mcp` connector it
+forces a real handshake and reports the tool count.
+
+Its OAuth is NOT the `authenticate` tool below. `authenticate` builds an
+authorization URL from the connector's declared OAuth config, which an MCP
+connector does not have — an MCP server publishes its own authorization server,
+so the grant runs through `POST /v1/connectors/{id}/mcp/authorize` (or
+`sk connectors mcp-authorize`), an operator action outside this catalog. Say
+that rather than handing over a link the token endpoint will reject.
+
+**The remote's own tools are not in this catalog.** They are minted into the
+CHAT palette as `mcp_<connector_slug>__<remote_tool>` — plus read-only
+`list_resources` / `read_resource` / `list_prompts` / `get_prompt` adapters
+where the server declared those capabilities — and a workflow reaches them
+through a `request` step carrying an `mcp` block. Over MCP you can see such a
+connector and prove it handshakes; you cannot call its remote tools from here.
+Never advertise an `mcp_…` name to a caller on this surface.
 
 OAuth: authorize a connector via `authenticate` **[product]** or by starting a
 `conversation_start` flow. A connector whose credential expired is re-authorized
@@ -196,13 +227,13 @@ search that grounded prose. The sk engine itself publishes `/llms.txt` and
 
 Ground answers in tenant knowledge and product docs.
 
-- `search_knowledge` **[authoring]** — semantic search over the tenant's Knowledge
+- `search_knowledge` **[product]** — semantic search over the tenant's Knowledge
   Sources.
 - `search_knowledge_v2` **[authoring]** — newer ranked knowledge search
   (chunk-level).
-- `list_knowledge_sources` **[authoring]** — enumerate Knowledge Sources.
-- `get_knowledge_source` **[authoring]** — one source's metadata + chunk count.
-- `search_docs` **[authoring]** — search the sk product documentation.
+- `list_knowledge_sources` **[product]** — enumerate Knowledge Sources.
+- `get_knowledge_source` **[product]** — one source's metadata + chunk count.
+- `search_docs` **[product]** — search the sk product documentation.
 - `fetch_connector_docs` **[authoring]** — connector-specific documentation/recipe.
 
 Web-search escalation precedence: `search_knowledge` → `search_docs` →
@@ -215,16 +246,16 @@ Knowledge writes **[admin]**: `create_knowledge_source`,
 
 Who am I, who can do what.
 
-- `whoami` **[authoring]** — the calling principal (id, tenant, scopes, roles).
-- `find_user` / `get_user` / `list_users` **[authoring]** — directory lookups.
-- `list_system_accounts` **[authoring]** — non-human principals.
-- `find_role` / `get_role` / `inspect_role` / `list_roles` **[authoring]** — role
+- `whoami` **[product]** — the calling principal (id, tenant, scopes, roles).
+- `find_user` / `get_user` / `list_users` **[product]** — directory lookups.
+- `list_system_accounts` **[product]** — non-human principals.
+- `find_role` / `get_role` / `inspect_role` / `list_roles` **[product]** — role
   definitions.
 - `test_rbac_expression` **[authoring]** — evaluate an RBAC expression against a
   context.
-- API keys: `list_api_keys`, `get_api_key` **[authoring]**; `create_api_key`,
+- API keys: `list_api_keys`, `get_api_key` **[product]**; `create_api_key`,
   `revoke_api_key` **[admin]**.
-- Portal tokens: `list_portal_tokens` **[authoring]**; `revoke_portal_token`
+- Portal tokens: `list_portal_tokens` **[product]**; `revoke_portal_token`
   **[admin]**.
 - `edit_role` **[admin]** — mutate a role.
 
@@ -232,14 +263,14 @@ Who am I, who can do what.
 
 Health, cost, and audit.
 
-- `get_engine_status` **[authoring]** — engine/version/health snapshot.
-- `get_token_budget` **[authoring]** — LLM token budget accounting.
-- `get_llm_usage` **[authoring]** — LLM usage/cost rollup.
-- `list_audit` / `get_audit_entry` **[authoring]** — the audit log (every governed
+- `get_engine_status` **[product]** — engine/version/health snapshot.
+- `get_token_budget` **[product]** — LLM token budget accounting.
+- `get_llm_usage` **[product]** — LLM usage/cost rollup.
+- `list_audit` / `get_audit_entry` **[product]** — the audit log (every governed
   action; approval lifecycle rows read `approval.requested`, `approval.granted`,
   `approval.declined`, `approval.approved`).
-- Inbound hooks: `list_inbound_hooks`, `get_inbound_hook` **[authoring]**.
-- Subscriptions: `list_subscriptions`, `get_subscription` **[authoring]**;
+- Inbound hooks: `list_inbound_hooks`, `get_inbound_hook` **[product]**.
+- Subscriptions: `list_subscriptions`, `get_subscription` **[product]**;
   `update_subscription`, `delete_subscription` **[admin]**.
 
 # Self-Healing, Skills & Discovery
@@ -247,7 +278,7 @@ Health, cost, and audit.
 Proposed (not auto-applied) improvements.
 
 - Patch candidates: `list_patch_candidates`, `get_patch_candidate`,
-  `preview_patch_candidate`, `dry_run_patch_candidate` **[authoring]**;
+  `preview_patch_candidate`, `dry_run_patch_candidate` **[product]**;
   `approve_patch_candidate` **[admin]**.
 - Skills: `list_skills`, `list_all_skills`, `find_skill`, `get_skill`
   **[authoring]**; `create_skill` (files a PROPOSED candidate for human review —
@@ -257,14 +288,14 @@ Proposed (not auto-applied) improvements.
   directly callable so the coding-agent capture loop closes in-session; the
   client's native destructive-write dialog is the explicit operator approval and
   RBAC `skill:write` stays the hard gate.
-- Capability gaps: `list_capability_gaps` **[authoring]**.
-- Session learnings: `save_learning` **[authoring]** — explicitly capture a durable
+- Capability gaps: `list_capability_gaps` **[product]**.
+- Session learnings: `save_learning` **[product]** — explicitly capture a durable
   rule the user taught in the current session as a PROPOSED `session_learning`
   skill candidate (`{ title, body, domains?, pitfalls? }`; domains land as
   `domain:<slug>` tags). Additive and confirmation-free: it only feeds the human
   review queue (`sk learnings review`), never live knowledge. Re-saving the same
   title in the same domains updates the existing proposal instead of duplicating.
-- Discovery: `list_discovery_artifacts`, `get_discovery_artifact` **[authoring]**;
+- Discovery: `list_discovery_artifacts`, `get_discovery_artifact` **[product]**;
   `approve_discovery_artifact` **[admin]**.
 
 Approval is always an operator's act. These tools relay a decision the user gave
@@ -272,41 +303,19 @@ you explicitly; you never take one on your own initiative.
 
 # Write Approval Gate
 
-Tenant-write / destructive tools are guarded by a confirm gate. The gate always
-runs the same lifecycle: the call pauses, an `approval.requested` audit row is
-written with the exact args (encrypted), a HUMAN decides — `approval.granted` or
-`approval.declined` — and the tool executes only after an `approval.approved` row
-joins the same approval id. The engine replays the args it persisted; you never
-re-send them.
+The approval for a write happens in YOUR client, before the call reaches sk.
 
-The approval is a human's, and you cannot make it. `confirm_tool_call` does not
-approve — it TRIGGERS a call a person already granted. Until they have, it
-answers `approval_not_granted`. The same is true of a `_meta.sk_confirm` marker.
-Neither needs to be refused, because neither opens by itself.
+Every write/destructive entry advertises `destructiveHint: true` in its
+`tools/list` annotations; a trusted MCP client renders its own per-call
+approval dialog from that hint. If the human allows, the call reaches sk and
+executes directly, writing its audit row. If they deny, it never arrives.
 
-One rule, every write tool — including `run_workflow` and `wf_<slug>`:
+There is no sk-side approval portal, no `approval_url`, no `confirm_tool_call`
+and no `needs_confirm` envelope — those were removed. Do not author your own
+confirmation prompt before a write either; your client already renders one, and
+pre-empting it just asks the human twice.
 
-- The paused call comes back `status: "needs_confirm"`. Its fields are exactly:
-  `tool`, `pending_output` (a structured preview of what the call will do, never
-  the payload), `policy_mode`, `reason`, `tool_call_id`, `approval_url`, and
-  `resume`. There is **no `args` field** and no `confirm_id` field — the handle is
-  named `tool_call_id`.
-- `approval_url` is where a person grants or declines. Send that link to whoever
-  must approve; they open it, read exactly what will be written, and decide. It is
-  `null` only when the deployment has no `server.public_base_url`, and then the
-  call cannot be approved at all — say so instead of retrying.
-- Once they approve, fire `confirm_tool_call({ tool, confirm_id })`, passing the
-  envelope's `tool_call_id` as `confirm_id`. The engine replays the args it
-  persisted and executes.
-- Approval over MCP is **portal-only**. Even if your client advertises
-  `elicitation`, the engine issues no in-band prompt: every write approval comes
-  back as a `needs_confirm` envelope with an `approval_url` a person grants at,
-  out of band. It is not a refusal — nothing ran, and the call is waiting on that
-  link.
-
-A confirm without a matching, GRANTED, un-consumed approval is rejected — you
-cannot approve a call that was never gated, you cannot approve one yourself, and
-a handle is single-use.
+The full contract lives in the `mcp-tool-contract` skill.
 
 # Warnings Envelope
 
@@ -327,17 +336,29 @@ The catalog and write visibility are gated by the principal's `mcp:*` scope.
 These scope markers select the MCP **mode**; they do NOT widen resource
 permissions — RBAC still bounds every action.
 
-- `mcp:read` — product mode (default when no `mcp:*` marker). The whole surface
-  is: the `wf_<slug>` palette, the core floor (`find_workflow`, `run_workflow`,
-  `authenticate`, `confirm_tool_call`, `list_recipes`), plus
-  `get_execution`, `inspect_recipe`, `test_connector`,
-  `match_connector_template_by_url`. Read + run only; anything else is rejected.
-- `mcp:authoring` — authoring mode: adds the `conversation_*` session tools and
-  every tenant **read** tool (find/list/get/inspect/search/probe/dry-run). No
-  tenant writes — `run_workflow` and `wf_<slug>` stay available because a
-  workflow run is a run, not a config mutation.
-- `mcp:admin` — admin mode: adds the tenant **write** tools (create/update/delete,
-  approve, mutate) on top of authoring.
+- `mcp:read`, a narrowed scope set, or a plain wildcard `*` — **read and
+  execute**, the default. Every tenant read tool (`list_*`, `get_*`, `find_*`,
+  `inspect_*`, `search_*`), plus `run_workflow`, `get_execution`, the
+  `wf_<slug>` palette, `call_connector` and `probe_connector`. Read the tenant,
+  run what is already there.
+- `mcp:authoring` — adds the tools that BUILD definitions: the `conversation_*`
+  session tools and the authoring helpers (`discover_connector_endpoints`,
+  `dry_run_transform`, `suggest_*`, `propose_schema_migration`,
+  `inspect_authoring_context`, …). Still no tenant writes.
+- `mcp:admin` — adds the tenant **write** tools (create/update/delete, approve,
+  mutate) on top of authoring.
+
+**Authoring is opt-in, and a broad credential is not an opt-in.** A wildcard `*`
+means "no narrowing of role-derived access"; it does not mean consent to author.
+A credential authors over MCP only when someone wrote `mcp:authoring` on it.
+Calling a `conversation_*` tool without that scope is refused, not merely hidden.
+
+Where authoring normally happens is the `sk` CLI — `sk workflows create --file`,
+`sk connectors create --file`, `sk connectors import --spec` — because a
+definition edit should arrive as a file a person can read before it lands. If a
+caller asks you to create or change a workflow, connector, knowledge source or
+skill and you do not see the authoring tools, point at the CLI. Do not describe
+a tool that is not in your catalog.
 
 A read-only deployment (`mcp.read_only`) suppresses tenant writes even in admin
 mode; workflow runs remain. Mode is resolved per session from the principal's

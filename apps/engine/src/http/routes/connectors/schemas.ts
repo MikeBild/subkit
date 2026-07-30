@@ -5,6 +5,7 @@ import { z } from "@hono/zod-openapi";
 import {
   ConnectorTemplateSourceEnum,
   type ConnectorView,
+  effectiveConnectorHealth,
   OperatorQuirksSchema,
   resolveConnectorOAuthConfig,
 } from "../../../connectors/index.ts";
@@ -23,6 +24,13 @@ export const CredentialSummarySchema = z
     created_at: z.string(),
   })
   .openapi("CredentialSummary");
+
+// The four verdicts `effectiveConnectorHealth` can return, in the same
+// precedence order it applies them. An enum rather than a bare string so a
+// generated client branches on the states that exist.
+export const ConnectorHealthStateEnum = z
+  .enum(["ok", "degraded", "needs_update", "needs_reauth"])
+  .openapi("ConnectorHealthState");
 
 export const ConnectorSchema = z
   .object({
@@ -67,6 +75,32 @@ export const ConnectorSchema = z
           .optional(),
       })
       .optional(),
+    // Operator on/off switch. Present because `POST {id}/enable` and
+    // `POST {id}/disable` return this schema — a flip the caller could not
+    // then read back would make those routes report nothing.
+    enabled: z.boolean(),
+    // The ENGINE's account of the most recent failed interaction, formatted
+    // `[<error_code>] <sentence>` — never text the remote authored. Nullable
+    // rather than optional so a client can tell "nothing recorded" from
+    // "field missing"; `apps/engine/src/http/routes/connectors/enablement.test.ts`
+    // pins the read path on both the single GET and the list item.
+    last_error: z.string().nullable(),
+    // Why the engine is (or is not) using this connector. `enabled` answers
+    // "did a human switch it off"; these three answer "and does the engine
+    // consider it usable" — the half of that question the API could not
+    // answer before. All three are engine-authored, so unlike a remote's
+    // error body they are safe to publish.
+    //
+    // `health_state` is the RECONCILED verdict across health_state /
+    // needs_reauth / circuit_state (`effectiveConnectorHealth`), the same
+    // one `/v1/diagnostics/integrations` reports as `effective_health` — a
+    // representation that showed the stored column while `needs_reauth` said
+    // otherwise would put two answers in front of one operator.
+    // `health_reason` and `health_error_code` are what the last transition
+    // recorded (`auth_rejected`, `endpoint_removed`, `rate_limited`, …).
+    health_state: ConnectorHealthStateEnum,
+    health_reason: z.string().nullable(),
+    health_error_code: z.string().nullable(),
     // Re-auth health. `needs_reauth` flips true when the connector's
     // credential goes stale (OAuth refresh revoked, API key rotated, login
     // lapsed) and stays unusable until a human reconnects it. The
@@ -112,6 +146,10 @@ export const ProbeErrorCodeEnum = z
     "scope_insufficient",
     "remote_api_disabled",
     "remote_resource_not_found",
+    // The engine never asked: an operator switched the connector off. The
+    // only member that reports OUR state rather than the upstream's — see
+    // `ProbeErrorCode` in connectors/drivers/index.ts.
+    "connector_disabled",
     "unknown_upstream_error",
   ])
   .openapi("ProbeErrorCode");
@@ -204,6 +242,11 @@ export function serialize(c: ConnectorView) {
     template_version: c.template_version,
     template_snapshot: c.template_snapshot,
     self_description: c.self_description,
+    enabled: c.enabled,
+    last_error: c.last_error,
+    health_state: effectiveConnectorHealth(c),
+    health_reason: c.health_reason,
+    health_error_code: c.health_error_code,
     needs_reauth: c.needs_reauth,
     auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
     auth_failed_reason: c.auth_failed_reason,

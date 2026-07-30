@@ -118,6 +118,27 @@ const patchRoute = createRoute({
   },
 });
 
+/** Enable / disable share one response shape and one handler; the path
+ *  segment is the only difference, so they are built from one factory
+ *  rather than copied. */
+function enablementRoute(segment: "enable" | "disable") {
+  return createRoute({
+    method: "post",
+    path: `/v1/connectors/{id}/${segment}`,
+    tags: ["connectors"],
+    summary: `${segment === "enable" ? "Enable" : "Disable"} a connector`,
+    security: [{ bearerAuth: [] }],
+    request: { params: IdParam },
+    responses: {
+      200: { description: "OK", content: { "application/json": { schema: ConnectorSchema } } },
+      404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    },
+  });
+}
+
+const enableRoute = enablementRoute("enable");
+const disableRoute = enablementRoute("disable");
+
 const deleteRoute = createRoute({
   method: "delete",
   path: "/v1/connectors/{id}",
@@ -192,6 +213,26 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!updated) throw new NotFoundError("connector");
     return c.json(serialize(updated), 200);
   });
+
+  for (const [route, enabled] of [
+    [enableRoute, true],
+    [disableRoute, false],
+  ] as const) {
+    app.openapi(route, async (c) => {
+      const principal = requireAuth(c);
+      const db = c.get("db");
+      const { id } = c.req.valid("param");
+      const updated = await connectorSvc.setConnectorEnabled(
+        principal.tenant_id,
+        id,
+        enabled,
+        principal.id,
+        db,
+      );
+      if (!updated) throw new NotFoundError("connector");
+      return c.json(serialize(updated), 200);
+    });
+  }
 
   app.openapi(deleteRoute, async (c) => {
     const principal = requireAuth(c);

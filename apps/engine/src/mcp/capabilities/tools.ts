@@ -40,7 +40,7 @@ import { maybeOffload } from "../../execution/offload.ts";
 import { logger } from "../../logging/logger.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
-import { getUnifiedRegistry } from "../../tools/index.ts";
+import { CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON, getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
@@ -176,7 +176,16 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     // We log the client's advertised capabilities (elicitation, sampling,
     // roots, tasks) as a signal only. MCP writes are gated by the client's
     // native destructiveHint approval dialog, not by any server-side channel.
+    //
+    // The client's self-reported identity rides along. It is SELF-DECLARED and
+    // therefore never a permission input — the credential decides what a caller
+    // may do. It exists so per-client behaviour is measurable: what a client
+    // advertises and what it actually fulfils diverge (a client has advertised
+    // `elicitation` and then answered every elicitation with an error), and
+    // without this field an aggregate like "0 of 29 elicitations fulfilled"
+    // cannot be split by client.
     const clientCaps = server.getClientCapabilities();
+    const clientInfo = server.getClientVersion();
     const elicitationCapable = clientCaps?.elicitation != null;
     logger.info({
       module: "mcp",
@@ -186,6 +195,8 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       sampling: clientCaps?.sampling != null,
       roots: clientCaps?.roots != null,
       tasks: clientCaps?.tasks != null,
+      client_name: clientInfo?.name,
+      client_version: clientInfo?.version,
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
@@ -360,6 +371,31 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }
 
       if (name.startsWith(CONVERSATION_TOOL_PREFIX)) {
+        // Authoring is opt-in per credential, and this branch has to enforce
+        // it rather than merely reflect it.
+        //
+        // The registry path above gates on the resolved mode; this one did not,
+        // so a credential without authoring saw no `conversation_*` tool in its
+        // catalogue but could still call one by name. That made the mode a
+        // display preference on the one branch that actually opens an authoring
+        // session — the branch where it matters most.
+        //
+        // A catalogue omission is not a boundary. Refusing here is what turns
+        // "you cannot see it" into "you cannot use it".
+        if (!modeFlags(resolveMcpMode(principal), readOnly).showConversationTools) {
+          logger.info({
+            module: "mcp",
+            action: "mcp.tool.mode_denied",
+            msg: "conversation tool refused — credential does not carry authoring",
+            tool: name,
+            principal_id: principal.id,
+            tenant_id: principal.tenant_id,
+          });
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON }],
+          };
+        }
         // Accept `_meta.sk_permission_mode` on MCP calls so the sk REPL
         // and external MCP clients can drive the same auto / ask / plan
         // loop the HTTP surface exposes. Unknown values are ignored and

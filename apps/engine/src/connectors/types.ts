@@ -5,7 +5,12 @@
 //
 // `driver` picks the runtime transport:
 //   - "http"     : HTTP/REST driver. Needs base_url.
+//   - "graphql"  : GraphQL over HTTP. Needs base_url (the single endpoint).
+//   - "s3"       : S3-compatible object store. Needs config.bucket.
 //   - "postgres" : postgres driver. Needs dsn.
+//   - "mcp"      : remote Model Context Protocol server over streamable
+//                  HTTP. Needs base_url. Unlike the four above it is not
+//                  stateless per request — see connectors/drivers/mcp.ts.
 //
 // `auth_type` tells the credential layer how to apply the secret.
 // `config` carries driver- and auth-specific options (e.g. header names
@@ -13,23 +18,62 @@
 
 import { z } from "@hono/zod-openapi";
 
-export const DriverEnum = z.enum(["http", "postgres", "s3", "graphql"]);
+export const DriverEnum = z.enum(["http", "postgres", "s3", "graphql", "mcp"]);
 export type DriverName = z.infer<typeof DriverEnum>;
+
+/**
+ * Shape every `connectors.slug` must satisfy, mirroring the DB CHECK
+ * `connectors_slug_shape_check` exactly.
+ *
+ * The `__`-run ban is load-bearing rather than cosmetic: a remote MCP tool
+ * is exposed to the model as `mcp_<slug>__<tool>`, so `__` is the split
+ * point between the two halves of that name. A slug allowed to contain it
+ * would make the split ambiguous and route a call to the wrong server.
+ * Applies to every driver because one namespace of slugs is what makes the
+ * split point unambiguous — a per-driver rule would only hold until an
+ * `http` connector borrowed a slug an `mcp` one wanted.
+ */
+export const CONNECTOR_SLUG_RE = /^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$/;
+
+export const ConnectorSlugSchema = z
+  .string()
+  .regex(CONNECTOR_SLUG_RE, "slug must be alphanumeric with - or _ inside, 1-64 chars")
+  .refine((s) => !s.includes("__"), {
+    message: "slug must not contain a double underscore — it separates `mcp_<slug>__<tool>`",
+  });
 
 export const EnvironmentEnum = z.enum(["dev", "prod"]);
 export type Environment = z.infer<typeof EnvironmentEnum>;
 export const ConnectorTemplateSourceEnum = z.enum(["builtin", "tenant"]);
 export type ConnectorTemplateSource = z.infer<typeof ConnectorTemplateSourceEnum>;
 
-export const AuthTypeEnum = z.enum([
-  "none",
-  "header",
-  "query",
-  "bearer",
-  "basic",
-  "oauth2",
-  "aws_sigv4",
-]);
+// A strict subset of the DB `credential_mode` enum (db/schema/connectors.ts):
+// the modes a connector may DECLARE as its auth. `oauth2_client` and
+// `oauth2_private_key` are here because the two machine-to-machine MCP auth
+// flows the driver serves — client credentials and private-key JWT — store
+// their secret under exactly those credential modes, and a connector that
+// cannot declare its own auth could not be created through the API at all.
+// `token_mint` stays out: it is a credential mode, never a declared one.
+export const AuthTypeEnum = z
+  .enum([
+    "none",
+    "header",
+    "query",
+    "bearer",
+    "basic",
+    "oauth2",
+    "oauth2_client",
+    "oauth2_private_key",
+    "aws_sigv4",
+  ])
+  // One enum serves every driver, so without this sentence the generated
+  // contract would advertise the two machine-to-machine MCP kinds to `http`
+  // callers as well. `MCP_ONLY_AUTH_TYPES` in connectors/config-schemas.ts is
+  // what enforces it; this only says so where an API consumer reads.
+  .openapi({
+    description:
+      "How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400.",
+  });
 export type AuthType = z.infer<typeof AuthTypeEnum>;
 
 // Categorized replacement for the legacy free-form `operator_notes` blob.
@@ -220,7 +264,10 @@ export type HttpConnectorConfigType = z.infer<typeof HttpConnectorConfig>;
 export const CreateConnectorSchema = z
   .object({
     name: z.string().min(1),
-    slug: z.string().min(1).optional(),
+    // Shape-checked here because `createConnector` uses a caller-supplied slug
+    // RAW (only a generated one goes through `slugify`), so this is the only
+    // application-layer gate in front of the DB CHECK.
+    slug: ConnectorSlugSchema.optional(),
     driver: DriverEnum,
     environment: EnvironmentEnum.default("dev"),
     base_url: z.string().url().optional(),
@@ -236,6 +283,20 @@ export const CreateConnectorSchema = z
     template_slug: z.string().min(1).optional(),
     template_source: ConnectorTemplateSourceEnum.optional(),
     template_base_url_environment: z.string().min(1).optional(),
+  })
+  // An mcp connector with no `base_url` has nothing to hand the transport, and
+  // the failure would otherwise surface at handshake time as a URL parse error
+  // naming neither the field nor the connector. No other driver is refined
+  // here: http tolerates a per-step absolute url, s3 addresses its bucket
+  // through config, and postgres connects through `dsn`.
+  .superRefine((v, ctx) => {
+    if (v.driver === "mcp" && !v.base_url) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["base_url"],
+        message: "mcp connectors require base_url — the remote server's streamable-HTTP endpoint",
+      });
+    }
   })
   .openapi("CreateConnectorBody");
 
@@ -298,6 +359,14 @@ export interface ConnectorView {
   self_description: ConnectorSelfDescription;
   created_at: Date;
   updated_at: Date;
+  /** Operator on/off switch. The one connector bit only a human sets —
+   *  distinct from the engine-derived `health_state` and `circuit_state`. */
+  enabled: boolean;
+  /** The engine's own account of the most recent failed interaction,
+   *  formatted `[<error_code>] <sentence>` — never text the remote wrote.
+   *  Written today only by the MCP handshake path; null on the other
+   *  drivers, where `health_reason` carries the verdict. */
+  last_error: string | null;
   circuit_state: "closed" | "open" | "half-open";
   circuit_opened_at: Date | null;
   circuit_failure_count: number;

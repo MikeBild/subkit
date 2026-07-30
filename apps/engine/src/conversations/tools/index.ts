@@ -309,6 +309,23 @@ export interface ConversationTool {
    *  the provider filter reads this flag instead of a hand-curated name
    *  set, so the exemption and its rationale live on the tool itself. */
   readonly visible_when_readonly?: boolean;
+  /** The mirror of `visible_when_readonly`, for reads: this tool is a step of
+   *  BUILDING a definition, not of using one, so it belongs to the authoring
+   *  tiers even though its category is `tenant_read`.
+   *
+   *  Reading and running are what a plain credential is for; discovering an
+   *  API's endpoints, dry-running a transform, probing a connector or asking
+   *  for a schema migration are authoring moves that happen to read. Category
+   *  cannot tell them apart — `call_connector` and `list_workflows` are both
+   *  `tenant_read` — so the distinction is declared here, next to the tool,
+   *  rather than in a name list somewhere else that nobody updates.
+   *
+   *  Set it on any new tool whose purpose is to help compose a connector,
+   *  workflow, knowledge source or skill. The per-mode catalogue snapshot
+   *  (`mcp/tests/tools-list-catalog-snapshot.test.ts`) pins the exact result,
+   *  so a forgotten flag shows up as a failing diff rather than as a tool
+   *  quietly reachable from a credential that was never granted authoring. */
+  readonly authoring_only?: boolean;
   /** A realistic example argument object. Rendered as `<example>` and
    *  parsed by some clients (MCP) to prefill inputs. */
   readonly example_input?: Readonly<Record<string, unknown>>;

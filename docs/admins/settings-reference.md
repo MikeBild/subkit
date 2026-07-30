@@ -170,8 +170,6 @@ MCP transport
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `mcp.api_key` | string | `""` | global | yes | no |  |
-| `mcp.client.per_server_manifest_byte_cap` | number | `30000` | tenant | no | no | Byte cap on one external MCP server's serialized tool manifest; the heaviest tools are dropped first when exceeded |
-| `mcp.client.remote_tool_call_timeout_ms` | number | `30000` | tenant | no | no | Bounded timeout (ms) for one remote external MCP tools/call invocation |
 | `mcp.read_only` | boolean | `false` | global | no | no |  |
 
 ## errors
@@ -247,6 +245,9 @@ Per-connector tunables. Each sub-section is owned by one connector template.
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `connectors.http.max_response_bytes` | number | `104857600` | tenant | no | no | Max bytes read from a single HTTP/GraphQL connector response before it is rejected as response_too_large. OOM guard; generous default (100 MB). |
+| `connectors.mcp.per_server_manifest_byte_cap` | number | `30000` | tenant | no | no | Byte cap on one external MCP connector's serialized tool manifest; the heaviest tools are dropped first when exceeded |
+| `connectors.mcp.remote_tool_call_timeout_ms` | number | `30000` | tenant | no | no | Bounded timeout (ms) for one remote external MCP tools/call invocation |
+| `connectors.mcp.tools_list_max_pages` | number | `5` | tenant | no | no | Max tools/list pages followed per external MCP handshake; a server paginating past this keeps only the pages read |
 | `connectors.web_scraper.authoring.extract_too_large_yellow_pct` | number | `30` | tenant | no | no | Past-run extract_too_large ratio (over last 20 runs) above which the gate Yellows. |
 | `connectors.web_scraper.authoring.red_sitemap_threshold` | number | `100000` | tenant | no | no | Sitemap entry count above which analyze_scrape_target refuses (Red). |
 | `connectors.web_scraper.authoring.yellow_sitemap_threshold` | number | `10000` | tenant | no | no | Sitemap entry count above which analyze_scrape_target returns Yellow. |

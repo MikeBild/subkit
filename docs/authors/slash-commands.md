@@ -66,7 +66,6 @@ so this column is the UX gate, not the security boundary.
 | command | aliases | requires | description |
 | ------- | ------- | -------- | ----------- |
 | `/mcp` | — | `mcp:read` | List MCP prompts / resources / callable entries |
-| `/mcp-servers` | — | `mcp_server:manage` | Manage external MCP servers (use `sk mcp-servers` for add/inspect/remove) |
 
 ## Admin
 

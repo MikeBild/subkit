@@ -18,7 +18,7 @@ export async function createSchedulerCtx(label: string): Promise<SchedulerTestCt
     engine,
     boss,
     cleanup: async () => {
-      await disposeBoss(boss, 5_000);
+      await disposeBoss(boss);
       await engine.cleanup();
     },
   };

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "5.16.1",
+    "version": "6.0.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -2622,6 +2622,13 @@
           "prefix": {
             "type": "string"
           },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Operator-facing label, or null for keys issued before labels were kept."
+          },
           "scopes": {
             "type": "array",
             "items": {
@@ -2699,6 +2706,7 @@
           "id",
           "tenant_id",
           "prefix",
+          "name",
           "scopes",
           "user_id",
           "system_account_id",
@@ -2746,7 +2754,8 @@
             "format": "uuid"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Operator-facing label, e.g. \"claude-code\". Useful when running one key per channel — a read-and-execute key for a browser client, an mcp:authoring key for a coding agent."
           },
           "scopes": {
             "type": "array",
@@ -3061,336 +3070,6 @@
           "registration_source",
           "disabled_at",
           "created_at"
-        ]
-      },
-      "McpServerListResponse": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/McpServer"
-            }
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
-      "McpServer": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string"
-          },
-          "namespace": {
-            "type": "string"
-          },
-          "transport": {
-            "type": "string",
-            "enum": [
-              "http",
-              "sse",
-              "stdio"
-            ]
-          },
-          "url": {
-            "type": "string"
-          },
-          "auth_config": {
-            "$ref": "#/components/schemas/McpServerRedactedAuthConfig"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "disabled",
-              "error"
-            ]
-          },
-          "last_handshake_at": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "last_error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "tools_manifest_hash": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "created_at": {
-            "type": "string"
-          },
-          "updated_at": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "namespace",
-          "transport",
-          "url",
-          "auth_config",
-          "status",
-          "last_handshake_at",
-          "last_error",
-          "tools_manifest_hash",
-          "created_at",
-          "updated_at"
-        ]
-      },
-      "McpServerRedactedAuthConfig": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "none",
-              "bearer",
-              "basic",
-              "oauth2",
-              "oauth2_client_credentials",
-              "oauth2_private_key_jwt"
-            ]
-          },
-          "has_credential": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "kind",
-          "has_credential"
-        ]
-      },
-      "CreateMcpServerBody": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "namespace": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$"
-          },
-          "transport": {
-            "type": "string",
-            "enum": [
-              "http",
-              "sse"
-            ]
-          },
-          "url": {
-            "type": "string",
-            "format": "uri"
-          },
-          "auth_config": {
-            "$ref": "#/components/schemas/McpServerAuthConfigInput"
-          },
-          "token": {
-            "type": "string",
-            "minLength": 1
-          },
-          "username": {
-            "type": "string",
-            "minLength": 1
-          },
-          "refresh_token": {
-            "type": "string",
-            "minLength": 1
-          },
-          "client_secret": {
-            "type": "string",
-            "minLength": 1
-          },
-          "private_key": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "name",
-          "namespace",
-          "transport",
-          "url"
-        ]
-      },
-      "McpServerAuthConfigInput": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "none",
-              "bearer",
-              "basic",
-              "oauth2",
-              "oauth2_client_credentials",
-              "oauth2_private_key_jwt"
-            ]
-          },
-          "issuer": {
-            "type": "string",
-            "format": "uri"
-          },
-          "client_id": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string"
-          },
-          "algorithm": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind"
-        ],
-        "additionalProperties": false
-      },
-      "PatchMcpServerBody": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "namespace": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$"
-          },
-          "transport": {
-            "type": "string",
-            "enum": [
-              "http",
-              "sse"
-            ]
-          },
-          "url": {
-            "type": "string",
-            "format": "uri"
-          },
-          "auth_config": {
-            "$ref": "#/components/schemas/McpServerAuthConfigInput"
-          },
-          "token": {
-            "type": "string",
-            "minLength": 1
-          },
-          "username": {
-            "type": "string",
-            "minLength": 1
-          },
-          "refresh_token": {
-            "type": "string",
-            "minLength": 1
-          },
-          "client_secret": {
-            "type": "string",
-            "minLength": 1
-          },
-          "private_key": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      },
-      "InspectMcpServerResponse": {
-        "type": "object",
-        "properties": {
-          "tools": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/McpRemoteToolDescriptor"
-            }
-          },
-          "manifest_hash": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "last_handshake_at": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "disabled",
-              "error"
-            ]
-          },
-          "last_error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "tools",
-          "manifest_hash",
-          "last_handshake_at",
-          "status",
-          "last_error"
-        ]
-      },
-      "McpRemoteToolDescriptor": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "inputSchema": {
-            "type": "object",
-            "additionalProperties": {}
-          }
-        },
-        "required": [
-          "name",
-          "description",
-          "inputSchema"
-        ]
-      },
-      "McpServerAuthorizeResponse": {
-        "type": "object",
-        "properties": {
-          "authorization_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "URL the operator's browser must open to grant access."
-          },
-          "state": {
-            "type": "string",
-            "description": "Opaque single-use correlation token for this flow."
-          }
-        },
-        "required": [
-          "authorization_url",
-          "state"
         ]
       },
       "Whoami": {
@@ -4672,6 +4351,9 @@
             "$ref": "#/components/schemas/S3RequestMeta"
           },
           {
+            "$ref": "#/components/schemas/McpRequestMeta"
+          },
+          {
             "$ref": "#/components/schemas/ConnectorlessRequestMeta"
           },
           {
@@ -4789,7 +4471,9 @@
               "oauth2_refreshed",
               "aws_sigv4",
               "token_mint_static",
-              "token_mint_refreshed"
+              "token_mint_refreshed",
+              "oauth2_client",
+              "oauth2_private_key"
             ]
           },
           "base_url": {
@@ -4971,6 +4655,40 @@
           "driver",
           "method",
           "status",
+          "connector"
+        ]
+      },
+      "McpRequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "mcp"
+            ]
+          },
+          "operation": {
+            "type": "string"
+          },
+          "bytes_in": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tool_name": {
+            "type": "string"
+          },
+          "connector": {
+            "$ref": "#/components/schemas/ConnectorResolutionSummary"
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "driver",
+          "operation",
+          "bytes_in",
           "connector"
         ]
       },
@@ -5968,7 +5686,8 @@
                     "http",
                     "postgres",
                     "s3",
-                    "graphql"
+                    "graphql",
+                    "mcp"
                   ]
                 },
                 "base_url": {
@@ -6733,7 +6452,8 @@
               "http",
               "postgres",
               "s3",
-              "graphql"
+              "graphql",
+              "mcp"
             ]
           },
           "base_url": {
@@ -6966,7 +6686,8 @@
               "http",
               "postgres",
               "s3",
-              "graphql"
+              "graphql",
+              "mcp"
             ]
           },
           "base_url": {
@@ -7407,6 +7128,294 @@
           }
         }
       },
+      "ValidateConnectorResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorIssue"
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "issues"
+        ]
+      },
+      "ConnectorIssue": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Dotted path to the offending field"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "message"
+        ]
+      },
+      "CreateConnectorBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$"
+          },
+          "driver": {
+            "type": "string",
+            "enum": [
+              "http",
+              "postgres",
+              "s3",
+              "graphql",
+              "mcp"
+            ]
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ],
+            "default": "dev"
+          },
+          "base_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "dsn": {
+            "type": "string"
+          },
+          "auth_type": {
+            "type": "string",
+            "enum": [
+              "none",
+              "header",
+              "query",
+              "bearer",
+              "basic",
+              "oauth2",
+              "oauth2_client",
+              "oauth2_private_key",
+              "aws_sigv4"
+            ],
+            "default": "none",
+            "description": "How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400."
+          },
+          "config": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "operator_quirks": {
+            "$ref": "#/components/schemas/OperatorQuirks"
+          },
+          "template_slug": {
+            "type": "string",
+            "minLength": 1
+          },
+          "template_source": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "tenant"
+            ]
+          },
+          "template_base_url_environment": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "name",
+          "driver"
+        ]
+      },
+      "ProbeConnectorResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "type": "number"
+          },
+          "status": {
+            "type": "number"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "error_code": {
+            "type": "string"
+          },
+          "body_snippet": {
+            "type": "string"
+          },
+          "provider_action_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "latency_ms"
+        ]
+      },
+      "ProbeConnectorBody": {
+        "type": "object",
+        "properties": {
+          "connector": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateConnectorBody"
+              },
+              {
+                "description": "The definition to probe, exactly as you would save it"
+              }
+            ]
+          },
+          "credential": {
+            "$ref": "#/components/schemas/CredentialBody"
+          }
+        },
+        "required": [
+          "connector"
+        ]
+      },
+      "CredentialBody": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "header",
+              "query",
+              "bearer",
+              "basic",
+              "aws_sigv4"
+            ]
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "token": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "access_key_id": {
+            "type": "string"
+          },
+          "secret_access_key": {
+            "type": "string"
+          },
+          "session_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "description": "Credential to sign the probe with. Used for this request only and never stored. Required when the definition sets an auth_type other than 'none'."
+      },
+      "ImportConnectorResponse": {
+        "type": "object",
+        "properties": {
+          "draft": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "template_match": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {}
+          },
+          "recommended_next": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": {}
+      },
+      "ImportConnectorFromSpecToolInput": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "postman",
+              "har",
+              "openapi",
+              "google_discovery",
+              "graphql",
+              "graphql_introspection",
+              "curl"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ],
+            "default": "dev"
+          },
+          "base_url_environment": {
+            "type": "string"
+          },
+          "force_new": {
+            "type": "boolean",
+            "description": "Set true only when the operator explicitly wants a SEPARATE connector on a base_url that already has one. Skips URL reuse and mints an independent draft."
+          }
+        },
+        "required": [
+          "source",
+          "content"
+        ]
+      },
       "ConnectorListResponse": {
         "type": "object",
         "properties": {
@@ -7462,6 +7471,15 @@
               "category"
             ]
           }
+        ]
+      },
+      "ConnectorHealthState": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "degraded",
+          "needs_update",
+          "needs_reauth"
         ]
       },
       "CredentialSummary": {
@@ -7627,6 +7645,30 @@
               }
             }
           },
+          "enabled": {
+            "type": "boolean"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "health_state": {
+            "$ref": "#/components/schemas/ConnectorHealthState"
+          },
+          "health_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "health_error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "needs_reauth": {
             "type": "boolean"
           },
@@ -7673,87 +7715,16 @@
           "template_source",
           "template_version",
           "template_snapshot",
+          "enabled",
+          "last_error",
+          "health_state",
+          "health_reason",
+          "health_error_code",
           "needs_reauth",
           "auth_failed_at",
           "auth_failed_reason",
           "created_at",
           "updated_at"
-        ]
-      },
-      "CreateConnectorBody": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 1
-          },
-          "driver": {
-            "type": "string",
-            "enum": [
-              "http",
-              "postgres",
-              "s3",
-              "graphql"
-            ]
-          },
-          "environment": {
-            "type": "string",
-            "enum": [
-              "dev",
-              "prod"
-            ],
-            "default": "dev"
-          },
-          "base_url": {
-            "type": "string",
-            "format": "uri"
-          },
-          "dsn": {
-            "type": "string"
-          },
-          "auth_type": {
-            "type": "string",
-            "enum": [
-              "none",
-              "header",
-              "query",
-              "bearer",
-              "basic",
-              "oauth2",
-              "aws_sigv4"
-            ],
-            "default": "none"
-          },
-          "config": {
-            "type": "object",
-            "additionalProperties": {}
-          },
-          "operator_quirks": {
-            "$ref": "#/components/schemas/OperatorQuirks"
-          },
-          "template_slug": {
-            "type": "string",
-            "minLength": 1
-          },
-          "template_source": {
-            "type": "string",
-            "enum": [
-              "builtin",
-              "tenant"
-            ]
-          },
-          "template_base_url_environment": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "name",
-          "driver"
         ]
       },
       "UpdateConnectorBody": {
@@ -7779,8 +7750,11 @@
               "bearer",
               "basic",
               "oauth2",
+              "oauth2_client",
+              "oauth2_private_key",
               "aws_sigv4"
-            ]
+            ],
+            "description": "How the credential layer applies this connector's secret. `oauth2_client` and `oauth2_private_key` are accepted only for driver `mcp` — declaring either on any other driver is a 400."
           },
           "config": {
             "type": "object",
@@ -7879,6 +7853,7 @@
           "scope_insufficient",
           "remote_api_disabled",
           "remote_resource_not_found",
+          "connector_disabled",
           "unknown_upstream_error"
         ]
       },
@@ -8159,55 +8134,6 @@
           "state"
         ]
       },
-      "CredentialBody": {
-        "type": "object",
-        "properties": {
-          "mode": {
-            "type": "string",
-            "enum": [
-              "none",
-              "header",
-              "query",
-              "bearer",
-              "basic",
-              "aws_sigv4"
-            ]
-          },
-          "headers": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "query": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "token": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          },
-          "access_key_id": {
-            "type": "string"
-          },
-          "secret_access_key": {
-            "type": "string"
-          },
-          "session_token": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "mode"
-        ]
-      },
       "EndUserCredentialBody": {
         "type": "object",
         "properties": {
@@ -8230,6 +8156,105 @@
           "enduser_ref",
           "combine_mode",
           "payload"
+        ]
+      },
+      "ConnectorMcpInspectResponse": {
+        "type": "object",
+        "properties": {
+          "connector_id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "claims": {
+                  "type": "string",
+                  "enum": [
+                    "read",
+                    "write"
+                  ]
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "capabilities": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "tools": {
+                "type": "boolean"
+              },
+              "resources": {
+                "type": "boolean"
+              },
+              "prompts": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "tools",
+              "resources",
+              "prompts"
+            ]
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "server_version": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "connector_id",
+          "slug",
+          "tools",
+          "capabilities",
+          "instructions",
+          "server_version"
+        ]
+      },
+      "ConnectorMcpAuthorizeResponse": {
+        "type": "object",
+        "properties": {
+          "authorization_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL the operator's browser must open to grant access."
+          },
+          "state": {
+            "type": "string",
+            "description": "Opaque single-use correlation token for this flow."
+          }
+        },
+        "required": [
+          "authorization_url",
+          "state"
         ]
       },
       "ConnectorDiscoverResponse": {
@@ -20206,688 +20231,6 @@
         }
       }
     },
-    "/v1/mcp-servers": {
-      "get": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "List registered external MCP servers (auth_config redacted)",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/McpServerListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "Register an external MCP server",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateMcpServerBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/McpServer"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Invalid",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/mcp-servers/{id}": {
-      "get": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "Get a registered external MCP server (auth_config redacted)",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/McpServer"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "Update a registered external MCP server",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PatchMcpServerBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/McpServer"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Invalid",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "Delete an external MCP server and evict its live clients",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Deleted"
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/mcp-servers/{id}/enable": {
-      "post": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "Re-enable a disabled external MCP server",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/McpServer"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/mcp-servers/{id}/disable": {
-      "post": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "Disable an external MCP server and evict its live clients",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/McpServer"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/mcp-servers/{id}/inspect": {
-      "post": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "Force a handshake and return the server's live tool manifest",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InspectMcpServerResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/mcp-servers/{id}/authorize": {
-      "post": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "Begin an interactive OAuth 2.1 authorization for an external MCP server",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/McpServerAuthorizeResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Invalid",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Authorization-server discovery failed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/mcp-servers/oauth/callback": {
-      "get": {
-        "tags": [
-          "mcp-servers"
-        ],
-        "summary": "Complete an interactive OAuth 2.1 authorization for an external MCP server",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": false,
-            "name": "code",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            },
-            "required": true,
-            "name": "state",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": false,
-            "name": "iss",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": false,
-            "name": "error",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": false,
-            "name": "error_description",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK (HTML)",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request (HTML)",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/identity/whoami": {
       "get": {
         "tags": [
@@ -22790,6 +22133,131 @@
         }
       }
     },
+    "/v1/connectors/validate": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Validate a connector definition without saving it",
+        "description": "Checks the definition against its driver's config schema. Persists nothing. Use before `POST /v1/connectors`; `sk connectors validate --file` calls this.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectorBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation verdict — check `ok`; a well-formed request with an invalid definition is still a 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateConnectorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connectors/probe": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Probe a connector definition without saving it",
+        "description": "Runs the driver's health probe against a definition that does not exist yet. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. Driver `mcp` is not probeable before it is saved: probe it afterwards with `POST /v1/connectors/{id}/mcp/inspect`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProbeConnectorBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Probe outcome — check `ok`; an unreachable upstream is still a 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeConnectorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request cannot be served — a malformed credential, or a driver with no draft probe (`mcp`). Distinct from a 200 `ok:false`, which means the upstream was reached and answered badly.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connectors/import": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Turn an API specification into a connector draft",
+        "description": "Parses an OpenAPI/Google Discovery document, a request collection, a HAR, GraphQL SDL or introspection endpoint, or a curl command into a connector definition. Persists nothing — review the returned draft, then save it with `POST /v1/connectors`. `sk connectors import --spec` calls this.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportConnectorFromSpecToolInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The parsed draft, or a pointer to an equivalent connector that already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportConnectorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connectors": {
       "get": {
         "tags": [
@@ -23017,6 +22485,98 @@
         }
       }
     },
+    "/v1/connectors/{id}/enable": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Enable a connector",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connector"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connectors/{id}/disable": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Disable a connector",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Connector"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connectors/{id}/test": {
       "post": {
         "tags": [
@@ -23164,7 +22724,7 @@
           "connectors"
         ],
         "summary": "Invoke an HTTP/GraphQL endpoint against a persisted connector",
-        "description": "Programmatic surface for ad-hoc connector invocation. Mirrors the call_connector conversation tool: applies the saved credential, audits as connector.invoked, and returns {status, headers, body, latency_ms} with truncation flags for response bodies > 8KB. Driver coverage at this surface is HTTP and GraphQL only — Postgres / SFTP / S3 connectors return a 422 envelope pointing at workflow-step authoring.",
+        "description": "Programmatic surface for ad-hoc connector invocation. Mirrors the call_connector conversation tool: applies the saved credential, audits as connector.invoked, and returns {status, headers, body, latency_ms} with truncation flags for response bodies > 8KB. Driver coverage at this surface is HTTP and GraphQL only — a `postgres` or `s3` connector returns a 422 envelope pointing at workflow-step authoring, and an `mcp` connector one naming the request step's `mcp` sub-block, because an MCP call names a tool and its arguments rather than a method and a path.",
         "security": [
           {
             "bearerAuth": []
@@ -23787,6 +23347,261 @@
           },
           "400": {
             "description": "Grant missing/invalid/expired/replayed, or a required form field is missing (HTML error page)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connectors/{id}/mcp/inspect": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Force one handshake against an mcp connector and report what it serves",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorMcpInspectResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Handshake failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connectors/{id}/mcp/authorize": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Begin an interactive OAuth 2.1 authorization for an mcp connector",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorMcpAuthorizeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Authorization-server discovery failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connectors/mcp/oauth/callback": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "Complete an interactive OAuth 2.1 authorization for an mcp connector",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "code",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "iss",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "error",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "error_description",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (HTML)",
             "content": {
               "text/html": {
                 "schema": {

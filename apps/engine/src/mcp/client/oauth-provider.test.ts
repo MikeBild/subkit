@@ -4,7 +4,7 @@
 // and writes to:
 //   - `credentials`       (oauth2 + oauth2_client slots)
 //   - `mcp_oauth_states`  (code_verifier + authorization_url)
-//   - `mcp_servers`       (auth_config.client_id mirror)
+//   - `connectors`        (config.mcp.auth.client_id mirror)
 //
 // No SDK auth() network round-trip occurs here — we call the provider
 // methods directly. Secret-at-rest assertions read the raw `credentials`
@@ -16,13 +16,13 @@ import { credentials, mcpOauthStates, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { makeMcpOAuthProvider } from "./oauth-provider.ts";
-import { createMcpServer } from "./registry.ts";
+import { seedMcpConnector } from "./test-fixtures.ts";
 
 let ctx: TestDb;
 let tenantA: string;
 let tenantB: string;
 
-const FAKE_REDIRECT_URI = "https://engine.acmeauth.test/v1/mcp-servers/oauth/callback";
+const FAKE_REDIRECT_URI = "https://engine.acmeauth.test/v1/connectors/mcp/oauth/callback";
 const FAKE_SERVER_URL = "https://examplemcp.acmeauth.test/mcp";
 const FAKE_ISSUER = "https://auth.acmeauth.test";
 
@@ -34,28 +34,15 @@ const FAKE_ISSUER = "https://auth.acmeauth.test";
 const STATE_FAR_FUTURE = new Date("2999-01-01T00:00:00.000Z");
 const TOKEN_EXPIRED_AT = new Date(FROZEN_NOW - 120_000);
 
-function auditCtx() {
-  return {
-    actor_id: "00000000-0000-0000-0000-000000000001",
-    request_source: "api" as const,
-    executor: ctx.db,
-  };
-}
-
 /** Seed an oauth2 MCP server for tenant, return its id. */
-async function seedOAuth2Server(tenantId: string, namespace: string): Promise<string> {
-  const row = await createMcpServer(
-    ctx.db,
-    {
-      tenant_id: tenantId,
-      name: `AcmeAuth ${namespace}`,
-      namespace,
-      transport: "http",
-      url: FAKE_SERVER_URL,
-      auth_config: { kind: "oauth2", issuer: FAKE_ISSUER, scope: "read write" },
-    },
-    auditCtx(),
-  );
+async function seedOAuth2Server(tenantId: string, slug: string): Promise<string> {
+  const row = await seedMcpConnector(ctx.db, {
+    tenant_id: tenantId,
+    slug,
+    transport: "http",
+    url: FAKE_SERVER_URL,
+    auth: { kind: "oauth2", issuer: FAKE_ISSUER, scope: "read write" },
+  });
   return row.id;
 }
 
@@ -63,7 +50,7 @@ async function seedOAuth2Server(tenantId: string, namespace: string): Promise<st
 async function seedStateRow(tenantId: string, serverId: string, state: string): Promise<void> {
   await ctx.db.insert(mcpOauthStates).values({
     tenant_id: tenantId,
-    mcp_server_id: serverId,
+    connector_id: serverId,
     state,
     code_verifier: "",
     redirect_uri: FAKE_REDIRECT_URI,
@@ -76,7 +63,7 @@ function makeInteractiveProvider(tenantId: string, serverId: string, state: stri
   return makeMcpOAuthProvider({
     db: ctx.db,
     tenant_id: tenantId,
-    mcp_server_id: serverId,
+    connector_id: serverId,
     environment: "prod",
     redirect_uri: FAKE_REDIRECT_URI,
     state,
@@ -91,7 +78,7 @@ function makeNonInteractiveProvider(tenantId: string, serverId: string) {
   return makeMcpOAuthProvider({
     db: ctx.db,
     tenant_id: tenantId,
-    mcp_server_id: serverId,
+    connector_id: serverId,
     environment: "prod",
     redirect_uri: FAKE_REDIRECT_URI,
     state: "",
@@ -137,7 +124,7 @@ describe("McpDbOAuthClientProvider.clientMetadata", () => {
     const provider = makeMcpOAuthProvider({
       db: ctx.db,
       tenant_id: tenantA,
-      mcp_server_id: serverId,
+      connector_id: serverId,
       environment: "prod",
       redirect_uri: FAKE_REDIRECT_URI,
       state: "state-meta2",
@@ -153,7 +140,7 @@ describe("McpDbOAuthClientProvider.clientMetadata", () => {
     const provider = makeMcpOAuthProvider({
       db: ctx.db,
       tenant_id: tenantA,
-      mcp_server_id: serverId,
+      connector_id: serverId,
       environment: "prod",
       redirect_uri: FAKE_REDIRECT_URI,
       state: "state-meta3",
@@ -199,7 +186,7 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
       .where(
         and(
           eq(credentials.tenant_id, tenantA),
-          eq(credentials.mcp_server_id, serverId),
+          eq(credentials.connector_id, serverId),
           eq(credentials.mode, "oauth2_client"),
         ),
       )
@@ -234,7 +221,7 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
     const provider = makeMcpOAuthProvider({
       db: ctx.db,
       tenant_id: tenantA,
-      mcp_server_id: serverId,
+      connector_id: serverId,
       environment: "prod",
       redirect_uri: FAKE_REDIRECT_URI,
       state: "state-scl4",
@@ -308,7 +295,7 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
       .where(
         and(
           eq(credentials.tenant_id, tenantA),
-          eq(credentials.mcp_server_id, serverId),
+          eq(credentials.connector_id, serverId),
           eq(credentials.mode, "oauth2"),
         ),
       )
@@ -341,7 +328,7 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
       .where(
         and(
           eq(credentials.tenant_id, tenantA),
-          eq(credentials.mcp_server_id, serverId),
+          eq(credentials.connector_id, serverId),
           eq(credentials.mode, "oauth2"),
         ),
       )
@@ -410,9 +397,7 @@ describe("McpDbOAuthClientProvider.saveCodeVerifier / codeVerifier", () => {
     const rows = await ctx.db
       .select()
       .from(mcpOauthStates)
-      .where(
-        and(eq(mcpOauthStates.tenant_id, tenantA), eq(mcpOauthStates.mcp_server_id, serverId)),
-      );
+      .where(and(eq(mcpOauthStates.tenant_id, tenantA), eq(mcpOauthStates.connector_id, serverId)));
     expect(rows.length).toBe(0);
   });
 
@@ -498,7 +483,7 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
       .where(
         and(
           eq(credentials.tenant_id, tenantA),
-          eq(credentials.mcp_server_id, serverId),
+          eq(credentials.connector_id, serverId),
           eq(credentials.mode, "oauth2"),
         ),
       );
@@ -512,7 +497,7 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
       .where(
         and(
           eq(credentials.tenant_id, tenantA),
-          eq(credentials.mcp_server_id, serverId),
+          eq(credentials.connector_id, serverId),
           eq(credentials.mode, "oauth2"),
         ),
       );
@@ -535,7 +520,7 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
       .where(
         and(
           eq(credentials.tenant_id, tenantA),
-          eq(credentials.mcp_server_id, serverId),
+          eq(credentials.connector_id, serverId),
           eq(credentials.mode, "oauth2_client"),
         ),
       );
@@ -549,21 +534,22 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
       .where(
         and(
           eq(credentials.tenant_id, tenantA),
-          eq(credentials.mcp_server_id, serverId),
+          eq(credentials.connector_id, serverId),
           eq(credentials.mode, "oauth2_client"),
         ),
       );
     expect(afterRows.length).toBe(0);
 
-    // The auth_config.client_id should be gone (mirrored client_id cleared).
-    const { mcpServers } = await import("../../db/schema/index.ts");
+    // The mirrored client_id should be gone from config.mcp.auth.
+    const { connectors } = await import("../../db/schema/index.ts");
     const serverRows = await ctx.db
-      .select({ auth_config: mcpServers.auth_config })
-      .from(mcpServers)
-      .where(and(eq(mcpServers.tenant_id, tenantA), eq(mcpServers.id, serverId)))
+      .select({ config: connectors.config })
+      .from(connectors)
+      .where(and(eq(connectors.tenant_id, tenantA), eq(connectors.id, serverId)))
       .limit(1);
-    const authConfig = serverRows[0]!.auth_config as Record<string, unknown>;
-    expect(authConfig.client_id).toBeUndefined();
+    const authConfig = (serverRows[0]!.config as { mcp?: { auth?: Record<string, unknown> } }).mcp
+      ?.auth;
+    expect(authConfig?.client_id).toBeUndefined();
   });
 
   test("'verifier' scope clears code_verifier on the state row", async () => {
@@ -593,7 +579,7 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
     const providerB = makeMcpOAuthProvider({
       db: ctx.db,
       tenant_id: tenantB,
-      mcp_server_id: serverIdB,
+      connector_id: serverIdB,
       environment: "prod",
       redirect_uri: FAKE_REDIRECT_URI,
       state: "state-iso-b",
@@ -608,7 +594,7 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
     const providerA = makeMcpOAuthProvider({
       db: ctx.db,
       tenant_id: tenantA,
-      mcp_server_id: serverIdA,
+      connector_id: serverIdA,
       environment: "prod",
       redirect_uri: FAKE_REDIRECT_URI,
       state: "state-iso-a",
@@ -627,7 +613,7 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
     const providerB = makeMcpOAuthProvider({
       db: ctx.db,
       tenant_id: tenantB,
-      mcp_server_id: serverIdB,
+      connector_id: serverIdB,
       environment: "prod",
       redirect_uri: FAKE_REDIRECT_URI,
       state: "state-iso-client-b",
@@ -641,7 +627,7 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
     const providerA = makeMcpOAuthProvider({
       db: ctx.db,
       tenant_id: tenantA,
-      mcp_server_id: serverIdA,
+      connector_id: serverIdA,
       environment: "prod",
       redirect_uri: FAKE_REDIRECT_URI,
       state: "state-iso-client-a",

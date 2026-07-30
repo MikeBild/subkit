@@ -39,7 +39,6 @@ import { joinCommand } from "./commands/join.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
 import { learningsCommand } from "./commands/learnings.ts";
 import { logsCommand } from "./commands/logs.ts";
-import { mcpServersCommand } from "./commands/mcp-servers.ts";
 import { notificationsCommand } from "./commands/notifications.ts";
 import { patchCandidatesCommand } from "./commands/patch-candidates.ts";
 import { portalTokensCommand } from "./commands/portal-tokens.ts";
@@ -545,7 +544,6 @@ const mainCommand = defineCommand({
     workflows: workflowsCommand,
     connectors: connectorsCommand,
     chat: chatCommand,
-    "mcp-servers": mcpServersCommand,
     "connector-templates": connectorTemplatesCommand,
     credentials: credentialsCommand,
     skills: skillsCommand,
@@ -740,7 +738,6 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },
   chat: { command: chatCommand, requires: "chat_workspace:read" },
-  "mcp-servers": { command: mcpServersCommand, requires: "mcp_server:manage" },
   "connector-templates": { command: connectorTemplatesCommand, requires: "connector:read" },
   credentials: { command: credentialsCommand, requires: "credential:read" },
   skills: { command: skillsCommand, requires: "skill:read" },

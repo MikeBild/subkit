@@ -22,24 +22,28 @@
 //      resulting token to the `credentials` table (secret-by-reference —
 //      no token material is ever stored on this row).
 //
-// Mirrors `connectorOauthStates` (schema/connectors.ts) but the FK
-// points at `mcp_servers` instead of `connectors`. No Atlassian/Rovo
+// Mirrors `connectorOauthStates` (schema/connectors.ts) and points at the
+// same `connectors` table; it stays a separate table because it carries
+// three columns `connector_oauth_states` does not — `authorization_url`
+// (the SDK builds it, the route does not), `as_issuer` (the RFC 9207
+// mix-up check) and `started_by_actor_id`. Folding the two would either
+// drop those or grow the other table for one driver. No Atlassian/Rovo
 // literal lives here — the shape is generic across any OAuth-2.1 MCP
 // server.
 
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantId } from "./_common.ts";
+import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";
-import { mcpServers } from "./mcp_servers.ts";
 
 export const mcpOauthStates = pgTable(
   "mcp_oauth_states",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    mcp_server_id: uuid("mcp_server_id")
+    connector_id: uuid("connector_id")
       .notNull()
-      .references(() => mcpServers.id, { onDelete: "cascade" }),
+      .references(() => connectors.id, { onDelete: "cascade" }),
     state: text("state").notNull(),
     // PKCE verifier. Mirrors `connectorOauthStates.code_verifier`
     // (NOT NULL). The headless provider may INSERT with an empty string
@@ -75,7 +79,7 @@ export const mcpOauthStates = pgTable(
   },
   (t) => [
     uniqueIndex("mcp_oauth_states_state_key").on(t.state),
-    index("mcp_oauth_states_tenant_server_idx").on(t.tenant_id, t.mcp_server_id),
+    index("mcp_oauth_states_tenant_server_idx").on(t.tenant_id, t.connector_id),
   ],
 );
 

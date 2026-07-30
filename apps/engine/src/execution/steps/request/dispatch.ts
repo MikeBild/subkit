@@ -23,6 +23,7 @@ import {
   HttpRequestInvalidError,
   serializeXmlBody,
 } from "../../../connectors/drivers/http.ts";
+import { invokeMcpConnectorCall } from "../../../connectors/drivers/mcp.ts";
 import {
   pgQueryCursor,
   pgQueryWithCount,
@@ -61,6 +62,7 @@ import {
   resolveStringPlaceholders,
 } from "../../../llm/substitution/resolver.ts";
 import { logger } from "../../../logging/logger.ts";
+import { MCP_WIRE_METHOD, type RemoteCall } from "../../../mcp/client/remote-call.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
 import { recordSuccessShape } from "../../../schema-versions/service.ts";
@@ -87,9 +89,17 @@ import type {
   StepRunContext,
 } from "../../types.ts";
 import { buildStepErrorDetail } from "../error-detail.ts";
+import {
+  type ConnectorEvidence,
+  evidenceFromStatus,
+  evidenceFromThrow,
+  graphqlEvidence,
+  mcpEvidence,
+} from "./circuit-evidence.ts";
 import { RequestError } from "./errors.ts";
 import { promoteResponseToFile } from "./file-output.ts";
 import { runGraphqlWithRetry } from "./graphql-retry.ts";
+import { runMcpWithRetry } from "./mcp-retry.ts";
 import {
   backoffMs,
   isIdempotent,
@@ -200,6 +210,44 @@ async function recordCircuitFailure(
       error: err instanceof Error ? err.message : String(err),
     });
   }
+}
+
+/**
+ * The ONE circuit-breaker recorder for the drivers that return their outcome
+ * from inside their own branch (graphql / s3 / postgres / mcp).
+ *
+ * The HTTP path records failures from the outer handler, which is only
+ * reached after its retry loop has already given up — so "we tried and the
+ * remote could not serve us" is implied by getting there at all. These
+ * branches have no such loop, so each must say what it observed; the
+ * vocabulary and the classification live in `circuit-evidence.ts` so two
+ * drivers cannot disagree about what "healthy" means.
+ *
+ * Counting a caller's own mistake would open the breaker on the author's typo
+ * and take a working connector offline for the whole reset window; crediting
+ * reachability we never observed would close a breaker on no evidence. Both
+ * are the `none` verdict, which does neither.
+ */
+async function recordDriverOutcome(
+  db: Db,
+  connector: {
+    tenant_id: string;
+    id: string;
+    circuit_state: string;
+    circuit_failure_count: number;
+  },
+  evidence: ConnectorEvidence,
+): Promise<void> {
+  if (evidence === "unavailable") {
+    await recordCircuitFailure(db, connector);
+    return;
+  }
+  if (evidence === "none") return;
+  // `answered`: the remote is serving, so a half-open breaker closes and a
+  // partial failure count is cleared — the same reset the HTTP success path
+  // performs.
+  if (connector.circuit_state !== "half-open" && connector.circuit_failure_count === 0) return;
+  await persistCircuitState(db, connector, { circuit_state: "closed", circuit_failure_count: 0 });
 }
 
 interface FetchAttemptResult {
@@ -753,6 +801,22 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
     }
   }
+  // MCP block. The target (tool name / resource URI / prompt name) is a
+  // string; the arguments map goes through the TYPE-PRESERVING resolver
+  // for the same reason `graphql.variables` does — a remote tool's input
+  // schema declares `limit: number`, and a stringified `"7"` is rejected
+  // by the SDK's own schema validation before the call leaves the process.
+  const mcpTarget =
+    p.step.mcp?.operation === "read_resource"
+      ? p.step.mcp.uri
+      : p.step.mcp?.operation === "get_prompt"
+        ? p.step.mcp.prompt
+        : p.step.mcp?.tool;
+  const mcpTargetRes = mcpTarget ? await resolveStringPlaceholders(mcpTarget, resolverCtx) : null;
+  const mcpArgsRes =
+    p.step.mcp?.arguments !== undefined
+      ? await resolvePlaceholdersTypePreserving(p.step.mcp.arguments, resolverCtx)
+      : null;
   let resolvedStepBody = bodyRes ? bodyRes.value : p.step.body;
   // Symmetric XML request body. When `xml: { body, declaration? }` is
   // set, serialise via the same tree conventions the response parser
@@ -872,6 +936,32 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           };
         }
       }
+      // Circuit-breaker ENFORCEMENT, for every driver.
+      //
+      // This block used to sit below the `driver !== "http"` guard, so
+      // graphql, s3 and postgres steps were never blocked by an open
+      // breaker — while `execution/engine.ts`'s for_each preflight applied
+      // the same predicate to any connector regardless of driver. One
+      // predicate with two scopes meant a fan-out could be blocked at the
+      // container by a breaker the per-step path would have ignored.
+      // Hoisting it here is what makes "connectors have a circuit breaker"
+      // a true statement rather than an HTTP-only one.
+      if (connector.circuit_state === "open") {
+        if (isCircuitOpenBlocking(connector)) {
+          clearTimeout(timer);
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "circuit_open",
+              message: "connector circuit breaker is open — requests blocked until reset",
+            },
+          };
+        }
+        // Reset period elapsed — transition to half-open
+        await persistCircuitState(p.ctx.db, connector, { circuit_state: "half-open" });
+      }
       if (connector.driver === "graphql" || p.step.graphql) {
         clearTimeout(timer);
         if (!p.step.graphql) {
@@ -965,7 +1055,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               },
             });
           }
-          return await runGraphqlWithRetry({
+          const graphqlResult = await runGraphqlWithRetry({
             queryArgs: args,
             egressInput: {
               executor: p.ctx.db,
@@ -987,7 +1077,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             start,
             connectorResolution,
           });
+          await recordDriverOutcome(p.ctx.db, connector, graphqlEvidence(graphqlResult));
+          return graphqlResult;
         } catch (err) {
+          await recordDriverOutcome(p.ctx.db, connector, evidenceFromThrow(err));
           // Header-contract violations on the GraphQL pipeline get the
           // same `request_invalid` classification as the HTTP driver.
           // Without this distinction the LLM sees `graphql_error` for
@@ -1007,6 +1100,185 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             retry_count: 0,
             duration_ms: Date.now() - start,
             error: buildStepErrorDetail({ code: "graphql_error", err }),
+          };
+        }
+      }
+      if (connector.driver === "mcp" || p.step.mcp) {
+        // Dropping the step timer here is WHY the schema refuses `timeout_ms`
+        // on an mcp step (workflows/types.ts). From this point the only
+        // deadline is the connector's `remote_tool_call_timeout_ms`, which is
+        // what makes `signal.aborted` on this path mean "the run was
+        // cancelled" and nothing else — the property the abort handling
+        // depends on. If this line ever goes, the schema refusal becomes a
+        // lie and should go with it.
+        clearTimeout(timer);
+        const connectorMeta = connectorResolution as ConnectorResolutionSummary;
+        if (connector.driver !== "mcp") {
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "connector_driver_mismatch",
+              message: `request step carries an \`mcp\` block but connector '${connector.slug}' is driver '${connector.driver}'`,
+            },
+          };
+        }
+        const mcpSpec = p.step.mcp;
+        if (!mcpSpec) {
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "missing_mcp",
+              message:
+                "request step against an mcp connector requires an `mcp` block naming the operation (call_tool | read_resource | get_prompt)",
+            },
+          };
+        }
+        const unresolved = [...(mcpTargetRes?.unresolved ?? []), ...(mcpArgsRes?.unresolved ?? [])];
+        if (unresolved.length > 0) {
+          const tokens = unresolved.map((u) => u.token).join(", ");
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: {
+              code: "placeholder_unresolved",
+              message: `unresolved placeholder(s) in mcp target/arguments: ${tokens}`,
+              details: { unresolved },
+            },
+            request_meta: {
+              driver: "error",
+              url: connector.base_url ?? null,
+              unresolved_placeholders: unresolved.map((u) => u.token),
+            },
+          };
+        }
+        const target = mcpTargetRes?.value ?? "";
+        const args = (mcpArgsRes?.value as Record<string, unknown> | undefined) ?? {};
+        const call: RemoteCall =
+          mcpSpec.operation === "read_resource"
+            ? { operation: "read_resource", uri: target }
+            : mcpSpec.operation === "get_prompt"
+              ? { operation: "get_prompt", prompt: target, arguments: args }
+              : { operation: "call_tool", tool: target, arguments: args };
+        const wireMethod = MCP_WIRE_METHOD[mcpSpec.operation];
+
+        // Hold-writes: a `call_tool` is materialized — the resolved target
+        // and typed arguments — and recorded. No session is established,
+        // so no handshake, no token refresh and no remote call happen.
+        // `url` is the server's endpoint, which is what the judge needs to
+        // see: the tool name alone does not say WHERE it would run.
+        if (holdThisStep) {
+          return heldStepResult({
+            start,
+            method: wireMethod,
+            url: connector.base_url ?? null,
+            body: { target, ...(mcpSpec.operation === "read_resource" ? {} : { arguments: args }) },
+          });
+        }
+
+        try {
+          const result = await runMcpWithRetry({
+            // Wrapped in the egress audit like every other driver. The pool
+            // writes `mcp_external_tool.invoked`, which answers "which tool did
+            // the model reach for" — a different question from the one the
+            // egress trail answers. `connectors/egress.ts` is the single source
+            // of truth for the documented claim that ALL egress is logged with
+            // request source, caller identity and outcome (SOC 2 CC9), and an
+            // MCP tool call is egress: it leaves the tenant carrying a
+            // credential. Without this row an operator grepping "what left"
+            // sees every driver except this one.
+            //
+            // Per ATTEMPT, not per step: each retry is its own outbound call,
+            // and a trail that collapsed three attempts into one row would
+            // under-report what actually crossed the boundary.
+            attempt: () =>
+              withEgressAudit(
+                {
+                  executor: p.ctx.db,
+                  tenant_id: p.ctx.tenant_id,
+                  actor_id: p.ctx.principal?.id ?? null,
+                  actor_type:
+                    p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
+                  connector_id: connector.id,
+                  connector_slug: connector.slug,
+                  driver: "mcp",
+                  // Resolved inside the pool, which owns the session and its
+                  // credential; the wrapper never sees the row id.
+                  credential_id: null,
+                  operation: wireMethod,
+                  url: connector.base_url ?? null,
+                  source: "execution",
+                  execution_id: p.ctx.execution_id,
+                  workflow_id: p.ctx.workflow_id,
+                  step_id: p.step.id,
+                },
+                () =>
+                  invokeMcpConnectorCall({
+                    db: p.ctx.db,
+                    tenant_id: p.ctx.tenant_id,
+                    actor_id: p.ctx.principal?.id ?? null,
+                    connector,
+                    call,
+                    // The run's own source — a scheduled run and a chat-driven
+                    // run must not both be audited as the same thing.
+                    requestSource: p.ctx.request_source,
+                    // Aborting the run cancels the outbound request too, not
+                    // just the retry sleep between attempts.
+                    signal,
+                  }),
+              ),
+            step: p.step,
+            signal,
+            start,
+            connector: connectorMeta,
+            operation: wireMethod,
+            connector_id: connector.id,
+          });
+          // The breaker reads the layer verdict the retry loop already made
+          // (`mcp_unavailable` vs `mcp_remote_error` vs `mcp_cancelled`), so
+          // the two cannot disagree about what counts as the remote's fault.
+          await recordDriverOutcome(p.ctx.db, connector, mcpEvidence(result));
+          if (
+            result.status === "succeeded" &&
+            p.step.response_filters &&
+            p.step.response_filters.length > 0
+          ) {
+            try {
+              return {
+                ...result,
+                output: applyResponseFilters(p.step.response_filters, result.output),
+              };
+            } catch (err) {
+              // A FAIL filter matching is the AUTHOR'S declared refusal of
+              // this payload, not a driver fault. It gets its own code on
+              // the HTTP path and must get the same one here, or the same
+              // filter reports two different failures depending on driver.
+              if (err instanceof ResponseFilterFailError) {
+                return {
+                  status: "failed",
+                  retry_count: result.retry_count,
+                  duration_ms: Date.now() - start,
+                  error: { code: "filter_fail", message: err.message },
+                  ...(result.request_meta ? { request_meta: result.request_meta } : {}),
+                };
+              }
+              throw err;
+            }
+          }
+          return result;
+        } catch (err) {
+          // `invokeMcpConnectorCall` throws only for a config or tool-name
+          // fault — the pool converts every wire failure into a result.
+          // Both are the author's to fix, so neither reaches the breaker.
+          return {
+            status: "failed",
+            retry_count: 0,
+            duration_ms: Date.now() - start,
+            error: buildStepErrorDetail({ code: "mcp_step_invalid", err }),
           };
         }
       }
@@ -1173,6 +1445,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             }
           }
 
+          // The store answered — close a half-open breaker even when the
+          // answer was a 4xx, because a missing key is not evidence of an
+          // unavailable store. A 5xx or a 429 IS, and used to be credited
+          // here as reachability along with everything else.
+          await recordDriverOutcome(p.ctx.db, connector, evidenceFromStatus(res.status));
+
           return {
             status: res.status >= 200 && res.status < 300 ? "succeeded" : "failed",
             output,
@@ -1188,6 +1466,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             },
           };
         } catch (err) {
+          await recordDriverOutcome(p.ctx.db, connector, evidenceFromThrow(err));
           // Credential-shape failures carry their own machine-branchable
           // code (credential_missing / credential_invalid /
           // credential_mode_unsupported_for_s3). Collapsing them into
@@ -1394,6 +1673,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             // tolerated
           }
 
+          // The statement ran, so the database answered.
+          await recordDriverOutcome(p.ctx.db, connector, "answered");
+
           return {
             status: "succeeded",
             output: dispatched.output,
@@ -1412,6 +1694,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             },
           };
         } catch (err) {
+          await recordDriverOutcome(p.ctx.db, connector, evidenceFromThrow(err));
           // The onStatement hook tags expected_row_count violations
           // with a structured error.code so the caller sees the
           // typed envelope rather than a generic postgres_error.
@@ -1427,6 +1710,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           };
         }
       }
+      // Drift backstop. Every driver with a branch above returned already,
+      // so reaching here means `DriverEnum` grew a member and this chain
+      // did not. The message names the driver rather than claiming http is
+      // the only valid one — it has not been for four drivers now.
       if (connector.driver !== "http") {
         clearTimeout(timer);
         return {
@@ -1435,29 +1722,11 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           duration_ms: Date.now() - start,
           error: {
             code: "connector_driver_mismatch",
-            message: `request step requires http driver, got ${connector.driver}`,
+            message: `request step has no dispatch path for connector driver '${connector.driver}'`,
           },
         };
       }
-      // Circuit breaker enforcement (HTTP driver only). The blocked/probe
-      // decision lives in the shared `isCircuitOpenBlocking` predicate so
-      // the engine's for_each preflight fails fast on the SAME condition.
-      if (connector.circuit_state === "open") {
-        if (isCircuitOpenBlocking(connector)) {
-          clearTimeout(timer);
-          return {
-            status: "failed",
-            retry_count: 0,
-            duration_ms: Date.now() - start,
-            error: {
-              code: "circuit_open",
-              message: "connector circuit breaker is open — requests blocked until reset",
-            },
-          };
-        }
-        // Reset period elapsed — transition to half-open
-        await persistCircuitState(p.ctx.db, connector, { circuit_state: "half-open" });
-      }
+      // Circuit-breaker enforcement already ran above, for every driver.
       // Track the connector so circuit state can be updated after the request.
       activeConnector = connector;
       const plan = await buildRequestPlan({

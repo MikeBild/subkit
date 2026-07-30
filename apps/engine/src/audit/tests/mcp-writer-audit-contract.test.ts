@@ -1,9 +1,11 @@
 // Audit-contract guard + writer tests for the external-MCP-client
 // feature.
 //
-// The `mcp_server.*` action constants are reserved so the writer
-// cannot mint free-string action values. The recorders that emit each
-// action land in
+// An external MCP server is a connector whose driver is `mcp`, so its
+// configuration lifecycle rides the `connector.*` actions and only the
+// events a negotiated SESSION produces have their own constants. Those
+// constants are reserved so the writer cannot mint free-string action
+// values. The recorders that emit each action land in
 // `apps/engine/src/audit/recorders/mcp-server.ts`; this file asserts:
 //
 //   1. the reserved action-string constants still hold their values
@@ -13,7 +15,7 @@
 //      metadata fields — round-tripped through the real audit write
 //      path against a Postgres test DB;
 //   3. no recorder ever lands a full URL, query string, token, or raw
-//      byte count in metadata (only `url_host` + a coarse size bucket).
+//      byte count in metadata (only `issuer_host` + a coarse size bucket).
 //
 // `external_provider.*` constants stay reserved for the first opt-in,
 // connector-shaped external-call writer (per-connector issues); their
@@ -28,18 +30,14 @@ import { createDeterministicUuidFactory } from "../../test-helpers/determinism/i
 import { bucketSize } from "../buckets.ts";
 import {
   AuditAction,
+  recordConnectorMcpAuthorizationFailed,
+  recordConnectorMcpAuthorizationStarted,
+  recordConnectorMcpAuthorized,
+  recordConnectorMcpClientRegistered,
+  recordConnectorMcpHandshakeOk,
+  recordConnectorMcpManifestDrift,
   recordMcpExternalToolInvoked,
   recordMcpExternalToolPaletteAssemblyFailed,
-  recordMcpServerAuthorizationFailed,
-  recordMcpServerAuthorizationStarted,
-  recordMcpServerAuthorized,
-  recordMcpServerConfigUpdated,
-  recordMcpServerDeleted,
-  recordMcpServerDisabled,
-  recordMcpServerErrored,
-  recordMcpServerHandshakeOk,
-  recordMcpServerReEnabled,
-  recordMcpServerRegistered,
 } from "../index.ts";
 
 const uuid = createDeterministicUuidFactory(0x171ab1);
@@ -82,14 +80,10 @@ async function rowFor(action: string, resource_id: string) {
 }
 
 describe("reserved audit-action constants", () => {
-  it("reserves the seven mcp_server.* constants", () => {
-    expect(AuditAction.MCP_SERVER_REGISTERED).toBe("mcp_server.registered");
-    expect(AuditAction.MCP_SERVER_CONFIG_UPDATED).toBe("mcp_server.config_updated");
-    expect(AuditAction.MCP_SERVER_DISABLED).toBe("mcp_server.disabled");
-    expect(AuditAction.MCP_SERVER_RE_ENABLED).toBe("mcp_server.re_enabled");
-    expect(AuditAction.MCP_SERVER_ERRORED).toBe("mcp_server.errored");
-    expect(AuditAction.MCP_SERVER_DELETED).toBe("mcp_server.deleted");
-    expect(AuditAction.MCP_SERVER_HANDSHAKE_OK).toBe("mcp_server.handshake_ok");
+  it("reserves the three connector.mcp_* session constants", () => {
+    expect(AuditAction.CONNECTOR_MCP_HANDSHAKE_OK).toBe("connector.mcp_handshake_ok");
+    expect(AuditAction.CONNECTOR_MCP_MANIFEST_DRIFT).toBe("connector.mcp_manifest_drift");
+    expect(AuditAction.CONNECTOR_MCP_CLIENT_REGISTERED).toBe("connector.mcp_client_registered");
   });
 
   it("reserves the mcp_external_tool.invoked constant", () => {
@@ -102,176 +96,118 @@ describe("reserved audit-action constants", () => {
     );
   });
 
-  it("reserves the three mcp_server.authorization* constants", () => {
-    expect(AuditAction.MCP_SERVER_AUTHORIZATION_STARTED).toBe("mcp_server.authorization_started");
-    expect(AuditAction.MCP_SERVER_AUTHORIZED).toBe("mcp_server.authorized");
-    expect(AuditAction.MCP_SERVER_AUTHORIZATION_FAILED).toBe("mcp_server.authorization_failed");
+  it("reserves the three connector.mcp_authoriz* constants", () => {
+    expect(AuditAction.CONNECTOR_MCP_AUTHORIZATION_STARTED).toBe(
+      "connector.mcp_authorization_started",
+    );
+    expect(AuditAction.CONNECTOR_MCP_AUTHORIZED).toBe("connector.mcp_authorized");
+    expect(AuditAction.CONNECTOR_MCP_AUTHORIZATION_FAILED).toBe(
+      "connector.mcp_authorization_failed",
+    );
   });
 
   it("reserves the two external_provider.* constants", () => {
     expect(AuditAction.EXTERNAL_PROVIDER_CALL_SUCCEEDED).toBe("external_provider.call_succeeded");
     expect(AuditAction.EXTERNAL_PROVIDER_CALL_FAILED).toBe("external_provider.call_failed");
   });
+
+  it("no longer reserves any mcp_server.* lifecycle constant", () => {
+    // The lifecycle moved onto `connector.*`. A leftover constant here
+    // would be a vocabulary nothing writes — the exact shape of an audit
+    // action a SIEM rule can wait on forever.
+    const actions = Object.values(AuditAction) as string[];
+    expect(actions.filter((a) => a.startsWith("mcp_server."))).toEqual([]);
+  });
 });
 
-describe("external MCP server audit writers", () => {
-  it("recordMcpServerRegistered writes mcp_server.registered with host-only url", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerRegistered({
+describe("external MCP session audit writers", () => {
+  it("recordConnectorMcpHandshakeOk writes connector.mcp_handshake_ok against the connector", async () => {
+    const connector_id = uuid();
+    await recordConnectorMcpHandshakeOk({
       tenant_id,
       actor_id,
-      mcp_server_id,
-      namespace: "notion",
-      transport: "http",
-      url_host: "https://notion-mcp.example.com/sse?token=SECRET123",
-      request_source: "api",
-      executor: ctx.db,
-    });
-    const row = await rowFor("mcp_server.registered", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
-    expect(row.tenant_id).toBe(tenant_id);
-    expect(row.result).toBe("success");
-    const meta = row.metadata as Record<string, unknown>;
-    expect(meta.namespace).toBe("notion");
-    expect(meta.transport).toBe("http");
-    expect(meta.request_source).toBe("api");
-    // Host-only — no scheme, path, query, or token leaked.
-    expect(meta.url_host).toBe("notion-mcp.example.com");
-    const metaStr = JSON.stringify(meta);
-    expect(metaStr).not.toContain("SECRET123");
-    expect(metaStr).not.toContain("token=");
-    expect(metaStr).not.toContain("/sse");
-  });
-
-  it("recordMcpServerConfigUpdated writes mcp_server.config_updated with changed_fields + reason", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerConfigUpdated({
-      tenant_id,
-      actor_id,
-      mcp_server_id,
-      namespace: "github",
-      changed_fields: ["url", "auth_config"],
-      // Deliberately free of secret-keyword substrings — the audit
-      // write path runs `scrubSecrets` over `reason`, so a phrase like
-      // "bearer"/"token" would be redacted. The recorder itself never
-      // carries the credential value (secret-by-reference).
-      reason: "credential reference updated",
-      request_source: "cli",
-      executor: ctx.db,
-    });
-    const row = await rowFor("mcp_server.config_updated", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
-    expect(row.result).toBe("success");
-    expect(row.reason).toBe("credential reference updated");
-    const meta = row.metadata as Record<string, unknown>;
-    expect(meta.changed_fields).toEqual(["url", "auth_config"]);
-    expect(meta.request_source).toBe("cli");
-  });
-
-  it("recordMcpServerDisabled writes mcp_server.disabled", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerDisabled({
-      tenant_id,
-      actor_id,
-      mcp_server_id,
-      namespace: "vercel",
-      request_source: "mcp",
-      executor: ctx.db,
-    });
-    const row = await rowFor("mcp_server.disabled", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
-    expect(row.result).toBe("success");
-    expect((row.metadata as Record<string, unknown>).namespace).toBe("vercel");
-  });
-
-  it("recordMcpServerReEnabled writes mcp_server.re_enabled", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerReEnabled({
-      tenant_id,
-      actor_id,
-      mcp_server_id,
-      namespace: "vercel",
-      request_source: "mcp",
-      executor: ctx.db,
-    });
-    const row = await rowFor("mcp_server.re_enabled", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
-    expect(row.result).toBe("success");
-  });
-
-  it("recordMcpServerErrored writes mcp_server.errored with result=error + reason=last_error", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerErrored({
-      tenant_id,
-      actor_id,
-      mcp_server_id,
-      namespace: "notion",
-      last_error: "handshake timed out after 30s",
-      request_source: "scheduler",
-      executor: ctx.db,
-    });
-    const row = await rowFor("mcp_server.errored", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
-    expect(row.result).toBe("error");
-    expect(row.reason).toBe("handshake timed out after 30s");
-  });
-
-  it("recordMcpServerDeleted writes mcp_server.deleted", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerDeleted({
-      tenant_id,
-      actor_id,
-      mcp_server_id,
-      namespace: "github",
-      request_source: "api",
-      executor: ctx.db,
-    });
-    const row = await rowFor("mcp_server.deleted", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
-    expect(row.result).toBe("success");
-  });
-
-  it("recordMcpServerHandshakeOk writes mcp_server.handshake_ok with tool_count + manifest_hash", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerHandshakeOk({
-      tenant_id,
-      actor_id,
-      mcp_server_id,
-      namespace: "notion",
+      connector_id,
+      connector_slug: "notion",
       tool_count: 12,
       manifest_hash: "sha256:abcd1234",
       request_source: "scheduler",
       executor: ctx.db,
     });
-    const row = await rowFor("mcp_server.handshake_ok", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
+    const row = await rowFor("connector.mcp_handshake_ok", connector_id);
+    // The resource IS the connector — one resource_type for one row.
+    expect(row.resource_type).toBe("connector");
     expect(row.result).toBe("success");
     const meta = row.metadata as Record<string, unknown>;
+    expect(meta.connector_slug).toBe("notion");
     expect(meta.tool_count).toBe(12);
     expect(meta.manifest_hash).toBe("sha256:abcd1234");
   });
 
+  it("recordConnectorMcpManifestDrift is its own action, not an update row carrying a changed_fields convention", async () => {
+    const connector_id = uuid();
+    await recordConnectorMcpManifestDrift({
+      tenant_id,
+      actor_id: null,
+      connector_id,
+      connector_slug: "notion",
+      previous_hash: "v1:aaaa",
+      observed_hash: "v1:bbbb",
+      observed_tool_count: 9,
+      request_source: "chat",
+      executor: ctx.db,
+    });
+    const row = await rowFor("connector.mcp_manifest_drift", connector_id);
+    expect(row.resource_type).toBe("connector");
+    expect(row.reason).toBe("tool_manifest_drift");
+    const meta = row.metadata as Record<string, unknown>;
+    expect(meta.previous_hash).toBe("v1:aaaa");
+    expect(meta.observed_hash).toBe("v1:bbbb");
+    expect(meta.observed_tool_count).toBe(9);
+  });
+
+  it("recordConnectorMcpClientRegistered records the client id and never a secret", async () => {
+    const connector_id = uuid();
+    await recordConnectorMcpClientRegistered({
+      tenant_id,
+      actor_id: null,
+      connector_id,
+      connector_slug: "rovo",
+      client_id: "dcr-issued-client",
+      request_source: "api",
+      executor: ctx.db,
+    });
+    const row = await rowFor("connector.mcp_client_registered", connector_id);
+    const meta = row.metadata as Record<string, unknown>;
+    expect(meta.client_id).toBe("dcr-issued-client");
+    // The params carry no secret at all, so there is nothing to redact —
+    // this asserts the shape stays that way.
+    expect(JSON.stringify(meta)).not.toContain("client_secret");
+  });
+
   it("recordMcpExternalToolInvoked writes mcp_external_tool.invoked with a byte bucket, not raw bytes", async () => {
-    const mcp_server_id = uuid();
+    const connector_id = uuid();
     await recordMcpExternalToolInvoked({
       tenant_id,
       actor_id,
-      mcp_server_id,
-      namespace: "notion",
+      connector_id,
+      connector_slug: "notion",
       remote_tool: "search_pages",
+      operation: "tools/call",
       outcome: "success",
       duration_ms: 842,
       byte_count: 2_000_000,
       request_source: "chat",
       executor: ctx.db,
     });
-    const row = await rowFor("mcp_external_tool.invoked", mcp_server_id);
+    const row = await rowFor("mcp_external_tool.invoked", connector_id);
     // Distinct resource_type so invocation volume aggregates apart from
-    // the lifecycle configuration rows.
+    // the connector configuration rows.
     expect(row.resource_type).toBe("mcp_external_tool");
     expect(row.result).toBe("success");
     const meta = row.metadata as Record<string, unknown>;
     expect(meta.remote_tool).toBe("search_pages");
+    // Which MCP method was issued — a tool and a prompt can share a name.
+    expect(meta.operation).toBe("tools/call");
     expect(meta.outcome).toBe("success");
     expect(meta.duration_ms).toBe(842);
     // Coarse bucket, never the raw byte count. Bind to the live function so
@@ -282,33 +218,34 @@ describe("external MCP server audit writers", () => {
   });
 
   it("recordMcpExternalToolInvoked maps an error outcome to result=error", async () => {
-    const mcp_server_id = uuid();
+    const connector_id = uuid();
     await recordMcpExternalToolInvoked({
       tenant_id,
       actor_id,
-      mcp_server_id,
-      namespace: "github",
+      connector_id,
+      connector_slug: "github",
       remote_tool: "create_issue",
+      operation: "tools/call",
       outcome: "error",
       duration_ms: 51,
       byte_count: 200,
       request_source: "chat",
       executor: ctx.db,
     });
-    const row = await rowFor("mcp_external_tool.invoked", mcp_server_id);
+    const row = await rowFor("mcp_external_tool.invoked", connector_id);
     expect(row.result).toBe("error");
     expect((row.metadata as Record<string, unknown>).byte_count_bucket).toBe(bucketSize(200));
   });
 
   it("recordMcpExternalToolPaletteAssemblyFailed writes palette_assembly_failed with typed reason + detail in metadata", async () => {
-    // resource_id is the tenant id (no single server to attribute to) — use
-    // the seeded tenant so the row is queryable by it. `reason` is the
+    // resource_id is the tenant id (no single connector to attribute to) —
+    // use the seeded tenant so the row is queryable by it. `reason` is the
     // typed failure class; the pre-redacted message rides in metadata.detail.
     await recordMcpExternalToolPaletteAssemblyFailed({
       tenant_id,
       actor_id,
       reason: "pool_fault",
-      detail: "connectable-server enumeration failed",
+      detail: "connectable-connector enumeration failed",
       request_source: "chat",
       executor: ctx.db,
     });
@@ -318,25 +255,25 @@ describe("external MCP server audit writers", () => {
     expect(row.reason).toBe("pool_fault");
     const meta = row.metadata as Record<string, unknown>;
     expect(meta.request_source).toBe("chat");
-    expect(meta.detail).toBe("connectable-server enumeration failed");
+    expect(meta.detail).toBe("connectable-connector enumeration failed");
   });
 
-  it("recordMcpServerAuthorizationStarted writes mcp_server.authorization_started with host-only issuer", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerAuthorizationStarted({
+  it("recordConnectorMcpAuthorizationStarted writes host-only issuer", async () => {
+    const connector_id = uuid();
+    await recordConnectorMcpAuthorizationStarted({
       tenant_id,
       actor_id,
-      mcp_server_id,
-      namespace: "rovo",
+      connector_id,
+      connector_slug: "rovo",
       issuer: "https://auth.atlassian.example.com/authorize?client_id=abc&state=SECRET456",
       request_source: "cli",
       executor: ctx.db,
     });
-    const row = await rowFor("mcp_server.authorization_started", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
+    const row = await rowFor("connector.mcp_authorization_started", connector_id);
+    expect(row.resource_type).toBe("connector");
     expect(row.result).toBe("success");
     const meta = row.metadata as Record<string, unknown>;
-    expect(meta.namespace).toBe("rovo");
+    expect(meta.connector_slug).toBe("rovo");
     expect(meta.request_source).toBe("cli");
     // Host-only — no scheme, path, query, or state leaked.
     expect(meta.issuer_host).toBe("auth.atlassian.example.com");
@@ -346,41 +283,41 @@ describe("external MCP server audit writers", () => {
     expect(metaStr).not.toContain("/authorize");
   });
 
-  it("recordMcpServerAuthorized writes mcp_server.authorized with host-only issuer", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerAuthorized({
+  it("recordConnectorMcpAuthorized writes host-only issuer", async () => {
+    const connector_id = uuid();
+    await recordConnectorMcpAuthorized({
       tenant_id,
       actor_id,
-      mcp_server_id,
-      namespace: "rovo",
+      connector_id,
+      connector_slug: "rovo",
       issuer: "https://auth.atlassian.example.com/token",
       request_source: "api",
       executor: ctx.db,
     });
-    const row = await rowFor("mcp_server.authorized", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
+    const row = await rowFor("connector.mcp_authorized", connector_id);
+    expect(row.resource_type).toBe("connector");
     expect(row.result).toBe("success");
     const meta = row.metadata as Record<string, unknown>;
-    expect(meta.namespace).toBe("rovo");
+    expect(meta.connector_slug).toBe("rovo");
     expect(meta.issuer_host).toBe("auth.atlassian.example.com");
     // Never the full token endpoint URL.
     expect(JSON.stringify(meta)).not.toContain("/token");
   });
 
-  it("recordMcpServerAuthorizationFailed writes mcp_server.authorization_failed with result=error + reason", async () => {
-    const mcp_server_id = uuid();
-    await recordMcpServerAuthorizationFailed({
+  it("recordConnectorMcpAuthorizationFailed writes result=error + reason", async () => {
+    const connector_id = uuid();
+    await recordConnectorMcpAuthorizationFailed({
       tenant_id,
       actor_id,
-      mcp_server_id,
-      namespace: "rovo",
+      connector_id,
+      connector_slug: "rovo",
       issuer: "https://auth.atlassian.example.com/authorize",
       reason: "issuer mismatch between callback and resource metadata",
       request_source: "cli",
       executor: ctx.db,
     });
-    const row = await rowFor("mcp_server.authorization_failed", mcp_server_id);
-    expect(row.resource_type).toBe("mcp_server");
+    const row = await rowFor("connector.mcp_authorization_failed", connector_id);
+    expect(row.resource_type).toBe("connector");
     expect(row.result).toBe("error");
     expect(row.reason).toBe("issuer mismatch between callback and resource metadata");
     const meta = row.metadata as Record<string, unknown>;

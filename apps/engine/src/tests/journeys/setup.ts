@@ -247,7 +247,7 @@ export async function createJourneyCtx(
           await stopBoss(5_000);
         } catch {}
         try {
-          await disposeBoss(boss, 2_000);
+          await disposeBoss(boss);
         } catch {}
       },
     });

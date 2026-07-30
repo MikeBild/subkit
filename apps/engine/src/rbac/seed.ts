@@ -74,12 +74,6 @@ function memberPermissionFilter(name: string): boolean {
   // mcp:admin grants full administrative access over MCP — admin-only,
   // same posture as the rbac:/audit:read/api_key: denials above.
   if (name === "mcp:admin") return false;
-  // mcp_server:manage registers / configures / removes external MCP
-  // servers (their auth_config references encrypted credential rows) —
-  // admin-only, same posture as mcp:admin. mcp_external_tool:invoke is
-  // intentionally NOT denied here: members may invoke tools exposed by
-  // a server an admin already registered.
-  if (name === "mcp_server:manage") return false;
   // mcp_oauth_client:* is admin-only — these are platform-global rows
   // (no tenant_id) and must not be exposed to member-level principals.
   if (name.startsWith("mcp_oauth_client:")) return false;

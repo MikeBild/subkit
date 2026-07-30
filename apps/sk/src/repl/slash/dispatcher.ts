@@ -73,6 +73,8 @@ export const REMOVED_SLASH_GUIDANCE: Readonly<Record<string, string>> = Object.f
   "install-salesforce": "moved into `/install`",
   "install-jira": "moved into `/install`",
   "install-hubspot": "moved into `/install`",
+  // An external MCP server is now a connector whose driver is `mcp`.
+  "mcp-servers": "external MCP servers are connectors — use `/connectors` or `sk connectors`",
   // Agentic-coding slashes that subkit intentionally does NOT ship.
   // Permanent guidance — these were never registered.
   agents:

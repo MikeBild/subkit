@@ -1,10 +1,10 @@
 ---
 slug: sk-ref-rest-api
 name: sk Platform Reference — REST API
-description: The /v1 REST surface of the sk engine — auth, OpenAPI/Scalar, every resource group's CRUD endpoints and shapes, pagination/filter conventions, and POST /v1/executions for saved/draft/step runs.
+description: The /v1 REST surface of the sk engine — auth, OpenAPI/Scalar, every resource group's CRUD endpoints and shapes, the five connector drivers including the MCP driver's own routes, pagination/filter conventions, and POST /v1/executions for saved/draft/step runs.
 tags: [sk-platform-reference, rest-api, http, openapi, executions]
 scope: global
-version: 2
+version: 3
 ---
 
 # REST API Overview
@@ -157,22 +157,36 @@ Runs one step. `timeout_ms` is capped at 60000.
 
 # Connectors
 
-A connector is a governed binding to an external API (HTTP/GraphQL/Postgres/S3), usually created from a connector template.
+A connector is a governed binding to an external system. There are five drivers — `http`, `graphql`, `postgres`, `s3`, `mcp` — and connectors are usually created from a connector template.
 
-- `GET /v1/connectors` — list, returns `{ items, total, next_cursor? }`. Each item: `id`, `slug`, `display_name`, `driver`, `auth_type`, `base_url`, template binding fields, and re-auth health (`needs_reauth`, `auth_failed_at`, `auth_failed_reason`).
+- `GET /v1/connectors` — list, returns `{ items, total, next_cursor? }`. Each item: `id`, `slug`, `display_name`, `driver`, `auth_type`, `base_url`, `enabled`, `last_error`, template binding fields, and re-auth health (`needs_reauth`, `auth_failed_at`, `auth_failed_reason`).
 - `POST /v1/connectors` — create.
 - `GET /v1/connectors/{id}` — fetch.
 - `PATCH /v1/connectors/{id}` — update.
 - `DELETE /v1/connectors/{id}` — delete.
+- `POST /v1/connectors/{id}/enable` / `POST /v1/connectors/{id}/disable` — the operator's on/off switch, driver-agnostic. A disabled connector keeps its config and credentials and stops being offered; disabling an `mcp` connector also evicts its pooled session.
+- `POST /v1/connectors/{id}/test` — the driver's own health probe (HTTP request against `base_url`, Postgres `SELECT 1`, S3 list-bucket, MCP handshake).
 - `POST /v1/connectors/{id}/call` — invoke the connector directly (method/path/body passthrough).
 - `POST /v1/connectors/{id}/credentials` — set connector credentials.
 - `POST /v1/connectors/{id}/end-user-credentials` — set per-enduser credentials.
 - `POST /v1/connectors/{id}/oauth/start` / `GET /v1/connectors/{id}/oauth/start` — begin an OAuth2 grant; `GET /v1/oauth/callback` completes it (unauthenticated, state-token-authed).
+- `POST /v1/connectors/validate`, `POST /v1/connectors/probe`, `POST /v1/connectors/import` — check a definition, probe a target, or import a spec. None of the three persists anything. `probe` answers 400 for a driver-`mcp` definition: an MCP session and its credential are resolved by connector id, so there is nothing to probe until the connector is saved (probe it afterwards with `POST /v1/connectors/{id}/mcp/inspect`).
 - `POST /v1/connectors/discover` — discover endpoints for a target.
 - `POST /v1/connectors/from-template/{slug}` — instantiate a connector from a template.
 - Docs sub-resource: `POST /v1/connectors/{id}/docs/ingest`, `GET /v1/connectors/{id}/docs`, `GET /v1/connectors/{id}/docs/{document_id}`, `POST /v1/connectors/{id}/docs/search`.
 
 Connector templates live under `/v1/connector-templates` (list/get/import/`match-url`, plus `{slug}/recipes` and `{slug}/oauth-credentials`).
+
+## MCP connectors (driver `mcp`)
+
+An external MCP server is a connector like any other: it lives at `/v1/connectors`, and the routes above (create, patch, enable, disable, test, delete) are how it is managed. There is no `/v1/mcp-servers` resource group. Its endpoint is `base_url`; `config.mcp` carries `transport` (`http`; `sse` is accepted only so pre-existing rows stay patchable — they are carried disabled as an unsupported transport, and `stdio` is refused outright), the non-secret `auth` block (`kind` one of `none`, `bearer`, `basic`, `oauth2`, `oauth2_client_credentials`, `oauth2_private_key_jwt`, plus optional `issuer` / `client_id` / `scope` / `algorithm`), and an optional `remote_tool_call_timeout_ms`. Secrets never live in `config` — they go through `POST /v1/connectors/{id}/credentials` like every other driver.
+
+Two driver-specific routes exist, and both answer 404 naming the driver when the connector is not `mcp`:
+
+- `POST /v1/connectors/{id}/mcp/inspect` — force one handshake and return the tools the remote serves, its negotiated capabilities, and its instructions. A disabled connector answers 422: nothing was attempted, so no upstream is blamed.
+- `POST /v1/connectors/{id}/mcp/authorize` — begin the interactive OAuth 2.1 flow and return `{ authorization_url, state }` for the operator's browser. `GET /v1/connectors/mcp/oauth/callback` completes it (unauthenticated, state-token-authed). This flow is separate from `/v1/connectors/{id}/oauth/start` because an MCP server publishes its authorization server through protected-resource metadata and often registers the client dynamically, rather than declaring an issuer in config.
+
+The slug matters: a remote tool is addressed in the chat palette as `mcp_<connector_slug>__<remote_tool>`, so a connector slug may never contain a double underscore (a database CHECK enforces it for every driver).
 
 # Knowledge Sources
 
@@ -263,5 +277,5 @@ These share the `/v1` base and the bearer auth:
 - Notifications: `/v1/notifications/channels`, `/v1/notifications/rules`, `/v1/notifications/inbox`, `/v1/notifications/deliveries`.
 - Audit log: `GET /v1/audit-log`, `GET /v1/audit-log/{id}` (cursor-paginated, ceiling 500).
 - Skills: `/v1/skills` with `{id}/activate`, `{id}/archive`, `{id}/restore`, `{id}/history`.
-- External MCP servers: `/v1/mcp-servers` (CRUD + `{id}/enable`, `{id}/disable`, `{id}/authorize`, `{id}/inspect`); the MCP catalog is exposed at `/v1/mcp/tools`, `/v1/mcp/prompts`, `/v1/mcp/resources`.
+- The MCP catalog sk itself serves is exposed at `/v1/mcp/tools`, `/v1/mcp/prompts`, `/v1/mcp/resources`. (MCP servers sk *calls* are connectors — see the Connectors section.)
 - Settings: `GET /v1/settings`, `GET /v1/settings/{path}`.

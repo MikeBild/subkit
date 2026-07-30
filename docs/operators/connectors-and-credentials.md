@@ -110,6 +110,61 @@ Revoke any Cloudflare token that has appeared in chat, logs, shell history, or s
 Firebase ID tokens are also accepted as short-lived Bearer credentials for end-user flows; a
 service-account JSON key is not an OAuth client secret.
 
+## Connecting a remote MCP server
+
+A remote Model Context Protocol server is a connector like any other — driver
+`mcp`. There is no separate MCP-server registry to learn: the same create,
+patch, enable, disable, and delete commands apply, the secret goes in the same
+vault, and it shows up in the same catalog under the `mcp` driver.
+
+```bash
+# driver "mcp", base_url = the server endpoint,
+# config: { mcp: { transport: "http", auth: { kind: … } } }
+sk connectors create --file server.json
+sk credentials set <CONNECTOR_ID> --mode bearer --token '<TOKEN>'
+
+sk connectors mcp-inspect <CONNECTOR_ID>    # one handshake: what does it serve?
+sk connectors mcp-authorize <CONNECTOR_ID>  # interactive OAuth 2.1, when the server needs it
+```
+
+`mcp-inspect` performs a single handshake and reports the remote's negotiated
+capabilities, its instructions, and its tool manifest — the fastest way to
+confirm a server is reachable and authorised before anyone authors against it.
+`mcp-authorize` is for servers that publish their authorization server through
+protected-resource metadata rather than declaring an issuer in config; the
+generic connector OAuth flow cannot serve those.
+
+Never put a token in `config`. The `mcp.auth` block is refused at the storage
+layer if it carries a secret-shaped key — a database `CHECK`, not a convention.
+
+**The operator off switch works on every driver:**
+
+```bash
+sk connectors disable <CONNECTOR_ID>
+sk connectors enable  <CONNECTOR_ID>
+```
+
+Disabling is immediate and honest: an MCP connector's pooled session is evicted
+and a Postgres connector's pool is closed on the way out, so nothing keeps
+serving past the switch. A disabled connector is also skipped by the reauth
+scan — for MCP that scan is a full handshake, and probing a server an operator
+deliberately turned off would park it in backoff for no reason.
+
+Four fields are worth knowing when a remote misbehaves, and every one of them
+is written by the engine rather than copied from the upstream — a remote's own
+error body can echo the credential it just rejected, so it stays in the
+engine's logs and never lands in a field you can export or render.
+`last_error` is the engine's account of the most recent failed attempt, in the
+form `[<error_code>] <sentence>`. `health_state` is the reconciled verdict
+(`ok`, `degraded`, `needs_update`, `needs_reauth`) — whether the engine
+considers the connector usable at all, which is a different question from the
+`enabled` switch. `health_reason` and `health_error_code` say what the last
+change of that verdict was. All four are readable on `GET /v1/connectors` and
+on the single-connector GET. Repeated handshake failures count in the database
+and arm a backoff that survives an engine restart — so a server that has been
+refusing for an hour is not handed a full-rate retry just because the process
+bounced.
+
 ## Health and validation
 
 Every connector can be tested independently of any workflow. The engine validates
@@ -142,11 +197,21 @@ curl -X POST "$SK_BASE_URL/v1/connectors/$CONNECTOR_ID/call" \
   -d '{ "method": "GET", "path": "/v2/droplets", "query": { "per_page": 10 } }'
 ```
 
-| Driver | `call_connector` |
-|---|---|
-| HTTP | Supported |
-| GraphQL | Supported |
-| Postgres / S3 | Returns `driver_not_supported_for_call_connector`, points to workflow authoring |
+| Driver | `call_connector` (conversational tool) | `POST /v1/connectors/{id}/call` |
+|---|---|---|
+| HTTP | Supported | Supported |
+| GraphQL | Supported | Supported |
+| Postgres / S3 | Supported | Returns `driver_not_supported_for_call_connector` |
+| MCP | Not applicable — see below | Not applicable — see below |
+
+An unsupported driver returns a structured `driver_not_supported_for_call_connector`
+envelope pointing at workflow authoring, rather than failing opaquely.
+
+MCP connectors are outside this surface by shape, not by omission: a remote tool
+takes a name and typed arguments, not a method and a path. Invoke one from a
+workflow `request` step carrying an `mcp` block, or from chat, where every tool the
+server publishes already appears as `mcp_<connector-slug>__<tool>`. To see what a
+server offers without calling anything, use `sk connectors mcp-inspect <ID>`.
 
 ## Keeping a fleet healthy
 

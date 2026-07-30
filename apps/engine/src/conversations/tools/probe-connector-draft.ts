@@ -208,6 +208,8 @@ export const probeConnectorDraftTool: ConversationTool = {
       self_description: {},
       created_at: new Date(),
       updated_at: new Date(),
+      enabled: true,
+      last_error: null,
       circuit_state: "closed" as const,
       circuit_opened_at: null,
       circuit_failure_count: 0,

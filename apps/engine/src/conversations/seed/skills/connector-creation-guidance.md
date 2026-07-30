@@ -2,13 +2,13 @@
 slug: connector-creation-guidance
 scope: global
 title: Connector Creation Guidance
-description: Authoring contract for creating a NEW connector in a conversation. Covers the discover-before-probe loop, the masked-form credential path, the inline auto-save on a green `probe_connector_draft`, the OAuth2 form-submit auto-persist, and the structured `next_best_actions` error envelope. Loaded on creation-intent keywords only — not on every mention of `api` or `http`. Driver-level detail still lives in the per-protocol skills (`http-connectors`, `graphql-connectors`, `postgres-connectors`, `s3-connectors`).
+description: Authoring contract for creating a NEW connector in a conversation. Covers the discover-before-probe loop, the masked-form credential path, the inline auto-save on a green `probe_connector_draft`, the OAuth2 form-submit auto-persist, and the structured `next_best_actions` error envelope. Loaded on creation-intent keywords only — not on every mention of `api` or `http`. Driver-level detail still lives in the per-protocol skills (`http-connectors`, `graphql-connectors`, `postgres-connectors`, `s3-connectors`); the `mcp` driver — an external MCP server, which is a connector and not a separate entity — is covered here.
 activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"create connector"},{"kind":"intent_keyword","word":"new connector"},{"kind":"intent_keyword","word":"add connector"},{"kind":"intent_keyword","word":"add integration"},{"kind":"intent_keyword","word":"new integration"},{"kind":"intent_keyword","word":"set up integration"},{"kind":"intent_keyword","word":"configure connector"},{"kind":"intent_keyword","word":"start connector"},{"kind":"intent_keyword","word":"start_connector_from_description"},{"kind":"intent_keyword","word":"start_connector_from_template"},{"kind":"intent_keyword","word":"wire up"},{"kind":"intent_keyword","word":"hook up"}]
 side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, connector, onboarding]
-version: 9
+version: 10
 ---
 
 # Connector Creation Guidance
@@ -391,6 +391,68 @@ Common codes you will see while authoring a connector:
 - `auth_mutation_not_allowed` — you tried to write `config.oauth` via `update_connector_draft`. Only `config.oauth.client_id` is writable (public id). For client_secret + endpoints, use `save_connector_draft({ credential: { mode: "oauth2", ... } })`. To change the auth shape entirely, call `start_connector_from_description` with a different `auth_type`.
 - `force_save_cooldown` — a force_save was requested while the failed probe is still fresh (within 60s). Collect a new credential via `ask_user_form`, re-probe, and retry. The cooldown protects you from persisting the credential a probe just rejected.
 - `reserved_auth_header_present` — a workflow step with `connector_id` carries `Authorization` / `Cookie` / `Proxy-Authorization`. The connector injects auth from its saved credential — remove the header. The only legitimate exception is the multi-step token-mint pattern where the connector's `auth_type` is `"none"`; see `auth-flows.md`.
+
+## MCP connectors (driver `mcp`) — a different shape, not a different entity
+
+An external MCP server is a connector. There is no separate MCP-server
+registry, no `sk mcp-servers` command and no `/v1/mcp-servers` route; if the
+operator asks to "add an MCP server", they are asking for a connector with
+`driver: "mcp"`. Its config is narrow and strictly validated — an unknown key
+under `config.mcp` is rejected at write time, not at first call:
+
+- `base_url` — the remote MCP endpoint. Required for this driver.
+- `config.mcp.transport` — `http` (the default). `sse` is accepted only so
+  pre-existing rows stay patchable and those rows are carried disabled as an
+  unsupported transport; `stdio` is refused at write time. Author `http`.
+- `config.mcp.auth.kind` — `none`, `bearer`, `basic`, `oauth2`,
+  `oauth2_client_credentials`, or `oauth2_private_key_jwt`, with optional
+  `issuer` / `client_id` / `scope` / `algorithm`. Secrets never go here: the
+  storage layer refuses a secret-looking key under `config.mcp.auth`, and the
+  credential belongs in the credential row like every other driver.
+- `config.mcp.remote_tool_call_timeout_ms` — optional per-connector override,
+  bounded 1000–300000. Raise it only for a genuinely slow remote; the bound is
+  what stops a hung server holding the whole turn.
+- **Keep the slug short.** The remote's tools are addressed as
+  `mcp_<slug>__<tool>`, that composed name is capped at 64 characters, and a
+  slug may never contain a double underscore (a database CHECK enforces it).
+  A long slug silently costs the operator the tools with the longest names.
+
+**The draft → probe → auto-save loop above cannot create one.** It is built for
+`http`, `graphql`, `postgres` and `s3`; `probe_connector_draft` has no MCP
+branch, so it would send a plain HTTP request to the endpoint and prove nothing
+about a handshake. Do not walk an MCP connector through it and do not narrate a
+creation you cannot complete — call `cannot_help` and name the surface that
+owns it: an MCP connector is authored as a definition, through
+`POST /v1/connectors` or `sk connectors create --file` (which validates the
+definition before it saves anything).
+
+What you CAN do from here, once the connector exists:
+
+- `test_connector({ connector_id })` — forces a real handshake and reports the
+  tool count. This is the answer to "is this MCP server working?".
+- `list_connectors({ category: "mcp" })` — every MCP connector on the tenant;
+  `category` is the driver and is filterable.
+- `get_connector` — the saved row, including `driver`, `enabled` and
+  `last_error` (never the secret).
+- `update_connector` — patch the saved row.
+
+Two operator actions live outside the conversation palette, because a browser
+or a terminal has to be involved: `POST /v1/connectors/{id}/mcp/inspect`
+(handshake plus the tools, capabilities and instructions the remote serves,
+also `sk connectors mcp-inspect`) and `POST /v1/connectors/{id}/mcp/authorize`
+(the interactive OAuth 2.1 URL the operator opens, also
+`sk connectors mcp-authorize`). The MCP flow is separate from the ordinary
+connector `authenticate_oauth` path because an MCP server publishes its own
+authorization server rather than declaring one in config.
+
+Once it handshakes, the remote's tools appear in the chat palette as
+`mcp_<slug>__<tool>` (plus read-only `list_resources` / `read_resource` /
+`list_prompts` / `get_prompt` adapters where the server declared those
+capabilities), and a workflow reaches them with a `request` step carrying an
+`mcp` block. `call_connector` does NOT support this driver — it answers
+`driver_not_supported_for_call_connector` and tells you to use a workflow
+step. Every remote tool call is confirmed as a write regardless of what the
+server annotates about itself.
 
 ## After save: iterate with call_connector
 

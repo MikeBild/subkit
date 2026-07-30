@@ -8,8 +8,15 @@
 // type-check together.
 
 import { describe, expect, test } from "bun:test";
+import { EgressBlockedError } from "../../connectors/egress-guard.ts";
 import { __mcpClientInternalsForTests, type RemoteToolDescriptor } from "./pool.ts";
-import { parseAuthConfig, redactLastError } from "./registry.ts";
+import {
+  classifyMcpHandshakeFailure,
+  McpPreflightError,
+  parseAuthConfig,
+  redactUpstreamDetail,
+  UNAUTHORIZED_HANDSHAKE_MESSAGE,
+} from "./registry.ts";
 import { reconcileManifestHash } from "./schema-drift.ts";
 
 const { hashManifest, capManifest, PER_SERVER_MANIFEST_BYTE_CAP } = __mcpClientInternalsForTests;
@@ -139,10 +146,10 @@ describe("pool.capManifest token budget", () => {
   });
 });
 
-describe("registry.redactLastError", () => {
+describe("registry.redactUpstreamDetail", () => {
   test("strips query string + path from an embedded URL, keeping host", () => {
     const raw = "fetch failed for https://mcp.example.com/call?token=SECRET123&q=x: ECONNRESET";
-    const safe = redactLastError(raw);
+    const safe = redactUpstreamDetail(raw);
     expect(safe).not.toContain("SECRET123");
     expect(safe).not.toContain("?token");
     expect(safe).not.toContain("/call");
@@ -152,7 +159,7 @@ describe("registry.redactLastError", () => {
 
   test("redacts multiple embedded URLs", () => {
     const raw = "redirect https://a.example.com/x?s=1 -> https://b.example.com/y?s=2 failed";
-    const safe = redactLastError(raw);
+    const safe = redactUpstreamDetail(raw);
     expect(safe).toContain("https://a.example.com");
     expect(safe).toContain("https://b.example.com");
     expect(safe).not.toContain("?s=1");
@@ -160,12 +167,119 @@ describe("registry.redactLastError", () => {
   });
 
   test("passes a plain message through unchanged", () => {
-    expect(redactLastError("handshake timed out")).toBe("handshake timed out");
+    expect(redactUpstreamDetail("handshake timed out")).toBe("handshake timed out");
   });
 
   test("caps an oversized error message", () => {
-    const safe = redactLastError("e".repeat(1000));
+    const safe = redactUpstreamDetail("e".repeat(1000));
     expect(safe.length).toBeLessThanOrEqual(301);
+  });
+});
+
+describe("registry.classifyMcpHandshakeFailure", () => {
+  const endpoint = "https://remote.example.test/mcp";
+
+  test("nothing the remote wrote survives into the verdict", () => {
+    // The dominant shape: the SDK reports a refused handshake as
+    // `Error POSTing to endpoint: <raw response body>`, so the server we
+    // just failed to authenticate against decides what that string says —
+    // and an OAuth error body routinely echoes the token it rejected. The
+    // engine reads the status out of it and writes its own sentence.
+    const fault = classifyMcpHandshakeFailure(
+      'Error POSTing to endpoint (HTTP 401): {"error":"invalid_token","error_description":"Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk is expired"}',
+      endpoint,
+    );
+    expect(fault.error_code).toBe("auth_rejected");
+    expect(fault.reason).not.toContain("eyJhbGciOiJIUzI1NiJ9");
+    expect(fault.reason).not.toContain("invalid_token");
+    // What survives is engine-authored and still names what failed.
+    expect(fault.reason).toContain("remote.example.test");
+    expect(fault.reason).toContain("credential");
+    expect(fault.reason).toContain("401");
+  });
+
+  test("a credential inlined in the configured endpoint never reaches the sentence", () => {
+    // `base_url` is operator-authored, but an operator who pasted a URL
+    // with userinfo would otherwise publish it in a column the API serves.
+    const fault = classifyMcpHandshakeFailure(
+      "connect ECONNREFUSED",
+      "https://svc:hunter2@remote.example.test/mcp",
+    );
+    expect(fault.reason).not.toContain("hunter2");
+    expect(fault.reason).not.toContain("svc:");
+    expect(fault.reason).toContain("remote.example.test");
+  });
+
+  test("each status maps to the code the HTTP driver already publishes", () => {
+    const codeFor = (raw: string): string => classifyMcpHandshakeFailure(raw, endpoint).error_code;
+    expect(codeFor("Error POSTing to endpoint (HTTP 403): forbidden")).toBe("auth_rejected");
+    expect(codeFor("Error POSTing to endpoint (HTTP 429): slow down")).toBe("rate_limited");
+    expect(codeFor("Error POSTing to endpoint (HTTP 404): not found")).toBe("resource_not_found");
+    expect(codeFor("Error POSTing to endpoint (HTTP 410): gone")).toBe("resource_not_found");
+    expect(codeFor("Error POSTing to endpoint (HTTP 503): unavailable")).toBe("vendor_degraded");
+    // The engine's own collapse of the SDK's UnauthorizedError — the one
+    // message on this path the engine authored, so it may be read.
+    expect(codeFor(UNAUTHORIZED_HANDSHAKE_MESSAGE)).toBe("auth_rejected");
+  });
+
+  test("a failure that never reached HTTP semantics says so rather than guessing", () => {
+    const fault = classifyMcpHandshakeFailure(
+      "getaddrinfo ENOTFOUND remote.example.test",
+      endpoint,
+    );
+    expect(fault.error_code).toBe("mcp_handshake_failed");
+    expect(fault.reason).toContain("did not complete");
+    // The operator is pointed at where the upstream text actually lives.
+    expect(fault.reason).toContain("log");
+  });
+
+  test("the verdict is bounded no matter how verbose the upstream body was", () => {
+    const fault = classifyMcpHandshakeFailure("x".repeat(5_000), endpoint);
+    expect(fault.reason.length).toBeLessThanOrEqual(300);
+  });
+
+  test("the engine's OWN refusal is carried verbatim — it is the diagnosis", () => {
+    // Authorship, not prose, decides what survives. A missing credential or
+    // an unset config leaf is the engine talking, and flattening it into the
+    // generic sentence would delete the only text that says WHICH one to fix.
+    const missing = classifyMcpHandshakeFailure(
+      new McpPreflightError(
+        "credential_missing",
+        "oauth2_client_credentials server has no client credential — register the client_id and client_secret first",
+      ),
+      endpoint,
+    );
+    expect(missing.error_code).toBe("credential_missing");
+    expect(missing.reason).toContain("register the client_id");
+    expect(missing.reason).toContain("remote.example.test");
+
+    const config = classifyMcpHandshakeFailure(
+      new McpPreflightError(
+        "config_incomplete",
+        "no canonical OAuth redirect URI — set server.public_base_url",
+      ),
+      endpoint,
+    );
+    expect(config.error_code).toBe("config_incomplete");
+    expect(config.reason).toContain("server.public_base_url");
+  });
+
+  test("an egress refusal names the guard's reason, not the remote", () => {
+    const fault = classifyMcpHandshakeFailure(
+      new EgressBlockedError("private_ip_resolved", "metadata.example.test"),
+      endpoint,
+    );
+    expect(fault.error_code).toBe("egress_blocked");
+    expect(fault.reason).toContain("private_ip_resolved");
+  });
+
+  test("an engine message is bounded too — a column is a column", () => {
+    const fault = classifyMcpHandshakeFailure(
+      new McpPreflightError("credential_invalid", "y".repeat(5_000)),
+      endpoint,
+    );
+    // 300 characters plus the truncation ellipsis, as everywhere else here.
+    expect(fault.reason.length).toBeLessThanOrEqual(301);
   });
 });
 

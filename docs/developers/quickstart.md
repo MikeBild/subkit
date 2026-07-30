@@ -41,6 +41,8 @@ bun run test:e2e            # compiles sk and runs journeys
 
 > **Note.** `test:unit` includes `execution/tests`, which uses a throwaway Postgres database. It's fast (seconds) because each file gets its own database, but you do need `compose:up` running.
 
+> **Note.** `bun run test:e2e` is the only supported way to run the e2e layer, and the one CI uses: it gives every e2e file its own process. `bun test tests/e2e/` is not supported — it loads all of them into one process, where suites contend for process-global state and fail on interference unrelated to your change. Running one file by name is fine.
+
 `bun run verify` is the local release gate. It runs determinism lint,
 unit tests, eval fixtures, integration tests, `build:sk`, and e2e coverage on top of lint and
 typecheck. `bun run verify:ai` is the focused contract suite for prompt/context/authoring changes.

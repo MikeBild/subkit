@@ -18,7 +18,7 @@ import { buildOAuthRedirectUri, type OAuthOriginHints } from "../../credentials/
 /** Distinct callback path for the interactive MCP-client OAuth flow — kept
  *  separate from the connector callback (`/v1/oauth/callback`) so an
  *  operator can allowlist one URL per concern in their IdP. */
-export const MCP_OAUTH_CALLBACK_PATH = "/v1/mcp-servers/oauth/callback";
+export const MCP_OAUTH_CALLBACK_PATH = "/v1/connectors/mcp/oauth/callback";
 
 /**
  * Build the canonical interactive-MCP-OAuth redirect URI off the engine's

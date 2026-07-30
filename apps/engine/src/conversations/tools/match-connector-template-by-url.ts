@@ -40,6 +40,9 @@ export const matchConnectorTemplateByUrlTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_read",
+  // Builds a definition rather than using one: withheld from the
+  // read-and-execute tier even though it only reads.
+  authoring_only: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const resolvedTemplates = await listResolvedConnectorTemplates(ctx.db, ctx.tenant_id);
