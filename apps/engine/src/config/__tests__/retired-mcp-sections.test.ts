@@ -1,12 +1,19 @@
-// A config that still declares the retired MCP sections must FAIL boot.
+// A config that still declares the retired MCP sections WITH SOMETHING IN THEM
+// must FAIL boot — and one that declares them empty must not.
 //
 // `ConfigSchema` is a plain `z.object`, so an unknown key is stripped at
 // parse time with no error and no log — and `setConfigKey` reserializes the
 // whole parsed config back to disk, so the first settings write after an
 // upgrade would DELETE the operator's server declarations. Silence is not
 // an option here: the data would be gone before anyone noticed it was
-// ignored. These tests pin the refusal and the message that carries the
-// migration.
+// ignored.
+//
+// That argument is about data, and it stops where the data stops. An empty
+// `servers` array and an `mcp.client` that only repeats the new defaults hold
+// no decision anyone made, so there is nothing for a later write to erase —
+// and refusing over them stopped a production deploy for nothing. These tests
+// pin both halves: the refusal where something is at stake, the boot where
+// nothing is.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -66,17 +73,34 @@ describe("retired mcp config sections", () => {
     expect(message).toContain(cfgPath);
   });
 
-  test("an EMPTY mcp.servers array still refuses — the section is what is gone, not the rows", async () => {
-    writeConfig({ mcp: { servers: [] } });
-    const err = await loadConfig({ env: ENV, configPathOverride: cfgPath }).then(
-      () => null,
-      (e: unknown) => e,
-    );
-    expect(err).toBeInstanceOf(ConfigLoaderError);
-    expect((err as Error).message).toContain("mcp.servers (0 declaration(s))");
+  // The refusal protects DATA, so it may not reach further than the data does.
+  // These three are the empty cases: they cost a production deploy — the engine
+  // refused to boot five times over a message that itself printed
+  // "(0 declaration(s))", and the rollback that followed took the service down.
+  test("an EMPTY mcp.servers array boots — there is no declaration to lose", async () => {
+    writeConfig({ mcp: { servers: [], read_only: true } });
+    await loadConfig({ env: ENV, configPathOverride: cfgPath });
+    // The retired key is gone from the parsed config and the surviving
+    // neighbour in the same section is untouched.
+    expect((getConfig().mcp as Record<string, unknown>).servers).toBeUndefined();
+    expect(getConfig().mcp.read_only).toBe(true);
   });
 
-  test("a leftover mcp.client block refuses and names its connectors.mcp.* replacements", async () => {
+  test("an mcp.client that only repeats the new defaults boots", async () => {
+    // Exactly what production carried: the two budgets at their default values,
+    // which `connectors.mcp` now defaults to anyway.
+    writeConfig({ mcp: { client: { per_server_manifest_byte_cap: 30_000 } } });
+    await loadConfig({ env: ENV, configPathOverride: cfgPath });
+    expect(getConfig().connectors.mcp.per_server_manifest_byte_cap).toBe(30_000);
+  });
+
+  test("an empty mcp.client object boots", async () => {
+    writeConfig({ mcp: { client: {} } });
+    await loadConfig({ env: ENV, configPathOverride: cfgPath });
+    expect(getConfig().connectors.mcp.tools_list_max_pages).toBe(5);
+  });
+
+  test("a leftover mcp.client with a REAL override refuses and names the moved key", async () => {
     writeConfig({ mcp: { client: { remote_tool_call_timeout_ms: 45_000 } } });
     const err = await loadConfig({ env: ENV, configPathOverride: cfgPath }).then(
       () => null,
@@ -84,8 +108,20 @@ describe("retired mcp config sections", () => {
     );
     expect(err).toBeInstanceOf(ConfigLoaderError);
     const message = (err as Error).message;
-    expect(message).toContain("mcp.client");
+    // Which key is at stake, not just which section — the operator has to know
+    // what to carry over.
+    expect(message).toContain("mcp.client (remote_tool_call_timeout_ms)");
     expect(message).toContain("connectors.mcp.remote_tool_call_timeout_ms");
+  });
+
+  test("an mcp.client key this engine cannot interpret refuses rather than guessing", async () => {
+    writeConfig({ mcp: { client: { some_budget_we_dropped: 7 } } });
+    const err = await loadConfig({ env: ENV, configPathOverride: cfgPath }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(ConfigLoaderError);
+    expect((err as Error).message).toContain("mcp.client (some_budget_we_dropped)");
   });
 
   test("a tenant overlay is checked too, and the offending tenant is named", async () => {

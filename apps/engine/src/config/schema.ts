@@ -1132,7 +1132,12 @@ const ConnectorsHttpSection = z
 // configures the MCP server subkit HOSTS. The defaults mirror the
 // module-level constants in `mcp/client/pool.ts`, which stay as the
 // fallback when the config loader is not initialised (unit tests).
-const ConnectorsMcpSection = z
+// Exported so the retired-section boot check can ask what the budgets default
+// to instead of restating the numbers. A leftover `mcp.client` that merely
+// repeats these values carries no operator intent, and refusing to boot over it
+// would stop a deploy to protect nothing — so the check needs the real defaults,
+// from here, or it drifts the moment one of them changes.
+export const ConnectorsMcpSection = z
   .object({
     per_server_manifest_byte_cap: z
       .number()
