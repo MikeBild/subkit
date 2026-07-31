@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { z } from "zod";
+import { inspectRetiredMcpSections, retiredSectionMessage } from "./retired-sections.ts";
 import { type Config, ConfigSchema } from "./schema.ts";
 import { type ConfigLeaf, dottedPath, findLeafByPath, listConfigLeaves } from "./walk.ts";
 
@@ -280,62 +281,6 @@ function mirrorGenericLlmKey(
   }
 }
 
-/**
- * Refuse to boot on a config that still declares the retired MCP sections,
- * naming every offending path and the migration.
- *
- * WHY A THROW AND NOT A WARNING. `ConfigSchema` is a plain `z.object`, so
- * an unknown key is STRIPPED at parse time with no error and no log. That
- * alone would be quiet enough to be wrong; what makes it destructive is
- * `setConfigKey`, which reserializes the whole parsed config back to disk —
- * so the first settings write after an upgrade would DELETE the operator's
- * server declarations. A retired env var can warn and continue because
- * nothing is lost; this is data, and only a refusal is honest.
- */
-function assertNoRetiredMcpSections(merged: Record<string, unknown>, configPath: string): void {
-  const offenders: string[] = [];
-  const mcpSection = merged.mcp as Record<string, unknown> | undefined;
-  const declaredServers = (s: Record<string, unknown> | undefined): number | null =>
-    Array.isArray(s?.servers) ? (s.servers as unknown[]).length : null;
-
-  const rootCount = declaredServers(mcpSection);
-  if (rootCount !== null) offenders.push(`mcp.servers (${rootCount} declaration(s))`);
-  if (mcpSection?.client !== undefined) offenders.push("mcp.client");
-
-  const tenants = merged.tenants as Record<string, Record<string, unknown>> | undefined;
-  for (const [tenant_id, overlay] of Object.entries(tenants ?? {})) {
-    const overlayMcp = overlay?.mcp as Record<string, unknown> | undefined;
-    const count = declaredServers(overlayMcp);
-    if (count !== null) {
-      offenders.push(`tenants.${tenant_id}.mcp.servers (${count} declaration(s))`);
-    }
-    if (overlayMcp?.client !== undefined) offenders.push(`tenants.${tenant_id}.mcp.client`);
-  }
-
-  if (offenders.length === 0) return;
-  throw new ConfigLoaderError(
-    [
-      `${configPath} declares configuration this engine no longer has:`,
-      ...offenders.map((o) => `  - ${o}`),
-      "",
-      "An external MCP server is now a connector whose driver is `mcp`. Recreate each",
-      "declared server as a connector (`sk connectors create --file`), with:",
-      '  driver: "mcp", environment: "prod", base_url: <the server url>,',
-      '  config: { mcp: { transport: "http", auth: { kind: … } } }',
-      "and attach its secret with `sk credentials` — config never carries one.",
-      "",
-      "The client-pool budgets moved to `connectors.mcp.*`:",
-      "  mcp.client.per_server_manifest_byte_cap → connectors.mcp.per_server_manifest_byte_cap",
-      "  mcp.client.remote_tool_call_timeout_ms  → connectors.mcp.remote_tool_call_timeout_ms",
-      "  mcp.client.tools_list_max_pages         → connectors.mcp.tools_list_max_pages",
-      "",
-      "Remove the sections above once migrated. Booting past them is refused rather",
-      "than skipped: the schema would strip them silently and the next settings write",
-      "would erase them from disk.",
-    ].join("\n"),
-  );
-}
-
 export async function loadConfig(
   opts: { env?: Record<string, string | undefined>; configPathOverride?: string } = {},
 ): Promise<Config> {
@@ -382,7 +327,22 @@ export async function loadConfig(
     });
   }
 
-  assertNoRetiredMcpSections(mergedObj, configPath);
+  const retired = inspectRetiredMcpSections(mergedObj);
+  if (retired.offenders.length > 0) {
+    throw new ConfigLoaderError(retiredSectionMessage(configPath, retired.offenders));
+  }
+  if (retired.dropped.length > 0) {
+    // Not silent: the keys do disappear from disk on the next settings write,
+    // and an operator who put them there deserves to read that once.
+    const { logger } = await import("../logging/logger.ts");
+    logger.warn({
+      module: "config",
+      action: "retired_mcp_section.dropped",
+      msg: "retired MCP config section held nothing and was dropped — remove it from the file",
+      paths: retired.dropped,
+      config_path: configPath,
+    });
+  }
 
   let parsed: Config;
   try {

@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.1] – 2026-07-31
+
+### Fixed
+
+- **An upgrade no longer stops on retired MCP config sections that hold
+  nothing.** The 6.0.0 boot check refused whenever `mcp.servers` or `mcp.client`
+  was present at all — including an empty array and a block that merely repeated
+  the budgets `connectors.mcp` already defaults to. That protected nothing: the
+  reason for refusing is that a later settings write would erase an operator's
+  declarations, and there were none to erase. It cost a production deploy, where
+  the engine refused five times over a message that itself printed
+  "(0 declaration(s))". The check now stops only when a declaration exists, a
+  budget differs from its default, or a key appears that this engine cannot
+  interpret — and it names the offending keys rather than only the section. What
+  is dropped is still logged, so an operator learns the keys are going away.
+
 ## [6.0.0] – 2026-07-30
 
 ### Added
@@ -111,13 +127,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `mcp-authorize`.
 
 - **BREAKING: `mcp.servers` and `mcp.client.*` are removed from the engine
-  configuration, and an engine that still finds them refuses to boot.** The
-  refusal is deliberate: `ConfigSchema` strips an unknown key silently and the
-  next settings write reserializes the whole file, so warn-and-continue would
-  have *deleted* an operator's server declarations on the first
-  `sk settings set` after the upgrade. That is data, and only stopping is
-  honest. The error names every offending path (including per-tenant overlays),
-  how many declarations are at stake, the config file, and the migration.
+  configuration, and an engine that still finds them *populated* refuses to
+  boot.** The refusal is deliberate: `ConfigSchema` strips an unknown key
+  silently and the next settings write reserializes the whole file, so
+  warn-and-continue would have *deleted* an operator's server declarations on
+  the first `sk settings set` after the upgrade. That is data, and only stopping
+  is honest. The error names every offending path (including per-tenant
+  overlays), which keys are at stake, the config file, and the migration. An
+  empty `servers` array, or an `mcp.client` that only repeats the new defaults,
+  holds no decision to lose — those are dropped with a warning and the boot
+  continues.
 
   **Upgrade, before swapping the binary.** Recreate each declared server as a
   connector and move the three client budgets:
