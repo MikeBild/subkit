@@ -28076,7 +28076,7 @@
         "tags": [
           "mcp"
         ],
-        "summary": "List conversation tool-call palette entries",
+        "summary": "List the MCP tool catalog this principal would receive over tools/list",
         "security": [
           {
             "bearerAuth": []

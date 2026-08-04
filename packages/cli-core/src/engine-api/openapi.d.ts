@@ -9583,7 +9583,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List conversation tool-call palette entries */
+        /** List the MCP tool catalog this principal would receive over tools/list */
         get: {
             parameters: {
                 query?: never;
