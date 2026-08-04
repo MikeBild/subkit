@@ -59,15 +59,66 @@ function ok(path: string, minBytes: number): boolean {
   return Bun.file(path).size >= minBytes;
 }
 
-async function download(url: string, dest: string, minBytes: number): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`GET ${url} -> ${res.status} ${res.statusText}`);
-  const buf = new Uint8Array(await res.arrayBuffer());
-  if (buf.byteLength < minBytes) {
-    throw new Error(`GET ${url} returned ${buf.byteLength} bytes (< ${minBytes} expected)`);
+/** Is this failure worth trying again, or is it an answer?
+ *
+ *  A dropped socket, a reset, a 5xx or a 429 say nothing about the request —
+ *  only about the moment. A 404 or a 403 is the server's verdict and retrying
+ *  it just fails slower. The short-read case counts as transient on purpose:
+ *  a truncated body is exactly what a half-closed connection produces, and it
+ *  is indistinguishable from one at this layer. */
+export function isTransient(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    /socket connection was closed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|network|Unable to connect|fetch failed/i.test(
+      message,
+    ) ||
+    / -> (408|429|5\d\d) /.test(message) ||
+    /returned \d+ bytes/.test(message)
+  );
+}
+
+/** Fetch one asset, retrying the failures that are about the network rather
+ *  than about the URL.
+ *
+ *  This runs inside the Docker build, where an unretried fetch is a single
+ *  point of failure for the whole image: a dropped socket on one of five files
+ *  failed the v6.0.2 `docker-publish` outright. The same class already bit the
+ *  cross-compile toolchain download. Nothing here is cached between attempts,
+ *  so a retry is a clean second try — there is no corrupt artifact to purge as
+ *  there is for the bun runtime. */
+export async function download(
+  url: string,
+  dest: string,
+  minBytes: number,
+  // Injected so the retry LOOP can be exercised without a network. The
+  // classifier being right is not the same as the loop calling it — the
+  // release that broke here had no loop at all.
+  fetchImpl: typeof fetch = fetch,
+  sleep: (ms: number) => Promise<void> = (ms) => Bun.sleep(ms),
+): Promise<void> {
+  const attempts = 4;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const res = await fetchImpl(url);
+      if (!res.ok) throw new Error(`GET ${url} -> ${res.status} ${res.statusText} `);
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.byteLength < minBytes) {
+        throw new Error(`GET ${url} returned ${buf.byteLength} bytes (< ${minBytes} expected)`);
+      }
+      await ensureDir(dirname(dest));
+      await Bun.write(dest, buf);
+      return;
+    } catch (err) {
+      if (attempt === attempts || !isTransient(err)) throw err;
+      const backoffMs = 1000 * 2 ** (attempt - 1);
+      console.log(
+        `  ! ${url} failed (attempt ${attempt}/${attempts}): ${
+          err instanceof Error ? err.message : String(err)
+        } — retrying in ${backoffMs}ms`,
+      );
+      await sleep(backoffMs);
+    }
   }
-  await ensureDir(dirname(dest));
-  await Bun.write(dest, buf);
 }
 
 async function main(): Promise<void> {
@@ -105,4 +156,6 @@ async function main(): Promise<void> {
   console.log("embedding assets ready");
 }
 
-await main();
+// Guarded so the module can be imported for its exported helpers without
+// downloading ~90 MB of model weights as a side effect.
+if (import.meta.main) await main();
