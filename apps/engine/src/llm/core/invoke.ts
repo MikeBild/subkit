@@ -89,10 +89,19 @@ function zodToJson(schema: ZodType): Record<string, unknown> {
 }
 
 const DEFAULT_PRIMARY = "claude-sonnet-4-6";
-// Fallback must itself be authoring-capable: a converse turn that
-// dropped to the fallback still has to write correct JSONata. Haiku is
-// too weak for that, so the fallback is the previous Sonnet, not Haiku.
-const DEFAULT_FALLBACK = "claude-sonnet-4-5";
+// The fallback carries TWO jobs, and they pull in the same direction only if it
+// is the STRONGER model: it absorbs an overloaded primary, and it is where
+// `applyFlowModelElevation` sends `judge` and `generate`. It must also be
+// authoring-capable on its own — a converse turn that dropped to it still has
+// to write correct code — which rules out Haiku.
+//
+// This used to be `claude-sonnet-4-5`, one step BELOW the primary, which
+// inverted the elevation: on a default-configured engine the two
+// quality-critical flows were quietly DOWNGRADED, the opposite of what the
+// elevation exists to do. The nightly judge-calibration job is what surfaced
+// it — it pins no model, so it rode the shipped default and failed while its
+// sibling job, which pins `claude-sonnet-4-6`, passed on the same key.
+const DEFAULT_FALLBACK = "claude-opus-4-7";
 
 /**
  * Snapshot of the global LLM-routing configuration for /v1/health.

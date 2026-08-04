@@ -171,7 +171,11 @@ const ANTHROPIC_LADDER: UpgradeLadder = {
     "claude-3-5-haiku": "claude-3-5-sonnet",
     "claude-3-5-sonnet": "claude-3-opus",
     "claude-3-opus": "claude-opus-4-7",
-    "claude-haiku-4-5": "claude-sonnet-4-5",
+    // Haiku escalates to the CURRENT Sonnet. It pointed at `claude-sonnet-4-5`,
+    // which made every one-up from the cheap tier land a generation behind —
+    // and production runs Haiku as its primary, so that was the escalation
+    // path most likely to fire.
+    "claude-haiku-4-5": "claude-sonnet-4-6",
     "claude-sonnet-4-5": "claude-opus-4-7",
     "claude-sonnet-4-6": "claude-opus-4-7",
     "claude-opus-4-6": "claude-opus-4-7",
