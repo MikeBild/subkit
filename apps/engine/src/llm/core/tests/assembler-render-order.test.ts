@@ -546,13 +546,23 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
   }, 30_000);
 
   test("under tight budget, skill_candidates drops BEFORE connector_recipe_bodies (unconditional)", async () => {
+    // Cap note, same rule as the sibling test below: this is a knob that must
+    // sit ABOVE the irreducible prompt and BELOW the seeded total. It was 9000,
+    // and the irreducible prompt for this flow measured 9004 in a full-suite
+    // run — four tokens over. The ladder then had nothing left to drop and the
+    // assembler threw `LlmContextTooLarge`, so the test died instead of
+    // asserting the drop ORDER it exists for. It passed in isolation and under
+    // the isolated runner, which is the worst shape for a gate: red only in the
+    // run that matters. 10_000 restores the headroom the sibling test has; the
+    // seeded content (30 candidates plus recipe bodies) is several thousand
+    // tokens on top, so the ladder still has to run.
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id: heavyTenantId,
         flow: "converse",
         connector_id: heavyConnectorId,
         user_turns: [{ role: "user", content: "stripe charge heavy" }],
-        max_tokens: 9000,
+        max_tokens: 10_000,
         model: "mock",
       },
       heavyCtx.db,

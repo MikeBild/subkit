@@ -72,7 +72,7 @@ function baseParams(over: Partial<StepRouterParams> = {}): StepRouterParams {
 describe("routeUp / routeTop ladder", () => {
   it("returns the next-tier-up id on Anthropic", () => {
     expect(routeUp("anthropic", "claude-sonnet-4-5")).toBe("claude-opus-4-7");
-    expect(routeUp("anthropic", "claude-haiku-4-5")).toBe("claude-sonnet-4-5");
+    expect(routeUp("anthropic", "claude-haiku-4-5")).toBe("claude-sonnet-4-6");
   });
 
   it("escalates opus-4-7 to opus-4-8 (the new ladder top)", () => {
@@ -99,7 +99,7 @@ describe("routeUp / routeTop ladder", () => {
   });
 
   it("strips date suffixes before lookup", () => {
-    expect(routeUp("anthropic", "claude-haiku-4-5-20251001")).toBe("claude-sonnet-4-5");
+    expect(routeUp("anthropic", "claude-haiku-4-5-20251001")).toBe("claude-sonnet-4-6");
     expect(routeUp("openai", "gpt-4o-2024-11-20")).toBe("gpt-4.1");
   });
 
@@ -218,7 +218,7 @@ describe("prepareStep — escalation rules", () => {
         signals: { stage: "workflow_validated" },
       }),
     );
-    expect(decision?.modelId).toBe("claude-sonnet-4-5");
+    expect(decision?.modelId).toBe("claude-sonnet-4-6");
   });
 });
 
@@ -248,7 +248,7 @@ describe("prepareStep — chat surface suppresses the authoring hard-stage escal
         signals: { stage: "workflow_persisted", surface: "sk_interactive" },
       }),
     );
-    expect(decision?.modelId).toBe("claude-sonnet-4-5");
+    expect(decision?.modelId).toBe("claude-sonnet-4-6");
     expect(decision?.reason).toContain("hard_stage:workflow_persisted");
   });
 

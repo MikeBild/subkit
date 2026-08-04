@@ -200,4 +200,55 @@ describe("call step", () => {
       .where(eq(executions.tenant_id, ctx.tenantId));
     expect(rows.some((e) => e.workflow_id === child.workflow_id)).toBe(false);
   });
+
+  test("`${input.…}` in a call input means the CALLING workflow's input", async () => {
+    // The resolver context for a call step was copied from the request-step
+    // dispatcher, which binds `input` to `scope.$input`. That binding was never
+    // checked for calls, and it is the one place the answer is not obvious: a
+    // call step is where a second workflow's input is being BUILT, so `input`
+    // could plausibly have been read as the child's. It is the parent's — the
+    // same thing `${input.…}` means in every other step of the same workflow.
+    // Anything else would make one step kind read its own placeholders
+    // differently from its neighbours.
+    const child = await createWorkflowRow(ctx, {
+      name: "child-echo-parent-input",
+      slug: "child-echo-parent-input",
+      steps: [
+        {
+          kind: "transform",
+          id: "echo",
+          language: "javascript",
+          expression: "return { seen: input.input.forwarded };",
+        },
+      ],
+      output_transform: '{ "seen": $scope.echo.data.seen }',
+    });
+    const parent = await createWorkflowRow(ctx, {
+      name: "parent-forwards-own-input",
+      slug: "parent-forwards-own-input",
+      steps: [
+        {
+          kind: "call",
+          id: "call_child",
+          workflow_id: child.workflow_id,
+          input: { forwarded: "${input.ticket}" },
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id: parent.workflow_id },
+      input: { ticket: "TCK-4711" },
+    });
+    expect(result.status).toBe("succeeded");
+
+    const all = await ctx.testDb.db
+      .select()
+      .from(executions)
+      .where(eq(executions.tenant_id, ctx.tenantId));
+    const childRow = all.find((e) => e.workflow_id === child.workflow_id);
+    const childInput = childRow?.input as { forwarded?: unknown } | null;
+    expect(childInput?.forwarded).toBe("TCK-4711");
+  });
 });
