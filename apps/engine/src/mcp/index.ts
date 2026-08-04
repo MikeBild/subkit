@@ -8,6 +8,13 @@
 // The MCP *server* side (server.ts, adapter.ts, …) is consumed via its own
 // explicit imports and is not aggregated here to keep the barrel light.
 
+// Re-exported so `http/routes/mcp-catalog.ts` can assemble the SAME catalog
+// `tools/list` serves, through the subsystem entry point rather than the deep
+// capability paths (route_layering invariant). The route reporting a set the
+// MCP surface never publishes is the defect these three exist to prevent, so
+// they belong together and behind one door.
+export { assembleCatalog } from "./capabilities/catalog-budget.ts";
+export { listWorkflowTools } from "./capabilities/tools-helpers.ts";
 export type { RemoteToolAnnotations } from "./client/manifest.ts";
 export {
   McpDbOAuthClientProvider,
@@ -38,3 +45,4 @@ export * from "./client/schema-drift.ts";
 // `__setSdkAuthForTests` stays on the inner module (`./client/sdk-auth.ts`)
 // for the same reason — only the production wrapper is barrel-visible.
 export { sdkAuth } from "./client/sdk-auth.ts";
+export { modeFlags, resolveMcpMode } from "./mode-resolver.ts";

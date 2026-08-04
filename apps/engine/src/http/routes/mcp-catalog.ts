@@ -4,14 +4,17 @@
 // prompts and resources without speaking the MCP stdio/streamable
 // protocol itself. Everything returned here mirrors what the engine
 // exposes over MCP: prompts come from the skills table, resources
-// come from the connectors table, tools come from the conversation
-// tool palette. The endpoints are gated on `mcp:read` and never
+// come from the connectors table, and tools come from the same catalog
+// `tools/list` serves. The endpoints are gated on `mcp:read` and never
 // include credentials or other secret-bearing fields.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull } from "drizzle-orm";
+import type { Context } from "hono";
 import { paginatedResponse } from "../../api/common-schemas.ts";
+import { getConfig } from "../../config/loader.ts";
 import { connectors, skills } from "../../db/schema/index.ts";
+import { assembleCatalog, listWorkflowTools, resolveMcpMode } from "../../mcp/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -72,46 +75,51 @@ const toolsRoute = createRoute({
   method: "get",
   path: "/v1/mcp/tools",
   tags: ["mcp"],
-  summary: "List conversation tool-call palette entries",
+  summary: "List the MCP tool catalog this principal would receive over tools/list",
   security: [{ bearerAuth: [] }],
   responses: {
     200: { description: "OK", content: { "application/json": { schema: McpToolsResponse } } },
   },
 });
 
-// Static conversation-tool catalog. Mirrors the structured-intent
-// palette exposed to the converse flow. Kept inline so the HTTP
-// surface does not pull in the loop module.
-const CONVERSATION_TOOLS = [
-  {
-    name: "author_workflow",
-    description: "Author a complete workflow draft in one grounded call",
-  },
-  {
-    name: "edit_workflow_patch",
-    description: "Apply an RFC 6902 JSON Patch to the current workflow draft",
-  },
-  {
-    name: "dry_run_workflow",
-    description: "Preview the draft end-to-end; a green preview auto-commits",
-  },
-  {
-    name: "dry_run_step",
-    description: "Execute a step against a sandbox to validate shape",
-  },
-  {
-    name: "validate_draft",
-    description: "Run the full draft validator and surface errors",
-  },
-  {
-    name: "request_human_approval",
-    description: "Pause the loop and ask the operator for approval",
-  },
-  {
-    name: "save_workflow_draft",
-    description: "Persist the draft as a new workflow version",
-  },
-] as const;
+// The catalog this route reports is assembled by the SAME call the MCP
+// `tools/list` handler makes — see `assembleCatalog` in
+// mcp/capabilities/catalog-budget.ts.
+//
+// It used to be a seven-name constant, mapped out unchanged with
+// `input_shape: null` and without reading the principal: the same answer for
+// every caller in every tenant. Measured against production, that constant and
+// the real catalog for the SAME principal shared not one name — 7 versus 107 —
+// because those seven were the converse loop's `draft_write` intents, which the
+// MCP surface omits on purpose. So the route was not a stale approximation of
+// the catalog; it was answering a different question under the catalog's name,
+// beside two siblings (`/v1/mcp/prompts`, `/v1/mcp/resources`) that both read
+// live data.
+//
+// Assembling rather than calling `listToolsViaRegistry` directly matters:
+// `assembleCatalog` also prepends the conversation cluster and appends the
+// capped `wf_` palette. Reporting the registry set alone would be a smaller
+// lie in the same shape — a number no client ever receives.
+async function assembleMcpToolCatalog(
+  c: Context<AppEnv>,
+): Promise<Array<{ name: string; description: string; input_shape: unknown }>> {
+  // `requireAuth` rather than a bare `c.get`, exactly as the two sibling
+  // handlers do: the mode is derived from the principal's scopes, so a missing
+  // principal must fail loudly instead of resolving to the product tier.
+  const principal = requireAuth(c);
+  const mode = resolveMcpMode(principal);
+  // `mcp.read_only` is the operator's global off-switch for writes and is read
+  // the same way the MCP server reads it, so both surfaces answer alike.
+  const readOnly = getConfig(principal.tenant_id).mcp.read_only;
+  const fullPalette = await listWorkflowTools({ db: c.get("db"), principal });
+  return assembleCatalog({ principal, mode, readOnly, fullPalette }).map((t) => ({
+    name: t.name,
+    description: t.description ?? "",
+    // The declared input schema, not `null`. This is the shape a caller has to
+    // satisfy, and it is the only part of the entry that was never populated.
+    input_shape: t.inputSchema ?? null,
+  }));
+}
 
 export function registerMcpCatalogRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/mcp/prompts", requirePermission("mcp:read"));
@@ -172,15 +180,6 @@ export function registerMcpCatalogRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   app.openapi(toolsRoute, async (c) => {
-    return c.json(
-      {
-        items: CONVERSATION_TOOLS.map((t) => ({
-          name: t.name,
-          description: t.description,
-          input_shape: null,
-        })),
-      },
-      200,
-    );
+    return c.json({ items: await assembleMcpToolCatalog(c) }, 200);
   });
 }
