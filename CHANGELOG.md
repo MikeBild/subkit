@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.2] – 2026-08-04
+
+### Fixed
+
+- **The two flows that exist to be elevated were being demoted instead.**
+  `judge` (the verdict that gates auto-commit) and `generate` (whole-workflow
+  authoring) are routed in code onto the model route's *fallback*, on the stated
+  convention that the fallback is the stronger model — cheap primary for volume,
+  strong fallback for capability. The shipped default violated that convention:
+  primary `claude-sonnet-4-6`, fallback `claude-sonnet-4-5`. Every installation
+  that did not override the models ran its two quality-critical flows a
+  generation behind. The default fallback is now `claude-opus-4-7`, above the
+  default primary, and a test pins the direction rather than the model names, so
+  the same inversion cannot return under new ids.
+- **The cheap tier escalated into a superseded model.** The Anthropic step-router
+  ladder sent `claude-haiku-4-5` one-up to `claude-sonnet-4-5` instead of
+  `claude-sonnet-4-6` — and Haiku is what production runs as its primary, so that
+  was the escalation most likely to fire. A hard-turn upgrade landed a generation
+  short every time.
+- **A truncated toolchain download no longer wedges the build forever.** A
+  cross-compile needs the target platform's bun runtime, which `bun build`
+  fetches and caches; a truncated fetch leaves the broken archive in place, so
+  every later attempt fails identically. One bad download became four
+  consecutive red nightlies. The staging step now removes exactly the artifact
+  the compiler named and retries once — and only then, so a genuine compile error
+  still fails immediately instead of slowly.
+
+### Changed
+
+- Dependencies: 29 minor and patch bumps.
+
 ## [6.0.1] – 2026-07-31
 
 ### Fixed
