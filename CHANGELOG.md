@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.3] – 2026-08-04
+
+### Fixed
+
+- **`GET /v1/mcp/tools` now answers with the catalog it is named after.** It
+  served a seven-name constant — no principal, no database, `input_shape: null`,
+  the same answer for every caller in every tenant. Measured against production,
+  that constant and `tools/list` for the *same* principal shared not one name: 7
+  against 107. The seven were the authoring loop's draft-only intents, which the
+  MCP surface omits deliberately, so the route was not a stale approximation of
+  the catalog — it was answering a different question under the catalog's name,
+  beside two sibling endpoints that both read live data. It now assembles the
+  catalog through the same call `tools/list` makes, honouring the caller's
+  resolved tier and the operator's read-only switch, and `input_shape` carries
+  the declared schema instead of `null`.
+- **A truncated toolchain download no longer fails the container image.** The
+  embedding assets are fetched during the image build; a dropped socket on one
+  of five files failed `docker-publish` for v6.0.2 outright, leaving a published
+  release with binaries but no image. The fetch now retries the failures that
+  are about the network — dropped sockets, resets, 5xx, 429, truncated bodies —
+  and still fails immediately on a 404 or 403, which are answers rather than
+  accidents.
+
 ## [6.0.2] – 2026-08-04
 
 ### Fixed

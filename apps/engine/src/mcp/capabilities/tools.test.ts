@@ -146,18 +146,31 @@ describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
     }
   });
 
-  test("REST GET /v1/mcp/tools returns the static structured-intent palette", async () => {
-    // Note: the REST /v1/mcp/tools endpoint returns the static structured-intent
-    // conversation tools (author_workflow, save_workflow_draft, etc.). The wf_<slug>
-    // dynamic catalog only appears via the live MCP protocol (tools/list over
-    // StreamableHTTP). This test verifies the REST endpoint itself is healthy.
+  test("REST GET /v1/mcp/tools returns exactly what tools/list returns", async () => {
+    // This test used to assert the OPPOSITE, and said so in its name: the REST
+    // endpoint served a seven-name constant while the live protocol served the
+    // real catalog, and the divergence was written down as intended. Measured
+    // against production the two shared not one name — 7 against 107 — because
+    // the seven were `draft_write` intents the MCP surface omits on purpose.
+    //
+    // The wire is the arbiter here, not a helper function: this file already
+    // holds a live MCP client, so the comparison is REST against the bytes a
+    // real client receives. A route that rebuilds the catalog its own way
+    // drifts on the next change, and from outside both keep returning a
+    // plausible list of names — only equality catches that.
     const res = await journeyFetch(ctx, "/v1/mcp/tools");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: Array<{ name: string }> };
-    expect(Array.isArray(body.items)).toBe(true);
-    // Static tools are always present
-    const names = new Set(body.items.map((t) => t.name));
-    expect(names.has("author_workflow")).toBe(true);
+    const restNames = body.items.map((t) => t.name).sort();
+    expect(restNames.length).toBeGreaterThan(0);
+
+    const client = await connect();
+    try {
+      const list = await client.listTools();
+      expect(restNames).toEqual(list.tools.map((t) => t.name).sort());
+    } finally {
+      await client.close();
+    }
   });
 
   test("workflow with is_tool=false is NOT surfaced in tools/list", async () => {
