@@ -1921,11 +1921,17 @@ function collectCredentialTokens(value: unknown): string[] {
   return [...new Set(found)];
 }
 
+// `scope` is REQUIRED, deliberately. It arrived optional so a caller without one
+// would keep the old behaviour — but the old behaviour is the defect this fixes:
+// no scope means `${scope.…}` and `${input.…}` reach the child as literal text,
+// and that failure is silent at the boundary (the child receives a plausible
+// string and fails later, somewhere else). All four call sites already pass it;
+// making it required means a fifth cannot quietly opt back into the bug.
 async function runCallStep(
   db: Db,
   ctx: StepRunContext,
   step: CallStep,
-  scope?: Record<string, unknown>,
+  scope: Record<string, unknown>,
 ): Promise<StepResult> {
   const start = Date.now();
   if (ctx.depth + 1 > MAX_CALL_DEPTH) {
@@ -1964,7 +1970,7 @@ async function runCallStep(
   // because a resolved `${scope.x.data.ids}` must reach the child as an array,
   // not as its JSON text — the same reason the request body uses this walker.
   let resolvedInput: unknown = step.input ?? null;
-  if (step.input !== undefined && step.input !== null && scope) {
+  if (step.input !== undefined && step.input !== null) {
     // A credential must not travel through a call input, because unlike a
     // request body this value is PERSISTED: `createExecution` stores the child's
     // input verbatim so a rerun can default to it, and the execution read schema
