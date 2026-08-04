@@ -21,7 +21,7 @@
 // Defaults: --dir /usr/local/share/subkit/binaries; version from package.json.
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const REPO_ROOT = join(import.meta.dir, "..");
@@ -63,11 +63,49 @@ async function resolveVersion(explicit?: string): Promise<string> {
   return pkg.version as string;
 }
 
-async function compileTarget(
+/** A cross-compile needs the TARGET platform's bun runtime, which `bun build`
+ *  downloads and caches itself. When that download is truncated the cache keeps
+ *  the broken archive, so every later attempt fails the same way — which is how
+ *  one bad fetch turned into four consecutive red nightlies. The message names
+ *  the artifact, so the repair can be exact instead of clearing the whole cache:
+ *
+ *    Failed to extract executable for 'bun-linux-aarch64-v1.3.14'.
+ *    The download may be incomplete.
+ */
+const CORRUPT_DOWNLOAD = /Failed to extract executable for '([^']+)'/i;
+
+/** Which cached runtime did the compiler blame? Exported because this is the
+ *  brittle part: it reads a message bun owns, and if the wording moves the
+ *  repair silently stops happening and the failure goes back to permanent.
+ *  A test holds the exact string. */
+export function corruptRuntimeFromStderr(stderr: string): string | null {
+  return CORRUPT_DOWNLOAD.exec(stderr)?.[1] ?? null;
+}
+
+function bunCacheDir(): string {
+  const bunInstall = process.env.BUN_INSTALL || join(process.env.HOME ?? "", ".bun");
+  return join(bunInstall, "install", "cache");
+}
+
+/** Drop the one cached runtime the error blamed. Returns whether anything was
+ *  removed — a retry is only worth attempting if the broken input is gone. */
+async function purgeCachedRuntime(stderr: string): Promise<string | null> {
+  const named = corruptRuntimeFromStderr(stderr);
+  if (!named) return null;
+  const dir = join(bunCacheDir(), named);
+  try {
+    await rm(dir, { recursive: true, force: true });
+    return dir;
+  } catch {
+    return null;
+  }
+}
+
+async function runBunBuild(
   target: (typeof TARGETS)[number],
   outFile: string,
   version: string,
-): Promise<void> {
+): Promise<{ code: number; stderr: string }> {
   // Mirror the flags used by package.json build:sk and release.yml exactly:
   //  - identity-define NODE_ENV so its build-time value is never inlined
   //  - stamp BUILD_VERSION as a quoted JS string literal
@@ -85,10 +123,39 @@ async function compileTarget(
       "--outfile",
       outFile,
     ],
-    { cwd: REPO_ROOT, stdout: "inherit", stderr: "inherit" },
+    // stderr is captured so the corrupt-download signature can be read, then
+    // re-emitted verbatim — a build log that swallows the compiler's own words
+    // is worse than a flaky build.
+    { cwd: REPO_ROOT, stdout: "inherit", stderr: "pipe" },
   );
+  const stderr = await new Response(proc.stderr).text();
   const code = await proc.exited;
-  if (code !== 0) throw new Error(`bun build failed for ${target.bunTarget} (exit ${code})`);
+  if (stderr) process.stderr.write(stderr);
+  return { code, stderr };
+}
+
+async function compileTarget(
+  target: (typeof TARGETS)[number],
+  outFile: string,
+  version: string,
+): Promise<void> {
+  // One retry, and only after the corrupt artifact is actually gone. A blind
+  // retry loop would paper over a genuine compile error and turn a clear
+  // failure into a slow one.
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const { code, stderr } = await runBunBuild(target, outFile, version);
+    if (code === 0) return;
+    if (attempt === 2) {
+      throw new Error(`bun build failed for ${target.bunTarget} (exit ${code})`);
+    }
+    const purged = await purgeCachedRuntime(stderr);
+    if (!purged) {
+      throw new Error(`bun build failed for ${target.bunTarget} (exit ${code})`);
+    }
+    console.log(
+      `[stage-cli-binaries] ${target.bunTarget}: cached runtime was corrupt, removed ${purged} — retrying once`,
+    );
+  }
 }
 
 async function sha256(path: string): Promise<string> {
@@ -129,7 +196,13 @@ async function main(): Promise<void> {
   console.log(sumsLines.map((l) => `  ${l}`).join("\n"));
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : String(err));
-  process.exit(1);
-});
+// Guarded so the module can be imported for its exported helpers without
+// staging binaries as a side effect — importing it used to start a real build
+// and fail on `mkdir /usr/local/share/subkit`, which is why the corrupt-runtime
+// signature had no test until now.
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}
