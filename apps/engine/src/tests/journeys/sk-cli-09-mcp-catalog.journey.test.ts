@@ -11,8 +11,8 @@
 //        `items: []` (empty on a fresh tenant).
 //   AC2. Seeding a skill + connector causes /v1/mcp/prompts and
 //        /v1/mcp/resources to surface them, in catalog shape.
-//   AC3. /v1/mcp/tools returns the static 7-item structured-intent
-//        palette the engine exposes to the conversation loop.
+//   AC3. /v1/mcp/tools returns the same MCP tool catalog `tools/list`
+//        serves — not the conversation loop's draft-only palette.
 //   AC4. A member user is allowed (has `mcp:read` via the built-in
 //        role), returns 200.
 //   AC5. An enduser user is denied (403) — endusers cannot
@@ -159,14 +159,25 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
     expect(matchingConn?.name).toBe("jsonplaceholder");
   });
 
-  test("AC3: /v1/mcp/tools returns the structured-intent palette", async () => {
+  test("AC3: /v1/mcp/tools returns the MCP tool catalog, not the authoring palette", async () => {
+    // This assertion was inverted: it required `author_workflow`,
+    // `save_workflow_draft` and `request_human_approval` — the authoring loop's
+    // draft-only intents, which the MCP surface omits on purpose. The route
+    // served them from a constant, so against production it and `tools/list`
+    // for the same principal shared not one name, 7 against 107.
     const res = await journeyFetch(ctx, "/v1/mcp/tools");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { items: Array<{ name: string }> };
+    const body = (await res.json()) as { items: Array<{ name: string; input_shape: unknown }> };
     const names = new Set(body.items.map((i) => i.name));
-    expect(names.has("author_workflow")).toBe(true);
-    expect(names.has("save_workflow_draft")).toBe(true);
-    expect(names.has("request_human_approval")).toBe(true);
+
+    // The retired constant must not come back.
+    for (const retired of ["author_workflow", "save_workflow_draft", "request_human_approval"]) {
+      expect(names.has(retired)).toBe(false);
+    }
+    // And the catalog is really there: a tool every mode publishes, plus a
+    // populated `input_shape` — the field that was `null` on every entry.
+    expect(names.has("list_recipes")).toBe(true);
+    expect(body.items.some((i) => i.input_shape !== null)).toBe(true);
   });
 
   test("AC4: member is allowed (mcp:read granted via built-in role)", async () => {
