@@ -856,6 +856,15 @@ export async function handleInbound(
     execution_id,
     input: inputPayload,
     request_source: "webhook",
+    // The SAME mode the execution row above records.
+    //
+    // Setting it only on the row was the more dangerous half of a fix: the
+    // engine defaults `opts.execution_mode ?? "dev"`, so every webhook run
+    // still resolved dev connectors while the audit trail read `prod`. The
+    // symptom that exposed it — a governed run whose last step failed with
+    // `circuit_open` against a dev Gmail binding nobody re-authenticates,
+    // under an execution the API reported as production.
+    execution_mode: "prod",
   };
   await boss.send(EXECUTION_RUN_QUEUE, job);
 

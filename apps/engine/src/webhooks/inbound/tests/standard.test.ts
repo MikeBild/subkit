@@ -2,7 +2,9 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
 import { executions } from "../../../db/schema/index.ts";
+import { EXECUTION_RUN_QUEUE } from "../../../queue/queues.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { handleInbound } from "../service.ts";
@@ -174,5 +176,20 @@ describe("inbound: standard webhooks", () => {
     const rows = await ctx.db.select().from(executions);
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) expect(row.execution_mode).toBe("prod");
+
+    // …and the QUEUED JOB carries it too.
+    //
+    // Asserting only the row above is what let this ship half-fixed: the
+    // engine reads `opts.execution_mode ?? "dev"` from the job, so the run
+    // still resolved dev connectors while the execution record — and every
+    // API that reports it — said `prod`. The audit trail agreed with the
+    // intent and disagreed with what actually happened, which is the one
+    // failure mode an audit trail must not have.
+    const jobs = await ctx.db.execute(
+      sql`SELECT data FROM pgboss.job WHERE name = ${EXECUTION_RUN_QUEUE}`,
+    );
+    const queued = (jobs.rows ?? jobs) as { data: { execution_mode?: string } }[];
+    expect(queued.length).toBeGreaterThan(0);
+    for (const job of queued) expect(job.data.execution_mode).toBe("prod");
   });
 });
