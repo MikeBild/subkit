@@ -1,6 +1,9 @@
 # Admin Quickstart
 
-**Every workflow run is permission-checked, scoped, and audited — so a team can move fast without losing the governance trail compliance needs.** This page wires that in three steps on an already-running engine: **configuration**, **roles**, and **keys**.
+In about ten minutes your team can work on their own — signing in with the identity provider
+you already have, using credentials they never see, doing only what their role allows. Every
+one of those runs is scoped, checked, and written down, which is the part you will be asked
+about later. Three steps on an already-running engine: **configuration**, **roles**, **keys**.
 
 > **Audience:** The admin standing up governance for a team.
 > **Time:** ~10 minutes.

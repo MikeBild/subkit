@@ -3,10 +3,11 @@
 > **Audience:** Architects and authors who want the model behind the AI's
 > organization-specific context.
 
-**Outcome:** authoring grounded in your own conventions — not generic API
-docs — so workflows ship faster, with fewer rework cycles and fewer
-compliance surprises. The AI proposes against your patterns because your
-patterns are in its context.
+The AI proposes work the way *your* team does it, not the way a generic API
+tutorial does — because your conventions are in front of it while it writes.
+That is the difference between a draft you correct three times and one you
+approve. This page is the model behind that: what you feed it, how it is
+selected, and who decides what gets remembered.
 
 Two primitives carry that context:
 

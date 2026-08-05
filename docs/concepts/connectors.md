@@ -2,7 +2,7 @@
 
 > **Audience:** Engineers wiring sk to external systems, operators curating the catalogue
 
-**Outcome:** authenticate external systems—including built-in Cloudflare and Firebase/Firestore—once, reuse them across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log. Connectors collapse weeks of bespoke integration glue into a one-time, governed setup — typed, authenticated, monitored, and audited.
+Connect a system once, then use it from every workflow you ever write — and never let its secret touch a workflow definition, an AI prompt, or a log. That one-time setup replaces the integration glue each project used to rewrite from scratch: it is typed, authenticated, monitored, and audited from the moment you save it. Cloudflare and Firebase/Firestore ship ready to use; anything else you point sk at.
 
 A Connector combines three independently-evolving layers: a **Driver** (protocol), a **Connector Template** (target-specific config + context), and a **Credential** (vault-managed secret).
 
@@ -101,7 +101,7 @@ flowchart LR
     Call --> Done(["Step result"])
 ```
 
-![sk REPL](../_tapes/out/operator-onboard.gif)
+![Connecting a system in the sk terminal: pick the target, enter credentials, test the connection, save](../_tapes/out/operator-onboard.gif)
 
 All secrets live in the Credential Vault: encrypted at rest, never logged, never exposed outside the engine. Workflows and Steps reference Credentials by name, not value — sk can propose, configure, and audit integrations without a secret ever surfacing in a workflow definition, a log, or a conversation transcript.
 

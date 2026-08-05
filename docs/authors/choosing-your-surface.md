@@ -7,6 +7,26 @@
 
 ---
 
+## Look it up by what you want to do
+
+| What you want to do | Where | Why there |
+|---|---|---|
+| Run something and read the result | Slack / Teams / Google Chat, or a browser AI client | No setup, follow-up questions work, built for exactly this |
+| Ask how your team normally does something | A coding agent, or a browser AI client | Answers from your own knowledge, not from general knowledge |
+| Describe a new process for the first time | The `sk` REPL or chat — an authoring conversation | Exploring, discarding, retrying is what a conversation is good at |
+| Change one line of a process that already exists | The `sk` CLI | You write the change yourself; nothing paraphrases it |
+| Go back to an earlier version | The `sk` CLI (`sk workflows history` → `restore`) | A browser client does not carry the command at all |
+| Approve something | The portal link, or the CLI | Deliberately outside the chat — a decision should be visible and recorded, not expire in a dialog |
+| Connect a new system, enter credentials | The REPL's `/install` wizard, or the credential portal | Secrets never travel through a conversation |
+| Run on a schedule, or when an event fires | A schedule or an inbound webhook | Runs with nobody present |
+| Wire sk into another system | The REST API | Machine to machine |
+| Find out why a run failed | `sk diagnostics` in the CLI; read-only also from chat | The trace id joins the two |
+
+The rest of this page is why that table looks the way it does — and what it costs you to
+ignore it.
+
+---
+
 ## One question
 
 > **Am I changing a definition, or running one?**

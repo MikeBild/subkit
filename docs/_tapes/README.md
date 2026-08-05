@@ -3,8 +3,10 @@
 Animated GIFs of the `sk` REPL for the docs, recorded with
 [charmbracelet/vhs](https://github.com/charmbracelet/vhs). The `.tape` files
 here are the source of truth; the rendered GIFs live in `out/` and are embedded
-from the audience docs (`authors/repl-tour.md`, `authors/slash-commands.md`,
-`authors/settings.md`, `authors/quickstart.md`, `operators/quickstart.md`).
+from the repo `README.md`, `start-here.md`, `README.md` under `docs/`, and the
+audience docs. Two generated pages (`authors/slash-commands.md`,
+`authors/settings.md`) deliberately embed nothing — a `gen:` run would overwrite it.
+For the current list of embedders, grep: `grep -rn "_tapes/out" docs README.md`.
 
 | Tape | Shows | Output |
 |---|---|---|

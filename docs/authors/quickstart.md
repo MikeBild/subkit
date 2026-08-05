@@ -1,8 +1,11 @@
 # Quickstart — Authors
 
-Turn a plain-language request into a governed, audited, runnable workflow — in about 5 minutes, no code. You describe the outcome; sk builds the connector, drafts the workflow, and holds the writes until you approve.
+In about five minutes you will have described a piece of work in ordinary sentences and
+watched it run — no code written, nothing touched in a real system until you said so. You
+describe the outcome; sk builds the connection, drafts the process, and holds every write
+back until you approve it.
 
-![sk REPL](../_tapes/out/repl-author.gif)
+![Describing a workflow in plain language, previewing it, approving it, and running it](../_tapes/out/repl-author.gif)
 
 ## Your first conversation
 

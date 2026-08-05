@@ -1,17 +1,17 @@
 # AI-Assisted Authoring
 
-**Describe the outcome. Get a governed, audited, versioned workflow in minutes — not a build project that runs for weeks.**
+Describe what should happen and have a reviewed, versioned workflow the same afternoon — instead of a build project that runs for weeks.
 
-Traditional workflow tools put construction on the builder: know the connector, learn the config syntax, draw it on a blank canvas. You ship what developers can build, not what the business needs. sk inverts that — the author states intent in plain language, the AI does the structural work, and a human signs off on the result before it goes live.
+The usual bottleneck is that whoever wants the automation cannot build it, and whoever can build it has a queue. So you ship what the queue allows, not what the work needs. sk removes that handoff: you state the intent in plain language, the AI does the structural work, and a person signs off before anything goes live.
 
 | Business outcome | How sk delivers it |
 |---|---|
 | **Time** — first workflow in minutes | One `author_workflow` pass generates the complete definition, grounded in real endpoint evidence |
 | **Compliance** — every change reviewable and attributable | A commit lands on a human review and an audit row that names the actor; every step is reviewable |
 | **Risk** — no raw secrets in the loop | Credentials are referenced by name through the Credential Vault, never seen during authoring |
-| **Determinism** — the engine never improvises | Once committed, the control flow is fixed: the engine infers nothing and loads no Skills or Knowledge at runtime |
+| **Predictability** — the engine never improvises | Once committed, the control flow is fixed: the engine infers nothing and loads no Skills or Knowledge at runtime |
 
-![sk REPL authoring — prompt to governed workflow](../_tapes/out/repl-author.gif)
+![Describing a workflow in plain language, previewing it, approving it, and running it](../_tapes/out/repl-author.gif)
 
 > **Reading time:** ~18 min · **Audience:** engineers integrating with sk's authoring, operators curating Skills & Knowledge
 

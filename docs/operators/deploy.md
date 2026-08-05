@@ -1,9 +1,12 @@
 # Deploy & upgrade the engine
 
-The production engine is a single `bun build --compile` binary at
-`/usr/local/bin/engine`, run by the `subkit-engine` systemd unit. It is
-**stateless** — all state lives in PostgreSQL — so a deploy is: replace the
-binary, restart the unit. In-flight pg-boss jobs resume automatically.
+Upgrading is a two-step operation you can do in the middle of the day: replace one file,
+restart one service. Work that was in flight picks up where it left off, because none of it
+lives in the process.
+
+That is possible because the engine is a single compiled binary at `/usr/local/bin/engine`,
+run by the `subkit-engine` systemd unit, and holds no state of its own — everything durable
+is in PostgreSQL.
 
 ## Version discipline
 

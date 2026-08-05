@@ -1,6 +1,6 @@
 # Concepts
 
-The shared mental model for sk: how connectors, workflows, knowledge, skills, and governance fit together — so every team means the same thing and reasons about the same system.
+Read this section and you can predict what sk will do before you run it — and say why, in the same words as everyone else on your team. Six pages cover the whole model: how a system gets connected, how a process runs, where the AI helps and where it stops, and what gets written down along the way.
 
 ```mermaid
 flowchart TD

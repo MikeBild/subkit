@@ -1,20 +1,33 @@
 # sk Documentation
 
-**Turn plain-language intent into governed, audited, versioned automation.** sk
-collapses the time from "I need this integration" to a running workflow — and
-every execution is permission-checked, recorded, and replayable, so the speed
-never costs you control or compliance.
+Everything you need to get work running by itself — described in plain language, reviewed
+before it goes live, and recorded every time it runs.
 
-![sk REPL](_tapes/out/repl-author.gif)
+**Never seen sk before?** [Start here](start-here.md) — no prior knowledge assumed, no code
+on the page.
 
-These docs are the single source of truth, organised by **audience**. Pick your
-lane.
+![Describing a workflow in plain language, previewing it, approving it, and running it](_tapes/out/repl-author.gif)
+
+## Pick the result you want
+
+| You want to | Go to | Roughly |
+|---|---|---|
+| **Understand what this is** before deciding anything | [Start here](start-here.md) | 10 min read |
+| **Try it** — nothing to a running engine and a first workflow | [Self-host quickstart](developers/self-host.md) | 30 min |
+| **Get a process running** on a system someone already connected | [Author quickstart](authors/quickstart.md) | 5 min |
+| **Ground your coding agent** in your team's knowledge | [Use sk from a coding agent](authors/coding-agents.md) | 10 min |
+| **Run sk for a team** — engine, connectors, schedules | [Operator quickstart](operators/quickstart.md) | 10 min |
+| **Let people in safely** — identity, roles, credentials | [Admin quickstart](admins/quickstart.md) | 10 min |
+| **Work out which door fits which job** | [Choosing your surface](authors/choosing-your-surface.md) | 9 min read |
+| **Contribute** | [Developer quickstart](developers/quickstart.md) | 10 min |
+
+Below that, the docs are organised by **audience**. Pick your lane.
 
 ## Find your lane
 
 ```mermaid
 flowchart LR
-    Start(["Start here"])
+    Start(["start-here.md<br/>no prior knowledge"])
     Start --> Coding["Coding agents<br/>Claude Code · Codex · Cursor · …"]
     Start --> Authors["Authors<br/>build workflows by chat"]
     Start --> Operators["Operators<br/>run it day-to-day"]
@@ -41,9 +54,10 @@ your wiki, ask a grounded question — the whole path on one page.
 
 Each audience folder has a landing page that indexes its docs:
 
+- [Start here](start-here.md) — what sk is and what it delivers, written for someone who has never seen it.
 - [Concepts](concepts/README.md) — the domain model: surfaces, the governance gate, connectors, workflows, knowledge, and audit.
 - [Coding agents](authors/coding-agents.md) — connect Claude Code, Codex, Cursor, Claude Desktop, claude.ai, or ChatGPT to your knowledge, end to end.
-- [Operators](operators/README.md) — run sk day-to-day: credentials, scheduling, observability, self-healing, notifications.
+- [Operators](operators/README.md) — run sk day-to-day: credentials, scheduling, observability, drift-assisted repair, notifications.
 - [Authors](authors/README.md) — build workflows by conversation: the REPL, the approval loop, recipes, skills, knowledge.
 - [Developers](developers/README.md) — contribute and self-host: repo setup, input surfaces, the tool palette, the evidence process.
 - [Admins](admins/README.md) — govern access: configuration, RBAC, credentials, and production hardening.

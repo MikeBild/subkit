@@ -3,11 +3,12 @@
 > **Audience:** Operators wiring scheduled runs, webhook triggers, and
 > Before-Request Hooks.
 
-**Outcome:** automation that fires on time or on event — verified at the door.
-Scheduled runs survive restarts and fire when due; inbound webhooks are
-signature-verified and replay-deduplicated before any work happens; and a
-Before-Request Hook adds dynamic policy in front of every connector call. One
-execution contract, one RBAC check, one audit trail — only the trigger differs.
+Work that runs when it should, whether or not anyone is watching — and nothing gets in
+without being checked at the door. Scheduled runs survive a restart and still fire when
+due; an inbound webhook has its signature verified and its replays discarded before any
+work starts; and a Before-Request Hook can apply your own policy in front of every
+connector call. The trigger is the only thing that differs: one execution contract, one
+permission check, one audit trail.
 
 | Lever | What it buys you |
 |---|---|
@@ -225,7 +226,7 @@ Denial reasons you may see as `401 { error: "denied", reason: … }`:
 ### End-to-end wiring recipe (upstream provider → sk ingress)
 
 Wiring an upstream system (e.g. a headless CMS emitting Standard-Webhooks-signed
-events) to a SubKit workflow:
+events) to an sk workflow:
 
 1. **Create the inbound binding with the right verifier.** Pick by how the upstream
    signs, and note this determines which authoring path you use:
@@ -248,7 +249,7 @@ events) to a SubKit workflow:
    `wf-<workflow-slug>`; for a CRUD binding, the `slug` you passed).
 3. **Generate one shared secret** — a high-entropy random string. This single secret
    must exist on **both** sides.
-4. **Set the secret on the SubKit side.** For a **CRUD** binding you pass `secret` at
+4. **Set the secret on the sk side.** For a **CRUD** binding you pass `secret` at
    create time (step 1). For a **reverse-bound trigger** binding the trigger block
    deliberately never carries a secret, so the first bind writes only a random
    **placeholder** secret — you must provision the real one out-of-band
@@ -256,7 +257,7 @@ events) to a SubKit workflow:
    webhook trigger also re-generates a placeholder, so re-provision after any such
    round-trip.
 5. **Register the endpoint on the upstream.** In the upstream system's outbound-webhook config,
-   add an endpoint pointing at the SubKit ingress URL and paste the **same** secret as
+   add an endpoint pointing at the sk ingress URL and paste the **same** secret as
    its signing key. It will then sign each delivery
    `v1,<base64(HMAC-SHA256(secret, "<webhook-id>.<webhook-timestamp>.<body>"))>` and set
    the `webhook-type` header to the event name — which must match one of the workflow's
@@ -267,7 +268,7 @@ events) to a SubKit workflow:
    not in `events[]`.
 
 Because verification is HMAC over a shared secret (symmetric), the secret on the
-upstream signer and the secret on the SubKit row must be byte-identical. Rotate on both
+upstream signer and the secret on the sk row must be byte-identical. Rotate on both
 sides together; a mismatch fails closed (`bad_signature` / 401), never open.
 
 ## Scheduling durability

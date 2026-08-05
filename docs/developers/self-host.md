@@ -1,10 +1,10 @@
 # Self-Host sk — Zero to Running
 
-**sk runs inside your own infrastructure — your data stays yours.** One container,
-one stateful dependency (PostgreSQL), no SaaS lock-in and nothing leaving your
-network except outbound LLM calls. Start from nothing and finish with a running
-engine, an authenticated `sk` CLI, a working connector, a runnable workflow, and
-an indexed knowledge article — all from the released Docker image.
+sk runs inside your own infrastructure, so your data stays where it already is. One
+container, one stateful dependency (PostgreSQL), and nothing leaves your network except the
+outbound calls to your LLM provider. Start from nothing and finish this page with a running
+engine, an authenticated `sk` CLI, a working connector, a workflow you can run, and an
+indexed knowledge article — all from the released Docker image.
 
 ```mermaid
 flowchart LR
@@ -95,7 +95,7 @@ docker exec subkit sk init \
 > `auth.providers` in `subkit.config.json`, then restart. No provider-specific
 > setting or route is required.
 
-For example, a SubKit-owned direct OIDC client is one configuration record:
+For example, an sk-owned direct OIDC client is one configuration record:
 
 ```json
 {

@@ -1,9 +1,9 @@
 # Configuring the engine
 
-**Outcome: one validated configuration, or the engine refuses to boot.**
-There is no silent degraded mode. Every runtime setting lives in a single
-JSON file, type-checked against a schema at startup — a misconfig fails fast
-with the exact leaf path, so a broken deploy never reaches production traffic.
+Either the configuration is valid or the engine does not start — there is no half-working
+middle state to debug later. Every runtime setting lives in one JSON file that is checked
+against a schema at boot, and a mistake fails immediately, naming the exact setting that is
+wrong. A broken deploy never reaches live traffic.
 
 | You want | You run |
 | --- | --- |

@@ -33,7 +33,7 @@ flowchart LR
 | Probe | `connectors test` | Authenticates, reports status + latency |
 | Reference | Name the connector in a workflow step | Applies the saved credential at run time |
 
-![Operator connector onboarding](../_tapes/out/operator-onboard.gif)
+![Connecting a system in the sk terminal: pick the target, enter credentials, test the connection, save](../_tapes/out/operator-onboard.gif)
 
 ---
 

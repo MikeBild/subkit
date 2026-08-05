@@ -1,6 +1,6 @@
 # Developers
 
-**Integrate, extend, and self-host sk — without forking security per surface.** Everything here gets you from a clone to a running engine, a green quality gate, and a workflow reachable from the CLI, REST, MCP, or your own infra.
+Run sk on your own infrastructure and change it safely. Everything here takes you from a clone to a green test suite, a live engine on your own hardware, and a workflow you can reach from the CLI, a REST call, an MCP client, or your own code — all of them landing on the same permission and audit model, so you never secure a surface twice.
 
 ```mermaid
 flowchart TD

@@ -3,61 +3,65 @@
 > The sk documentation set for LLMs: every public page grouped by audience, each with its title, link, and one-line summary.
 > Full documentation in one file: llms-full.txt
 
+## Start here
+
+- [Start here](start-here.md): sk takes the work your team does the same way every week and runs it for you — reviewed before it goes live, permission-checked every time, and recorded so you can always show what happened.
+
 ## Concepts
 
-- [Concepts](concepts/README.md): The shared mental model for sk: how connectors, workflows, knowledge, skills, and governance fit together — so every team means the same thing and reasons about the same system.
-- [Connectors & Integration](concepts/connectors.md): Outcome: authenticate external systems—including built-in Cloudflare and Firebase/Firestore—once, reuse them across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log.
-- [FAQ](concepts/faq.md): Outcome: a fast path from "what even is this?" to the one page that answers it in full.
+- [Concepts](concepts/README.md): Read this section and you can predict what sk will do before you run it — and say why, in the same words as everyone else on your team.
+- [Connectors & Integration](concepts/connectors.md): Connect a system once, then use it from every workflow you ever write — and never let its secret touch a workflow definition, an AI prompt, or a log.
+- [FAQ](concepts/faq.md): Short answers to the questions people ask in their first week, each pointing at the one page that covers it properly.
 - [Concepts & Domain Model](concepts/glossary.md): One vocabulary, defined once.
 - [Governance & Audit](concepts/governance-and-audit.md): Pass the audit on the first pass.
-- [Knowledge & Skills](concepts/knowledge-and-skills.md): Outcome: authoring grounded in your own conventions — not generic API docs — so workflows ship faster, with fewer rework cycles and fewer compliance surprises.
-- [Architecture Overview](concepts/overview.md): Ship audited automation in hours, not sprints — and keep every run governed, versioned, and auditable.
+- [Knowledge & Skills](concepts/knowledge-and-skills.md): The AI proposes work the way your team does it, not the way a generic API tutorial does — because your conventions are in front of it while it writes.
+- [Architecture Overview](concepts/overview.md): This page explains why sk's promise — describe it, approve it, it runs, and you can prove what it did — survives contact with production.
 - [Reversibility & Trust Domains](concepts/reversibility-and-trust-domains.md): Give each piece of work the level of control it actually needs — no ceremony where mistakes are cheap, no blind spots where they are not.
-- [Workflow Execution](concepts/workflows.md): An approved workflow takes the same path every time — a fixed control flow, a permanent record, fully audited.
+- [Workflow Execution](concepts/workflows.md): Once you approve a workflow, it takes the same path every time — no model reconsiders it on the next run.
 
 ## Operators
 
-- [Operators](operators/README.md): Run and govern the sk engine day-to-day — register connectors, wire schedules and webhooks, route notifications, watch the run, and apply repairs when an upstream API drifts.
+- [Operators](operators/README.md): Keep it running without babysitting it.
 - [Chat Channels](operators/chat.md): Use sk from the chat your team already lives in.
 - [Connectors & Credentials (operator guide)](operators/connectors-and-credentials.md): Connect a system once, reuse it everywhere — and the credential is never exposed.
-- [Deploy & upgrade the engine](operators/deploy.md): The production engine is a single bun build --compile binary at /usr/local/bin/engine, run by the subkit-engine systemd unit.
+- [Deploy & upgrade the engine](operators/deploy.md): Upgrading is a two-step operation you can do in the middle of the day: replace one file, restart one service.
 - [Notifications](operators/notifications.md): Operators hear about what matters, not noise.
 - [Observability & Resource Limits](operators/observability.md): See every run, understand content-free product usage, and catch drift before it costs you.
-- [Quickstart — Operator](operators/quickstart.md): Outcome: a governed, audited automation engine your whole team can use — live in production in 15 minutes.
-- [Runtime Dependencies](operators/runtime-dependencies.md): Outcome: discovery works against every documentation site, including JavaScript-rendered SPAs.
-- [Scheduling & Hooks (operator guide)](operators/scheduling-and-hooks.md): Outcome: automation that fires on time or on event — verified at the door.
-- [Self-Healing in Operations](operators/self-healing.md): Outcome: workflows survive upstream API changes without silent failure.
+- [Quickstart — Operator](operators/quickstart.md): In 15 minutes your team has somewhere to put work that should run by itself — live, with a connected system to point at.
+- [Runtime Dependencies](operators/runtime-dependencies.md): Discovery works against every documentation site, including the ones that render themselves in JavaScript — provided one thing is installed on the host.
+- [Scheduling & Hooks (operator guide)](operators/scheduling-and-hooks.md): Work that runs when it should, whether or not anyone is watching — and nothing gets in without being checked at the door.
+- [Drift-assisted repair in operations](operators/self-healing.md): When a vendor renames a field, moves an endpoint, or starts requiring a parameter, you get a repair to review — not a 3am page and a diagnosis from scratch.
 
 ## Authors
 
-- [Authors](authors/README.md): Build and run workflows by chatting with sk — describe the outcome in plain language, approve what the AI proposes, and ship a governed, versioned workflow.
-- [AI-Assisted Authoring](authors/authoring-workflows.md): Describe the outcome.
+- [Authors](authors/README.md): Get from one sentence to a process that runs every week without you.
+- [AI-Assisted Authoring](authors/authoring-workflows.md): Describe what should happen and have a reviewed, versioned workflow the same afternoon — instead of a build project that runs for weeks.
 - [Choosing your surface](authors/choosing-your-surface.md): Do the work where it actually goes faster.
-- [Use sk from a coding agent (Claude Code, Codex, …)](authors/coding-agents.md): Outcome: every new session starts knowing your domain's rules, looks your runbooks up instead of inventing them, and what you teach it in one session is waiting — after your review — in the next one.
-- [Custom Skills](authors/custom-skills.md): Outcome: sk encodes your conventions once, then applies them on every Conversation, discovery, and repair — so authored workflows ship faster, pass review sooner, and stay policy-uniform across tenants.
-- [Knowledge Sources](authors/knowledge-sources.md): Outcome: workflows follow your runbooks and compliance docs, not generic knowledge.
-- [Model a Domain](authors/model-a-domain.md): Outcome: the AI authors inside your domain — proposing against your conventions and grounding specifics in your documents — so workflows in that domain ship correct on the first pass instead of being corrected in review.
-- [Quickstart — Authors](authors/quickstart.md): Turn a plain-language request into a governed, audited, runnable workflow — in about 5 minutes, no code.
+- [Use sk from a coding agent (Claude Code, Codex, …)](authors/coding-agents.md): Every new session starts already knowing your domain's rules, looks your runbooks up instead of inventing them, and remembers what you taught it last time — once you have reviewed and approved that lesson.
+- [Custom Skills](authors/custom-skills.md): Write down a convention once and stop repeating it.
+- [Knowledge Sources](authors/knowledge-sources.md): Workflows follow your runbooks and policies instead of generic knowledge.
+- [Model a Domain](authors/model-a-domain.md): Teach sk a whole field of work once, and every workflow in it arrives right the first time.
+- [Quickstart — Authors](authors/quickstart.md): In about five minutes you will have described a piece of work in ordinary sentences and watched it run — no code written, nothing touched in a real system until you said so.
 - [Recipe authoring](authors/recipes.md): Common automations start from a vetted blueprint, not a blank page.
 - [Using the `sk` REPL — authoring by conversation](authors/repl-tour.md): Go from idea to a governed, versioned workflow in minutes — no JSON, no glue code.
 
 ## Developers
 
-- [Developers](developers/README.md): Integrate, extend, and self-host sk — without forking security per surface.
+- [Developers](developers/README.md): Run sk on your own infrastructure and change it safely.
 - [Coding-Agent Integration (Claude Code & Codex)](developers/coding-agent-integration.md): sk can act as the central knowledge and skill source for your coding agents.
-- [Evidence process — verifying a behavioral / LLM-path change](developers/evidence-process.md): Outcome: changes to LLM-driven paths ship proven, not guessed.
+- [Evidence process — verifying a behavioral / LLM-path change](developers/evidence-process.md): Changes to LLM-driven paths ship proven rather than guessed.
 - [Input Surfaces](developers/input-surfaces.md): Meet your team where they already work—with one governed engine and one common MCP auth contract.
-- [Quickstart — Developer](developers/quickstart.md): Ship to sk with confidence: a green quality gate on every change keeps regressions out of production.
-- [Self-Host sk — Zero to Running](developers/self-host.md): sk runs inside your own infrastructure — your data stays yours.
-- [Tool palette and dispatch](developers/tool-palette.md): Outcome: every LLM action against sk is a named, governed tool — one registry, one policy gate, one audit trail.
+- [Quickstart — Developer](developers/quickstart.md): In about ten minutes you go from a clone to a passing test suite and an engine running on your machine — the setup you need before changing anything.
+- [Self-Host sk — Zero to Running](developers/self-host.md): sk runs inside your own infrastructure, so your data stays where it already is.
+- [Tool palette and dispatch](developers/tool-palette.md): Every action an LLM can take against sk is a named tool that goes through one registry, one policy gate, and one audit trail.
 
 ## Admins
 
-- [Admins — govern access](admins/README.md): Govern your tenants, identity, RBAC, secrets, and hardening — so a team moves fast while every run stays permission-checked, scoped, and audited.
-- [Configuring the engine](admins/configuration.md): Outcome: one validated configuration, or the engine refuses to boot.
+- [Admins — govern access](admins/README.md): Hand a team the keys without handing over the building.
+- [Configuring the engine](admins/configuration.md): Either the configuration is valid or the engine does not start — there is no half-working middle state to debug later.
 - [Credentials & Keys](admins/credentials-and-keys.md): Every integration secret is encrypted at rest, rotated on demand, and never logged, returned in an API response, or shown to the AI.
-- [Production hardening — known caveats & TODOs](admins/production-hardening.md): Outcome: ship sk production-ready, audit-ready, and recoverable.
-- [Admin Quickstart](admins/quickstart.md): Every workflow run is permission-checked, scoped, and audited — so a team can move fast without losing the governance trail compliance needs.
+- [Production hardening — known caveats & TODOs](admins/production-hardening.md): Work through this page and you can go live knowing three things: every run is permission-checked and recorded, someone can answer an auditor's questions from what was written down, and you could rebuild the entire setup from a database backup alone.
+- [Admin Quickstart](admins/quickstart.md): In about ten minutes your team can work on their own — signing in with the identity provider you already have, using credentials they never see, doing only what their role allows.
 - [RBAC & Roles](admins/rbac-and-roles.md): Least-privilege by default, every decision auditable.
 
 ## Optional

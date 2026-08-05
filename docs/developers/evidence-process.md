@@ -1,8 +1,8 @@
 # Evidence process — verifying a behavioral / LLM-path change
 
-**Outcome:** changes to LLM-driven paths ship proven, not guessed. Every claim
-that a metric moved is backed by a test or benchmark run — so reviewers spend
-their time on the diagnosis, not on re-verifying the author's intuition.
+Changes to LLM-driven paths ship proven rather than guessed. Any claim that a number moved
+comes with the test or benchmark run that shows it, so a reviewer spends their time on the
+diagnosis instead of re-checking the author's intuition.
 
 This is the discipline behind the format-aware-judge work, where it caught a
 confident wrong self-diagnosis mid-flight (see [Worked example](#worked-example-format-aware-judge)).

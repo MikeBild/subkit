@@ -1,118 +1,115 @@
 # sk
 
-**A self-hostable engine for governed, versioned, AI-assisted workflow execution.**
+**Your AI experiments become something IT will sign off on.**
 
-sk lets a team describe automation in natural language, review and approve what the AI
-proposes, and then run it against the systems they already use — with multi-tenancy, RBAC,
-encrypted credentials, and an append-only audit trail throughout. AI assists with
-*authoring*; the *control flow* of a workflow is fixed at approval time and never
-re-decided at runtime.
-
-It is open source and built to be run inside an organisation: every workflow is a
-versioned, reviewable artefact, every state change is audited, and a workflow reaches
-production through a reviewable step — either an explicit approval, or a dry run whose
-held-back preview is returned before it is committed. On an unattended turn, where no
-confirmation can be delivered, a clean dry run commits on its own; the audit row records
-that it did, so the review can happen after the fact rather than not at all.
+Teams are already wiring assistants into real systems. sk turns that from a pilot nobody
+will approve into an operation that runs: you describe what should happen, you review what
+sk builds, you approve it once — and from then on every run is permission-checked,
+recorded, and replayable.
 
 [![ci](https://github.com/mikebild/subkit/actions/workflows/ci.yml/badge.svg)](https://github.com/mikebild/subkit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The authoritative glossary is [`docs/concepts/glossary.md`](docs/concepts/glossary.md); the canonical
-contract for contributors is [`AGENTS.md`](AGENTS.md).
+**New to this?** [Start here](docs/start-here.md) — no prior knowledge assumed, no code on
+the page.
+
+![Describing a workflow in plain language, previewing it, approving it, and running it in the sk terminal](docs/_tapes/out/repl-author.gif)
 
 ---
 
-## Architecture at a Glance
+## What you get
+
+Not a toolkit you then have to build something with — three results you can sign off on.
+
+| | You can sign this off when | Typical |
+|---|---|---|
+| **Your most expensive manual routines run by themselves.** The Monday revenue mail, the invoice check, the new-joiner setup — one process each, live, on a schedule or on an event | you watch one real run end to end and the result is right | 2–4 weeks |
+| **Your AI pilot becomes reviewable.** Three hand-wired integrations become one operation: permissions set, writes behind an approval, every run accounted for | your auditor reads one report and has no follow-up question | 1–2 weeks |
+| **A system is connected — and stays connected.** When the vendor changes their API, you get a repair suggestion instead of a support ticket | you change the target API and the suggestion arrives | ~1 week per system |
+
+## What sk does not do
+
+It does not migrate legacy data — moving bulk records with field-level reconciliation is a
+different job and needs different tooling.
+
+And it does not improvise. If nobody described it and nobody approved it, it does not run.
+
+---
+
+## Start where you are
+
+| You want to | Go to |
+|---|---|
+| Understand what this is, from scratch | [Start here](docs/start-here.md) |
+| Get an engine running and build your first workflow | [Self-host quickstart](docs/developers/self-host.md) |
+| Ground a coding agent (Claude Code, Codex, Cursor, …) in your team's knowledge | [Use sk from a coding agent](docs/authors/coding-agents.md) |
+| Run sk for a team | [Operator quickstart](docs/operators/quickstart.md) |
+| Build workflows by conversation | [Author quickstart](docs/authors/quickstart.md) |
+| Work out which door fits which job | [Choosing your surface](docs/authors/choosing-your-surface.md) |
+| Contribute to sk | [Developer quickstart](docs/developers/quickstart.md) |
+
+---
+
+## Why this holds up in production
+
+The promise above only survives contact with production because of what sits underneath
+it. That part is deliberately boring.
 
 ![sk architecture at a glance — external AI clients cross the product-local MCP OAuth boundary into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](docs/concepts/overview.png)
 
-*External clients (IDE assistants, employee chat) reach governed workflows only through SubKit's product-local **MCP OAuth boundary**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`docs/concepts/overview.drawio`](docs/concepts/overview.drawio).*
+**AI builds; it does not decide at runtime.** An assistant helps you author the workflow.
+Once you approve it, its control flow is fixed — the engine follows the approved definition
+and does not re-decide anything on the next run.
 
-Every interaction — regardless of entry point — flows through the same governed pipeline,
-and one policy decision governs every write. AI assists with authoring; dispatching a write
-from a conversation requires a confirmation, rendered per surface (a chat prompt, an MCP
-client's own dialog). Execution is policy- and version-bound, auditable, and
-operator-reviewed for drift-assisted repair — the control flow of an approved workflow is
-fixed; runtime does not re-decide it.
+**One gate, whatever the door.** CLI, chat, MCP client, REST call, webhook, schedule: every
+entry point lands in the same pipeline, and one policy decision governs every write.
+Dispatching a write from a conversation needs a confirmation, rendered per surface.
 
----
+**Nothing reaches production unreviewed.** A workflow gets there through an explicit
+approval, or through a dry run whose preview is returned before anything is committed. On
+an unattended turn, where no confirmation can be delivered, a clean dry run commits on its
+own — and the audit row records that it did, so the review happens after the fact rather
+than not at all. Starting an unattended trigger is always a separate decision on top.
 
-## Quick Start
+**Secrets stay out of the loop.** Credentials live in an encrypted vault and are referenced
+by name; they never enter a workflow definition, a prompt, or a log.
 
-| You want to | Start here |
-|-------------|-----------|
-| Brand new to sk — go from nothing to a running engine + first connector, workflow, and knowledge article | [Self-host quickstart](docs/developers/self-host.md) |
-| Ground a **coding agent** (Claude Code, Codex, Cursor, …) in your team’s knowledge | [Use sk from a coding agent](docs/authors/coding-agents.md) |
-| Run the engine for a team | [Operator quickstart](docs/operators/quickstart.md) |
-| Use `sk`, chat, or MCP | [Author quickstart](docs/authors/quickstart.md) |
-| Contribute to sk | [Developer quickstart](docs/developers/quickstart.md) |
+Details: [Architecture overview](docs/concepts/overview.md) ·
+[Governance & audit](docs/concepts/governance-and-audit.md) ·
+[Reversibility & trust domains](docs/concepts/reversibility-and-trust-domains.md). Diagram
+source: [`docs/concepts/overview.drawio`](docs/concepts/overview.drawio).
 
 ---
 
 ## Documentation
 
-Full conceptual, operational, and quickstart documentation lives in [`docs/`](docs/) — start
-with the [docs index](docs/README.md) and the [glossary](docs/concepts/glossary.md).
+Everything lives in [`docs/`](docs/) — start with the [docs index](docs/README.md), or the
+[glossary](docs/concepts/glossary.md) when a term is doing work you do not recognise.
 
-Authoring is a guided pipeline: describe the outcome in plain language and sk builds a
-grounded draft, tests it against a sample payload, applies precise patch edits, and commits
-once the review lands — either an explicit approval, or a clean dry run whose preview is
-returned to the author. On an unattended turn the clean dry run commits without waiting,
-because a confirmation there would never be surfaced; read the preview before relying on
-what it committed. Starting an unattended trigger (a schedule, a public webhook) always
-takes a separate decision on top.
-The [authoring guide](docs/authors/authoring-workflows.md) walks the full loop, including
-throwaway playground drafts that never persist and partial-accept of individual edits. For the
-governed MCP surface those tools expose — session progress, confirmation gates, and
-secrets-never-in-chat routing — see the [tool palette](docs/developers/tool-palette.md).
+The pages that answer the most common next questions:
 
-Cloudflare and Firebase/Firestore ship as built-in Connector Templates. Other APIs can be
-bootstrapped from OpenAPI JSON/YAML or Google REST Discovery JSON; URL imports are streamed with
-a 50 MiB limit and use document metadata to seed the connector base URL and authentication. The
-[connector guide](docs/concepts/connectors.md#openapi-connector-import) includes setup commands,
-credential guidance, and the separate live-discovery limits.
+- [AI-assisted authoring](docs/authors/authoring-workflows.md) — the full build → test →
+  patch → approve loop, including throwaway drafts and partial-accept of single edits.
+- [Connectors & integration](docs/concepts/connectors.md) — how a system gets connected,
+  including bootstrapping one from an OpenAPI or Google REST Discovery document.
+- [Input surfaces](docs/developers/input-surfaces.md) — every door into sk, and what each
+  one carries. Remote AI clients connect through sk's own OAuth 2.1 authorization server;
+  that section covers login, consent, scopes, and token revocation.
+- [Observability & usage reports](docs/operators/observability.md) — how to see how sk is
+  actually used without collecting anyone's content.
 
-Remote MCP clients use SubKit's built-in OAuth 2.1 authorization server.
-Its common `sk` browser card is configured only by the provider-neutral
-`auth.providers` list, which can contain one API-key adapter and multiple named
-direct `oidc` adapters. SubKit owns every OIDC client, secret, callback,
-session, tenant mapping and deployment; no shared cross-product login component
-exists. OIDC uses discovery and Authorization Code + PKCE. The same list drives discovery, browser login and
-bearer verification. Consent is limited to the scopes the client actually
-requested and the user's current RBAC, with mandatory `mcp:read`, revocable
-eight-hour/24-hour browser sessions, logout and account switching. Revoking a
-refresh token invalidates its complete token family, including associated
-access tokens; revoking an access token invalidates that token alone. See
-[Input surfaces](docs/developers/input-surfaces.md#mcp-oauth-21-chatgpt--claudeai--cursor).
-Issued access tokens are bound to the exact `/mcp` resource with RFC 8707;
-tokens without that audience are rejected rather than accepted through a
-compatibility path.
-The browser contract is the same independent `mcp-auth-v2` implementation used
-by WikiKit and ContentKit: **Continue with SSO** is always first and
-**Continue with API key** second, configured labels never rewrite those
-actions, and authorize hands off only an opaque `login_state`. Provider
-discovery and assertion exchange use the generic `/v1/identity/providers` and
-`/v1/identity/sessions` endpoints; no provider-named or legacy route exists.
-OIDC requires the immutable `sub`; email is optional, retained only when the
-provider marks it verified, and returned as `null` otherwise.
-
-Operators can measure how the product is actually used without collecting content:
-opt-in, tenant-scoped usage reports cover canonical HTTP routes, Chat turns, Conversation
-streams, and MCP JSON-RPC/session/capacity behavior. Actor and session identities are
-product-local HMACs; messages, prompts, arguments, results, raw URLs, IPs, and user agents
-are never stored. See [Observability & usage reports](docs/operators/observability.md) and
-`sk stats http|chat|mcp|conversations --json`.
+Point a model at [`docs/llms.txt`](docs/llms.txt) for an index it can follow, or
+[`docs/llms-full.txt`](docs/llms-full.txt) for the whole set in one fetch.
 
 ---
 
-## For Coding Agents
+## For coding agents
 
-sk is designed for agentic coding environments. Start with [`AGENTS.md`](AGENTS.md) —
-the canonical repo-wide contract, subsystem map, and quality gate. See [`SKILLS.md`](SKILLS.md)
-for the skill index, the [tool palette](docs/developers/tool-palette.md) for the callable
-workflow and conversation tools, and the [authoring guide](docs/authors/authoring-workflows.md)
-for the build → test → patch → commit loop your agent drives.
+sk is built to be worked on by agentic coding environments. Start with
+[`AGENTS.md`](AGENTS.md) — the canonical repo-wide contract, subsystem map, and quality
+gate. Then [`SKILLS.md`](SKILLS.md) for the skill index, the
+[tool palette](docs/developers/tool-palette.md) for the callable tools, and the
+[authoring guide](docs/authors/authoring-workflows.md) for the loop your agent drives.
 
 ---
 
