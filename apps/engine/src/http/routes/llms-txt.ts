@@ -17,6 +17,7 @@
 // Public and unauthenticated, like /openapi.json and /docs — the auth
 // middleware is non-blocking and these handlers never call requireAuth.
 
+import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { type LlmsPage, OPTIONAL_PATHS, renderLlmsIndex } from "@shared/llms-index.ts";
 import type { Context } from "hono";
@@ -27,7 +28,7 @@ import llmsFullTxt from "../../../../../docs/llms-full.txt" with { type: "text" 
 // markers, which we split into a per-page section map once at module load.
 import manifest from "../../../../../docs/llms-manifest.json" with { type: "json" };
 import { getConfig } from "../../config/loader.ts";
-import type { AppEnv } from "../openapi.ts";
+import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 
 const RESPONSE_HEADERS = {
   "content-type": "text/markdown; charset=utf-8",
@@ -125,10 +126,48 @@ const fullRoute = createRoute({
   },
 });
 
+const descriptorRoute = createRoute({
+  method: "get",
+  path: "/.well-known/service-descriptor.json",
+  tags: ["docs"],
+  summary: "Version and a sha256 per self-description artifact",
+  description:
+    "One small GET that tells a watcher whether anything changed. Asking the same question by downloading the documents costs ~600 KB per round here — llms-full.txt alone — almost always to discover nothing changed, which is what makes a frequent drift check unaffordable and an infrequent one useless.",
+  responses: {
+    200: {
+      description: "Service descriptor",
+      content: { "application/json": { schema: z.object({}).passthrough() } },
+    },
+  },
+});
+
 export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(indexRoute, (c) => c.text(renderIndex(c), 200, RESPONSE_HEADERS));
   app.openapi(wellKnownRoute, (c) => c.text(renderIndex(c), 200, RESPONSE_HEADERS));
   app.openapi(fullRoute, (c) => c.text(llmsFullTxt, 200, RESPONSE_HEADERS));
+  app.openapi(descriptorRoute, (c) => {
+    const origin = resolveOrigin(c);
+    // Hashed per request rather than cached. The documents are embedded at
+    // build time and cannot change while the process lives, so this is a hash
+    // of a few hundred kilobytes on a route nothing calls in a hot loop — and
+    // a cached hash that goes stale would make this endpoint lie in exactly
+    // the situation it exists to report.
+    const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+    return c.json({
+      service: "subkit",
+      version: OPENAPI_INFO.version,
+      artifacts: {
+        openapi: { url: `${origin}/openapi.json`, sha256: null, updated_at: null },
+        llms_txt: { url: `${origin}/llms.txt`, sha256: sha(renderIndex(c)), updated_at: null },
+        llms_full_txt: {
+          url: `${origin}/llms-full.txt`,
+          sha256: sha(llmsFullTxt),
+          updated_at: null,
+        },
+      },
+      capabilities: ["health", "ready", "metrics", "openapi", "llms-txt", "mcp", "descriptor"],
+    });
+  });
 
   // Per-page drill-down. The path spans slashes (e.g. `concepts/connectors.md`),
   // which @hono/zod-openapi's typed params can't express cleanly, so this one
