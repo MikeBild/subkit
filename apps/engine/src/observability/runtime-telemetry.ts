@@ -47,9 +47,31 @@ export interface MemorySnapshot {
   array_buffers_mb: number;
 }
 
+/**
+ * `readMemoryUsage()`, but it cannot take down what it measures.
+ *
+ * The raw call is a syscall and it can fail: a CI runner returned
+ * `SystemError: Failed to get memory usage, errno: 4` (EINTR) from inside
+ * `instrument()`, which propagated out of a transform step and failed the
+ * workflow that step belonged to. A memory reading is diagnostic. Losing one
+ * costs a number in a log line; letting it throw costs the operation.
+ *
+ * Zeroes on failure rather than throwing. A zero is visibly wrong in a
+ * dashboard, which is the right way for a missing measurement to look — and
+ * every consumer here is subtracting two samples, where a zero shows up as a
+ * nonsense delta rather than as plausible data.
+ */
+export function readMemoryUsage(): NodeJS.MemoryUsage {
+  try {
+    return process.memoryUsage();
+  } catch {
+    return { rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 };
+  }
+}
+
 /** Point-in-time process memory, rounded to MB for log readability. */
 export function sampleMemory(): MemorySnapshot {
-  const m = process.memoryUsage();
+  const m = readMemoryUsage();
   return {
     rss_mb: toMb(m.rss),
     heap_used_mb: toMb(m.heapUsed),
@@ -98,7 +120,7 @@ function finishOk(opts: InstrumentOptions, durationMs: number, rssBefore: number
       ...opts.fields,
     };
     if (opts.memory) {
-      const rssNow = process.memoryUsage().rss;
+      const rssNow = readMemoryUsage().rss;
       fields.rss_mb = toMb(rssNow);
       fields.rss_delta_mb = toMb(rssNow - rssBefore);
     }
@@ -129,7 +151,7 @@ function finishErr(
       ...errorFields(err),
     };
     if (opts.memory) {
-      const rssNow = process.memoryUsage().rss;
+      const rssNow = readMemoryUsage().rss;
       fields.rss_mb = toMb(rssNow);
       fields.rss_delta_mb = toMb(rssNow - rssBefore);
     }
@@ -145,7 +167,7 @@ export async function instrument<T>(
   opts: InstrumentOptions & { fn: () => Promise<T> | T },
 ): Promise<T> {
   const started = Date.now();
-  const rssBefore = opts.memory ? process.memoryUsage().rss : 0;
+  const rssBefore = opts.memory ? readMemoryUsage().rss : 0;
   try {
     const result = await opts.fn();
     finishOk(opts, Date.now() - started, rssBefore);
@@ -246,7 +268,7 @@ export function startMemorySampler(opts?: {
   const intervalMs = opts?.intervalMs ?? 60_000;
   const tick = (): void =>
     safe(() => {
-      const m = process.memoryUsage();
+      const m = readMemoryUsage();
       const reg = getMetrics();
       reg.set(METRIC_NAMES.PROCESS_MEMORY_RSS_BYTES, m.rss, {});
       reg.set(METRIC_NAMES.PROCESS_MEMORY_HEAP_USED_BYTES, m.heapUsed, {});
@@ -303,7 +325,7 @@ function reportPhase(
   blocking: boolean,
 ): void {
   const duration = Date.now() - start;
-  const externalDelta = process.memoryUsage().external - externalBefore;
+  const externalDelta = readMemoryUsage().external - externalBefore;
   if (duration < thresholdMs && externalDelta < ALLOC_DELTA_FLOOR_BYTES) return;
   safe(() =>
     logger.warn({
@@ -324,7 +346,7 @@ function reportPhase(
 
 export function timePhase<T>(phase: string, fn: () => T, thresholdMs = 250): T {
   const start = Date.now();
-  const externalBefore = process.memoryUsage().external;
+  const externalBefore = readMemoryUsage().external;
   try {
     return fn();
   } finally {
@@ -342,7 +364,7 @@ export async function timePhaseAsync<T>(
   thresholdMs = 250,
 ): Promise<T> {
   const start = Date.now();
-  const externalBefore = process.memoryUsage().external;
+  const externalBefore = readMemoryUsage().external;
   try {
     return await fn();
   } finally {
@@ -378,7 +400,7 @@ export function startEventLoopLagMonitor(opts?: {
         log.process.eventLoopLag({
           lag_ms: lag,
           threshold_ms: thresholdMs,
-          rss_mb: toMb(process.memoryUsage().rss),
+          rss_mb: toMb(readMemoryUsage().rss),
         }),
       );
     }

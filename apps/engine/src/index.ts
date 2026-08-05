@@ -21,6 +21,7 @@ import { newTraceId, withContext } from "./logging/context.ts";
 import { errorFields, logger } from "./logging/logger.ts";
 import {
   bootPhase,
+  readMemoryUsage,
   startBootHeartbeat,
   startEventLoopLagMonitor,
   startMemorySampler,
@@ -587,7 +588,7 @@ async function runServer(): Promise<void> {
     port,
     hostname: opts.hostname,
     public_base_url: getConfig().server.public_base_url || null,
-    rss_mb: Math.round((process.memoryUsage().rss / (1024 * 1024)) * 10) / 10,
+    rss_mb: Math.round((readMemoryUsage().rss / (1024 * 1024)) * 10) / 10,
   });
 
   // Boot done — stop the heartbeat and switch to steady-state samplers.

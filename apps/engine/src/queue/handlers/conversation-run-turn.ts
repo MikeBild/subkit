@@ -46,6 +46,7 @@ import {
   setMcpTaskParked,
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
+import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { withJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_QUEUE, type ConversationRunTurnJob } from "../queues.ts";
@@ -164,7 +165,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
 
   // Bracket the heavy model loop with an rss baseline so the success
   // log can attribute the multi-GB transient to THIS turn/tenant.
-  const rssBefore = process.memoryUsage().rss;
+  const rssBefore = readMemoryUsage().rss;
   try {
     // (d) Dispatch by kind. NOTE: NO `elicitationBridge` is passed — a
     // backgrounded turn has no live MCP session, so input-collecting
@@ -280,8 +281,8 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       job_id: job.id,
       tenant_id: data.tenant_id,
       duration_ms: Date.now() - started,
-      rss_mb: Math.round((process.memoryUsage().rss / 1048576) * 10) / 10,
-      rss_delta_mb: Math.round(((process.memoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
+      rss_mb: Math.round((readMemoryUsage().rss / 1048576) * 10) / 10,
+      rss_delta_mb: Math.round(((readMemoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
     });
   } catch (err) {
     // (h) Distinguish a cancellation from a real failure. A cancel is

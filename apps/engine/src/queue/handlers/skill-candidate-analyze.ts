@@ -6,6 +6,7 @@
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
+import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { runPatternAnalysis } from "../../skill-candidates/service.ts";
 import { withJobContext } from "../job-context.ts";
 
@@ -31,7 +32,7 @@ async function handleOne(job: Job<SkillCandidateAnalyzeJob>, db: Db): Promise<vo
   const started = Date.now();
   // rss baseline around the LLM-heavy pattern analysis, so the success
   // log attributes the transient to THIS tenant's analysis run.
-  const rssBefore = process.memoryUsage().rss;
+  const rssBefore = readMemoryUsage().rss;
   try {
     const result = await runPatternAnalysis({ tenant_id: data.tenant_id }, db);
     log.queue.job.completed({
@@ -42,8 +43,8 @@ async function handleOne(job: Job<SkillCandidateAnalyzeJob>, db: Db): Promise<vo
       updated: result.candidates_updated,
       patterns: result.patterns_checked,
       duration_ms: Date.now() - started,
-      rss_mb: Math.round((process.memoryUsage().rss / 1048576) * 10) / 10,
-      rss_delta_mb: Math.round(((process.memoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
+      rss_mb: Math.round((readMemoryUsage().rss / 1048576) * 10) / 10,
+      rss_delta_mb: Math.round(((readMemoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
