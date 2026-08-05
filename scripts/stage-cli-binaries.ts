@@ -21,6 +21,7 @@
 // Defaults: --dir /usr/local/share/subkit/binaries; version from package.json.
 
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -82,23 +83,52 @@ export function corruptRuntimeFromStderr(stderr: string): string | null {
   return CORRUPT_DOWNLOAD.exec(stderr)?.[1] ?? null;
 }
 
-function bunCacheDir(): string {
-  const bunInstall = process.env.BUN_INSTALL || join(process.env.HOME ?? "", ".bun");
-  return join(bunInstall, "install", "cache");
+/** Every place bun may keep its download cache, most specific first.
+ *
+ *  One hard-coded guess is not enough: this script runs BOTH on a developer
+ *  machine and inside the Docker builder, where `HOME` and `BUN_INSTALL` are
+ *  different (or unset) and the guess silently points at a directory that was
+ *  never written. `BUN_INSTALL_CACHE_DIR` is bun's own override and wins. */
+export function bunCacheDirCandidates(env: NodeJS.ProcessEnv = process.env): string[] {
+  const candidates = [
+    env.BUN_INSTALL_CACHE_DIR,
+    env.BUN_INSTALL ? join(env.BUN_INSTALL, "install", "cache") : undefined,
+    env.HOME ? join(env.HOME, ".bun", "install", "cache") : undefined,
+    // The builder stage runs as root with HOME occasionally unset.
+    "/root/.bun/install/cache",
+  ].filter((c): c is string => typeof c === "string" && c.length > 0);
+  return [...new Set(candidates)];
 }
 
-/** Drop the one cached runtime the error blamed. Returns whether anything was
- *  removed — a retry is only worth attempting if the broken input is gone. */
+/** Drop the one cached runtime the error blamed, and say honestly whether
+ *  anything was actually there.
+ *
+ *  This returned the path unconditionally, because `rm(..., { force: true })`
+ *  succeeds on a path that never existed. The caller read that as "the corrupt
+ *  artifact is gone" and retried against an unchanged cache — visible in the
+ *  nightly as the SAME extraction failure twice, a second apart. A retry that
+ *  cannot know whether its input changed is a placebo, and a placebo in a build
+ *  step is worse than no retry: it turns one clear failure into two and hides
+ *  that the repair never happened.
+ *
+ *  So: only report a purge when a directory existed and was removed. When
+ *  nothing matches, the caller must fail immediately and say the cache was not
+ *  found, rather than repeating itself. */
 async function purgeCachedRuntime(stderr: string): Promise<string | null> {
   const named = corruptRuntimeFromStderr(stderr);
   if (!named) return null;
-  const dir = join(bunCacheDir(), named);
-  try {
-    await rm(dir, { recursive: true, force: true });
-    return dir;
-  } catch {
-    return null;
+  for (const cacheDir of bunCacheDirCandidates()) {
+    const dir = join(cacheDir, named);
+    if (!existsSync(dir)) continue;
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return dir;
+    } catch {
+      // Unreadable or unwritable — treat as not purged rather than claiming it.
+      return null;
+    }
   }
+  return null;
 }
 
 async function runBunBuild(
@@ -150,7 +180,15 @@ async function compileTarget(
     }
     const purged = await purgeCachedRuntime(stderr);
     if (!purged) {
-      throw new Error(`bun build failed for ${target.bunTarget} (exit ${code})`);
+      // Either the failure was not a corrupt download, or it was and the cache
+      // entry could not be found. Both mean a retry would repeat itself
+      // verbatim, so say which and stop.
+      const named = corruptRuntimeFromStderr(stderr);
+      throw new Error(
+        named
+          ? `bun build failed for ${target.bunTarget} (exit ${code}): '${named}' is corrupt but no cache entry was found in ${bunCacheDirCandidates().join(", ")} — not retrying, the same download would fail again`
+          : `bun build failed for ${target.bunTarget} (exit ${code})`,
+      );
     }
     console.log(
       `[stage-cli-binaries] ${target.bunTarget}: cached runtime was corrupt, removed ${purged} — retrying once`,
