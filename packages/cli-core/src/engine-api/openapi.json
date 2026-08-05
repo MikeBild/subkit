@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.0.5",
+    "version": "6.0.6",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -18201,6 +18201,29 @@
               "text/markdown": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/service-descriptor.json": {
+      "get": {
+        "tags": [
+          "docs"
+        ],
+        "summary": "Version and a sha256 per self-description artifact",
+        "description": "One small GET that tells a watcher whether anything changed. Asking the same question by downloading the documents costs ~600 KB per round here — llms-full.txt alone — almost always to discover nothing changed, which is what makes a frequent drift check unaffordable and an infrequent one useless.",
+        "responses": {
+          "200": {
+            "description": "Service descriptor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
                 }
               }
             }
