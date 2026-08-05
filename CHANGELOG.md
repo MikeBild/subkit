@@ -4,6 +4,74 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.7] – 2026-08-05
+
+### Changed
+
+- **The documentation leads with what sk delivers instead of how it is built.**
+  The first line a reader met described the architecture — an answer to a
+  question nobody asked, and no way in for someone seeing sk for the first time.
+  Every entry surface now opens with a result: the README states the promise,
+  then three deliverables that each carry an acceptance criterion and a
+  timeframe, then an honest account of what sk does not do. The architecture
+  diagram moves below a section explaining why the promise survives production,
+  because it is the reassurance rather than the pitch. Around twenty reference
+  pages had their opening rewritten the same way; their reference bodies are
+  untouched.
+
+### Added
+
+- **A starting page that assumes no prior knowledge.** `docs/start-here.md`
+  explains the problem, what sk does about it, and the three questions you would
+  ask before handing a new colleague the keys — what may it touch, does it check
+  first, can I see afterwards what it did. It carries no code and no jargon that
+  is not glossed in the sentence it appears in, and it now opens the served
+  documentation index.
+
+### Fixed
+
+- **The documentation index no longer skips pages that sit outside an audience
+  folder.** The generator derived a page's audience from its subfolder, so a
+  file directly in `docs/` was assigned an empty audience and dropped — which
+  would have made the new starting page invisible to every model grounding
+  itself on `llms.txt`, on the one surface most likely to need it. Top-level
+  pages now receive a synthetic `start` audience that renders as the first
+  section; the documentation index itself stays excluded, so the index does not
+  list itself. Pinned by a test.
+
+## [6.0.6] – 2026-08-05
+
+### Fixed
+
+- **A workflow triggered by an inbound webhook now runs against production
+  connectors.** Execution creation defaults to `dev` and the inbound webhook
+  path passed nothing, so every webhook-triggered workflow resolved development
+  connectors — and a development connector is the one nobody re-authenticates.
+  The consequence was live and silent: a tenant's development mail connector
+  went to `needs_reauth`, and every notification since had failed with a 401
+  visible only inside an execution nobody was reading. The delivery is accepted,
+  the workflow runs, the audit trail shows it succeeding right up to the last
+  step, and no mail is sent. The schedule reconciler already defaults unattended
+  automation to production for exactly this reason; an inbound webhook is
+  equally unattended, and the inconsistency was the bug. A caller who says
+  nothing means production, because production is what sent the webhook.
+
+### Added
+
+- **`GET /.well-known/service-descriptor.json` reports the version and a
+  checksum per self-description artifact in one small response.** A monitor
+  asking whether anything changed otherwise downloads every artifact on every
+  poll — roughly 600 KB a round for the full-text documentation alone, almost
+  always to discover that nothing changed. That cost is what forces a drift
+  check to run hourly when it wants to run every thirty seconds. Hashes are
+  computed per request rather than cached: the documents are embedded at build
+  time and cannot change while the process lives, and a cached hash that went
+  stale would make this endpoint lie in precisely the situation it exists to
+  report. The OpenAPI entry carries a null hash for now, because that document
+  is assembled at request time and there is no single served byte string to
+  fingerprint — saying so is better than fingerprinting something else and
+  calling it the spec.
+
 ## [6.0.5] – 2026-08-05
 
 ### Fixed
