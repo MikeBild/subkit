@@ -12,7 +12,7 @@
 // nothing about that path is otherwise observable. This test holds the string.
 
 import { describe, expect, test } from "bun:test";
-import { corruptRuntimeFromStderr } from "../stage-cli-binaries.ts";
+import { bunCacheDirCandidates, corruptRuntimeFromStderr } from "../stage-cli-binaries.ts";
 
 // Copied verbatim from the 2026-08-04 nightly (`docker e2e (full track)`).
 const REAL_FAILURE = [
@@ -42,5 +42,31 @@ describe("corruptRuntimeFromStderr", () => {
     // contexts. Matching that sentence without a named artifact would leave
     // nothing to delete, so it must not be treated as a repairable signal.
     expect(corruptRuntimeFromStderr("The download may be incomplete.")).toBeNull();
+  });
+});
+
+describe("bunCacheDirCandidates", () => {
+  test("bun's own override wins, then BUN_INSTALL, then HOME", () => {
+    const dirs = bunCacheDirCandidates({
+      BUN_INSTALL_CACHE_DIR: "/explicit/cache",
+      BUN_INSTALL: "/opt/bun",
+      HOME: "/home/dev",
+    } as NodeJS.ProcessEnv);
+    expect(dirs[0]).toBe("/explicit/cache");
+    expect(dirs).toContain("/opt/bun/install/cache");
+    expect(dirs).toContain("/home/dev/.bun/install/cache");
+  });
+
+  test("an unset HOME still yields the builder's root cache", () => {
+    // The Docker builder stage runs as root and does not always export HOME.
+    // A single `HOME`-derived guess resolved to a path that was never written,
+    // which is how the purge came to report success while removing nothing.
+    const dirs = bunCacheDirCandidates({} as NodeJS.ProcessEnv);
+    expect(dirs).toContain("/root/.bun/install/cache");
+  });
+
+  test("duplicates collapse", () => {
+    const dirs = bunCacheDirCandidates({ HOME: "/root" } as NodeJS.ProcessEnv);
+    expect(dirs.filter((d) => d === "/root/.bun/install/cache")).toHaveLength(1);
   });
 });
