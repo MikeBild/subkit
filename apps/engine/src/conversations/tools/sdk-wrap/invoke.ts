@@ -31,6 +31,7 @@ import {
   recordToolCircuitOpen,
 } from "../../../observability/instrumentation.ts";
 import { startToolSpan } from "../../../observability/langfuse-spans.ts";
+import { readMemoryUsage } from "../../../observability/runtime-telemetry.ts";
 import { requestApproval } from "../../../tools/approval.ts";
 import { listWorkflowsUsingConnector } from "../../../workflows/connector-refs.ts";
 import { FileNotFoundError, type ResolvedFile, walkAndResolve } from "../../attachments.ts";
@@ -534,7 +535,7 @@ export function wrapOne(
         // high HERE, the ~750MB transient belongs to the provider
         // request/stream segment that ran before this tool call.
         if (signals.step === 0) {
-          const m = process.memoryUsage();
+          const m = readMemoryUsage();
           const external_mb = Math.round(m.external / (1024 * 1024));
           // SUBKIT_HEAP_DIAG=1 (set via a systemd drop-in, never on by
           // default): name WHO holds the step-0 external transient. The

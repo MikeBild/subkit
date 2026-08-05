@@ -11,7 +11,7 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getPool } from "../../../db/client.ts";
-import { getLastEventLoopLagMs } from "../../../observability/index.ts";
+import { getLastEventLoopLagMs, readMemoryUsage } from "../../../observability/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { DiagnosticsRuntimeSchema } from "./schemas.ts";
@@ -38,7 +38,7 @@ const runtimeRoute = createRoute({
 export function registerRuntimeRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(runtimeRoute, async (c) => {
     requireAuth(c);
-    const mem = process.memoryUsage();
+    const mem = readMemoryUsage();
     const pool = getPool();
     return c.json(
       {

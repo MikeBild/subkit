@@ -64,7 +64,7 @@ import {
   recordLlmTokens,
   recordToolHallucinatedAbsence,
 } from "../observability/instrumentation.ts";
-import { timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
+import { readMemoryUsage, timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
 import { isTracingActive } from "../observability/tracing.ts";
 import { now } from "../utils/clock.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
@@ -1390,7 +1390,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           // ~700MB/turn external churn to within-step (provider call + tool
           // execution) vs between-step work — read the journal pairs.
           {
-            const m = process.memoryUsage();
+            const m = readMemoryUsage();
             logger.info({
               module: "process",
               action: "step.memory",
@@ -1590,7 +1590,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       onStepFinish: async (step) =>
         timePhaseAsync("converse.on_step_finish", async () => {
           {
-            const m = process.memoryUsage();
+            const m = readMemoryUsage();
             const external_mb = Math.round(m.external / (1024 * 1024));
             // When the step ended with >768MB external, name WHO holds it:
             // bun:jsc heapStats counts live objects by type — the brackets

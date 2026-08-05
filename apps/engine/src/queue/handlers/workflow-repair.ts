@@ -8,6 +8,7 @@
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
+import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { runSelfHealingLoop } from "../../self-healing/service.ts";
 import type { WorkflowRepairJob } from "../../self-healing/types.ts";
 import { withJobContext } from "../job-context.ts";
@@ -33,7 +34,7 @@ async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
   const started = Date.now();
   // rss baseline around the LLM-heavy self-healing loop, so the success
   // log attributes the transient to THIS tenant's repair run.
-  const rssBefore = process.memoryUsage().rss;
+  const rssBefore = readMemoryUsage().rss;
   try {
     const result = await runSelfHealingLoop(data, db);
     log.queue.job.completed({
@@ -46,8 +47,8 @@ async function handleOne(job: Job<WorkflowRepairJob>, db: Db): Promise<void> {
       auto_applied: result.auto_applied,
       reason: result.reason,
       duration_ms: Date.now() - started,
-      rss_mb: Math.round((process.memoryUsage().rss / 1048576) * 10) / 10,
-      rss_delta_mb: Math.round(((process.memoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
+      rss_mb: Math.round((readMemoryUsage().rss / 1048576) * 10) / 10,
+      rss_delta_mb: Math.round(((readMemoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
