@@ -832,6 +832,21 @@ export async function handleInbound(
     source_kind: "saved",
     source_ref: null,
     request_source: "webhook",
+    // Unattended automation runs against PROD connectors, exactly as the
+    // schedule reconciler already decides for the same reason.
+    //
+    // Leaving this to createExecution's `dev` default meant every
+    // webhook-triggered workflow resolved dev connectors, and a dev connector
+    // is the one nobody re-authenticates. The tenant's dev Gmail connector went
+    // to needs_reauth on 2026-07-23 and every contact notification since has
+    // failed with a 401 that only appears in an execution nobody was reading —
+    // the delivery was accepted, the workflow ran, the audit row says
+    // "succeeded" up to the last step, and no mail was sent.
+    //
+    // A caller who wants dev has an unattended trigger they authored; a caller
+    // who did not say anything meant production, because production is what
+    // sent the webhook.
+    execution_mode: "prod",
     parent_execution_id: null,
     input: inputPayload,
   });
