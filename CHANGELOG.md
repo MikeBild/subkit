@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.5] – 2026-08-05
+
+### Fixed
+
+- **A build retry that could not tell a repair from a no-op no longer pretends
+  to be one.** The cross-compile step retries once when the target runtime's
+  cached download is corrupt, after removing that cache entry — but the removal
+  used a force flag that reports success on a path which never existed, and the
+  cache location was a single guess derived from `HOME`, which is not where the
+  container build keeps it. So the entry was never found, the removal
+  "succeeded", and the retry repeated the identical failure a second later. The
+  cache is now searched across the locations the tool actually uses, a purge is
+  reported only when something was really removed, and a build that cannot find
+  the corrupt entry fails immediately naming the paths it searched instead of
+  doing the same thing twice.
+
 ## [6.0.4] – 2026-08-04
 
 ### Fixed
