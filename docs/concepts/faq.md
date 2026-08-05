@@ -3,8 +3,8 @@
 > **Audience:** Anyone new to sk asking the first questions — what the pieces
 > are, how they differ, and where to create them.
 
-**Outcome:** a fast path from "what even is this?" to the one page that answers
-it in full. Each answer here is a pointer, not a re-explanation.
+Short answers to the questions people ask in their first week, each pointing at
+the one page that covers it properly. Nothing here is re-explained twice.
 
 ---
 

@@ -43,7 +43,7 @@ flowchart LR
     Gate --> Engine
 ```
 
-For system-wide context — where external AI clients cross SubKit's MCP OAuth boundary and other surfaces enter directly — see the architecture overview:
+For system-wide context — where external AI clients cross sk's MCP OAuth boundary and other surfaces enter directly — see the architecture overview:
 
 ![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the product-local MCP OAuth boundary; other surfaces enter directly.](../concepts/overview.png)
 
@@ -266,14 +266,14 @@ Every issued MCP access token is RFC 8707-bound to this deployment's canonical
 missing or different resource audience is rejected; there is no audience-less
 compatibility path.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this SubKit deployment. Provider ids and labels are deployment-owned values, never engine modes.
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this sk deployment. Provider ids and labels are deployment-owned values, never engine modes.
 
 The visible state machine is the common `mcp-auth-v2` contract. Authorize
 redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser
 always renders **Continue with SSO** before **Continue with API key** and does
 not expose the configured provider label. The consent, account-switch and
 logout screens use the same layout and security headers as WikiKit and
-ContentKit while retaining SubKit branding and RBAC.
+ContentKit while retaining sk branding and RBAC.
 
 ```json
 {
@@ -306,7 +306,7 @@ device-flow result is exchanged at `POST /v1/identity/sessions`
 with `{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
 The response is exactly `{api_key,principal_id,context_id,email}`; `email` is
 nullable and contains only a provider-verified address;
-`context_id` is the SubKit tenant id.
+`context_id` is the sk tenant id.
 The exchange never accepts an arbitrary issuer URL and has no protocol- or
 vendor-specific route alias.
 

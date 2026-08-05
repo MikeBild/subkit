@@ -3,9 +3,10 @@
 > **Audience:** Authors and operators teaching sk about a whole field of work —
 > a policy, a process, a specialized domain — not just a single workflow.
 
-**Outcome:** the AI authors *inside your domain* — proposing against your
-conventions and grounding specifics in your documents — so workflows in that
-domain ship correct on the first pass instead of being corrected in review.
+Teach sk a whole field of work once, and every workflow in it arrives right the
+first time. The AI proposes against your conventions and looks the specifics up
+in your own documents, so review stops being the place where the draft gets
+fixed.
 
 A single workflow answers one question. A **domain** — your expense policy, your
 contract-review process, a compliance framework — is the shared context that

@@ -5,7 +5,7 @@ glue code. Describe the outcome in plain language; the AI proposes a connector
 or workflow, previews a real result, and only commits when you approve. Every
 saved artifact is permission-checked, audited, and replayable.
 
-![sk REPL](../_tapes/out/repl-author.gif)
+![Describing a workflow in plain language, previewing it, approving it, and running it](../_tapes/out/repl-author.gif)
 
 This guide assumes you are already authenticated (see
 [zero-to-running](../developers/self-host.md), Steps 1–2). Everything below also works

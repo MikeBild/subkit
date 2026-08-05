@@ -1,12 +1,14 @@
-# Self-Healing in Operations
+# Drift-assisted repair in operations
 
 > **Audience:** SREs, platform engineers, operators running sk in production
 
-**Outcome: workflows survive upstream API changes without silent failure.** When an external API renames a field, moves an endpoint, or adds a required parameter, the engine detects the break during real execution and hands the operator a validated, ready-to-apply repair — instead of a 3am pager and a from-scratch diagnosis.
+When a vendor renames a field, moves an endpoint, or starts requiring a parameter, you get a repair to review — not a 3am page and a diagnosis from scratch. The engine notices the break during a real run, works out the smallest safe change, tests it against recordings of runs that used to work, and hands you the result to approve.
 
 ## Why it matters
 
-External APIs evolve constantly. Without detection, a workflow that worked yesterday fails today — silently or noisily — and the operator owns the cleanup. Self-healing turns that open-ended incident into a single review-and-apply decision.
+External APIs change constantly. Without detection, a workflow that worked yesterday fails today — loudly or silently — and the cleanup is yours. This turns an open-ended incident into one review-and-apply decision.
+
+> **A note on names.** The prose calls this *drift-assisted repair*. The codebase, the CLI (`sk self-healing`), and the log events keep the older technical name *self-healing* — same thing, stable identifiers that are deliberately not renamed.
 
 | Without self-healing | With self-healing |
 |---|---|

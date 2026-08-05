@@ -3,11 +3,125 @@
 > The complete sk documentation set for LLMs in a single file: every public page's full Markdown, grouped by audience, each preceded by a source marker.
 > For the index see [llms.txt](llms.txt).
 
+<!-- Source: docs/start-here.md -->
+
+# Start here
+
+sk takes the work your team does the same way every week and runs it for you — reviewed
+before it goes live, permission-checked every time, and recorded so you can always show
+what happened. This page assumes you know nothing about sk. There is no code on it.
+
+---
+
+## The problem
+
+Every organisation has work that runs the same way every time.
+
+Every Monday, someone pulls numbers out of three different systems, compares them to last
+week, and sends a mail. Every invoice gets checked against the order it belongs to. Every
+new colleague gets set up in eight tools.
+
+Today a person does this. It is dull, it takes hours, and when that person is on holiday it
+does not happen.
+
+## What sk does
+
+You describe what should happen, in ordinary sentences:
+
+> *"Every Monday morning, take the revenue from our shop, compare it to the previous week,
+> and mail me the difference."*
+
+sk works out how to do it, shows you what it built, and waits. You look at it. If it is
+right, you approve it. From that Monday on, it happens by itself.
+
+![Connecting a system in the sk terminal: pick the target, enter credentials, test the connection, save](_tapes/out/operator-onboard.gif)
+
+## Why this is not just automation
+
+A tool that writes an email for you is harmless. A tool that reaches into your real
+systems — pays invoices, changes customer records, sends mail in your company's name — is
+not.
+
+The useful comparison is a new colleague. They can take a lot of work off your hands. But
+you want three questions answered before you hand them the keys:
+
+| The question you'd ask about a new colleague | How sk answers it |
+|---|---|
+| **What are they even allowed to touch?** | Each process gets exactly the access it needs, and nothing beyond it |
+| **Do they check with someone before doing something expensive?** | Before anything is sent, paid, or deleted, the request goes to a person |
+| **Can I see afterwards what they did?** | Every run is written down: when, what, with what result, and who approved it |
+
+That last one is the real point. Plenty of tools can automate something. sk automates in a
+way you can **account for afterwards** — to your manager, your customer, your auditor.
+
+## The AI builds it. It does not decide while it runs.
+
+This is the part people most often get backwards, so slowly:
+
+**While it is being built**, an assistant helps. It understands your sentence, looks at the
+system you are pointing it at, and writes the process down. That is what saves the weeks a
+developer used to spend.
+
+**While it runs**, the assistant is out of the loop. A person looked at the finished process
+and approved it. From then on, what happens is settled — every Monday, the same thing. The
+AI does not reconsider each week what it feels like doing this time.
+
+Why that matters: something that decides freely every time will eventually do something
+surprising. For holiday photos, charming. For bank transfers, not.
+
+## Where you do what
+
+sk meets you in several places, and they are not interchangeable. Pick by the job:
+
+| What you want to do | Where |
+|---|---|
+| Run something and read the result | Your team chat, or a browser AI client |
+| Ask how your team normally does something | A coding agent, or a browser AI client |
+| Describe a brand-new process for the first time | A conversation — in the terminal or in chat |
+| Change one line of a process that already exists | The `sk` command line |
+| Go back to an earlier version | The `sk` command line |
+| Approve something | The link you were sent, or the command line |
+| Connect a new system and enter its credentials | The setup wizard, or the credential page |
+| Have something run on a timetable, or when an event fires | A schedule, or a webhook — a URL another system calls when something happens. Nobody has to be present |
+
+The rule underneath all of it: **a chat window runs things; it does not rewrite them.** That
+is deliberate. Changing what a process does should pass through something a person can
+read. The long version, with worked examples, is
+[Choosing your surface](authors/choosing-your-surface.md).
+
+## What you end up with
+
+Three results, not a toolkit:
+
+1. **Your most expensive manual routines run by themselves.** Two to four weeks, and you
+   sign off by watching one real run and checking the result.
+2. **Your AI experiments become reviewable.** What three people wired together by hand
+   becomes one operation your IT leadership will put their name to.
+3. **A system stays connected.** When a vendor changes their interface, sk notices and
+   suggests the repair, instead of quietly breaking.
+
+## What sk does not do
+
+**It does not move your old data into a new system.** Bulk record migration with
+field-by-field reconciliation is a different job and needs different tooling.
+
+**It does not invent work.** If nobody described it and nobody approved it, nothing runs.
+
+## Where to go next
+
+- **You want to try it** → [Self-host quickstart](developers/self-host.md) — from nothing to
+  a running engine (the piece of software that does the work) and a first process of your own.
+- **Someone already runs sk for you** → [Author quickstart](authors/quickstart.md).
+- **You use a coding agent** (Claude Code, Codex, Cursor, …) →
+  [Use sk from a coding agent](authors/coding-agents.md).
+- **You want the whole map** → [Documentation index](README.md).
+- **A word did not make sense** → [Glossary](concepts/glossary.md).
+
 <!-- Source: docs/concepts/README.md -->
 
 # Concepts
 
-The shared mental model for sk: how connectors, workflows, knowledge, skills, and governance fit together — so every team means the same thing and reasons about the same system.
+Read this section and you can predict what sk will do before you run it — and say why, in the same words as everyone else on your team. Six pages cover the whole model: how a system gets connected, how a process runs, where the AI helps and where it stops, and what gets written down along the way.
 
 ```mermaid
 flowchart TD
@@ -45,7 +159,7 @@ Start with the **Overview** for the big picture, then the **Glossary** to lock t
 
 > **Audience:** Engineers wiring sk to external systems, operators curating the catalogue
 
-**Outcome:** authenticate external systems—including built-in Cloudflare and Firebase/Firestore—once, reuse them across every workflow, and never let a secret touch a workflow definition, an AI prompt, or a log. Connectors collapse weeks of bespoke integration glue into a one-time, governed setup — typed, authenticated, monitored, and audited.
+Connect a system once, then use it from every workflow you ever write — and never let its secret touch a workflow definition, an AI prompt, or a log. That one-time setup replaces the integration glue each project used to rewrite from scratch: it is typed, authenticated, monitored, and audited from the moment you save it. Cloudflare and Firebase/Firestore ship ready to use; anything else you point sk at.
 
 A Connector combines three independently-evolving layers: a **Driver** (protocol), a **Connector Template** (target-specific config + context), and a **Credential** (vault-managed secret).
 
@@ -144,7 +258,7 @@ flowchart LR
     Call --> Done(["Step result"])
 ```
 
-![sk REPL](../_tapes/out/operator-onboard.gif)
+![Connecting a system in the sk terminal: pick the target, enter credentials, test the connection, save](../_tapes/out/operator-onboard.gif)
 
 All secrets live in the Credential Vault: encrypted at rest, never logged, never exposed outside the engine. Workflows and Steps reference Credentials by name, not value — sk can propose, configure, and audit integrations without a secret ever surfacing in a workflow definition, a log, or a conversation transcript.
 
@@ -455,8 +569,8 @@ The deliberate non-fail-on-stale design lets the catalogue ship even when the sw
 > **Audience:** Anyone new to sk asking the first questions — what the pieces
 > are, how they differ, and where to create them.
 
-**Outcome:** a fast path from "what even is this?" to the one page that answers
-it in full. Each answer here is a pointer, not a re-explanation.
+Short answers to the questions people ask in their first week, each pointing at
+the one page that covers it properly. Nothing here is re-explained twice.
 
 ---
 
@@ -831,10 +945,11 @@ The `authenticate_oauth` flow surfaces an authorization URL that the sk CLI auto
 > **Audience:** Architects and authors who want the model behind the AI's
 > organization-specific context.
 
-**Outcome:** authoring grounded in your own conventions — not generic API
-docs — so workflows ship faster, with fewer rework cycles and fewer
-compliance surprises. The AI proposes against your patterns because your
-patterns are in its context.
+The AI proposes work the way *your* team does it, not the way a generic API
+tutorial does — because your conventions are in front of it while it writes.
+That is the difference between a draft you correct three times and one you
+approve. This page is the model behind that: what you feed it, how it is
+selected, and who decides what gets remembered.
 
 Two primitives carry that context:
 
@@ -991,15 +1106,19 @@ gets smarter over time — but only with human approval at each step.
 
 > **Audience:** Anyone forming a first mental model of sk — architects, operators, authors, contributors.
 
-**Ship audited automation in hours, not sprints — and keep every run governed,
-versioned, and auditable.** A team describes the outcome in plain language; sk turns it into a
-governed, versioned workflow; an operator approves it; the engine runs it against the
-connectors (the SaaS and apps your team already uses) along a control flow that is fixed
-at approval time.
+This page explains why sk's promise — describe it, approve it, it runs, and you can prove
+what it did — survives contact with production. Read it once and you can predict the
+system's behaviour instead of discovering it.
 
-One contract holds throughout: **AI assists with *authoring*; the *control flow* of an
-approved workflow is fixed and never re-decided at runtime.** Multi-tenancy, RBAC,
-encrypted credentials, and an append-only audit trail apply to every entry point.
+The shape is simple. Someone describes an outcome in plain language. sk turns that into a
+workflow. A person approves it. From then on the engine runs it against your connectors —
+the apps and services your team already uses — along a path that was fixed at approval
+time.
+
+One contract holds throughout, and everything else follows from it: **AI assists with
+*authoring*; the *control flow* of an approved workflow is fixed and never re-decided at
+runtime.** Multi-tenancy, permission checks, encrypted credentials, and an append-only
+audit trail apply to every entry point, without exception.
 
 ---
 
@@ -1007,7 +1126,7 @@ encrypted credentials, and an append-only audit trail apply to every entry point
 
 ![sk architecture at a glance — external AI clients cross the product-local MCP OAuth boundary into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](./overview.png)
 
-*External clients (IDE assistants, employee chat) reach governed workflows only through SubKit's product-local **MCP OAuth boundary**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`./overview.drawio`](./overview.drawio).*
+*External clients (IDE assistants, employee chat) reach governed workflows only through sk's product-local **MCP OAuth boundary**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`./overview.drawio`](./overview.drawio).*
 
 ```mermaid
 flowchart TB
@@ -1184,7 +1303,7 @@ It is also why sk prefers a deterministic classifier, or a replay against a reco
 
 > **Audience:** Engineers integrating the runtime, operators monitoring executions
 
-**An approved workflow takes the same path every time — a fixed control flow, a permanent record, fully audited.** That is what lets an enterprise put revenue operations, compliance reporting, and back-office work on autopilot: every run is permission-checked, recorded, versioned, and replayable. No model decides what an approved workflow does. AI authors; the engine runs.
+Once you approve a workflow, it takes the same path every time — no model reconsiders it on the next run. That is what makes it safe to leave month-end reporting, invoice checks, or back-office routine running unattended: each run is permission-checked, recorded, tied to a version, and replayable when someone asks what happened. AI writes the workflow; the engine runs it.
 
 This page covers the workflow lifecycle, the execution model, the eight Step kinds, triggers, versioning and rollback, scheduling, self-healing, and the observability surface operators rely on.
 
@@ -1544,9 +1663,9 @@ The Audit Log records every execution trigger, every Step completion, every erro
 
 # Operators
 
-Run and govern the sk engine day-to-day — register connectors, wire schedules and webhooks, route notifications, watch the run, and apply repairs when an upstream API drifts.
+Keep it running without babysitting it. Connect the systems your team depends on, put work on a schedule or behind a webhook, route the outcome to the people who care — and when a vendor changes their API, get a ready-to-apply repair instead of a 3am page.
 
-![sk](../_tapes/out/operator-onboard.gif)
+![Connecting a system in the sk terminal: pick the target, enter credentials, test the connection, save](../_tapes/out/operator-onboard.gif)
 
 ```mermaid
 flowchart TD
@@ -1558,7 +1677,7 @@ flowchart TD
     N --> O
 ```
 
-Start at the quickstart, attach a credential, then put workflows on a schedule or behind a webhook. Notifications and observability tell you when and how a run finished; self-healing turns an upstream break into a ready-to-apply repair.
+Start at the quickstart, attach a credential, then put workflows on a schedule or behind a webhook. Notifications and observability tell you when and how a run finished; drift-assisted repair turns an upstream break into a change you review and apply.
 
 | Page | What it covers | Link |
 |---|---|---|
@@ -1568,7 +1687,7 @@ Start at the quickstart, attach a credential, then put workflows on a schedule o
 | Notifications | Route run outcomes — succeeded, failed, aborted — to the right people, with per-rule failures logged. | [notifications.md](notifications.md) |
 | Chat Channels | Use sk read-only from Google Chat (Slack/Teams to follow): ask, look up, and run workflows from the space your team already lives in. | [chat.md](chat.md) |
 | Observability & Resource Limits | Diagnose a run in minutes with metrics, logs, and traces, bounded so no single workflow runs away. | [observability.md](observability.md) |
-| Self-Healing in Operations | Detect upstream API breaks during real execution and apply a validated repair instead of a 3am page. | [self-healing.md](self-healing.md) |
+| Drift-assisted repair | Detect upstream API breaks during real execution and apply a validated repair instead of a 3am page. | [self-healing.md](self-healing.md) |
 | Runtime Dependencies | The one host dependency outside the single binary — Chromium + playwright for SPA-docs discovery — and how it is provisioned. | [runtime-dependencies.md](runtime-dependencies.md) |
 | Deploy & Upgrade | Replace the single binary and restart — the checksum-verified published-asset scp, `engine --self-update` (and why a private repo needs a token), and rollback. | [deploy.md](deploy.md) |
 
@@ -1940,7 +2059,7 @@ flowchart LR
 | Probe | `connectors test` | Authenticates, reports status + latency |
 | Reference | Name the connector in a workflow step | Applies the saved credential at run time |
 
-![Operator connector onboarding](../_tapes/out/operator-onboard.gif)
+![Connecting a system in the sk terminal: pick the target, enter credentials, test the connection, save](../_tapes/out/operator-onboard.gif)
 
 ---
 
@@ -2143,10 +2262,13 @@ sweep documented in
 
 # Deploy & upgrade the engine
 
-The production engine is a single `bun build --compile` binary at
-`/usr/local/bin/engine`, run by the `subkit-engine` systemd unit. It is
-**stateless** — all state lives in PostgreSQL — so a deploy is: replace the
-binary, restart the unit. In-flight pg-boss jobs resume automatically.
+Upgrading is a two-step operation you can do in the middle of the day: replace one file,
+restart one service. Work that was in flight picks up where it left off, because none of it
+lives in the process.
+
+That is possible because the engine is a single compiled binary at `/usr/local/bin/engine`,
+run by the `subkit-engine` systemd unit, and holds no state of its own — everything durable
+is in PostgreSQL.
 
 ## Version discipline
 
@@ -2641,7 +2763,7 @@ response.
 
 ### Privacy-safe product usage
 
-SubKit can persist a product-internal usage ledger in its own Postgres. It is disabled by
+sk can persist a product-internal usage ledger in its own Postgres. It is disabled by
 default and makes no external request. Configure a dedicated product-local key before the
 switch so actor and session identities are one-way HMAC pseudonyms:
 
@@ -2887,7 +3009,9 @@ Reconcile by parsing surface, not 1:1.
 
 # Quickstart — Operator
 
-**Outcome: a governed, audited automation engine your whole team can use — live in production in 15 minutes.** Every workflow run is permission-checked, recorded, and replayable, so you ship automation without trading away control.
+In 15 minutes your team has somewhere to put work that should run by itself — live, with a
+connected system to point at. Every run that follows is permission-checked, recorded, and
+replayable, so you can hand this to people without handing over control.
 
 Three steps get you there: engine up → admin key minted → first connector registered.
 
@@ -2898,7 +3022,7 @@ flowchart LR
     C --> D[Operational<br/>workflows, audit, metrics]
 ```
 
-![sk REPL](../_tapes/out/operator-onboard.gif)
+![Connecting a system in the sk terminal: pick the target, enter credentials, test the connection, save](../_tapes/out/operator-onboard.gif)
 
 > **Brand new to sk?** The [zero-to-running quickstart](../developers/self-host.md) walks a complete beginner from the Docker image through a first connector, workflow, and knowledge article.
 
@@ -3002,7 +3126,7 @@ The script probes `${ENGINE_URL}/install/sk-${os}-${arch}` first; on `200` it st
 
 > **Audience:** SREs, platform engineers, operators running sk in production
 
-**Outcome: discovery works against every documentation site, including JavaScript-rendered SPAs.** The engine ships as a single self-contained binary, but one last-resort capability — rendering an SPA documentation site to discover a connector — needs a real browser on the host. This page documents that dependency, why it exists, and how it is provisioned so the strategy runs in production instead of silently self-skipping.
+Discovery works against every documentation site, including the ones that render themselves in JavaScript — provided one thing is installed on the host. The engine ships as a single self-contained binary, with exactly one exception: rendering an SPA documentation site needs a real browser. This page covers that dependency, why it exists, and how to provision it so the strategy actually runs in production instead of quietly skipping itself.
 
 ## What needs a host dependency
 
@@ -3064,11 +3188,12 @@ After a deploy, a discovery run against an SPA documentation site with no cheape
 > **Audience:** Operators wiring scheduled runs, webhook triggers, and
 > Before-Request Hooks.
 
-**Outcome:** automation that fires on time or on event — verified at the door.
-Scheduled runs survive restarts and fire when due; inbound webhooks are
-signature-verified and replay-deduplicated before any work happens; and a
-Before-Request Hook adds dynamic policy in front of every connector call. One
-execution contract, one RBAC check, one audit trail — only the trigger differs.
+Work that runs when it should, whether or not anyone is watching — and nothing gets in
+without being checked at the door. Scheduled runs survive a restart and still fire when
+due; an inbound webhook has its signature verified and its replays discarded before any
+work starts; and a Before-Request Hook can apply your own policy in front of every
+connector call. The trigger is the only thing that differs: one execution contract, one
+permission check, one audit trail.
 
 | Lever | What it buys you |
 |---|---|
@@ -3286,7 +3411,7 @@ Denial reasons you may see as `401 { error: "denied", reason: … }`:
 ### End-to-end wiring recipe (upstream provider → sk ingress)
 
 Wiring an upstream system (e.g. a headless CMS emitting Standard-Webhooks-signed
-events) to a SubKit workflow:
+events) to an sk workflow:
 
 1. **Create the inbound binding with the right verifier.** Pick by how the upstream
    signs, and note this determines which authoring path you use:
@@ -3309,7 +3434,7 @@ events) to a SubKit workflow:
    `wf-<workflow-slug>`; for a CRUD binding, the `slug` you passed).
 3. **Generate one shared secret** — a high-entropy random string. This single secret
    must exist on **both** sides.
-4. **Set the secret on the SubKit side.** For a **CRUD** binding you pass `secret` at
+4. **Set the secret on the sk side.** For a **CRUD** binding you pass `secret` at
    create time (step 1). For a **reverse-bound trigger** binding the trigger block
    deliberately never carries a secret, so the first bind writes only a random
    **placeholder** secret — you must provision the real one out-of-band
@@ -3317,7 +3442,7 @@ events) to a SubKit workflow:
    webhook trigger also re-generates a placeholder, so re-provision after any such
    round-trip.
 5. **Register the endpoint on the upstream.** In the upstream system's outbound-webhook config,
-   add an endpoint pointing at the SubKit ingress URL and paste the **same** secret as
+   add an endpoint pointing at the sk ingress URL and paste the **same** secret as
    its signing key. It will then sign each delivery
    `v1,<base64(HMAC-SHA256(secret, "<webhook-id>.<webhook-timestamp>.<body>"))>` and set
    the `webhook-type` header to the event name — which must match one of the workflow's
@@ -3328,7 +3453,7 @@ events) to a SubKit workflow:
    not in `events[]`.
 
 Because verification is HMAC over a shared secret (symmetric), the secret on the
-upstream signer and the secret on the SubKit row must be byte-identical. Rotate on both
+upstream signer and the secret on the sk row must be byte-identical. Rotate on both
 sides together; a mismatch fails closed (`bad_signature` / 401), never open.
 
 ## Scheduling durability
@@ -3399,15 +3524,17 @@ model the hook layers onto is in [RBAC & Roles](../admins/rbac-and-roles.md).
 
 <!-- Source: docs/operators/self-healing.md -->
 
-# Self-Healing in Operations
+# Drift-assisted repair in operations
 
 > **Audience:** SREs, platform engineers, operators running sk in production
 
-**Outcome: workflows survive upstream API changes without silent failure.** When an external API renames a field, moves an endpoint, or adds a required parameter, the engine detects the break during real execution and hands the operator a validated, ready-to-apply repair — instead of a 3am pager and a from-scratch diagnosis.
+When a vendor renames a field, moves an endpoint, or starts requiring a parameter, you get a repair to review — not a 3am page and a diagnosis from scratch. The engine notices the break during a real run, works out the smallest safe change, tests it against recordings of runs that used to work, and hands you the result to approve.
 
 ## Why it matters
 
-External APIs evolve constantly. Without detection, a workflow that worked yesterday fails today — silently or noisily — and the operator owns the cleanup. Self-healing turns that open-ended incident into a single review-and-apply decision.
+External APIs change constantly. Without detection, a workflow that worked yesterday fails today — loudly or silently — and the cleanup is yours. This turns an open-ended incident into one review-and-apply decision.
+
+> **A note on names.** The prose calls this *drift-assisted repair*. The codebase, the CLI (`sk self-healing`), and the log events keep the older technical name *self-healing* — same thing, stable identifiers that are deliberately not renamed.
 
 | Without self-healing | With self-healing |
 |---|---|
@@ -3464,10 +3591,11 @@ flowchart LR
 
 # Authors
 
-Build and run workflows by chatting with `sk` — describe the outcome in plain
-language, approve what the AI proposes, and ship a governed, versioned workflow.
+Get from one sentence to a process that runs every week without you. You describe the
+outcome, sk builds it and shows you what it built, you approve it — and from then on it
+runs, permission-checked and recorded, whether you are at your desk or not.
 
-![sk](../_tapes/out/repl-author.gif)
+![Describing a workflow in plain language, previewing it, approving it, and running it](../_tapes/out/repl-author.gif)
 
 ```mermaid
 flowchart TD
@@ -3483,6 +3611,10 @@ flowchart TD
     R --> SL[slash-commands.md<br/>REPL command reference]
     R --> SE[settings.md<br/>sk config reference]
 ```
+
+Everything the REPL can do is one `/` away — drafts, connectors, context, settings:
+
+![Typing a slash in the sk REPL brings up a fuzzy command list: draft, connectors, context, settings](../_tapes/out/repl-slash.gif)
 
 | Doc | What it covers |
 |---|---|
@@ -3502,18 +3634,18 @@ flowchart TD
 
 # AI-Assisted Authoring
 
-**Describe the outcome. Get a governed, audited, versioned workflow in minutes — not a build project that runs for weeks.**
+Describe what should happen and have a reviewed, versioned workflow the same afternoon — instead of a build project that runs for weeks.
 
-Traditional workflow tools put construction on the builder: know the connector, learn the config syntax, draw it on a blank canvas. You ship what developers can build, not what the business needs. sk inverts that — the author states intent in plain language, the AI does the structural work, and a human signs off on the result before it goes live.
+The usual bottleneck is that whoever wants the automation cannot build it, and whoever can build it has a queue. So you ship what the queue allows, not what the work needs. sk removes that handoff: you state the intent in plain language, the AI does the structural work, and a person signs off before anything goes live.
 
 | Business outcome | How sk delivers it |
 |---|---|
 | **Time** — first workflow in minutes | One `author_workflow` pass generates the complete definition, grounded in real endpoint evidence |
 | **Compliance** — every change reviewable and attributable | A commit lands on a human review and an audit row that names the actor; every step is reviewable |
 | **Risk** — no raw secrets in the loop | Credentials are referenced by name through the Credential Vault, never seen during authoring |
-| **Determinism** — the engine never improvises | Once committed, the control flow is fixed: the engine infers nothing and loads no Skills or Knowledge at runtime |
+| **Predictability** — the engine never improvises | Once committed, the control flow is fixed: the engine infers nothing and loads no Skills or Knowledge at runtime |
 
-![sk REPL authoring — prompt to governed workflow](../_tapes/out/repl-author.gif)
+![Describing a workflow in plain language, previewing it, approving it, and running it](../_tapes/out/repl-author.gif)
 
 > **Reading time:** ~18 min · **Audience:** engineers integrating with sk's authoring, operators curating Skills & Knowledge
 
@@ -3986,6 +4118,26 @@ The conversational layer is aware of the stdlib and proposes `sk.*` forms by def
 
 ---
 
+## Look it up by what you want to do
+
+| What you want to do | Where | Why there |
+|---|---|---|
+| Run something and read the result | Slack / Teams / Google Chat, or a browser AI client | No setup, follow-up questions work, built for exactly this |
+| Ask how your team normally does something | A coding agent, or a browser AI client | Answers from your own knowledge, not from general knowledge |
+| Describe a new process for the first time | The `sk` REPL or chat — an authoring conversation | Exploring, discarding, retrying is what a conversation is good at |
+| Change one line of a process that already exists | The `sk` CLI | You write the change yourself; nothing paraphrases it |
+| Go back to an earlier version | The `sk` CLI (`sk workflows history` → `restore`) | A browser client does not carry the command at all |
+| Approve something | The portal link, or the CLI | Deliberately outside the chat — a decision should be visible and recorded, not expire in a dialog |
+| Connect a new system, enter credentials | The REPL's `/install` wizard, or the credential portal | Secrets never travel through a conversation |
+| Run on a schedule, or when an event fires | A schedule or an inbound webhook | Runs with nobody present |
+| Wire sk into another system | The REST API | Machine to machine |
+| Find out why a run failed | `sk diagnostics` in the CLI; read-only also from chat | The trace id joins the two |
+
+The rest of this page is why that table looks the way it does — and what it costs you to
+ignore it.
+
+---
+
 ## One question
 
 > **Am I changing a definition, or running one?**
@@ -4119,9 +4271,9 @@ Read the preview. Especially when it is green.
 > **Audience:** You use Claude Code, Codex, Cursor, Claude Desktop, claude.ai,
 > or ChatGPT, and want it grounded in your team's knowledge instead of guessing.
 
-**Outcome:** every new session starts knowing your domain's rules, looks your
-runbooks up instead of inventing them, and what you teach it in one session is
-waiting — after your review — in the next one.
+Every new session starts already knowing your domain's rules, looks your
+runbooks up instead of inventing them, and remembers what you taught it last
+time — once you have reviewed and approved that lesson.
 
 This page is the whole path: install → connect your client → import your
 knowledge → ask a grounded question. About 10 minutes.
@@ -4392,10 +4544,10 @@ sk skills sync
 > **Audience:** Authors and operators encoding organization-specific guidance for
 > the AI.
 
-**Outcome:** sk encodes your conventions once, then applies them on every
-Conversation, discovery, and repair — so authored workflows ship faster, pass
-review sooner, and stay policy-uniform across tenants. With approval, it gets
-smarter over time.
+Write down a convention once and stop repeating it. From then on sk applies it
+on every conversation, every discovery, every repair — so drafts arrive already
+in your house style and reviews get shorter. When a pattern shows up often
+enough, sk proposes it as a new Skill, and you decide whether it becomes one.
 
 A Skill is a curated, reusable piece of context loaded into the AI's context
 window during a Conversation and other AI-assisted authoring flows (discovery,
@@ -4520,10 +4672,10 @@ JavaScript that authors write — transform steps with `language: "javascript"`,
 
 > **Audience:** Authors and operators grounding the AI in their own documents.
 
-**Outcome:** workflows follow *your* runbooks and compliance docs, not generic
-knowledge. A workflow that correctly honors your GDPR retention rule exists
-because the runbook is a Knowledge Source the AI searched while authoring — so
-the evidence a compliance review needs is produced as you work, not reconstructed afterwards.
+Workflows follow *your* runbooks and policies instead of generic knowledge. When
+a workflow gets your data-retention rule right, it is because the runbook was a
+Knowledge Source the AI read while writing it — which also means the evidence a
+review will ask for is produced as you work, not reconstructed months later.
 
 A Knowledge Source is a persistent, indexed document store the AI can search
 while authoring, discovering, or repairing workflows. For the conceptual model —
@@ -4654,9 +4806,10 @@ hardware that warrants larger corpora. The full tunable table lives in
 > **Audience:** Authors and operators teaching sk about a whole field of work —
 > a policy, a process, a specialized domain — not just a single workflow.
 
-**Outcome:** the AI authors *inside your domain* — proposing against your
-conventions and grounding specifics in your documents — so workflows in that
-domain ship correct on the first pass instead of being corrected in review.
+Teach sk a whole field of work once, and every workflow in it arrives right the
+first time. The AI proposes against your conventions and looks the specifics up
+in your own documents, so review stops being the place where the draft gets
+fixed.
 
 A single workflow answers one question. A **domain** — your expense policy, your
 contract-review process, a compliance framework — is the shared context that
@@ -4787,9 +4940,12 @@ specifics.
 
 # Quickstart — Authors
 
-Turn a plain-language request into a governed, audited, runnable workflow — in about 5 minutes, no code. You describe the outcome; sk builds the connector, drafts the workflow, and holds the writes until you approve.
+In about five minutes you will have described a piece of work in ordinary sentences and
+watched it run — no code written, nothing touched in a real system until you said so. You
+describe the outcome; sk builds the connection, drafts the process, and holds every write
+back until you approve it.
 
-![sk REPL](../_tapes/out/repl-author.gif)
+![Describing a workflow in plain language, previewing it, approving it, and running it](../_tapes/out/repl-author.gif)
 
 ## Your first conversation
 
@@ -5393,7 +5549,7 @@ glue code. Describe the outcome in plain language; the AI proposes a connector
 or workflow, previews a real result, and only commits when you approve. Every
 saved artifact is permission-checked, audited, and replayable.
 
-![sk REPL](../_tapes/out/repl-author.gif)
+![Describing a workflow in plain language, previewing it, approving it, and running it](../_tapes/out/repl-author.gif)
 
 This guide assumes you are already authenticated (see
 [zero-to-running](../developers/self-host.md), Steps 1–2). Everything below also works
@@ -5740,7 +5896,7 @@ so this column is the UX gate, not the security boundary.
 
 # Developers
 
-**Integrate, extend, and self-host sk — without forking security per surface.** Everything here gets you from a clone to a running engine, a green quality gate, and a workflow reachable from the CLI, REST, MCP, or your own infra.
+Run sk on your own infrastructure and change it safely. Everything here takes you from a clone to a green test suite, a live engine on your own hardware, and a workflow you can reach from the CLI, a REST call, an MCP client, or your own code — all of them landing on the same permission and audit model, so you never secure a surface twice.
 
 ```mermaid
 flowchart TD
@@ -7839,9 +7995,9 @@ approving learnings to refresh the files.
 
 # Evidence process — verifying a behavioral / LLM-path change
 
-**Outcome:** changes to LLM-driven paths ship proven, not guessed. Every claim
-that a metric moved is backed by a test or benchmark run — so reviewers spend
-their time on the diagnosis, not on re-verifying the author's intuition.
+Changes to LLM-driven paths ship proven rather than guessed. Any claim that a number moved
+comes with the test or benchmark run that shows it, so a reviewer spends their time on the
+diagnosis instead of re-checking the author's intuition.
 
 This is the discipline behind the format-aware-judge work, where it caught a
 confident wrong self-diagnosis mid-flight (see [Worked example](#worked-example-format-aware-judge)).
@@ -8009,7 +8165,7 @@ flowchart LR
     Gate --> Engine
 ```
 
-For system-wide context — where external AI clients cross SubKit's MCP OAuth boundary and other surfaces enter directly — see the architecture overview:
+For system-wide context — where external AI clients cross sk's MCP OAuth boundary and other surfaces enter directly — see the architecture overview:
 
 ![sk architecture overview — every inbound surface routes to the same engine; external AI clients cross the product-local MCP OAuth boundary; other surfaces enter directly.](../concepts/overview.png)
 
@@ -8232,14 +8388,14 @@ Every issued MCP access token is RFC 8707-bound to this deployment's canonical
 missing or different resource audience is rejected; there is no audience-less
 compatibility path.
 
-**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this SubKit deployment. Provider ids and labels are deployment-owned values, never engine modes.
+**Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this sk deployment. Provider ids and labels are deployment-owned values, never engine modes.
 
 The visible state machine is the common `mcp-auth-v2` contract. Authorize
 redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser
 always renders **Continue with SSO** before **Continue with API key** and does
 not expose the configured provider label. The consent, account-switch and
 logout screens use the same layout and security headers as WikiKit and
-ContentKit while retaining SubKit branding and RBAC.
+ContentKit while retaining sk branding and RBAC.
 
 ```json
 {
@@ -8272,7 +8428,7 @@ device-flow result is exchanged at `POST /v1/identity/sessions`
 with `{ "provider_id": "<configured-id>", "identity_token": "<assertion>" }`.
 The response is exactly `{api_key,principal_id,context_id,email}`; `email` is
 nullable and contains only a provider-verified address;
-`context_id` is the SubKit tenant id.
+`context_id` is the sk tenant id.
 The exchange never accepts an arbitrary issuer URL and has no protocol- or
 vendor-specific route alias.
 
@@ -8416,7 +8572,9 @@ Not every workflow starts with a human. Scheduled triggers and inbound webhooks 
 
 # Quickstart — Developer
 
-Ship to sk with confidence: a green quality gate on every change keeps regressions out of production. From clone to a passing test suite and a live engine in about 10 minutes.
+In about ten minutes you go from a clone to a passing test suite and an engine running on
+your machine — the setup you need before changing anything. The same quality gate runs
+here and in CI, so a green run locally means the same thing it means in the pipeline.
 
 ```mermaid
 flowchart LR
@@ -8491,11 +8649,11 @@ curl -s http://localhost:3000/v1/health | jq
 
 # Self-Host sk — Zero to Running
 
-**sk runs inside your own infrastructure — your data stays yours.** One container,
-one stateful dependency (PostgreSQL), no SaaS lock-in and nothing leaving your
-network except outbound LLM calls. Start from nothing and finish with a running
-engine, an authenticated `sk` CLI, a working connector, a runnable workflow, and
-an indexed knowledge article — all from the released Docker image.
+sk runs inside your own infrastructure, so your data stays where it already is. One
+container, one stateful dependency (PostgreSQL), and nothing leaves your network except the
+outbound calls to your LLM provider. Start from nothing and finish this page with a running
+engine, an authenticated `sk` CLI, a working connector, a workflow you can run, and an
+indexed knowledge article — all from the released Docker image.
 
 ```mermaid
 flowchart LR
@@ -8586,7 +8744,7 @@ docker exec subkit sk init \
 > `auth.providers` in `subkit.config.json`, then restart. No provider-specific
 > setting or route is required.
 
-For example, a SubKit-owned direct OIDC client is one configuration record:
+For example, an sk-owned direct OIDC client is one configuration record:
 
 ```json
 {
@@ -9060,10 +9218,10 @@ docker volume rm subkit-data   # also wipe all state (optional)
 
 # Tool palette and dispatch
 
-**Outcome:** every LLM action against sk is a *named, governed* tool — one
-registry, one policy gate, one audit trail. No ad-hoc calls, no surface that
-quietly skips a permission check. A write to prod gates the same whether it
-arrives over chat or MCP.
+Every action an LLM can take against sk is a named tool that goes through one registry, one
+policy gate, and one audit trail. There are no ad-hoc calls and no surface that quietly
+skips a permission check: a write is gated identically whether it arrives over chat or over
+MCP.
 
 > **Status:** authoritative. See
 > [`apps/engine/src/tools/`](../../apps/engine/src/tools/) for the
@@ -9675,7 +9833,7 @@ not invoked at runtime yet.
 
 # Admins — govern access
 
-**Govern your tenants, identity, RBAC, secrets, and hardening — so a team moves fast while every run stays permission-checked, scoped, and audited.**
+Hand a team the keys without handing over the building. This section gets you to the point where people can move on their own — sign in with your existing identity provider, use credentials they never see, run what their role allows — and every one of those runs is scoped, checked, and written down.
 
 ```mermaid
 flowchart TD
@@ -9703,10 +9861,10 @@ Start at **quickstart.md** to wire configuration, roles, and keys in one pass. F
 
 # Configuring the engine
 
-**Outcome: one validated configuration, or the engine refuses to boot.**
-There is no silent degraded mode. Every runtime setting lives in a single
-JSON file, type-checked against a schema at startup — a misconfig fails fast
-with the exact leaf path, so a broken deploy never reaches production traffic.
+Either the configuration is valid or the engine does not start — there is no half-working
+middle state to debug later. Every runtime setting lives in one JSON file that is checked
+against a schema at boot, and a mistake fails immediately, naming the exact setting that is
+wrong. A broken deploy never reaches live traffic.
 
 | You want | You run |
 | --- | --- |
@@ -10349,9 +10507,9 @@ rotate after operator handover.
 
 # Production hardening — known caveats & TODOs
 
-**Outcome:** ship sk **production-ready, audit-ready, and recoverable.** Every
-workflow run stays permission-checked, recorded, and replayable — and a clean
-operator can rebuild the whole estate from a database backup alone.
+Work through this page and you can go live knowing three things: every run is
+permission-checked and recorded, someone can answer an auditor's questions from what was
+written down, and you could rebuild the entire setup from a database backup alone.
 
 This page lists the **deliberate defaults** the engine ships with. Each surfaces
 as a loud `warn` line at boot — *not* a bug. For every item: what it is, the
@@ -10577,7 +10735,10 @@ flowchart LR
 
 # Admin Quickstart
 
-**Every workflow run is permission-checked, scoped, and audited — so a team can move fast without losing the governance trail compliance needs.** This page wires that in three steps on an already-running engine: **configuration**, **roles**, and **keys**.
+In about ten minutes your team can work on their own — signing in with the identity provider
+you already have, using credentials they never see, doing only what their role allows. Every
+one of those runs is scoped, checked, and written down, which is the part you will be asked
+about later. Three steps on an already-running engine: **configuration**, **roles**, **keys**.
 
 > **Audience:** The admin standing up governance for a team.
 > **Time:** ~10 minutes.

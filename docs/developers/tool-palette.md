@@ -1,9 +1,9 @@
 # Tool palette and dispatch
 
-**Outcome:** every LLM action against sk is a *named, governed* tool — one
-registry, one policy gate, one audit trail. No ad-hoc calls, no surface that
-quietly skips a permission check. A write to prod gates the same whether it
-arrives over chat or MCP.
+Every action an LLM can take against sk is a named tool that goes through one registry, one
+policy gate, and one audit trail. There are no ad-hoc calls and no surface that quietly
+skips a permission check: a write is gated identically whether it arrives over chat or over
+MCP.
 
 > **Status:** authoritative. See
 > [`apps/engine/src/tools/`](../../apps/engine/src/tools/) for the

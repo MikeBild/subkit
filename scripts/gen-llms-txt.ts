@@ -49,6 +49,7 @@ const EXCLUDE_DIRS = new Set(["internal", "_tapes"]);
 
 // Audience folder -> section heading, in emission order.
 const AUDIENCE_ORDER: ReadonlyArray<{ dir: string; label: string }> = [
+  { dir: "start", label: "Start here" },
   { dir: "concepts", label: "Concepts" },
   { dir: "operators", label: "Operators" },
   { dir: "authors", label: "Authors" },
@@ -159,8 +160,14 @@ function main(): void {
   for (const file of files) {
     const rel = relative(".", file).split("\\").join("/");
     const segments = rel.split("/");
-    // segments[0] === "docs"; audience is the next path segment.
-    const audience = segments.length >= 3 ? segments[1] : "";
+    // segments[0] === "docs"; audience is the next path segment. A page that
+    // sits directly in docs/ has no audience folder and gets the synthetic
+    // `start` audience, which emits first — that is where the entry page for
+    // readers with no prior context lives. docs/README.md is excluded: it is
+    // the human index, and llms.txt is its machine twin, so indexing it would
+    // list the index inside itself.
+    const audience = segments.length >= 3 ? segments[1] : "start";
+    if (rel === "docs/README.md") continue;
     if (!AUDIENCE_ORDER.some((a) => a.dir === audience)) continue;
 
     const content = readFileSync(file, "utf8");

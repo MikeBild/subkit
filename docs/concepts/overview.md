@@ -2,15 +2,19 @@
 
 > **Audience:** Anyone forming a first mental model of sk — architects, operators, authors, contributors.
 
-**Ship audited automation in hours, not sprints — and keep every run governed,
-versioned, and auditable.** A team describes the outcome in plain language; sk turns it into a
-governed, versioned workflow; an operator approves it; the engine runs it against the
-connectors (the SaaS and apps your team already uses) along a control flow that is fixed
-at approval time.
+This page explains why sk's promise — describe it, approve it, it runs, and you can prove
+what it did — survives contact with production. Read it once and you can predict the
+system's behaviour instead of discovering it.
 
-One contract holds throughout: **AI assists with *authoring*; the *control flow* of an
-approved workflow is fixed and never re-decided at runtime.** Multi-tenancy, RBAC,
-encrypted credentials, and an append-only audit trail apply to every entry point.
+The shape is simple. Someone describes an outcome in plain language. sk turns that into a
+workflow. A person approves it. From then on the engine runs it against your connectors —
+the apps and services your team already uses — along a path that was fixed at approval
+time.
+
+One contract holds throughout, and everything else follows from it: **AI assists with
+*authoring*; the *control flow* of an approved workflow is fixed and never re-decided at
+runtime.** Multi-tenancy, permission checks, encrypted credentials, and an append-only
+audit trail apply to every entry point, without exception.
 
 ---
 
@@ -18,7 +22,7 @@ encrypted credentials, and an append-only audit trail apply to every entry point
 
 ![sk architecture at a glance — external AI clients cross the product-local MCP OAuth boundary into the engine; other surfaces enter directly. Tenant Context (Skills · Knowledge · Discovery · Skill/Patch Candidates) is the compounding learning loop.](./overview.png)
 
-*External clients (IDE assistants, employee chat) reach governed workflows only through SubKit's product-local **MCP OAuth boundary**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`./overview.drawio`](./overview.drawio).*
+*External clients (IDE assistants, employee chat) reach governed workflows only through sk's product-local **MCP OAuth boundary**; other surfaces (Chat adapters, CLI, HTTP REST API, Inbound Webhooks, Scheduler) enter directly. The engine groups into six clusters; the green **Tenant Context** cluster is the compounding loop. Source: [`./overview.drawio`](./overview.drawio).*
 
 ```mermaid
 flowchart TB

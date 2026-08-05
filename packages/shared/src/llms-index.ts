@@ -28,8 +28,11 @@ export const OPTIONAL_PATHS: ReadonlySet<string> = new Set([
 ]);
 
 // Audience folder -> section heading, in emission order. Mirrors
-// AUDIENCE_ORDER in scripts/gen-llms-txt.ts.
+// AUDIENCE_ORDER in scripts/gen-llms-txt.ts. `start` is not a folder: it is
+// the synthetic audience the generator assigns to pages that sit directly in
+// docs/, so the entry page is the first thing a model reads.
 const AUDIENCE_LABELS: ReadonlyArray<{ dir: string; label: string }> = [
+  { dir: "start", label: "Start here" },
   { dir: "concepts", label: "Concepts" },
   { dir: "operators", label: "Operators" },
   { dir: "authors", label: "Authors" },

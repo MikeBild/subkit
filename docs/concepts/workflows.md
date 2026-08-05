@@ -2,7 +2,7 @@
 
 > **Audience:** Engineers integrating the runtime, operators monitoring executions
 
-**An approved workflow takes the same path every time — a fixed control flow, a permanent record, fully audited.** That is what lets an enterprise put revenue operations, compliance reporting, and back-office work on autopilot: every run is permission-checked, recorded, versioned, and replayable. No model decides what an approved workflow does. AI authors; the engine runs.
+Once you approve a workflow, it takes the same path every time — no model reconsiders it on the next run. That is what makes it safe to leave month-end reporting, invoice checks, or back-office routine running unattended: each run is permission-checked, recorded, tied to a version, and replayable when someone asks what happened. AI writes the workflow; the engine runs it.
 
 This page covers the workflow lifecycle, the execution model, the eight Step kinds, triggers, versioning and rollback, scheduling, self-healing, and the observability surface operators rely on.
 

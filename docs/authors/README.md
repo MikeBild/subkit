@@ -1,9 +1,10 @@
 # Authors
 
-Build and run workflows by chatting with `sk` — describe the outcome in plain
-language, approve what the AI proposes, and ship a governed, versioned workflow.
+Get from one sentence to a process that runs every week without you. You describe the
+outcome, sk builds it and shows you what it built, you approve it — and from then on it
+runs, permission-checked and recorded, whether you are at your desk or not.
 
-![sk](../_tapes/out/repl-author.gif)
+![Describing a workflow in plain language, previewing it, approving it, and running it](../_tapes/out/repl-author.gif)
 
 ```mermaid
 flowchart TD
@@ -19,6 +20,10 @@ flowchart TD
     R --> SL[slash-commands.md<br/>REPL command reference]
     R --> SE[settings.md<br/>sk config reference]
 ```
+
+Everything the REPL can do is one `/` away — drafts, connectors, context, settings:
+
+![Typing a slash in the sk REPL brings up a fuzzy command list: draft, connectors, context, settings](../_tapes/out/repl-slash.gif)
 
 | Doc | What it covers |
 |---|---|
