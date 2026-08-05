@@ -1,6 +1,6 @@
 # Admins — govern access
 
-**Govern your tenants, identity, RBAC, secrets, and hardening — so a team moves fast while every run stays permission-checked, scoped, and audited.**
+Hand a team the keys without handing over the building. This section gets you to the point where people can move on their own — sign in with your existing identity provider, use credentials they never see, run what their role allows — and every one of those runs is scoped, checked, and written down.
 
 ```mermaid
 flowchart TD

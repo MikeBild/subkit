@@ -94,6 +94,31 @@ describe("renderLlmsIndex", () => {
     expect(out).not.toContain("## Authors");
   });
 
+  test("the `start` audience renders first, ahead of every other section", () => {
+    const withStart = renderLlmsIndex(
+      [
+        ...pages,
+        page({
+          audience: "start",
+          path: "docs/start-here.md",
+          title: "Start here",
+          summary: "What sk is, with no prior knowledge assumed.",
+        }),
+      ],
+      { linkFor: (p) => p.path, fullUrl: "f" },
+    );
+    const start = withStart.indexOf("## Start here");
+    expect(start).toBeGreaterThan(-1);
+    expect(withStart).toContain(
+      "- [Start here](docs/start-here.md): What sk is, with no prior knowledge assumed.",
+    );
+    // Ahead of every other audience section that rendered.
+    for (const heading of ["## Concepts", "## Developers", "## Optional"]) {
+      const idx = withStart.indexOf(heading);
+      if (idx > -1) expect(start).toBeLessThan(idx);
+    }
+  });
+
   test("no `## Optional` section when no page is optional", () => {
     const nonOptional = pages.filter((p) => !OPTIONAL_PATHS.has(p.path));
     const noneOptional = renderLlmsIndex(nonOptional, {

@@ -3,9 +3,9 @@
 > **Audience:** You use Claude Code, Codex, Cursor, Claude Desktop, claude.ai,
 > or ChatGPT, and want it grounded in your team's knowledge instead of guessing.
 
-**Outcome:** every new session starts knowing your domain's rules, looks your
-runbooks up instead of inventing them, and what you teach it in one session is
-waiting — after your review — in the next one.
+Every new session starts already knowing your domain's rules, looks your
+runbooks up instead of inventing them, and remembers what you taught it last
+time — once you have reviewed and approved that lesson.
 
 This page is the whole path: install → connect your client → import your
 knowledge → ask a grounded question. About 10 minutes.

@@ -1,6 +1,8 @@
 # Quickstart — Operator
 
-**Outcome: a governed, audited automation engine your whole team can use — live in production in 15 minutes.** Every workflow run is permission-checked, recorded, and replayable, so you ship automation without trading away control.
+In 15 minutes your team has somewhere to put work that should run by itself — live, with a
+connected system to point at. Every run that follows is permission-checked, recorded, and
+replayable, so you can hand this to people without handing over control.
 
 Three steps get you there: engine up → admin key minted → first connector registered.
 
@@ -11,7 +13,7 @@ flowchart LR
     C --> D[Operational<br/>workflows, audit, metrics]
 ```
 
-![sk REPL](../_tapes/out/operator-onboard.gif)
+![Connecting a system in the sk terminal: pick the target, enter credentials, test the connection, save](../_tapes/out/operator-onboard.gif)
 
 > **Brand new to sk?** The [zero-to-running quickstart](../developers/self-host.md) walks a complete beginner from the Docker image through a first connector, workflow, and knowledge article.
 

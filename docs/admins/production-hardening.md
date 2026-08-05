@@ -1,8 +1,8 @@
 # Production hardening — known caveats & TODOs
 
-**Outcome:** ship sk **production-ready, audit-ready, and recoverable.** Every
-workflow run stays permission-checked, recorded, and replayable — and a clean
-operator can rebuild the whole estate from a database backup alone.
+Work through this page and you can go live knowing three things: every run is
+permission-checked and recorded, someone can answer an auditor's questions from what was
+written down, and you could rebuild the entire setup from a database backup alone.
 
 This page lists the **deliberate defaults** the engine ships with. Each surfaces
 as a loud `warn` line at boot — *not* a bug. For every item: what it is, the

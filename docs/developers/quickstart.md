@@ -1,6 +1,8 @@
 # Quickstart — Developer
 
-Ship to sk with confidence: a green quality gate on every change keeps regressions out of production. From clone to a passing test suite and a live engine in about 10 minutes.
+In about ten minutes you go from a clone to a passing test suite and an engine running on
+your machine — the setup you need before changing anything. The same quality gate runs
+here and in CI, so a green run locally means the same thing it means in the pipeline.
 
 ```mermaid
 flowchart LR

@@ -3,10 +3,10 @@
 > **Audience:** Authors and operators encoding organization-specific guidance for
 > the AI.
 
-**Outcome:** sk encodes your conventions once, then applies them on every
-Conversation, discovery, and repair — so authored workflows ship faster, pass
-review sooner, and stay policy-uniform across tenants. With approval, it gets
-smarter over time.
+Write down a convention once and stop repeating it. From then on sk applies it
+on every conversation, every discovery, every repair — so drafts arrive already
+in your house style and reviews get shorter. When a pattern shows up often
+enough, sk proposes it as a new Skill, and you decide whether it becomes one.
 
 A Skill is a curated, reusable piece of context loaded into the AI's context
 window during a Conversation and other AI-assisted authoring flows (discovery,

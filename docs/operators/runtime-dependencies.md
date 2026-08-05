@@ -2,7 +2,7 @@
 
 > **Audience:** SREs, platform engineers, operators running sk in production
 
-**Outcome: discovery works against every documentation site, including JavaScript-rendered SPAs.** The engine ships as a single self-contained binary, but one last-resort capability — rendering an SPA documentation site to discover a connector — needs a real browser on the host. This page documents that dependency, why it exists, and how it is provisioned so the strategy runs in production instead of silently self-skipping.
+Discovery works against every documentation site, including the ones that render themselves in JavaScript — provided one thing is installed on the host. The engine ships as a single self-contained binary, with exactly one exception: rendering an SPA documentation site needs a real browser. This page covers that dependency, why it exists, and how to provision it so the strategy actually runs in production instead of quietly skipping itself.
 
 ## What needs a host dependency
 

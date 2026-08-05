@@ -89,7 +89,7 @@ response.
 
 ### Privacy-safe product usage
 
-SubKit can persist a product-internal usage ledger in its own Postgres. It is disabled by
+sk can persist a product-internal usage ledger in its own Postgres. It is disabled by
 default and makes no external request. Configure a dedicated product-local key before the
 switch so actor and session identities are one-way HMAC pseudonyms:
 
