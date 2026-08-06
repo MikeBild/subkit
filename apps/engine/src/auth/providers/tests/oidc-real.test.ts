@@ -434,7 +434,7 @@ describe("oidc provider — browser error pages", () => {
     );
     expect(html).toContain('href="/v1/identity/login/start"');
     expect(html).toContain(">Sign in again</a>");
-    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
+    expect(html).toContain('data-auth-contract="mcp-auth"');
   });
 
   test("unknown state keeps the JSON contract for Accept: application/json", async () => {
