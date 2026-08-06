@@ -24,6 +24,7 @@ export const OPTIONAL_PATHS: ReadonlySet<string> = new Set([
   "docs/admins/settings-reference.md",
   "docs/authors/settings.md",
   "docs/authors/slash-commands.md",
+  "docs/catalog.md",
   "docs/developers/cli-reference.md",
 ]);
 

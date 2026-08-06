@@ -10,22 +10,26 @@ what happened. This page assumes you know nothing about sk. There is no code on 
 
 Every organisation has work that runs the same way every time.
 
-Every Monday, someone pulls numbers out of three different systems, compares them to last
-week, and sends a mail. Every invoice gets checked against the order it belongs to. Every
-new colleague gets set up in eight tools.
-
-Today a person does this. It is dull, it takes hours, and when that person is on holiday it
-does not happen.
+Here is one, told to the end. A new customer pays. Someone notices the payment, copies
+the customer into the CRM, and tells the team in chat. Three systems, the same steps,
+every time — and when that someone is in a meeting, on holiday, or simply tired, the CRM
+is out of date and nobody heard about the sale.
 
 ## What sk does
 
 You describe what should happen, in ordinary sentences:
 
-> *"Every Monday morning, take the revenue from our shop, compare it to the previous week,
-> and mail me the difference."*
+> *"When a new customer pays in Stripe, create the contact in HubSpot and post it to our
+> sales channel in Slack."*
 
 sk works out how to do it, shows you what it built, and waits. You look at it. If it is
-right, you approve it. From that Monday on, it happens by itself.
+right, you approve it. From then on, it happens by itself.
+
+That exact process ships in the box as a blueprint (`stripe/new-customer-enrich-notify`),
+alongside hundreds of others — and the same shape covers everything from a daily
+infrastructure digest to a company knowledge base that answers questions with sources. Real cases, each
+traceable to something that ships or something we run ourselves:
+[Use cases](use-cases.md).
 
 ![Connecting a system in the sk terminal: pick the target, enter credentials, test the connection, save](_tapes/out/operator-onboard.gif)
 

@@ -401,6 +401,7 @@ The deliberate non-fail-on-stale design lets the catalogue ship even when the sw
 
 ## Further reading
 
-- [Recipe authoring contract](../authors/recipes.md) — schema, conventions, multi-connector binding, quality gate, promotion checklist for pre-built workflows shipped on every connector template.
+- [Connector & recipe catalog](../catalog.md) — everything that ships: every template by category, every recipe with its trigger kind.
+- [Recipe authoring contract](../developers/recipes.md) — schema, conventions, multi-connector binding, quality gate, promotion checklist for contributing recipes.
 - [Workflow execution](./workflows.md) — how workflows that use Connectors actually run: the execution model, step kinds, triggers, versioning, and self-healing.
 - [glossary — integration terms](./glossary.md#group-3-integration) — Connector, Connector Template, Driver, Credential.
