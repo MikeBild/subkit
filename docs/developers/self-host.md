@@ -121,7 +121,7 @@ The only browser endpoints remain `/v1/identity/login/start`,
 `/v1/identity/login/callback`, and `/v1/identity/logout` regardless of adapter
 id or vendor.
 
-The chooser is deliberately not vendor-configurable: `mcp-auth-v2` always
+The chooser is deliberately not vendor-configurable: `mcp-auth` always
 shows **Continue with SSO** first and **Continue with API key** second. Provider
 ids remain opaque deployment configuration, discovery returns canonical
 labels (`SSO`, `API key`), and assertion exchange uses only
