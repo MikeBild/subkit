@@ -25,6 +25,23 @@ sequenceDiagram
 
 Every step is permission-checked and recorded. Nothing writes to a real system until you approve.
 
+## The first thing to try
+
+Once connected (pick a path below), type a sentence, not a command. Two that work
+immediately:
+
+> *"Show me the top five repos of the vercel org by stars."*
+
+Every fresh tenant already carries this as a seeded, credential-free demo workflow — so
+your very first run succeeds before any system is connected. Then point at a system your
+operator has connected:
+
+> *"Every morning at 7, mail me our open Jira tickets grouped by assignee."*
+
+sk proposes the workflow, `/preview` shows you the dry run with every write held back,
+`/approve` commits it. More worth building, with what each case needs:
+[Use cases](../use-cases.md).
+
 ## Connect
 
 Your operator has given you **one** of the following. Pick the matching path.

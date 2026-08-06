@@ -68,7 +68,7 @@ Two things follow, and both are the point rather than a caveat:
 
 ## Step Kinds
 
-A Workflow is composed of Steps. sk ships eight Step kinds, grouped by what they do. The discriminator field is `kind`; the schema source of truth is [`apps/engine/src/workflows/types.ts`](../../apps/engine/src/workflows/types.ts) (`StepSchema`). There is no `tool` kind (no docker-based sandbox runner) — this is a data-workflow engine, not a container runtime.
+A Workflow is composed of Steps. sk ships eight Step kinds, grouped by what they do. There is no `tool` kind (no docker-based sandbox runner) — this is a data-workflow engine, not a container runtime.
 
 ```mermaid
 flowchart LR
@@ -89,30 +89,24 @@ flowchart LR
     Time --> wait_for_event["wait_for_event<br/>HITL signal pause"]
 ```
 
-| `kind` | Required fields | Behaviour |
-|---|---|---|
-| `request` | one of `url` / `connector_id` / `sql`; optional `method`, `headers`, `query`, `body`, `pagination`, `graphql`, `sql`, `s3`, `mcp`, `xml`, `expected_statuses`, `expected_row_count`, `idempotency_key`, `outputs`, `side_effects` | Calls a connector endpoint. Routed through the connector's driver (HTTP, GraphQL, Postgres, S3, MCP) with the tenant's credentials and the governance layer. Each non-HTTP driver is a SUB-BLOCK of `request`, never a step kind of its own, so retry, backoff, `error_policy`, `response_filters` and the versioned output envelope apply identically whichever driver runs. The `mcp` block names one of three operations — `call_tool` (with `tool`), `read_resource` (with `uri`), `get_prompt` (with `prompt`) — against a connector whose driver is `mcp`. Every `call_tool` returns the envelope `{ content, structured_content }`: the typed half is what the remote promised conforms to its declared `outputSchema`, kept separate rather than merged, and `null` when the tool declared none — so a server that later adds an output schema fills the key in instead of re-shaping the output of a saved workflow. `read_resource` and `get_prompt` return their payload verbatim, because the protocol gives neither a typed half. The operation named in the step decides the shape; the reply never does. Connector tests and request steps share the same request execution core, so authoring-time probes and runtime behaviour stay aligned. |
-| `transform` | `expression` (for `javascript`); optional `language` (`javascript` — the default and only expression language — or one of the web-scraper extractors `readability` / `html-to-markdown` / `structured-data`), `input_schema`, `output_schema`, `silence_warnings` | Reshapes data between steps. The expression is a sandboxed JavaScript function body with an explicit `return`: upstream step outputs are at `input.scope.<id>.data`, the workflow input at `input.input`, and (inside a loop body) the current item at `input.scope.$item`. JSONata is not a transform language — it survives only in the one-line slots (`loop.over`, `branch.when`, `output_transform`, `data_selector`, `${scope.x.data}` interpolation). The web-scraper extractors carry no `expression` and read the upstream HTML body. No network access, bounded heap and wall-clock per `SANDBOX_MEMORY_LIMIT_BYTES` / `TRANSFORM_TIMEOUT_DEFAULT_MS` (overridable via `sandbox.transform_wall_ms`). |
-| `branch` | `when`, `then_steps[]`; optional `else_steps[]` | Deterministic conditional routing. The engine evaluates `when` against scope and dispatches the matching branch — no inference, no fallthrough. |
-| `loop` | `body[]`; exactly one of `over` or `data_selector` | Iterates a collection, executing `body` per item. Inside the body the current item is `$item` (JSONata expressions) / `${item.…}` (request placeholder strings), plus the zero-based `$loop_index`. `item_var` is retired: authoring it is rejected (`validateWorkflowDef`); historical stored versions that declared it keep executing unchanged. `data_selector` is the JS expression form (preferred for new loops, surfaces real exceptions); `over` is the legacy path/JSONata form. |
-| `parallel` | `branches[][]` | Executes multiple step sequences concurrently and merges their results. The engine fans out, awaits all branches, then continues. |
-| `wait` | `duration_ms` (≤ 24 h) | Deliberate delay for polling, rate-limit management, or human-paced flows. |
-| `wait_for_event` | `event_name`, `timeout_ms`; optional `match`, `on_timeout` | Signal-driven HITL pause. The runner inserts a `workflow_waits` checkpoint, polls `workflow_signals` at 1 s cadence, and resumes when a matching signal arrives or `timeout_ms` elapses. The runner does NOT implicitly skip downstream steps on timeout — the workflow author MUST follow the wait with an explicit `branch` step that gates the success vs timeout path on `$.steps.<wait_id>.timed_out`. |
-| `call` | one of `workflow_id` or `workflow_slug`; optional `input` | Invokes another workflow. Recursion is capped by `MAX_CALL_DEPTH` (5). |
+| `kind` | What it carries |
+|---|---|
+| `request` | Calls a system through a connector — HTTP, GraphQL, SQL, S3, or a remote MCP server. One step kind, five drivers, so retry, backoff, and the audit envelope behave identically whichever system is on the other end. |
+| `transform` | Reshapes data between steps in a sandboxed JavaScript expression — no network access, bounded time and memory. |
+| `branch` | Deterministic conditional routing — the engine evaluates the condition and dispatches the matching branch, no inference, no fallthrough. |
+| `loop` | Iterates a collection, running its body once per item. |
+| `parallel` | Fans out independent step sequences concurrently and merges their results. |
+| `wait` | A deliberate delay (up to 24 h) — polling, rate-limit pacing, human-paced flows. |
+| `wait_for_event` | Pauses the run for an external signal — the human-in-the-loop gate. The run resumes when the signal arrives, or takes an explicit timeout path the author defines. The shipped `merge-pr-after-approval` recipe is the canonical example: open a PR, wait up to 24 h for approval, merge or abandon. |
+| `call` | Invokes another saved workflow — sub-processes compose into pipelines. |
 
-Every step also accepts the shared base fields `id`, `on_error` (`fail` \| `continue`), `data_selector`, and `timeout_ms`.
+Two contracts sit on top and matter to everyone, not just contributors:
 
-### Read/write classification and hold-writes previews
+**Every request is classified read or write.** The driver classifies at dispatch time (a GET is a read, a mutation is a write; an external MCP tool call is a write until someone inside the tenant says otherwise), and the author can override either way.
 
-Request steps carry an optional `side_effects: "read" | "write"` field. When unset, the driver classifies at dispatch time: HTTP `GET`/`HEAD`/`OPTIONS` = read, other methods = write; GraphQL `query` = read, `mutation`/`subscription` = write; SQL SELECT-only = read, anything else = write; S3 GET/HEAD/LIST = read; MCP `read_resource` and `get_prompt` = read, `call_tool` = **write**. A remote MCP tool gets no benefit of the doubt: the specification's `readOnlyHint` is optional and is asserted by the same party whose side effects it describes, so the engine does not read it — an external tool call is a write until someone inside the tenant says otherwise. Set `"read"` explicitly for a POST that is semantically a search, or `"write"` to force-hold a GET that mutates server state.
+**Previews hold writes.** A dry run executes read steps live but fully resolves and *holds* every write — URL, headers, the materialized body are recorded, nothing is dispatched. You see exactly what would have been sent before anything is sent; executing writes during a preview takes an explicit confirmation.
 
-The classification drives dry-run previews: a `dry_run_workflow` preview HOLDS WRITES by default. Read steps execute live against the real upstream; write steps (sends, posts, publishes) are fully resolved — URL, headers, the materialized body — but never dispatched; the held request is recorded as the step artifact. The instruction-grounded preview judge reads the held payloads, and a green preview with a passing judge verdict auto-commits the draft. Executing writes for real during a preview requires explicit user confirmation (`execute_writes: true`).
-
-### Wait-for-event timeout pattern
-
-The `wait_for_event` step's `timeout_ms` bounds the per-step wait window. The surrounding `WorkflowDef.timeout_ms` (the workflow envelope) must be ≥ the wait step's bound — the `WorkflowDefSchema` `superRefine` enforces this at save time so a 24 h approval window can't be silently truncated by a 6 h workflow timeout. In practice the envelope should leave headroom for the post-wait merge / abandon transitions; e.g. a 24 h wait inside a 25 h workflow.
-
-Because the runner does not auto-skip downstream steps on timeout, every wait-for-event workflow needs an explicit `branch` step that gates the success vs timeout path. The canonical example is the **`merge-pr-after-approval`** recipe under the GitHub template (`apps/engine/src/connectors/templates.json`): it opens a PR, waits up to 24 h for an external `pr_approved` signal, and routes through a branch step (`when: $boolean($.steps.await_approval.timed_out)`) into either a `merge` request or an `abandon_on_timeout` transform. Cancel-race semantics for human-paused workflows are documented in [`apps/engine/src/conversations/abort.ts`](../../apps/engine/src/conversations/abort.ts) (single-replica caveat, tenant-scoped registry, expected reasons).
+The exact field contract of every step kind — schemas, sandbox limits, timeout interplay — is the [step-kinds field reference](../developers/step-kinds-reference.md).
 
 ---
 

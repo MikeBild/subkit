@@ -6,6 +6,7 @@
 ## Start here
 
 - [Start here](start-here.md): sk takes the work your team does the same way every week and runs it for you — reviewed before it goes live, permission-checked every time, and recorded so you can always show what happened.
+- [Use cases](use-cases.md): What people actually run on sk — as cases, not features.
 
 ## Concepts
 
@@ -35,6 +36,7 @@
 ## Authors
 
 - [Authors](authors/README.md): Get from one sentence to a process that runs every week without you.
+- [Ask your company's knowledge](authors/asking-your-knowledge.md): Ask a question where you already work, and the company answers from its own documents — naming what it read, or saying plainly that the answer isn't in there.
 - [AI-Assisted Authoring](authors/authoring-workflows.md): Describe what should happen and have a reviewed, versioned workflow the same afternoon — instead of a build project that runs for weeks.
 - [Choosing your surface](authors/choosing-your-surface.md): Do the work where it actually goes faster.
 - [Use sk from a coding agent (Claude Code, Codex, …)](authors/coding-agents.md): Every new session starts already knowing your domain's rules, looks your runbooks up instead of inventing them, and remembers what you taught it last time — once you have reviewed and approved that lesson.
@@ -42,7 +44,6 @@
 - [Knowledge Sources](authors/knowledge-sources.md): Workflows follow your runbooks and policies instead of generic knowledge.
 - [Model a Domain](authors/model-a-domain.md): Teach sk a whole field of work once, and every workflow in it arrives right the first time.
 - [Quickstart — Authors](authors/quickstart.md): In about five minutes you will have described a piece of work in ordinary sentences and watched it run — no code written, nothing touched in a real system until you said so.
-- [Recipe authoring](authors/recipes.md): Common automations start from a vetted blueprint, not a blank page.
 - [Using the `sk` REPL — authoring by conversation](authors/repl-tour.md): Go from idea to a governed, versioned workflow in minutes — no JSON, no glue code.
 
 ## Developers
@@ -52,7 +53,9 @@
 - [Evidence process — verifying a behavioral / LLM-path change](developers/evidence-process.md): Changes to LLM-driven paths ship proven rather than guessed.
 - [Input Surfaces](developers/input-surfaces.md): Meet your team where they already work—with one governed engine and one common MCP auth contract.
 - [Quickstart — Developer](developers/quickstart.md): In about ten minutes you go from a clone to a passing test suite and an engine running on your machine — the setup you need before changing anything.
+- [Recipe authoring](developers/recipes.md): Common automations start from a vetted blueprint, not a blank page.
 - [Self-Host sk — Zero to Running](developers/self-host.md): sk runs inside your own infrastructure, so your data stays where it already is.
+- [Step kinds — field reference](developers/step-kinds-reference.md): A Workflow is composed of Steps.
 - [Tool palette and dispatch](developers/tool-palette.md): Every action an LLM can take against sk is a named tool that goes through one registry, one policy gate, and one audit trail.
 
 ## Admins
@@ -69,4 +72,5 @@
 - [subkit runtime settings](admins/settings-reference.md): Every value below lives in subkit.config.json and is editable via sk settings configure or sk settings set .
 - [sk settings](authors/settings.md): Settings for the sk CLI itself — separate from the engine's runtime settings (see settings-reference).
 - [Slash commands](authors/slash-commands.md): Slash commands run from the sk REPL.
+- [Connector & recipe catalog](catalog.md): What ships in the box: 57 connector templates across 16 categories, carrying 240 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page.
 - [sk CLI reference](developers/cli-reference.md): Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run.
