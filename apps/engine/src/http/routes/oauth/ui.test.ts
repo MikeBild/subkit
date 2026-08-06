@@ -10,7 +10,7 @@ import {
   STATE_ERROR_MESSAGE,
 } from "./ui.ts";
 
-const COMMON_STYLE_SHA256 = "fb9d19063e79757a73139720508cf27207214b98405e156bab894bad85796a0c";
+const COMMON_STYLE_SHA256 = "ebdaece15b70206254f6430990bd14abfbc51a62d319cda6383bc8163b10b4d3";
 
 describe("common MCP auth UI contract", () => {
   test("is branded, escaped, script-free and request-bounded", () => {
@@ -26,8 +26,8 @@ describe("common MCP auth UI contract", () => {
       redirectUri: "https://client.example/callback",
       resource: "",
     });
-    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
-    expect(html).toContain('name="mcp-auth-ui-contract" content="2"');
+    expect(html).toContain('data-auth-contract="mcp-auth"');
+    expect(html).toContain('name="mcp-auth-ui-contract" content="sha256-ebdaece15b70"');
     expect(html).toContain("max-width:420px");
     expect(html).toContain('value="mcp:read" checked disabled');
     expect(html).toContain('value="switch_account"');
@@ -46,14 +46,21 @@ describe("common MCP auth UI contract", () => {
     expect(html.indexOf("Continue with SSO")).toBeLessThan(html.indexOf("Continue with API key"));
     expect(html).toContain('class="provider-stack"');
     expect(html).not.toContain("Continue with Continue with");
-    const styles = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+    const styles = html.match(/\/\*mcp-auth:begin\*\/([\s\S]*?)\/\*mcp-auth:end\*\//)?.[1] ?? "";
     expect(createHash("sha256").update(styles).digest("hex")).toBe(COMMON_STYLE_SHA256);
   });
 
-  test("tokens pin the neutral ink primary with black hover", () => {
+  test("the funnel declares both schemes, in the family palette", () => {
+    // The funnel was `color-scheme:light` and nothing else, so an operator
+    // working in dark met a white page. SubKit ships no web console and so has
+    // no explicit preference to honour — the media query is the whole answer
+    // here, and the .scheme-* classes are carried but never set.
     const html = renderProviderChoice([]);
-    expect(html).toContain("--primary:#1f2328;--primary-hover:#000");
-    expect(html).not.toContain("#1f6feb");
+    expect(html).toContain("color-scheme:light dark");
+    expect(html).toContain("@media(prefers-color-scheme:dark)");
+    expect(html).toContain("--background:#ffffff;--foreground:#020817");
+    expect(html).toContain("--background:#020817;--foreground:#f8fafc");
+    expect(html).not.toContain("--ink:");
   });
 
   test("error page renders inside the shared template with a retry entry point", () => {
@@ -68,9 +75,9 @@ describe("common MCP auth UI contract", () => {
     );
     expect(html).toContain('href="/v1/identity/login/start"');
     expect(html).toContain(">Sign in again</a>");
-    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
-    expect(html).toContain('name="mcp-auth-ui-contract" content="2"');
-    const styles = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+    expect(html).toContain('data-auth-contract="mcp-auth"');
+    expect(html).toContain('name="mcp-auth-ui-contract" content="sha256-ebdaece15b70"');
+    const styles = html.match(/\/\*mcp-auth:begin\*\/([\s\S]*?)\/\*mcp-auth:end\*\//)?.[1] ?? "";
     expect(createHash("sha256").update(styles).digest("hex")).toBe(COMMON_STYLE_SHA256);
     const response = authHtmlResponse(html, 400);
     expect(response.status).toBe(400);

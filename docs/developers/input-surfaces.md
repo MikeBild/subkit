@@ -268,7 +268,7 @@ compatibility path.
 
 **Prerequisites.** Set `server.public_base_url` to the engine's public `https://` URL in `subkit.config.json` (or via `sk settings set server.public_base_url '"https://your-engine.example.com"'`). The MCP OAuth feature is enabled by default (`auth.mcp_oauth.enabled = true`). Configure authentication exclusively through `auth.providers`. It accepts one `api_key` plus multiple named direct `oidc` adapters. Each OIDC client, secret, callback and tenant mapping belongs to this sk deployment. Provider ids and labels are deployment-owned values, never engine modes.
 
-The visible state machine is the common `mcp-auth-v2` contract. Authorize
+The visible state machine is the common `mcp-auth` contract. Authorize
 redirects to `/v1/identity/login/start?login_state=<opaque>`; the chooser
 always renders **Continue with SSO** before **Continue with API key** and does
 not expose the configured provider label. The consent, account-switch and
