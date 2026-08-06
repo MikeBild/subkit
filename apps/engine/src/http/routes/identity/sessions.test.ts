@@ -117,7 +117,7 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
     expect(html).toContain("<h1>Sign-in failed</h1>");
     expect(html).toContain("This sign-in attempt expired or was already used.");
     expect(html).toContain('href="/v1/identity/login/start"');
-    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
+    expect(html).toContain('data-auth-contract="mcp-auth"');
   });
 
   test("the browser login funnel start without a valid login_state renders the HTML error page", async () => {

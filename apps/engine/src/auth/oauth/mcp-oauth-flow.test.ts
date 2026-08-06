@@ -86,7 +86,7 @@ describe("GET /v1/oauth/authorize", () => {
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
     expect(html).toContain("<h1>Sign-in failed</h1>");
-    expect(html).toContain('data-auth-contract="mcp-auth-v2"');
+    expect(html).toContain('data-auth-contract="mcp-auth"');
   });
 
   test("unknown client_id keeps the 400 JSON contract for Accept: application/json", async () => {
