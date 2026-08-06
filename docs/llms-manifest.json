@@ -2,9 +2,21 @@
   "pages": [
     {
       "audience": "start",
+      "path": "docs/catalog.md",
+      "title": "Connector & recipe catalog",
+      "summary": "What ships in the box: 57 connector templates across 16 categories, carrying 240 recipes — pre-authored, runnable workflows you clone instead of starting from a blank page."
+    },
+    {
+      "audience": "start",
       "path": "docs/start-here.md",
       "title": "Start here",
       "summary": "sk takes the work your team does the same way every week and runs it for you — reviewed before it goes live, permission-checked every time, and recorded so you can always show what happened."
+    },
+    {
+      "audience": "start",
+      "path": "docs/use-cases.md",
+      "title": "Use cases",
+      "summary": "What people actually run on sk — as cases, not features."
     },
     {
       "audience": "concepts",
@@ -128,6 +140,12 @@
     },
     {
       "audience": "authors",
+      "path": "docs/authors/asking-your-knowledge.md",
+      "title": "Ask your company's knowledge",
+      "summary": "Ask a question where you already work, and the company answers from its own documents — naming what it read, or saying plainly that the answer isn't in there."
+    },
+    {
+      "audience": "authors",
       "path": "docs/authors/authoring-workflows.md",
       "title": "AI-Assisted Authoring",
       "summary": "Describe what should happen and have a reviewed, versioned workflow the same afternoon — instead of a build project that runs for weeks."
@@ -167,12 +185,6 @@
       "path": "docs/authors/quickstart.md",
       "title": "Quickstart — Authors",
       "summary": "In about five minutes you will have described a piece of work in ordinary sentences and watched it run — no code written, nothing touched in a real system until you said so."
-    },
-    {
-      "audience": "authors",
-      "path": "docs/authors/recipes.md",
-      "title": "Recipe authoring",
-      "summary": "Common automations start from a vetted blueprint, not a blank page."
     },
     {
       "audience": "authors",
@@ -230,9 +242,21 @@
     },
     {
       "audience": "developers",
+      "path": "docs/developers/recipes.md",
+      "title": "Recipe authoring",
+      "summary": "Common automations start from a vetted blueprint, not a blank page."
+    },
+    {
+      "audience": "developers",
       "path": "docs/developers/self-host.md",
       "title": "Self-Host sk — Zero to Running",
       "summary": "sk runs inside your own infrastructure, so your data stays where it already is."
+    },
+    {
+      "audience": "developers",
+      "path": "docs/developers/step-kinds-reference.md",
+      "title": "Step kinds — field reference",
+      "summary": "A Workflow is composed of Steps."
     },
     {
       "audience": "developers",

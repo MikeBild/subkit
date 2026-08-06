@@ -128,7 +128,7 @@ This is intentional: `stats:read` is the operator-tier permission, and "your run
 
 | Guard | Behaviour |
 |---|---|
-| Portal-token-class principals | **Structurally barred** from `stats:read` regardless of role. The RBAC evaluator short-circuits every identity path (resource grant, group, role) for a `portal_token` provider and admits only the workflow/conversation allow-list (`apps/engine/src/rbac/evaluator.ts:256-306`). A portal token can never resolve `stats:read`, even if a tenant admin mints a custom role carrying it. |
+| Portal-token-class principals | **Structurally barred** from `stats:read` regardless of role. The RBAC evaluator short-circuits every identity path (resource grant, group, role) for a `portal_token` provider and admits only the workflow/conversation allow-list. A portal token can never resolve `stats:read`, even if a tenant admin mints a custom role carrying it. |
 | Audit attribution | Risk values are written to the audit trail under the **system** tenant (`operator.risk_signal_raised` / `operator.risk_signal_cleared`), not the reading tenant's — so the SIEM trail attributes a host condition once rather than per reader. |
 
 ---

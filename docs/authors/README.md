@@ -11,7 +11,7 @@ flowchart TD
     Q[quickstart.md<br/>authenticate · first conversation] --> R[repl-tour.md<br/>the sk REPL · approve-to-commit]
     Q --> CC[coding-agents.md<br/>ground Claude Code / Codex]
     R --> A[authoring-workflows.md<br/>the AI authoring loop]
-    A --> RC[recipes.md<br/>reusable recipes]
+    A --> RC[catalog.md<br/>shipped blueprints]
     A --> CS[custom-skills.md<br/>encode your conventions]
     A --> KS[knowledge-sources.md<br/>ground proposals in your docs]
     CC --> KS
@@ -25,16 +25,18 @@ Everything the REPL can do is one `/` away — drafts, connectors, context, sett
 
 ![Typing a slash in the sk REPL brings up a fuzzy command list: draft, connectors, context, settings](../_tapes/out/repl-slash.gif)
 
-| Doc | What it covers |
+Ordered by the job in front of you, not by mechanism:
+
+| You want to | Doc |
 |---|---|
-| [quickstart.md](quickstart.md) | Get authenticated and open your first authoring conversation in about 5 minutes. |
-| [choosing-your-surface.md](choosing-your-surface.md) | Which door for which job — changing a definition versus running one, with seven worked examples. |
-| [coding-agents.md](coding-agents.md) | Ground Claude Code / Codex in your team's knowledge: connect, import your wiki with a domain tag, grounded sessions, review loop. |
-| [repl-tour.md](repl-tour.md) | Author connectors and workflows by conversation in the `sk` REPL — the approve-to-commit loop, slash commands, headless `-p`. |
-| [authoring-workflows.md](authoring-workflows.md) | The AI authoring loop, the human approval gate, probe/preview, and stage-aware prompting. |
-| [recipes.md](recipes.md) | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
-| [custom-skills.md](custom-skills.md) | Author, scope, and promote Skills that encode your conventions. |
-| [knowledge-sources.md](knowledge-sources.md) | Upload, tag, and refresh the documents the AI grounds its proposals in. |
-| [model-a-domain.md](model-a-domain.md) | Teach sk a whole field of work — the connector + skills + knowledge-source trio, worked end to end. |
-| [slash-commands.md](slash-commands.md) | Generated reference of the `sk` REPL slash commands. |
-| [settings.md](settings.md) | Generated reference of every `sk` configuration key. |
+| **Get connected** and open your first conversation (5 minutes) | [quickstart.md](quickstart.md) |
+| **See what's worth building** — real cases, each traceable to a shipped blueprint or a workflow we run ourselves | [Use cases](../use-cases.md) · [Catalog](../catalog.md) |
+| **Build a process** — the AI authoring loop, the approval gate, probe/preview | [authoring-workflows.md](authoring-workflows.md) |
+| **Pick the right door** for a change — editing a definition vs. running one, seven worked examples | [choosing-your-surface.md](choosing-your-surface.md) |
+| **Ask your company's knowledge** and trust the answer — sourced, quote-checked, honestly refused | [asking-your-knowledge.md](asking-your-knowledge.md) |
+| **Teach sk a whole field of work** — connector + skills + knowledge, worked end to end | [model-a-domain.md](model-a-domain.md) |
+| **Encode your conventions** as Skills the AI follows | [custom-skills.md](custom-skills.md) |
+| **Feed it your documents** — upload, tag, refresh | [knowledge-sources.md](knowledge-sources.md) |
+| **Ground your coding agent** — Claude Code / Codex briefed on your domain, with a review loop | [coding-agents.md](coding-agents.md) |
+| **Drive the `sk` REPL** — the approve-to-commit loop, headless `-p` | [repl-tour.md](repl-tour.md) |
+| **Look something up** — slash commands, configuration keys | [slash-commands.md](slash-commands.md) · [settings.md](settings.md) |

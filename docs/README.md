@@ -12,6 +12,7 @@ on the page.
 
 | You want to | Go to | Roughly |
 |---|---|---|
+| **See what people solve with it** — real cases, each traceable to a shipped blueprint or a workflow we run ourselves | [Use cases](use-cases.md) | 8 min read |
 | **Understand what this is** before deciding anything | [Start here](start-here.md) | 10 min read |
 | **Try it** — nothing to a running engine and a first workflow | [Self-host quickstart](developers/self-host.md) | 30 min |
 | **Get a process running** on a system someone already connected | [Author quickstart](authors/quickstart.md) | 5 min |
@@ -116,9 +117,9 @@ deployment — index first, then fetch just the pages they need.
 | [repl-tour.md](authors/repl-tour.md) | Author connectors and workflows by conversation in the `sk` REPL — the approve-to-commit loop, slash commands, headless `-p`. |
 | [choosing-your-surface.md](authors/choosing-your-surface.md) | Which door for which job — changing a definition versus running one, with seven worked examples. |
 | [authoring-workflows.md](authors/authoring-workflows.md) | The AI authoring loop, the human approval gate, probe/preview, and stage-aware prompting. |
-| [recipes.md](authors/recipes.md) | Recipe authoring deep-dive: schema, intent matching, and worked walkthroughs. |
 | [custom-skills.md](authors/custom-skills.md) | Author, scope, and promote Skills that encode your conventions. |
 | [knowledge-sources.md](authors/knowledge-sources.md) | Upload, tag, and refresh the documents the AI grounds its proposals in. |
+| [asking-your-knowledge.md](authors/asking-your-knowledge.md) | Ask questions where you work and trust the answer: sourced, quote-checked, honestly refused when the knowledge isn't there. |
 
 ---
 
@@ -141,7 +142,6 @@ deployment — index first, then fetch just the pages they need.
 |---|---|
 | [quickstart.md](admins/quickstart.md) | Wire configuration, roles, and keys for a production tenant. 10 minutes. |
 | [configuration.md](admins/configuration.md) | The `sk settings` model: the config file, resolution order, bootstrap env. |
-| [settings-reference.md](admins/settings-reference.md) | Generated per-leaf reference: path, type, default, scope, sensitive, requiresRestart. |
 | [rbac-and-roles.md](admins/rbac-and-roles.md) | Identity (OIDC/SSO, API keys, portal tokens), RBAC/ABAC, Before-Request Hooks. |
 | [credentials-and-keys.md](admins/credentials-and-keys.md) | The credential vault, master-key rotation, and release signing. |
 | [production-hardening.md](admins/production-hardening.md) | The readiness checklist and backup/recovery before you go live. |
@@ -158,6 +158,23 @@ deployment — index first, then fetch just the pages they need.
 | [tool-palette.md](developers/tool-palette.md) | The unified tool palette and dispatcher: registry, naming, policy gates. |
 | [coding-agent-integration.md](developers/coding-agent-integration.md) | sk as the knowledge/skill source for Claude Code and Codex: session briefing, learning capture, human review, SKILL.md sync. |
 | [evidence-process.md](developers/evidence-process.md) | The evidence-first development loop and two-tier test discipline. |
+| [recipes.md](developers/recipes.md) | The recipe authoring contract: schema, conventions, quality gate, and promotion checklist for contributing recipes. |
+
+---
+
+## Reference — look-up pages, not reading paths
+
+Complete and current (all but the glossary are generated from source), but nobody's
+starting point:
+
+| Doc | What it covers |
+|---|---|
+| [catalog.md](catalog.md) | Everything that ships in the box: connector templates by category, and every recipe with its trigger kind. |
+| [cli-reference.md](developers/cli-reference.md) | Every `sk` CLI command and flag. |
+| [settings-reference.md](admins/settings-reference.md) | Every engine setting: path, type, default, scope, sensitive, requiresRestart. |
+| [slash-commands.md](authors/slash-commands.md) | Every `sk` REPL slash command. |
+| [settings.md](authors/settings.md) | Every `sk` CLI configuration key. |
+| [glossary.md](concepts/glossary.md) | Every domain term, defined exactly once. |
 
 ---
 
