@@ -187,18 +187,25 @@ describe("recorder catalog — connector", () => {
     // still being written. Every other test in this file simply awaits its
     // recorder.
     //
-    // It used to poll: twenty rounds of `queueMicrotask` between re-reads. That
-    // is not waiting, it is spinning — a microtask yields the queue, it does not
-    // advance a database write — so on a loaded CI runner the row had not landed
-    // within twenty rounds, `row` was undefined, and the assertion reported the
-    // action as missing. Observed 2026-08-06 on a commit that touched only
-    // CHANGELOG.md, package.json and a regenerated client.
+    // It used to poll: up to twenty re-reads, each preceded by a microtask
+    // yield. That does wait — every re-read is a real round trip — but it waits
+    // for a BOUNDED number of them, and the bound is not tied to anything the
+    // write does. On CI the fire-and-forget insert had not landed inside that
+    // budget, `row` stayed undefined, and the assertion reported the action as
+    // missing. Observed 2026-08-06 on a commit touching only CHANGELOG.md,
+    // package.json and a regenerated client — nothing within reach of this
+    // subsystem.
     //
-    // `_drainAuditWritesForTests` exists for exactly this, and six other suites
-    // already use it. It awaits the write promise itself — `audit()` registers
-    // that promise synchronously before returning, so the drain always covers
-    // the call above. Deterministic rather than usually-long-enough, and with no
-    // setTimeout for the determinism gate to reject.
+    // Stated honestly: the failure did not reproduce locally, under CPU load or
+    // otherwise, so exactly which part of that budget CI exhausted is an
+    // inference. It does not need to be settled, because the fix removes the
+    // budget rather than enlarging it.
+    //
+    // `_drainAuditWritesForTests` exists for this and six other suites use it.
+    // It awaits the write promise itself — `audit()` registers that promise
+    // synchronously before returning, so a drain always covers the call above.
+    // Deterministic rather than usually-long-enough, and with no setTimeout for
+    // the determinism gate to reject.
     await _drainAuditWritesForTests(testDb.db);
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.CONNECTOR_DRAFT_CREDENTIAL_REJECTED);
