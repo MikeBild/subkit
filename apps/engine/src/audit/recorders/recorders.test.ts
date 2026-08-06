@@ -17,6 +17,7 @@ import { eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { _drainAuditWritesForTests } from "../audit.ts";
 import { AuditAction, SYSTEM_TENANT_ID } from "../types.ts";
 import {
   recordConnectorCreated,
@@ -181,13 +182,25 @@ describe("recorder catalog — connector", () => {
       conversation_id: "conv-credreject",
       matched_key_path: "config.headers.Authorization",
     });
-    // Fire-and-forget: poll the row until it lands instead of a fixed
-    // sleep — the determinism gate forbids setTimeout in tests.
-    let row = await fetchRow(entry.id);
-    for (let i = 0; i < 20 && !row; i += 1) {
-      await new Promise<void>((resolve) => queueMicrotask(resolve));
-      row = await fetchRow(entry.id);
-    }
+    // This is the one recorder in the catalog that goes through `audit()`
+    // rather than `auditAwait()`, so it returns synchronously while the row is
+    // still being written. Every other test in this file simply awaits its
+    // recorder.
+    //
+    // It used to poll: twenty rounds of `queueMicrotask` between re-reads. That
+    // is not waiting, it is spinning — a microtask yields the queue, it does not
+    // advance a database write — so on a loaded CI runner the row had not landed
+    // within twenty rounds, `row` was undefined, and the assertion reported the
+    // action as missing. Observed 2026-08-06 on a commit that touched only
+    // CHANGELOG.md, package.json and a regenerated client.
+    //
+    // `_drainAuditWritesForTests` exists for exactly this, and six other suites
+    // already use it. It awaits the write promise itself — `audit()` registers
+    // that promise synchronously before returning, so the drain always covers
+    // the call above. Deterministic rather than usually-long-enough, and with no
+    // setTimeout for the determinism gate to reject.
+    await _drainAuditWritesForTests(testDb.db);
+    const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.CONNECTOR_DRAFT_CREDENTIAL_REJECTED);
     expect(row?.result).toBe("denied");
     expect(row?.reason).toBe("credential_must_use_form");
