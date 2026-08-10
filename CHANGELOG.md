@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.5] – 2026-08-10
+
+### Fixed
+
+- **The Cockpit now follows one interaction system throughout.** Primary,
+  secondary, selected and destructive actions use consistent shadcn variants;
+  icon-only actions have localized tooltips and stable test IDs, while compact
+  layouts own their scrolling without clipped or overlapping content.
+- **Conversation tool calls render as governed action cards again.** Dynamic
+  tool parts are accepted by the renderer, assistant content uses the available
+  width, and redundant icons and internal identifiers stay out of the operator
+  surface.
+- **German and English Cockpit coverage is complete and visually verified.**
+  Navigation, user settings, tooltips, chat controls and all workspace routes
+  are exercised at desktop and mobile sizes by the screenshot sweep.
+
 ## [6.1.4] – 2026-08-10
 
 ### Fixed
