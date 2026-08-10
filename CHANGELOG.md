@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.2] – 2026-08-10
+
+### Changed
+
+- **The Cockpit is now a complete, responsive workspace built from the shared
+  shadcn design language.** Chat, navigation, resource lists, detail panels and
+  mobile layouts use one compact visual hierarchy while retaining Subkit's own
+  product model. The signed-in user's menu now owns profile information,
+  language, colour scheme and sign-out instead of scattering personal settings
+  across operator pages.
+- **Cockpit chrome is available in English and German.** Browser-language
+  detection is the default, with persistent manual selection for English or
+  German. Theme selection likewise supports system, light and dark modes.
+
+### Fixed
+
+- **Opaque database identifiers no longer leak into the working UI.** Resource
+  tables, details, workflow steps and tool results present readable names and
+  labels instead of UUIDs or identifier-shaped fallback values.
+- **Every interactive Cockpit control now has a stable test identifier.** The
+  contract is enforced by an AST test, alongside catalog parity, locale,
+  theme and readable-presentation tests, so future controls cannot silently
+  become inaccessible to browser verification.
+
 ## [6.1.1] – 2026-08-10
 
 ### Added
