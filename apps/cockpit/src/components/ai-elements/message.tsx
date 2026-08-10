@@ -17,8 +17,10 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      "group flex w-full max-w-[95%] flex-col gap-2",
-      from === "user" ? "is-user ml-auto justify-end" : "is-assistant",
+      "group flex min-w-0 flex-col gap-2",
+      from === "user"
+        ? "is-user ml-auto w-fit max-w-[85%] justify-end"
+        : "is-assistant w-full max-w-[72ch]",
       className,
     )}
     {...props}
@@ -30,9 +32,9 @@ export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 export const MessageContent = ({ children, className, ...props }: MessageContentProps) => (
   <div
     className={cn(
-      "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
+      "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm leading-relaxed",
       "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
-      "group-[.is-assistant]:w-full group-[.is-assistant]:text-foreground",
+      "group-[.is-assistant]:w-full group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground",
       className,
     )}
     {...props}
@@ -265,7 +267,11 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
-      className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
+      className={cn(
+        "w-full min-w-0 overflow-hidden text-pretty [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        "[&_p]:break-words [&_p]:leading-6 [&_li]:break-words [&_li]:leading-6 [&_[data-streamdown=table-container]]:max-w-full",
+        className,
+      )}
       {...props}
     />
   ),

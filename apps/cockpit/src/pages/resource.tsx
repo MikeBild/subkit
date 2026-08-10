@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowRight, Bot, RefreshCw, Search, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
+import { ContextHelp } from "@/components/cockpit/context-help";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +42,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { TranslationKey } from "@/lib/i18n";
-import { humanize } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { cn } from "@/lib/utils";
@@ -278,7 +278,7 @@ function fieldLabel(key: string, t: ReturnType<typeof useI18n>["t"]): string {
     headline: "resource.field.headline",
     severity: "resource.field.severity",
   };
-  return known[key] ? t(known[key]) : humanize(key);
+  return known[key] ? t(known[key]) : t("resource.field.other");
 }
 
 function DisplayValue({ field, value }: { field: string; value: unknown }) {
@@ -396,7 +396,7 @@ function WorkflowDetail({ selected }: { selected: Record<string, unknown> }) {
       ) : query.error ? (
         <Alert variant="destructive" data-testid="workflow-detail-error">
           <AlertTitle>{t("workflow.loadFailed")}</AlertTitle>
-          <AlertDescription>{query.error.message}</AlertDescription>
+          <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
         </Alert>
       ) : steps.length === 0 ? (
         <Empty className="min-h-48 border" data-testid="workflow-steps-empty">
@@ -431,7 +431,7 @@ function WorkflowDetail({ selected }: { selected: Record<string, unknown> }) {
                         {recordName(step) ?? t("workflow.step", { count: index + 1 })}
                       </CardTitle>
                       {typeof step.kind === "string" && (
-                        <Badge variant="secondary">{humanize(step.kind)}</Badge>
+                        <Badge variant="secondary">{t("workflow.stepType")}</Badge>
                       )}
                     </div>
                     {typeof step.description === "string" && (
@@ -482,7 +482,7 @@ export function ResourcePage({
     () => rows.filter((row) => JSON.stringify(row).toLowerCase().includes(search.toLowerCase())),
     [rows, search],
   );
-  const columns = primaryColumns(rows);
+  const columns = primaryColumns(rows).slice(0, 4);
   const chatPrompt = encodeURIComponent(config.actionKey ? t(config.actionKey) : title);
 
   if (!permissions.includes(config.permission))
@@ -506,15 +506,17 @@ export function ResourcePage({
         data-testid="resource-header"
       >
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight" data-testid="resource-title">
-            {title}
-          </h1>
-          <p
-            className="mt-1 max-w-2xl text-sm text-muted-foreground"
-            data-testid="resource-description"
-          >
-            {t(config.descriptionKey)}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-2xl font-semibold tracking-tight" data-testid="resource-title">
+              {title}
+            </h1>
+            <ContextHelp
+              label={t("resource.about", { resource: title })}
+              testId="resource-description"
+            >
+              {t(config.descriptionKey)}
+            </ContextHelp>
+          </div>
         </div>
         {config.actionKey && (
           <Button asChild data-testid="resource-primary-action">
@@ -566,7 +568,7 @@ export function ResourcePage({
       ) : query.error ? (
         <Alert variant="destructive" className="m-6" data-testid="resource-error">
           <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
-          <AlertDescription>{query.error.message}</AlertDescription>
+          <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
         </Alert>
       ) : filtered.length === 0 ? (
         <Empty className="flex-1" data-testid="resource-empty">
@@ -592,7 +594,7 @@ export function ResourcePage({
         </Empty>
       ) : (
         <ScrollArea className="h-0 min-h-0 flex-1 px-4 pb-4" data-testid="resource-results">
-          <Card data-testid="resource-table-card">
+          <Card className="min-w-0 overflow-hidden" data-testid="resource-table-card">
             <CardHeader className="sr-only">
               <CardTitle>{title}</CardTitle>
               <CardDescription>{t("resource.records", { count: filtered.length })}</CardDescription>
@@ -604,12 +606,16 @@ export function ResourcePage({
                     {columns.map((column, index) => (
                       <TableHead
                         key={column}
-                        className={index >= 2 ? "hidden sm:table-cell" : undefined}
+                        className={cn(
+                          index === 0 && "w-[44%] lg:w-[34%]",
+                          index === 1 && "w-[44%] lg:w-[24%]",
+                          index >= 2 && "hidden lg:table-cell lg:w-[18%]",
+                        )}
                       >
                         {fieldLabel(column, t)}
                       </TableHead>
                     ))}
-                    <TableHead className="w-12">
+                    <TableHead className="w-[12%] text-right lg:w-[6%]">
                       <span className="sr-only">{t("common.open")}</span>
                     </TableHead>
                   </TableRow>
@@ -621,8 +627,8 @@ export function ResourcePage({
                         <TableCell
                           key={column}
                           className={cn(
-                            "max-w-48 whitespace-normal break-words sm:max-w-72",
-                            columnIndex >= 2 && "hidden sm:table-cell",
+                            "min-w-0 max-w-0 whitespace-normal break-words",
+                            columnIndex >= 2 && "hidden lg:table-cell",
                           )}
                         >
                           {column === "status" ? (
@@ -634,7 +640,7 @@ export function ResourcePage({
                           )}
                         </TableCell>
                       ))}
-                      <TableCell>
+                      <TableCell className="w-[12%] text-right lg:w-[6%]">
                         <IconButton
                           label={`${t("common.open")}: ${recordName(row) ?? t("resource.detail.noName")}`}
                           data-testid={`resource-row-${index}-open`}

@@ -37,9 +37,9 @@ describe("cockpit i18n", () => {
     expect(resolveLocale(["fr-FR"])).toBe("en");
   });
 
-  test("localizes known statuses and humanizes future values", () => {
+  test("localizes known statuses and safely labels future values", () => {
     expect(statusLabel((key) => translate("de", key), "awaiting_input")).toBe("Wartet auf Eingabe");
-    expect(statusLabel((key) => translate("en", key), "future_state")).toBe("future state");
+    expect(statusLabel((key) => translate("en", key), "future_state")).toBe("Unknown");
   });
 
   test("supports automatic detection and persistent manual selection", () => {

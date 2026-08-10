@@ -215,9 +215,9 @@ function AccountMenu() {
     try {
       await logout();
       window.location.assign("/cockpit/");
-    } catch (error) {
+    } catch {
       toast.error(t("account.signOutFailed"), {
-        description: error instanceof Error ? error.message : undefined,
+        description: t("account.signOutFailedDescription"),
       });
       setSigningOut(false);
     }
