@@ -65,6 +65,8 @@ const QUIET_TRUE = /quiet\s*:\s*true\b/;
 //   - the agent-briefing `knowledge:read` probe (decides per request whether
 //     the knowledge-index section is included — a skill-only principal is a
 //     routine caller, not an incident; the actual knowledge routes stay loud)
+//   - the Cockpit bootstrap permission inventory (builds permission-aware
+//     navigation; a deny hides a surface and is therefore the expected result)
 //   - the evaluator's own type definition (the `quiet?: boolean` doc) and
 //     the `connectorAccessLevel` probe (read/write level introspection —
 //     a "no" on write is a routine level outcome, not an incident)
@@ -73,6 +75,7 @@ const QUIET_TRUE = /quiet\s*:\s*true\b/;
 const ALLOWED = new Set<string>([
   "apps/engine/src/http/routes/oauth/shared.ts",
   "apps/engine/src/http/routes/agent-briefing.ts",
+  "apps/engine/src/http/routes/identity/cockpit.ts",
   "apps/engine/src/mcp/server.ts",
   "apps/engine/src/mcp/capabilities/resources.ts",
   "apps/engine/src/mcp/capabilities/completion.ts",
