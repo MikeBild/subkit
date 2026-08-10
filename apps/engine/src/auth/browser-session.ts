@@ -8,6 +8,7 @@ import { AuditAction } from "../audit/types.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { sessions } from "../db/schema/index.ts";
+import type { ResolvedPrincipal } from "./types.ts";
 
 export const BROWSER_SESSION_COOKIE = "subkit_session";
 export const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000;
@@ -73,6 +74,22 @@ export function browserSessionFromRequest(req: Request): Promise<BrowserSessionP
   return verifyBrowserSession(decodeURIComponent(raw));
 }
 
+export async function browserSessionForPrincipal(
+  req: Request,
+  principal: ResolvedPrincipal | undefined,
+): Promise<BrowserSessionPayload | null> {
+  if (principal?.kind !== "user" || typeof principal.session_id !== "string") return null;
+  const payload = await browserSessionFromRequest(req);
+  if (
+    payload?.session_id !== principal.session_id ||
+    payload.user_id !== principal.id ||
+    payload.tenant_id !== principal.tenant_id
+  ) {
+    return null;
+  }
+  return payload;
+}
+
 export async function signLoginState(payload: Record<string, unknown>): Promise<string> {
   return new jose.SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
@@ -87,6 +104,36 @@ export async function verifyLoginState(token: string): Promise<Record<string, un
     return payload as Record<string, unknown>;
   } catch {
     return null;
+  }
+}
+
+export async function signBrowserCsrf(payload: BrowserSessionPayload): Promise<string> {
+  return new jose.SignJWT({
+    purpose: "cockpit_csrf",
+    session_id: payload.session_id,
+    user_id: payload.user_id,
+    tenant_id: payload.tenant_id,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("8h")
+    .sign(browserSessionSecret());
+}
+
+export async function verifyBrowserCsrf(
+  token: string,
+  payload: BrowserSessionPayload,
+): Promise<boolean> {
+  try {
+    const { payload: claims } = await jose.jwtVerify(token, browserSessionSecret());
+    return (
+      claims.purpose === "cockpit_csrf" &&
+      claims.session_id === payload.session_id &&
+      claims.user_id === payload.user_id &&
+      claims.tenant_id === payload.tenant_id
+    );
+  } catch {
+    return false;
   }
 }
 
