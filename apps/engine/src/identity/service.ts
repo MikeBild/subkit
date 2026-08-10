@@ -11,6 +11,7 @@ import { type Executor, getDb } from "../db/client.ts";
 import {
   apiKeys,
   portalTokens,
+  roles,
   sessions,
   systemAccounts,
   tenants,
@@ -111,7 +112,18 @@ export async function updateUser(input: UpdateUserInput, exec?: Executor) {
     const patch: { role?: UserRole; role_id?: string | null; updated_at: Date } = {
       updated_at: new Date(now()),
     };
-    if (input.role !== undefined) patch.role = input.role;
+    if (input.role !== undefined) {
+      patch.role = input.role;
+      if (input.role_id === undefined) {
+        // tenant-filter:exempt — built-in roles are global RBAC catalog rows.
+        const [builtinRole] = await tx
+          .select({ id: roles.id })
+          .from(roles)
+          .where(and(isNull(roles.tenant_id), eq(roles.name, input.role)))
+          .limit(1);
+        patch.role_id = builtinRole?.id ?? null;
+      }
+    }
     if (input.role_id !== undefined) patch.role_id = input.role_id;
 
     const [row] = await tx
