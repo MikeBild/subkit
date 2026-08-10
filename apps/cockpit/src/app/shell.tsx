@@ -93,7 +93,11 @@ export function AppShell() {
   const groups = visibleNavigation(session.permissions);
 
   return (
-    <SidebarProvider data-testid="cockpit-shell" data-cockpit-ui className="h-full min-h-0">
+    <SidebarProvider
+      data-testid="cockpit-shell"
+      data-cockpit-ui
+      className="h-svh min-h-0 overflow-hidden"
+    >
       <Sidebar
         collapsible="icon"
         mobileTitle={t("app.cockpit")}
@@ -123,7 +127,7 @@ export function AppShell() {
           </SidebarMenu>
         </SidebarHeader>
 
-        <SidebarContent data-testid="cockpit-navigation">
+        <SidebarContent data-testid="cockpit-navigation" key={pathname}>
           <nav aria-label={t("nav.label")}>
             {groups.map((group) => (
               <SidebarGroup key={group.id} data-testid={`nav-group-${group.id}`}>

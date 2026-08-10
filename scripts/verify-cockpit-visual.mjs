@@ -1,0 +1,371 @@
+import { mkdir, readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { chromium } from "playwright";
+
+const baseUrl = (process.env.COCKPIT_BASE_URL || "http://127.0.0.1:4175").replace(/\/$/, "");
+const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
+const uuid = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+const routes = [
+  "chat",
+  "inbox",
+  "workflows",
+  "runs",
+  "connectors",
+  "knowledge",
+  "skills",
+  "files",
+  "approvals",
+  "audit",
+  "usage",
+  "people",
+  "access",
+  "api-access",
+  "operations",
+  "settings",
+];
+
+const conversation = {
+  id: uuid,
+  tenant_id: uuid,
+  target_workflow_id: null,
+  target_connector_id: null,
+  status: "active",
+  owner_id: uuid,
+  model: "test-model",
+  title: "Monatsreport reparieren",
+  created_at: "2026-08-01T09:00:00.000Z",
+  updated_at: "2026-08-10T09:00:00.000Z",
+  last_message_role: "assistant",
+  last_message_excerpt: `{"tool":"run_workflow","output":{"execution_id":"${uuid}"}}`,
+};
+
+function json(route, body, status = 200) {
+  return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+}
+
+async function mockApi(route) {
+  const request = route.request();
+  const url = new URL(request.url());
+  const path = url.pathname;
+  if (path === "/v1/cockpit/bootstrap") {
+    return json(route, {
+      principal: {
+        id: uuid,
+        kind: "user",
+        email: "mike@mikebild.com",
+        role_name: "admin",
+        provider: "browser_session",
+      },
+      tenant: { id: uuid, slug: "default", display_name: "Default Tenant" },
+      session: { expires_at: "2026-08-11T09:00:00.000Z", absolute_expires_at: null },
+      permissions: [
+        "conversation:read",
+        "conversation:write",
+        "conversation:approve",
+        "workflow:read",
+        "execution:read",
+        "connector:read",
+        "knowledge:read",
+        "skill:read",
+        "file:read",
+        "notification:read",
+        "audit:read",
+        "stats:read",
+        "stats:read:all",
+        "identity:read",
+        "rbac:read",
+        "api_key:read",
+        "settings:read",
+      ],
+      csrf_token: "test-csrf",
+      version: "visual-sweep",
+      recent_conversations: [],
+    });
+  }
+  if (path === "/v1/conversations" && request.method() === "GET")
+    return json(route, { items: [conversation] });
+  if (path === "/v1/conversations" && request.method() === "POST")
+    return json(route, { conversation, events: [], status: "active" }, 201);
+  if (path === `/v1/conversations/${uuid}`) {
+    return json(route, {
+      conversation,
+      messages: [
+        {
+          id: "message-1",
+          role: "user",
+          created_at: "2026-08-10T08:00:00.000Z",
+          parts: [{ type: "text", text: "Bitte repariere den Monatsreport." }],
+        },
+        {
+          id: "message-2",
+          role: "assistant",
+          created_at: "2026-08-10T08:01:00.000Z",
+          parts: [
+            {
+              type: "text",
+              text: `${"Ich habe den Workflow geprüft und die fehlerhafte Transformation eingegrenzt. ".repeat(12)} Die Ausführung ${uuid} wird erst nach Ihrer Freigabe erneut gestartet.`,
+            },
+          ],
+        },
+        {
+          id: "message-3",
+          role: "user",
+          created_at: "2026-08-10T08:02:00.000Z",
+          parts: [{ type: "text", text: "Zeige mir zuerst die geplanten Änderungen." }],
+        },
+      ],
+      tool_calls: [],
+      resume_summary: {
+        active_target: { kind: "none", name: "none", slug: null, id: null, environment: null },
+        stage: "onboarding",
+        last_successful_probe: null,
+        last_successful_preview: null,
+        unsaved: false,
+        pending_approval: null,
+        next_action: "Continue the conversation.",
+        one_sentence: "You have an in-progress conversation. Continue the conversation.",
+      },
+    });
+  }
+  if (path === `/v1/conversations/${uuid}/messages`)
+    return json(route, { conversation, events: [], status: "active" });
+  if (path === "/v1/stats/executions") {
+    if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
+      return json(route, { code: "validation", message: "request validation failed" }, 400);
+    return json(route, {
+      bucket: "day",
+      tz: "UTC",
+      from: "2026-07-11T00:00:00.000Z",
+      to: "2026-08-10T00:00:00.000Z",
+      groups: [
+        {
+          key: {},
+          buckets: [
+            {
+              ts: "2026-08-09T00:00:00.000Z",
+              executions: 18,
+              duration_ms: { total: 18000, avg: 1000, p50: 800, p95: 2100, p99: 2400, max: 2600 },
+            },
+            {
+              ts: "2026-08-10T00:00:00.000Z",
+              executions: 22,
+              duration_ms: { total: 26400, avg: 1200, p50: 900, p95: 2500, p99: 2900, max: 3200 },
+            },
+          ],
+          totals: {
+            executions: 40,
+            duration_ms: { total: 44400, avg: 1110, p50: 850, p95: 2300, p99: 2700, max: 3200 },
+          },
+        },
+      ],
+      totals: {
+        executions: { count: 40, by_status: { completed: 36, failed: 4 } },
+        duration_ms: { total: 44400, avg: 1110, p50: 850, p95: 2300, p99: 2700, max: 3200 },
+      },
+    });
+  }
+  if (path === "/v1/operator/health-digest")
+    return json(route, {
+      generated_at: "2026-08-10T09:00:00.000Z",
+      window_hours: 24,
+      headline: "Alle überwachten Systeme arbeiten normal.",
+      failure_groups: [],
+      patch_candidates: { pending: 0, items: [] },
+      risk: [],
+      rendered: "All clear",
+      all_clear: true,
+    });
+  if (path === "/v1/settings")
+    return json(route, {
+      items: [
+        {
+          path: "execution.default_timeout_ms",
+          value: 30000,
+          meta: {
+            source: "default",
+            scope: "tenant",
+            sensitive: false,
+            requiresRestart: false,
+            kind: "number",
+          },
+        },
+        {
+          path: "observability.usage.enabled",
+          value: true,
+          meta: {
+            source: "config",
+            scope: "global",
+            sensitive: false,
+            requiresRestart: false,
+            kind: "boolean",
+          },
+        },
+      ],
+      diagnostics: { pending_restart_keys: [], override_keys: [] },
+    });
+  if (path === "/v1/skill-candidates" || path === "/v1/patch-candidates")
+    return json(route, {
+      items: [
+        {
+          id: uuid,
+          title: "Sichere Fehlerbehandlung",
+          status: "proposed",
+          created_at: "2026-08-10T07:00:00.000Z",
+        },
+      ],
+    });
+
+  const label = path.split("/").filter(Boolean).at(-1)?.replaceAll("-", " ") || "record";
+  return json(route, {
+    items: [
+      {
+        id: uuid,
+        tenant_id: uuid,
+        name: `${label.charAt(0).toUpperCase()}${label.slice(1)} Beispiel`,
+        status: "active",
+        type: "workspace",
+        created_at: "2026-08-10T07:00:00.000Z",
+      },
+    ],
+  });
+}
+
+function markerFor(route) {
+  return route === "chat" ? '[data-testid="chat-workspace"]' : `[data-testid="resource-${route}"]`;
+}
+
+async function assertViewport(page, label) {
+  const geometry = await page.evaluate(() => {
+    const content = document.querySelector('[data-testid="page-content"]');
+    if (!(content instanceof HTMLElement)) throw new Error("page content missing");
+    return {
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      bodyWidth: document.body.scrollWidth,
+      bodyHeight: document.body.scrollHeight,
+      contentWidth: content.scrollWidth,
+      contentClientWidth: content.clientWidth,
+      contentBottom: content.getBoundingClientRect().bottom,
+    };
+  });
+  if (
+    geometry.bodyWidth > geometry.viewportWidth + 1 ||
+    geometry.contentWidth > geometry.contentClientWidth + 1
+  )
+    throw new Error(`${label} has horizontal overflow`);
+  if (
+    geometry.bodyHeight > geometry.viewportHeight + 1 ||
+    geometry.contentBottom > geometry.viewportHeight + 1
+  )
+    throw new Error(`${label} grows beyond the viewport`);
+}
+
+async function assertChat(page, label) {
+  const layout = await page.evaluate(() => {
+    const rect = (testId) => {
+      const element = document.querySelector(`[data-testid="${testId}"]`);
+      if (!(element instanceof HTMLElement)) throw new Error(`${testId} missing`);
+      return element.getBoundingClientRect().toJSON();
+    };
+    return {
+      transcript: rect("chat-transcript"),
+      composer: rect("chat-composer-area"),
+      main: rect("chat-main"),
+    };
+  });
+  if (layout.transcript.height < 120) throw new Error(`${label} transcript collapsed`);
+  if (layout.transcript.bottom > layout.composer.top + 1)
+    throw new Error(`${label} transcript overlaps composer`);
+  if (layout.composer.bottom > layout.main.bottom + 1)
+    throw new Error(`${label} composer is outside Chat`);
+  const sidebarText = await page.locator('[data-testid="conversation-item-0"]').innerText();
+  if (sidebarText.includes('{"tool"')) throw new Error(`${label} exposes a raw tool payload`);
+}
+
+await mkdir(outputDir, { recursive: true });
+const browser = await chromium.launch({ headless: true });
+const errors = [];
+for (const viewport of [
+  { name: "desktop", width: 1440, height: 1000 },
+  { name: "mobile", width: 390, height: 844 },
+]) {
+  const context = await browser.newContext({
+    viewport: { width: viewport.width, height: viewport.height },
+    locale: "de-DE",
+  });
+  await context.addInitScript(() => localStorage.setItem("sk-cockpit-locale", "de"));
+  const page = await context.newPage();
+  page.on("pageerror", (error) => errors.push(`${viewport.name}: ${error.message}`));
+  await page.route("**/v1/**", mockApi);
+  for (const route of routes) {
+    const response = await page.goto(`${baseUrl}/cockpit/${route}`, { waitUntil: "networkidle" });
+    if (!response?.ok())
+      throw new Error(`${viewport.name}/${route} returned HTTP ${response?.status()}`);
+    await page.locator(markerFor(route)).waitFor({ state: "visible" });
+    await page
+      .locator('[data-testid="resource-error"]')
+      .waitFor({ state: "hidden" })
+      .catch(() => {});
+    if (
+      await page
+        .locator('[data-testid="resource-error"]')
+        .isVisible()
+        .catch(() => false)
+    )
+      throw new Error(`${viewport.name}/${route} displays a resource error`);
+    const text = await page.locator("body").innerText();
+    if (text.includes(uuid)) throw new Error(`${viewport.name}/${route} exposes a UUID`);
+    await assertViewport(page, `${viewport.name}/${route}`);
+    if (route === "chat") await assertChat(page, `${viewport.name}/${route}`);
+    await page.screenshot({
+      path: resolve(outputDir, `${viewport.name}-${route}.png`),
+      fullPage: false,
+    });
+  }
+  if (viewport.name === "desktop") {
+    await page.goto(`${baseUrl}/cockpit/chat`, { waitUntil: "networkidle" });
+    await page
+      .locator('[data-testid="chat-composer-input"]')
+      .fill("Prüfe den Workflow, ohne ihn auszuführen.");
+    await page.locator('[data-testid="chat-composer-submit"]').click();
+    await page
+      .locator('[data-testid="chat-error"]')
+      .waitFor({ state: "hidden" })
+      .catch(() => {});
+    await page.screenshot({
+      path: resolve(outputDir, "desktop-chat-interaction.png"),
+      fullPage: false,
+    });
+  }
+  await context.close();
+}
+
+for (const viewport of ["desktop", "mobile"]) {
+  const contact = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+  const cards = await Promise.all(
+    routes.map(async (route) => {
+      const bytes = await readFile(resolve(outputDir, `${viewport}-${route}.png`));
+      const source = `data:image/png;base64,${bytes.toString("base64")}`;
+      return `<figure><img src="${source}" alt=""><figcaption>${route}</figcaption></figure>`;
+    }),
+  );
+  await contact.setContent(
+    `<style>
+      * { box-sizing: border-box }
+      body { margin: 0; padding: 16px; background: #e2e8f0; font: 14px system-ui }
+      main { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px }
+      figure { margin: 0; overflow: hidden; border-radius: 8px; background: white; box-shadow: 0 1px 3px #64748b }
+      img { display: block; width: 100%; aspect-ratio: ${viewport === "desktop" ? "1.44" : "0.462"}; object-fit: cover; object-position: top }
+      figcaption { padding: 8px; font-weight: 600 }
+    </style><main>${cards.join("")}</main>`,
+    { waitUntil: "load" },
+  );
+  await contact.screenshot({
+    path: resolve(outputDir, `${viewport}-contact-sheet.png`),
+    fullPage: true,
+  });
+  await contact.close();
+}
+await browser.close();
+if (errors.length) throw new Error(errors.join("; "));
+console.log(`Cockpit visual sweep passed: ${routes.length * 2 + 1} screenshots in ${outputDir}`);

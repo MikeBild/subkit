@@ -13,6 +13,7 @@ benchmarks/
 .env.*.local
 .env.deploy
 coverage/
+.artifacts/
 .bun/
 # bun.lock is committed — Docker multi-stage build and CI's
 # `bun install --frozen-lockfile` both require it. bun.lockb (legacy
