@@ -47,7 +47,7 @@ import { statusLabel } from "@/lib/status-label";
 interface ResourceConfig {
   titleKey: TranslationKey;
   descriptionKey: TranslationKey;
-  endpoint: string | readonly string[];
+  endpoint: string | readonly string[] | (() => string);
   permission: string;
   actionKey?: TranslationKey;
   emptyKey: TranslationKey;
@@ -69,17 +69,17 @@ export const RESOURCE_CONFIGS: Record<string, ResourceConfig> = {
     ),
   },
   audit: resource("audit", "/v1/audit-log?limit=200", "audit:read"),
-  usage: resource("usage", "/v1/stats/executions", "stats:read:all"),
+  usage: resource("usage", usageStatsEndpoint, "stats:read"),
   people: resource("people", "/v1/identity/users", "identity:read"),
   access: resource("access", "/v1/rbac/roles", "rbac:read"),
   "api-access": resource("apiAccess", "/v1/identity/api-keys", "api_key:read"),
-  operations: resource("operations", "/v1/operator/health-digest", "stats:read:all"),
-  settings: resource("settings", "/v1/settings", "identity:read"),
+  operations: resource("operations", "/v1/operator/health-digest", "stats:read"),
+  settings: resource("settings", "/v1/settings", "settings:read"),
 };
 
 function resource(
   key: string,
-  endpoint: string | readonly string[],
+  endpoint: string | readonly string[] | (() => string),
   permission: string,
   action = false,
 ): ResourceConfig {
@@ -93,6 +93,12 @@ function resource(
   };
 }
 
+export function usageStatsEndpoint(now = new Date()): string {
+  const from = new Date(now);
+  from.setUTCDate(from.getUTCDate() - 30);
+  return `/v1/stats/executions?bucket=day&from=${encodeURIComponent(from.toISOString())}`;
+}
+
 function rowsFrom(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value))
     return value.filter(
@@ -102,6 +108,85 @@ function rowsFrom(value: unknown): Record<string, unknown>[] {
   const record = value as Record<string, unknown>;
   if (Array.isArray(record.items)) return rowsFrom(record.items);
   return [record];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export function presentationRows(
+  resourceName: string,
+  results: readonly unknown[],
+): Record<string, unknown>[] {
+  if (resourceName === "settings") {
+    return rowsFrom(results[0]).map((row) => {
+      const meta = isRecord(row.meta) ? row.meta : {};
+      return {
+        path: row.path,
+        value: row.value,
+        source: meta.source,
+        scope: meta.scope,
+        requires_restart: meta.requiresRestart,
+      };
+    });
+  }
+
+  if (resourceName === "usage") {
+    const envelope = isRecord(results[0]) ? results[0] : {};
+    const groups = Array.isArray(envelope.groups) ? envelope.groups : [];
+    return groups.flatMap((group) => {
+      if (!isRecord(group) || !Array.isArray(group.buckets)) return [];
+      return group.buckets.flatMap((bucket) => {
+        if (!isRecord(bucket)) return [];
+        const duration = isRecord(bucket.duration_ms) ? bucket.duration_ms : {};
+        return [
+          {
+            date: bucket.ts,
+            executions: bucket.executions,
+            average_duration_ms: duration.avg,
+            p95_duration_ms: duration.p95,
+          },
+        ];
+      });
+    });
+  }
+
+  if (resourceName === "operations") {
+    const digest = isRecord(results[0]) ? results[0] : {};
+    const generatedAt = digest.generated_at;
+    const failures = Array.isArray(digest.failure_groups)
+      ? digest.failure_groups.flatMap((failure) => {
+          if (!isRecord(failure)) return [];
+          return [
+            {
+              headline: failure.workflow_name || failure.cause,
+              status: "failed",
+              count: failure.count,
+              updated_at: failure.last_seen,
+            },
+          ];
+        })
+      : [];
+    const risks = Array.isArray(digest.risk)
+      ? digest.risk.flatMap((risk) => {
+          if (!isRecord(risk)) return [];
+          return [
+            {
+              headline: risk.headline,
+              severity: risk.severity,
+              value: risk.value,
+              updated_at: generatedAt,
+            },
+          ];
+        })
+      : [];
+    if (failures.length || risks.length) return [...failures, ...risks];
+    if (typeof digest.headline === "string") {
+      return [{ headline: digest.headline, status: "completed", updated_at: generatedAt }];
+    }
+  }
+
+  return results.flatMap(rowsFrom);
 }
 
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
@@ -131,6 +216,16 @@ function primaryColumns(rows: Record<string, unknown>[]): string[] {
     "category",
     "email",
     "action",
+    "headline",
+    "path",
+    "value",
+    "date",
+    "executions",
+    "average_duration_ms",
+    "p95_duration_ms",
+    "source",
+    "scope",
+    "requires_restart",
     "created_at",
     "updated_at",
   ];
@@ -169,6 +264,17 @@ function fieldLabel(key: string, t: ReturnType<typeof useI18n>["t"]): string {
     category: "resource.field.category",
     email: "resource.field.email",
     action: "resource.field.action",
+    path: "resource.field.path",
+    value: "resource.field.value",
+    date: "resource.field.date",
+    executions: "resource.field.executions",
+    average_duration_ms: "resource.field.averageDuration",
+    p95_duration_ms: "resource.field.p95Duration",
+    source: "resource.field.source",
+    scope: "resource.field.scope",
+    requires_restart: "resource.field.requiresRestart",
+    headline: "resource.field.headline",
+    severity: "resource.field.severity",
   };
   return known[key] ? t(known[key]) : humanize(key);
 }
@@ -181,8 +287,64 @@ function DisplayValue({ field, value }: { field: string; value: unknown }) {
   if (typeof value === "object") return <>{t("common.details")}</>;
   if (typeof value === "string" && UUID.test(value)) return <>{value.replace(UUID_GLOBAL, "—")}</>;
   if (typeof value === "string" && /_at$/.test(field)) return <>{dateTime(value)}</>;
+  if (field === "date" && typeof value === "string") return <>{dateTime(value)}</>;
+  if (/_duration_ms$/.test(field) && typeof value === "number") return <>{formatDuration(value)}</>;
   if (field === "status" && typeof value === "string") return <>{statusLabel(t, value)}</>;
   return <>{String(value)}</>;
+}
+
+function formatDuration(value: number): string {
+  if (value < 1_000) return `${Math.round(value)} ms`;
+  return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)} s`;
+}
+
+function numberAt(record: unknown, ...path: string[]): number {
+  let current: unknown = record;
+  for (const part of path) current = isRecord(current) ? current[part] : undefined;
+  return typeof current === "number" ? current : 0;
+}
+
+function UsageSummary({ value }: { value: unknown }) {
+  const { t } = useI18n();
+  const count = numberAt(value, "totals", "executions", "count");
+  const average = numberAt(value, "totals", "duration_ms", "avg");
+  const p95 = numberAt(value, "totals", "duration_ms", "p95");
+  const statuses =
+    isRecord(value) && isRecord(value.totals) && isRecord(value.totals.executions)
+      ? value.totals.executions.by_status
+      : undefined;
+  const completed = isRecord(statuses)
+    ? ["completed", "succeeded", "success"].reduce(
+        (total, key) => total + (typeof statuses[key] === "number" ? statuses[key] : 0),
+        0,
+      )
+    : 0;
+  const successRate = count > 0 ? `${Math.round((completed / count) * 100)}%` : "—";
+  const cards = [
+    ["resource.usage.executions", String(count)],
+    ["resource.usage.averageDuration", formatDuration(average)],
+    ["resource.usage.p95Duration", formatDuration(p95)],
+    ["resource.usage.successRate", successRate],
+  ] as const;
+
+  return (
+    <section
+      className="grid grid-cols-2 gap-3 px-4 pb-4 xl:grid-cols-4"
+      data-testid="usage-summary"
+    >
+      {cards.map(([label, display], index) => (
+        <Card key={label} size="sm" data-testid={`usage-summary-${index}`}>
+          <CardHeader>
+            <CardDescription>{t(label)}</CardDescription>
+            <CardTitle className="text-2xl tabular-nums">{display}</CardTitle>
+          </CardHeader>
+          <CardFooter className="text-xs text-muted-foreground">
+            {t("resource.usage.window")}
+          </CardFooter>
+        </Card>
+      ))}
+    </section>
+  );
 }
 
 function RecordDetails({ record }: { record: Record<string, unknown> }) {
@@ -304,13 +466,16 @@ export function ResourcePage({
   const query = useQuery({
     queryKey: ["resource", resourceName],
     queryFn: async () => {
-      const endpoints = typeof config.endpoint === "string" ? [config.endpoint] : config.endpoint;
+      const resolvedEndpoint =
+        typeof config.endpoint === "function" ? config.endpoint() : config.endpoint;
+      const endpoints =
+        typeof resolvedEndpoint === "string" ? [resolvedEndpoint] : resolvedEndpoint;
       const results = await Promise.all(endpoints.map((endpoint) => apiRequest<unknown>(endpoint)));
-      return results.flatMap(rowsFrom);
+      return { raw: results[0], rows: presentationRows(resourceName, results) };
     },
     enabled: permissions.includes(config.permission),
   });
-  const rows = useMemo(() => rowsFrom(query.data), [query.data]);
+  const rows = useMemo(() => query.data?.rows ?? [], [query.data]);
   const filtered = useMemo(
     () => rows.filter((row) => JSON.stringify(row).toLowerCase().includes(search.toLowerCase())),
     [rows, search],
@@ -384,6 +549,8 @@ export function ResourcePage({
         </Button>
       </div>
 
+      {resourceName === "usage" && query.data && <UsageSummary value={query.data.raw} />}
+
       {query.isPending ? (
         <div
           className="grid gap-3 p-6"
@@ -432,8 +599,13 @@ export function ResourcePage({
               <Table data-testid="resource-table">
                 <TableHeader>
                   <TableRow>
-                    {columns.map((column) => (
-                      <TableHead key={column}>{fieldLabel(column, t)}</TableHead>
+                    {columns.map((column, index) => (
+                      <TableHead
+                        key={column}
+                        className={index >= 2 ? "hidden sm:table-cell" : undefined}
+                      >
+                        {fieldLabel(column, t)}
+                      </TableHead>
                     ))}
                     <TableHead className="w-12">
                       <span className="sr-only">{t("common.open")}</span>
@@ -443,8 +615,11 @@ export function ResourcePage({
                 <TableBody>
                   {filtered.map((row, index) => (
                     <TableRow key={index} data-testid={`resource-row-${index}`}>
-                      {columns.map((column) => (
-                        <TableCell key={column}>
+                      {columns.map((column, columnIndex) => (
+                        <TableCell
+                          key={column}
+                          className={columnIndex >= 2 ? "hidden sm:table-cell" : undefined}
+                        >
                           {column === "status" ? (
                             <Badge variant="outline">
                               <DisplayValue field={column} value={row[column]} />

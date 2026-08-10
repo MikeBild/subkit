@@ -51,6 +51,7 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +61,32 @@ const QUICK_START: readonly TranslationKey[] = [
   "chat.quick.failure",
   "chat.quick.connector",
 ];
+
+type Translate = ReturnType<typeof useI18n>["t"];
+
+function localizedSummary(value: string | null | undefined, t: Translate): string {
+  if (!value) return t("chat.summary");
+  if (value === "You have an in-progress conversation. Continue the conversation.")
+    return t("chat.summary.inProgress");
+  return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
+}
+
+function localizedStage(value: string | null | undefined, t: Translate): string {
+  if (!value) return t("chat.context.ready");
+  if (value === "onboarding") return t("chat.context.onboarding");
+  return value;
+}
+
+function localizedTarget(value: string | null | undefined, t: Translate): string {
+  if (!value || value.toLowerCase() === "none") return t("chat.context.noTarget");
+  return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
+}
+
+function localizedNextAction(value: string | null | undefined, t: Translate): string {
+  if (!value) return t("chat.context.nextActionDefault");
+  if (value === "Continue the conversation.") return t("chat.context.continue");
+  return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
+}
 
 function textFromPart(part: unknown): string | null {
   if (typeof part === "string") return part;
@@ -101,7 +128,7 @@ function ChatMessage({
                 key={`${message.id}-text-${partIndex}`}
                 data-testid={`chat-message-${messageIndex}-text-${partIndex}`}
               >
-                {text}
+                {hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"))}
               </MessageResponse>
             );
           const tool = asToolPart(part);
@@ -201,8 +228,19 @@ function ConversationList({
               <span className="block truncate text-sm font-medium">
                 {conversation.title || t("chat.untitled")}
               </span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {conversation.last_message_excerpt || statusLabel(t, conversation.status)}
+              <span
+                className={cn(
+                  "block truncate text-xs",
+                  activeId === conversation.id
+                    ? "text-accent-foreground/80"
+                    : "text-muted-foreground",
+                )}
+              >
+                {conversationExcerpt(
+                  conversation.last_message_excerpt,
+                  t("chat.toolActivity"),
+                  t("tool.referenceHidden"),
+                ) || statusLabel(t, conversation.status)}
               </span>
             </button>
           ))}
@@ -279,7 +317,7 @@ export function ChatPage() {
 
   return (
     <div
-      className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_auto]"
+      className="grid h-full min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_18rem]"
       data-cockpit-ui="chat-workspace"
       data-testid="chat-workspace"
     >
@@ -311,7 +349,7 @@ export function ChatPage() {
                 {current?.title || t("chat.new")}
               </h1>
               <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
-                {resume?.one_sentence || t("chat.summary")}
+                {localizedSummary(resume?.one_sentence, t)}
               </p>
             </div>
           </div>
@@ -352,7 +390,7 @@ export function ChatPage() {
           </Alert>
         )}
 
-        <ConversationViewport className="min-h-0 flex-1" data-testid="chat-transcript">
+        <ConversationViewport className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
           <ConversationContent className="mx-auto w-full max-w-3xl">
             {messages.length === 0 ? (
               <ConversationEmptyState
@@ -424,7 +462,7 @@ export function ChatPage() {
 
       {contextOpen && (
         <aside
-          className="hidden min-h-0 w-72 border-l xl:flex xl:flex-col"
+          className="hidden min-h-0 border-l xl:flex xl:flex-col"
           data-cockpit-ui="context-panel"
           data-testid="chat-context"
         >
@@ -437,21 +475,17 @@ export function ChatPage() {
             <dl className="grid gap-4 p-4 text-sm">
               <div data-testid="chat-context-stage">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.stage")}</dt>
-                <dd className="mt-1 font-medium">{resume?.stage || t("chat.context.ready")}</dd>
+                <dd className="mt-1 font-medium">{localizedStage(resume?.stage, t)}</dd>
               </div>
               <div data-testid="chat-context-target">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.target")}</dt>
                 <dd className="mt-1 font-medium">
-                  {resume?.active_target.name ||
-                    resume?.active_target.kind ||
-                    t("chat.context.noTarget")}
+                  {localizedTarget(resume?.active_target.name || resume?.active_target.kind, t)}
                 </dd>
               </div>
               <div data-testid="chat-context-next-action">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
-                <dd className="mt-1">
-                  {resume?.next_action || t("chat.context.nextActionDefault")}
-                </dd>
+                <dd className="mt-1">{localizedNextAction(resume?.next_action, t)}</dd>
               </div>
               <div data-testid="chat-context-checkpoint">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.checkpoint")}</dt>

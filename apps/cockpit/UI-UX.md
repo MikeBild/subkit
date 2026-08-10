@@ -44,3 +44,14 @@ structured tool output present names, labels or neutral positional fallbacks ins
 Interactive Cockpit elements carry stable, semantic `data-testid` selectors; repeated data uses
 row or message positions rather than database identifiers. `src/app/testids.test.ts` enforces both
 contracts.
+
+The application shell is exactly one viewport high. The shell never grows with a long transcript;
+the conversation list, transcript, context panel and resource results own their respective scroll
+areas. On narrow screens, resource tables keep the two primary columns and move secondary details
+to the row sheet.
+
+`scripts/verify-cockpit-visual.mjs` exercises every Cockpit route with representative data at
+desktop and mobile sizes. It rejects document overflow, transcript/composer overlap, raw tool
+payload excerpts, visible UUIDs and resource error states, and records screenshots for visual
+comparison. The production deployment verifier repeats the authenticated route sweep after SSO and
+publishes its screenshots as a workflow artifact.
