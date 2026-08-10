@@ -13,10 +13,10 @@
 // returns nothing or a 403.
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { generateKeyPair, SignJWT } from "jose";
 import { type MockOidcHandle, startMockOidc } from "../auth/providers/tests/fixtures/mock-oidc.ts";
-import { auditLog, sessions, tenants, userIdentities, users } from "../db/schema/index.ts";
+import { auditLog, roles, sessions, tenants, userIdentities, users } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import {
   createHttpTestServer,
@@ -40,6 +40,7 @@ import {
   revokePortalToken,
   SESSION_ABSOLUTE_TTL_MS,
   SESSION_SLIDING_TTL_MS,
+  updateUser,
 } from "./service.ts";
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,45 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (testDb) await testDb.cleanup();
+});
+
+describe("service — user roles", () => {
+  test("changing a legacy role synchronizes the effective built-in role", async () => {
+    const builtinRoles = await testDb.db
+      .select({ id: roles.id, name: roles.name })
+      .from(roles)
+      .where(isNull(roles.tenant_id));
+    const memberRole = builtinRoles.find((role) => role.name === "member");
+    const adminRole = builtinRoles.find((role) => role.name === "admin");
+    if (!memberRole || !adminRole) throw new Error("built-in roles were not seeded");
+
+    const [target] = await testDb.db
+      .insert(users)
+      .values({
+        tenant_id: tenantId,
+        email: "role-sync@test.local",
+        role: "member",
+        role_id: memberRole.id,
+      })
+      .returning();
+    if (!target) throw new Error("seed role-sync user failed");
+
+    const updated = await updateUser(
+      { tenant_id: tenantId, id: target.id, role: "admin", actor_id: userId },
+      testDb.db,
+    );
+
+    expect(updated?.role).toBe("admin");
+    expect(updated?.role_id).toBe(adminRole.id);
+
+    const [audit] = await testDb.db
+      .select({ before: auditLog.before, after: auditLog.after })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "user.role_changed"), eq(auditLog.resource_id, target.id)))
+      .limit(1);
+    expect(audit?.before).toEqual({ role: "member", role_id: memberRole.id });
+    expect(audit?.after).toEqual({ role: "admin", role_id: adminRole.id });
+  });
 });
 
 describe("service — system accounts", () => {
