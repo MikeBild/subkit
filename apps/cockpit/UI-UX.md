@@ -17,7 +17,7 @@ Navigation follows the work instead of the engine's directory tree:
 - **Build** — Workflows and Runs
 - **Resources** — Connectors, Knowledge, Skills and Files
 - **Govern** — Approvals, Audit log and Usage
-- **Admin** — People, Access, API access, Operations and Settings
+- **Admin** — People, Access, API access, Operations and Engine settings
 
 Every entry declares its required effective permission and engine endpoint. Entries are omitted
 when the browser session lacks that permission; the server remains the authorization authority.
@@ -27,3 +27,20 @@ New authoring work starts in Chat. Resource pages provide search, inspection, re
 links into a contextual conversation; they do not create a second workflow-authoring state machine.
 Approvals remain explicit and are resolved through the conversation's governed response endpoint.
 
+## Interaction and presentation rules
+
+The Cockpit composes the checked-in shadcn components for navigation, menus, cards, tables, sheets,
+empty states and forms. Pages use one hierarchy: page heading and primary action, a compact toolbar,
+then the data state. Cards do not wrap unrelated controls, and table rows use a named open button
+instead of a pointer-only row action.
+
+The signed-in user menu is the single home for profile information, language, theme and sign-out.
+Language defaults to browser detection and can be pinned to English or German. Theme defaults to
+the operating system and can be pinned to light or dark. The behavior is covered by
+`src/app/i18n.test.ts` and `src/app/theme.test.ts`.
+
+Database identifiers remain internal routing keys. Lists, detail titles, workflow steps and
+structured tool output present names, labels or neutral positional fallbacks instead of UUIDs.
+Interactive Cockpit elements carry stable, semantic `data-testid` selectors; repeated data uses
+row or message positions rather than database identifiers. `src/app/testids.test.ts` enforces both
+contracts.

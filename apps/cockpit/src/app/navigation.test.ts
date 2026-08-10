@@ -4,9 +4,9 @@ import { navigationItem, visibleNavigation } from "./navigation";
 describe("cockpit navigation contract", () => {
   test("does not render entries without their effective permission", () => {
     const groups = visibleNavigation(["conversation:read", "workflow:read"]);
-    expect(groups.flatMap((group) => group.items).map((item) => item.label)).toEqual([
-      "Chat",
-      "Workflows",
+    expect(groups.flatMap((group) => group.items).map((item) => item.labelKey)).toEqual([
+      "nav.chat",
+      "nav.workflows",
     ]);
   });
 
