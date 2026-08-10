@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.6] – 2026-08-10
+
+### Fixed
+
+- **Long conversations now remain a usable work surface.** Conversation history,
+  transcript and composer have independent scroll boundaries; assistant messages
+  keep a readable line length, and working context opens in an on-demand drawer.
+- **Tables and structured tool output no longer force horizontal page scrolling.**
+  Responsive tables retain essential columns and move complete details into the
+  record drawer, while long values wrap inside their own components.
+- **Cockpit language and testing contracts cover real data states.** User-facing
+  fallbacks stay localized, internal identifiers remain hidden, and the visual
+  sweep verifies stable test IDs across 110 German and English desktop, wide and
+  mobile screenshots.
+
 ## [6.1.5] – 2026-08-10
 
 ### Fixed
