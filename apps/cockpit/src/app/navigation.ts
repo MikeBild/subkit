@@ -18,9 +18,10 @@ import {
   Users,
   Workflow,
 } from "lucide-react";
+import type { TranslationKey } from "@/lib/i18n";
 
 export interface NavigationItem {
-  label: string;
+  labelKey: TranslationKey;
   path: string;
   permission: string;
   icon: LucideIcon;
@@ -28,23 +29,25 @@ export interface NavigationItem {
 }
 
 export interface NavigationGroup {
-  label: string;
+  id: "work" | "build" | "resources" | "govern" | "admin";
+  labelKey: TranslationKey;
   items: readonly NavigationItem[];
 }
 
 export const NAVIGATION: readonly NavigationGroup[] = [
   {
-    label: "Work",
+    id: "work",
+    labelKey: "nav.group.work",
     items: [
       {
-        label: "Chat",
+        labelKey: "nav.chat",
         path: "/chat",
         permission: "conversation:read",
         icon: MessageSquare,
         api: ["GET /v1/conversations"],
       },
       {
-        label: "Inbox",
+        labelKey: "nav.inbox",
         path: "/inbox",
         permission: "notification:read",
         icon: Inbox,
@@ -53,17 +56,18 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     ],
   },
   {
-    label: "Build",
+    id: "build",
+    labelKey: "nav.group.build",
     items: [
       {
-        label: "Workflows",
+        labelKey: "nav.workflows",
         path: "/workflows",
         permission: "workflow:read",
         icon: Workflow,
         api: ["GET /v1/workflows"],
       },
       {
-        label: "Runs",
+        labelKey: "nav.runs",
         path: "/runs",
         permission: "execution:read",
         icon: Activity,
@@ -72,31 +76,32 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     ],
   },
   {
-    label: "Resources",
+    id: "resources",
+    labelKey: "nav.group.resources",
     items: [
       {
-        label: "Connectors",
+        labelKey: "nav.connectors",
         path: "/connectors",
         permission: "connector:read",
         icon: Cable,
         api: ["GET /v1/connectors"],
       },
       {
-        label: "Knowledge",
+        labelKey: "nav.knowledge",
         path: "/knowledge",
         permission: "knowledge:read",
         icon: Library,
         api: ["GET /v1/knowledge-sources"],
       },
       {
-        label: "Skills",
+        labelKey: "nav.skills",
         path: "/skills",
         permission: "skill:read",
         icon: Sparkles,
         api: ["GET /v1/skills"],
       },
       {
-        label: "Files",
+        labelKey: "nav.files",
         path: "/files",
         permission: "file:read",
         icon: FileStack,
@@ -105,24 +110,25 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     ],
   },
   {
-    label: "Govern",
+    id: "govern",
+    labelKey: "nav.group.govern",
     items: [
       {
-        label: "Approvals",
+        labelKey: "nav.approvals",
         path: "/approvals",
         permission: "conversation:approve",
         icon: ListChecks,
         api: ["GET /v1/skill-candidates", "GET /v1/patch-candidates"],
       },
       {
-        label: "Audit log",
+        labelKey: "nav.audit",
         path: "/audit",
         permission: "audit:read",
         icon: History,
         api: ["GET /v1/audit-log"],
       },
       {
-        label: "Usage",
+        labelKey: "nav.usage",
         path: "/usage",
         permission: "stats:read:all",
         icon: Gauge,
@@ -131,38 +137,39 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     ],
   },
   {
-    label: "Admin",
+    id: "admin",
+    labelKey: "nav.group.admin",
     items: [
       {
-        label: "People",
+        labelKey: "nav.people",
         path: "/people",
         permission: "identity:read",
         icon: Users,
         api: ["GET /v1/identity/users"],
       },
       {
-        label: "Access",
+        labelKey: "nav.access",
         path: "/access",
         permission: "rbac:read",
         icon: ShieldCheck,
         api: ["GET /v1/rbac/roles"],
       },
       {
-        label: "API access",
+        labelKey: "nav.apiAccess",
         path: "/api-access",
         permission: "api_key:read",
         icon: KeyRound,
         api: ["GET /v1/identity/api-keys"],
       },
       {
-        label: "Operations",
+        labelKey: "nav.operations",
         path: "/operations",
         permission: "stats:read:all",
         icon: Bot,
         api: ["GET /v1/operator/health-digest"],
       },
       {
-        label: "Settings",
+        labelKey: "nav.settings",
         path: "/settings",
         permission: "identity:read",
         icon: Settings,

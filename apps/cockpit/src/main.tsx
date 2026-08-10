@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { router } from "@/app/router";
 import { SessionGate } from "@/app/session";
+import { I18nProvider } from "@/components/i18n-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./index.css";
 
@@ -19,12 +20,14 @@ if (!root) throw new Error("Cockpit root element is missing");
 
 createRoot(root).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <SessionGate>
-          <RouterProvider router={router} />
-        </SessionGate>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <I18nProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <SessionGate>
+            <RouterProvider router={router} />
+          </SessionGate>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </I18nProvider>
   </StrictMode>,
 );

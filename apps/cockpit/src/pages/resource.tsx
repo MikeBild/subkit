@@ -39,127 +39,59 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { TranslationKey } from "@/lib/i18n";
+import { humanize } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
+import { statusLabel } from "@/lib/status-label";
 
 interface ResourceConfig {
-  title: string;
-  description: string;
+  titleKey: TranslationKey;
+  descriptionKey: TranslationKey;
   endpoint: string | readonly string[];
   permission: string;
-  action?: string;
-  empty: string;
+  actionKey?: TranslationKey;
+  emptyKey: TranslationKey;
 }
 
 export const RESOURCE_CONFIGS: Record<string, ResourceConfig> = {
-  inbox: {
-    title: "Inbox",
-    description: "Pending notifications and work that needs attention.",
-    endpoint: "/v1/notifications/inbox?limit=200",
-    permission: "notification:read",
-    empty: "Nothing needs your attention.",
-  },
-  workflows: {
-    title: "Workflows",
-    description: "Governed, versioned workflows in this tenant.",
-    endpoint: "/v1/workflows?limit=200",
-    permission: "workflow:read",
-    action: "Create with Subkit",
-    empty: "No workflows yet.",
-  },
-  runs: {
-    title: "Runs",
-    description: "Execution status, evidence and failures.",
-    endpoint: "/v1/executions?limit=200",
-    permission: "execution:read",
-    empty: "No runs yet.",
-  },
-  connectors: {
-    title: "Connectors",
-    description: "Verified interfaces between workflows and external systems.",
-    endpoint: "/v1/connectors",
-    permission: "connector:read",
-    action: "Connect a service",
-    empty: "No connectors configured.",
-  },
-  knowledge: {
-    title: "Knowledge",
-    description: "Tenant-scoped sources available to governed authoring.",
-    endpoint: "/v1/knowledge-sources?limit=200",
-    permission: "knowledge:read",
-    action: "Add knowledge",
-    empty: "No knowledge sources.",
-  },
-  skills: {
-    title: "Skills",
-    description: "Human-approved operating knowledge used by Subkit.",
-    endpoint: "/v1/skills?limit=200",
-    permission: "skill:read",
-    action: "Draft a skill",
-    empty: "No approved skills.",
-  },
-  files: {
-    title: "Files",
-    description: "Shared inputs and outputs with tenant-scoped links.",
-    endpoint: "/v1/files?limit=100",
-    permission: "file:read",
-    empty: "No files stored.",
-  },
+  inbox: resource("inbox", "/v1/notifications/inbox?limit=200", "notification:read"),
+  workflows: resource("workflows", "/v1/workflows?limit=200", "workflow:read", true),
+  runs: resource("runs", "/v1/executions?limit=200", "execution:read"),
+  connectors: resource("connectors", "/v1/connectors", "connector:read", true),
+  knowledge: resource("knowledge", "/v1/knowledge-sources?limit=200", "knowledge:read", true),
+  skills: resource("skills", "/v1/skills?limit=200", "skill:read", true),
+  files: resource("files", "/v1/files?limit=100", "file:read"),
   approvals: {
-    title: "Approvals",
-    description: "Proposals stay inactive until an operator explicitly decides.",
-    endpoint: ["/v1/skill-candidates?limit=200", "/v1/patch-candidates?limit=200"],
-    permission: "conversation:approve",
-    empty: "No skill or patch candidates await review.",
+    ...resource(
+      "approvals",
+      ["/v1/skill-candidates?limit=200", "/v1/patch-candidates?limit=200"],
+      "conversation:approve",
+    ),
   },
-  audit: {
-    title: "Audit log",
-    description: "Append-only records of state-changing operations.",
-    endpoint: "/v1/audit-log?limit=200",
-    permission: "audit:read",
-    empty: "No audit records found.",
-  },
-  usage: {
-    title: "Usage",
-    description: "Tenant runtime and execution statistics.",
-    endpoint: "/v1/stats/executions",
-    permission: "stats:read:all",
-    empty: "No execution statistics yet.",
-  },
-  people: {
-    title: "People",
-    description: "Users, sessions and tenant membership.",
-    endpoint: "/v1/identity/users",
-    permission: "identity:read",
-    empty: "No users found.",
-  },
-  access: {
-    title: "Access",
-    description: "Roles, grants and effective permissions.",
-    endpoint: "/v1/rbac/roles",
-    permission: "rbac:read",
-    empty: "No roles found.",
-  },
-  "api-access": {
-    title: "API access",
-    description: "API keys and machine access owned by this tenant.",
-    endpoint: "/v1/identity/api-keys",
-    permission: "api_key:read",
-    empty: "No API keys found.",
-  },
-  operations: {
-    title: "Operations",
-    description: "Health, drift, queues and repair proposals.",
-    endpoint: "/v1/operator/health-digest",
-    permission: "stats:read:all",
-    empty: "No operational data returned.",
-  },
-  settings: {
-    title: "Settings",
-    description: "Resolved tenant configuration and its source layers.",
-    endpoint: "/v1/settings",
-    permission: "identity:read",
-    empty: "No settings available.",
-  },
+  audit: resource("audit", "/v1/audit-log?limit=200", "audit:read"),
+  usage: resource("usage", "/v1/stats/executions", "stats:read:all"),
+  people: resource("people", "/v1/identity/users", "identity:read"),
+  access: resource("access", "/v1/rbac/roles", "rbac:read"),
+  "api-access": resource("apiAccess", "/v1/identity/api-keys", "api_key:read"),
+  operations: resource("operations", "/v1/operator/health-digest", "stats:read:all"),
+  settings: resource("settings", "/v1/settings", "identity:read"),
 };
+
+function resource(
+  key: string,
+  endpoint: string | readonly string[],
+  permission: string,
+  action = false,
+): ResourceConfig {
+  return {
+    titleKey: `resource.${key}.title` as TranslationKey,
+    descriptionKey: `resource.${key}.description` as TranslationKey,
+    endpoint,
+    permission,
+    actionKey: action ? (`resource.${key}.action` as TranslationKey) : undefined,
+    emptyKey: `resource.${key}.empty` as TranslationKey,
+  };
+}
 
 function rowsFrom(value: unknown): Record<string, unknown>[] {
   if (Array.isArray(value))
@@ -172,32 +104,108 @@ function rowsFrom(value: unknown): Record<string, unknown>[] {
   return [record];
 }
 
-function cell(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "object") return Array.isArray(value) ? `${value.length} items` : "Details";
-  return String(value);
+const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
+const UUID_GLOBAL = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+const HIDDEN_FIELD = /(^id$|_id$|^tenant_|uuid|token|secret|password|hash|credential|csrf)/i;
+
+function isReadableField(key: string): boolean {
+  return !HIDDEN_FIELD.test(key);
+}
+
+function readableScalar(value: unknown): value is string | number | boolean {
+  return (
+    ["string", "number", "boolean"].includes(typeof value) &&
+    !(typeof value === "string" && UUID.test(value))
+  );
 }
 
 function primaryColumns(rows: Record<string, unknown>[]): string[] {
   const preferred = [
     "name",
+    "display_name",
     "title",
     "slug",
     "status",
     "type",
+    "kind",
     "category",
     "email",
     "action",
     "created_at",
     "updated_at",
-    "id",
   ];
-  const keys = new Set(rows.flatMap((row) => Object.keys(row)));
-  return preferred.filter((key) => keys.has(key)).slice(0, 5);
+  const keys = new Set(rows.flatMap((row) => Object.keys(row).filter(isReadableField)));
+  const selected = preferred.filter((key) => keys.has(key));
+  if (selected.length > 0) return selected.slice(0, 5);
+  return [...keys].filter((key) => rows.some((row) => readableScalar(row[key]))).slice(0, 5);
+}
+
+function recordName(record: Record<string, unknown> | null): string | null {
+  if (!record) return null;
+  for (const key of ["name", "display_name", "title", "slug", "email"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim() && !UUID.test(value)) return value;
+  }
+  return null;
+}
+
+function fieldLabel(key: string, t: ReturnType<typeof useI18n>["t"]): string {
+  const known: Partial<Record<string, TranslationKey>> = {
+    created_at: "resource.field.createdAt",
+    updated_at: "resource.field.updatedAt",
+    display_name: "resource.field.displayName",
+    role_name: "resource.field.roleName",
+    mime_type: "resource.field.mimeType",
+    byte_size: "resource.field.byteSize",
+    last_used_at: "resource.field.lastUsedAt",
+    expires_at: "resource.field.expiresAt",
+    created_by: "resource.field.createdBy",
+    name: "resource.field.name",
+    title: "resource.field.title",
+    slug: "resource.field.slug",
+    status: "resource.field.status",
+    type: "resource.field.type",
+    kind: "resource.field.kind",
+    category: "resource.field.category",
+    email: "resource.field.email",
+    action: "resource.field.action",
+  };
+  return known[key] ? t(known[key]) : humanize(key);
+}
+
+function DisplayValue({ field, value }: { field: string; value: unknown }) {
+  const { t, dateTime } = useI18n();
+  if (value === null || value === undefined || value === "") return <>—</>;
+  if (typeof value === "boolean") return <>{t(value ? "common.yes" : "common.no")}</>;
+  if (Array.isArray(value)) return <>{t("common.items", { count: value.length })}</>;
+  if (typeof value === "object") return <>{t("common.details")}</>;
+  if (typeof value === "string" && UUID.test(value)) return <>{value.replace(UUID_GLOBAL, "—")}</>;
+  if (typeof value === "string" && /_at$/.test(field)) return <>{dateTime(value)}</>;
+  if (field === "status" && typeof value === "string") return <>{statusLabel(t, value)}</>;
+  return <>{String(value)}</>;
+}
+
+function RecordDetails({ record }: { record: Record<string, unknown> }) {
+  const { t } = useI18n();
+  const entries = Object.entries(record).filter(
+    ([key, value]) => isReadableField(key) && readableScalar(value),
+  );
+  return (
+    <dl className="grid gap-4 p-4" data-testid="resource-detail-fields">
+      {entries.map(([key, value]) => (
+        <div key={key} className="grid gap-1 border-b pb-3 last:border-b-0">
+          <dt className="text-xs font-medium text-muted-foreground">{fieldLabel(key, t)}</dt>
+          <dd className="break-words text-sm">
+            <DisplayValue field={key} value={value} />
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 function WorkflowDetail({ selected }: { selected: Record<string, unknown> }) {
+  const { t } = useI18n();
   const workflowId = typeof selected.id === "string" ? selected.id : null;
   const query = useQuery({
     queryKey: ["workflow", workflowId],
@@ -205,53 +213,62 @@ function WorkflowDetail({ selected }: { selected: Record<string, unknown> }) {
     enabled: Boolean(workflowId),
   });
   const steps = query.data && Array.isArray(query.data.steps) ? rowsFrom(query.data.steps) : [];
-  const workflowName = cell(selected.name ?? selected.slug ?? selected.id);
-  const repairPrompt = encodeURIComponent(`Inspect and improve the workflow ${workflowName}`);
+  const workflowName = recordName(selected) ?? t("resource.workflows.title");
+  const repairPrompt = encodeURIComponent(`${t("workflow.edit")}: ${workflowName}`);
 
   return (
-    <div className="space-y-4 p-4">
-      <Button asChild className="w-full">
-        <a href={`/cockpit/chat?prompt=${repairPrompt}`}>
-          <Bot />
-          Edit safely with Subkit
+    <div className="grid gap-4 p-4" data-testid="workflow-detail">
+      <Button asChild className="w-full" data-testid="workflow-edit-action">
+        <a href={`/cockpit/chat?prompt=${repairPrompt}`} data-testid="workflow-edit-link">
+          <Bot data-icon="inline-start" />
+          {t("workflow.edit")}
         </a>
       </Button>
       {query.isPending ? (
-        <div className="space-y-3">
+        <div className="grid gap-3" data-testid="workflow-detail-loading">
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
         </div>
       ) : query.error ? (
-        <Alert variant="destructive">
-          <AlertTitle>Could not load workflow definition</AlertTitle>
+        <Alert variant="destructive" data-testid="workflow-detail-error">
+          <AlertTitle>{t("workflow.loadFailed")}</AlertTitle>
           <AlertDescription>{query.error.message}</AlertDescription>
         </Alert>
       ) : steps.length === 0 ? (
-        <Empty className="min-h-48 border">
+        <Empty className="min-h-48 border" data-testid="workflow-steps-empty">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <Workflow />
             </EmptyMedia>
-            <EmptyTitle>No committed steps</EmptyTitle>
-            <EmptyDescription>
-              Start in chat to inspect, validate and preview a draft.
-            </EmptyDescription>
+            <EmptyTitle>{t("workflow.noSteps")}</EmptyTitle>
+            <EmptyDescription>{t("workflow.noStepsDescription")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
-        <section className="rounded-xl border bg-muted/30 p-4" aria-label="Workflow step map">
-          <div className="mb-4 flex items-center justify-between text-xs text-muted-foreground">
-            <span>Committed step map</span>
-            <span>{steps.length} steps</span>
+        <section
+          className="rounded-xl border bg-muted/30 p-4"
+          aria-label={t("workflow.stepMap")}
+          data-testid="workflow-step-map"
+        >
+          <div className="mb-4 flex items-center justify-between gap-4 text-xs text-muted-foreground">
+            <span>{t("workflow.stepMap")}</span>
+            <span>{t("workflow.steps", { count: steps.length })}</span>
           </div>
           <div className="flex flex-col items-center">
             {steps.map((step, index) => (
-              <div className="contents" key={cell(step.id ?? index)}>
-                <Card className="w-full bg-background shadow-sm">
+              <div className="contents" key={index}>
+                <Card
+                  className="w-full bg-background shadow-sm"
+                  data-testid={`workflow-step-${index}`}
+                >
                   <CardHeader className="gap-2 py-4">
                     <div className="flex items-center justify-between gap-3">
-                      <CardTitle className="font-mono text-sm">{cell(step.id)}</CardTitle>
-                      <Badge variant="secondary">{cell(step.kind)}</Badge>
+                      <CardTitle className="text-sm">
+                        {recordName(step) ?? t("workflow.step", { count: index + 1 })}
+                      </CardTitle>
+                      {typeof step.kind === "string" && (
+                        <Badge variant="secondary">{humanize(step.kind)}</Badge>
+                      )}
                     </div>
                     {typeof step.description === "string" && (
                       <CardDescription>{step.description}</CardDescription>
@@ -259,36 +276,33 @@ function WorkflowDetail({ selected }: { selected: Record<string, unknown> }) {
                   </CardHeader>
                 </Card>
                 {index < steps.length - 1 && (
-                  <ArrowDown className="my-2 size-4 text-muted-foreground" aria-hidden="true" />
+                  <ArrowDown className="my-2 text-muted-foreground" aria-hidden="true" />
                 )}
               </div>
             ))}
           </div>
         </section>
       )}
-      <details>
-        <summary className="cursor-pointer text-sm font-medium">Engine representation</summary>
-        <pre className="mt-3 overflow-auto rounded-lg bg-muted p-4 text-xs leading-relaxed">
-          {JSON.stringify(query.data ?? selected, null, 2)}
-        </pre>
-      </details>
+      <RecordDetails record={query.data ?? selected} />
     </div>
   );
 }
 
 export function ResourcePage({
-  resource,
+  resource: resourceName,
   permissions,
 }: {
   resource: string;
   permissions: readonly string[];
 }) {
-  const config = RESOURCE_CONFIGS[resource];
-  if (!config) throw new Error(`Unknown cockpit resource: ${resource}`);
+  const { t } = useI18n();
+  const config = RESOURCE_CONFIGS[resourceName];
+  if (!config) throw new Error(`Unknown cockpit resource: ${resourceName}`);
+  const title = t(config.titleKey);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const query = useQuery({
-    queryKey: ["resource", resource],
+    queryKey: ["resource", resourceName],
     queryFn: async () => {
       const endpoints = typeof config.endpoint === "string" ? [config.endpoint] : config.endpoint;
       const results = await Promise.all(endpoints.map((endpoint) => apiRequest<unknown>(endpoint)));
@@ -302,120 +316,154 @@ export function ResourcePage({
     [rows, search],
   );
   const columns = primaryColumns(rows);
-  const chatPrompt = encodeURIComponent(
-    `${config.action || "Help me work with"} ${config.title.toLowerCase()}`,
-  );
+  const chatPrompt = encodeURIComponent(config.actionKey ? t(config.actionKey) : title);
 
   if (!permissions.includes(config.permission))
     return (
-      <main className="p-6">
-        <Alert>
-          <AlertTitle>Permission required</AlertTitle>
-          <AlertDescription>
-            Your current role does not include {config.permission}.
-          </AlertDescription>
+      <main className="p-6" data-testid="resource-permission-denied">
+        <Alert data-testid="resource-permission-alert">
+          <AlertTitle>{t("resource.permission.title")}</AlertTitle>
+          <AlertDescription>{t("resource.permission.description")}</AlertDescription>
         </Alert>
       </main>
     );
+
   return (
-    <main className="flex min-h-0 flex-1 flex-col" data-cockpit-ui="resource-page">
-      <div className="flex flex-col gap-4 border-b p-6 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{config.title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{config.description}</p>
+    <main
+      className="flex min-h-0 flex-1 flex-col"
+      data-cockpit-ui="resource-page"
+      data-testid={`resource-${resourceName}`}
+    >
+      <header
+        className="flex flex-col gap-4 border-b p-6 sm:flex-row sm:items-end sm:justify-between"
+        data-testid="resource-header"
+      >
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight" data-testid="resource-title">
+            {title}
+          </h1>
+          <p
+            className="mt-1 max-w-2xl text-sm text-muted-foreground"
+            data-testid="resource-description"
+          >
+            {t(config.descriptionKey)}
+          </p>
         </div>
-        {config.action && (
-          <Button asChild>
-            <a href={`/cockpit/chat?prompt=${chatPrompt}`}>
-              <Bot />
-              {config.action}
+        {config.actionKey && (
+          <Button asChild data-testid="resource-primary-action">
+            <a href={`/cockpit/chat?prompt=${chatPrompt}`} data-testid="resource-primary-link">
+              <Bot data-icon="inline-start" />
+              {t(config.actionKey)}
             </a>
           </Button>
         )}
-      </div>
-      <div className="flex items-center gap-2 p-4">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      </header>
+
+      <div className="flex items-center gap-2 p-4" data-testid="resource-toolbar">
+        <div className="relative w-full max-w-sm">
+          <Search
+            className="absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={`Search ${config.title.toLowerCase()}`}
+            placeholder={t("resource.search", { resource: title.toLocaleLowerCase() })}
             className="pl-9"
+            data-testid="resource-search"
           />
         </div>
-        <Button variant="outline" size="icon" aria-label="Refresh" onClick={() => query.refetch()}>
-          <RefreshCw className={query.isFetching ? "animate-spin" : ""} />
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={t("common.refresh")}
+          data-testid="resource-refresh"
+          onClick={() => void query.refetch()}
+        >
+          <RefreshCw className={query.isFetching ? "animate-spin" : undefined} />
         </Button>
       </div>
+
       {query.isPending ? (
-        <div className="space-y-3 p-6">
+        <div
+          className="grid gap-3 p-6"
+          data-testid="resource-loading"
+          role="status"
+          aria-label={t("common.loading")}
+        >
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-48 w-full" />
         </div>
       ) : query.error ? (
-        <Alert variant="destructive" className="m-6">
-          <AlertTitle>Could not load {config.title.toLowerCase()}</AlertTitle>
+        <Alert variant="destructive" className="m-6" data-testid="resource-error">
+          <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
           <AlertDescription>{query.error.message}</AlertDescription>
         </Alert>
       ) : filtered.length === 0 ? (
-        <Empty className="flex-1">
+        <Empty className="flex-1" data-testid="resource-empty">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <Search />
             </EmptyMedia>
-            <EmptyTitle>{search ? "No matching records" : config.empty}</EmptyTitle>
+            <EmptyTitle>{search ? t("resource.noMatches") : t(config.emptyKey)}</EmptyTitle>
             <EmptyDescription>
-              {search ? "Try a broader search." : "Subkit will show tenant-scoped records here."}
+              {search ? t("resource.broaderSearch") : t("resource.emptyDescription")}
             </EmptyDescription>
           </EmptyHeader>
-          {config.action && (
+          {config.actionKey && (
             <EmptyContent>
-              <Button asChild variant="outline">
-                <a href={`/cockpit/chat?prompt=${chatPrompt}`}>
-                  <Bot />
-                  {config.action}
+              <Button asChild variant="outline" data-testid="resource-empty-action">
+                <a href={`/cockpit/chat?prompt=${chatPrompt}`} data-testid="resource-empty-link">
+                  <Bot data-icon="inline-start" />
+                  {t(config.actionKey)}
                 </a>
               </Button>
             </EmptyContent>
           )}
         </Empty>
       ) : (
-        <ScrollArea className="min-h-0 flex-1 px-4 pb-4">
-          <Card>
+        <ScrollArea className="min-h-0 flex-1 px-4 pb-4" data-testid="resource-results">
+          <Card data-testid="resource-table-card">
             <CardHeader className="sr-only">
-              <CardTitle>{config.title}</CardTitle>
-              <CardDescription>{filtered.length} records</CardDescription>
+              <CardTitle>{title}</CardTitle>
+              <CardDescription>{t("resource.records", { count: filtered.length })}</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
+              <Table data-testid="resource-table">
                 <TableHeader>
                   <TableRow>
                     {columns.map((column) => (
-                      <TableHead key={column}>{column.replaceAll("_", " ")}</TableHead>
+                      <TableHead key={column}>{fieldLabel(column, t)}</TableHead>
                     ))}
                     <TableHead className="w-12">
-                      <span className="sr-only">Open</span>
+                      <span className="sr-only">{t("common.open")}</span>
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map((row, index) => (
-                    <TableRow
-                      key={typeof row.id === "string" ? row.id : `${resource}-${index}`}
-                      className="cursor-pointer"
-                      onClick={() => setSelected(row)}
-                    >
+                    <TableRow key={index} data-testid={`resource-row-${index}`}>
                       {columns.map((column) => (
                         <TableCell key={column}>
                           {column === "status" ? (
-                            <Badge variant="outline">{cell(row[column])}</Badge>
+                            <Badge variant="outline">
+                              <DisplayValue field={column} value={row[column]} />
+                            </Badge>
                           ) : (
-                            cell(row[column])
+                            <DisplayValue field={column} value={row[column]} />
                           )}
                         </TableCell>
                       ))}
                       <TableCell>
-                        <ArrowRight className="size-4 text-muted-foreground" />
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`${t("common.open")}: ${recordName(row) ?? t("resource.detail.noName")}`}
+                          data-testid={`resource-row-${index}-open`}
+                          onClick={() => setSelected(row)}
+                        >
+                          <ArrowRight />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -423,37 +471,30 @@ export function ResourcePage({
               </Table>
             </CardContent>
             <CardFooter className="justify-between border-t py-3 text-xs text-muted-foreground">
-              <span>{filtered.length} records</span>
-              <span>Tenant scoped</span>
+              <span>{t("resource.records", { count: filtered.length })}</span>
+              <span>{t("resource.workspaceScoped")}</span>
             </CardFooter>
           </Card>
         </ScrollArea>
       )}
-      <Sheet
-        open={Boolean(selected)}
-        onOpenChange={(open) => {
-          if (!open) setSelected(null);
-        }}
-      >
-        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+
+      <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+        <SheetContent
+          className="w-full overflow-y-auto sm:max-w-xl"
+          closeLabel={t("common.close")}
+          closeTestId="resource-detail-close"
+          data-testid="resource-detail"
+        >
           <SheetHeader>
-            <SheetTitle>
-              {selected
-                ? cell(selected.name ?? selected.title ?? selected.slug ?? selected.id)
-                : "Details"}
+            <SheetTitle data-testid="resource-detail-title">
+              {recordName(selected) ?? t("resource.detail.noName")}
             </SheetTitle>
-            <SheetDescription>
-              Current engine representation for this tenant-scoped record.
-            </SheetDescription>
+            <SheetDescription>{t("resource.detail.description")}</SheetDescription>
           </SheetHeader>
-          {selected && resource === "workflows" ? (
+          {selected && resourceName === "workflows" ? (
             <WorkflowDetail selected={selected} />
           ) : selected ? (
-            <div className="p-4">
-              <pre className="overflow-auto rounded-lg bg-muted p-4 text-xs leading-relaxed">
-                {JSON.stringify(selected, null, 2)}
-              </pre>
-            </div>
+            <RecordDetails record={selected} />
           ) : null}
         </SheetContent>
       </Sheet>
