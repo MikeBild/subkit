@@ -4,9 +4,9 @@
 //
 // Walks bare-specifier imports across all workspaces (via Bun's transpiler, so
 // `.from()` method calls, strings, and comments are not mistaken for imports)
-// and flags any package imported in source but NOT declared in the root
-// package.json (deps/devDeps/peer/optional), provided as a workspace package,
-// or resolved through a tsconfig path alias. These "phantom" deps resolve only
+// and flags any package imported in source but NOT declared by a workspace
+// manifest (deps/devDeps/peer/optional), provided as a workspace package, or
+// resolved through a workspace tsconfig path alias. These "phantom" deps resolve only
 // transitively today, so an upstream bump can break them silently — declaring
 // them with a pinned range is the fix.
 //
@@ -85,17 +85,19 @@ export function importedPackages(
 }
 
 function declaredPackages(): Set<string> {
-  const root = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
-  const names = new Set<string>([
-    ...Object.keys(root.dependencies ?? {}),
-    ...Object.keys(root.devDependencies ?? {}),
-    ...Object.keys(root.peerDependencies ?? {}),
-    ...Object.keys(root.optionalDependencies ?? {}),
-  ]);
-  for (const rel of tracked("apps/*/package.json", "packages/*/package.json")) {
+  const names = new Set<string>();
+  for (const rel of tracked("package.json", "apps/*/package.json", "packages/*/package.json")) {
     try {
-      const name = JSON.parse(readFileSync(join(REPO, rel), "utf8")).name;
-      if (name) names.add(name);
+      const manifest = JSON.parse(readFileSync(join(REPO, rel), "utf8"));
+      if (manifest.name) names.add(manifest.name);
+      for (const field of [
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+      ]) {
+        for (const name of Object.keys(manifest[field] ?? {})) names.add(name);
+      }
     } catch {
       // unreadable workspace manifest — skip
     }
@@ -105,13 +107,16 @@ function declaredPackages(): Set<string> {
 
 function findPhantom(): Map<string, string[]> {
   const declared = declaredPackages();
-  let tsconfig = "";
-  try {
-    tsconfig = readFileSync(join(REPO, "tsconfig.json"), "utf8");
-  } catch {
-    // no tsconfig — no aliases
+  const aliases = new Set<string>();
+  for (const rel of tracked("tsconfig.json", "apps/*/tsconfig.json", "packages/*/tsconfig.json")) {
+    try {
+      for (const prefix of aliasPrefixes(readFileSync(join(REPO, rel), "utf8"))) {
+        aliases.add(prefix);
+      }
+    } catch {
+      // unreadable tsconfig — skip
+    }
   }
-  const aliases = aliasPrefixes(tsconfig);
   const phantom = new Map<string, string[]>();
   for (const rel of tracked(
     "apps/**/*.ts",
@@ -127,7 +132,7 @@ function findPhantom(): Map<string, string[]> {
     } catch {
       continue;
     }
-    for (const name of importedPackages(code, rel.endsWith(".tsx") ? "tsx" : "ts", aliases)) {
+    for (const name of importedPackages(code, rel.endsWith(".tsx") ? "tsx" : "ts", [...aliases])) {
       if (declared.has(name)) continue;
       const files = phantom.get(name) ?? [];
       if (!files.includes(rel)) files.push(rel);
