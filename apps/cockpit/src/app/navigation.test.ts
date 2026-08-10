@@ -15,4 +15,10 @@ describe("cockpit navigation contract", () => {
     expect(item?.permission).toBe("workflow:read");
     expect(item?.api).toContain("GET /v1/workflows");
   });
+
+  test("uses the same read permissions as the engine routes", () => {
+    expect(navigationItem("/usage")?.permission).toBe("stats:read");
+    expect(navigationItem("/operations")?.permission).toBe("stats:read");
+    expect(navigationItem("/settings")?.permission).toBe("settings:read");
+  });
 });

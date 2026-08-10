@@ -130,7 +130,7 @@ export const NAVIGATION: readonly NavigationGroup[] = [
       {
         labelKey: "nav.usage",
         path: "/usage",
-        permission: "stats:read:all",
+        permission: "stats:read",
         icon: Gauge,
         api: ["GET /v1/stats/executions"],
       },
@@ -164,14 +164,14 @@ export const NAVIGATION: readonly NavigationGroup[] = [
       {
         labelKey: "nav.operations",
         path: "/operations",
-        permission: "stats:read:all",
+        permission: "stats:read",
         icon: Bot,
         api: ["GET /v1/operator/health-digest"],
       },
       {
         labelKey: "nav.settings",
         path: "/settings",
-        permission: "identity:read",
+        permission: "settings:read",
         icon: Settings,
         api: ["GET /v1/settings"],
       },
