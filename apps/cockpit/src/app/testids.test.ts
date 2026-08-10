@@ -14,6 +14,7 @@ const interactive = new Set([
   "DropdownMenuRadioItem",
   "DropdownMenuSubTrigger",
   "Input",
+  "IconButton",
   "Link",
   "PromptInputSubmit",
   "PromptInputTextarea",
@@ -65,6 +66,42 @@ describe("cockpit test selectors", () => {
         /data-testid[^\n]+\$\{[^}]*(?:row|conversation|selected|step)\.(?:id|tenant_id|conversation_id)\}/,
       );
     }
+  });
+
+  test("routes icon-only actions through the tooltip composition", () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      const parsed = ts.createSourceFile(
+        file,
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TSX,
+      );
+      function walk(node: ts.Node): void {
+        if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+          if (node.tagName.getText(parsed) === "Button") {
+            const size = node.attributes.properties.find(
+              (property) => ts.isJsxAttribute(property) && property.name.getText(parsed) === "size",
+            );
+            if (
+              size &&
+              ts.isJsxAttribute(size) &&
+              size.initializer &&
+              ts.isStringLiteral(size.initializer) &&
+              size.initializer.text.startsWith("icon")
+            ) {
+              const line = parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1;
+              offenders.push(`${file}:${line}`);
+            }
+          }
+        }
+        ts.forEachChild(node, walk);
+      }
+      walk(parsed);
+    }
+    expect(offenders).toEqual([]);
   });
 
   test("does not use a database identifier as visible fallback text", () => {

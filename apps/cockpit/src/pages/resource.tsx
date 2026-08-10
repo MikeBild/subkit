@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowRight, Bot, RefreshCw, Search, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
+import { IconButton } from "@/components/cockpit/icon-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { humanize } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
+import { cn } from "@/lib/utils";
 
 interface ResourceConfig {
   titleKey: TranslationKey;
@@ -538,15 +540,15 @@ export function ResourcePage({
             data-testid="resource-search"
           />
         </div>
-        <Button
+        <IconButton
           variant="outline"
           size="icon"
-          aria-label={t("common.refresh")}
+          label={t("common.refresh")}
           data-testid="resource-refresh"
           onClick={() => void query.refetch()}
         >
           <RefreshCw className={query.isFetching ? "animate-spin" : undefined} />
-        </Button>
+        </IconButton>
       </div>
 
       {resourceName === "usage" && query.data && <UsageSummary value={query.data.raw} />}
@@ -589,7 +591,7 @@ export function ResourcePage({
           )}
         </Empty>
       ) : (
-        <ScrollArea className="min-h-0 flex-1 px-4 pb-4" data-testid="resource-results">
+        <ScrollArea className="h-0 min-h-0 flex-1 px-4 pb-4" data-testid="resource-results">
           <Card data-testid="resource-table-card">
             <CardHeader className="sr-only">
               <CardTitle>{title}</CardTitle>
@@ -618,7 +620,10 @@ export function ResourcePage({
                       {columns.map((column, columnIndex) => (
                         <TableCell
                           key={column}
-                          className={columnIndex >= 2 ? "hidden sm:table-cell" : undefined}
+                          className={cn(
+                            "max-w-48 whitespace-normal break-words sm:max-w-72",
+                            columnIndex >= 2 && "hidden sm:table-cell",
+                          )}
                         >
                           {column === "status" ? (
                             <Badge variant="outline">
@@ -630,15 +635,13 @@ export function ResourcePage({
                         </TableCell>
                       ))}
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`${t("common.open")}: ${recordName(row) ?? t("resource.detail.noName")}`}
+                        <IconButton
+                          label={`${t("common.open")}: ${recordName(row) ?? t("resource.detail.noName")}`}
                           data-testid={`resource-row-${index}-open`}
                           onClick={() => setSelected(row)}
                         >
                           <ArrowRight />
-                        </Button>
+                        </IconButton>
                       </TableCell>
                     </TableRow>
                   ))}

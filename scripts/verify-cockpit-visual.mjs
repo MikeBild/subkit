@@ -113,6 +113,21 @@ async function mockApi(route) {
           created_at: "2026-08-10T08:02:00.000Z",
           parts: [{ type: "text", text: "Zeige mir zuerst die geplanten Änderungen." }],
         },
+        {
+          id: "message-4",
+          role: "assistant",
+          created_at: "2026-08-10T08:03:00.000Z",
+          parts: [
+            {
+              type: "dynamic-tool",
+              toolName: "validate_workflow",
+              toolCallId: "tool-call-1",
+              state: "output-available",
+              input: { name: "Monatsreport" },
+              output: { status: "valid" },
+            },
+          ],
+        },
       ],
       tool_calls: [],
       resume_summary: {
@@ -285,72 +300,130 @@ async function assertChat(page, label) {
 await mkdir(outputDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [];
-for (const viewport of [
+const locales = [
+  { name: "de", browser: "de-DE" },
+  { name: "en", browser: "en-US" },
+];
+const viewports = [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "mobile", width: 390, height: 844 },
-]) {
-  const context = await browser.newContext({
-    viewport: { width: viewport.width, height: viewport.height },
-    locale: "de-DE",
-  });
-  await context.addInitScript(() => localStorage.setItem("sk-cockpit-locale", "de"));
-  const page = await context.newPage();
-  page.on("pageerror", (error) => errors.push(`${viewport.name}: ${error.message}`));
-  await page.route("**/v1/**", mockApi);
-  for (const route of routes) {
-    const response = await page.goto(`${baseUrl}/cockpit/${route}`, { waitUntil: "networkidle" });
-    if (!response?.ok())
-      throw new Error(`${viewport.name}/${route} returned HTTP ${response?.status()}`);
-    await page.locator(markerFor(route)).waitFor({ state: "visible" });
-    await page
-      .locator('[data-testid="resource-error"]')
-      .waitFor({ state: "hidden" })
-      .catch(() => {});
-    if (
+];
+
+for (const locale of locales) {
+  for (const viewport of viewports) {
+    const context = await browser.newContext({
+      viewport: { width: viewport.width, height: viewport.height },
+      locale: locale.browser,
+    });
+    await context.addInitScript((preference) => {
+      localStorage.setItem("sk-cockpit-locale", preference);
+    }, locale.name);
+    const page = await context.newPage();
+    page.on("pageerror", (error) =>
+      errors.push(`${locale.name}/${viewport.name}: ${error.message}`),
+    );
+    await page.route("**/v1/**", mockApi);
+    for (const route of routes) {
+      const response = await page.goto(`${baseUrl}/cockpit/${route}`, { waitUntil: "networkidle" });
+      if (!response?.ok())
+        throw new Error(
+          `${locale.name}/${viewport.name}/${route} returned HTTP ${response?.status()}`,
+        );
+      await page.locator(markerFor(route)).waitFor({ state: "visible" });
       await page
         .locator('[data-testid="resource-error"]')
-        .isVisible()
-        .catch(() => false)
-    )
-      throw new Error(`${viewport.name}/${route} displays a resource error`);
-    const text = await page.locator("body").innerText();
-    if (text.includes(uuid)) throw new Error(`${viewport.name}/${route} exposes a UUID`);
-    await assertViewport(page, `${viewport.name}/${route}`);
-    if (route === "chat") await assertChat(page, `${viewport.name}/${route}`);
-    await page.screenshot({
-      path: resolve(outputDir, `${viewport.name}-${route}.png`),
-      fullPage: false,
-    });
+        .waitFor({ state: "hidden" })
+        .catch(() => {});
+      if (
+        await page
+          .locator('[data-testid="resource-error"]')
+          .isVisible()
+          .catch(() => false)
+      )
+        throw new Error(`${locale.name}/${viewport.name}/${route} displays a resource error`);
+      const text = await page.locator("body").innerText();
+      if (text.includes(uuid))
+        throw new Error(`${locale.name}/${viewport.name}/${route} exposes a UUID`);
+      if ((await page.locator("html").getAttribute("lang")) !== locale.name)
+        throw new Error(`${locale.name}/${viewport.name}/${route} uses the wrong locale`);
+      await assertViewport(page, `${locale.name}/${viewport.name}/${route}`);
+      if (route === "chat") await assertChat(page, `${locale.name}/${viewport.name}/${route}`);
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.name}-${viewport.name}-${route}.png`),
+        fullPage: false,
+      });
+    }
+    if (viewport.name === "desktop") {
+      await page.goto(`${baseUrl}/cockpit/chat`, { waitUntil: "networkidle" });
+      const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
+      await tool.scrollIntoViewIfNeeded();
+      await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.name}-desktop-chat-tool.png`),
+        fullPage: false,
+      });
+      await page
+        .locator('[data-testid="chat-composer-input"]')
+        .fill("Prüfe den Workflow, ohne ihn auszuführen.");
+      await page.locator('[data-testid="chat-composer-submit"]').click();
+      await page
+        .locator('[data-testid="chat-error"]')
+        .waitFor({ state: "hidden" })
+        .catch(() => {});
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.name}-desktop-chat-interaction.png`),
+        fullPage: false,
+      });
+      await page.goto(`${baseUrl}/cockpit/usage`, { waitUntil: "networkidle" });
+      await page.locator('[data-testid="resource-refresh"]').hover();
+      await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
+      await page.waitForTimeout(300);
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.name}-desktop-tooltip.png`),
+        fullPage: false,
+      });
+      await page.locator('[data-testid="account-menu-trigger"]').click();
+      await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
+      await page.waitForTimeout(300);
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.name}-desktop-account.png`),
+        fullPage: false,
+      });
+      await page.locator('[data-testid="account-language-menu"]').hover();
+      await page.locator('[data-testid="account-language-content"]').waitFor({ state: "visible" });
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.name}-desktop-account-language.png`),
+        fullPage: false,
+      });
+      await page.keyboard.press("Escape");
+      await page.locator('[data-testid="account-language-content"]').waitFor({ state: "hidden" });
+      await page.keyboard.press("Escape");
+      await page.locator('[data-testid="account-menu"]').waitFor({ state: "hidden" });
+      await page.locator('[data-testid="account-menu-trigger"]').click();
+      await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
+      await page.locator('[data-testid="account-theme-menu"]').hover();
+      await page.locator('[data-testid="account-theme-content"]').waitFor({ state: "visible" });
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.name}-desktop-account-theme.png`),
+        fullPage: false,
+      });
+    }
+    await context.close();
   }
-  if (viewport.name === "desktop") {
-    await page.goto(`${baseUrl}/cockpit/chat`, { waitUntil: "networkidle" });
-    await page
-      .locator('[data-testid="chat-composer-input"]')
-      .fill("Prüfe den Workflow, ohne ihn auszuführen.");
-    await page.locator('[data-testid="chat-composer-submit"]').click();
-    await page
-      .locator('[data-testid="chat-error"]')
-      .waitFor({ state: "hidden" })
-      .catch(() => {});
-    await page.screenshot({
-      path: resolve(outputDir, "desktop-chat-interaction.png"),
-      fullPage: false,
-    });
-  }
-  await context.close();
 }
 
-for (const viewport of ["desktop", "mobile"]) {
-  const contact = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-  const cards = await Promise.all(
-    routes.map(async (route) => {
-      const bytes = await readFile(resolve(outputDir, `${viewport}-${route}.png`));
-      const source = `data:image/png;base64,${bytes.toString("base64")}`;
-      return `<figure><img src="${source}" alt=""><figcaption>${route}</figcaption></figure>`;
-    }),
-  );
-  await contact.setContent(
-    `<style>
+for (const locale of locales) {
+  for (const viewport of ["desktop", "mobile"]) {
+    const contact = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+    const cards = await Promise.all(
+      routes.map(async (route) => {
+        const bytes = await readFile(resolve(outputDir, `${locale.name}-${viewport}-${route}.png`));
+        const source = `data:image/png;base64,${bytes.toString("base64")}`;
+        return `<figure><img src="${source}" alt=""><figcaption>${route}</figcaption></figure>`;
+      }),
+    );
+    await contact.setContent(
+      `<style>
       * { box-sizing: border-box }
       body { margin: 0; padding: 16px; background: #e2e8f0; font: 14px system-ui }
       main { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px }
@@ -358,14 +431,17 @@ for (const viewport of ["desktop", "mobile"]) {
       img { display: block; width: 100%; aspect-ratio: ${viewport === "desktop" ? "1.44" : "0.462"}; object-fit: cover; object-position: top }
       figcaption { padding: 8px; font-weight: 600 }
     </style><main>${cards.join("")}</main>`,
-    { waitUntil: "load" },
-  );
-  await contact.screenshot({
-    path: resolve(outputDir, `${viewport}-contact-sheet.png`),
-    fullPage: true,
-  });
-  await contact.close();
+      { waitUntil: "load" },
+    );
+    await contact.screenshot({
+      path: resolve(outputDir, `${locale.name}-${viewport}-contact-sheet.png`),
+      fullPage: true,
+    });
+    await contact.close();
+  }
 }
 await browser.close();
 if (errors.length) throw new Error(errors.join("; "));
-console.log(`Cockpit visual sweep passed: ${routes.length * 2 + 1} screenshots in ${outputDir}`);
+console.log(
+  `Cockpit visual sweep passed: ${routes.length * viewports.length * locales.length + locales.length * 6} screenshots in ${outputDir}`,
+);

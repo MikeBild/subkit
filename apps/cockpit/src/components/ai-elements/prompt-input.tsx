@@ -1115,6 +1115,7 @@ export const PromptInputActionMenuItem = ({
 export type PromptInputSubmitProps = ComponentProps<typeof InputGroupButton> & {
   status?: ChatStatus;
   onStop?: () => void;
+  tooltip?: string;
 };
 
 export const PromptInputSubmit = ({
@@ -1125,6 +1126,7 @@ export const PromptInputSubmit = ({
   onStop,
   onClick,
   children,
+  tooltip,
   ...props
 }: PromptInputSubmitProps) => {
   const isGenerating = status === "submitted" || status === "streaming";
@@ -1151,7 +1153,7 @@ export const PromptInputSubmit = ({
     [isGenerating, onStop, onClick],
   );
 
-  return (
+  const button = (
     <InputGroupButton
       aria-label={isGenerating ? "Stop" : "Submit"}
       className={cn(className)}
@@ -1163,6 +1165,15 @@ export const PromptInputSubmit = ({
     >
       {children ?? Icon}
     </InputGroupButton>
+  );
+
+  if (!tooltip) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 };
 
@@ -1179,7 +1190,7 @@ export const PromptInputSelectTrigger = ({
   <SelectTrigger
     className={cn(
       "border-none bg-transparent font-medium text-muted-foreground shadow-none transition-colors",
-      "hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground",
+      "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
       className,
     )}
     {...props}
@@ -1258,7 +1269,7 @@ export type PromptInputTabItemProps = HTMLAttributes<HTMLDivElement>;
 
 export const PromptInputTabItem = ({ className, ...props }: PromptInputTabItemProps) => (
   <div
-    className={cn("flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent", className)}
+    className={cn("flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted", className)}
     {...props}
   />
 );
