@@ -4,6 +4,7 @@
 // public routes (health, openapi, docs).
 
 import type { MiddlewareHandler } from "hono";
+import { browserSessionForPrincipal } from "../../auth/browser-session.ts";
 import { recordAuthFailure } from "../../auth/failed-auth-tracker.ts";
 import type { AuthProviderRegistry } from "../../auth/registry.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -17,6 +18,10 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
     const principal = await registry.resolve(c.req.raw);
     if (principal) {
       c.set("principal", principal);
+      const cockpitRequest =
+        c.req.header("x-subkit-client") === "cockpit" &&
+        Boolean(await browserSessionForPrincipal(c.req.raw, principal));
+      if (cockpitRequest) c.set("request_source", "ui");
       // Compose the identity envelope once per request. Downstream code
       // pulls `service_metadata` instead of re-deriving from individual
       // ctx fields, so audit / telemetry / execution / notifications all
@@ -28,7 +33,7 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
           tenant_id: principal.tenant_id,
           actor_id: principal.id,
           actor_email: principal.email ?? null,
-          request_source: c.get("request_source") ?? "api",
+          request_source: cockpitRequest ? "ui" : (c.get("request_source") ?? "api"),
         }),
       );
       // Layer tenant + actor onto the async context for downstream logs.
@@ -36,6 +41,7 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
         {
           tenant_id: principal.tenant_id,
           actor_id: principal.id,
+          request_source: cockpitRequest ? "ui" : (c.get("request_source") ?? "api"),
         },
         async () => {
           await next();

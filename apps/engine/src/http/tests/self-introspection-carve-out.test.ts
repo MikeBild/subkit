@@ -21,6 +21,7 @@ const FILE_TO_SLUG: Record<string, string> = {
   "whoami.ts": "whoami",
   "permissions.ts": "identity-permissions",
   "sk-bootstrap.ts": "sk-bootstrap",
+  "cockpit.ts": "cockpit-bootstrap",
   "providers.ts": "identity-providers",
   "login.ts": "identity-login",
   "sessions.ts": "identity-sessions",
@@ -99,6 +100,7 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
     // should land via a deliberate edit + a follow-up that updates
     // any consumer test, not via a silent rename.
     expect([...SELF_INTROSPECTION_ROUTES].sort()).toEqual([
+      "cockpit-bootstrap",
       "health",
       "identity-login",
       "identity-permissions",

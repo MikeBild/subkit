@@ -22,6 +22,8 @@ export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   "identity-permissions",
   // GET /v1/sk/bootstrap
   "sk-bootstrap",
+  // GET /v1/cockpit/bootstrap
+  "cockpit-bootstrap",
   // GET /v1/identity/providers (lists which auth providers are configured)
   "identity-providers",
   // POST /v1/identity/login (issues a session — auth side, not RBAC side)

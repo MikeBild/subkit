@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.1.0",
+    "version": "6.1.1",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -26,6 +26,12 @@
             }
           }
         }
+      },
+      "browserSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "subkit_session",
+        "description": "HttpOnly same-origin browser session used by the Subkit Cockpit."
       }
     },
     "schemas": {
@@ -3008,6 +3014,148 @@
           "identity_token"
         ],
         "additionalProperties": false
+      },
+      "CockpitBootstrapResponse": {
+        "type": "object",
+        "properties": {
+          "principal": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user"
+                ]
+              },
+              "email": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "role_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "browser_session"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "email",
+              "role_name",
+              "provider"
+            ]
+          },
+          "tenant": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "display_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "slug",
+              "display_name"
+            ]
+          },
+          "session": {
+            "type": "object",
+            "properties": {
+              "expires_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "absolute_expires_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "expires_at",
+              "absolute_expires_at"
+            ]
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "csrf_token": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "recent_conversations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "awaiting_input",
+                    "committed",
+                    "abandoned"
+                  ]
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "status",
+                "updated_at"
+              ]
+            }
+          }
+        },
+        "required": [
+          "principal",
+          "tenant",
+          "session",
+          "permissions",
+          "csrf_token",
+          "version",
+          "recent_conversations"
+        ]
       },
       "OAuthClientListResponse": {
         "type": "object",
@@ -19592,6 +19740,82 @@
         }
       }
     },
+    "/v1/identity/cockpit-login": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Start a browser login for the Subkit Cockpit",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "required": false,
+            "name": "return_to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the provider-neutral login funnel",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid return path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cockpit/bootstrap": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Resolve the Cockpit session, tenant and effective navigation permissions",
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cockpit session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CockpitBootstrapResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/.well-known/oauth-protected-resource": {
       "get": {
         "operationId": "getOAuthProtectedResource",
@@ -32203,6 +32427,159 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cockpit": {
+      "get": {
+        "operationId": "redirectCockpit",
+        "summary": "Redirect to the canonical Cockpit shell path",
+        "responses": {
+          "308": {
+            "description": "Permanent redirect to /cockpit/"
+          }
+        }
+      }
+    },
+    "/cockpit/": {
+      "get": {
+        "operationId": "getCockpitShell",
+        "summary": "Serve the Cockpit application shell",
+        "responses": {
+          "200": {
+            "description": "Cockpit shell or static asset",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Asset unchanged"
+          },
+          "503": {
+            "description": "Cockpit bundle was not included in this deployment",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "operationId": "headCockpitShell",
+        "summary": "Inspect the Cockpit application shell",
+        "responses": {
+          "200": {
+            "description": "Cockpit shell or static asset",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Asset unchanged"
+          },
+          "503": {
+            "description": "Cockpit bundle was not included in this deployment",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cockpit/{path}": {
+      "get": {
+        "operationId": "getCockpitAsset",
+        "summary": "Serve the Cockpit shell or an embedded static asset",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "path",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cockpit shell or static asset",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Asset unchanged"
+          },
+          "503": {
+            "description": "Cockpit bundle was not included in this deployment",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "operationId": "headCockpitAsset",
+        "summary": "Inspect an embedded Cockpit asset",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "path",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cockpit shell or static asset",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Asset unchanged"
+          },
+          "503": {
+            "description": "Cockpit bundle was not included in this deployment",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }

@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.1] – 2026-08-10
+
+### Added
+
+- **The authenticated Subkit Cockpit is now part of the engine release.** It
+  provides tenant-scoped Chat, workflow and execution workspaces plus the
+  operator surfaces permitted by the signed-in user's effective role. The Vite
+  bundle is embedded into the single engine binary and checked for generated
+  drift in CI.
+
+### Fixed
+
+- **Supabase SSO sessions now enter the Cockpit instead of returning to the
+  sign-in card.** The browser boundary validates the signed session's user,
+  tenant and session identifiers instead of depending on which compatible auth
+  resolver recognized the cookie first.
+- **The Cockpit Chat route no longer crashes while rendering tooltips.** A
+  single application-level tooltip provider now covers the sidebar, composer
+  and message actions.
+
 ## [6.1.0] – 2026-08-06
 
 ### Changed

@@ -97,6 +97,11 @@ jobs:
         # routes that ship without their generated client being committed.
         run: bun run check:openapi-drift
 
+      - name: Cockpit bundle drift
+        # The engine embeds the Vite output, so a source-only UI change must
+        # fail before release rather than ship the previous Cockpit bundle.
+        run: bun run check:cockpit-drift
+
       - name: Determinism lint
         run: bun run test:determinism
 
