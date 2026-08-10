@@ -72,11 +72,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
       <main className="mx-auto max-w-xl p-8" data-testid="session-error">
         <Alert variant="destructive" data-testid="session-error-alert">
           <AlertTitle>{t("session.unavailable.title")}</AlertTitle>
-          <AlertDescription>
-            {query.error instanceof Error
-              ? query.error.message
-              : t("session.unavailable.description")}
-          </AlertDescription>
+          <AlertDescription>{t("session.unavailable.description")}</AlertDescription>
           <Button
             variant="outline"
             size="sm"

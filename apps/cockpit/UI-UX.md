@@ -8,8 +8,8 @@ session boundary, API facade and deployment lifecycle.
 
 The home surface is a persistent, governed conversation rather than a dashboard. It combines the
 family shell with Superglue's useful working pattern: a narrow history rail, a focused work surface
-and an optional evidence/context panel. Vercel AI Elements render messages, tool calls, approval
-cards, suggestions and the prompt composer.
+and an on-demand evidence drawer. The drawer never consumes the transcript's working width. Vercel
+AI Elements render messages, tool calls, approval cards, suggestions and the prompt composer.
 
 Navigation follows the work instead of the engine's directory tree:
 
@@ -46,9 +46,22 @@ row or message positions rather than database identifiers. `src/app/testids.test
 contracts.
 
 The application shell is exactly one viewport high. The shell never grows with a long transcript;
-the conversation list, transcript, context panel and resource results own their respective scroll
-areas. On narrow screens, resource tables keep the two primary columns and move secondary details
-to the row sheet.
+the conversation list, transcript, context drawer and resource results own their respective scroll
+areas. Resource tables fit their card at every width: narrow screens keep the two primary columns,
+wide screens show at most four, and the row sheet retains all secondary details.
+
+### Product-family evidence
+
+The shared contract is copied into each repository; no Cockpit imports another product at runtime.
+
+| Product | Pattern retained for Subkit | Product-specific boundary |
+| --- | --- | --- |
+| WorkKit | One scroll owner per pane, `min-h-0`/`min-w-0`, account submenu, context help | Mission and run semantics stay in WorkKit |
+| WikiKit | Fixed responsive tables and stable table-view contracts | Sources, pages and decisions stay in WikiKit |
+| ContentKit | Tooltip/context-help composition and compact page hierarchy | Publishing and moderation stay in ContentKit |
+| WatchKit | Wrapped, fixed-layout tables with no horizontal page scroll | Drift and evidence semantics stay in WatchKit |
+| CodeKit | Neutral selection and explicit action hierarchy | Projects, tasks and credentials stay in CodeKit |
+| Subkit | Conversation-first work surface, governed tool and approval cards | Workflows, connectors and tenant governance stay in Subkit |
 
 ### Action hierarchy
 

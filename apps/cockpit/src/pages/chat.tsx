@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleStop, List, MessageSquarePlus, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { CircleStop, List, MessageSquarePlus, PanelRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   appendConversationMessage,
@@ -49,7 +49,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
@@ -74,8 +80,16 @@ function localizedSummary(value: string | null | undefined, t: Translate): strin
 
 function localizedStage(value: string | null | undefined, t: Translate): string {
   if (!value) return t("chat.context.ready");
-  if (value === "onboarding") return t("chat.context.onboarding");
-  return value;
+  const stageKeys: Partial<Record<string, TranslationKey>> = {
+    onboarding: "chat.context.onboarding",
+    authoring: "chat.context.authoring",
+    discovery: "chat.context.discovery",
+    diagnosis: "chat.context.diagnosis",
+    repair: "chat.context.repair",
+    execution: "chat.context.execution",
+  };
+  const key = stageKeys[value.toLowerCase()];
+  return key ? t(key) : t("chat.context.ready");
 }
 
 function localizedTarget(value: string | null | undefined, t: Translate): string {
@@ -214,27 +228,30 @@ function ConversationList({
       <ScrollArea className="h-0 min-h-0 flex-1">
         <div className="grid gap-1 p-2">
           {conversations.map((conversation, index) => (
-            <button
+            <Button
               key={conversation.id}
               type="button"
+              variant="ghost"
               data-testid={`conversation-item-${index}`}
               onClick={() => onSelect(conversation.id)}
               className={cn(
-                "w-full rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted",
-                activeId === conversation.id && "bg-muted text-foreground",
+                "h-auto w-full min-w-0 justify-start rounded-lg px-3 py-2.5 text-left",
+                activeId === conversation.id && "bg-muted text-foreground hover:bg-muted",
               )}
             >
-              <span className="block truncate text-sm font-medium">
-                {conversation.title || t("chat.untitled")}
+              <span className="block min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">
+                  {conversation.title || t("chat.untitled")}
+                </span>
+                <span className="block truncate text-xs font-normal text-muted-foreground">
+                  {conversationExcerpt(
+                    conversation.last_message_excerpt,
+                    t("chat.toolActivity"),
+                    t("tool.referenceHidden"),
+                  ) || statusLabel(t, conversation.status)}
+                </span>
               </span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {conversationExcerpt(
-                  conversation.last_message_excerpt,
-                  t("chat.toolActivity"),
-                  t("tool.referenceHidden"),
-                ) || statusLabel(t, conversation.status)}
-              </span>
-            </button>
+            </Button>
           ))}
         </div>
       </ScrollArea>
@@ -246,7 +263,7 @@ export function ChatPage() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [contextOpen, setContextOpen] = useState(true);
+  const [contextOpen, setContextOpen] = useState(false);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const initialPrompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
   const conversations = useQuery({ queryKey: ["conversations"], queryFn: listConversations });
@@ -309,7 +326,7 @@ export function ChatPage() {
 
   return (
     <div
-      className="grid h-full min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_18rem]"
+      className="grid h-full min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[17rem_minmax(0,1fr)]"
       data-cockpit-ui="chat-workspace"
       data-testid="chat-workspace"
     >
@@ -322,7 +339,7 @@ export function ChatPage() {
 
       <section className="flex min-h-0 min-w-0 flex-col" data-testid="chat-main">
         <header
-          className="flex min-h-14 items-center justify-between gap-3 border-b px-4 py-2"
+          className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b px-4 py-2"
           data-testid="chat-header"
         >
           <div className="flex min-w-0 items-center gap-2">
@@ -361,12 +378,11 @@ export function ChatPage() {
               </Button>
             )}
             <IconButton
-              className="hidden xl:inline-flex"
               label={t("chat.toggleContext")}
               data-testid="chat-context-toggle"
               onClick={() => setContextOpen((open) => !open)}
             >
-              {contextOpen ? <PanelRightClose /> : <PanelRightOpen />}
+              <PanelRight />
             </IconButton>
           </div>
         </header>
@@ -374,12 +390,12 @@ export function ChatPage() {
         {send.error && (
           <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-error">
             <AlertTitle>{t("chat.failed")}</AlertTitle>
-            <AlertDescription>{send.error.message}</AlertDescription>
+            <AlertDescription>{t("chat.failedDescription")}</AlertDescription>
           </Alert>
         )}
 
         <ConversationViewport className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
-          <ConversationContent className="mx-auto w-full max-w-3xl">
+          <ConversationContent className="mx-auto w-full max-w-4xl gap-6 px-5 py-6 sm:px-8">
             {messages.length === 0 ? (
               <ConversationEmptyState
                 title={t("chat.empty.title")}
@@ -404,66 +420,73 @@ export function ChatPage() {
           />
         </ConversationViewport>
 
-        <div className="mx-auto w-full max-w-3xl px-4 pb-4" data-testid="chat-composer-area">
-          {messages.length === 0 && (
-            <Suggestions className="mb-2" data-testid="chat-suggestions">
-              {QUICK_START.map((key, index) => (
-                <Suggestion
-                  key={key}
-                  suggestion={t(key)}
-                  data-testid={`chat-suggestion-${index}`}
-                  onClick={(suggestion) => send.mutate(suggestion)}
-                />
-              ))}
-            </Suggestions>
-          )}
-          <PromptInputProvider initialInput={initialPrompt}>
-            <PromptInput
-              data-testid="chat-composer"
-              onSubmit={async ({ text }) => {
-                const trimmed = text.trim();
-                if (trimmed) await send.mutateAsync(trimmed);
-              }}
-            >
-              <PromptInputBody>
-                <PromptInputTextarea
-                  name="message"
-                  placeholder={t("chat.composer.placeholder")}
-                  disabled={send.isPending}
-                  data-testid="chat-composer-input"
-                />
-              </PromptInputBody>
-              <PromptInputFooter>
-                <PromptInputTools>
-                  <span className="px-2 text-xs text-muted-foreground">
-                    {t("chat.composer.mode")}
-                  </span>
-                </PromptInputTools>
-                <PromptInputSubmit
-                  status={status}
-                  disabled={send.isPending}
-                  aria-label={t("chat.submit")}
-                  tooltip={t("chat.submit")}
-                  data-testid="chat-composer-submit"
-                />
-              </PromptInputFooter>
-            </PromptInput>
-          </PromptInputProvider>
+        <div
+          className="shrink-0 border-t bg-background/95 px-4 py-3 supports-[backdrop-filter]:backdrop-blur"
+          data-testid="chat-composer-area"
+        >
+          <div className="mx-auto w-full max-w-3xl">
+            {messages.length === 0 && (
+              <Suggestions className="mb-2" data-testid="chat-suggestions">
+                {QUICK_START.map((key, index) => (
+                  <Suggestion
+                    key={key}
+                    suggestion={t(key)}
+                    data-testid={`chat-suggestion-${index}`}
+                    onClick={(suggestion) => send.mutate(suggestion)}
+                  />
+                ))}
+              </Suggestions>
+            )}
+            <PromptInputProvider initialInput={initialPrompt}>
+              <PromptInput
+                data-testid="chat-composer"
+                onSubmit={async ({ text }) => {
+                  const trimmed = text.trim();
+                  if (trimmed) await send.mutateAsync(trimmed);
+                }}
+              >
+                <PromptInputBody>
+                  <PromptInputTextarea
+                    name="message"
+                    placeholder={t("chat.composer.placeholder")}
+                    disabled={send.isPending}
+                    data-testid="chat-composer-input"
+                  />
+                </PromptInputBody>
+                <PromptInputFooter>
+                  <PromptInputTools>
+                    <span className="px-2 text-xs text-muted-foreground">
+                      {t("chat.composer.mode")}
+                    </span>
+                  </PromptInputTools>
+                  <PromptInputSubmit
+                    status={status}
+                    disabled={send.isPending}
+                    aria-label={t("chat.submit")}
+                    tooltip={t("chat.submit")}
+                    data-testid="chat-composer-submit"
+                  />
+                </PromptInputFooter>
+              </PromptInput>
+            </PromptInputProvider>
+          </div>
         </div>
       </section>
 
-      {contextOpen && (
-        <aside
-          className="hidden min-h-0 border-l xl:flex xl:flex-col"
+      <Sheet open={contextOpen} onOpenChange={setContextOpen}>
+        <SheetContent
+          side="right"
+          className="flex w-full flex-col gap-0 p-0 sm:max-w-sm"
+          closeLabel={t("common.close")}
+          closeTestId="chat-context-close"
           data-cockpit-ui="context-panel"
           data-testid="chat-context"
         >
-          <div className="p-4">
-            <p className="text-sm font-semibold">{t("chat.context.title")}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{t("chat.context.description")}</p>
-          </div>
-          <Separator />
-          <ScrollArea className="h-0 min-h-0 flex-1">
+          <SheetHeader className="border-b p-4 pr-12">
+            <SheetTitle>{t("chat.context.title")}</SheetTitle>
+            <SheetDescription>{t("chat.context.description")}</SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="min-h-0 flex-1">
             <dl className="grid gap-4 p-4 text-sm">
               <div data-testid="chat-context-stage">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.stage")}</dt>
@@ -496,8 +519,8 @@ export function ChatPage() {
               )}
             </dl>
           </ScrollArea>
-        </aside>
-      )}
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
         <SheetContent
