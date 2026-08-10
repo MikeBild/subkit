@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.3] – 2026-08-10
+
+### Fixed
+
+- **Chat now remains a bounded workspace at every supported viewport.** Long
+  conversations scroll inside the transcript, the composer stays reachable,
+  and technical tool payloads and opaque identifiers no longer displace the
+  operator-facing conversation.
+- **Usage now sends the required time-bucket query and renders useful runtime
+  summaries.** Execution totals, latency percentiles and success rate are
+  presented through the same responsive card, table and detail patterns as the
+  rest of the Cockpit.
+- **Cockpit permissions and presentations now match their engine contracts.**
+  Usage, operations and settings use the permissions required by their routes,
+  while settings provenance and operational digests are flattened into
+  readable fields in English and German.
+
+### Changed
+
+- **Every Cockpit route is now covered by a visual release sweep.** Desktop and
+  mobile verification checks layout overflow, visible UUIDs, resource errors
+  and the Chat composer contract, and the production deployment retains the
+  authenticated screenshots as an artifact.
+
 ## [6.1.2] – 2026-08-10
 
 ### Changed
