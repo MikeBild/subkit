@@ -14,7 +14,7 @@ export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-4 w-full rounded-md border", className)}
+    className={cn("group not-prose mb-2 w-full min-w-0 rounded-lg border", className)}
     {...props}
   />
 );
@@ -124,7 +124,7 @@ function LocalizedToolInput({ className, input, ...props }: ToolInputProps) {
         {t("tool.parameters")}
       </h4>
       <div className="rounded-md bg-muted/50">
-        <pre className="overflow-auto p-3 font-mono text-xs">
+        <pre className="max-w-full whitespace-pre-wrap break-all p-3 font-mono text-xs">
           {JSON.stringify(presentationValue(input, t("tool.referenceHidden")), null, 2)}
         </pre>
       </div>
@@ -147,12 +147,14 @@ export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutpu
 
   if (typeof output === "object" && !isValidElement(output)) {
     Output = (
-      <pre className="overflow-auto p-3 font-mono text-xs">
+      <pre className="max-w-full whitespace-pre-wrap break-all p-3 font-mono text-xs">
         {JSON.stringify(presentationValue(output, t("tool.referenceHidden")), null, 2)}
       </pre>
     );
   } else if (typeof output === "string") {
-    Output = <pre className="overflow-auto p-3 font-mono text-xs">{output}</pre>;
+    Output = (
+      <pre className="max-w-full whitespace-pre-wrap break-all p-3 font-mono text-xs">{output}</pre>
+    );
   }
 
   return (
@@ -162,7 +164,7 @@ export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutpu
       </h4>
       <div
         className={cn(
-          "overflow-x-auto rounded-md text-xs [&_table]:w-full",
+          "min-w-0 overflow-hidden rounded-md text-xs [&_table]:w-full [&_table]:table-fixed",
           errorText ? "bg-destructive/10 text-destructive" : "bg-muted/50 text-foreground",
         )}
       >
