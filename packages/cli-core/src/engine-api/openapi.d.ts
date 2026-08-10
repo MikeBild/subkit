@@ -2494,6 +2494,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/identity/cockpit-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Start a browser login for the Subkit Cockpit */
+        get: {
+            parameters: {
+                query?: {
+                    return_to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Redirect to the provider-neutral login funnel */
+                302: {
+                    headers: {
+                        Location?: string;
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid return path */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cockpit/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve the Cockpit session, tenant and effective navigation permissions */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cockpit session */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CockpitBootstrapResponse"];
+                    };
+                };
+                /** @description Browser session required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/.well-known/oauth-protected-resource": {
         parameters: {
             query?: never;
@@ -13272,6 +13363,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cockpit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Redirect to the canonical Cockpit shell path */
+        get: operations["redirectCockpit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cockpit/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Serve the Cockpit application shell */
+        get: operations["getCockpitShell"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /** Inspect the Cockpit application shell */
+        head: operations["headCockpitShell"];
+        patch?: never;
+        trace?: never;
+    };
+    "/cockpit/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Serve the Cockpit shell or an embedded static asset */
+        get: operations["getCockpitAsset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        /** Inspect an embedded Cockpit asset */
+        head: operations["headCockpitAsset"];
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -14013,6 +14157,41 @@ export interface components {
         IdentitySessionRequest: {
             provider_id: string;
             identity_token: string;
+        };
+        CockpitBootstrapResponse: {
+            principal: {
+                id: string;
+                /** @enum {string} */
+                kind: "user";
+                email: string | null;
+                role_name: string | null;
+                /** @enum {string} */
+                provider: "browser_session";
+            };
+            tenant: {
+                /** Format: uuid */
+                id: string;
+                slug: string;
+                display_name: string;
+            };
+            session: {
+                /** Format: date-time */
+                expires_at: string;
+                /** Format: date-time */
+                absolute_expires_at: string | null;
+            };
+            permissions: string[];
+            csrf_token: string;
+            version: string;
+            recent_conversations: {
+                /** Format: uuid */
+                id: string;
+                title: string | null;
+                /** @enum {string} */
+                status: "active" | "awaiting_input" | "committed" | "abandoned";
+                /** Format: date-time */
+                updated_at: string;
+            }[];
         };
         OAuthClientListResponse: {
             items: components["schemas"]["OAuthClient"][];
@@ -17809,6 +17988,172 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    redirectCockpit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Permanent redirect to /cockpit/ */
+            308: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getCockpitShell: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cockpit shell or static asset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Asset unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cockpit bundle was not included in this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    headCockpitShell: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cockpit shell or static asset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Asset unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cockpit bundle was not included in this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    getCockpitAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cockpit shell or static asset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Asset unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cockpit bundle was not included in this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    headCockpitAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cockpit shell or static asset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Asset unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cockpit bundle was not included in this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
             };
         };
     };

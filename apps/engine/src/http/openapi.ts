@@ -99,4 +99,10 @@ export const SECURITY_SCHEMES = {
       },
     },
   },
+  browserSession: {
+    type: "apiKey" as const,
+    in: "cookie" as const,
+    name: "subkit_session",
+    description: "HttpOnly same-origin browser session used by the Subkit Cockpit.",
+  },
 };

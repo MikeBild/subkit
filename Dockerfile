@@ -38,6 +38,10 @@ RUN set -eux; \
       echo "bun install failed (attempt $attempt) — retrying"; sleep 5; \
     done
 
+# Build and embed the browser Cockpit from the same source and lockfile as the
+# engine binary. The compiled engine has no runtime dependency on Node or Vite.
+RUN bun run build:cockpit
+
 # ssh2 pulls an OPTIONAL `cpu-features` native addon. It is not built in this
 # image (nor on the dev mac), so its `.node` is absent; left in place, the
 # `bun build --compile` below fails trying to bundle the missing addon. Remove

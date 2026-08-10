@@ -31,7 +31,9 @@ import {
   type AgentSessionAnalyzeJob,
 } from "../queue/handlers/agent-session-analyze.ts";
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queue/queues.ts";
+import { registerCockpitRoutes } from "./cockpit.ts";
 import { authMiddleware } from "./middleware/auth.ts";
+import { browserCsrfMiddleware } from "./middleware/browser-csrf.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";
 import { loggingMiddleware } from "./middleware/logging.ts";
 import { rateLimitMiddleware } from "./middleware/rate-limit.ts";
@@ -63,6 +65,7 @@ import { registerFileRoutes } from "./routes/files.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerHooksInboundRoutes } from "./routes/hooks-inbound.ts";
 import { registerApiKeyRoutes } from "./routes/identity/api-keys.ts";
+import { registerCockpitIdentityRoutes } from "./routes/identity/cockpit.ts";
 import { registerInviteRoutes } from "./routes/identity/invites.ts";
 import { registerLoginRoutes } from "./routes/identity/login.ts";
 import { registerEffectivePermissionsRoute } from "./routes/identity/permissions.ts";
@@ -286,6 +289,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     });
   }
   app.use("*", authMiddleware(registry));
+  app.use("/v1/*", browserCsrfMiddleware());
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
   registerInstallRoute(app);
@@ -305,6 +309,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerProvidersRoute(app);
   registerIdentitySessionsRoute(app);
   registerLoginRoutes(app);
+  registerCockpitIdentityRoutes(app);
   registerMcpOAuthRoutes(app);
   // Authenticated admin surface for platform-global OAuth clients.
   // Placed after the unauthenticated bootstrap set (registerMcpOAuthRoutes)
@@ -374,6 +379,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerAuditLogRoutes(app);
   registerDiagnosticsRoutes(app);
   registerMcpHttpRoutes(app);
+  registerCockpitRoutes(app);
 
   // OpenAPI document
   app.doc31("/openapi.json", {
@@ -389,6 +395,11 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     SECURITY_SCHEMES.bearerAuth,
   );
   app.openAPIRegistry.registerComponent("securitySchemes", "oauth2", SECURITY_SCHEMES.oauth2);
+  app.openAPIRegistry.registerComponent(
+    "securitySchemes",
+    "browserSession",
+    SECURITY_SCHEMES.browserSession,
+  );
 
   // Scalar UI. The page loads the Scalar bundle from jsdelivr; scope a
   // Content-Security-Policy to this response so the API origin can't be
