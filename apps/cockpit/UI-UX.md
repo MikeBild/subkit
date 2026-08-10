@@ -50,8 +50,36 @@ the conversation list, transcript, context panel and resource results own their 
 areas. On narrow screens, resource tables keep the two primary columns and move secondary details
 to the row sheet.
 
-`scripts/verify-cockpit-visual.mjs` exercises every Cockpit route with representative data at
-desktop and mobile sizes. It rejects document overflow, transcript/composer overlap, raw tool
-payload excerpts, visible UUIDs and resource error states, and records screenshots for visual
-comparison. The production deployment verifier repeats the authenticated route sweep after SSO and
-publishes its screenshots as a workflow artifact.
+### Action hierarchy
+
+- A page has at most one filled primary action. Secondary actions use `outline`; low-emphasis and
+  compact actions use `ghost`. Destructive styling is reserved for irreversible actions.
+- Selection uses neutral `muted` surfaces. Blue is reserved for focus, links and charts.
+- An icon-only action contains exactly one functional icon and always has an accessible label, a
+  hover/focus tooltip and a stable `data-testid` at the usage site.
+- A labelled action may have one leading icon marked with `data-icon="inline-start"`.
+
+### Explanations
+
+- Tooltips explain icon-only controls and unfamiliar compact actions in one short sentence.
+- Hover cards are only for richer previews containing information beyond a label.
+- Inline descriptions remain for page purpose, empty states, errors, approvals and other context
+  that must stay visible for a safe decision.
+- Dense work surfaces do not repeat the same explanation in a heading, tooltip and paragraph.
+
+### Layout and language
+
+- Every flex or grid ancestor of a scroll region uses `min-h-0`; flex-owned scroll regions also use
+  `h-0 flex-1` so their viewport has a measurable height.
+- Shell controls use an 8 px gap. Page sections use 16 or 24 px padding. Related compact controls
+  use a 4 or 8 px gap.
+- All user-facing application copy comes from the English/German catalog, including tooltips and
+  screen-reader labels. Both catalogs have identical keys.
+- Engine statuses and known field names are translated before display. UUIDs, tenant ids,
+  credential ids, tokens and hashes remain hidden.
+
+`scripts/verify-cockpit-visual.mjs` exercises every Cockpit route with representative data in both
+languages at desktop and mobile sizes. It rejects document overflow, transcript/composer overlap,
+raw tool payload excerpts, visible UUIDs and resource error states. It also records Chat tool,
+tooltip and user-menu states for visual comparison. The production deployment verifier repeats the
+authenticated bilingual route sweep after SSO and publishes its screenshots as a workflow artifact.

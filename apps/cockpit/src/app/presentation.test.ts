@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
+import { asToolPart } from "@/pages/chat";
 
 describe("cockpit presentation", () => {
   test("hides UUIDs in conversational text", () => {
@@ -19,5 +20,16 @@ describe("cockpit presentation", () => {
         "technical reference",
       ),
     ).toBe("Governed action completed");
+  });
+
+  test("keeps dynamic tool calls in the visible conversation", () => {
+    expect(
+      asToolPart({
+        type: "dynamic-tool",
+        toolName: "validate_workflow",
+        state: "output-available",
+      }),
+    ).not.toBeNull();
+    expect(asToolPart({ type: "text", text: "hello" })).toBeNull();
   });
 });

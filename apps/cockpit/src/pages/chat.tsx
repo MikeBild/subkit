@@ -43,6 +43,7 @@ import {
   ToolOutput,
   type ToolPart,
 } from "@/components/ai-elements/tool";
+import { IconButton } from "@/components/cockpit/icon-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,10 +96,14 @@ function textFromPart(part: unknown): string | null {
   return typeof record.text === "string" ? record.text : null;
 }
 
-function asToolPart(part: unknown): ToolPart | null {
+export function asToolPart(part: unknown): ToolPart | null {
   if (!part || typeof part !== "object") return null;
   const record = part as Record<string, unknown>;
-  if (typeof record.type !== "string" || !record.type.startsWith("tool-")) return null;
+  if (
+    typeof record.type !== "string" ||
+    !(record.type === "dynamic-tool" || record.type.startsWith("tool-"))
+  )
+    return null;
   return part as ToolPart;
 }
 
@@ -201,18 +206,12 @@ function ConversationList({
     <div className="flex min-h-0 flex-1 flex-col" data-testid="conversation-list">
       <div className="flex items-center justify-between p-3">
         <p className="text-sm font-semibold">{t("chat.conversations")}</p>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          aria-label={t("chat.new")}
-          data-testid="conversation-new"
-          onClick={onNew}
-        >
+        <IconButton label={t("chat.new")} data-testid="conversation-new" onClick={onNew}>
           <MessageSquarePlus />
-        </Button>
+        </IconButton>
       </div>
       <Separator />
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="h-0 min-h-0 flex-1">
         <div className="grid gap-1 p-2">
           {conversations.map((conversation, index) => (
             <button
@@ -221,21 +220,14 @@ function ConversationList({
               data-testid={`conversation-item-${index}`}
               onClick={() => onSelect(conversation.id)}
               className={cn(
-                "w-full rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
-                activeId === conversation.id && "bg-accent text-accent-foreground",
+                "w-full rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted",
+                activeId === conversation.id && "bg-muted text-foreground",
               )}
             >
               <span className="block truncate text-sm font-medium">
                 {conversation.title || t("chat.untitled")}
               </span>
-              <span
-                className={cn(
-                  "block truncate text-xs",
-                  activeId === conversation.id
-                    ? "text-accent-foreground/80"
-                    : "text-muted-foreground",
-                )}
-              >
+              <span className="block truncate text-xs text-muted-foreground">
                 {conversationExcerpt(
                   conversation.last_message_excerpt,
                   t("chat.toolActivity"),
@@ -334,16 +326,14 @@ export function ChatPage() {
           data-testid="chat-header"
         >
           <div className="flex min-w-0 items-center gap-2">
-            <Button
-              size="icon-sm"
-              variant="ghost"
+            <IconButton
               className="lg:hidden"
-              aria-label={t("chat.conversations")}
+              label={t("chat.conversations")}
               data-testid="conversation-list-mobile-trigger"
               onClick={() => setMobileListOpen(true)}
             >
               <List />
-            </Button>
+            </IconButton>
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold" data-testid="chat-title">
                 {current?.title || t("chat.new")}
@@ -370,16 +360,14 @@ export function ChatPage() {
                 <span className="hidden sm:inline">{t("chat.stop")}</span>
               </Button>
             )}
-            <Button
-              size="icon-sm"
-              variant="ghost"
+            <IconButton
               className="hidden xl:inline-flex"
-              aria-label={t("chat.toggleContext")}
+              label={t("chat.toggleContext")}
               data-testid="chat-context-toggle"
               onClick={() => setContextOpen((open) => !open)}
             >
               {contextOpen ? <PanelRightClose /> : <PanelRightOpen />}
-            </Button>
+            </IconButton>
           </div>
         </header>
 
@@ -410,7 +398,10 @@ export function ChatPage() {
               ))
             )}
           </ConversationContent>
-          <ConversationScrollButton data-testid="chat-scroll-bottom" />
+          <ConversationScrollButton
+            label={t("chat.scrollBottom")}
+            data-testid="chat-scroll-bottom"
+          />
         </ConversationViewport>
 
         <div className="mx-auto w-full max-w-3xl px-4 pb-4" data-testid="chat-composer-area">
@@ -452,6 +443,7 @@ export function ChatPage() {
                   status={status}
                   disabled={send.isPending}
                   aria-label={t("chat.submit")}
+                  tooltip={t("chat.submit")}
                   data-testid="chat-composer-submit"
                 />
               </PromptInputFooter>
@@ -471,7 +463,7 @@ export function ChatPage() {
             <p className="mt-1 text-xs text-muted-foreground">{t("chat.context.description")}</p>
           </div>
           <Separator />
-          <ScrollArea className="min-h-0 flex-1">
+          <ScrollArea className="h-0 min-h-0 flex-1">
             <dl className="grid gap-4 p-4 text-sm">
               <div data-testid="chat-context-stage">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.stage")}</dt>

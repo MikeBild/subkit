@@ -46,4 +46,16 @@ describe("cockpit-ui family contract", () => {
     expect([...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]).toHaveLength(1);
     expect(html).toContain("sk-cockpit-theme");
   });
+
+  test("keeps interactive selection surfaces neutral", () => {
+    for (const file of [
+      "apps/cockpit/src/components/ui/dropdown-menu.tsx",
+      "apps/cockpit/src/components/ui/select.tsx",
+      "apps/cockpit/src/components/ai-elements/prompt-input.tsx",
+      "apps/cockpit/src/pages/chat.tsx",
+    ]) {
+      const source = readFileSync(join(root, file), "utf8");
+      expect(source).not.toMatch(/(?:hover|focus|data-open|aria-expanded):bg-accent/);
+    }
+  });
 });

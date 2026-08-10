@@ -1,14 +1,7 @@
 "use client";
 
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
-import {
-  CheckCircleIcon,
-  ChevronDownIcon,
-  CircleIcon,
-  ClockIcon,
-  WrenchIcon,
-  XCircleIcon,
-} from "lucide-react";
+import { CheckCircleIcon, ChevronDownIcon, CircleIcon, ClockIcon, XCircleIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -78,22 +71,21 @@ export function presentationValue(value: unknown, hidden: string): unknown {
 export const ToolHeader = ({
   className,
   title,
-  type,
+  type: _type,
   state,
-  toolName,
+  toolName: _toolName,
   ...props
 }: ToolHeaderProps) => {
   const { t } = useI18n();
-  const derivedName = type === "dynamic-tool" ? toolName : type.split("-").slice(1).join("-");
+  const actionName = title ?? t("tool.action");
 
   return (
     <CollapsibleTrigger
       className={cn("flex w-full items-center justify-between gap-4 p-3", className)}
       {...props}
     >
-      <div className="flex items-center gap-2">
-        <WrenchIcon className="text-muted-foreground" />
-        <span className="font-medium text-sm">{title ?? derivedName}</span>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate font-medium text-sm">{actionName}</span>
         <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
           {statusIcons[state]}
           {t(statusLabels[state])}
