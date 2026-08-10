@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.4] – 2026-08-10
+
+### Fixed
+
+- **Changing a user's built-in role now updates the effective RBAC assignment.**
+  The legacy role value and named `role_id` are synchronized in the same
+  transaction, so an administrator selected through the identity API receives
+  administrator permissions in browser, API-key and conversation sessions.
+
 ## [6.1.3] – 2026-08-10
 
 ### Fixed
