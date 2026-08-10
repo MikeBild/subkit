@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleStop, MessageSquarePlus, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { CircleStop, List, MessageSquarePlus, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   appendConversationMessage,
+  type Conversation,
   cancelConversation,
   createConversation,
   getConversation,
@@ -28,6 +29,7 @@ import {
   PromptInput,
   PromptInputBody,
   PromptInputFooter,
+  PromptInputProvider,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
@@ -46,14 +48,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import type { TranslationKey } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
+import { statusLabel } from "@/lib/status-label";
 import { cn } from "@/lib/utils";
 
-const QUICK_START = [
-  "Build a workflow from a business outcome",
-  "Show my workflows and suggest the next useful action",
-  "Investigate the latest failed run",
-  "Connect a service and verify its access",
-] as const;
+const QUICK_START: readonly TranslationKey[] = [
+  "chat.quick.workflow",
+  "chat.quick.list",
+  "chat.quick.failure",
+  "chat.quick.connector",
+];
 
 function textFromPart(part: unknown): string | null {
   if (typeof part === "string") return part;
@@ -71,69 +77,148 @@ function asToolPart(part: unknown): ToolPart | null {
 
 function ChatMessage({
   message,
+  messageIndex,
   onDecision,
 }: {
   message: UiMessage;
+  messageIndex: number;
   onDecision: (toolCallId: string, approved: boolean) => void;
 }) {
+  const { t } = useI18n();
   const from = message.role === "user" ? "user" : "assistant";
   return (
-    <Message from={from} data-cockpit-ui="chat-message">
-      <MessageContent>
-        {message.parts.map((part, index) => {
+    <Message
+      from={from}
+      data-cockpit-ui="chat-message"
+      data-testid={`chat-message-${messageIndex}`}
+    >
+      <MessageContent data-testid={`chat-message-${messageIndex}-content`}>
+        {message.parts.map((part, partIndex) => {
           const text = textFromPart(part);
           if (text)
-            return <MessageResponse key={`${message.id}-text-${index}`}>{text}</MessageResponse>;
-          const tool = asToolPart(part);
-          if (tool) {
-            const header =
-              tool.type === "dynamic-tool" ? (
-                <ToolHeader type={tool.type} state={tool.state} toolName={tool.toolName} />
-              ) : (
-                <ToolHeader type={tool.type} state={tool.state} />
-              );
             return (
-              <Tool
-                key={`${message.id}-tool-${index}`}
-                defaultOpen={tool.state !== "output-available"}
+              <MessageResponse
+                key={`${message.id}-text-${partIndex}`}
+                data-testid={`chat-message-${messageIndex}-text-${partIndex}`}
               >
-                {header}
-                <ToolContent>
-                  <ToolInput input={tool.input} />
-                  <Confirmation approval={tool.approval} state={tool.state}>
-                    <ConfirmationRequest>
-                      <ConfirmationTitle>
-                        Review this governed action before Subkit continues.
-                      </ConfirmationTitle>
-                      <ConfirmationActions>
-                        <ConfirmationAction
-                          variant="outline"
-                          onClick={() => onDecision(tool.toolCallId, false)}
-                        >
-                          Decline
-                        </ConfirmationAction>
-                        <ConfirmationAction onClick={() => onDecision(tool.toolCallId, true)}>
-                          Approve
-                        </ConfirmationAction>
-                      </ConfirmationActions>
-                    </ConfirmationRequest>
-                  </Confirmation>
-                  <ToolOutput output={tool.output} errorText={tool.errorText} />
-                </ToolContent>
-              </Tool>
+                {text}
+              </MessageResponse>
             );
-          }
-          return null;
+          const tool = asToolPart(part);
+          if (!tool) return null;
+          return (
+            <Tool
+              key={`${message.id}-tool-${partIndex}`}
+              defaultOpen={tool.state !== "output-available"}
+              data-testid={`chat-message-${messageIndex}-tool-${partIndex}`}
+            >
+              {tool.type === "dynamic-tool" ? (
+                <ToolHeader
+                  type={tool.type}
+                  state={tool.state}
+                  toolName={tool.toolName}
+                  data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
+                />
+              ) : (
+                <ToolHeader
+                  type={tool.type}
+                  state={tool.state}
+                  data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
+                />
+              )}
+              <ToolContent>
+                <ToolInput input={tool.input} />
+                <Confirmation approval={tool.approval} state={tool.state}>
+                  <ConfirmationRequest>
+                    <ConfirmationTitle>{t("chat.approval.review")}</ConfirmationTitle>
+                    <ConfirmationActions>
+                      <ConfirmationAction
+                        variant="outline"
+                        data-testid={`chat-message-${messageIndex}-tool-${partIndex}-decline`}
+                        onClick={() => onDecision(tool.toolCallId, false)}
+                      >
+                        {t("chat.approval.decline")}
+                      </ConfirmationAction>
+                      <ConfirmationAction
+                        data-testid={`chat-message-${messageIndex}-tool-${partIndex}-approve`}
+                        onClick={() => onDecision(tool.toolCallId, true)}
+                      >
+                        {t("chat.approval.approve")}
+                      </ConfirmationAction>
+                    </ConfirmationActions>
+                  </ConfirmationRequest>
+                </Confirmation>
+                <ToolOutput output={tool.output} errorText={tool.errorText} />
+              </ToolContent>
+            </Tool>
+          );
         })}
       </MessageContent>
     </Message>
   );
 }
 
+function ConversationList({
+  conversations,
+  activeId,
+  onSelect,
+  onNew,
+}: {
+  conversations: readonly Conversation[];
+  activeId: string | null;
+  onSelect(id: string): void;
+  onNew(): void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="conversation-list">
+      <div className="flex items-center justify-between p-3">
+        <p className="text-sm font-semibold">{t("chat.conversations")}</p>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label={t("chat.new")}
+          data-testid="conversation-new"
+          onClick={onNew}
+        >
+          <MessageSquarePlus />
+        </Button>
+      </div>
+      <Separator />
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="grid gap-1 p-2">
+          {conversations.map((conversation, index) => (
+            <button
+              key={conversation.id}
+              type="button"
+              data-testid={`conversation-item-${index}`}
+              onClick={() => onSelect(conversation.id)}
+              className={cn(
+                "w-full rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
+                activeId === conversation.id && "bg-accent text-accent-foreground",
+              )}
+            >
+              <span className="block truncate text-sm font-medium">
+                {conversation.title || t("chat.untitled")}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {conversation.last_message_excerpt || statusLabel(t, conversation.status)}
+              </span>
+            </button>
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
 export function ChatPage() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [contextOpen, setContextOpen] = useState(true);
+  const [mobileListOpen, setMobileListOpen] = useState(false);
+  const initialPrompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
   const conversations = useQuery({ queryKey: ["conversations"], queryFn: listConversations });
   const activeId = selectedId ?? conversations.data?.items[0]?.id ?? null;
   const detail = useQuery({
@@ -142,10 +227,8 @@ export function ChatPage() {
     enabled: Boolean(activeId),
   });
   const send = useMutation({
-    mutationFn: async (message: string) => {
-      if (activeId) return appendConversationMessage(activeId, message);
-      return createConversation(message);
-    },
+    mutationFn: async (message: string) =>
+      activeId ? appendConversationMessage(activeId, message) : createConversation(message),
     onSuccess: async (result) => {
       setSelectedId(result.conversation.id);
       await Promise.all([
@@ -172,7 +255,6 @@ export function ChatPage() {
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
   const status = send.isPending ? "submitted" : send.isError ? "error" : "ready";
-
   const ordered = useMemo(
     () =>
       [...(conversations.data?.items ?? [])].sort((a, b) =>
@@ -180,170 +262,209 @@ export function ChatPage() {
       ),
     [conversations.data],
   );
+  const list = (
+    <ConversationList
+      conversations={ordered}
+      activeId={activeId}
+      onNew={() => {
+        setSelectedId(null);
+        setMobileListOpen(false);
+      }}
+      onSelect={(id) => {
+        setSelectedId(id);
+        setMobileListOpen(false);
+      }}
+    />
+  );
 
   return (
     <div
-      className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)_auto]"
+      className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_auto]"
       data-cockpit-ui="chat-workspace"
+      data-testid="chat-workspace"
     >
-      <aside className="hidden min-h-0 border-r bg-muted/20 lg:flex lg:flex-col">
-        <div className="flex items-center justify-between p-3">
-          <p className="text-sm font-semibold">Conversations</p>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="New conversation"
-            onClick={() => setSelectedId(null)}
-          >
-            <MessageSquarePlus />
-          </Button>
-        </div>
-        <Separator />
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-1 p-2">
-            {ordered.map((conversation) => (
-              <button
-                key={conversation.id}
-                type="button"
-                onClick={() => setSelectedId(conversation.id)}
-                className={cn(
-                  "w-full rounded-lg px-3 py-2 text-left hover:bg-accent",
-                  activeId === conversation.id && "bg-accent",
-                )}
-              >
-                <span className="block truncate text-sm font-medium">
-                  {conversation.title || "Untitled conversation"}
-                </span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {conversation.last_message_excerpt || conversation.status}
-                </span>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
+      <aside
+        className="hidden min-h-0 border-r bg-muted/20 lg:flex"
+        data-testid="conversation-sidebar"
+      >
+        {list}
       </aside>
 
-      <section className="flex min-h-0 min-w-0 flex-col">
-        <header className="flex h-14 items-center justify-between border-b px-4">
-          <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold">
-              {current?.title || "New conversation"}
-            </h1>
-            <p className="truncate text-xs text-muted-foreground">
-              {resume?.one_sentence || "Work with Subkit through governed actions."}
-            </p>
+      <section className="flex min-h-0 min-w-0 flex-col" data-testid="chat-main">
+        <header
+          className="flex min-h-14 items-center justify-between gap-3 border-b px-4 py-2"
+          data-testid="chat-header"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="lg:hidden"
+              aria-label={t("chat.conversations")}
+              data-testid="conversation-list-mobile-trigger"
+              onClick={() => setMobileListOpen(true)}
+            >
+              <List />
+            </Button>
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-semibold" data-testid="chat-title">
+                {current?.title || t("chat.new")}
+              </h1>
+              <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
+                {resume?.one_sentence || t("chat.summary")}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {current && <Badge variant="outline">{current.status}</Badge>}
+          <div className="flex shrink-0 items-center gap-2">
+            {current && (
+              <Badge variant="outline" data-testid="chat-status">
+                {statusLabel(t, current.status)}
+              </Badge>
+            )}
             {send.isPending && activeId && (
-              <Button size="sm" variant="outline" onClick={() => cancel.mutate()}>
-                <CircleStop /> Stop
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid="chat-stop"
+                onClick={() => cancel.mutate()}
+              >
+                <CircleStop data-icon="inline-start" />
+                <span className="hidden sm:inline">{t("chat.stop")}</span>
               </Button>
             )}
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label="Toggle context"
+              className="hidden xl:inline-flex"
+              aria-label={t("chat.toggleContext")}
+              data-testid="chat-context-toggle"
               onClick={() => setContextOpen((open) => !open)}
             >
               {contextOpen ? <PanelRightClose /> : <PanelRightOpen />}
             </Button>
           </div>
         </header>
+
         {send.error && (
-          <Alert variant="destructive" className="m-4 mb-0">
-            <AlertTitle>Action failed</AlertTitle>
+          <Alert variant="destructive" className="m-4 mb-0" data-testid="chat-error">
+            <AlertTitle>{t("chat.failed")}</AlertTitle>
             <AlertDescription>{send.error.message}</AlertDescription>
           </Alert>
         )}
-        <ConversationViewport className="min-h-0 flex-1">
+
+        <ConversationViewport className="min-h-0 flex-1" data-testid="chat-transcript">
           <ConversationContent className="mx-auto w-full max-w-3xl">
             {messages.length === 0 ? (
               <ConversationEmptyState
-                title="What should Subkit accomplish?"
-                description="Describe the outcome. The agent can inspect, verify, preview and request approval in this workspace."
-                icon={<MessageSquarePlus className="size-6" />}
+                title={t("chat.empty.title")}
+                description={t("chat.empty.description")}
+                icon={<MessageSquarePlus />}
+                data-testid="chat-empty"
               />
             ) : (
-              messages.map((message) => (
+              messages.map((message, index) => (
                 <ChatMessage
                   key={message.id}
                   message={message}
+                  messageIndex={index}
                   onDecision={(toolCallId, approved) => decide.mutate({ toolCallId, approved })}
                 />
               ))
             )}
           </ConversationContent>
-          <ConversationScrollButton />
+          <ConversationScrollButton data-testid="chat-scroll-bottom" />
         </ConversationViewport>
-        <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+
+        <div className="mx-auto w-full max-w-3xl px-4 pb-4" data-testid="chat-composer-area">
           {messages.length === 0 && (
-            <Suggestions className="mb-2">
-              {QUICK_START.map((item) => (
-                <Suggestion key={item} suggestion={item} onClick={() => send.mutate(item)} />
+            <Suggestions className="mb-2" data-testid="chat-suggestions">
+              {QUICK_START.map((key, index) => (
+                <Suggestion
+                  key={key}
+                  suggestion={t(key)}
+                  data-testid={`chat-suggestion-${index}`}
+                  onClick={(suggestion) => send.mutate(suggestion)}
+                />
               ))}
             </Suggestions>
           )}
-          <PromptInput
-            onSubmit={async ({ text }) => {
-              const trimmed = text.trim();
-              if (trimmed) await send.mutateAsync(trimmed);
-            }}
-          >
-            <PromptInputBody>
-              <PromptInputTextarea
-                name="message"
-                placeholder="Ask Subkit to build, run, inspect or repair…"
-                disabled={send.isPending}
-              />
-            </PromptInputBody>
-            <PromptInputFooter>
-              <PromptInputTools>
-                <span className="px-2 text-xs text-muted-foreground">Approval mode · ask</span>
-              </PromptInputTools>
-              <PromptInputSubmit status={status} disabled={send.isPending} />
-            </PromptInputFooter>
-          </PromptInput>
+          <PromptInputProvider initialInput={initialPrompt}>
+            <PromptInput
+              data-testid="chat-composer"
+              onSubmit={async ({ text }) => {
+                const trimmed = text.trim();
+                if (trimmed) await send.mutateAsync(trimmed);
+              }}
+            >
+              <PromptInputBody>
+                <PromptInputTextarea
+                  name="message"
+                  placeholder={t("chat.composer.placeholder")}
+                  disabled={send.isPending}
+                  data-testid="chat-composer-input"
+                />
+              </PromptInputBody>
+              <PromptInputFooter>
+                <PromptInputTools>
+                  <span className="px-2 text-xs text-muted-foreground">
+                    {t("chat.composer.mode")}
+                  </span>
+                </PromptInputTools>
+                <PromptInputSubmit
+                  status={status}
+                  disabled={send.isPending}
+                  aria-label={t("chat.submit")}
+                  data-testid="chat-composer-submit"
+                />
+              </PromptInputFooter>
+            </PromptInput>
+          </PromptInputProvider>
         </div>
       </section>
 
       {contextOpen && (
         <aside
-          className="hidden w-72 min-h-0 border-l xl:flex xl:flex-col"
+          className="hidden min-h-0 w-72 border-l xl:flex xl:flex-col"
           data-cockpit-ui="context-panel"
+          data-testid="chat-context"
         >
           <div className="p-4">
-            <p className="text-sm font-semibold">Working context</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Evidence, checkpoints and pending decisions for this conversation.
-            </p>
+            <p className="text-sm font-semibold">{t("chat.context.title")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("chat.context.description")}</p>
           </div>
           <Separator />
           <ScrollArea className="min-h-0 flex-1">
-            <dl className="space-y-4 p-4 text-sm">
-              <div>
-                <dt className="text-xs text-muted-foreground">Stage</dt>
-                <dd className="mt-1 font-medium">{resume?.stage || "Ready"}</dd>
+            <dl className="grid gap-4 p-4 text-sm">
+              <div data-testid="chat-context-stage">
+                <dt className="text-xs text-muted-foreground">{t("chat.context.stage")}</dt>
+                <dd className="mt-1 font-medium">{resume?.stage || t("chat.context.ready")}</dd>
               </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Target</dt>
+              <div data-testid="chat-context-target">
+                <dt className="text-xs text-muted-foreground">{t("chat.context.target")}</dt>
                 <dd className="mt-1 font-medium">
-                  {resume?.active_target.name || resume?.active_target.kind || "None yet"}
+                  {resume?.active_target.name ||
+                    resume?.active_target.kind ||
+                    t("chat.context.noTarget")}
                 </dd>
               </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Next action</dt>
-                <dd className="mt-1">{resume?.next_action || "Describe the desired outcome."}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Checkpoint</dt>
+              <div data-testid="chat-context-next-action">
+                <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
                 <dd className="mt-1">
-                  {resume?.unsaved ? "Unsaved changes" : "No unsaved changes"}
+                  {resume?.next_action || t("chat.context.nextActionDefault")}
+                </dd>
+              </div>
+              <div data-testid="chat-context-checkpoint">
+                <dt className="text-xs text-muted-foreground">{t("chat.context.checkpoint")}</dt>
+                <dd className="mt-1">
+                  {t(resume?.unsaved ? "chat.context.unsaved" : "chat.context.saved")}
                 </dd>
               </div>
               {resume?.pending_approval && (
-                <div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
-                  <dt className="text-xs font-medium">Approval required</dt>
+                <div
+                  className="rounded-lg border border-warning/40 bg-warning/10 p-3"
+                  data-testid="chat-context-approval"
+                >
+                  <dt className="text-xs font-medium">{t("chat.context.approval")}</dt>
                   <dd className="mt-1 text-xs">{resume.pending_approval.summary}</dd>
                 </div>
               )}
@@ -351,6 +472,21 @@ export function ChatPage() {
           </ScrollArea>
         </aside>
       )}
+
+      <Sheet open={mobileListOpen} onOpenChange={setMobileListOpen}>
+        <SheetContent
+          side="left"
+          className="w-80 p-0"
+          closeLabel={t("common.close")}
+          closeTestId="conversation-list-mobile-close"
+          data-testid="conversation-list-mobile"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>{t("chat.conversations")}</SheetTitle>
+          </SheetHeader>
+          {list}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

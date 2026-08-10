@@ -14,24 +14,21 @@
       // a dark-mode reload shows a full white frame first, which at 03:00 is
       // the difference between reading a page and flinching away from it.
       //
-      // The key is absent for "follow the OS" — that is why this asks whether
-      // it is missing rather than comparing it to the string 'system'.
-      //
       // This is the console's only inline script; the engine CSP allows its
       // exact hash and does not allow arbitrary inline scripts.
       var stored
       var dark
       try {
         stored = localStorage.getItem('sk-cockpit-theme')
-        dark = stored === 'dark' || (!stored && matchMedia('(prefers-color-scheme: dark)').matches)
+        dark = stored === 'dark' || ((!stored || stored === 'system') && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.toggle('dark', dark)
       } catch {}
     </script>
-    <script type="module" crossorigin src="/cockpit/assets/index-Cjm50Wrc.js"></script>
+    <script type="module" crossorigin src="/cockpit/assets/index-i6oukK-D.js"></script>
     <link rel="modulepreload" crossorigin href="/cockpit/assets/rolldown-runtime-hePW80VL.js">
     <link rel="modulepreload" crossorigin href="/cockpit/assets/react-6RyAq6rh.js">
     <link rel="modulepreload" crossorigin href="/cockpit/assets/tanstack-BSGi_rVP.js">
-    <link rel="stylesheet" crossorigin href="/cockpit/assets/index-DIHsW1ew.css">
+    <link rel="stylesheet" crossorigin href="/cockpit/assets/index-DT-67Kw1.css">
   </head>
   <body class="h-full">
     <div id="root" class="h-full"></div>
