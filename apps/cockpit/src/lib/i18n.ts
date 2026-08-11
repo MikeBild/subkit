@@ -134,6 +134,8 @@ const EN = {
   "role.admin": "Administrator",
   "role.member": "Member",
   "role.enduser": "End user",
+  "role.metricsScraper": "Metrics scraper",
+  "role.portalTokenUser": "Portal token user",
   "people.create": "Add person",
   "people.createDescription": "Add a person to this workspace and choose their initial role.",
   "people.email": "Email address",
@@ -187,6 +189,9 @@ const EN = {
   "access.roleDescription.admin": "Full administration and governance access for this workspace.",
   "access.roleDescription.member": "Can build, run and review governed work in this workspace.",
   "access.roleDescription.enduser": "Can use approved workflows and participate in assigned work.",
+  "access.roleDescription.metricsScraper": "Can read Prometheus metrics for monitoring.",
+  "access.roleDescription.portalTokenUser":
+    "Provides the restricted role used by portal access tokens.",
   "admin.emptyHint": "New workspace records will appear here.",
   "permission.label": "{resource} · {action}",
   "permission.action.abort": "Abort",
@@ -225,6 +230,8 @@ const EN = {
   "operations.risks": "Risks",
   "operations.noFailures": "No recent failure groups.",
   "operations.noRisks": "No active risk signals.",
+  "operations.summaryAllClear": "No active operational findings.",
+  "operations.summaryAttention": "{failures} failure groups · {patches} repairs awaiting review",
   "severity.critical": "Critical",
   "severity.warning": "Warning",
   "settings.search": "Search settings",
@@ -550,6 +557,8 @@ const DE: Record<TranslationKey, string> = {
   "role.admin": "Administrator",
   "role.member": "Mitglied",
   "role.enduser": "Endbenutzer",
+  "role.metricsScraper": "Metrik-Abruf",
+  "role.portalTokenUser": "Portalnutzer",
   "people.create": "Person anlegen",
   "people.createDescription":
     "Fügen Sie dem Arbeitsbereich eine Person mit ihrer ersten Rolle hinzu.",
@@ -608,6 +617,9 @@ const DE: Record<TranslationKey, string> = {
     "Kann gesteuerte Arbeit in diesem Arbeitsbereich erstellen, ausführen und prüfen.",
   "access.roleDescription.enduser":
     "Kann freigegebene Workflows verwenden und zugewiesene Arbeit bearbeiten.",
+  "access.roleDescription.metricsScraper": "Kann Prometheus-Metriken für die Überwachung lesen.",
+  "access.roleDescription.portalTokenUser":
+    "Stellt die eingeschränkte Rolle für Portal-Zugriffstoken bereit.",
   "admin.emptyHint": "Neue Datensätze des Arbeitsbereichs erscheinen hier.",
   "permission.label": "{resource} · {action}",
   "permission.action.abort": "Abbrechen",
@@ -646,6 +658,9 @@ const DE: Record<TranslationKey, string> = {
   "operations.risks": "Risiken",
   "operations.noFailures": "Keine aktuellen Fehlergruppen.",
   "operations.noRisks": "Keine aktiven Risikosignale.",
+  "operations.summaryAllClear": "Keine aktiven betrieblichen Befunde.",
+  "operations.summaryAttention":
+    "{failures} Fehlergruppen · {patches} Reparaturen warten auf Prüfung",
   "severity.critical": "Kritisch",
   "severity.warning": "Warnung",
   "settings.search": "Einstellungen durchsuchen",
