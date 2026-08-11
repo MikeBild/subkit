@@ -38,8 +38,9 @@ import {
   recordProactiveDriftUnanchored,
 } from "../../observability/index.ts";
 import { processDriftSignal, type SignalSource, scanForDrift } from "../../self-healing/index.ts";
-import { ForbiddenError, NotFoundError } from "../errors.ts";
+import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
+import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const IDEMPOTENCY_REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -154,12 +155,6 @@ function serializeScanRow(row: typeof selfHealingScans.$inferSelect) {
   };
 }
 
-function ensureAdmin(roles: string[]): void {
-  if (!roles.includes("admin")) {
-    throw new ForbiddenError("admin_required");
-  }
-}
-
 const scanRoute = createRoute({
   method: "post",
   path: "/v1/self-healing/scans",
@@ -216,9 +211,14 @@ const getRouteSpec = createRoute({
 });
 
 export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
+  app.use("/v1/self-healing/scans", async (c, next) => {
+    if (c.req.method === "POST") return requirePermission("self_healing:write")(c, next);
+    return requirePermission("self_healing:read")(c, next);
+  });
+  app.use("/v1/self-healing/scans/:id", requirePermission("self_healing:read"));
+
   app.openapi(scanRoute, async (c) => {
     const principal = requireAuth(c);
-    ensureAdmin(principal.roles);
     const db = c.get("db");
     const body = c.req.valid("json");
     const idempotencyKey = c.req.header("idempotency-key") ?? null;
@@ -499,7 +499,6 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
-    ensureAdmin(principal.roles);
     const db = c.get("db");
     const q = c.req.valid("query");
     const tenantPredicate = eq(selfHealingScans.tenant_id, principal.tenant_id);
@@ -517,7 +516,6 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(getRouteSpec, async (c) => {
     const principal = requireAuth(c);
-    ensureAdmin(principal.roles);
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const rows = await db

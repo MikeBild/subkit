@@ -17,6 +17,7 @@ import { constantTimeHexEquals, KEY_PREFIX_LITERAL, parseKey } from "../../ident
 import { log, logger } from "../../logging/logger.ts";
 import { recordAuthFailure } from "../failed-auth-tracker.ts";
 import type { AllowList, AuthProvider, ResolvedPrincipal } from "../types.ts";
+import { resolveEffectiveUserRole } from "../user-role.ts";
 
 const FLUSH_INTERVAL_MS = 60_000;
 const lastFlush = new Map<string, number>();
@@ -293,7 +294,7 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions = {}): AuthProv
         // Prefer the `roles` table lookup so custom tenant roles flow
         // through into the resolved principal. Fall back to the legacy
         // enum for rows predating the RBAC backfill.
-        roles = [u.role_name ?? u.role];
+        roles = [resolveEffectiveUserRole(u.role, u.role_name)];
         email = u.email;
       } else if (row.system_account_id) {
         kind = "system_account";

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "6.1.6",
+    "version": "6.1.7",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -2281,6 +2281,12 @@
               "enduser"
             ]
           },
+          "effective_role": {
+            "type": "string"
+          },
+          "role_consistent": {
+            "type": "boolean"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -2301,6 +2307,8 @@
           "tenant_id",
           "email",
           "role",
+          "effective_role",
+          "role_consistent",
           "status",
           "created_at",
           "updated_at"

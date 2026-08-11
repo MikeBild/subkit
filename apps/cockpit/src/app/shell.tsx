@@ -85,6 +85,13 @@ function initials(value: string): string {
   );
 }
 
+function localizedRole(role: string, t: ReturnType<typeof useI18n>["t"]): string {
+  if (role === "admin") return t("role.admin");
+  if (role === "member") return t("role.member");
+  if (role === "enduser") return t("role.enduser");
+  return role;
+}
+
 export function AppShell() {
   const session = useSession();
   const { t } = useI18n();
@@ -208,7 +215,7 @@ function AccountMenu() {
   const { theme, setTheme } = useTheme();
   const [signingOut, setSigningOut] = useState(false);
   const identity = session.principal.email || session.principal.role_name || t("common.member");
-  const role = session.principal.role_name || t("common.member");
+  const role = localizedRole(session.principal.role_name || "member", t);
 
   async function signOut(): Promise<void> {
     setSigningOut(true);
