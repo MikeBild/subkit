@@ -47,6 +47,15 @@ import { IconButton } from "@/components/cockpit/icon-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -56,11 +65,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
 import { cn } from "@/lib/utils";
+import { activeConversationId, type ConversationSelection } from "./chat-selection";
 
 const QUICK_START: readonly TranslationKey[] = [
   "chat.quick.workflow",
@@ -262,12 +273,16 @@ function ConversationList({
 export function ChatPage() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const initialPrompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
+  const [selection, setSelection] = useState<ConversationSelection>(() =>
+    initialPrompt ? { kind: "new" } : { kind: "automatic" },
+  );
+  const [createOpen, setCreateOpen] = useState(Boolean(initialPrompt));
+  const [createPrompt, setCreatePrompt] = useState(initialPrompt);
   const [contextOpen, setContextOpen] = useState(false);
   const [mobileListOpen, setMobileListOpen] = useState(false);
-  const initialPrompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
   const conversations = useQuery({ queryKey: ["conversations"], queryFn: listConversations });
-  const activeId = selectedId ?? conversations.data?.items[0]?.id ?? null;
+  const activeId = activeConversationId(selection, conversations.data?.items[0]?.id);
   const detail = useQuery({
     queryKey: ["conversation", activeId],
     queryFn: () => getConversation(activeId ?? ""),
@@ -277,7 +292,10 @@ export function ChatPage() {
     mutationFn: async (message: string) =>
       activeId ? appendConversationMessage(activeId, message) : createConversation(message),
     onSuccess: async (result) => {
-      setSelectedId(result.conversation.id);
+      setSelection({ kind: "existing", id: result.conversation.id });
+      setCreateOpen(false);
+      setCreatePrompt("");
+      if (window.location.search) window.history.replaceState({}, "", window.location.pathname);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
         queryClient.invalidateQueries({ queryKey: ["conversation", result.conversation.id] }),
@@ -314,11 +332,13 @@ export function ChatPage() {
       conversations={ordered}
       activeId={activeId}
       onNew={() => {
-        setSelectedId(null);
+        setSelection({ kind: "new" });
+        setCreatePrompt("");
+        setCreateOpen(true);
         setMobileListOpen(false);
       }}
       onSelect={(id) => {
-        setSelectedId(id);
+        setSelection({ kind: "existing", id });
         setMobileListOpen(false);
       }}
     />
@@ -437,7 +457,7 @@ export function ChatPage() {
                 ))}
               </Suggestions>
             )}
-            <PromptInputProvider initialInput={initialPrompt}>
+            <PromptInputProvider key={activeId ?? "new"} initialInput="">
               <PromptInput
                 data-testid="chat-composer"
                 onSubmit={async ({ text }) => {
@@ -536,6 +556,65 @@ export function ChatPage() {
           {list}
         </SheetContent>
       </Sheet>
+
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open && selection.kind === "new") setSelection({ kind: "automatic" });
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-lg"
+          showCloseButton={false}
+          data-testid="conversation-create-dialog"
+          aria-describedby="conversation-create-description"
+        >
+          <DialogHeader>
+            <DialogTitle>{t("chat.create.title")}</DialogTitle>
+            <DialogDescription id="conversation-create-description">
+              {t("chat.create.description")}
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field data-invalid={send.isError || undefined}>
+              <FieldLabel htmlFor="conversation-create-prompt">
+                {t("chat.create.prompt")}
+              </FieldLabel>
+              <Textarea
+                id="conversation-create-prompt"
+                value={createPrompt}
+                onChange={(event) => setCreatePrompt(event.target.value)}
+                placeholder={t("chat.composer.placeholder")}
+                rows={6}
+                autoFocus
+                data-testid="conversation-create-prompt"
+              />
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="conversation-create-cancel"
+              onClick={() => {
+                setCreateOpen(false);
+                setSelection({ kind: "automatic" });
+              }}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              disabled={!createPrompt.trim() || send.isPending}
+              data-testid="conversation-create-submit"
+              onClick={() => send.mutate(createPrompt.trim())}
+            >
+              {t(send.isPending ? "chat.create.starting" : "chat.create.submit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowRight, Bot, RefreshCw, Search, Workflow } from "lucide-react";
+import { ArrowDown, Bot, RefreshCw, Search, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import { ContextHelp } from "@/components/cockpit/context-help";
@@ -615,9 +615,6 @@ export function ResourcePage({
                         {fieldLabel(column, t)}
                       </TableHead>
                     ))}
-                    <TableHead className="w-[12%] text-right lg:w-[6%]">
-                      <span className="sr-only">{t("common.open")}</span>
-                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -631,7 +628,19 @@ export function ResourcePage({
                             columnIndex >= 2 && "hidden lg:table-cell",
                           )}
                         >
-                          {column === "status" ? (
+                          {columnIndex === 0 ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="h-auto max-w-full justify-start p-0 text-left font-medium hover:bg-transparent hover:underline"
+                              data-testid={`resource-row-${index}-open`}
+                              onClick={() => setSelected(row)}
+                            >
+                              <span className="truncate">
+                                <DisplayValue field={column} value={row[column]} />
+                              </span>
+                            </Button>
+                          ) : column === "status" ? (
                             <Badge variant="outline">
                               <DisplayValue field={column} value={row[column]} />
                             </Badge>
@@ -640,15 +649,6 @@ export function ResourcePage({
                           )}
                         </TableCell>
                       ))}
-                      <TableCell className="w-[12%] text-right lg:w-[6%]">
-                        <IconButton
-                          label={`${t("common.open")}: ${recordName(row) ?? t("resource.detail.noName")}`}
-                          data-testid={`resource-row-${index}-open`}
-                          onClick={() => setSelected(row)}
-                        >
-                          <ArrowRight />
-                        </IconButton>
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

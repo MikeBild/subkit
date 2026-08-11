@@ -12,7 +12,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
-import { apiKeys, sessions, userInvites, users } from "../db/schema/index.ts";
+import { apiKeys, roles, sessions, userInvites, users } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
@@ -64,13 +64,25 @@ export async function createUser(input: CreateUserInput, exec?: Executor) {
       .limit(1);
     if (existing.length > 0) throw new DuplicateUserError(input.email);
 
+    const legacyRole = input.role ?? "member";
+    let roleId = input.role_id;
+    if (roleId === undefined) {
+      // tenant-filter:exempt — built-in roles are global RBAC catalog rows.
+      const [builtinRole] = await tx
+        .select({ id: roles.id })
+        .from(roles)
+        .where(and(isNull(roles.tenant_id), eq(roles.name, legacyRole)))
+        .limit(1);
+      roleId = builtinRole?.id ?? null;
+    }
+
     const [row] = await tx
       .insert(users)
       .values({
         tenant_id: input.tenant_id,
         email: input.email,
-        role: input.role ?? "member",
-        role_id: input.role_id ?? null,
+        role: legacyRole,
+        role_id: roleId,
         status: input.status ?? "active",
       })
       .returning();

@@ -32,6 +32,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { resolveEffectiveUserRole } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import { conversations, roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { resolveEngineUrl } from "../../../llm/index.ts";
@@ -275,7 +276,7 @@ export function registerSkBootstrapRoute(app: OpenAPIHono<AppEnv>): void {
         .limit(1);
       if (row) {
         email = row.email ?? email;
-        roleName = row.role_name ?? row.role_legacy ?? null;
+        roleName = resolveEffectiveUserRole(row.role_legacy, row.role_name);
       }
     } else {
       // Hoisted to the static import at the top of the file.

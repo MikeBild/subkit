@@ -30,7 +30,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import { type Db, getDb } from "../../db/client.ts";
-import { oidcLoginStates, sessions, tenants, users } from "../../db/schema/index.ts";
+import { oidcLoginStates, roles, sessions, tenants, users } from "../../db/schema/index.ts";
 import {
   authHtmlResponse,
   GRANT_DENIED_MESSAGE,
@@ -43,6 +43,7 @@ import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-sess
 import { resolveProviderIdentity, SignupDisabledError } from "../identity-link.ts";
 import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
+import { resolveEffectiveUserRole } from "../user-role.ts";
 
 const SESSION_COOKIE = "subkit_session";
 const DEFAULT_TENANT_SLUG = "default";
@@ -733,8 +734,9 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
 
       // tenant-filter:exempt — OIDC issuer/sub lookup pre-tenant
       const userRows = await exec
-        .select({ role: users.role, email: users.email })
+        .select({ role: users.role, role_name: roles.name, email: users.email })
         .from(users)
+        .leftJoin(roles, eq(roles.id, users.role_id))
         .where(eq(users.id, row.user_id))
         .limit(1);
       const u = userRows[0];
@@ -745,7 +747,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         kind: "user",
         id: row.user_id,
         tenant_id: row.tenant_id,
-        roles: [u.role],
+        roles: [resolveEffectiveUserRole(u.role, u.role_name)],
         session_id: row.id,
       };
       if (u.email) principal.email = u.email;
