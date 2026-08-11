@@ -14,7 +14,7 @@ import {
 } from "react";
 import type { BundledLanguage, BundledTheme, HighlighterGeneric, ThemedToken } from "shiki";
 import { createHighlighter } from "shiki";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Select,
   SelectContent,
@@ -425,7 +425,11 @@ export const CodeBlock = ({
   );
 };
 
-export type CodeBlockCopyButtonProps = ComponentProps<typeof Button> & {
+export type CodeBlockCopyButtonProps = Omit<
+  ComponentProps<typeof IconButton>,
+  "children" | "label" | "onClick"
+> & {
+  label: string;
   onCopy?: () => void;
   onError?: (error: Error) => void;
   timeout?: number;
@@ -434,8 +438,8 @@ export type CodeBlockCopyButtonProps = ComponentProps<typeof Button> & {
 export const CodeBlockCopyButton = ({
   onCopy,
   onError,
+  label,
   timeout = 2000,
-  children,
   className,
   ...props
 }: CodeBlockCopyButtonProps) => {
@@ -471,15 +475,16 @@ export const CodeBlockCopyButton = ({
   const Icon = isCopied ? CheckIcon : CopyIcon;
 
   return (
-    <Button
+    <IconButton
+      label={label}
       className={cn("shrink-0", className)}
       onClick={copyToClipboard}
       size="icon"
       variant="ghost"
       {...props}
     >
-      {children ?? <Icon size={14} />}
-    </Button>
+      <Icon />
+    </IconButton>
   );
 };
 

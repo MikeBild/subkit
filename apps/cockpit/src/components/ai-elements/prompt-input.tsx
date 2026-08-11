@@ -1262,7 +1262,7 @@ export const PromptInputTabLabel = ({ className, ...props }: PromptInputTabLabel
 export type PromptInputTabBodyProps = HTMLAttributes<HTMLDivElement>;
 
 export const PromptInputTabBody = ({ className, ...props }: PromptInputTabBodyProps) => (
-  <div className={cn("space-y-1", className)} {...props} />
+  <div className={cn("flex flex-col gap-1", className)} {...props} />
 );
 
 export type PromptInputTabItemProps = HTMLAttributes<HTMLDivElement>;
