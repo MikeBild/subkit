@@ -61,6 +61,24 @@ describe("cockpit i18n", () => {
     expect(statusLabel((key) => translate("en", key), "future_state")).toBe("Unknown");
   });
 
+  test("localizes every built-in role exposed by administration", () => {
+    for (const key of [
+      "role.admin",
+      "role.member",
+      "role.enduser",
+      "role.metricsScraper",
+      "role.portalTokenUser",
+      "access.roleDescription.admin",
+      "access.roleDescription.member",
+      "access.roleDescription.enduser",
+      "access.roleDescription.metricsScraper",
+      "access.roleDescription.portalTokenUser",
+    ] as const) {
+      expect(translate("en", key)).not.toBe("Unknown");
+      expect(translate("de", key)).not.toBe("Unbekannt");
+    }
+  });
+
   test("supports automatic detection and persistent manual selection", () => {
     const fake = environment(null, ["de-DE"]);
     const store = createLocaleStore(fake.env);

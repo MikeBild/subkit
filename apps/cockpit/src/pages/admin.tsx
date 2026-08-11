@@ -208,6 +208,8 @@ function roleLabel(role: string, t: ReturnType<typeof useI18n>["t"]): string {
     admin: "role.admin",
     member: "role.member",
     enduser: "role.enduser",
+    metrics_scraper: "role.metricsScraper",
+    portal_token_user: "role.portalTokenUser",
   };
   return key[role] ? t(key[role]) : t("common.unknown");
 }
@@ -221,6 +223,8 @@ function builtinRoleDescription(
     admin: "access.roleDescription.admin",
     member: "access.roleDescription.member",
     enduser: "access.roleDescription.enduser",
+    metrics_scraper: "access.roleDescription.metricsScraper",
+    portal_token_user: "access.roleDescription.portalTokenUser",
   };
   return key[role] ? t(key[role]) : fallback;
 }
@@ -1331,7 +1335,14 @@ export function OperationsPage() {
             <Card data-testid="operations-summary">
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <CardTitle>{query.data.headline}</CardTitle>
+                  <CardTitle>
+                    {query.data.all_clear
+                      ? t("operations.summaryAllClear")
+                      : t("operations.summaryAttention", {
+                          failures: query.data.failure_groups.length,
+                          patches: query.data.patch_candidates.pending,
+                        })}
+                  </CardTitle>
                   <Badge variant={query.data.all_clear ? "secondary" : "destructive"}>
                     {query.data.all_clear ? t("operations.healthy") : t("operations.attention")}
                   </Badge>

@@ -289,6 +289,18 @@ async function mockApi(route) {
     return json(route, {
       items: [
         { id: uuid, name: "admin", description: "Workspace administration", is_builtin: true },
+        {
+          id: "00000000-0000-4000-8000-000000000002",
+          name: "metrics_scraper",
+          description: "Prometheus scraper: scoped to metrics:read only",
+          is_builtin: true,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000003",
+          name: "portal_token_user",
+          description: "Backing role for portal-token principals",
+          is_builtin: true,
+        },
       ],
     });
   if (path === "/v1/rbac/groups")
@@ -507,6 +519,24 @@ for (const locale of variants) {
       await assertTables(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route === "access") {
+        const localizedRoles =
+          locale.name === "de"
+            ? ["Metrik-Abruf", "Portalnutzer", "Kann Prometheus-Metriken", "Portal-Zugriffstoken"]
+            : [
+                "Metrics scraper",
+                "Portal token user",
+                "Can read Prometheus metrics",
+                "portal access tokens",
+              ];
+        for (const expected of localizedRoles) {
+          if (!text.includes(expected)) {
+            throw new Error(
+              `${locale.artifact}/${viewport.name}/${route} misses localized built-in role text: ${expected}`,
+            );
+          }
+        }
+      }
       await page.screenshot({
         path: resolve(outputDir, `${locale.artifact}-${viewport.name}-${route}.png`),
         fullPage: false,
