@@ -247,8 +247,8 @@ async function mockApi(route) {
           path: "observability.usage.enabled",
           value: true,
           meta: {
-            source: "config",
-            scope: "global",
+            source: "tenant",
+            scope: "tenant",
             sensitive: false,
             requiresRestart: false,
             kind: "boolean",
@@ -347,6 +347,11 @@ function markerFor(route) {
   return `[data-testid="resource-${route}"]`;
 }
 
+function documentThemeMatches(classes, theme) {
+  const dark = classes?.split(/\s+/).includes("dark") ?? false;
+  return theme === "dark" ? dark : !dark;
+}
+
 async function assertViewport(page, label) {
   const geometry = await page.evaluate(() => {
     const content = document.querySelector('[data-testid="page-content"]');
@@ -442,31 +447,42 @@ const locales = [
   { name: "de", browser: "de-DE" },
   { name: "en", browser: "en-US" },
 ];
+const variants = locales.flatMap((locale) =>
+  ["light", "dark"].map((theme) => ({
+    ...locale,
+    theme,
+    artifact: `${locale.name}-${theme}`,
+  })),
+);
 const viewports = [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "wide", width: 1990, height: 1090 },
   { name: "mobile", width: 390, height: 844 },
 ];
 
-for (const locale of locales) {
+for (const locale of variants) {
   for (const viewport of viewports) {
     const context = await browser.newContext({
       viewport: { width: viewport.width, height: viewport.height },
       locale: locale.browser,
     });
-    await context.addInitScript((preference) => {
-      localStorage.setItem("sk-cockpit-locale", preference);
-    }, locale.name);
+    await context.addInitScript(
+      ({ language, theme }) => {
+        localStorage.setItem("sk-cockpit-locale", language);
+        localStorage.setItem("sk-cockpit-theme", theme);
+      },
+      { language: locale.name, theme: locale.theme },
+    );
     const page = await context.newPage();
     page.on("pageerror", (error) =>
-      errors.push(`${locale.name}/${viewport.name}: ${error.message}`),
+      errors.push(`${locale.artifact}/${viewport.name}: ${error.message}`),
     );
     await page.route("**/v1/**", mockApi);
     for (const route of routes) {
       const response = await page.goto(`${baseUrl}/cockpit/${route}`, { waitUntil: "networkidle" });
       if (!response?.ok())
         throw new Error(
-          `${locale.name}/${viewport.name}/${route} returned HTTP ${response?.status()}`,
+          `${locale.artifact}/${viewport.name}/${route} returned HTTP ${response?.status()}`,
         );
       await page.locator(markerFor(route)).waitFor({ state: "visible" });
       await page
@@ -479,18 +495,20 @@ for (const locale of locales) {
           .isVisible()
           .catch(() => false)
       )
-        throw new Error(`${locale.name}/${viewport.name}/${route} displays a resource error`);
+        throw new Error(`${locale.artifact}/${viewport.name}/${route} displays a resource error`);
       const text = await page.locator("body").innerText();
       if (text.includes(uuid))
-        throw new Error(`${locale.name}/${viewport.name}/${route} exposes a UUID`);
+        throw new Error(`${locale.artifact}/${viewport.name}/${route} exposes a UUID`);
       if ((await page.locator("html").getAttribute("lang")) !== locale.name)
-        throw new Error(`${locale.name}/${viewport.name}/${route} uses the wrong locale`);
-      await assertViewport(page, `${locale.name}/${viewport.name}/${route}`);
-      await assertTables(page, `${locale.name}/${viewport.name}/${route}`);
-      await assertInteractiveSelectors(page, `${locale.name}/${viewport.name}/${route}`);
-      if (route === "chat") await assertChat(page, `${locale.name}/${viewport.name}/${route}`);
+        throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong locale`);
+      if (!documentThemeMatches(await page.locator("html").getAttribute("class"), locale.theme))
+        throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong theme`);
+      await assertViewport(page, `${locale.artifact}/${viewport.name}/${route}`);
+      await assertTables(page, `${locale.artifact}/${viewport.name}/${route}`);
+      await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
+      if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
       await page.screenshot({
-        path: resolve(outputDir, `${locale.name}-${viewport.name}-${route}.png`),
+        path: resolve(outputDir, `${locale.artifact}-${viewport.name}-${route}.png`),
         fullPage: false,
       });
     }
@@ -500,8 +518,9 @@ for (const locale of locales) {
       await page
         .locator('[data-testid="conversation-create-dialog"]')
         .waitFor({ state: "visible" });
+      await page.waitForTimeout(300);
       await page.screenshot({
-        path: resolve(outputDir, `${locale.name}-desktop-chat-create.png`),
+        path: resolve(outputDir, `${locale.artifact}-desktop-chat-create.png`),
         fullPage: false,
       });
       await page.locator('[data-testid="conversation-create-cancel"]').click();
@@ -509,14 +528,14 @@ for (const locale of locales) {
       await tool.scrollIntoViewIfNeeded();
       await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();
       await page.screenshot({
-        path: resolve(outputDir, `${locale.name}-desktop-chat-tool.png`),
+        path: resolve(outputDir, `${locale.artifact}-desktop-chat-tool.png`),
         fullPage: false,
       });
       await page.locator('[data-testid="chat-context-toggle"]').click();
       await page.locator('[data-testid="chat-context"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
       await page.screenshot({
-        path: resolve(outputDir, `${locale.name}-desktop-chat-context.png`),
+        path: resolve(outputDir, `${locale.artifact}-desktop-chat-context.png`),
         fullPage: false,
       });
       await page.locator('[data-testid="chat-context-close"]').click();
@@ -529,7 +548,7 @@ for (const locale of locales) {
         .waitFor({ state: "hidden" })
         .catch(() => {});
       await page.screenshot({
-        path: resolve(outputDir, `${locale.name}-desktop-chat-interaction.png`),
+        path: resolve(outputDir, `${locale.artifact}-desktop-chat-interaction.png`),
         fullPage: false,
       });
       await page.goto(`${baseUrl}/cockpit/usage`, { waitUntil: "networkidle" });
@@ -537,20 +556,20 @@ for (const locale of locales) {
       await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
       await page.screenshot({
-        path: resolve(outputDir, `${locale.name}-desktop-tooltip.png`),
+        path: resolve(outputDir, `${locale.artifact}-desktop-tooltip.png`),
         fullPage: false,
       });
       await page.locator('[data-testid="account-menu-trigger"]').click();
       await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
       await page.screenshot({
-        path: resolve(outputDir, `${locale.name}-desktop-account.png`),
+        path: resolve(outputDir, `${locale.artifact}-desktop-account.png`),
         fullPage: false,
       });
       await page.locator('[data-testid="account-language-menu"]').hover();
       await page.locator('[data-testid="account-language-content"]').waitFor({ state: "visible" });
       await page.screenshot({
-        path: resolve(outputDir, `${locale.name}-desktop-account-language.png`),
+        path: resolve(outputDir, `${locale.artifact}-desktop-account-language.png`),
         fullPage: false,
       });
       await page.keyboard.press("Escape");
@@ -562,7 +581,7 @@ for (const locale of locales) {
       await page.locator('[data-testid="account-theme-menu"]').hover();
       await page.locator('[data-testid="account-theme-content"]').waitFor({ state: "visible" });
       await page.screenshot({
-        path: resolve(outputDir, `${locale.name}-desktop-account-theme.png`),
+        path: resolve(outputDir, `${locale.artifact}-desktop-account-theme.png`),
         fullPage: false,
       });
     }
@@ -570,12 +589,14 @@ for (const locale of locales) {
   }
 }
 
-for (const locale of locales) {
+for (const locale of variants) {
   for (const viewport of ["desktop", "mobile"]) {
     const contact = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     const cards = await Promise.all(
       routes.map(async (route) => {
-        const bytes = await readFile(resolve(outputDir, `${locale.name}-${viewport}-${route}.png`));
+        const bytes = await readFile(
+          resolve(outputDir, `${locale.artifact}-${viewport}-${route}.png`),
+        );
         const source = `data:image/png;base64,${bytes.toString("base64")}`;
         return `<figure><img src="${source}" alt=""><figcaption>${route}</figcaption></figure>`;
       }),
@@ -592,7 +613,7 @@ for (const locale of locales) {
       { waitUntil: "load" },
     );
     await contact.screenshot({
-      path: resolve(outputDir, `${locale.name}-${viewport}-contact-sheet.png`),
+      path: resolve(outputDir, `${locale.artifact}-${viewport}-contact-sheet.png`),
       fullPage: true,
     });
     await contact.close();
@@ -601,5 +622,5 @@ for (const locale of locales) {
 await browser.close();
 if (errors.length) throw new Error(errors.join("; "));
 console.log(
-  `Cockpit visual sweep passed: ${routes.length * viewports.length * locales.length + locales.length * 7} screenshots in ${outputDir}`,
+  `Cockpit visual sweep passed: ${routes.length * viewports.length * variants.length + variants.length * 7} screenshots in ${outputDir}`,
 );

@@ -3,13 +3,20 @@ import { globSync, readFileSync } from "node:fs";
 import ts from "typescript";
 import { presentationValue } from "@/components/ai-elements/tool";
 
-const files = ["apps/cockpit/src/app/**/*.tsx", "apps/cockpit/src/pages/**/*.tsx"].flatMap(
-  (pattern) => globSync(pattern),
-);
+const files = [
+  "apps/cockpit/src/app/**/*.tsx",
+  "apps/cockpit/src/pages/**/*.tsx",
+  "apps/cockpit/src/components/cockpit/**/*.tsx",
+  "apps/cockpit/src/components/ai-elements/**/*.tsx",
+].flatMap((pattern) => globSync(pattern));
 
 const interactive = new Set([
   "Button",
+  "AlertDialogAction",
+  "AlertDialogCancel",
+  "Checkbox",
   "ConfirmationAction",
+  "DialogClose",
   "DropdownMenuItem",
   "DropdownMenuRadioItem",
   "DropdownMenuSubTrigger",
@@ -18,9 +25,14 @@ const interactive = new Set([
   "Link",
   "PromptInputSubmit",
   "PromptInputTextarea",
+  "SelectItem",
+  "SelectTrigger",
   "SidebarRail",
   "SidebarTrigger",
   "Suggestion",
+  "TabsTrigger",
+  "Textarea",
+  "a",
   "button",
 ]);
 
@@ -45,7 +57,8 @@ describe("cockpit test selectors", () => {
           );
           const delegates = node.attributes.properties.some(
             (property) =>
-              ts.isJsxAttribute(property) && property.name.getText(parsed) === "asChild",
+              ts.isJsxSpreadAttribute(property) ||
+              (ts.isJsxAttribute(property) && property.name.getText(parsed) === "asChild"),
           );
           if (interactive.has(tag) && !hasTestId && !delegates) {
             const line = parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1;
