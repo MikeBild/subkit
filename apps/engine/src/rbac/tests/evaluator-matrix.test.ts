@@ -78,6 +78,7 @@ function memberAllows(name: string): boolean {
   // breakdowns — strictly more privileged than stats:read; members opt in via
   // a custom role grant. Mirrors memberPermissionFilter in seed.ts.
   if (name === "stats:read:all") return false;
+  if (name.startsWith("self_healing:")) return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
   // chat_workspace:write / chat_identity:write install/remove tenant-wide
