@@ -13987,6 +13987,8 @@ export interface components {
             email: string;
             /** @enum {string} */
             role: "admin" | "member" | "enduser";
+            effective_role: string;
+            role_consistent: boolean;
             /** @enum {string} */
             status: "invited" | "active" | "disabled";
             created_at: string;

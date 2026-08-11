@@ -222,6 +222,17 @@
   },
 
   {
+    "name": "self_healing:read",
+    "description": "Read tenant-scoped proactive drift scan history",
+    "resource_type": "self_healing"
+  },
+  {
+    "name": "self_healing:write",
+    "description": "Start tenant-scoped proactive drift scans",
+    "resource_type": "self_healing"
+  },
+
+  {
     "name": "rbac:read",
     "description": "Read RBAC roles, permissions, grants, groups",
     "resource_type": "rbac"

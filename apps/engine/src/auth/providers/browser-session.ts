@@ -29,6 +29,7 @@ import { roles, sessions, users } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { browserSessionFromRequest, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
+import { resolveEffectiveUserRole } from "../user-role.ts";
 
 export interface BrowserSessionProviderOptions {
   db?: Db;
@@ -110,8 +111,9 @@ export function createBrowserSessionProvider(
 
       // tenant-filter:exempt — the session row already fixed the tenant.
       const [u] = await db
-        .select({ role: users.role, role_id: users.role_id, email: users.email })
+        .select({ role: users.role, role_name: roles.name, email: users.email })
         .from(users)
+        .leftJoin(roles, eq(roles.id, users.role_id))
         .where(eq(users.id, row.user_id))
         .limit(1);
       if (!u) {
@@ -119,25 +121,12 @@ export function createBrowserSessionProvider(
         return null;
       }
 
-      // Prefer the named RBAC role, same as `resolveConversationPrincipal`, so a
-      // cookie principal carries the same authority a token principal would.
-      let roleNames: string[] = [u.role];
-      if (u.role_id) {
-        // tenant-filter:exempt — RBAC catalog walk by role_id (global or tenant row).
-        const [named] = await db
-          .select({ name: roles.name })
-          .from(roles)
-          .where(eq(roles.id, u.role_id))
-          .limit(1);
-        if (named?.name) roleNames = [named.name];
-      }
-
       const principal: ResolvedPrincipal = {
         provider: "browser_session",
         kind: "user",
         id: row.user_id,
         tenant_id: row.tenant_id,
-        roles: roleNames,
+        roles: [resolveEffectiveUserRole(u.role, u.role_name)],
         session_id: row.id,
       };
       if (u.email) principal.email = u.email;

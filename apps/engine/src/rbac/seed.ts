@@ -65,6 +65,7 @@ function memberPermissionFilter(name: string): boolean {
   // strictly admin. Members must never see a colleague's usage (the
   // load-bearing privacy control); their own usage is the /v1/status surface.
   if (name === "stats:read:all") return false;
+  if (name.startsWith("self_healing:")) return false;
   if (name === "api_key:write") return false;
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;

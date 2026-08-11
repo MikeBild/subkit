@@ -28,6 +28,8 @@ export const UserSchema = z
     tenant_id: z.string().uuid(),
     email: z.string(),
     role: z.enum(["admin", "member", "enduser"]),
+    effective_role: z.string(),
+    role_consistent: z.boolean(),
     status: z.enum(["invited", "active", "disabled"]),
     created_at: z.string(),
     updated_at: z.string(),

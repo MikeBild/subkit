@@ -146,6 +146,14 @@ async function mockApi(route) {
         "rbac:read",
         "api_key:read",
         "settings:read",
+        "identity:write",
+        "rbac:write",
+        "api_key:write",
+        "api_key:rotate",
+        "api_key:revoke",
+        "settings:write",
+        "self_healing:read",
+        "self_healing:write",
       ],
       csrf_token: "test-csrf",
       version: "visual-sweep",
@@ -249,6 +257,64 @@ async function mockApi(route) {
       ],
       diagnostics: { pending_restart_keys: [], override_keys: [] },
     });
+  if (path === "/v1/identity/users")
+    return json(route, {
+      items: [
+        {
+          id: uuid,
+          email: "mike@mikebild.com",
+          role: "admin",
+          effective_role: "admin",
+          role_consistent: true,
+          status: "active",
+        },
+      ],
+    });
+  if (path === "/v1/identity/api-keys")
+    return json(route, {
+      items: [
+        {
+          id: uuid,
+          name: "Cockpit verification",
+          prefix: "wf_live_demo",
+          scopes: ["workflow:read", "workflow:run"],
+          created_at: "2026-08-10T07:00:00.000Z",
+          last_used_at: null,
+          expires_at: null,
+          revoked_at: null,
+        },
+      ],
+    });
+  if (path === "/v1/rbac/roles")
+    return json(route, {
+      items: [
+        { id: uuid, name: "admin", description: "Workspace administration", is_builtin: true },
+      ],
+    });
+  if (path === "/v1/rbac/groups")
+    return json(route, { items: [{ id: uuid, name: "Operations", description: "Operators" }] });
+  if (path === "/v1/rbac/grants")
+    return json(route, {
+      items: [
+        {
+          id: uuid,
+          subject_type: "group",
+          resource_type: "workflow",
+          permission: "workflow:run",
+          expires_at: null,
+        },
+      ],
+    });
+  if (path === "/v1/rbac/permissions")
+    return json(route, {
+      items: [
+        {
+          name: "workflow:run",
+          description: "Run workflows",
+          resource_type: "workflow",
+        },
+      ],
+    });
   if (path === "/v1/skill-candidates" || path === "/v1/patch-candidates")
     return json(route, {
       items: [
@@ -275,7 +341,10 @@ async function mockApi(route) {
 }
 
 function markerFor(route) {
-  return route === "chat" ? '[data-testid="chat-workspace"]' : `[data-testid="resource-${route}"]`;
+  if (route === "chat") return '[data-testid="chat-workspace"]';
+  if (["people", "access", "api-access", "operations", "settings"].includes(route))
+    return `[data-testid="admin-${route}"]`;
+  return `[data-testid="resource-${route}"]`;
 }
 
 async function assertViewport(page, label) {
@@ -427,6 +496,15 @@ for (const locale of locales) {
     }
     if (viewport.name === "desktop") {
       await page.goto(`${baseUrl}/cockpit/chat`, { waitUntil: "networkidle" });
+      await page.locator('[data-testid="conversation-new"]').click();
+      await page
+        .locator('[data-testid="conversation-create-dialog"]')
+        .waitFor({ state: "visible" });
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.name}-desktop-chat-create.png`),
+        fullPage: false,
+      });
+      await page.locator('[data-testid="conversation-create-cancel"]').click();
       const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
       await tool.scrollIntoViewIfNeeded();
       await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();

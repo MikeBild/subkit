@@ -2,6 +2,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import {
   browserSessionForPrincipal,
+  resolveEffectiveUserRole,
   signBrowserCsrf,
   signLoginState,
 } from "../../../auth/index.ts";
@@ -198,7 +199,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
           id: principal.id,
           kind: "user" as const,
           email: identityRow.email,
-          role_name: identityRow.role_name ?? identityRow.role_legacy,
+          role_name: resolveEffectiveUserRole(identityRow.role_legacy, identityRow.role_name),
           provider: "browser_session" as const,
         },
         tenant: {
