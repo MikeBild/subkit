@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
 import {
   createLocaleStore,
@@ -23,12 +24,30 @@ function environment(stored: string | null, languages: string[]) {
 }
 
 describe("cockpit i18n", () => {
+  test("rejects duplicate source keys before object evaluation can hide them", () => {
+    const source = readFileSync(new URL("../lib/i18n.ts", import.meta.url), "utf8");
+    for (const [name, block] of [
+      [
+        "EN",
+        source.slice(source.indexOf("const EN = {"), source.indexOf("export type TranslationKey")),
+      ],
+      ["DE", source.slice(source.indexOf("const DE:"), source.indexOf("export const CATALOGS"))],
+    ] as const) {
+      const keys = [...block.matchAll(/^\s+"([^"]+)":/gm)].map((match) => match[1]);
+      const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
+      expect(duplicates, `${name} contains duplicate keys`).toEqual([]);
+    }
+  });
+
   test("keeps English and German catalogs complete", () => {
     const english = Object.keys(CATALOGS.en).sort();
     expect(Object.keys(CATALOGS.de).sort()).toEqual(english);
     for (const key of english as TranslationKey[]) {
       expect(translate("en", key)).not.toBe(key);
       expect(translate("de", key)).not.toBe(key);
+      const placeholders = (value: string) =>
+        [...value.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]).sort();
+      expect(placeholders(CATALOGS.de[key])).toEqual(placeholders(CATALOGS.en[key]));
     }
   });
 

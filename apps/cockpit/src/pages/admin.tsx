@@ -28,23 +28,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { statusLabel } from "@/lib/status-label";
 
 type Envelope<T> = { items: T[] };
 type RoleName = "admin" | "member" | "enduser";
+type AccessTab = "roles" | "groups" | "grants" | "permissions";
 
 interface UserItem {
   id: string;
@@ -147,10 +159,10 @@ function AdminFrame({
   const { t } = useI18n();
   return (
     <main className="flex min-h-0 flex-1 flex-col" data-testid={testId}>
-      <header className="flex shrink-0 items-center justify-between gap-4 border-b px-5 py-4 sm:px-8">
+      <header className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:px-8">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <h1 className="text-2xl font-semibold tracking-tight">{t(titleKey)}</h1>
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{t(titleKey)}</h1>
             <ContextHelp
               label={t("resource.about", { resource: t(titleKey) })}
               testId={`${testId}-help`}
@@ -179,23 +191,94 @@ function LoadingCards({ testId }: { testId: string }) {
 }
 
 function EmptyCard({ text, testId }: { text: string; testId: string }) {
+  const { t } = useI18n();
   return (
-    <div
-      className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground"
-      data-testid={testId}
-    >
-      {text}
-    </div>
+    <Empty className="min-h-52 border" data-testid={testId}>
+      <EmptyHeader>
+        <EmptyTitle>{text}</EmptyTitle>
+        <EmptyDescription>{t("admin.emptyHint")}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 
 function roleLabel(role: string, t: ReturnType<typeof useI18n>["t"]): string {
   const key: Record<string, TranslationKey> = {
+    config: "settings.meta.configuration",
     admin: "role.admin",
     member: "role.member",
     enduser: "role.enduser",
   };
-  return key[role] ? t(key[role]) : role;
+  return key[role] ? t(key[role]) : t("common.unknown");
+}
+
+function builtinRoleDescription(
+  role: string,
+  fallback: string | null,
+  t: ReturnType<typeof useI18n>["t"],
+): string | null {
+  const key: Record<string, TranslationKey> = {
+    admin: "access.roleDescription.admin",
+    member: "access.roleDescription.member",
+    enduser: "access.roleDescription.enduser",
+  };
+  return key[role] ? t(key[role]) : fallback;
+}
+
+const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
+  api_key: "nav.apiAccess",
+  audit: "nav.audit",
+  chat_identity: "permission.resource.chatIdentity",
+  chat_workspace: "permission.resource.chatWorkspace",
+  connector: "resource.connectors.title",
+  conversation: "nav.chat",
+  credential: "permission.resource.credentials",
+  discovery: "permission.resource.discovery",
+  execution: "resource.runs.title",
+  file: "resource.files.title",
+  identity: "resource.people.title",
+  inbound_hook: "permission.resource.inboundHooks",
+  knowledge: "resource.knowledge.title",
+  mcp: "permission.resource.mcp",
+  mcp_oauth_client: "permission.resource.mcpClients",
+  metrics: "permission.resource.metrics",
+  notification: "resource.inbox.title",
+  portal_token: "permission.resource.portalTokens",
+  rbac: "resource.access.title",
+  self_healing: "resource.operations.title",
+  settings: "resource.settings.title",
+  skill: "resource.skills.title",
+  stats: "resource.usage.title",
+  workflow: "resource.workflows.title",
+};
+
+const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
+  abort: "permission.action.abort",
+  activate: "permission.action.activate",
+  admin: "permission.action.admin",
+  approve: "permission.action.approve",
+  archive: "permission.action.archive",
+  authoring: "permission.action.authoring",
+  cancel: "permission.action.cancel",
+  delete: "permission.action.delete",
+  list: "permission.action.list",
+  oauth: "permission.action.oauth",
+  promote: "permission.action.promote",
+  read: "permission.action.read",
+  revoke: "permission.action.revoke",
+  rotate: "permission.action.rotate",
+  run: "permission.action.run",
+  signal: "permission.action.signal",
+  test: "permission.action.test",
+  write: "permission.action.write",
+};
+
+function permissionLabel(permission: string, t: ReturnType<typeof useI18n>["t"]): string {
+  const [resource, action] = permission.split(":");
+  const resourceKey = resource ? PERMISSION_RESOURCE_KEYS[resource] : undefined;
+  const actionKey = action ? PERMISSION_ACTION_KEYS[action] : undefined;
+  if (!resourceKey || !actionKey) return t("common.unknown");
+  return t("permission.label", { resource: t(resourceKey), action: t(actionKey) });
 }
 
 export function PeoplePage() {
@@ -262,7 +345,11 @@ export function PeoplePage() {
       descriptionKey="resource.people.description"
       action={
         canWrite ? (
-          <Button onClick={() => setCreateOpen(true)} data-testid="people-create">
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => setCreateOpen(true)}
+            data-testid="people-create"
+          >
             <Plus data-icon="inline-start" />
             {t("people.create")}
           </Button>
@@ -277,21 +364,21 @@ export function PeoplePage() {
         <div className="grid gap-2" data-testid="people-list">
           {query.data.items.map((user, index) => (
             <Card key={user.id} size="sm" data-testid={`people-item-${index}`}>
-              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{user.email}</p>
-                  <div className="mt-1 flex flex-wrap gap-2">
+                  <CardTitle className="truncate text-sm">{user.email}</CardTitle>
+                  <CardDescription className="mt-1 flex flex-wrap gap-2">
                     <Badge variant="outline">{roleLabel(user.effective_role, t)}</Badge>
-                    <Badge variant="secondary">{user.status}</Badge>
+                    <Badge variant="secondary">{statusLabel(t, user.status)}</Badge>
                     {!user.role_consistent && (
                       <Badge variant="destructive" data-testid={`people-role-drift-${index}`}>
                         {t("people.roleDrift")}
                       </Badge>
                     )}
-                  </div>
+                  </CardDescription>
                 </div>
                 {canWrite && (
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:w-auto sm:grid-cols-[9rem_auto_auto]">
                     <Select
                       value={user.effective_role}
                       onValueChange={(value) =>
@@ -299,22 +386,24 @@ export function PeoplePage() {
                       }
                     >
                       <SelectTrigger
-                        className="w-36"
+                        className="w-full"
                         data-testid={`people-role-${index}`}
                         aria-label={t("people.role")}
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {(["admin", "member", "enduser"] as const).map((name) => (
-                          <SelectItem
-                            key={name}
-                            value={name}
-                            data-testid={`people-role-${index}-${name}`}
-                          >
-                            {roleLabel(name, t)}
-                          </SelectItem>
-                        ))}
+                        <SelectGroup>
+                          {(["admin", "member", "enduser"] as const).map((name) => (
+                            <SelectItem
+                              key={name}
+                              value={name}
+                              data-testid={`people-role-${index}-${name}`}
+                            >
+                              {roleLabel(name, t)}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                     <Button
@@ -334,7 +423,7 @@ export function PeoplePage() {
                     </IconButton>
                   </div>
                 )}
-              </CardContent>
+              </CardHeader>
             </Card>
           ))}
         </div>
@@ -363,11 +452,17 @@ export function PeoplePage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(["admin", "member", "enduser"] as const).map((name) => (
-                    <SelectItem key={name} value={name} data-testid={`people-create-role-${name}`}>
-                      {roleLabel(name, t)}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    {(["admin", "member", "enduser"] as const).map((name) => (
+                      <SelectItem
+                        key={name}
+                        value={name}
+                        data-testid={`people-create-role-${name}`}
+                      >
+                        {roleLabel(name, t)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </Field>
@@ -524,7 +619,11 @@ export function ApiAccessPage() {
       descriptionKey="resource.apiAccess.description"
       action={
         canWrite ? (
-          <Button onClick={() => setOpen(true)} data-testid="api-key-create">
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => setOpen(true)}
+            data-testid="api-key-create"
+          >
             <Plus data-icon="inline-start" />
             {t("apiKeys.create")}
           </Button>
@@ -680,6 +779,7 @@ export function AccessPage() {
   const session = useSession();
   const client = useQueryClient();
   const canWrite = session.permissions.includes("rbac:write");
+  const [activeTab, setActiveTab] = useState<AccessTab>("roles");
   const [createKind, setCreateKind] = useState<"role" | "group" | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -789,10 +889,32 @@ export function AccessPage() {
       titleKey="resource.access.title"
       descriptionKey="resource.access.description"
     >
-      <Tabs defaultValue="roles" data-testid="access-tabs">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as AccessTab)}
+        data-testid="access-tabs"
+      >
+        <Select value={activeTab} onValueChange={(value) => setActiveTab(value as AccessTab)}>
+          <SelectTrigger
+            className="w-full sm:hidden"
+            aria-label={t("access.section")}
+            data-testid="access-mobile-section"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {(["roles", "groups", "grants", "permissions"] as const).map((value) => (
+                <SelectItem key={value} value={value} data-testid={`access-mobile-${value}`}>
+                  {t(`access.${value}`)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
         <TabsList
           variant="line"
-          className="grid h-auto w-full grid-cols-2 sm:grid-cols-4"
+          className="hidden h-auto w-full grid-cols-4 sm:grid"
           data-testid="access-tab-list"
         >
           <TabsTrigger value="roles" data-testid="access-tab-roles">
@@ -811,7 +933,11 @@ export function AccessPage() {
         <TabsContent value="roles" className="grid gap-4 pt-4">
           <div className="flex justify-end">
             {canWrite && (
-              <Button onClick={() => setCreateKind("role")} data-testid="role-create">
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() => setCreateKind("role")}
+                data-testid="role-create"
+              >
                 <Plus data-icon="inline-start" />
                 {t("access.createRole")}
               </Button>
@@ -831,7 +957,11 @@ export function AccessPage() {
                       <CardTitle>{roleLabel(role.name, t)}</CardTitle>
                       {role.is_builtin && <Badge variant="secondary">{t("access.builtin")}</Badge>}
                     </div>
-                    {role.description && <CardDescription>{role.description}</CardDescription>}
+                    {builtinRoleDescription(role.name, role.description, t) && (
+                      <CardDescription>
+                        {builtinRoleDescription(role.name, role.description, t)}
+                      </CardDescription>
+                    )}
                     {canWrite && !role.is_builtin && (
                       <Button
                         variant="outline"
@@ -852,7 +982,11 @@ export function AccessPage() {
         <TabsContent value="groups" className="grid gap-4 pt-4">
           <div className="flex justify-end">
             {canWrite && (
-              <Button onClick={() => setCreateKind("group")} data-testid="group-create">
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() => setCreateKind("group")}
+                data-testid="group-create"
+              >
                 <Plus data-icon="inline-start" />
                 {t("access.createGroup")}
               </Button>
@@ -871,7 +1005,11 @@ export function AccessPage() {
         <TabsContent value="grants" className="pt-4">
           <div className="mb-4 flex justify-end">
             {canWrite && (
-              <Button onClick={() => setGrantOpen(true)} data-testid="grant-create">
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() => setGrantOpen(true)}
+                data-testid="grant-create"
+              >
                 <Plus data-icon="inline-start" />
                 {t("access.createGrant")}
               </Button>
@@ -888,9 +1026,9 @@ export function AccessPage() {
                 <Card key={grant.id} size="sm" data-testid={`grants-list-${index}`}>
                   <CardContent className="flex items-center gap-3 p-4">
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium">{grant.permission}</p>
+                      <p className="font-medium">{permissionLabel(grant.permission, t)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {subjectName(grant)} · {workflowName(grant)}
+                        {subjectName(grant)} · {workflowName(grant)} · {grant.permission}
                       </p>
                     </div>
                     {canWrite && (
@@ -922,8 +1060,10 @@ export function AccessPage() {
               render={(permission, index) => (
                 <Card key={permission.name} size="sm" data-testid={`permissions-list-${index}`}>
                   <CardHeader>
-                    <CardTitle>{permission.name}</CardTitle>
-                    <CardDescription>{permission.description}</CardDescription>
+                    <CardTitle>{permissionLabel(permission.name, t)}</CardTitle>
+                    <CardDescription className="font-mono text-xs">
+                      {permission.name}
+                    </CardDescription>
                   </CardHeader>
                 </Card>
               )}
@@ -997,12 +1137,14 @@ export function AccessPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user" data-testid="grant-subject-type-user">
-                    {t("access.person")}
-                  </SelectItem>
-                  <SelectItem value="group" data-testid="grant-subject-type-group">
-                    {t("access.group")}
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem value="user" data-testid="grant-subject-type-user">
+                      {t("access.person")}
+                    </SelectItem>
+                    <SelectItem value="group" data-testid="grant-subject-type-group">
+                      {t("access.group")}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </Field>
@@ -1013,15 +1155,17 @@ export function AccessPage() {
                   <SelectValue placeholder={t("access.chooseSubject")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {subjectItems.map((item, index) => (
-                    <SelectItem
-                      key={item.id}
-                      value={item.id}
-                      data-testid={`grant-subject-${index}`}
-                    >
-                      {"email" in item ? item.email : item.name}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    {subjectItems.map((item, index) => (
+                      <SelectItem
+                        key={item.id}
+                        value={item.id}
+                        data-testid={`grant-subject-${index}`}
+                      >
+                        {"email" in item ? item.email : item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </Field>
@@ -1032,15 +1176,17 @@ export function AccessPage() {
                   <SelectValue placeholder={t("access.chooseWorkflow")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {(workflows.data?.items ?? []).map((workflow, index) => (
-                    <SelectItem
-                      key={workflow.id}
-                      value={workflow.id}
-                      data-testid={`grant-workflow-${index}`}
-                    >
-                      {workflow.name || workflow.slug || t("access.workflow")}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    {(workflows.data?.items ?? []).map((workflow, index) => (
+                      <SelectItem
+                        key={workflow.id}
+                        value={workflow.id}
+                        data-testid={`grant-workflow-${index}`}
+                      >
+                        {workflow.name || workflow.slug || t("access.workflow")}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </Field>
@@ -1051,17 +1197,19 @@ export function AccessPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(permissions.data?.items ?? [])
-                    .filter((permission) => permission.resource_type === "workflow")
-                    .map((permission, index) => (
-                      <SelectItem
-                        key={permission.name}
-                        value={permission.name}
-                        data-testid={`grant-permission-${index}`}
-                      >
-                        {permission.name}
-                      </SelectItem>
-                    ))}
+                  <SelectGroup>
+                    {(permissions.data?.items ?? [])
+                      .filter((permission) => permission.resource_type === "workflow")
+                      .map((permission, index) => (
+                        <SelectItem
+                          key={permission.name}
+                          value={permission.name}
+                          data-testid={`grant-permission-${index}`}
+                        >
+                          {permissionLabel(permission.name, t)}
+                        </SelectItem>
+                      ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </Field>
@@ -1096,7 +1244,10 @@ export function AccessPage() {
             <DialogTitle>{t("access.managePermissions")}</DialogTitle>
             <DialogDescription>{managedRole?.name}</DialogDescription>
           </DialogHeader>
-          <div className="max-h-96 space-y-2 overflow-y-auto" data-testid="role-permissions-list">
+          <div
+            className="flex max-h-96 flex-col gap-2 overflow-y-auto"
+            data-testid="role-permissions-list"
+          >
             {(permissions.data?.items ?? []).map((permission, index) => {
               const checked = roleDetail.data?.permissions.includes(permission.name) ?? false;
               return (
@@ -1113,9 +1264,9 @@ export function AccessPage() {
                     data-testid={`role-permission-${index}`}
                   />
                   <span className="min-w-0">
-                    <span className="block font-medium">{permission.name}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {permission.description}
+                    <span className="block font-medium">{permissionLabel(permission.name, t)}</span>
+                    <span className="block font-mono text-xs text-muted-foreground">
+                      {permission.name}
                     </span>
                   </span>
                 </div>
@@ -1161,6 +1312,7 @@ export function OperationsPage() {
       action={
         session.permissions.includes("self_healing:write") ? (
           <Button
+            className="w-full sm:w-auto"
             onClick={() => scan.mutate()}
             disabled={scan.isPending}
             data-testid="operations-scan"
@@ -1228,7 +1380,11 @@ export function OperationsPage() {
                         <div className="flex gap-2">
                           <p className="font-medium">{risk.headline}</p>
                           <Badge variant={risk.severity === "critical" ? "destructive" : "outline"}>
-                            {risk.severity}
+                            {t(
+                              risk.severity === "critical"
+                                ? "severity.critical"
+                                : "severity.warning",
+                            )}
                           </Badge>
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">{risk.detail}</p>
@@ -1254,6 +1410,117 @@ function parseSettingValue(raw: string, original: unknown): unknown {
   return raw;
 }
 
+const SETTING_SECTION_KEYS: Readonly<Record<string, TranslationKey>> = {
+  auth: "settings.section.auth",
+  connectors: "settings.section.connectors",
+  database: "settings.section.database",
+  egress: "settings.section.egress",
+  errors: "settings.section.errors",
+  llm: "settings.section.llm",
+  log: "settings.section.log",
+  mcp: "settings.section.mcp",
+  notifications: "settings.section.notifications",
+  observability: "settings.section.observability",
+  platform: "settings.section.platform",
+  queue: "settings.section.queue",
+  repl: "settings.section.repl",
+  sandbox: "settings.section.sandbox",
+  server: "settings.section.server",
+  spec: "settings.section.spec",
+  storage: "settings.section.storage",
+  tokens: "settings.section.tokens",
+  ui: "settings.section.ui",
+};
+
+function settingSection(path: string, t: ReturnType<typeof useI18n>["t"]): string {
+  const section = path.split(".")[0] ?? "";
+  const key = SETTING_SECTION_KEYS[section];
+  return key ? t(key) : t("settings.section.other");
+}
+
+function settingLabel(path: string, t: ReturnType<typeof useI18n>["t"]): string {
+  const lower = path.toLowerCase();
+  const provider = [
+    "anthropic",
+    "openai",
+    "gemini",
+    "azure",
+    "bedrock",
+    "vertex",
+    "ai_gateway",
+  ].find((name) => lower.includes(`.${name}.`));
+  const providerLabels: Readonly<Record<string, string>> = {
+    ai_gateway: "AI Gateway",
+    anthropic: "Anthropic",
+    azure: "Azure",
+    bedrock: "Amazon Bedrock",
+    gemini: "Gemini",
+    openai: "OpenAI",
+    vertex: "Google Vertex AI",
+  };
+  const providerLabel = provider ? providerLabels[provider] : null;
+  const key = lower.includes("enabled")
+    ? "settings.label.enabled"
+    : lower.includes("model")
+      ? "settings.label.model"
+      : lower.includes("provider")
+        ? "settings.label.provider"
+        : lower.includes("key") || lower.includes("secret") || lower.includes("password")
+          ? "settings.label.secret"
+          : lower.includes("endpoint")
+            ? "settings.label.endpoint"
+            : lower.includes("url")
+              ? "settings.label.url"
+              : lower.includes("timeout") || lower.endsWith("_ms")
+                ? "settings.label.timeout"
+                : lower.includes("ttl")
+                  ? "settings.label.ttl"
+                  : lower.includes("threshold") ||
+                      lower.includes("_pct") ||
+                      lower.includes("fraction")
+                    ? "settings.label.threshold"
+                    : lower.includes("max_") || lower.includes("cap") || lower.includes("limit")
+                      ? "settings.label.limit"
+                      : lower.includes("format")
+                        ? "settings.label.format"
+                        : lower.includes("level")
+                          ? "settings.label.level"
+                          : lower.includes("mode")
+                            ? "settings.label.mode"
+                            : lower.includes("region") || lower.includes("location")
+                              ? "settings.label.region"
+                              : lower.includes("bucket")
+                                ? "settings.label.bucket"
+                                : lower.includes("port")
+                                  ? "settings.label.port"
+                                  : lower.includes("concurrency")
+                                    ? "settings.label.concurrency"
+                                    : lower.includes("retention")
+                                      ? "settings.label.retention"
+                                      : lower.includes("budget")
+                                        ? "settings.label.budget"
+                                        : lower.includes("theme")
+                                          ? "settings.label.theme"
+                                          : "settings.label.value";
+  return providerLabel
+    ? t("settings.providerLabel", { provider: providerLabel, label: t(key) })
+    : t(key);
+}
+
+function settingMetaLabel(value: string, t: ReturnType<typeof useI18n>["t"]): string {
+  const key: Record<string, TranslationKey> = {
+    default: "settings.meta.default",
+    env: "settings.meta.environment",
+    environment: "settings.meta.environment",
+    global: "settings.meta.global",
+    tenant: "settings.meta.workspace",
+    override: "settings.meta.override",
+    workspace: "settings.meta.workspace",
+  };
+  const labelKey = key[value.toLowerCase()];
+  return labelKey ? t(labelKey) : t("common.unknown");
+}
+
 export function SettingsPage() {
   const { t } = useI18n();
   const session = useSession();
@@ -1273,20 +1540,44 @@ export function SettingsPage() {
       ),
     [query.data, search],
   );
+  const changedItems = useMemo(
+    () => items.filter((item) => Object.hasOwn(drafts, item.path)),
+    [drafts, items],
+  );
+  const sections = useMemo(() => {
+    const grouped = new Map<string, SettingItem[]>();
+    for (const item of items) {
+      const section = item.path.split(".")[0] ?? "other";
+      grouped.set(section, [...(grouped.get(section) ?? []), item]);
+    }
+    return [...grouped.entries()];
+  }, [items]);
   const save = useMutation({
-    mutationFn: ({ item, force = false }: { item: SettingItem; force?: boolean }) =>
-      apiRequest(`/v1/settings/${encodeURIComponent(item.path)}`, {
-        method: "PUT",
-        headers: { "x-subkit-audit-source": "ui" },
-        body: JSON.stringify({
-          value: parseSettingValue(drafts[item.path] ?? String(item.value ?? ""), item.value),
-          force,
-        }),
-      }),
+    mutationFn: async ({
+      items: pending,
+      force = false,
+    }: {
+      items: SettingItem[];
+      force?: boolean;
+    }) => {
+      for (const item of pending) {
+        await apiRequest(`/v1/settings/${encodeURIComponent(item.path)}`, {
+          method: "PUT",
+          headers: { "x-subkit-audit-source": "ui" },
+          body: JSON.stringify({
+            value: parseSettingValue(drafts[item.path] ?? String(item.value ?? ""), item.value),
+            force: force && item.meta.requiresRestart,
+          }),
+        });
+      }
+    },
     onSuccess: async () => {
+      setDrafts({});
+      setRestartSetting(null);
       await client.invalidateQueries({ queryKey: ["admin", "settings"] });
       toast.success(t("settings.saved"));
     },
+    onError: () => toast.error(t("settings.saveFailed")),
   });
   return (
     <AdminFrame
@@ -1312,63 +1603,131 @@ export function SettingsPage() {
       {query.isPending ? (
         <LoadingCards testId="settings-loading" />
       ) : (
-        <div className="grid gap-2" data-testid="settings-list">
-          {items.map((item, index) => {
-            const value =
-              drafts[item.path] ??
-              (item.meta.sensitive
-                ? ""
-                : typeof item.value === "string"
-                  ? item.value
-                  : JSON.stringify(item.value));
-            return (
-              <Card key={item.path} size="sm" data-testid={`setting-item-${index}`}>
-                <CardContent className="grid gap-3 p-4 lg:grid-cols-[minmax(12rem,1fr)_minmax(14rem,1fr)_auto] lg:items-end">
-                  <div className="min-w-0">
-                    <p className="break-words font-medium">{item.path}</p>
-                    <div className="mt-1 flex gap-1">
-                      <Badge variant="secondary">{item.meta.source}</Badge>
-                      {item.meta.requiresRestart && (
-                        <Badge variant="outline">{t("settings.restart")}</Badge>
-                      )}
-                    </div>
-                  </div>
-                  <Field>
-                    <FieldLabel className="sr-only" htmlFor={`setting-${index}`}>
-                      {item.path}
-                    </FieldLabel>
-                    <Input
-                      id={`setting-${index}`}
-                      type={item.meta.sensitive ? "password" : "text"}
-                      value={value}
-                      placeholder={
-                        item.meta.sensitive ? t("settings.secretPlaceholder") : undefined
-                      }
-                      onChange={(event) =>
-                        setDrafts((current) => ({ ...current, [item.path]: event.target.value }))
-                      }
-                      disabled={!canWrite}
-                      data-testid={`setting-input-${index}`}
-                    />
-                  </Field>
-                  {canWrite && (
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        item.meta.requiresRestart
-                          ? setRestartSetting(item)
-                          : save.mutate({ item, force: false })
-                      }
-                      disabled={save.isPending || drafts[item.path] === undefined}
-                      data-testid={`setting-save-${index}`}
-                    >
-                      {t("common.save")}
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div className="grid gap-4 pb-20" data-testid="settings-list">
+          {sections.map(([section, sectionItems], sectionIndex) => (
+            <Card key={section} data-testid={`settings-section-${sectionIndex}`}>
+              <CardHeader>
+                <CardTitle>{settingSection(`${section}.value`, t)}</CardTitle>
+                <CardDescription>{t("settings.sectionDescription")}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FieldGroup>
+                  {sectionItems.map((item) => {
+                    const index = items.indexOf(item);
+                    const value =
+                      drafts[item.path] ??
+                      (item.meta.sensitive
+                        ? ""
+                        : typeof item.value === "string"
+                          ? item.value
+                          : JSON.stringify(item.value));
+                    return (
+                      <Field
+                        key={item.path}
+                        orientation="responsive"
+                        data-disabled={!canWrite || undefined}
+                        className="border-t pt-4 first:border-t-0 first:pt-0"
+                        data-testid={`setting-item-${index}`}
+                      >
+                        <FieldLabel
+                          className="min-w-0 @md/field-group:max-w-64"
+                          htmlFor={`setting-${index}`}
+                        >
+                          <span className="truncate">{settingLabel(item.path, t)}</span>
+                          <ContextHelp
+                            label={t("settings.about", { setting: settingLabel(item.path, t) })}
+                            testId={`setting-help-${index}`}
+                          >
+                            {t("settings.resolution", {
+                              path: item.path,
+                              source: settingMetaLabel(item.meta.source, t),
+                              scope: settingMetaLabel(item.meta.scope, t),
+                            })}
+                          </ContextHelp>
+                        </FieldLabel>
+                        <FieldContent className="min-w-0">
+                          {typeof item.value === "boolean" ? (
+                            <Switch
+                              id={`setting-${index}`}
+                              checked={value === "true"}
+                              onCheckedChange={(checked) =>
+                                setDrafts((current) => ({
+                                  ...current,
+                                  [item.path]: String(checked),
+                                }))
+                              }
+                              disabled={!canWrite || save.isPending}
+                              aria-label={settingLabel(item.path, t)}
+                              data-testid={`setting-input-${index}`}
+                            />
+                          ) : (
+                            <Input
+                              id={`setting-${index}`}
+                              type={item.meta.sensitive ? "password" : "text"}
+                              value={value}
+                              placeholder={
+                                item.meta.sensitive ? t("settings.secretPlaceholder") : undefined
+                              }
+                              onChange={(event) =>
+                                setDrafts((current) => ({
+                                  ...current,
+                                  [item.path]: event.target.value,
+                                }))
+                              }
+                              disabled={!canWrite || save.isPending}
+                              data-testid={`setting-input-${index}`}
+                            />
+                          )}
+                          <FieldDescription className="flex flex-wrap gap-1.5 pt-1">
+                            <Badge variant="secondary">
+                              {settingMetaLabel(item.meta.source, t)}
+                            </Badge>
+                            {item.meta.requiresRestart && (
+                              <Badge variant="outline">{t("settings.restart")}</Badge>
+                            )}
+                          </FieldDescription>
+                        </FieldContent>
+                      </Field>
+                    );
+                  })}
+                </FieldGroup>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+      {canWrite && changedItems.length > 0 && (
+        <div
+          className="sticky bottom-0 z-10 -mx-1 mt-4 flex flex-col gap-3 rounded-xl border bg-background/95 p-3 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between"
+          role="status"
+          data-testid="settings-change-bar"
+        >
+          <p className="text-sm font-medium">
+            {t("settings.unsavedCount", { count: changedItems.length })}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              className="flex-1 sm:flex-none"
+              variant="outline"
+              disabled={save.isPending}
+              onClick={() => setDrafts({})}
+              data-testid="settings-discard"
+            >
+              {t("common.discard")}
+            </Button>
+            <Button
+              className="flex-1 sm:flex-none"
+              disabled={save.isPending}
+              onClick={() => {
+                const restart = changedItems.find((item) => item.meta.requiresRestart);
+                restart ? setRestartSetting(restart) : save.mutate({ items: changedItems });
+              }}
+              data-testid="settings-save"
+            >
+              {save.isPending && <Spinner data-icon="inline-start" />}
+              {t("common.saveChanges")}
+            </Button>
+          </div>
         </div>
       )}
       <AlertDialog
@@ -1386,8 +1745,7 @@ export function SettingsPage() {
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (restartSetting) save.mutate({ item: restartSetting, force: true });
-                setRestartSetting(null);
+                if (restartSetting) save.mutate({ items: changedItems, force: true });
               }}
               data-testid="settings-restart-confirm"
             >

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +22,20 @@ function region(source: string, name: (typeof regions)[number]): string {
 }
 
 describe("cockpit-ui family contract", () => {
+  test("maps every contract rule to existing local evidence", () => {
+    const ids = [...contractDoc.matchAll(/\bCUI-[A-Z0-9]+-\d+\b/g)].map((match) => match[0]);
+    const conformance = JSON.parse(
+      readFileSync(join(root, "contract/conformance.cockpit-ui.json"), "utf8"),
+    ) as { contract: string; rules: Record<string, { enforced_by: string[] }> };
+
+    expect(conformance.contract).toBe("cockpit-ui");
+    expect(Object.keys(conformance.rules).sort()).toEqual([...new Set(ids)].sort());
+    for (const rule of Object.values(conformance.rules)) {
+      expect(rule.enforced_by.length).toBeGreaterThan(0);
+      for (const file of rule.enforced_by) expect(existsSync(join(root, file))).toBe(true);
+    }
+  });
+
   test("keeps every shared token region byte-identical", () => {
     for (const name of regions) expect(region(css, name)).toBe(region(contractCss, name));
   });
@@ -56,6 +70,24 @@ describe("cockpit-ui family contract", () => {
     ]) {
       const source = readFileSync(join(root, file), "utf8");
       expect(source).not.toMatch(/(?:hover|focus|data-open|aria-expanded):bg-accent/);
+    }
+  });
+
+  test("keeps the local action grammar and spacing contract explicit", () => {
+    const button = readFileSync(join(root, "apps/cockpit/src/components/ui/button.tsx"), "utf8");
+    expect(button).toContain('default: "bg-accent text-accent-foreground');
+    expect(button).not.toContain('default: "bg-primary text-primary-foreground');
+
+    for (const file of [
+      "apps/cockpit/src/pages/admin.tsx",
+      "apps/cockpit/src/pages/chat.tsx",
+      "apps/cockpit/src/pages/resource.tsx",
+      "apps/cockpit/src/components/ai-elements/task.tsx",
+      "apps/cockpit/src/components/ai-elements/tool.tsx",
+      "apps/cockpit/src/components/ai-elements/prompt-input.tsx",
+    ]) {
+      const source = readFileSync(join(root, file), "utf8");
+      expect(source).not.toMatch(/(?:^|[" ])space-[xy]-/);
     }
   });
 });

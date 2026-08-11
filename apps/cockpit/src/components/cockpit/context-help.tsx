@@ -1,7 +1,6 @@
 import { CircleHelp } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { IconButton } from "@/components/cockpit/icon-button";
 
 export function ContextHelp({
   label,
@@ -13,20 +12,16 @@ export function ContextHelp({
   testId: string;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={label}
-          data-testid={testId}
-          className="shrink-0 text-muted-foreground"
-        >
-          <CircleHelp />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-72 text-pretty">{children}</TooltipContent>
-    </Tooltip>
+    <IconButton
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      label={label}
+      tooltip={<span className="max-w-72 text-pretty">{children}</span>}
+      data-testid={testId}
+      className="shrink-0 text-muted-foreground"
+    >
+      <CircleHelp />
+    </IconButton>
   );
 }

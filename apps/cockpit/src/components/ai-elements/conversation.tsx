@@ -5,8 +5,7 @@ import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { useCallback } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { IconButton } from "@/components/cockpit/icon-button";
 import { cn } from "@/lib/utils";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
@@ -51,7 +50,7 @@ export const ConversationEmptyState = ({
     {children ?? (
       <>
         {icon && <div className="text-muted-foreground">{icon}</div>}
-        <div className="space-y-1">
+        <div className="flex flex-col gap-1">
           <h3 className="font-medium text-sm">{title}</h3>
           {description && <p className="text-muted-foreground text-sm">{description}</p>}
         </div>
@@ -60,11 +59,14 @@ export const ConversationEmptyState = ({
   </div>
 );
 
-export type ConversationScrollButtonProps = ComponentProps<typeof Button> & { label?: string };
+export type ConversationScrollButtonProps = Omit<
+  ComponentProps<typeof IconButton>,
+  "children" | "label"
+> & { label: string };
 
 export const ConversationScrollButton = ({
   className,
-  label = "Scroll to latest message",
+  label,
   ...props
 }: ConversationScrollButtonProps) => {
   const { isAtBottom, scrollToBottom } = useStickToBottomContext();
@@ -75,25 +77,17 @@ export const ConversationScrollButton = ({
 
   return (
     !isAtBottom && (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            aria-label={label}
-            className={cn(
-              "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full dark:bg-background dark:hover:bg-muted",
-              className,
-            )}
-            onClick={handleScrollToBottom}
-            size="icon"
-            type="button"
-            variant="outline"
-            {...props}
-          >
-            <ArrowDownIcon />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
+      <IconButton
+        label={label}
+        className={cn("absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full", className)}
+        onClick={handleScrollToBottom}
+        size="icon"
+        type="button"
+        variant="outline"
+        {...props}
+      >
+        <ArrowDownIcon />
+      </IconButton>
     )
   );
 };
@@ -104,7 +98,11 @@ const getMessageText = (message: UIMessage): string =>
     .map((part) => part.text)
     .join("");
 
-export type ConversationDownloadProps = Omit<ComponentProps<typeof Button>, "onClick"> & {
+export type ConversationDownloadProps = Omit<
+  ComponentProps<typeof IconButton>,
+  "children" | "label" | "onClick"
+> & {
+  label: string;
   messages: UIMessage[];
   filename?: string;
   formatMessage?: (message: UIMessage, index: number) => string;
@@ -122,10 +120,10 @@ export const messagesToMarkdown = (
 
 export const ConversationDownload = ({
   messages,
+  label,
   filename = "conversation.md",
   formatMessage = defaultFormatMessage,
   className,
-  children,
   ...props
 }: ConversationDownloadProps) => {
   const handleDownload = useCallback(() => {
@@ -142,18 +140,16 @@ export const ConversationDownload = ({
   }, [messages, filename, formatMessage]);
 
   return (
-    <Button
-      className={cn(
-        "absolute top-4 right-4 rounded-full dark:bg-background dark:hover:bg-muted",
-        className,
-      )}
+    <IconButton
+      label={label}
+      className={cn("absolute top-4 right-4 rounded-full", className)}
       onClick={handleDownload}
       size="icon"
       type="button"
       variant="outline"
       {...props}
     >
-      {children ?? <DownloadIcon />}
-    </Button>
+      <DownloadIcon />
+    </IconButton>
   );
 };

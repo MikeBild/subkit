@@ -5,6 +5,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
+import { IconButton } from "@/components/cockpit/icon-button";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -207,14 +208,17 @@ export const MessageBranchSelector = ({ className, ...props }: MessageBranchSele
   );
 };
 
-export type MessageBranchPreviousProps = ComponentProps<typeof Button>;
+export type MessageBranchPreviousProps = Omit<
+  ComponentProps<typeof IconButton>,
+  "children" | "label"
+> & { label: string };
 
-export const MessageBranchPrevious = ({ children, ...props }: MessageBranchPreviousProps) => {
+export const MessageBranchPrevious = ({ label, ...props }: MessageBranchPreviousProps) => {
   const { goToPrevious, totalBranches } = useMessageBranch();
 
   return (
-    <Button
-      aria-label="Previous branch"
+    <IconButton
+      label={label}
       disabled={totalBranches <= 1}
       onClick={goToPrevious}
       size="icon-sm"
@@ -222,19 +226,22 @@ export const MessageBranchPrevious = ({ children, ...props }: MessageBranchPrevi
       variant="ghost"
       {...props}
     >
-      {children ?? <ChevronLeftIcon size={14} />}
-    </Button>
+      <ChevronLeftIcon />
+    </IconButton>
   );
 };
 
-export type MessageBranchNextProps = ComponentProps<typeof Button>;
+export type MessageBranchNextProps = Omit<
+  ComponentProps<typeof IconButton>,
+  "children" | "label"
+> & { label: string };
 
-export const MessageBranchNext = ({ children, ...props }: MessageBranchNextProps) => {
+export const MessageBranchNext = ({ label, ...props }: MessageBranchNextProps) => {
   const { goToNext, totalBranches } = useMessageBranch();
 
   return (
-    <Button
-      aria-label="Next branch"
+    <IconButton
+      label={label}
       disabled={totalBranches <= 1}
       onClick={goToNext}
       size="icon-sm"
@@ -242,8 +249,8 @@ export const MessageBranchNext = ({ children, ...props }: MessageBranchNextProps
       variant="ghost"
       {...props}
     >
-      {children ?? <ChevronRightIcon size={14} />}
-    </Button>
+      <ChevronRightIcon />
+    </IconButton>
   );
 };
 
@@ -269,7 +276,9 @@ export const MessageResponse = memo(
     <Streamdown
       className={cn(
         "w-full min-w-0 overflow-hidden text-pretty [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        "[&_p]:break-words [&_p]:leading-6 [&_li]:break-words [&_li]:leading-6 [&_[data-streamdown=table-container]]:max-w-full",
+        "[&_p]:break-words [&_p]:leading-6 [&_li]:break-words [&_li]:leading-6",
+        "[&_[data-streamdown=table-container]]:max-w-full [&_[data-streamdown=table-container]]:overflow-x-clip",
+        "[&_table]:w-full [&_table]:table-fixed [&_th]:break-words [&_td]:break-words [&_th]:[overflow-wrap:anywhere] [&_td]:[overflow-wrap:anywhere]",
         className,
       )}
       {...props}

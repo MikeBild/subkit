@@ -600,61 +600,102 @@ export function ResourcePage({
               <CardDescription>{t("resource.records", { count: filtered.length })}</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <Table data-testid="resource-table">
-                <TableHeader>
-                  <TableRow>
-                    {columns.map((column, index) => (
-                      <TableHead
-                        key={column}
-                        className={cn(
-                          index === 0 && "w-[44%] lg:w-[34%]",
-                          index === 1 && "w-[44%] lg:w-[24%]",
-                          index >= 2 && "hidden lg:table-cell lg:w-[18%]",
-                        )}
-                      >
-                        {fieldLabel(column, t)}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((row, index) => (
-                    <TableRow key={index} data-testid={`resource-row-${index}`}>
-                      {columns.map((column, columnIndex) => (
-                        <TableCell
+              <div className="hidden md:block" data-testid="resource-desktop-table">
+                <Table data-testid="resource-table">
+                  <TableHeader>
+                    <TableRow>
+                      {columns.map((column, index) => (
+                        <TableHead
                           key={column}
                           className={cn(
-                            "min-w-0 max-w-0 whitespace-normal break-words",
-                            columnIndex >= 2 && "hidden lg:table-cell",
+                            index === 0 && "w-[34%]",
+                            index === 1 && "w-[24%]",
+                            index >= 2 && "w-[21%]",
                           )}
                         >
-                          {columnIndex === 0 ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="h-auto max-w-full justify-start p-0 text-left font-medium hover:bg-transparent hover:underline"
-                              data-testid={`resource-row-${index}-open`}
-                              onClick={() => setSelected(row)}
-                            >
-                              <span className="truncate">
-                                <DisplayValue field={column} value={row[column]} />
-                              </span>
-                            </Button>
-                          ) : column === "status" ? (
-                            <Badge variant="outline">
-                              <DisplayValue field={column} value={row[column]} />
-                            </Badge>
-                          ) : (
-                            <DisplayValue field={column} value={row[column]} />
-                          )}
-                        </TableCell>
+                          {fieldLabel(column, t)}
+                        </TableHead>
                       ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((row, index) => (
+                      <TableRow key={index} data-testid={`resource-row-${index}`}>
+                        {columns.map((column, columnIndex) => (
+                          <TableCell key={column} className="min-w-0 max-w-0">
+                            {columnIndex === 0 ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="h-auto max-w-full justify-start p-0 text-left font-medium hover:bg-transparent hover:underline"
+                                data-testid={`resource-row-${index}-open`}
+                                onClick={() => setSelected(row)}
+                              >
+                                <span className="truncate">
+                                  <DisplayValue field={column} value={row[column]} />
+                                </span>
+                              </Button>
+                            ) : column === "status" ? (
+                              <Badge variant="outline">
+                                <DisplayValue field={column} value={row[column]} />
+                              </Badge>
+                            ) : (
+                              <DisplayValue field={column} value={row[column]} />
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="grid divide-y md:hidden" data-testid="resource-mobile-list">
+                {filtered.map((row, index) => {
+                  const primary = columns[0] ?? "name";
+                  return (
+                    <article
+                      className="grid min-w-0 gap-3 p-4"
+                      key={index}
+                      data-testid="resource-mobile-row"
+                    >
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-auto min-w-0 justify-start p-0 text-left font-medium hover:bg-transparent hover:underline"
+                        data-testid={`resource-mobile-row-${index}-open`}
+                        onClick={() => setSelected(row)}
+                      >
+                        <span className="truncate">
+                          <DisplayValue field={primary} value={row[primary]} />
+                        </span>
+                      </Button>
+                      <dl className="grid min-w-0 gap-2">
+                        {columns.slice(1, 3).map((column) => (
+                          <div
+                            className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3"
+                            key={column}
+                          >
+                            <dt className="text-xs text-muted-foreground">
+                              {fieldLabel(column, t)}
+                            </dt>
+                            <dd className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
+                              {column === "status" ? (
+                                <Badge variant="outline">
+                                  <DisplayValue field={column} value={row[column]} />
+                                </Badge>
+                              ) : (
+                                <DisplayValue field={column} value={row[column]} />
+                              )}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </article>
+                  );
+                })}
+              </div>
             </CardContent>
-            <CardFooter className="justify-between border-t py-3 text-xs text-muted-foreground">
+            <CardFooter className="flex-wrap justify-between gap-2 border-t py-3 text-xs text-muted-foreground">
               <span>{t("resource.records", { count: filtered.length })}</span>
               <span>{t("resource.workspaceScoped")}</span>
             </CardFooter>

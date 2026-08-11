@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
-    <div data-slot="table-container" className="relative w-full min-w-0 overflow-x-hidden">
+    <div data-slot="table-container" className="relative w-full min-w-0 overflow-x-clip">
       <table
         data-slot="table"
         className={cn("w-full max-w-full table-fixed caption-bottom text-sm", className)}
@@ -69,7 +69,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "min-w-0 p-2 align-middle break-words whitespace-normal [&:has([role=checkbox])]:pr-0",
+        "min-w-0 p-2 align-middle break-words whitespace-normal [overflow-wrap:anywhere] [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}

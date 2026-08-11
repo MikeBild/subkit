@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "6.1.8",
+  "version": "6.1.9",
   "private": true,
   "workspaces": [
     "apps/cockpit"
@@ -23,6 +23,7 @@
     "build:cockpit": "bunx vite build --config apps/cockpit/vite.config.ts && bun run gen:cockpit",
     "gen:cockpit": "bun run scripts/gen-embedded-cockpit.ts",
     "check:cockpit-drift": "bun run build:cockpit && git diff --exit-code assets/cockpit apps/engine/src/http/cockpit-embedded.ts",
+    "verify:cockpit-visual": "bun run build:cockpit && bun run scripts/verify-cockpit-visual.mjs",
     "build:engine": "bun run build:cockpit && rm -rf node_modules/cpu-features && bun scripts/fetch-embedding-assets.ts && bun build apps/engine/src/index.ts --compile --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/engine && sh scripts/codesign-macos.sh dist/engine",
     "build:engine:linux-x64": "bun run build:cockpit && rm -rf node_modules/cpu-features && bun scripts/fetch-embedding-assets.ts && bun build apps/engine/src/index.ts --compile --target=bun-linux-x64 --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"${ENGINE_VERSION:-$(node -p 'require(\"./package.json\").version')}\\\"\" --outfile dist/engine-linux-x64",
     "build:sk": "bun build apps/sk/src/index.ts --compile --define \"process.env.NODE_ENV=process.env.NODE_ENV\" --define \"BUILD_VERSION=\\\"$(node -p 'require(\"./package.json\").version')\\\"\" --outfile dist/sk && sh scripts/codesign-macos.sh dist/sk",
