@@ -3,14 +3,14 @@
 //   - wrong-content fixture (green preview, goal asks for project
 //     names + droplet specs, output has empty names) → `failed` with
 //     missing items, auto-commit BLOCKED, result carries the verdict,
-//   - passing fixture → auto-commits with `judge.verdict: "passes"`,
+//   - passing fixture in ask mode → green + save_required; auto mode commits,
 //   - goal absent → `skipped`/`no_goal`, green preview is NOT auto-committed
 //     (returns save_required so the user/model persists deliberately),
 //   - judge infrastructure error → `skipped`/`judge_unavailable`; the judge
 //     still never BLOCKS (the envelope stays ok), but with a human present the
 //     auto-commit is withheld: an unjudged preview is persisted deliberately,
-//     not silently. Unattended turns still commit, since the deferral would
-//     dead-end on a prompt nobody can answer,
+//     not silently. Backgrounded MCP turns surface the durable approval URL
+//     through conversation_get and therefore do not weaken the gate,
 //   - circuit-breaker: after the block cap the edit LOOP is broken but the
 //     preview is HELD (never auto-committed) and a terminal done-signal is
 //     surfaced so the model stops re-running and asks the user; the counter
@@ -164,7 +164,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(1);
   });
 
-  test("passing fixture: auto-commits and the result carries the passes verdict", async () => {
+  test("passing fixture in ask mode requires an explicit save", async () => {
     getMockProvider().generateOverrides.judge = () => ({
       verdict: "passes",
       reason: "Output contains project names and droplet specs.",
@@ -176,18 +176,21 @@ describe("preview judge · dry_run_workflow wiring", () => {
 
     expect(result.ok).toBe(true);
     const data = result.data as JudgeEnvelope;
-    expect(data.auto_committed).toBe(true);
+    expect(data.auto_committed).toBe(false);
+    expect((data as { save_required?: boolean }).save_required).toBe(true);
+    expect(data.next_best_actions).toEqual(["save_workflow_draft"]);
     expect(data.judge?.verdict).toBe("passes");
-    expect(toolCtx.current().state?.judge_breaker ?? null).toBeNull();
   });
 
-  test("passing fixture re-run against the same draft is already_persisted, not a second commit", async () => {
+  test("passing fixture in auto mode commits and an unchanged re-run is idempotent", async () => {
     getMockProvider().generateOverrides.judge = () => ({
       verdict: "passes",
       reason: "Output contains project names and droplet specs.",
       missing: [],
     });
-    const toolCtx = makeCtx(wrongContentDraft("judge-passes-idempotent", GOAL));
+    const toolCtx = makeCtx(wrongContentDraft("judge-passes-idempotent", GOAL), {
+      permission_mode: "auto",
+    });
 
     const first = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(first.ok).toBe(true);
@@ -236,12 +239,9 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
   });
 
-  test("UNATTENDED (backgrounded MCP surface): green + no-goal preview AUTO-COMMITS instead of deferring to save", async () => {
-    // A backgrounded MCP turn cannot surface a `save_workflow_draft` →
-    // ask_user_confirm follow-up (no live session), so the attended
-    // greenPendingSave deferral would dead-end. The no-goal green preview must
-    // auto-commit. The judge would FAIL if it ran — proving the skip is a
-    // genuine no_goal skip, not a lucky pass.
+  test("backgrounded MCP surface does not bypass the explicit save gate", async () => {
+    // conversation_get can surface the durable approval URL even without a
+    // live elicitation bridge. Transport shape is not permission to persist.
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-unattended-mcp", null), {
       surface: "mcp",
@@ -250,15 +250,10 @@ describe("preview judge · dry_run_workflow wiring", () => {
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
     expect(result.ok).toBe(true);
-    const data = result.data as JudgeEnvelope & {
-      workflow_id?: string;
-      save_required?: boolean;
-    };
-    // Committed: target_workflow_id present, auto_committed true, NO save gate.
-    expect(data.auto_committed).toBe(true);
-    expect(typeof data.workflow_id).toBe("string");
-    expect(result.committed_workflow_id).toBe(data.workflow_id);
-    expect(data.save_required).toBeUndefined();
+    const data = result.data as JudgeEnvelope & { save_required?: boolean };
+    expect(data.auto_committed).toBe(false);
+    expect(data.save_required).toBe(true);
+    expect(data.next_best_actions).toEqual(["save_workflow_draft"]);
     // Audit metadata stays honest: the judge was skipped (no goal), not passed.
     expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
     // The judge LLM never ran — no_goal short-circuits before the call.
@@ -433,7 +428,9 @@ describe("preview judge · dry_run_workflow wiring", () => {
     // First a passing preview commits (counter is 0 → stays 0/clears).
     // Then re-block twice and confirm the counter restarts from 1.
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
-    const toolCtx = makeCtx(wrongContentDraft("judge-commit-reset", GOAL));
+    const toolCtx = makeCtx(wrongContentDraft("judge-commit-reset", GOAL), {
+      permission_mode: "auto",
+    });
 
     const block1 = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(block1.ok).toBe(false);

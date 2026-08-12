@@ -46,7 +46,7 @@ Do NOT generate steps until these three questions are answered. One good questio
 1. Create the connector first: `start_connector_from_description` or `start_connector_from_template`
 2. Probe the connector to verify connectivity — a green probe persists it inline (`auto_saved: true`)
 3. Author the workflow: `author_workflow` (one call from the goal — the grounded pipeline builder)
-4. Preview with `dry_run_workflow` — writes are held (resolved but never dispatched), and a green preview with a passing judge verdict auto-commits (`auto_committed: true`)
+4. Preview with `dry_run_workflow` — writes are held. In `auto`, a green judged preview may auto-commit; in ask/plan, call `save_workflow_draft` after `save_required: true` so the human gate decides
 5. Repair any recorded-eval/judge findings via `edit_workflow_patch`, then preview again
 
 Show progress at each phase so the user always knows where they are.

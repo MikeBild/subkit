@@ -13,8 +13,8 @@
 //   2. Conversation surface (`dry_run_workflow`): the green
 //      hold-preview marks the held step in its trace
 //      (`request_meta.extras.held`), labels the dependent skipped, and
-//      still auto-commits — "a green preview is the save" survives;
-//      previews just no longer publish.
+//      still auto-commits in explicit permission_mode `auto`;
+//      previews never publish.
 
 import { dryRunWorkflowTool } from "../../src/conversations/tools/dry-run-workflow.ts";
 import type { DraftDocument } from "../../src/conversations/types.ts";
@@ -96,14 +96,17 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
     // goal — a bare verification dry-run with no goal yields green_pending_save,
     // not a commit). The default mock judge passes (content-driven; override
     // only when asserting judge behaviour).
-    const toolCtx = env.makeToolCtx({
-      workflow: {
-        name: "eval-hold-writes",
-        slug: "eval-hold-writes",
-        goal: input.goal,
-        steps: input.steps,
-      },
-    } as unknown as DraftDocument);
+    const toolCtx = {
+      ...env.makeToolCtx({
+        workflow: {
+          name: "eval-hold-writes",
+          slug: "eval-hold-writes",
+          goal: input.goal,
+          steps: input.steps,
+        },
+      } as unknown as DraftDocument),
+      permission_mode: "auto" as const,
+    };
     const { result, fetch_calls } = await withEgressTripwire(() =>
       dryRunWorkflowTool.execute(toolCtx, { input: input.workflow_input }),
     );
@@ -125,8 +128,8 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       confirmTrace?.error_code === input.expect.skipped_error_code,
       `dependent trace carries ${String(confirmTrace?.error_code)}, expected ${input.expect.skipped_error_code}`,
     );
-    // Green + held + judged-against-a-goal still auto-commits (Fix G keeps the
-    // save contract; T4 gates the auto-persist on that judged goal).
+    // Green + held + judged-against-a-goal auto-commits because this fixture
+    // explicitly selected permission_mode auto.
     c.check(data.auto_committed === true, "green hold-writes preview did not auto-commit");
 
     if (c.failed) return { pass: false, reason: c.failed };
