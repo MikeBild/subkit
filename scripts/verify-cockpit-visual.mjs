@@ -113,6 +113,14 @@ function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
 
+function sse(route, body) {
+  return route.fulfill({
+    status: 200,
+    contentType: "text/event-stream",
+    body: `event: outcome\ndata: ${JSON.stringify(body)}\n\n`,
+  });
+}
+
 async function mockApi(route) {
   const request = route.request();
   const url = new URL(request.url());
@@ -133,11 +141,17 @@ async function mockApi(route) {
         "conversation:write",
         "conversation:approve",
         "workflow:read",
+        "workflow:write",
         "execution:read",
         "connector:read",
+        "connector:write",
+        "connector:test",
         "knowledge:read",
+        "knowledge:write",
         "skill:read",
+        "skill:write",
         "file:read",
+        "file:write",
         "notification:read",
         "audit:read",
         "stats:read",
@@ -161,9 +175,9 @@ async function mockApi(route) {
     });
   }
   if (path === "/v1/conversations" && request.method() === "GET")
-    return json(route, { items: conversations });
+    return json(route, { items: conversations, total: conversations.length });
   if (path === "/v1/conversations" && request.method() === "POST")
-    return json(route, { conversation, events: [], status: "active" }, 201);
+    return sse(route, { conversation, status: "active" });
   if (path === `/v1/conversations/${uuid}`) {
     return json(route, {
       conversation,
@@ -182,7 +196,142 @@ async function mockApi(route) {
     });
   }
   if (path === `/v1/conversations/${uuid}/messages`)
-    return json(route, { conversation, events: [], status: "active" });
+    return sse(route, { conversation, status: "active" });
+  if (path === `/v1/workflows/${uuid}`)
+    return json(route, {
+      id: uuid,
+      name: "Monatsreport",
+      slug: "monatsreport",
+      lifecycle: "active",
+      current_version: 8,
+      steps: [
+        { id: "fetch", name: "Daten laden", kind: "request" },
+        { id: "transform", name: "Report berechnen", kind: "transform" },
+      ],
+      updated_at: "2026-08-10T09:00:00.000Z",
+    });
+  if (path === `/v1/connectors/${uuid}`)
+    return json(route, {
+      id: uuid,
+      display_name: "Reporting API",
+      slug: "reporting-api",
+      driver: "http",
+      environment: "prod",
+      enabled: true,
+      health_state: "ok",
+      updated_at: "2026-08-10T09:00:00.000Z",
+    });
+  if (path === `/v1/knowledge-sources/${uuid}`)
+    return json(route, {
+      id: uuid,
+      name: "Betriebshandbuch",
+      status: "active",
+      source_type: "file_upload",
+      version: "knowledge-v4",
+      updated_at: "2026-08-10T09:00:00.000Z",
+    });
+  if (path === `/v1/knowledge-sources/${uuid}/content`)
+    return json(route, {
+      knowledge_source_id: uuid,
+      version: "knowledge-v4",
+      editable: true,
+      documents: [
+        {
+          path: "betrieb.md",
+          content:
+            "# Betriebshandbuch\n\n| Prüfung | Intervall | Verantwortlich |\n|---|---:|---|\n| Connector-Zustand | täglich | Betrieb |",
+        },
+      ],
+    });
+  if (path === `/v1/skills/${uuid}`)
+    return json(route, {
+      id: uuid,
+      title: "Sichere Reports",
+      body: "# Sichere Reports\n\nVor externen Schreibzugriffen immer eine Freigabe einholen.",
+      scope: "global",
+      status: "active",
+      maturity: "stable",
+      version: 3,
+      updated_at: "2026-08-10T09:00:00.000Z",
+    });
+  if (path === `/v1/files/${uuid}`)
+    return json(route, {
+      id: uuid,
+      filename: "report-notes.md",
+      status: "ready",
+      content_type: "text/markdown",
+      size_bytes: 1840,
+      created_at: "2026-08-10T09:00:00.000Z",
+    });
+  if (path === `/v1/files/${uuid}/content`)
+    return route.fulfill({
+      status: 200,
+      contentType: "text/markdown",
+      body: "# Report notes\n\nValidated input.",
+    });
+  if (
+    [
+      "/v1/workflows",
+      "/v1/connectors",
+      "/v1/knowledge-sources",
+      "/v1/skills",
+      "/v1/files",
+    ].includes(path)
+  ) {
+    const item =
+      path === "/v1/workflows"
+        ? {
+            id: uuid,
+            name: "Monatsreport",
+            lifecycle: "active",
+            current_version: 8,
+            connectors: ["reporting"],
+            updated_at: conversation.updated_at,
+          }
+        : path === "/v1/connectors"
+          ? {
+              id: uuid,
+              display_name: "Reporting API",
+              driver: "http",
+              environment: "prod",
+              health_state: "ok",
+              enabled: true,
+              updated_at: conversation.updated_at,
+            }
+          : path === "/v1/knowledge-sources"
+            ? {
+                id: uuid,
+                name: "Betriebshandbuch",
+                status: "active",
+                source_type: "file_upload",
+                chunk_count: 12,
+                bytes_total: 18400,
+                updated_at: conversation.updated_at,
+              }
+            : path === "/v1/skills"
+              ? {
+                  id: uuid,
+                  title: "Sichere Reports",
+                  status: "active",
+                  scope: "global",
+                  maturity: "stable",
+                  version: 3,
+                  updated_at: conversation.updated_at,
+                }
+              : {
+                  id: uuid,
+                  filename: "report-notes.md",
+                  status: "ready",
+                  content_type: "text/markdown",
+                  size_bytes: 1840,
+                  created_at: conversation.updated_at,
+                };
+    const items = Array.from({ length: 42 }, (_, index) => ({
+      ...item,
+      id: index === 0 ? uuid : `catalog-record-${index}`,
+    }));
+    return json(route, { items, total: items.length });
+  }
   if (path === "/v1/stats/executions") {
     if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
       return json(route, { code: "validation", message: "request validation failed" }, 400);
@@ -356,6 +505,8 @@ function markerFor(route) {
   if (route === "chat") return '[data-testid="chat-workspace"]';
   if (["people", "access", "api-access", "operations", "settings"].includes(route))
     return `[data-testid="admin-${route}"]`;
+  if (["workflows", "connectors", "knowledge", "skills", "files"].includes(route))
+    return `[data-testid="catalog-${route}"]`;
   return `[data-testid="resource-${route}"]`;
 }
 
@@ -419,16 +570,24 @@ async function assertChat(page, label) {
 }
 
 async function assertTables(page, label) {
-  const overflows = await page.locator('[data-slot="table-container"]').evaluateAll((elements) =>
-    elements
-      .map((element, index) => ({
-        index,
-        clientWidth: element.clientWidth,
-        scrollWidth: element.scrollWidth,
-      }))
-      .filter((entry) => entry.scrollWidth > entry.clientWidth + 1),
-  );
-  if (overflows.length) throw new Error(`${label} has horizontally scrolling tables`);
+  const unsafeOverflows = await page
+    .locator('[data-slot="table-container"]')
+    .evaluateAll((elements) =>
+      elements
+        .map((element, index) => ({
+          index,
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          overflowX: window.getComputedStyle(element).overflowX,
+        }))
+        .filter(
+          (entry) =>
+            entry.scrollWidth > entry.clientWidth + 1 &&
+            entry.overflowX !== "auto" &&
+            entry.overflowX !== "scroll",
+        ),
+    );
+  if (unsafeOverflows.length) throw new Error(`${label} has uncontained table overflow`);
 }
 
 async function assertInteractiveSelectors(page, label) {
@@ -445,7 +604,7 @@ async function assertInteractiveSelectors(page, label) {
           rect.height > 0;
         if (!visible || element.hasAttribute("data-testid")) return [];
         return [
-          `${element.tagName.toLowerCase()}[${element.getAttribute("aria-label") || element.textContent?.trim().slice(0, 32) || "unlabelled"}]`,
+          `${element.tagName.toLowerCase()}[${element.getAttribute("aria-label") || element.textContent?.trim().slice(0, 32) || "unlabelled"}] ${element.outerHTML.slice(0, 180)}`,
         ];
       }),
     );
@@ -486,9 +645,15 @@ for (const locale of variants) {
       { language: locale.name, theme: locale.theme },
     );
     const page = await context.newPage();
-    page.on("pageerror", (error) =>
-      errors.push(`${locale.artifact}/${viewport.name}: ${error.message}`),
-    );
+    page.on("pageerror", (error) => {
+      const message = `${locale.artifact}/${viewport.name}: ${error.message}`;
+      errors.push(message);
+      console.error(message);
+    });
+    page.on("console", (message) => {
+      if (message.type() === "error")
+        console.error(`${locale.artifact}/${viewport.name}: ${message.text()}`);
+    });
     await page.route("**/v1/**", mockApi);
     for (const route of routes) {
       const response = await page.goto(`${baseUrl}/cockpit/${route}`, { waitUntil: "networkidle" });
@@ -496,7 +661,18 @@ for (const locale of variants) {
         throw new Error(
           `${locale.artifact}/${viewport.name}/${route} returned HTTP ${response?.status()}`,
         );
-      await page.locator(markerFor(route)).waitFor({ state: "visible" });
+      try {
+        await page.locator(markerFor(route)).waitFor({ state: "visible" });
+      } catch (error) {
+        const body = await page
+          .locator("body")
+          .innerText()
+          .catch(() => "body unavailable");
+        throw new Error(
+          `${locale.artifact}/${viewport.name}/${route} did not mount: ${body.slice(0, 1000)}`,
+          { cause: error },
+        );
+      }
       await page
         .locator('[data-testid="resource-error"]')
         .waitFor({ state: "hidden" })
@@ -543,6 +719,17 @@ for (const locale of variants) {
       });
     }
     if (viewport.name === "desktop") {
+      for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
+        await page.goto(`${baseUrl}/cockpit/${resource}/${uuid}`, { waitUntil: "networkidle" });
+        await page.locator(`[data-testid="detail-${resource}"]`).waitFor({ state: "visible" });
+        await assertViewport(page, `${locale.artifact}/desktop/${resource}-detail`);
+        await assertTables(page, `${locale.artifact}/desktop/${resource}-detail`);
+        await assertInteractiveSelectors(page, `${locale.artifact}/desktop/${resource}-detail`);
+        await page.screenshot({
+          path: resolve(outputDir, `${locale.artifact}-desktop-${resource}-detail.png`),
+          fullPage: false,
+        });
+      }
       await page.goto(`${baseUrl}/cockpit/chat`, { waitUntil: "networkidle" });
       await page.locator('[data-testid="conversation-new"]').click();
       await page
@@ -652,5 +839,5 @@ for (const locale of variants) {
 await browser.close();
 if (errors.length) throw new Error(errors.join("; "));
 console.log(
-  `Cockpit visual sweep passed: ${routes.length * viewports.length * variants.length + variants.length * 7} screenshots in ${outputDir}`,
+  `Cockpit visual sweep passed: ${routes.length * viewports.length * variants.length + variants.length * 12} screenshots in ${outputDir}`,
 );

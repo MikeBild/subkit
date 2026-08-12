@@ -12,7 +12,7 @@
 // makes this affordable, and it is the same assumption behind
 // `WORKFLOW_LIST_MAX_LIMIT`.
 
-import { and, eq, isNull, like, sql } from "drizzle-orm";
+import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { deriveCategories, UNCATEGORIZED } from "./categorize.ts";
@@ -30,6 +30,9 @@ export interface ListWorkflowsOptions extends CatalogFilterOptions {
   offset?: number;
   status?: "draft" | "active" | "archived";
   name_contains?: string;
+  q?: string;
+  sort?: "name" | "lifecycle" | "created_at" | "updated_at";
+  order?: "asc" | "desc";
 }
 
 /**
@@ -42,7 +45,16 @@ export interface ListWorkflowsOptions extends CatalogFilterOptions {
 export function buildWorkflowListConds(tenant_id: string, opts: ListWorkflowsOptions) {
   const conds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
   if (opts.status) conds.push(eq(workflows.lifecycle, opts.status));
-  if (opts.name_contains) conds.push(like(workflows.name, `%${opts.name_contains}%`));
+  if (opts.name_contains) conds.push(ilike(workflows.name, `%${opts.name_contains}%`));
+  if (opts.q) {
+    const needle = `%${opts.q}%`;
+    const search = or(
+      ilike(workflows.name, needle),
+      ilike(workflows.slug, needle),
+      ilike(workflows.description, needle),
+    );
+    if (search) conds.push(search);
+  }
   return conds;
 }
 

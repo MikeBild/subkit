@@ -44,31 +44,119 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   return body as T;
 }
 
+export async function apiText(path: string): Promise<string> {
+  const headers = new Headers({ accept: "text/plain", "x-subkit-client": "cockpit" });
+  const response = await fetch(path, { credentials: "same-origin", headers });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(response.status, body, response.headers.get("x-trace-id"));
+  }
+  return response.text();
+}
+
 export async function bootstrap(): Promise<Bootstrap> {
   const result = await apiRequest<Bootstrap>("/v1/cockpit/bootstrap");
   csrfToken = result.csrf_token;
   return result;
 }
 
-export function listConversations(): Promise<ConversationList> {
-  return apiRequest("/v1/conversations?owner=me&limit=100");
+export function listConversations(q = ""): Promise<ConversationList> {
+  const params = new URLSearchParams({
+    owner: "me",
+    limit: "100",
+    sort: "updated_at",
+    order: "desc",
+  });
+  if (q) params.set("q", q);
+  return apiRequest(`/v1/conversations?${params}`);
 }
 
 export function getConversation(id: string): Promise<ConversationDetail> {
   return apiRequest(`/v1/conversations/${encodeURIComponent(id)}`);
 }
 
-export function createConversation(initialMessage: string): Promise<ConversationRun> {
-  return apiRequest("/v1/conversations", {
-    method: "POST",
-    body: JSON.stringify({ initial_message: initialMessage, permission_mode: "ask" }),
+export type ConversationStreamEvent = { type: string; [key: string]: unknown };
+
+async function streamConversation(
+  path: string,
+  body: Record<string, unknown>,
+  onEvent?: (event: ConversationStreamEvent) => void,
+): Promise<ConversationRun> {
+  const headers = new Headers({
+    accept: "text/event-stream",
+    "content-type": "application/json",
+    "x-subkit-client": "cockpit",
   });
+  if (csrfToken) headers.set("x-subkit-csrf", csrfToken);
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok || !response.body) {
+    const errorBody = await response.json().catch(() => null);
+    throw new ApiError(response.status, errorBody, response.headers.get("x-trace-id"));
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let outcome: ConversationRun | null = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const frames = buffer.split(/\r?\n\r?\n/);
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const eventName = frame.match(/^event:\s*(.+)$/m)?.[1]?.trim() ?? "message";
+      const data = frame
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      if (!data) continue;
+      const parsed = JSON.parse(data) as ConversationStreamEvent;
+      if (eventName === "outcome") {
+        outcome = { ...parsed, events: [] } as unknown as ConversationRun;
+      } else if (eventName === "error")
+        throw new ApiError(500, parsed, response.headers.get("x-trace-id"));
+      else onEvent?.(parsed);
+    }
+    if (done) break;
+  }
+  if (!outcome)
+    throw new ApiError(500, { message: "Conversation stream ended without an outcome" }, null);
+  return outcome;
 }
 
-export function appendConversationMessage(id: string, message: string): Promise<ConversationRun> {
-  return apiRequest(`/v1/conversations/${encodeURIComponent(id)}/messages`, {
-    method: "POST",
-    body: JSON.stringify({ message }),
+export function createConversation(
+  initialMessage: string,
+  onEvent?: (event: ConversationStreamEvent) => void,
+  target: { workflow_id?: string; connector_id?: string } = {},
+): Promise<ConversationRun> {
+  return streamConversation(
+    "/v1/conversations",
+    { initial_message: initialMessage, permission_mode: "ask", ...target },
+    onEvent,
+  );
+}
+
+export function appendConversationMessage(
+  id: string,
+  message: string,
+  onEvent?: (event: ConversationStreamEvent) => void,
+): Promise<ConversationRun> {
+  return streamConversation(
+    `/v1/conversations/${encodeURIComponent(id)}/messages`,
+    { message },
+    onEvent,
+  );
+}
+
+export function renameConversation(id: string, title: string): Promise<Conversation> {
+  return apiRequest(`/v1/conversations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
   });
 }
 

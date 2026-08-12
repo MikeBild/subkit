@@ -176,6 +176,7 @@ export const CreateSkillSchema = z
 
 export const UpdateSkillSchema = z
   .object({
+    expected_version: z.number().int().positive().optional(),
     title: z.string().min(1).optional(),
     body: z.string().min(1).optional(),
     examples: z.array(z.string()).optional(),

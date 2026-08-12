@@ -1,6 +1,6 @@
 {
   "name": "subkit",
-  "version": "6.1.10",
+  "version": "6.2.0",
   "private": true,
   "workspaces": [
     "apps/cockpit"
@@ -57,7 +57,7 @@
     "release:tag": "bun run scripts/tag-release.ts",
     "verify:release": "bun run scripts/verify-release.ts",
     "gen:openapi-client": "bun run scripts/gen-openapi-client.ts",
-    "check:openapi-drift": "bun run gen:openapi-client && git diff --exit-code packages/cli-core/src/engine-api",
+    "check:openapi-drift": "bun run gen:openapi-client && git diff --exit-code packages/cli-core/src/engine-api apps/cockpit/src/api/schema.d.ts",
     "gen:settings-doc": "bun run apps/engine/scripts/gen-settings-doc.ts > docs/admins/settings-reference.md",
     "check:settings-doc-drift": "bun run gen:settings-doc && git diff --exit-code docs/admins/settings-reference.md",
     "gen:slash-doc": "bun run scripts/gen-slash-doc.ts > docs/authors/slash-commands.md",

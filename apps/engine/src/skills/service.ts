@@ -3,14 +3,14 @@
 // audit entry. The retrieval helpers below are the canonical read path
 // used by the Context Enhancement pipeline.
 
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { auditLog, skills } from "../db/schema/index.ts";
-import { HttpError, NotFoundError } from "../http/errors.ts";
+import { ConflictError, HttpError, NotFoundError } from "../http/errors.ts";
 import { log } from "../logging/logger.ts";
 import {
   type CreateSkillInput,
@@ -175,6 +175,9 @@ export interface ListSkillsParams {
   connector_id?: string;
   workflow_id?: string;
   status?: SkillLifecycle;
+  q?: string;
+  sort?: "title" | "scope" | "status" | "version" | "updated_at";
+  order?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }
@@ -186,14 +189,60 @@ export async function listSkills(p: ListSkillsParams, exec?: Executor): Promise<
   if (p.connector_id) tenantConds.push(eq(skills.connector_id, p.connector_id));
   if (p.workflow_id) tenantConds.push(eq(skills.workflow_id, p.workflow_id));
   if (p.status) tenantConds.push(eq(skills.lifecycle, p.status));
+  if (p.q) {
+    const needle = `%${p.q}%`;
+    const search = or(
+      ilike(skills.title, needle),
+      ilike(skills.slug, needle),
+      ilike(skills.body, needle),
+    );
+    if (search) tenantConds.push(search);
+  }
+  const sortColumn =
+    p.sort === "title"
+      ? skills.title
+      : p.sort === "scope"
+        ? skills.scope
+        : p.sort === "status"
+          ? skills.lifecycle
+          : p.sort === "updated_at"
+            ? skills.updated_at
+            : skills.version;
+  const ordered = p.order === "asc" ? asc(sortColumn) : desc(sortColumn);
   const rows = await db
     .select()
     .from(skills)
     .where(and(...tenantConds))
-    .orderBy(desc(skills.version), desc(skills.created_at))
+    .orderBy(ordered, asc(skills.id))
     .limit(Math.min(p.limit ?? 100, 500))
     .offset(p.offset ?? 0);
   return rows.map(rowToSkill);
+}
+
+export async function countSkills(
+  p: Omit<ListSkillsParams, "limit" | "offset" | "sort" | "order">,
+  exec?: Executor,
+): Promise<number> {
+  const db = exec ?? getDb();
+  const tenantConds = [eq(skills.tenant_id, p.tenant_id)];
+  if (p.scope) tenantConds.push(eq(skills.scope, p.scope));
+  if (p.connector_id) tenantConds.push(eq(skills.connector_id, p.connector_id));
+  if (p.workflow_id) tenantConds.push(eq(skills.workflow_id, p.workflow_id));
+  if (p.status) tenantConds.push(eq(skills.lifecycle, p.status));
+  if (p.q) {
+    const needle = `%${p.q}%`;
+    const search = or(
+      ilike(skills.title, needle),
+      ilike(skills.slug, needle),
+      ilike(skills.body, needle),
+    );
+    if (search) tenantConds.push(search);
+  }
+  const [row] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(skills)
+    .where(and(...tenantConds));
+  return Number(row?.total ?? 0);
 }
 
 export async function getSkill(
@@ -242,9 +291,16 @@ export async function updateSkill(
       .select()
       .from(skills)
       .where(and(eq(skills.tenant_id, tenant_id), eq(skills.id, id)))
+      .for("update")
       .limit(1);
     const prior = existingRows[0];
     if (!prior) return null;
+    if (patch.expected_version !== undefined && patch.expected_version !== prior.version) {
+      throw new ConflictError("skill version changed", {
+        expected_version: patch.expected_version,
+        current_version: prior.version,
+      });
+    }
     const priorBlob = blobToFields(prior.examples);
     const nextBlob: SkillExamplesBlob = {
       examples: patch.examples ?? priorBlob.examples,

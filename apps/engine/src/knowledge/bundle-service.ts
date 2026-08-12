@@ -12,9 +12,9 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { canonicalBundleSerialization, normalizeBundlePath, parseBundle } from "./bundle.ts";
+import { getKnowledgeSource } from "./catalog.ts";
 import {
   createKnowledgeSource,
-  getKnowledgeSource,
   getKnowledgeSourceBySlug,
   ingestKnowledgeSource,
   updateKnowledgeSource,

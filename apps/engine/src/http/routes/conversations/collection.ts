@@ -55,6 +55,11 @@ const listRoute = createRoute({
          * reserved and rejected.
          */
         owner: z.literal("me").optional(),
+        target_workflow_id: z.string().uuid().optional(),
+        target_connector_id: z.string().uuid().optional(),
+        q: z.string().min(1).max(200).optional(),
+        sort: z.enum(["title", "status", "created_at", "updated_at"]).optional(),
+        order: z.enum(["asc", "desc"]).optional(),
         limit: z.coerce.number().int().positive().max(200).optional(),
         offset: z.coerce.number().int().min(0).optional(),
       })
@@ -121,17 +126,23 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const items = await svc.listConversations(
-      {
-        tenant_id: principal.tenant_id,
-        ...(q.status ? { status: q.status as ConversationStatus } : {}),
-        ...(q.owner === "me" ? { owner_id: principal.id } : {}),
-        ...(q.limit !== undefined ? { limit: q.limit } : {}),
-        ...(q.offset !== undefined ? { offset: q.offset } : {}),
-      },
-      db,
-    );
-    return c.json({ items }, 200);
+    const params = {
+      tenant_id: principal.tenant_id,
+      ...(q.status ? { status: q.status as ConversationStatus } : {}),
+      ...(q.owner === "me" ? { owner_id: principal.id } : {}),
+      ...(q.target_workflow_id ? { target_workflow_id: q.target_workflow_id } : {}),
+      ...(q.target_connector_id ? { target_connector_id: q.target_connector_id } : {}),
+      ...(q.q ? { q: q.q } : {}),
+      ...(q.sort ? { sort: q.sort } : {}),
+      ...(q.order ? { order: q.order } : {}),
+      ...(q.limit !== undefined ? { limit: q.limit } : {}),
+      ...(q.offset !== undefined ? { offset: q.offset } : {}),
+    };
+    const [items, total] = await Promise.all([
+      svc.listConversations(params, db),
+      svc.countConversations(params, db),
+    ]);
+    return c.json({ items, total }, 200);
   });
 
   app.openapi(createRouteSpec, async (c) => {

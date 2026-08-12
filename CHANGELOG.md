@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.0] – 2026-08-12
+
+### Added
+
+- **The Cockpit now provides persistent, searchable conversation navigation.** Existing
+  chats have stable URLs, can be reopened or renamed, and retain their workflow or connector
+  context while responses stream into the active transcript.
+- **Workflows, connectors, Knowledge Sources, Skills, and files now have dedicated catalog
+  and detail workspaces.** Tenant-scoped APIs support server-side search, sorting, filtering,
+  pagination, and stable totals for responsive data tables.
+- **Knowledge and Skill content can be edited as Markdown with write, preview, and split
+  modes.** Version checks prevent stale saves, and every successful mutation remains audited.
+
+### Changed
+
+- **Cockpit navigation is organized around operator work.** Work, Build, Knowledge, Govern,
+  and Admin groups keep related resources together and provide direct routes from catalogs to
+  governed chat actions.
+- **Tables use an explicit responsive interaction model.** Desktop views support sorting and
+  column visibility, mobile views become readable record cards, and wide content stays within
+  a contained horizontal scroll region.
+
 ## [6.1.6] – 2026-08-10
 
 ### Fixed

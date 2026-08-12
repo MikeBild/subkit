@@ -119,6 +119,15 @@ describe("skills/service", () => {
     );
     expect(patched?.version).toBe(2);
     expect(patched?.examples).toEqual(["GET /users?cursor=..."]);
+    await expect(
+      updateSkill(
+        tenant_id,
+        global.id,
+        { body: "Stale overwrite", expected_version: 1 },
+        null,
+        ctx.db,
+      ),
+    ).rejects.toMatchObject({ status: 409, code: "conflict" });
 
     // activate is idempotent
     const reactivated = await activateSkill(tenant_id, patched!.id, null, ctx.db);
