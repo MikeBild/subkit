@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.4] – 2026-08-12
+
+### Fixed
+
+- **Workflow authoring now preserves the human save gate in every non-auto
+  permission mode.** A clean dry-run in `ask`, `plan`, or the default mode
+  returns the governed `save_workflow_draft` confirmation instead of silently
+  committing a workflow; only an explicitly selected `auto` mode may save
+  without that confirmation.
+- **Capability-gap recording remains best effort before database bootstrap.**
+  A missing default database can no longer turn a `cannot_help` response into
+  an unrelated internal error.
+- **The local release gate is hermetic across isolated test processes.** Test
+  encryption and model-provider defaults no longer depend on developer-machine
+  credentials, while explicitly configured real-provider lanes remain intact.
+
 ## [6.2.2] – 2026-08-12
 
 ### Fixed
