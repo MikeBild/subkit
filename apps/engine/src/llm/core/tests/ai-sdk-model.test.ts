@@ -1,10 +1,22 @@
 // AiSdkModel unit tests — bun:test with an injected generateText mock
 // via the constructor `generateTextFn` option (no SDK module mocking).
 
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
 import { AiSdkModel, LlmCallAbortedError } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
+
+let previousLlmProvider: string | undefined;
+
+beforeAll(() => {
+  previousLlmProvider = process.env.LLM_PROVIDER;
+  process.env.LLM_PROVIDER = "mock";
+});
+
+afterAll(() => {
+  if (previousLlmProvider === undefined) delete process.env.LLM_PROVIDER;
+  else process.env.LLM_PROVIDER = previousLlmProvider;
+});
 
 interface GenerateTextStubResult {
   text: string;
