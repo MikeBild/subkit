@@ -588,6 +588,7 @@ describe("graphql request step · envelope unwrap", () => {
       step,
       step_index: 0,
       step_row_id: stepRow.id,
+      persist_workflow_refs: true,
       llm_budget: new RunLlmBudget(null),
     };
   }

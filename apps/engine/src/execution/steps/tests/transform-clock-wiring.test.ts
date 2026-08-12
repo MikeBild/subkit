@@ -41,6 +41,7 @@ function ctx(scope: Record<string, unknown>): StepRunContext {
     step_index: 0,
     step_row_id: "00000000-0000-0000-0000-000000000aaa",
     signal: new AbortController().signal,
+    persist_workflow_refs: true,
     llm_budget: new RunLlmBudget(null),
   };
 }

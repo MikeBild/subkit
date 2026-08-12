@@ -463,6 +463,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
       step_index: i,
       step_row_id,
       llm_budget: llmBudget,
+      persist_workflow_refs: resolved.persist_workflow_refs,
       ...(opts.hold_writes ? { hold_writes: true } : {}),
     };
 
@@ -1041,6 +1042,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               step_index: i,
               step_row_id: bodyStepRowId,
               llm_budget: llmBudget,
+              persist_workflow_refs: resolved.persist_workflow_refs,
               ...(opts.hold_writes ? { hold_writes: true } : {}),
             };
             const bodyOutcome = await instrument({
@@ -1309,6 +1311,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
                   step_index: i,
                   step_row_id: branchStepRowId,
                   llm_budget: llmBudget,
+                  persist_workflow_refs: resolved.persist_workflow_refs,
                   ...(opts.hold_writes ? { hold_writes: true } : {}),
                 };
                 const branchOutcome = await instrument({

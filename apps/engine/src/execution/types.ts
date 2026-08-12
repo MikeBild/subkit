@@ -72,6 +72,14 @@ export interface ExecutionContext {
    *  so the request driver can hold write-classified dispatches. Only
    *  set (to `true`) when the run was started with `hold_writes`. */
   hold_writes?: boolean;
+  /** Whether `workflow_id` / `workflow_version_id` name rows that actually
+   *  exist. False for draft and single-step runs, whose ids are synthesised
+   *  by `resolveDefinition` and deliberately NOT persisted onto the
+   *  `executions` row. Any driver writing `workflow_id` into a table with an
+   *  FK to `workflows` MUST consult this first — a synthetic id violates the
+   *  constraint and crashes the step. Mirrors
+   *  `ResolvedDefinition.persist_workflow_refs`. */
+  persist_workflow_refs: boolean;
 }
 
 export interface StepRunContext extends ExecutionContext {

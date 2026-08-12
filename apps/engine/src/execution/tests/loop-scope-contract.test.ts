@@ -42,6 +42,7 @@ function mkCtx(): StepRunContext {
     },
     step_index: 0,
     step_row_id: "r",
+    persist_workflow_refs: true,
     llm_budget: new RunLlmBudget(null),
   };
 }
