@@ -8,7 +8,7 @@
 // end-to-end: the dry-run feeds the REAL preview artifacts to the
 // judge, a failed verdict blocks the auto-commit and joins the
 // requires_repair path with the missing items attached, and the
-// correct-content preview auto-commits with a passing verdict.
+// correct-content preview in explicit auto mode commits with a passing verdict.
 
 import { dryRunWorkflowTool } from "../../src/conversations/tools/dry-run-workflow.ts";
 import type { DraftDocument } from "../../src/conversations/types.ts";
@@ -104,9 +104,12 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
     );
 
     // ── Correct-content preview: judge passes, auto-commit proceeds ──
-    const rightCtx = env.makeToolCtx(
-      previewableDraft("eval-judge-passes", input.goal, input.correct_expression),
-    );
+    const rightCtx = {
+      ...env.makeToolCtx(
+        previewableDraft("eval-judge-passes", input.goal, input.correct_expression),
+      ),
+      permission_mode: "auto" as const,
+    };
     const committed = await dryRunWorkflowTool.execute(rightCtx, { input: null });
     c.check(committed.ok === true, "correct-content preview did not come back green");
     const committedData = committed.data as JudgeEnvelope;

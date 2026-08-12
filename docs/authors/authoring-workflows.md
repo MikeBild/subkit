@@ -79,7 +79,7 @@ stateDiagram-v2
     ConnectorPersisted --> WorkflowDraft: author_workflow (one-shot generate + evaluate)
     WorkflowDraft --> WorkflowPreviewed: dry_run_workflow (writes held)
     WorkflowPreviewed --> WorkflowJudged: instruction-grounded judge reads artifacts incl. held payloads
-    WorkflowJudged --> WorkflowPersisted: green preview + judge pass (auto-commit / save_workflow_draft)
+    WorkflowJudged --> WorkflowPersisted: auto mode or approved save_workflow_draft
     WorkflowJudged --> WorkflowRepair: judge / recorded_eval findings
     WorkflowPreviewed --> WorkflowRepair: preview failure
     WorkflowRepair --> WorkflowPreviewed: edit_workflow_patch (RFC-6902), then preview again
@@ -89,7 +89,7 @@ stateDiagram-v2
     WorkflowExecuted --> [*]: success
 ```
 
-**Verification is persistence.** Probe persists the connector inline; a green, judged dry-run commits the workflow inline. There is no separate "save" step on the happy path. Dry-runs hold writes — read steps execute live, write steps are fully resolved (URL, headers, materialized body) but never dispatched, and the held request is recorded as the artifact the judge evaluates. Any draft mutation invalidates downstream checkpoints automatically.
+**Verification precedes persistence.** Probe persists the connector inline. A green, judged workflow dry-run proves the preview; in permission mode `auto` it may commit inline, while `ask` and `plan` return `save_required` and use the normal human save gate. Dry-runs hold writes — read steps execute live, write steps are fully resolved (URL, headers, materialized body) but never dispatched, and the held request is recorded as the artifact the judge evaluates. Any draft mutation invalidates downstream checkpoints automatically.
 
 **The authoring triad.** Workflow authoring is four verbs, in order: `author_workflow` (generate the complete grounded draft), `dry_run_workflow` (test it with writes held), `edit_workflow_patch` (revise it with an RFC-6902 JSON-Patch), and `save_workflow_draft` (commit the version). Generation is ONE `author_workflow` call, not a micro-iterated step-by-step build.
 
@@ -120,7 +120,7 @@ When the user says they want to create a new workflow after inspecting or runnin
 
 ## The Human-in-the-Loop Approval Gate
 
-The most important architectural decision in sk: **the author sees what a workflow will do before it can do it.** A commit lands on a human's review — either an explicit approval, or a clean dry run whose held-back preview they read (the two green-gate paths below). Starting an unattended trigger takes a further, separate decision.
+The most important architectural decision in sk: **the author sees what a workflow will do before it can do it.** In `ask` and `plan`, a commit lands only after the structured human save gate. In explicitly selected `auto` mode, a clean judged dry-run may commit inline. Starting an unattended trigger takes a further, separate decision.
 
 When the AI finishes a Draft, it pauses the authoring loop and presents it for review. The operator sees every step, connector reference, parameter, and branching condition — and can push back, ask for changes, iterate. On approval, the Draft is committed as a new versioned Workflow; the Conversation transitions to active and the workflow is ready to run.
 
@@ -134,7 +134,7 @@ The gate sits on top of hard quality gates:
 | Workflow commit | Blocked until `inspect`, `validate`, `preview` checkpoints are fresh |
 | Workflow run | Always targets a persisted version, never an ambiguous draft |
 | Connector persistence | A green `probe_connector_draft` calls `saveConnectorAtomic` inline (audit reason `auto_persist_on_green_probe`), returns `auto_saved: true` |
-| Workflow persistence | A green, judged `dry_run_workflow` calls `commitWorkflowAtomic` inline (audit reason `auto_persist_on_green_dry_run`), returns `auto_committed: true` |
+| Workflow persistence | In `auto`, a green judged dry-run may call `commitWorkflowAtomic` inline. In `ask`/`plan`, it returns `save_required` and `save_workflow_draft` uses the human gate. |
 | Force overrides | `force_save: true` (after a failed probe) and `force_commit: true` (after a failed dry-run) go through the explicit `ask_user_confirm` carrier so the deviation is auditable |
 
 Approval is the final human sign-off after the state machine has already established that the draft is internally coherent — not a substitute for missing technical checks.
@@ -162,11 +162,12 @@ The clean authoring experience treats intermediate verification as first-class p
 | 1 | **Ground** — `list_connectors`, `probe_connector` for any never-called connector (records the real response shape), `search_docs` / `search_knowledge` when the endpoint surface is unclear |
 | 2 | **`author_workflow`** (one call) — generates the COMPLETE definition (steps, transforms, input/output schema, trigger), evaluates it against recorded evidence with bounded auto-repair, stashes it as the draft; read the `recorded_eval` findings |
 | 3 | **`dry_run_workflow`** — hold-writes preview: reads run live; writes resolved (URL, headers, materialized body) but never dispatched, recorded as held request artifacts |
-| 4 | **Judge** — instruction-grounded judge evaluates the artifacts (held payloads included) against the stashed goal; green preview + judge pass auto-commits (`auto_committed: true`) |
+| 4 | **Judge** — instruction-grounded judge evaluates the artifacts (held payloads included) against the stashed goal |
 | 5 | **Repair on findings** — apply specific findings via `edit_workflow_patch` (an RFC-6902 JSON-Patch over the draft; accept all, decline all, or accept a partial subset of its operations), iterate a transform with `dry_run_transform`, then preview again |
-| 6 | **Run** the persisted workflow |
+| 6 | **Persist** — `auto` may commit inline; `ask`/`plan` call `save_workflow_draft` and wait for its structured human decision |
+| 7 | **Run** the persisted workflow |
 
-No separate "save"/"commit" on the happy path — the verification step is the persistence step. Executing write steps for real during a preview is the rare exception, behind explicit user confirmation (`execute_writes: true`); externally visible destinations (recipient addresses, channels, webhook URLs) must always come from the user, never fabricated placeholders.
+In `ask` and `plan`, preview and persistence are deliberately separate. Backgrounded MCP clients receive the durable save approval URL through conversation polling; being headless does not grant write permission. Executing write steps for real during a preview is the rare exception, behind explicit user confirmation (`execute_writes: true`); externally visible destinations (recipient addresses, channels, webhook URLs) must always come from the user, never fabricated placeholders.
 
 The engine tracks checkpoints as fresh or stale. Any draft mutation invalidates later checkpoints — editing after a successful preview makes the preview stale, so the workflow must be previewed again before commit. The assistant does not "think" a connector is ready; it reads that from checkpoint state. The draft summary carries the concrete next suggested tool, so prompt assembly, confirmations, and surface-specific evaluations all reason from the same contract.
 
