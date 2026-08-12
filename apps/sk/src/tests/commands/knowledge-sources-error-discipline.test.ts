@@ -15,7 +15,7 @@
 // This test exercises (1) directly. Coverage for (2) lives below.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EngineError } from "@cli-core/errors";
@@ -95,8 +95,12 @@ describe("knowledge-sources CLI: error-path discipline", () => {
   });
 
   test("create: handler throws on missing-file or transport error", async () => {
-    const f = join(tmpDir, "x.txt");
-    writeFileSync(f, "hello");
+    // Exercise the deterministic missing-file branch here. Transport failure
+    // is already covered by list/get/search/patch/delete; asking Bun fetch to
+    // connect to a deliberately unreachable local port made this assertion
+    // depend on the host TCP timeout and could consume the whole 120 s test
+    // budget before the handler had a chance to prove its error discipline.
+    const f = join(tmpDir, "missing.txt");
     await expectThrowsNotExits(["create", "--file", f]);
   });
 

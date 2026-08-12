@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.2] – 2026-08-12
+
+### Fixed
+
+- **Browser approval pages now resolve the signed-in approver's email from the
+  database.** Sessions whose cookie intentionally carries no email render the
+  pending write instead of failing with an internal error, while inactive,
+  deleted, cross-tenant, or anonymous users remain unable to decide.
+- **The full contract suite now runs in the regular verification and CI paths.**
+  The OpenAPI 3.1 nullability contract is asserted explicitly so generated
+  client types cannot drift silently.
+
 ## [6.2.0] – 2026-08-12
 
 ### Added
