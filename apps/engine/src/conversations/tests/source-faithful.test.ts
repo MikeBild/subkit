@@ -7,8 +7,8 @@
 //     no-envelope no-op skip, and the judge escalation for free-text
 //     paraphrase faithfulness (LLM via the in-process mock provider).
 //
-// LLM provider is the in-process mock (`LLM_PROVIDER=mock` set by the
-// db test bootstrap); the judge flow is steered via
+// LLM provider is the in-process mock (`LLM_PROVIDER=mock` set by this
+// isolated test); the judge flow is steered via
 // `getMockProvider().generateOverrides.judge` — no network, deterministic.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -76,9 +76,13 @@ describe("findUngroundedQuotes (pure)", () => {
 let testDb: TestDb;
 let tenantId: string;
 let resolvableChunkId: string;
+let previousLlmProvider: string | undefined;
 
 beforeAll(async () => {
   if (skip) return;
+  previousLlmProvider = process.env.LLM_PROVIDER;
+  process.env.LLM_PROVIDER = "mock";
+  resetMockProvider();
   testDb = await createTestDb("source-faithful");
   const [tenant] = await testDb.db
     .insert(tenants)
@@ -118,6 +122,8 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!skip && testDb?.cleanup) await testDb.cleanup();
   resetMockProvider();
+  if (previousLlmProvider === undefined) delete process.env.LLM_PROVIDER;
+  else process.env.LLM_PROVIDER = previousLlmProvider;
 }, 30_000);
 
 describe.skipIf(skip)("keepResolvableCitations", () => {
