@@ -10,3 +10,9 @@
 // SK_LOG_SD_DAEMON themselves per capture.
 delete process.env.JOURNAL_STREAM;
 delete process.env.SK_LOG_SD_DAEMON;
+
+// Engine tests that exercise encryption directly do not pass through the
+// production bootstrap or scripts/ensure-env.sh. Give every isolated test
+// process a valid, non-secret key unless the test runner explicitly supplied
+// one; tests for missing/invalid keys can still overwrite or delete it.
+process.env.MASTER_KEY ??= "0".repeat(63) + "1";
