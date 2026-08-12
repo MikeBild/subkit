@@ -13,7 +13,7 @@
 // parameter instead of waiting out the production default.
 
 import { describe, expect, test } from "bun:test";
-import { trackStreamLifetime } from "./streamable-http.ts";
+import { trackStreamLifetime } from "./session-lease.ts";
 
 const SILENT_MS = 10;
 // Comfortably past the window, but short enough to keep the suite quick.
