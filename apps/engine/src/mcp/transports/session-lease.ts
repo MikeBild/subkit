@@ -70,15 +70,44 @@ export const SESSION_STUCK_TTL_MS = 2 * SESSION_IDLE_TTL_MS;
 // arrives, and after it a dead stream is indistinguishable from a live-but-quiet
 // one until something proves the socket dead.
 //
-// So the window is re-armed on every delivered chunk rather than disarmed on
-// the first `pull`: a stream that has moved no bytes for this long hands its
-// retain back, and takes it straight back if a chunk ever does arrive. Sized
+// So the window is re-armed on every delivered PAYLOAD frame rather than
+// disarmed on the first `pull`: a stream that has carried no payload for this
+// long hands its retain back, and takes it straight back if one arrives. Sized
 // above the longest legitimate silence on a live stream — `WF_INLINE_TIMEOUT_MS`
 // (50 s), the gap between a tool call opening its POST stream and writing its
 // JSON-RPC response — so a working tool call never gives up its retain
 // mid-flight. Giving the retain back does not sever anything: it only makes the
 // lease *eligible* for the idle sweeper a full `SESSION_IDLE_TTL_MS` later.
 export const STREAM_RETAIN_SILENT_MS = 2 * 60_000;
+
+/**
+ * True when a chunk carries nothing but SSE comment frames — lines beginning
+ * with `:`, which by the SSE grammar are ignored by every conforming client.
+ *
+ * This distinction is the whole point, and getting it wrong cost a production
+ * verification: the MCP SDK arms its own keep-alive interval and writes
+ * `": keepalive\\n\\n"` into every open SSE stream (see
+ * `webStandardStreamableHttp.ts`, `_startKeepAlive`). Counting those bytes as
+ * liveness measures THE SERVER WRITING, not the client receiving — and a peer
+ * that has gone away still absorbs writes into the socket buffer without
+ * erroring. So a dead notification channel produced a chunk every interval,
+ * re-armed the window forever, and its lease was reclaimed only by the stuck
+ * TTL: `reason: "stuck", idle_ms: 3659800` at exactly 61 minutes, never once by
+ * the silence window.
+ *
+ * Only payload frames — anything the peer actually asked for — count. A live
+ * client that simply has no notifications pending will let its retain go, which
+ * costs nothing: the lease merely becomes idle-sweepable, and any real request
+ * on the session re-dates it long before that.
+ */
+export function isKeepaliveOnly(chunk: Uint8Array): boolean {
+  // Keep-alive frames are tiny; anything substantial is payload by definition
+  // and not worth decoding.
+  if (chunk.byteLength > 512) return false;
+  const text = new TextDecoder().decode(chunk);
+  if (text.trim().length === 0) return true;
+  return text.split("\n").every((line) => line.trim().length === 0 || line.startsWith(":"));
+}
 
 export interface Session {
   transport: WebStandardStreamableHTTPServerTransport;
@@ -101,10 +130,10 @@ export interface Session {
   // (open until its JSON-RPC response is written). A session with
   // `inFlight > 0` is not idle, and evicting it would close the transport out
   // from under a live stream. Every retain is bounded by liveness, not by the
-  // stream ending: a body that moves no bytes for `STREAM_RETAIN_SILENT_MS`
-  // hands its retain back (and reclaims it on the next chunk), so `inFlight`
-  // tracks streams that are demonstrably alive rather than streams that merely
-  // never reported their own death.
+  // stream ending: a body that carries no PAYLOAD for `STREAM_RETAIN_SILENT_MS`
+  // hands its retain back (and reclaims it on the next payload frame), so
+  // `inFlight` tracks streams that are demonstrably alive rather than streams
+  // that merely never reported their own death.
   inFlight: number;
   /** Privacy-safe event context. Optional only for isolated lease-manager tests. */
   usage?: {
@@ -224,8 +253,10 @@ export function trackStreamLifetime(
     }, silentMs);
     (silence as unknown as { unref?: () => void }).unref?.();
   };
-  // Bytes crossed the wire — the only evidence that distinguishes a live quiet
-  // stream from a dead one. Reclaims a force-released retain.
+  // A payload frame crossed the wire — the only evidence the peer is still
+  // being served something it asked for. Keep-alive comment frames are written
+  // by the server on its own timer and prove nothing (see `isKeepaliveOnly`).
+  // Reclaims a force-released retain.
   const activity = (): void => {
     if (closed) return;
     if (!held) {
@@ -256,7 +287,7 @@ export function trackStreamLifetime(
           controller.close();
           return;
         }
-        activity();
+        if (!isKeepaliveOnly(chunk.value)) activity();
         controller.enqueue(chunk.value);
       } catch (err) {
         finish();
