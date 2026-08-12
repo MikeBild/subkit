@@ -42,6 +42,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
 import { registerChatEventHandler } from "../handlers/chat-event.ts";
@@ -75,8 +76,12 @@ let tenantId: string;
 let workspaceRowId: string;
 let registry: ChatAdapterRegistry;
 let adapter: RecordingSlackAdapter;
+let previousLlmProvider: string | undefined;
 
 beforeAll(async () => {
+  previousLlmProvider = process.env.LLM_PROVIDER;
+  process.env.LLM_PROVIDER = "mock";
+  resetMockProvider();
   testDb = await createTestDb("chat-event-handler");
   const [tenant] = await testDb.db
     .insert(tenants)
@@ -129,6 +134,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await disposeBoss(boss);
   await testDb.cleanup();
+  resetMockProvider();
+  if (previousLlmProvider === undefined) delete process.env.LLM_PROVIDER;
+  else process.env.LLM_PROVIDER = previousLlmProvider;
 });
 
 describe("queue: chat.event worker", () => {
