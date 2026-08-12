@@ -102,6 +102,9 @@ jobs:
         # fail before release rather than ship the previous Cockpit bundle.
         run: bun run check:cockpit-drift
 
+      - name: Contract tests
+        run: bun run test:contract
+
       - name: Determinism lint
         run: bun run test:determinism
 
