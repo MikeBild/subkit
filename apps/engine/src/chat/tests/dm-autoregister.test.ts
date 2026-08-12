@@ -29,7 +29,6 @@ import type { ChatEvent } from "../types.ts";
 
 let ctx: ConversationTestCtx;
 let tenantBId: string;
-let previousMasterKey: string | undefined;
 
 const PRIMARY_SPACE = "spaces/PRIMARY_A";
 const PRIMARY_SPACE_B = "spaces/PRIMARY_B";
@@ -75,11 +74,6 @@ async function identityRows(workspace_id: string) {
 }
 
 beforeAll(async () => {
-  // This isolated file exercises AES-GCM directly without booting the
-  // engine, so it must provide the bootstrap-only key itself. Never rely
-  // on a developer shell or a repository-local .env for test correctness.
-  previousMasterKey = process.env.MASTER_KEY;
-  process.env.MASTER_KEY = "0".repeat(63) + "1";
   ctx = await createConversationTestCtx("dm-autoreg");
 
   // The sender's PRIMARY-space link — the tenant resolver for the DM
@@ -126,8 +120,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await ctx.cleanup();
-  if (previousMasterKey === undefined) delete process.env.MASTER_KEY;
-  else process.env.MASTER_KEY = previousMasterKey;
 });
 
 describe("chat: DM auto-registration", () => {
