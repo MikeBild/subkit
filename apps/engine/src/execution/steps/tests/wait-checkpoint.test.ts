@@ -59,7 +59,28 @@ async function freshExecution(): Promise<string> {
   return e!.id;
 }
 
-function buildCtx(executionId: string, ac: AbortController): StepRunContext {
+/** A draft / single-step run: `resolveDefinition` synthesises the workflow ids
+ *  and the `executions` row carries NULL for them, so nothing in `workflows`
+ *  matches. `persist_workflow_refs: false` is how a driver learns that. */
+async function freshDraftExecution(): Promise<string> {
+  const [e] = await ctx.db
+    .insert(executions)
+    .values({
+      tenant_id: tenantId,
+      workflow_id: null,
+      status: "running",
+      request_source: "mcp",
+      execution_mode: "dev",
+    })
+    .returning();
+  return e!.id;
+}
+
+function buildCtx(
+  executionId: string,
+  ac: AbortController,
+  overrides: Partial<StepRunContext> = {},
+): StepRunContext {
   const step: WaitStep = { kind: "wait", id: "w1", duration_ms: 50 };
   return {
     db: ctx.db,
@@ -76,10 +97,12 @@ function buildCtx(executionId: string, ac: AbortController): StepRunContext {
     workflow_slug: "wf-wait",
     trace_id: null,
     execution_mode: "dev",
+    persist_workflow_refs: true,
     llm_budget: new RunLlmBudget(null),
     step,
     step_index: 0,
     step_row_id: "00000000-0000-0000-0000-000000000000",
+    ...overrides,
   };
 }
 
@@ -114,6 +137,31 @@ describe("wait checkpoint contract", () => {
     expect(startActions.length).toBeGreaterThanOrEqual(1);
     expect(endActions.length).toBeGreaterThanOrEqual(1);
     expect((endActions[0]!.metadata as { reason?: string }).reason).toBe("timer");
+  });
+
+  // Regression: `dry_run_workflow` over a draft containing a wait step crashed
+  // with `workflow_waits_workflow_id_fkey` — the driver wrote the SYNTHETIC
+  // workflow id into a NOT NULL FK to `workflows`. The author saw the whole dry
+  // run fail at an unrelated step, and the retry storm that followed exhausted
+  // the MCP session cap. A run the boot reaper could never resume must not try
+  // to check point itself.
+  test("a draft run (synthetic workflow id) waits without writing a checkpoint and without an FK crash", async () => {
+    const draftExecutionId = await freshDraftExecution();
+    const ac = new AbortController();
+    const result = await runWaitStep({
+      ctx: buildCtx(draftExecutionId, ac, {
+        // Synthesised by `resolveDefinition`; no such row in `workflows`.
+        workflow_id: "bcfcff06-a3bd-4886-8585-7045257cba91",
+        workflow_version_id: "bcfcff06-a3bd-4886-8585-7045257cba91",
+        workflow_slug: "draft",
+        persist_workflow_refs: false,
+      }),
+      step: { kind: "wait", id: "draft-wait", duration_ms: 30 },
+    });
+
+    expect(result.status).toBe("succeeded");
+    const remaining = await ctx.db.select({ n: count() }).from(workflowWaits);
+    expect(remaining[0]?.n).toBe(0);
   });
 
   test("aborted wait still cleans up the checkpoint and emits the pair with reason=cancelled", async () => {

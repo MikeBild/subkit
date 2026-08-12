@@ -12,13 +12,12 @@
 // wait-for-event. Engine boot's reaper resumes the poll for any row
 // whose `sleep_until_ts` (here: timeout deadline) is in the future.
 
-import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { workflowWaits } from "../../db/schema/workflow_waits.ts";
 import { consumeMatchingSignal } from "../../workflow-signals/service.ts";
 import type { WaitForEventStep } from "../../workflows/types.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
+import { clearWaitCheckpoint, writeWaitCheckpoint } from "./wait-checkpoint.ts";
 
 const POLL_INTERVAL_MS = 1000;
 
@@ -29,19 +28,7 @@ export async function runWaitForEventStep(p: {
   const start = Date.now();
   const deadline = new Date(start + p.step.timeout_ms);
 
-  await p.ctx.db
-    .insert(workflowWaits)
-    .values({
-      tenant_id: p.ctx.tenant_id,
-      execution_id: p.ctx.execution_id,
-      workflow_id: p.ctx.workflow_id,
-      step_id: p.step.id,
-      sleep_until_ts: deadline,
-    })
-    .onConflictDoUpdate({
-      target: [workflowWaits.tenant_id, workflowWaits.execution_id, workflowWaits.step_id],
-      set: { sleep_until_ts: deadline, updated_at: new Date() },
-    });
+  await writeWaitCheckpoint(p.ctx, p.step.id, deadline);
 
   await auditAwait(
     {
@@ -84,15 +71,7 @@ export async function runWaitForEventStep(p: {
     };
   }
 
-  await p.ctx.db
-    .delete(workflowWaits)
-    .where(
-      and(
-        eq(workflowWaits.tenant_id, p.ctx.tenant_id),
-        eq(workflowWaits.execution_id, p.ctx.execution_id),
-        eq(workflowWaits.step_id, p.step.id),
-      ),
-    );
+  await clearWaitCheckpoint(p.ctx, p.step.id);
 
   await auditAwait(
     {

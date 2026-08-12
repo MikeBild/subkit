@@ -123,6 +123,7 @@ function makeStepRunCtx(input: {
     step: input.step,
     step_index: 0,
     step_row_id: input.step_row_id,
+    persist_workflow_refs: true,
     llm_budget: new RunLlmBudget(null),
   };
 }
