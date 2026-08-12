@@ -20,6 +20,7 @@ import {
   createSessionLeaseManager,
   MAX_LIVE_SESSIONS,
   MAX_LIVE_SESSIONS_HARD,
+  MAX_LIVE_SESSIONS_PER_OWNER,
   SESSION_IDLE_TTL_MS,
   SESSION_STUCK_TTL_MS,
   type Session,
@@ -28,6 +29,7 @@ import {
 function fakeSession(
   lastSeenAt: number,
   inFlight = 0,
+  owner = "tenant:actor:key",
 ): { session: Session; closed: () => boolean } {
   let closed = false;
   const server = {
@@ -37,7 +39,7 @@ function fakeSession(
   } as unknown as Server;
   const transport = {} as unknown as WebStandardStreamableHTTPServerTransport;
   return {
-    session: { transport, server, owner: "tenant:actor:key", lastSeenAt, inFlight },
+    session: { transport, server, owner, lastSeenAt, inFlight },
     closed: () => closed,
   };
 }
@@ -142,9 +144,10 @@ describe("createSessionLeaseManager · idle sweep", () => {
   });
 
   // The standalone GET notification stream opens once and is never touched
-  // again: `lastSeenAt` ages past the TTL while the stream is very much alive.
-  // Evicting it would close the server, close the transport, and kill the
-  // stream out from under a connected client.
+  // again: `lastSeenAt` ages past the idle TTL while the stream is very much
+  // alive. Evicting it would close the server, close the transport, and kill
+  // the stream out from under a connected client. It survives right up to the
+  // stuck TTL, which is the backstop for a retain that never came back.
   test("a session holding an open stream is never idle, however old its lastSeenAt", async () => {
     const clock = createDeterministicClock();
     const prev = installClock(clock);
@@ -154,7 +157,7 @@ describe("createSessionLeaseManager · idle sweep", () => {
       manager.sessions.set("notification-channel", streaming.session);
       manager.retain(streaming.session);
 
-      clock.advanceBy(SESSION_IDLE_TTL_MS * 10);
+      clock.advanceBy(SESSION_STUCK_TTL_MS - 1);
       manager.tick();
 
       expect(manager.sessions.has("notification-channel")).toBe(true);
@@ -174,7 +177,7 @@ describe("createSessionLeaseManager · idle sweep", () => {
       manager.sessions.set("notification-channel", streaming.session);
       manager.retain(streaming.session);
 
-      clock.advanceBy(SESSION_IDLE_TTL_MS * 10);
+      clock.advanceBy(SESSION_STUCK_TTL_MS - 1);
       manager.release(streaming.session);
 
       // Released, but `release` dated the lease to "now" — a stream that stayed
@@ -316,14 +319,18 @@ describe("createSessionLeaseManager · evictOverflow", () => {
   // there is nothing left to evict and nothing left to admit — evictOverflow
   // must say no so the route handler answers 503 instead of growing the map
   // without bound (the observed 80×-in-a-row "admitting over cap" incident).
-  test("at the hard cap with every lease busy, evictOverflow refuses admission and evicts nothing", async () => {
+  // Owner spread matters here: the refusal path is only reachable when the map
+  // is shared fairly. `owner-${i % 8}` puts 15 leases on each of 8 owners, well
+  // under `MAX_LIVE_SESSIONS_PER_OWNER`, so no lease is a per-owner-share
+  // victim and the honest answer really is "no room".
+  test("at the hard cap with every lease busy and the map shared fairly, evictOverflow refuses admission and evicts nothing", async () => {
     const clock = createDeterministicClock();
     const prev = installClock(clock);
     try {
       const manager = createSessionLeaseManager();
       const busy = Array.from({ length: MAX_LIVE_SESSIONS_HARD }, (_, i) => {
         clock.advanceBy(1_000);
-        const s = fakeSession(clock.now(), 1);
+        const s = fakeSession(clock.now(), 1, `owner-${i % 8}`);
         manager.sessions.set(`busy-${i}`, s.session);
         return s;
       });
@@ -345,12 +352,12 @@ describe("createSessionLeaseManager · evictOverflow", () => {
     try {
       const manager = createSessionLeaseManager();
       for (let i = 0; i < MAX_LIVE_SESSIONS_HARD - 1; i++) {
-        manager.sessions.set(`busy-${i}`, fakeSession(clock.now(), 1).session);
+        manager.sessions.set(`busy-${i}`, fakeSession(clock.now(), 1, `owner-${i % 8}`).session);
       }
       // One under the hard cap: always admissible, busy or not.
       expect(manager.hasAdmissionRoom()).toBe(true);
 
-      manager.sessions.set("last-busy", fakeSession(clock.now(), 1).session);
+      manager.sessions.set("last-busy", fakeSession(clock.now(), 1, "owner-7").session);
       expect(manager.hasAdmissionRoom()).toBe(false);
 
       // One lease finishes its work → the map has a victim again.
@@ -384,6 +391,62 @@ describe("createSessionLeaseManager · evictOverflow", () => {
       expect(manager.sessions.size).toBe(MAX_LIVE_SESSIONS_HARD - 1);
       await Promise.resolve();
       expect(stuck.closed()).toBe(true);
+    } finally {
+      restoreClock(prev);
+    }
+  });
+});
+
+// Regression: one OAuth client re-initialized instead of reusing its session
+// and held 118 of 120 leases, every one of them "busy". A SECOND credential on
+// the same tenant could not open a single session — `hasAdmissionRoom` said no
+// and every `initialize` got a 503, which its connector surfaced as a bare
+// "Internal error". The map being full is not a reason to refuse the one client
+// that holds none of it.
+describe("createSessionLeaseManager · per-owner fair share", () => {
+  test("a hogging owner loses its oldest lease instead of a different owner being refused", async () => {
+    const clock = createDeterministicClock();
+    const prev = installClock(clock);
+    try {
+      const manager = createSessionLeaseManager();
+      // One owner holds the entire map, all busy — the production shape.
+      const hogOldest = fakeSession(clock.now(), 1, "tenant:actor:hog");
+      manager.sessions.set("hog-oldest", hogOldest.session);
+      for (let i = 1; i < MAX_LIVE_SESSIONS_HARD; i++) {
+        clock.advanceBy(1_000);
+        manager.sessions.set(`hog-${i}`, fakeSession(clock.now(), 1, "tenant:actor:hog").session);
+      }
+      expect(manager.sessions.size).toBe(MAX_LIVE_SESSIONS_HARD);
+
+      // The newcomer is not refused …
+      expect(manager.hasAdmissionRoom()).toBe(true);
+      expect(manager.evictOverflow()).toBe(true);
+
+      // … and the lease that paid for it is the hog's oldest, not anyone else's.
+      expect(manager.sessions.has("hog-oldest")).toBe(false);
+      expect(manager.sessions.size).toBe(MAX_LIVE_SESSIONS_HARD - 1);
+      await Promise.resolve();
+      expect(hogOldest.closed()).toBe(true);
+    } finally {
+      restoreClock(prev);
+    }
+  });
+
+  test("an owner at or under its share is never the victim; a well-shared map still refuses", () => {
+    const clock = createDeterministicClock();
+    const prev = installClock(clock);
+    try {
+      const manager = createSessionLeaseManager();
+      // Exactly `MAX_LIVE_SESSIONS_PER_OWNER` each — at the share, not over it.
+      const owners = Math.ceil(MAX_LIVE_SESSIONS_HARD / MAX_LIVE_SESSIONS_PER_OWNER);
+      for (let i = 0; i < MAX_LIVE_SESSIONS_HARD; i++) {
+        clock.advanceBy(1_000);
+        manager.sessions.set(`s-${i}`, fakeSession(clock.now(), 1, `owner-${i % owners}`).session);
+      }
+
+      expect(manager.hasAdmissionRoom()).toBe(false);
+      expect(manager.evictOverflow()).toBe(false);
+      expect(manager.sessions.size).toBe(MAX_LIVE_SESSIONS_HARD);
     } finally {
       restoreClock(prev);
     }
