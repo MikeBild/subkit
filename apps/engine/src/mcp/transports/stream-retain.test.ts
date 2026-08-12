@@ -188,21 +188,22 @@ describe("trackStreamLifetime · silence window", () => {
   test("a stream carrying only SDK keepalives is NOT alive — the retain still comes back", async () => {
     const spy = retainSpy();
     const encoder = new TextEncoder();
+    // Keepalives every 10ms against a 60ms window: the stream is never quiet in
+    // byte terms, which is exactly the shape that used to pin the lease forever.
+    const WINDOW_MS = 60;
+    const FRAME_MS = 10;
     const body = new ReadableStream<Uint8Array>({
       async pull(controller) {
-        // Faster than the window — exactly the shape that used to pin the lease.
-        await Bun.sleep(SILENT_MS / 3);
+        await Bun.sleep(FRAME_MS);
         controller.enqueue(encoder.encode(": keepalive\n\n"));
       },
     });
-    const wrapped = trackStreamLifetime(body, spy.retain, SILENT_MS);
+    const wrapped = trackStreamLifetime(body, spy.retain, WINDOW_MS);
     const reader = wrapped.getReader();
 
-    const deadline = Date.now() + PAST_WINDOW_MS * 2;
-    while (Date.now() < deadline) {
-      await reader.read();
-      if (spy.held() === 0) break;
-    }
+    // A fixed frame count rather than a wall-clock deadline, so the test is
+    // reproducible: 20 frames ≈ 200ms, comfortably past the 60ms window.
+    for (let i = 0; i < 20; i++) await reader.read();
 
     expect(spy.held()).toBe(0);
     expect(spy.forceReleases()).toBe(1);
