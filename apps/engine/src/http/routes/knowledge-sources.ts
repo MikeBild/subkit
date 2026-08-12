@@ -17,13 +17,13 @@ import {
   UpdateKnowledgeSourceSchema,
 } from "../../knowledge/index.ts";
 import { log } from "../../logging/index.ts";
-import { NotFoundError } from "../errors.ts";
+import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const KnowledgeSourceListResponse = z
-  .object({ items: z.array(KnowledgeSourceSchema) })
+  .object({ items: z.array(KnowledgeSourceSchema), total: z.number().int().nonnegative() })
   .openapi("KnowledgeSourceListResponse");
 
 const AnalyzeKnowledgeSourceBody = z
@@ -69,6 +69,9 @@ const listRoute = createRoute({
         scope: z.enum(["global", "workflow"]).optional(),
         workflow_id: z.string().uuid().optional(),
         status: z.enum(["active", "inactive", "processing", "error"]).optional(),
+        q: z.string().min(1).max(200).optional(),
+        sort: z.enum(["name", "status", "source_type", "bytes_total", "updated_at"]).optional(),
+        order: z.enum(["asc", "desc"]).optional(),
         limit: z.coerce.number().int().positive().max(500).optional(),
         offset: z.coerce.number().int().min(0).optional(),
       })
@@ -323,6 +326,66 @@ const chunksRoute = createRoute({
   },
 });
 
+const KnowledgeSourceContentResponse = z
+  .object({
+    knowledge_source_id: z.string().uuid(),
+    version: z.string(),
+    editable: z.boolean(),
+    documents: z.array(z.object({ path: z.string(), content: z.string() })),
+  })
+  .openapi("KnowledgeSourceContentResponse");
+
+const UpdateKnowledgeSourceContentBody = z
+  .object({
+    expected_version: z.string().min(1),
+    path: z.string().min(1).max(512),
+    content: z.string().min(1),
+  })
+  .openapi("UpdateKnowledgeSourceContentBody");
+
+const contentRoute = createRoute({
+  method: "get",
+  path: "/v1/knowledge-sources/{id}/content",
+  tags: ["knowledge"],
+  summary: "Read editable Markdown content for a knowledge source",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: KnowledgeSourceContentResponse } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const updateContentRoute = createRoute({
+  method: "put",
+  path: "/v1/knowledge-sources/{id}/content",
+  tags: ["knowledge"],
+  summary: "Replace one Markdown document using optimistic concurrency",
+  security: [{ bearerAuth: [] }],
+  request: {
+    params: IdParam,
+    body: { content: { "application/json": { schema: UpdateKnowledgeSourceContentBody } } },
+  },
+  responses: {
+    200: {
+      description: "Updated",
+      content: { "application/json": { schema: KnowledgeSourceContentResponse } },
+    },
+    400: {
+      description: "Read-only source",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "Version conflict",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
+});
+
 const searchRoute = createRoute({
   method: "get",
   path: "/v1/knowledge-sources/search",
@@ -372,6 +435,12 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     return next();
   });
 
+  app.use("/v1/knowledge-sources/:id/content", async (c, next) => {
+    if (c.req.method === "GET") return requirePermission("knowledge:read")(c, next);
+    if (c.req.method === "PUT") return requirePermission("knowledge:write")(c, next);
+    return next();
+  });
+
   app.use("/v1/knowledge-sources/:id/analyze", async (c, next) => {
     if (c.req.method === "POST") return requirePermission("knowledge:write")(c, next);
     return next();
@@ -390,18 +459,22 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const items = await svc.listKnowledgeSources(
-      {
-        tenant_id: principal.tenant_id,
-        ...(q.scope ? { scope: q.scope } : {}),
-        ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
-        ...(q.status ? { status: q.status } : {}),
-        ...(q.limit !== undefined ? { limit: q.limit } : {}),
-        ...(q.offset !== undefined ? { offset: q.offset } : {}),
-      },
-      db,
-    );
-    return c.json({ items }, 200);
+    const params = {
+      tenant_id: principal.tenant_id,
+      ...(q.scope ? { scope: q.scope } : {}),
+      ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
+      ...(q.status ? { status: q.status } : {}),
+      ...(q.q ? { q: q.q } : {}),
+      ...(q.sort ? { sort: q.sort } : {}),
+      ...(q.order ? { order: q.order } : {}),
+      ...(q.limit !== undefined ? { limit: q.limit } : {}),
+      ...(q.offset !== undefined ? { offset: q.offset } : {}),
+    };
+    const [items, total] = await Promise.all([
+      svc.listKnowledgeSources(params, db),
+      svc.countKnowledgeSources(params, db),
+    ]);
+    return c.json({ items, total }, 200);
   });
 
   // Search must be registered before :id to avoid path collision
@@ -457,6 +530,48 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       200,
     );
+  });
+
+  app.openapi(contentRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const result = await svc.getKnowledgeSourceContent(principal.tenant_id, id, db);
+    if (!result) throw new NotFoundError("knowledge_source");
+    return c.json(result, 200);
+  });
+
+  app.openapi(updateContentRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    try {
+      const result = await svc.updateKnowledgeSourceContent(
+        {
+          tenant_id: principal.tenant_id,
+          knowledge_source_id: id,
+          expected_version: body.expected_version,
+          path: body.path,
+          content: body.content,
+          actor_id: principal.id,
+        },
+        db,
+      );
+      if (!result) throw new NotFoundError("knowledge_source");
+      return c.json(result, 200);
+    } catch (error) {
+      if (error instanceof svc.KnowledgeVersionConflictError) {
+        throw new ConflictError(error.message, {
+          expected_version: error.expected_version,
+          current_version: error.current_version,
+        });
+      }
+      if (error instanceof svc.KnowledgeContentReadOnlyError) {
+        throw new BadRequestError(error.message);
+      }
+      throw error;
+    }
   });
 
   app.openapi(getRoute, async (c) => {

@@ -63,7 +63,7 @@ export const ConversationSchema = z
   .openapi("Conversation");
 
 export const ConversationListResponse = z
-  .object({ items: z.array(ConversationSchema) })
+  .object({ items: z.array(ConversationSchema), total: z.number().int().nonnegative() })
   .openapi("ConversationListResponse");
 
 export const UIMessageSchema = z

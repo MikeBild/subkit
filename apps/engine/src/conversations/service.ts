@@ -54,6 +54,7 @@ export { getConversation } from "./service/get.ts";
 export {
   type ConversationListItem,
   cancelConversation,
+  countConversations,
   type ListConversationsParams,
   listConversations,
   type PatchConversationParams,

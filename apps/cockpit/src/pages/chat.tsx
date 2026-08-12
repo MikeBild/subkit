@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleStop, List, MessageSquarePlus, PanelRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CircleStop, List, MessageSquarePlus, PanelRight, Pencil, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import {
   appendConversationMessage,
   type Conversation,
@@ -8,6 +8,7 @@ import {
   createConversation,
   getConversation,
   listConversations,
+  renameConversation,
   respondToToolCall,
   type UiMessage,
 } from "@/api/client";
@@ -18,13 +19,7 @@ import {
   ConfirmationRequest,
   ConfirmationTitle,
 } from "@/components/ai-elements/confirmation";
-import {
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-  Conversation as ConversationViewport,
-} from "@/components/ai-elements/conversation";
-import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
+import { MessageResponse } from "@/components/ai-elements/message";
 import {
   PromptInput,
   PromptInputBody,
@@ -46,6 +41,7 @@ import {
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -56,6 +52,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Message, MessageContent } from "@/components/ui/message";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -145,7 +152,7 @@ function ChatMessage({
   const from = message.role === "user" ? "user" : "assistant";
   return (
     <Message
-      from={from}
+      align={from === "user" ? "end" : "start"}
       data-cockpit-ui="chat-message"
       data-testid={`chat-message-${messageIndex}`}
     >
@@ -154,12 +161,17 @@ function ChatMessage({
           const text = textFromPart(part);
           if (text)
             return (
-              <MessageResponse
+              <Bubble
                 key={`${message.id}-text-${partIndex}`}
-                data-testid={`chat-message-${messageIndex}-text-${partIndex}`}
+                variant={from === "user" ? "default" : "ghost"}
+                align={from === "user" ? "end" : "start"}
               >
-                {hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"))}
-              </MessageResponse>
+                <BubbleContent data-testid={`chat-message-${messageIndex}-text-${partIndex}`}>
+                  <MessageResponse>
+                    {hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"))}
+                  </MessageResponse>
+                </BubbleContent>
+              </Bubble>
             );
           const tool = asToolPart(part);
           if (!tool) return null;
@@ -220,11 +232,17 @@ function ConversationList({
   activeId,
   onSelect,
   onNew,
+  search,
+  onSearchChange,
+  onRename,
 }: {
   conversations: readonly Conversation[];
   activeId: string | null;
   onSelect(id: string): void;
   onNew(): void;
+  search: string;
+  onSearchChange(value: string): void;
+  onRename(conversation: Conversation): void;
 }) {
   const { t } = useI18n();
   return (
@@ -236,33 +254,57 @@ function ConversationList({
         </IconButton>
       </div>
       <Separator />
+      <div className="p-2">
+        <InputGroup>
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={t("chat.search")}
+            aria-label={t("chat.search")}
+            data-testid="conversation-search"
+          />
+        </InputGroup>
+      </div>
       <ScrollArea className="h-0 min-h-0 flex-1">
         <div className="grid gap-1 p-2">
           {conversations.map((conversation, index) => (
-            <Button
-              key={conversation.id}
-              type="button"
-              variant="ghost"
-              data-testid={`conversation-item-${index}`}
-              onClick={() => onSelect(conversation.id)}
-              className={cn(
-                "h-auto w-full min-w-0 justify-start rounded-lg px-3 py-2.5 text-left",
-                activeId === conversation.id && "bg-muted text-foreground hover:bg-muted",
-              )}
-            >
-              <span className="block min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">
-                  {conversation.title || t("chat.untitled")}
+            <div key={conversation.id} className="group flex min-w-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                data-testid={`conversation-item-${index}`}
+                onClick={() => onSelect(conversation.id)}
+                className={cn(
+                  "h-auto min-w-0 flex-1 justify-start rounded-lg px-3 py-2.5 text-left",
+                  activeId === conversation.id && "bg-muted text-foreground hover:bg-muted",
+                )}
+              >
+                <span className="block min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    {conversation.title || t("chat.untitled")}
+                  </span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground">
+                    {conversationExcerpt(
+                      conversation.last_message_excerpt,
+                      t("chat.toolActivity"),
+                      t("tool.referenceHidden"),
+                    ) || statusLabel(t, conversation.status)}
+                  </span>
                 </span>
-                <span className="block truncate text-xs font-normal text-muted-foreground">
-                  {conversationExcerpt(
-                    conversation.last_message_excerpt,
-                    t("chat.toolActivity"),
-                    t("tool.referenceHidden"),
-                  ) || statusLabel(t, conversation.status)}
-                </span>
-              </span>
-            </Button>
+              </Button>
+              <IconButton
+                label={t("chat.rename")}
+                variant="ghost"
+                className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+                data-testid={`conversation-rename-${index}`}
+                onClick={() => onRename(conversation)}
+              >
+                <Pencil />
+              </IconButton>
+            </div>
           ))}
         </div>
       </ScrollArea>
@@ -270,32 +312,88 @@ function ConversationList({
   );
 }
 
+function selectionFromPath(initialPrompt: string): ConversationSelection {
+  if (initialPrompt || window.location.pathname.endsWith("/chat/new")) return { kind: "new" };
+  const match = window.location.pathname.match(/\/chat\/([^/?]+)$/);
+  return match?.[1]
+    ? { kind: "existing", id: decodeURIComponent(match[1]) }
+    : { kind: "automatic" };
+}
+
+function setChatPath(id: string | null, replace = false): void {
+  const path = id ? `/cockpit/chat/${encodeURIComponent(id)}` : "/cockpit/chat/new";
+  window.history[replace ? "replaceState" : "pushState"]({}, "", path);
+}
+
 export function ChatPage() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const initialPrompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
   const [selection, setSelection] = useState<ConversationSelection>(() =>
-    initialPrompt ? { kind: "new" } : { kind: "automatic" },
+    selectionFromPath(initialPrompt),
   );
-  const [createOpen, setCreateOpen] = useState(Boolean(initialPrompt));
+  const [createOpen, setCreateOpen] = useState(
+    Boolean(initialPrompt) || window.location.pathname.endsWith("/chat/new"),
+  );
   const [createPrompt, setCreatePrompt] = useState(initialPrompt);
+  const [conversationSearch, setConversationSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [streamedText, setStreamedText] = useState("");
+  const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
   const [mobileListOpen, setMobileListOpen] = useState(false);
-  const conversations = useQuery({ queryKey: ["conversations"], queryFn: listConversations });
+  useEffect(() => {
+    const onPopState = () => {
+      const prompt = new URLSearchParams(window.location.search).get("prompt") ?? "";
+      const next = selectionFromPath(prompt);
+      setSelection(next);
+      setCreateOpen(next.kind === "new");
+      setCreatePrompt(prompt);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(conversationSearch.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [conversationSearch]);
+  const conversations = useQuery({
+    queryKey: ["conversations", debouncedSearch],
+    queryFn: () => listConversations(debouncedSearch),
+  });
   const activeId = activeConversationId(selection, conversations.data?.items[0]?.id);
+  useEffect(() => {
+    if (selection.kind === "automatic" && activeId) setChatPath(activeId, true);
+  }, [activeId, selection.kind]);
   const detail = useQuery({
     queryKey: ["conversation", activeId],
     queryFn: () => getConversation(activeId ?? ""),
     enabled: Boolean(activeId),
   });
   const send = useMutation({
-    mutationFn: async (message: string) =>
-      activeId ? appendConversationMessage(activeId, message) : createConversation(message),
+    mutationFn: async (message: string) => {
+      setStreamedText("");
+      const onEvent = (event: { type: string; [key: string]: unknown }) => {
+        if (event.type === "text_delta" && typeof event.text === "string") {
+          setStreamedText((currentText) => currentText + event.text);
+        }
+      };
+      if (activeId) return appendConversationMessage(activeId, message, onEvent);
+      const params = new URLSearchParams(window.location.search);
+      const workflowId = params.get("workflow_id");
+      const connectorId = params.get("connector_id");
+      return createConversation(message, onEvent, {
+        ...(workflowId ? { workflow_id: workflowId } : {}),
+        ...(connectorId ? { connector_id: connectorId } : {}),
+      });
+    },
     onSuccess: async (result) => {
       setSelection({ kind: "existing", id: result.conversation.id });
+      setChatPath(result.conversation.id, true);
       setCreateOpen(false);
       setCreatePrompt("");
-      if (window.location.search) window.history.replaceState({}, "", window.location.pathname);
+      setStreamedText("");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
         queryClient.invalidateQueries({ queryKey: ["conversation", result.conversation.id] }),
@@ -316,6 +414,13 @@ export function ChatPage() {
       ]);
     },
   });
+  const rename = useMutation({
+    mutationFn: () => renameConversation(renameTarget?.id ?? "", renameTitle.trim()),
+    onSuccess: async () => {
+      setRenameTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
   const current = detail.data?.conversation;
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
@@ -333,13 +438,21 @@ export function ChatPage() {
       activeId={activeId}
       onNew={() => {
         setSelection({ kind: "new" });
+        setChatPath(null);
         setCreatePrompt("");
         setCreateOpen(true);
         setMobileListOpen(false);
       }}
       onSelect={(id) => {
         setSelection({ kind: "existing", id });
+        setChatPath(id);
         setMobileListOpen(false);
+      }}
+      search={conversationSearch}
+      onSearchChange={setConversationSearch}
+      onRename={(conversation) => {
+        setRenameTarget(conversation);
+        setRenameTitle(conversation.title || t("chat.untitled"));
       }}
     />
   );
@@ -414,31 +527,63 @@ export function ChatPage() {
           </Alert>
         )}
 
-        <ConversationViewport className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
-          <ConversationContent className="mx-auto w-full max-w-4xl gap-6 px-5 py-6 sm:px-8">
-            {messages.length === 0 ? (
-              <ConversationEmptyState
-                title={t("chat.empty.title")}
-                description={t("chat.empty.description")}
-                icon={<MessageSquarePlus />}
-                data-testid="chat-empty"
-              />
-            ) : (
-              messages.map((message, index) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  messageIndex={index}
-                  onDecision={(toolCallId, approved) => decide.mutate({ toolCallId, approved })}
-                />
-              ))
-            )}
-          </ConversationContent>
-          <ConversationScrollButton
-            label={t("chat.scrollBottom")}
-            data-testid="chat-scroll-bottom"
-          />
-        </ConversationViewport>
+        <MessageScrollerProvider>
+          <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
+            <MessageScrollerViewport>
+              <MessageScrollerContent className="mx-auto w-full max-w-4xl gap-6 px-5 py-6 sm:px-8">
+                {messages.length === 0 ? (
+                  <div
+                    className="grid flex-1 place-items-center py-16 text-center"
+                    data-testid="chat-empty"
+                  >
+                    <div className="max-w-md">
+                      <span className="mx-auto grid size-10 place-items-center rounded-full bg-muted">
+                        <MessageSquarePlus />
+                      </span>
+                      <h2 className="mt-4 font-semibold">{t("chat.empty.title")}</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {t("chat.empty.description")}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  messages.map((message, index) => (
+                    <MessageScrollerItem
+                      key={message.id}
+                      scrollAnchor={index === messages.length - 1}
+                    >
+                      <ChatMessage
+                        message={message}
+                        messageIndex={index}
+                        onDecision={(toolCallId, approved) =>
+                          decide.mutate({ toolCallId, approved })
+                        }
+                      />
+                    </MessageScrollerItem>
+                  ))
+                )}
+                {streamedText && (
+                  <MessageScrollerItem scrollAnchor>
+                    <Message align="start">
+                      <MessageContent>
+                        <Bubble variant="ghost">
+                          <BubbleContent>
+                            <MessageResponse>{streamedText}</MessageResponse>
+                          </BubbleContent>
+                        </Bubble>
+                      </MessageContent>
+                    </Message>
+                  </MessageScrollerItem>
+                )}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton
+              direction="end"
+              aria-label={t("chat.scrollBottom")}
+              data-testid="chat-scroll-bottom"
+            />
+          </MessageScroller>
+        </MessageScrollerProvider>
 
         <div
           className="shrink-0 border-t bg-background/95 px-4 py-3 supports-[backdrop-filter]:backdrop-blur"
@@ -561,7 +706,10 @@ export function ChatPage() {
         open={createOpen}
         onOpenChange={(open) => {
           setCreateOpen(open);
-          if (!open && selection.kind === "new") setSelection({ kind: "automatic" });
+          if (!open && selection.kind === "new") {
+            setSelection({ kind: "automatic" });
+            window.history.replaceState({}, "", "/cockpit/chat");
+          }
         }}
       >
         <DialogContent
@@ -600,6 +748,7 @@ export function ChatPage() {
               onClick={() => {
                 setCreateOpen(false);
                 setSelection({ kind: "automatic" });
+                window.history.replaceState({}, "", "/cockpit/chat");
               }}
             >
               {t("common.cancel")}
@@ -611,6 +760,40 @@ export function ChatPage() {
               onClick={() => send.mutate(createPrompt.trim())}
             >
               {t(send.isPending ? "chat.create.starting" : "chat.create.submit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent data-testid="conversation-rename-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("chat.rename")}</DialogTitle>
+            <DialogDescription>{t("chat.renameDescription")}</DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="conversation-rename-title">{t("resource.field.title")}</FieldLabel>
+            <Input
+              id="conversation-rename-title"
+              value={renameTitle}
+              onChange={(event) => setRenameTitle(event.target.value)}
+              data-testid="conversation-rename-title"
+            />
+          </Field>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRenameTarget(null)}
+              data-testid="conversation-rename-cancel"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={!renameTitle.trim() || rename.isPending}
+              onClick={() => rename.mutate()}
+              data-testid="conversation-rename-save"
+            >
+              {t("common.saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>

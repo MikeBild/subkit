@@ -10,10 +10,10 @@ import { eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
 import * as invokeModule from "../../llm/core/invoke.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { getKnowledgeSource } from "../catalog.ts";
 import {
   analyzeKnowledgeSource,
   createKnowledgeSource,
-  getKnowledgeSource,
   updateKnowledgeSource,
 } from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";

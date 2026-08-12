@@ -148,7 +148,10 @@ export function AppShell() {
                           <SidebarMenuButton
                             asChild
                             tooltip={label}
-                            isActive={pathname.endsWith(item.path)}
+                            isActive={
+                              pathname === `/cockpit${item.path}` ||
+                              pathname.startsWith(`/cockpit${item.path}/`)
+                            }
                           >
                             <Link to={item.path} data-testid={`nav-${item.path.slice(1)}`}>
                               <item.icon data-icon="inline-start" />

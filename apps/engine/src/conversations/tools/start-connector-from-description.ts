@@ -184,11 +184,9 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
         inferAuthTypeFromDescription(args.description) ??
         (template ? defaultTemplateAuthType(template) : null));
 
-    // Discovery-based recognition: runs only when no template matched, the
-    // driver is http, and a base_url is present. Best-effort — discovery
-    // failures never block connector creation.
+    // Discovery fills an unresolved auth mode; known auth makes the network lookup redundant.
     let recognizedAuth: RecognizedAuth | null = null;
-    if (!template && inferredDriver === "http" && resolvedBaseUrl) {
+    if (!template && !chainedAuthType && inferredDriver === "http" && resolvedBaseUrl) {
       try {
         const out = await runDiscoveryCached(
           {

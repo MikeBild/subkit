@@ -2,7 +2,7 @@
 // place that touches the `connectors` table — routes call through it so
 // audit rows and slug normalization land consistently.
 
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -295,6 +295,11 @@ export async function listConnectors(
      * plain stored-column filter.
      */
     category?: string;
+    enabled?: boolean;
+    health_state?: string;
+    q?: string;
+    sort?: "name" | "driver" | "environment" | "enabled" | "updated_at";
+    order?: "asc" | "desc";
     limit?: number;
     offset?: number;
   } = {},
@@ -304,12 +309,37 @@ export async function listConnectors(
   const tenantConds = [eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)];
   if (opts.environment) tenantConds.push(eq(connectors.environment, opts.environment));
   if (opts.category) tenantConds.push(eq(connectors.driver, opts.category));
+  if (opts.enabled !== undefined) tenantConds.push(eq(connectors.enabled, opts.enabled));
+  if (opts.health_state) tenantConds.push(eq(connectors.health_state, opts.health_state));
+  if (opts.q) {
+    const needle = `%${opts.q}%`;
+    const search = or(
+      ilike(connectors.display_name, needle),
+      ilike(connectors.slug, needle),
+      ilike(connectors.driver, needle),
+      ilike(connectors.base_url, needle),
+    );
+    if (search) tenantConds.push(search);
+  }
   const offset = opts.offset ?? 0;
+  const sortColumn =
+    opts.sort === "name"
+      ? connectors.display_name
+      : opts.sort === "driver"
+        ? connectors.driver
+        : opts.sort === "environment"
+          ? connectors.environment
+          : opts.sort === "enabled"
+            ? connectors.enabled
+            : opts.sort === "updated_at"
+              ? connectors.updated_at
+              : connectors.created_at;
+  const ordered = opts.order === "asc" ? asc(sortColumn) : desc(sortColumn);
   const rows = await db
     .select({ row: connectors, total: totalOverWindow() })
     .from(connectors)
     .where(and(...tenantConds))
-    .orderBy(desc(connectors.created_at))
+    .orderBy(ordered, asc(connectors.id))
     .limit(Math.min(opts.limit ?? CONNECTOR_LIST_MAX_LIMIT, CONNECTOR_LIST_MAX_LIMIT))
     .offset(offset);
   const total = await resolveWindowTotal(rows, offset, async () => {
