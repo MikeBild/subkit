@@ -8,7 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow]
-version: 13
+version: 14
 ---
 
 # Authoring Workflows In A Conversation
@@ -51,27 +51,27 @@ retries in the worst recorded session.
    resolved — URL, headers, the materialized body — but NOT dispatched;
    the held request is recorded as the step artifact. After a green
    preview the instruction-grounded judge evaluates the artifacts (held
-   payloads included) against the stashed goal. Green + judge pass
-   auto-commits.
+   payloads included) against the stashed goal. In `auto`, green + judge
+   pass may commit inline. In `ask`/`plan`, the preview returns
+   `save_required: true` and the normal save gate decides.
 4. **Repair on findings** — apply specific recorded-eval/judge findings via
    `edit_workflow_patch` (an RFC 6902 JSON Patch: append/replace a step,
    set a single field or header, add an edge, reorder), then preview again.
    `dry_run_transform` iterates a transform against the recorded scope
    without re-hitting the network.
-5. **Green + judged = committed** — a clean preview with a passing judge
-   verdict IS the save (`auto_committed: true`). Do NOT call
-   `save_workflow_draft` afterward.
+5. **Persist according to permission mode** — after a clean judged preview,
+   read the envelope. `auto_committed: true` means the save already landed.
+   `save_required: true` means call `save_workflow_draft` and surface its
+   structured human approval.
 
 `edit_workflow_patch` is THE editor: use `author_workflow` for the initial
 whole-draft build, then `edit_workflow_patch` for every targeted change.
 "Change the limit to 5" on a previewed or committed workflow is a
 one-patch edit.
 
-There is no separate publish step. A green, judged dry-run is the save:
-the workflow is immediately live as the new version. If the user asks to
-"commit", "push", "deploy", or "publish" after a green preview, do not
-invent an action — tell them it is already live as v<N> and offer a real
-next step (run it, bind a schedule or trigger, or keep editing).
+There is no separate publish step. Do not call a preview-only draft live.
+Only `auto_committed: true` or a successfully approved
+`save_workflow_draft` establishes the persisted version.
 
 **Dry-runs hold writes — sends never fire in a preview.** Write steps
 (email sends, webhook posts, publishes) are resolved against real upstream
@@ -364,7 +364,7 @@ chat; the same tools repair in place:
 2. **`diagnose_latest_execution`** — pulls causal trace; do not guess from the bare error.
 3. **Edit the offending step** — `edit_workflow_patch` covers every targeted change: set a single field or header (`replace /steps/N/...`), replace a step body, add or retarget an edge (`add /edges/-`). For schema drift on a request step, `probe_connector` first; if the connector's response shape changed over time, call `propose_schema_migration` (returns a structured rename/add/remove/widen plan against the recorded shape ledger) before deciding how to patch the transform. For a wholesale redesign, re-author via `author_workflow` with the original goal.
 4. **`validate_draft`** — re-runs structural checks (rarely needed; see below).
-5. **`dry_run_workflow`** — green, judged dry-run auto-commits the patched workflow inline (`auto_committed: true`, audit reason `auto_persist_on_green_dry_run`). No separate confirmation step. Skip dry-run only for trivial parameter tweaks where the auto-persist on update suffices; any structural change must run dry-run first.
+5. **`dry_run_workflow`** — preview the patch. In `auto`, a green judged run may commit inline. In `ask`/`plan`, call `save_workflow_draft` after `save_required: true`; the structured human gate decides. Any structural change must run dry-run first.
 
 Do not instruct the user to run `sk workflow commit` (no CLI fallback exists). Do not re-run the failed workflow before re-validating (overwrites the diagnosis). Do not skip failing steps with `if: false` unless the user asks for that behaviour. After three failed repair iterations on the same error, stop and ask the user.
 
@@ -393,16 +393,13 @@ in dev (a real send must be human-approved). `inspect_workflow_draft`
 labels every step `side_effect: "read" | "write"`, so you can see which
 steps would dispatch before you ever run.
 
-**A green preview auto-commits ONLY when it was judged against a stashed
-goal.** `author_workflow` stashes the goal, so its green dry-run is judged
-and auto-commits (`auto_committed: true`). If you reach a green preview
-with no stashed goal (e.g. a bare `dry_run_workflow` after micro-edits),
-the judge is skipped and the preview is NOT auto-committed — the envelope
-returns `save_required: true` and `next_best_actions: ["save_workflow_draft"]`.
-Persist it deliberately with `save_workflow_draft` (one commit), rather
-than re-running dry-run hoping for an auto-commit that will not come. This
-is what stops a single authoring session from minting a dozen intermediate
-versions.
+**A green preview auto-commits only in permission mode `auto` and only when
+the quality gate permits it.** In `ask`/`plan`, even a judged passing preview
+returns `save_required: true` and
+`next_best_actions: ["save_workflow_draft"]`. A backgrounded MCP surface can
+surface the durable approval URL through `conversation_get`, so it does not
+weaken this gate. Persist deliberately with `save_workflow_draft` rather than
+re-running the preview.
 
 ## Metadata-only edits — `update_workflow`, never the build/preview cycle
 
@@ -1157,12 +1154,13 @@ into a malformed payload in production. Likewise never reach for `new Date()`,
 - **Skipping `dry_run_workflow` and reaching for `save_workflow_draft`
   directly.** Direct `save_workflow_draft` calls are policy-gated and the inner
   prior-approval check rejects with `no_prior_approval`. The persistence
-  contract is: green, judged dry-run = inline auto-commit. If the dry-run is
-  failing, the workflow needs a fix, not a force-commit.
+  contract starts with a green judged preview. If the dry-run is failing, the
+  workflow needs a fix, not a force-commit.
 - **Calling `save_workflow_draft` after a green `dry_run_workflow`.** The
-  green-dry-run envelope already returns `auto_committed: true`; a subsequent
-  `save_workflow_draft` only earns an `already_persisted: true` round-trip.
-  Read `auto_committed` and report the saved outcome to the user.
+  correct next action is envelope-dependent: after `auto_committed: true`, a
+  save only earns an `already_persisted` round-trip; after
+  `save_required: true`, call `save_workflow_draft` exactly once and surface
+  its structured human gate.
 - **Force-committing without surfacing the override to the operator.** If the
   operator explicitly chooses to commit despite a failed `dry_run_workflow`
   or a blocking judge verdict, emit `ask_user_confirm` with

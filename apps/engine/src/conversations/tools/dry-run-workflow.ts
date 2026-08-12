@@ -864,9 +864,12 @@ export const dryRunWorkflowTool: ConversationTool = {
     // hint stays on the envelope so the chat renderer's lifecycle line
     // and the never-silent guard in loop.ts both have something to
     // anchor on.
-    // On an ATTENDED surface a green dry-run auto-commits ONLY when the
-    // preview judge actually rendered a verdict. ANY skip counts as unjudged —
-    // not just `no_goal`:
+    // A green dry-run auto-commits only when the caller explicitly selected
+    // permission_mode `auto` and the preview judge rendered a non-blocking
+    // verdict. In ask/plan modes, preview and persistence are separate
+    // decisions: the green result returns save_required and the normal
+    // save_workflow_draft policy gate supplies the human approval surface.
+    // ANY judge skip counts as unjudged — not just `no_goal`:
     //   - `no_goal`: a bare verification dry-run during iteration must NOT mint
     //     a version every call (one live session churned v6→v12 this way, six
     //     `auto_persist_on_green_dry_run` commits in 36 min).
@@ -877,29 +880,16 @@ export const dryRunWorkflowTool: ConversationTool = {
     //     hold the commit.
     // A green-but-unjudged preview is still `ok`; it just returns the
     // `save_workflow_draft` next-action so the model/user persists once,
-    // deliberately. On an UNATTENDED turn (see `unattended` below) that
-    // deferral is invisible to the caller, so it auto-commits instead of
-    // dead-ending at an `ask_user_confirm` the client never surfaces.
+    // deliberately.
     const judgeSkipped = judgeOutcome?.verdict === "skipped";
-    // Unattended turn — the caller cannot surface an ask_user_confirm /
-    // awaiting_input follow-up, so a `save_workflow_draft` deferral would
-    // dead-end (that greenPendingSave churn loop becomes invisible on
-    // a backgrounded MCP client). Two sources, both already on the turn:
-    //   - `permission_mode === "auto"` — the caller explicitly signalled
-    //     "don't ask" (ask_user_confirm already auto-resolves in this mode).
-    //   - a BACKGROUNDED MCP turn — `surface === "mcp"` is set only by the
-    //     `conversation.run-turn` worker, which runs with NO elicitation
-    //     bridge (no live session to prompt on). The `!elicitationBridge`
-    //     guard keeps a hypothetical interactive MCP turn (which CAN prompt)
-    //     out of this branch.
-    const unattended =
-      ctx.permission_mode === "auto" || (ctx.surface === "mcp" && !ctx.elicitationBridge);
-    // A green dry-run + non-blocking judge is safe to auto-commit: hold_writes
-    // made the run side-effect-free. On an ATTENDED surface a green-but-
-    // unjudged preview still defers to an explicit save so a bare verification
-    // dry-run does not mint a version every call (the v6→v12 churn above).
-    // UNATTENDED, that deferral is invisible, so the unjudged green preview
-    // joins the auto-commit path — an unchanged re-preview still reports
+    // Backgrounded MCP turns can surface the durable approval_url through
+    // conversation_get, so transport shape is not permission to persist.
+    // Only permission_mode `auto` is the caller's explicit "don't ask" signal.
+    const autoCommitAllowed = ctx.permission_mode === "auto";
+    // In auto mode a green dry-run + non-blocking judge can auto-commit:
+    // hold_writes made the run side-effect-free. A green-but-unjudged preview
+    // may also commit a brand-new workflow in auto mode — an unchanged
+    // re-preview still reports
     // `already_persisted` (no churn), and the audit row carries the honest
     // `judge_verdict: "skipped"` with its reason. The judge stays a QUALITY
     // gate: a `partial`/`failed` verdict or a breaker hold keeps `judgeBlocked`
@@ -913,11 +903,10 @@ export const dryRunWorkflowTool: ConversationTool = {
     // normaliser over a purpose-built one, and "green" there meant only
     // "no exception".
     const wouldReplacePersisted = replacesPersistedWorkflow(ctx.getDraft().summary);
-    const unattendedUnjudgedCommit = unattended && !wouldReplacePersisted;
+    const autoUnjudgedCommit = autoCommitAllowed && !wouldReplacePersisted;
     const cleanPreview =
-      dryRunGreen && !judgeBlocked && (!judgeSkipped || unattendedUnjudgedCommit);
-    const greenPendingSave =
-      dryRunGreen && !judgeBlocked && judgeSkipped && !unattendedUnjudgedCommit;
+      dryRunGreen && !judgeBlocked && autoCommitAllowed && (!judgeSkipped || autoUnjudgedCommit);
+    const greenPendingSave = dryRunGreen && !judgeBlocked && !cleanPreview;
     // The judge hit its block cap: the edit loop is exhausted but the preview
     // still does not satisfy the goal. Do NOT keep nudging edit→dry_run (that
     // is the loop the breaker exists to stop); instead offer an explicit
@@ -941,9 +930,11 @@ export const dryRunWorkflowTool: ConversationTool = {
     const previewNextPrompt = cleanPreview
       ? "Committing the workflow"
       : greenPendingSave
-        ? wouldReplacePersisted
-          ? "Preview is green, but no goal was set, so nothing judged it against one — and committing would REPLACE an existing persisted workflow. Not auto-committed. Tell the user which workflow would be replaced and let them decide, then call save_workflow_draft."
-          : "Preview is green — call save_workflow_draft to persist it (no goal was set, so it is not auto-committed)"
+        ? judgeSkipped
+          ? wouldReplacePersisted
+            ? "Preview is green, but no goal was set, so nothing judged it against one — and committing would REPLACE an existing persisted workflow. Not auto-committed. Tell the user which workflow would be replaced and let them decide, then call save_workflow_draft."
+            : "Preview is green — call save_workflow_draft to persist it (the preview was not judged, so it is not auto-committed)"
+          : "Preview is green and judged. Call save_workflow_draft so the normal human approval gate decides whether to persist it."
         : judgeExhausted
           ? (judgeDoneSignal?.guidance ??
             "The preview still does not satisfy the goal and was NOT committed — tell the user what is missing and ask how to proceed, or commit as-is via save_workflow_draft")
@@ -1064,18 +1055,16 @@ export const dryRunWorkflowTool: ConversationTool = {
       };
     }
 
-    // Green preview, but no goal was stashed so the judge was skipped:
-    // do NOT auto-persist a workflow version. Return the green result with an
-    // explicit `save_workflow_draft` next-action so the model/user commits
-    // once, deliberately — instead of every iteration dry-run minting a new
-    // version. This is still a success envelope (the run was green); it is the
-    // auto-commit that is withheld, not the preview.
+    // Green preview that is not eligible for auto persistence: return the
+    // result with an explicit save_workflow_draft next-action. In ask/plan
+    // modes this always separates preview from the human save decision. In
+    // auto mode this path still holds an unjudged replacement.
     if (greenPendingSave) {
       const totalDryRunMs = run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0);
       logger.info({
         module: "conversation_tool",
         action: "dry_run_workflow.green_pending_save",
-        msg: "green dry-run not auto-persisted — no goal stashed; awaiting explicit save",
+        msg: "green dry-run not auto-persisted — awaiting explicit save",
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
         steps_ran: run.steps.length,
