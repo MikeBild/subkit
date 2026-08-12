@@ -14,6 +14,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { issueBrowserSession } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { setConfigKey } from "../../config/loader.ts";
 import { auditLog, toolApprovals } from "../../db/schema/index.ts";
@@ -120,6 +121,25 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     // The GET does not consume — the row is still pending.
     expect(row?.granted_at).toBeNull();
     expect(row?.declined_at).toBeNull();
+  });
+
+  test("renders for a signed-in browser session whose cookie carries no email", async () => {
+    const { approval_url } = await seedApproval();
+    const login = await issueBrowserSession({
+      db: server.db,
+      tenantId: server.tenantId,
+      userId: server.userId,
+      redirectTo: approval_url,
+      via: "approval_portal_test",
+    });
+    const cookie = login.headers.get("set-cookie");
+    expect(cookie).toBeTruthy();
+
+    const res = await fetch(approval_url, { headers: { cookie: cookie ?? "" } });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("admin-tool-approvals-portal@test.local");
+    expect(html).toContain("post_ledger");
   });
 
   test("a forged grant token is rejected", async () => {

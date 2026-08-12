@@ -64,8 +64,6 @@ export interface SessionPrincipal {
   session_id: string;
   user_id: string;
   tenant_id: string;
-  email: string;
-  role: string;
 }
 
 export async function resolveSession(req: Request): Promise<SessionPrincipal | null> {
@@ -80,7 +78,7 @@ export async function resolveSession(req: Request): Promise<SessionPrincipal | n
 
   // Quick validity check on session row (revoked / expired).
   // We do a lightweight read here — the full sliding-TTL logic lives in oidc.ts.
-  return payload as SessionPrincipal;
+  return payload;
 }
 
 export async function signCsrfToken(
