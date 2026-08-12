@@ -650,6 +650,8 @@ describe("conversation_respond_elicitation", () => {
     expect(body.error_code).toBe("approval_requires_human");
     expect(body.approval_url).toBe(approvalUrl);
     expect(body.message).toContain("approval_url");
+    expect(body.message).toContain("after signing in");
+    expect(body.message).toContain("is not an identity or an approval by itself");
     expect(body.message).toContain("carries out the held call on its own");
     expect(body.message).not.toContain("chat UI");
 

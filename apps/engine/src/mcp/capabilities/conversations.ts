@@ -443,7 +443,7 @@ async function refuseApprovalElicitation(
             `Elicitation ${args.elicitation_id} is a person's approval decision for approval ${approvalId}, not a question you may answer. ` +
             "Resolving it would perform a write the engine is holding, so this tool refuses it — nothing was written and nothing was resolved. " +
             (hasUrl
-              ? "Give the user the approval_url below and let them decide in their browser; opening it IS the authorization, with no sign-in step. " +
+              ? "Give the user the approval_url below and let them decide in their browser after signing in; the link selects the pending request but is not an identity or an approval by itself. " +
                 "Once they decide, the engine resolves this pause and carries out the held call on its own — you do not need to do anything else, and you must not relay their answer back through this tool. "
               : "The user grants or declines it themselves on the surface where it was raised. "),
           approval_window:
