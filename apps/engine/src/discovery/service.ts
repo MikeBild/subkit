@@ -580,7 +580,6 @@ export async function recordGapCandidate(
   p: RecordGapCandidateParams,
   exec?: Executor,
 ): Promise<DiscoveryArtifactView | null> {
-  const db = exec ?? getDb();
   const dedupKey =
     p.missing_capability && p.missing_capability.trim().length > 0
       ? p.missing_capability.trim().toLowerCase()
@@ -593,6 +592,9 @@ export async function recordGapCandidate(
   const suggested_kind: SuggestedGapKind = p.suggested_kind ?? "unknown";
 
   try {
+    // Resolving the default database is part of this best-effort side effect:
+    // a missing bootstrap configuration must not break cannot_help itself.
+    const db = exec ?? getDb();
     return await (db as Db).transaction(async (tx) => {
       // Dedup: an existing proposed gap with this fingerprint just gets
       // its occurrence counter bumped (the demand signal).
