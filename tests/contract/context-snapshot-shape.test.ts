@@ -28,22 +28,27 @@ describe("contract · ContextSnapshot.grounding_status", () => {
     expect(ctx).toBeDefined();
   });
 
+  // Nullability is asserted in OpenAPI 3.1 form — `type: ["object", "null"]` —
+  // because that is what the generator emits (`spec.openapi === "3.1.0"`, and
+  // the string `nullable` appears nowhere in the document). The 3.0 keyword
+  // this once asserted was silently `undefined`, so the test had been red ever
+  // since the spec moved to 3.1. Nothing caught it: `tests/contract/` was not
+  // wired into any script, which the `test:contract` entry now fixes.
   test("grounding_status is a nullable object with { state enum, advisory string|null }", () => {
     const gs = ctx?.properties?.grounding_status as
       | {
-          type?: string;
-          nullable?: boolean;
+          type?: string | string[];
           properties?: {
             state?: { enum?: string[] };
-            advisory?: { type?: string; nullable?: boolean };
+            advisory?: { type?: string | string[] };
           };
           required?: string[];
         }
       | undefined;
     expect(gs).toBeDefined();
-    expect(gs?.nullable).toBe(true);
+    expect(gs?.type).toEqual(["object", "null"]);
     expect(gs?.properties?.state?.enum).toEqual(["fresh", "stale", "unknown"]);
-    expect(gs?.properties?.advisory?.nullable).toBe(true);
+    expect(gs?.properties?.advisory?.type).toEqual(["string", "null"]);
     expect(gs?.required).toEqual(["state", "advisory"]);
   });
 });
