@@ -1,6 +1,6 @@
 // Conversation lifecycle endpoints — cancel, list, patch metadata.
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -44,6 +44,11 @@ export interface ListConversationsParams {
   status?: ConversationStatus;
   /** Restrict to conversations owned by this user id. */
   owner_id?: string;
+  target_workflow_id?: string;
+  target_connector_id?: string;
+  q?: string;
+  sort?: "title" | "status" | "created_at" | "updated_at";
+  order?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }
@@ -51,6 +56,32 @@ export interface ListConversationsParams {
 export interface ConversationListItem extends ConversationRecord {
   last_message_role: string | null;
   last_message_excerpt: string | null;
+}
+
+function conversationListConds(p: ListConversationsParams) {
+  const tenantConds = [eq(conversations.tenant_id, p.tenant_id)];
+  if (p.status) tenantConds.push(eq(conversations.status, p.status));
+  if (p.owner_id) tenantConds.push(eq(conversations.owner_id, p.owner_id));
+  if (p.target_workflow_id) {
+    tenantConds.push(eq(conversations.target_workflow_id, p.target_workflow_id));
+  }
+  if (p.target_connector_id) {
+    tenantConds.push(eq(conversations.target_connector_id, p.target_connector_id));
+  }
+  if (p.q) {
+    const needle = `%${p.q}%`;
+    const search = or(
+      ilike(conversations.title, needle),
+      sql<boolean>`exists (
+        select 1 from conversation_messages cm
+        where cm.tenant_id = ${p.tenant_id}
+          and cm.conversation_id = ${conversations.id}
+          and cm.content::text ilike ${needle}
+      )`,
+    );
+    if (search) tenantConds.push(search);
+  }
+  return tenantConds;
 }
 
 function stringifyConversationExcerpt(content: unknown): string | null {
@@ -92,14 +123,21 @@ export async function listConversations(
   p: ListConversationsParams,
   exec: Db,
 ): Promise<ConversationListItem[]> {
-  const tenantConds = [eq(conversations.tenant_id, p.tenant_id)];
-  if (p.status) tenantConds.push(eq(conversations.status, p.status));
-  if (p.owner_id) tenantConds.push(eq(conversations.owner_id, p.owner_id));
+  const tenantConds = conversationListConds(p);
+  const sortColumn =
+    p.sort === "title"
+      ? conversations.title
+      : p.sort === "status"
+        ? conversations.status
+        : p.sort === "created_at"
+          ? conversations.created_at
+          : conversations.updated_at;
+  const ordered = p.order === "asc" ? asc(sortColumn) : desc(sortColumn);
   const rows = await exec
     .select()
     .from(conversations)
     .where(and(...tenantConds))
-    .orderBy(desc(conversations.updated_at))
+    .orderBy(ordered, asc(conversations.id))
     .limit(Math.min(p.limit ?? 50, 200))
     .offset(p.offset ?? 0);
   if (rows.length === 0) return [];
@@ -140,6 +178,14 @@ export async function listConversations(
       last_message_excerpt: latest?.excerpt ?? null,
     };
   });
+}
+
+export async function countConversations(p: ListConversationsParams, exec: Db): Promise<number> {
+  const [row] = await exec
+    .select({ total: sql<number>`count(*)::int` })
+    .from(conversations)
+    .where(and(...conversationListConds(p)));
+  return Number(row?.total ?? 0);
 }
 
 export interface PatchConversationParams {

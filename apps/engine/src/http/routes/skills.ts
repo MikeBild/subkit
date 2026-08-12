@@ -19,6 +19,7 @@ import {
   activateSkill,
   archiveSkill,
   CreateSkillSchema,
+  countSkills,
   createSkill,
   deleteSkill,
   getSkill,
@@ -36,7 +37,9 @@ import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-const SkillListResponse = paginatedResponse(SkillSchema, "SkillListResponse");
+const SkillListResponse = paginatedResponse(SkillSchema, "SkillListResponse").extend({
+  total: z.number().int().nonnegative(),
+});
 
 const ListQuery = z
   .object({
@@ -44,6 +47,9 @@ const ListQuery = z
     status: SkillLifecycleSchema.optional(),
     connector_id: z.string().uuid().optional(),
     workflow_id: z.string().uuid().optional(),
+    q: z.string().min(1).max(200).optional(),
+    sort: z.enum(["title", "scope", "status", "version", "updated_at"]).optional(),
+    order: z.enum(["asc", "desc"]).optional(),
     limit: z.coerce.number().int().positive().max(500).optional(),
     offset: z.coerce.number().int().min(0).optional(),
   })
@@ -238,19 +244,20 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    const items = await listSkills(
-      {
-        tenant_id: principal.tenant_id,
-        ...(q.scope ? { scope: q.scope } : {}),
-        ...(q.status ? { status: q.status } : {}),
-        ...(q.connector_id ? { connector_id: q.connector_id } : {}),
-        ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
-        ...(q.limit !== undefined ? { limit: q.limit } : {}),
-        ...(q.offset !== undefined ? { offset: q.offset } : {}),
-      },
-      db,
-    );
-    return c.json({ items }, 200);
+    const params = {
+      tenant_id: principal.tenant_id,
+      ...(q.scope ? { scope: q.scope } : {}),
+      ...(q.status ? { status: q.status } : {}),
+      ...(q.connector_id ? { connector_id: q.connector_id } : {}),
+      ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
+      ...(q.q ? { q: q.q } : {}),
+      ...(q.sort ? { sort: q.sort } : {}),
+      ...(q.order ? { order: q.order } : {}),
+      ...(q.limit !== undefined ? { limit: q.limit } : {}),
+      ...(q.offset !== undefined ? { offset: q.offset } : {}),
+    };
+    const [items, total] = await Promise.all([listSkills(params, db), countSkills(params, db)]);
+    return c.json({ items, total }, 200);
   });
 
   app.openapi(createRouteSpec, async (c) => {

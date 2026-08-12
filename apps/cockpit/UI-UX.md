@@ -7,7 +7,7 @@ session boundary, API facade and deployment lifecycle.
 ## Product adaptation
 
 The home surface is a persistent, governed conversation rather than a dashboard. It combines the
-family shell with Superglue's useful working pattern: a narrow history rail, a focused work surface
+family shell with the Reference Architecture's useful working pattern: a narrow history rail, a focused work surface
 and an on-demand evidence drawer. The drawer never consumes the transcript's working width. Vercel
 AI Elements render messages, tool calls, approval cards, suggestions and the prompt composer.
 

@@ -29,7 +29,7 @@ export interface NavigationItem {
 }
 
 export interface NavigationGroup {
-  id: "work" | "build" | "resources" | "govern" | "admin";
+  id: "work" | "build" | "knowledge" | "govern" | "admin";
   labelKey: TranslationKey;
   items: readonly NavigationItem[];
 }
@@ -73,12 +73,6 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         icon: Activity,
         api: ["GET /v1/executions"],
       },
-    ],
-  },
-  {
-    id: "resources",
-    labelKey: "nav.group.resources",
-    items: [
       {
         labelKey: "nav.connectors",
         path: "/connectors",
@@ -86,6 +80,12 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         icon: Cable,
         api: ["GET /v1/connectors"],
       },
+    ],
+  },
+  {
+    id: "knowledge",
+    labelKey: "nav.group.knowledge",
+    items: [
       {
         labelKey: "nav.knowledge",
         path: "/knowledge",

@@ -653,6 +653,15 @@ export async function listWorkflows(
   const limit = Math.min(opts.limit ?? WORKFLOW_LIST_MAX_LIMIT, WORKFLOW_LIST_MAX_LIMIT);
   const offset = opts.offset ?? 0;
   const tenantConds = buildWorkflowListConds(tenant_id, opts);
+  const sortColumn =
+    opts.sort === "name"
+      ? workflows.name
+      : opts.sort === "lifecycle"
+        ? workflows.lifecycle
+        : opts.sort === "updated_at"
+          ? workflows.updated_at
+          : workflows.created_at;
+  const ordered = opts.order === "asc" ? asc(sortColumn) : desc(sortColumn);
 
   // Derived filters cannot be expressed in SQL, so they run over the matching
   // row set before the page is cut — which also means only the page's views
@@ -663,7 +672,7 @@ export async function listWorkflows(
       .select({ row: workflows })
       .from(workflows)
       .where(and(...tenantConds))
-      .orderBy(desc(workflows.created_at));
+      .orderBy(ordered, asc(workflows.id));
     const kept = all.filter((r) => derived.keep(r.row));
     const out: WorkflowView[] = [];
     for (const r of kept.slice(offset, offset + limit)) {
@@ -677,7 +686,7 @@ export async function listWorkflows(
     .select({ row: workflows, total: totalOverWindow() })
     .from(workflows)
     .where(and(...tenantConds))
-    .orderBy(desc(workflows.created_at))
+    .orderBy(ordered, asc(workflows.id))
     .limit(limit)
     .offset(offset);
   const total = await resolveWindowTotal(rows, offset, () => countWorkflows(db, tenant_id, opts));

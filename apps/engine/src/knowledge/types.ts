@@ -186,6 +186,9 @@ export interface ListKnowledgeSourcesParams {
   scope?: KnowledgeSourceScope;
   workflow_id?: string;
   status?: KnowledgeSourceStatus;
+  q?: string;
+  sort?: "name" | "status" | "source_type" | "bytes_total" | "updated_at";
+  order?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }
@@ -225,8 +228,30 @@ export interface IngestKnowledgeSourceParams {
     mime?: string;
   };
   actor_id: string | null;
+  expected_version?: string;
   /** See `CreateKnowledgeSourceParams.parsed_chunks`. */
   parsed_chunks?: RawChunk[];
+}
+
+export interface KnowledgeContentDocument {
+  path: string;
+  content: string;
+}
+
+export interface KnowledgeSourceContent {
+  knowledge_source_id: string;
+  version: string;
+  editable: boolean;
+  documents: KnowledgeContentDocument[];
+}
+
+export interface UpdateKnowledgeSourceContentParams {
+  tenant_id: string;
+  knowledge_source_id: string;
+  expected_version: string;
+  path: string;
+  content: string;
+  actor_id: string | null;
 }
 
 // ----- bundle upsert ---------------------------------------------------------

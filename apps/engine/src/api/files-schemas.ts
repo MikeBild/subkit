@@ -247,7 +247,11 @@ export const ListFilesQuerySchema = z
   .object({
     status: FileStatusSchema.optional(),
     linked_to: z.string().regex(LINKED_TO_PATTERN).optional(),
+    q: z.string().min(1).max(200).optional(),
+    sort: z.enum(["filename", "content_type", "size_bytes", "status", "created_at"]).optional(),
+    order: z.enum(["asc", "desc"]).optional(),
     cursor: z.string().optional(),
+    offset: z.coerce.number().int().min(0).optional(),
     limit: z.coerce.number().int().positive().max(100).optional(),
   })
   .openapi("ListFilesQuery");
@@ -255,6 +259,7 @@ export const ListFilesQuerySchema = z
 export const FileListResponseSchema = z
   .object({
     items: z.array(FileSchema),
+    total: z.number().int().nonnegative(),
     next_cursor: z.string().nullable().optional(),
   })
   .openapi("FileList");

@@ -62,6 +62,18 @@ const listRoute = createRoute({
     query: z
       .object({
         environment: z.enum(["dev", "prod"]).optional(),
+        enabled: z
+          .enum(["true", "false"])
+          .transform((value) => value === "true")
+          .optional(),
+        health_state: z
+          .enum(["ok", "degraded", "needs_reauth", "needs_update", "needs_attention"])
+          .optional(),
+        q: z.string().min(1).max(200).optional(),
+        sort: z.enum(["name", "driver", "environment", "enabled", "updated_at"]).optional(),
+        order: z.enum(["asc", "desc"]).optional(),
+        limit: z.coerce.number().int().positive().max(1000).optional(),
+        offset: z.coerce.number().int().min(0).optional(),
         category: z
           .string()
           .optional()
@@ -160,6 +172,13 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const opts: Parameters<typeof connectorSvc.listConnectors>[1] = {};
     if (q.environment) opts.environment = q.environment;
     if (q.category) opts.category = q.category;
+    if (q.enabled !== undefined) opts.enabled = q.enabled;
+    if (q.health_state) opts.health_state = q.health_state;
+    if (q.q) opts.q = q.q;
+    if (q.sort) opts.sort = q.sort;
+    if (q.order) opts.order = q.order;
+    if (q.limit !== undefined) opts.limit = q.limit;
+    if (q.offset !== undefined) opts.offset = q.offset;
     const { rows, total } = await connectorSvc.listConnectors(principal.tenant_id, opts, db);
     const items = rows.map((r) => ({
       ...serialize(r),

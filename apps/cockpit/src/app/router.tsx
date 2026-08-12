@@ -1,5 +1,7 @@
 import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
 import { AccessPage, ApiAccessPage, OperationsPage, PeoplePage, SettingsPage } from "@/pages/admin";
+import { CATALOG_RESOURCES, CatalogPage } from "@/pages/catalog";
+import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
 import { RESOURCE_CONFIGS, ResourcePage } from "@/pages/resource";
 import { useSession } from "./session";
@@ -18,6 +20,16 @@ const chatRoute = createRoute({
   path: "/chat",
   component: ChatPage,
 });
+const newChatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/chat/new",
+  component: ChatPage,
+});
+const conversationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/chat/$conversationId",
+  component: ChatPage,
+});
 
 const dedicatedRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/people", component: PeoplePage }),
@@ -29,7 +41,7 @@ const dedicatedRoutes = [
 const dedicatedResources = new Set(["people", "access", "api-access", "operations", "settings"]);
 
 const resourceRoutes = Object.keys(RESOURCE_CONFIGS)
-  .filter((resource) => !dedicatedResources.has(resource))
+  .filter((resource) => !dedicatedResources.has(resource) && !CATALOG_RESOURCES.has(resource))
   .map((resource) =>
     createRoute({
       getParentRoute: () => rootRoute,
@@ -41,10 +53,39 @@ const resourceRoutes = Object.keys(RESOURCE_CONFIGS)
     }),
   );
 
+const catalogRoutes = [...CATALOG_RESOURCES].flatMap((resource) => [
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: `/${resource}`,
+    component: () => {
+      const session = useSession();
+      return (
+        <CatalogPage resource={resource as DetailResource} permissions={session.permissions} />
+      );
+    },
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: `/${resource}/$resourceId`,
+    component: () => {
+      const session = useSession();
+      return (
+        <CatalogDetailPage
+          resource={resource as DetailResource}
+          permissions={session.permissions}
+        />
+      );
+    },
+  }),
+]);
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   chatRoute,
+  newChatRoute,
+  conversationRoute,
   ...dedicatedRoutes,
+  ...catalogRoutes,
   ...resourceRoutes,
 ]);
 

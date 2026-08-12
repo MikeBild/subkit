@@ -274,11 +274,12 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
+      controls={false}
       className={cn(
         "w-full min-w-0 overflow-hidden text-pretty [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         "[&_p]:break-words [&_p]:leading-6 [&_li]:break-words [&_li]:leading-6",
-        "[&_[data-streamdown=table-container]]:max-w-full [&_[data-streamdown=table-container]]:overflow-x-clip",
-        "[&_table]:w-full [&_table]:table-fixed [&_th]:break-words [&_td]:break-words [&_th]:[overflow-wrap:anywhere] [&_td]:[overflow-wrap:anywhere]",
+        "[&_[data-streamdown=table-container]]:max-w-full [&_[data-streamdown=table-container]]:overflow-x-auto",
+        "[&_table]:min-w-full [&_table]:w-max [&_th]:whitespace-nowrap [&_td]:align-top",
         className,
       )}
       {...props}

@@ -193,6 +193,9 @@ const listRoute = createRoute({
         offset: z.coerce.number().int().min(0).optional(),
         status: z.enum(["draft", "active", "archived"]).optional(),
         name_contains: z.string().optional(),
+        q: z.string().min(1).max(200).optional(),
+        sort: z.enum(["name", "lifecycle", "created_at", "updated_at"]).optional(),
+        order: z.enum(["asc", "desc"]).optional(),
         category: z
           .string()
           .optional()
@@ -603,6 +606,9 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.offset !== undefined) opts.offset = q.offset;
     if (q.status !== undefined) opts.status = q.status;
     if (q.name_contains !== undefined) opts.name_contains = q.name_contains;
+    if (q.q !== undefined) opts.q = q.q;
+    if (q.sort !== undefined) opts.sort = q.sort;
+    if (q.order !== undefined) opts.order = q.order;
     if (q.category !== undefined) opts.category = q.category;
     if (q.connector !== undefined) opts.connector = q.connector;
     const { rows, total } = await svc.listWorkflows(principal.tenant_id, opts, db);

@@ -3034,6 +3034,9 @@ export interface paths {
                     offset?: number | null;
                     status?: "draft" | "active" | "archived";
                     name_contains?: string;
+                    q?: string;
+                    sort?: "name" | "lifecycle" | "created_at" | "updated_at";
+                    order?: "asc" | "desc";
                     /** @description Only workflows in this catalog block (see the `category` field on each item) */
                     category?: string;
                     /** @description Only workflows whose current version uses this connector (id or slug) */
@@ -4761,6 +4764,13 @@ export interface paths {
             parameters: {
                 query?: {
                     environment?: "dev" | "prod";
+                    enabled?: "true" | "false";
+                    health_state?: "ok" | "degraded" | "needs_reauth" | "needs_update" | "needs_attention";
+                    q?: string;
+                    sort?: "name" | "driver" | "environment" | "enabled" | "updated_at";
+                    order?: "asc" | "desc";
+                    limit?: number;
+                    offset?: number | null;
                     /** @description Only connectors in this catalog block (see the `category` field on each item) */
                     category?: string;
                 };
@@ -6301,6 +6311,9 @@ export interface paths {
                     status?: "draft" | "active" | "archived";
                     connector_id?: string;
                     workflow_id?: string;
+                    q?: string;
+                    sort?: "title" | "scope" | "status" | "version" | "updated_at";
+                    order?: "asc" | "desc";
                     limit?: number;
                     offset?: number | null;
                 };
@@ -6316,7 +6329,9 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["SkillListResponse"];
+                        "application/json": components["schemas"]["SkillListResponse"] & {
+                            total: number;
+                        };
                     };
                 };
             };
@@ -6688,6 +6703,9 @@ export interface paths {
                     scope?: "global" | "workflow";
                     workflow_id?: string;
                     status?: "active" | "inactive" | "processing" | "error";
+                    q?: string;
+                    sort?: "name" | "status" | "source_type" | "bytes_total" | "updated_at";
+                    order?: "asc" | "desc";
                     limit?: number;
                     offset?: number | null;
                 };
@@ -6846,6 +6864,106 @@ export interface paths {
             };
         };
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge-sources/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read editable Markdown content for a knowledge source */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeSourceContentResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /** Replace one Markdown document using optimistic concurrency */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateKnowledgeSourceContentBody"];
+                };
+            };
+            responses: {
+                /** @description Updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeSourceContentResponse"];
+                    };
+                };
+                /** @description Read-only source */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Version conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         post?: never;
         delete?: never;
         options?: never;
@@ -7847,6 +7965,11 @@ export interface paths {
                 query?: {
                     status?: "active" | "awaiting_input" | "committed" | "abandoned";
                     owner?: "me";
+                    target_workflow_id?: string;
+                    target_connector_id?: string;
+                    q?: string;
+                    sort?: "title" | "status" | "created_at" | "updated_at";
+                    order?: "asc" | "desc";
                     limit?: number;
                     offset?: number | null;
                 };
@@ -9380,7 +9503,11 @@ export interface paths {
                 query?: {
                     status?: components["schemas"]["FileStatus"];
                     linked_to?: string;
+                    q?: string;
+                    sort?: "filename" | "content_type" | "size_bytes" | "status" | "created_at";
+                    order?: "asc" | "desc";
                     cursor?: string;
+                    offset?: number | null;
                     limit?: number;
                 };
                 header?: never;
@@ -15680,10 +15807,6 @@ export interface components {
             oauth2_expires_at: string | null;
             updated_at: string;
         };
-        SkillListResponse: {
-            items: components["schemas"]["Skill"][];
-            next_cursor?: string | null;
-        };
         Skill: {
             id: string;
             tenant_id: string;
@@ -15808,6 +15931,10 @@ export interface components {
             kind: "step_kind";
             step_kinds: ("request" | "transform" | "call" | "wait" | "wait_for_event" | "branch" | "parallel" | "loop" | "tool")[];
         };
+        SkillListResponse: {
+            items: components["schemas"]["Skill"][];
+            next_cursor?: string | null;
+        };
         CreateSkillBody: {
             /** @enum {string} */
             scope: "global" | "connector" | "workflow";
@@ -15842,6 +15969,7 @@ export interface components {
             source?: "manual" | "candidate" | "template" | "memory";
         };
         UpdateSkillBody: {
+            expected_version?: number;
             title?: string;
             body?: string;
             examples?: string[];
@@ -15886,6 +16014,7 @@ export interface components {
         };
         KnowledgeSourceListResponse: {
             items: components["schemas"]["KnowledgeSource"][];
+            total: number;
         };
         KnowledgeSource: {
             id: string;
@@ -15937,6 +16066,21 @@ export interface components {
                 content: string;
                 byte_size: number;
             }[];
+        };
+        KnowledgeSourceContentResponse: {
+            /** Format: uuid */
+            knowledge_source_id: string;
+            version: string;
+            editable: boolean;
+            documents: {
+                path: string;
+                content: string;
+            }[];
+        };
+        UpdateKnowledgeSourceContentBody: {
+            expected_version: string;
+            path: string;
+            content: string;
         };
         UpdateKnowledgeSourceBody: {
             name?: string;
@@ -16168,6 +16312,7 @@ export interface components {
         };
         ConversationListResponse: {
             items: components["schemas"]["Conversation"][];
+            total: number;
         };
         Conversation: {
             id: string;
@@ -16549,6 +16694,7 @@ export interface components {
         };
         FileList: {
             items: components["schemas"]["File"][];
+            total: number;
             next_cursor?: string | null;
         };
         FileStats: {

@@ -25,7 +25,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, count, desc, eq, isNull, lt } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   BatchCreateRequestSchema,
@@ -1170,48 +1170,59 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     // convention note). Do not rename.
     const tenantConds = [eq(files.tenant_id, tenant_id), isNull(files.deleted_at)];
     if (q.status) tenantConds.push(eq(files.status, q.status));
-    if (q.cursor) {
+    if (q.q) {
+      const needle = `%${q.q}%`;
+      const search = or(ilike(files.filename, needle), ilike(files.content_type, needle));
+      if (search) tenantConds.push(search);
+    }
+    if (q.linked_to) {
+      const colon = q.linked_to.indexOf(":");
+      const rtype = q.linked_to.slice(0, colon);
+      const rid = q.linked_to.slice(colon + 1);
+      tenantConds.push(sql<boolean>`exists (
+        select 1 from file_links fl
+        where fl.tenant_id = ${tenant_id}
+          and fl.file_id = ${files.id}
+          and fl.resource_type = ${rtype}
+          and fl.resource_id = ${rid}::uuid
+      )`);
+    }
+    const totalConds = [...tenantConds];
+    if (q.cursor && (!q.sort || q.sort === "created_at") && (!q.order || q.order === "desc")) {
       const cursorDate = new Date(q.cursor);
       if (!Number.isNaN(cursorDate.getTime())) {
         tenantConds.push(lt(files.created_at, cursorDate));
       }
     }
 
-    let rows = await db
+    const sortColumn =
+      q.sort === "filename"
+        ? files.filename
+        : q.sort === "content_type"
+          ? files.content_type
+          : q.sort === "size_bytes"
+            ? files.size_bytes
+            : q.sort === "status"
+              ? files.status
+              : files.created_at;
+    const ordered = q.order === "asc" ? asc(sortColumn) : desc(sortColumn);
+    const [totalRow] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(files)
+      .where(and(eq(files.tenant_id, tenant_id), ...totalConds.slice(1)));
+    const rows = await db
       .select()
       .from(files)
-      .where(and(...tenantConds))
-      .orderBy(desc(files.created_at))
-      .limit(limit + 1);
-
-    // `linked_to=<type>:<id>` post-filter — join intersection against
-    // `file_links`. Cheap for the small windows the list endpoint
-    // returns; reconsider when tenants routinely page past 1k files.
-    if (q.linked_to) {
-      const colon = q.linked_to.indexOf(":");
-      const rtype = q.linked_to.slice(0, colon);
-      const rid = q.linked_to.slice(colon + 1);
-      const linkRows = await db
-        .select({ file_id: fileLinks.file_id })
-        .from(fileLinks)
-        .where(
-          and(
-            eq(fileLinks.tenant_id, tenant_id),
-            // resource_type enum is narrow; the regex on the query
-            // schema validated the shape.
-            eq(fileLinks.resource_type, rtype as "conversation"),
-            eq(fileLinks.resource_id, rid),
-          ),
-        );
-      const allow = new Set(linkRows.map((r) => r.file_id));
-      rows = rows.filter((r) => allow.has(r.id));
-    }
+      .where(and(eq(files.tenant_id, tenant_id), ...tenantConds.slice(1)))
+      .orderBy(ordered, asc(files.id))
+      .limit(limit + 1)
+      .offset(q.offset ?? 0);
 
     const hasMore = rows.length > limit;
     const items = (hasMore ? rows.slice(0, limit) : rows).map(toFileWire);
     const lastVisible = hasMore ? rows[limit - 1] : undefined;
     const next_cursor = lastVisible ? lastVisible.created_at.toISOString() : null;
-    return c.json({ items, next_cursor }, 200);
+    return c.json({ items, total: Number(totalRow?.total ?? 0), next_cursor }, 200);
   });
 
   // ---------------------------------------------------------------------

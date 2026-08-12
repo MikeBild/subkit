@@ -4,7 +4,7 @@
 // no table coupling). Persists to knowledge_sources + knowledge_chunks.
 
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, isNull, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -26,6 +26,7 @@ import {
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KnowledgeBudgetExceededError,
 } from "./budgets.ts";
+import { KnowledgeVersionConflictError } from "./errors.ts";
 import { linkKnowledgeFile, persistKnowledgeFile } from "./file-persist.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
 import { dedupeTags, mergeStructuralTags } from "./tags.ts";
@@ -36,10 +37,13 @@ import type {
   KnowledgeIngestResult,
   KnowledgeSearchHit,
   KnowledgeSourceView,
-  ListKnowledgeSourcesParams,
   SearchKnowledgeParams,
   UpdateKnowledgeSourceParams,
 } from "./types.ts";
+import { knowledgeSourceRowToView } from "./view.ts";
+
+export { countKnowledgeSources, getKnowledgeSource, listKnowledgeSources } from "./catalog.ts";
+export { knowledgeSourceRowToView } from "./view.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,32 +87,6 @@ export async function kickSourceEmbeddingBackfill(
       ...errorFields(err),
     });
   }
-}
-
-function toView(row: typeof knowledgeSources.$inferSelect): KnowledgeSourceView {
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    name: row.name,
-    slug: row.slug,
-    description: row.description,
-    tags: row.tags,
-    scope: row.scope,
-    workflow_id: row.workflow_id,
-    status: row.status,
-    last_error: row.last_error,
-    source_type: row.source_type,
-    source_uri: row.source_uri,
-    mime_type: row.mime_type,
-    version: row.version,
-    bytes_total: row.bytes_total,
-    chunk_count: row.chunk_count,
-    refresh_strategy: row.refresh_strategy,
-    refresh_cron: row.refresh_cron,
-    last_refreshed_at: row.last_refreshed_at?.toISOString() ?? null,
-    created_at: row.created_at.toISOString(),
-    updated_at: row.updated_at.toISOString(),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -244,57 +222,10 @@ export async function createKnowledgeSource(
     );
 
     invalidateKnowledgeCache(p.tenant_id);
-    return toView(row);
+    return knowledgeSourceRowToView(row);
   });
   void kickSourceEmbeddingBackfill(p.tenant_id, created.id, db);
   return created;
-}
-
-export async function listKnowledgeSources(
-  p: ListKnowledgeSourcesParams,
-  exec?: Executor,
-): Promise<KnowledgeSourceView[]> {
-  const db = exec ?? getDb();
-  const limit = Math.min(Math.max(1, p.limit ?? 50), 500);
-  const offset = Math.max(0, p.offset ?? 0);
-
-  const tenantConds = [
-    eq(knowledgeSources.tenant_id, p.tenant_id),
-    isNull(knowledgeSources.deleted_at),
-  ];
-  if (p.scope) tenantConds.push(eq(knowledgeSources.scope, p.scope));
-  if (p.workflow_id) tenantConds.push(eq(knowledgeSources.workflow_id, p.workflow_id));
-  if (p.status) tenantConds.push(eq(knowledgeSources.status, p.status));
-
-  const rows = await db
-    .select()
-    .from(knowledgeSources)
-    .where(and(...tenantConds))
-    .orderBy(desc(knowledgeSources.created_at))
-    .limit(limit)
-    .offset(offset);
-
-  return rows.map(toView);
-}
-
-export async function getKnowledgeSource(
-  tenant_id: string,
-  id: string,
-  exec?: Executor,
-): Promise<KnowledgeSourceView | null> {
-  const db = exec ?? getDb();
-  const rows = await db
-    .select()
-    .from(knowledgeSources)
-    .where(
-      and(
-        eq(knowledgeSources.tenant_id, tenant_id),
-        eq(knowledgeSources.id, id),
-        isNull(knowledgeSources.deleted_at),
-      ),
-    )
-    .limit(1);
-  return rows[0] ? toView(rows[0]) : null;
 }
 
 /**
@@ -319,7 +250,7 @@ export async function getKnowledgeSourceBySlug(
       ),
     )
     .limit(1);
-  return rows[0] ? toView(rows[0]) : null;
+  return rows[0] ? knowledgeSourceRowToView(rows[0]) : null;
 }
 
 export async function updateKnowledgeSource(
@@ -342,7 +273,7 @@ export async function updateKnowledgeSource(
       .limit(1);
 
     if (!existing[0]) return null;
-    const before = toView(existing[0]);
+    const before = knowledgeSourceRowToView(existing[0]);
 
     // Validate scope+workflow_id constraint
     const effectiveScope = p.patch.scope ?? existing[0].scope;
@@ -380,13 +311,13 @@ export async function updateKnowledgeSource(
         resource_id: p.id,
         result: "success",
         before,
-        after: toView(updated),
+        after: knowledgeSourceRowToView(updated),
         metadata: {},
       },
       tx,
     );
 
-    return toView(updated);
+    return knowledgeSourceRowToView(updated);
   });
 }
 
@@ -465,7 +396,7 @@ export async function analyzeKnowledgeSource(
 
   if (sample.trim().length === 0) {
     // Nothing to analyze (e.g. a source with no chunks). Leave it as-is.
-    return toView(source);
+    return knowledgeSourceRowToView(source);
   }
 
   const prompt = [
@@ -492,7 +423,7 @@ export async function analyzeKnowledgeSource(
   const analysis = result.object;
   if (!analysis) {
     // Model returned no structured object — leave the source un-enriched.
-    return toView(source);
+    return knowledgeSourceRowToView(source);
   }
 
   const nextTags = mergeStructuralTags(source.tags ?? [], analysis.tags);
@@ -533,7 +464,7 @@ export async function analyzeKnowledgeSource(
     );
 
     invalidateKnowledgeCache(p.tenant_id);
-    return toView(updated);
+    return knowledgeSourceRowToView(updated);
   });
 }
 
@@ -655,6 +586,22 @@ export async function ingestKnowledgeSource(
   }
 
   await (db as Db).transaction(async (tx) => {
+    const [lockedSource] = await tx
+      .select({ version: knowledgeSources.version, slug: knowledgeSources.slug })
+      .from(knowledgeSources)
+      .where(
+        and(
+          eq(knowledgeSources.tenant_id, p.tenant_id),
+          eq(knowledgeSources.id, p.knowledge_source_id),
+          isNull(knowledgeSources.deleted_at),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!lockedSource) return;
+    if (p.expected_version !== undefined && lockedSource.version !== p.expected_version) {
+      throw new KnowledgeVersionConflictError(p.expected_version, lockedSource.version);
+    }
     // Same tenant-budget guard as the create path — a re-ingest that grows
     // a source (nightly bundle re-import) must not silently sail past the
     // cap. Counts everything except the source being replaced.
@@ -720,6 +667,8 @@ export async function ingestKnowledgeSource(
         resource_type: "knowledge_source",
         resource_id: p.knowledge_source_id,
         result: "success",
+        before: { version: lockedSource.version },
+        after: { version },
         metadata: {
           ...(sourceRow ? { slug: sourceRow.slug } : {}),
           chunk_count: accepted.length,

@@ -1,12 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog, knowledgeChunks } from "../../db/schema/index.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { getKnowledgeSource, listKnowledgeSources } from "../catalog.ts";
+import {
+  getKnowledgeSourceContent,
+  KnowledgeVersionConflictError,
+  updateKnowledgeSourceContent,
+} from "../content.ts";
 import {
   createKnowledgeSource,
   deleteKnowledgeSource,
-  getKnowledgeSource,
   ingestKnowledgeSource,
-  listKnowledgeSources,
   updateKnowledgeSource,
 } from "../service.ts";
 import type { KnowledgeSourceView } from "../types.ts";
@@ -14,6 +19,7 @@ import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
+const nextUuid = createDeterministicUuidFactory(0x6b10_20);
 
 let ctx: KnowledgeTestCtx;
 
@@ -197,6 +203,48 @@ describe.skipIf(skip)("knowledge/service", () => {
     expect(after).not.toBeNull();
     // Version should have changed
     expect(after!.version).not.toBe(before!.version);
+  });
+
+  test("Markdown content uses tenant-scoped optimistic concurrency and writes audit", async () => {
+    const before = await getKnowledgeSourceContent(ctx.tenantId, createdId, ctx.testDb.db);
+    expect(before?.editable).toBe(true);
+    expect(before?.documents[0]?.content).toContain("New Content");
+    expect(await getKnowledgeSourceContent(nextUuid(), createdId, ctx.testDb.db)).toBeNull();
+
+    const path = before!.documents[0]!.path;
+    const updated = await updateKnowledgeSourceContent(
+      {
+        tenant_id: ctx.tenantId,
+        knowledge_source_id: createdId,
+        expected_version: before!.version,
+        path,
+        content: "# Edited policy\n\nOperator-approved content.",
+        actor_id: null,
+      },
+      ctx.testDb.db,
+    );
+    expect(updated?.version).not.toBe(before!.version);
+    expect(updated?.documents[0]?.content).toContain("Operator-approved content");
+
+    await expect(
+      updateKnowledgeSourceContent(
+        {
+          tenant_id: ctx.tenantId,
+          knowledge_source_id: createdId,
+          expected_version: before!.version,
+          path,
+          content: "# Stale overwrite",
+          actor_id: null,
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toBeInstanceOf(KnowledgeVersionConflictError);
+
+    const audits = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.resource_id, createdId));
+    expect(audits.some((row) => row.action === "knowledge_source.ingested")).toBe(true);
   });
 
   test("deleteKnowledgeSource soft-deletes", async () => {
