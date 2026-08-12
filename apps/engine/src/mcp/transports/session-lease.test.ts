@@ -1,6 +1,6 @@
 // Session-lease idle sweeper — pure unit coverage against a fake clock.
 //
-// `createSessionLeaseManager` (see `streamable-http.ts`) treats a map entry
+// `createSessionLeaseManager` (see `session-lease.ts`) treats a map entry
 // as a LEASE, not a permanent allocation: an entry that outlives
 // `SESSION_IDLE_TTL_MS` without a touch is evicted, which closes the
 // underlying `server` (walking the SDK's `onclose` chain and detaching the
@@ -24,7 +24,7 @@ import {
   SESSION_IDLE_TTL_MS,
   SESSION_STUCK_TTL_MS,
   type Session,
-} from "./streamable-http.ts";
+} from "./session-lease.ts";
 
 function fakeSession(
   lastSeenAt: number,
