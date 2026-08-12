@@ -47,7 +47,7 @@ import {
 import { now } from "../../utils/clock.ts";
 import { createMcpServer } from "../server.ts";
 import { validateMcpStreamableHttpRequest } from "./guards.ts";
-import { classifyMcpRequest, type McpRequestClass, mcpOutcome } from "./request-labels.ts";
+import { classifyMcpRequest, mcpOutcome } from "./request-labels.ts";
 
 // A session is a lease, not a permanent allocation. The spec has clients send
 // `DELETE /mcp` when they are done and almost none do, so `onsessionclosed`
@@ -71,26 +71,50 @@ export const MAX_LIVE_SESSIONS = 100;
 // unbounded. At the hard ceiling a fresh `initialize` is refused with a 503
 // instead of admitted; existing sessions keep working.
 export const MAX_LIVE_SESSIONS_HARD = 120;
+// Fair share of the map for one owner (`ownerKey`: tenant + actor + credential).
+// The caps above are global, so without a per-owner share a single client that
+// re-initializes instead of reusing its session owns the whole map and every
+// OTHER principal is refused at the door. Production saw exactly that: one OAuth
+// client held 118 of 120 leases while a second credential on the same tenant
+// could not open a single session — its connector reported a bare "Internal
+// error" for an hour. Consulted only at the hard cap with nothing else
+// evictable, so a well-behaved client never comes near it.
+export const MAX_LIVE_SESSIONS_PER_OWNER = Math.floor(MAX_LIVE_SESSIONS_HARD / 4);
 // Lease timeout for busy leases. `inFlight > 0` normally means "live stream —
-// never evict", but a retain that never comes back (a transport whose
-// `onClosed` never fired, a stream the runtime lost track of) would pin its
-// lease forever and, at scale, wedge the map at the cap with no victims. A
-// lease that has seen NO request start or finish for this long is stuck, not
-// busy — `retain`/`release` re-date `lastSeenAt` on every unit of work, so a
-// genuinely active session never ages this far. Kept well above the idle TTL
-// so a long-lived standalone GET notification channel on a quiet but connected
-// client is not severed prematurely (the existing sweeper tests pin survival
-// at 10× the idle TTL).
-export const SESSION_STUCK_TTL_MS = 12 * SESSION_IDLE_TTL_MS;
-// A retain is bounded, like the lease it accounts against. An SSE body the
-// runtime never attaches to a socket is never pulled and never cancelled, so
-// its `onClosed` never fires and its retain pins `inFlight` at 1 forever — the
-// sweeper skips the lease and `evictOverflow` can never reclaim it. A stream
-// that has produced nothing and been neither pulled nor cancelled inside this
-// window is not in flight. Real consumers issue their first `pull` in the same
-// microtask the Response is returned in, so this only ever fires on a body
-// nobody took.
-export const STREAM_RETAIN_START_GRACE_MS = 30_000;
+// never evict", but a retain that never comes back would pin its lease forever
+// and, at scale, wedge the map at the cap with no victims. A lease that has
+// seen NO request start or finish for this long is stuck, not busy —
+// `retain`/`release` re-date `lastSeenAt` on every unit of work, so a genuinely
+// active session never ages this far.
+//
+// This is the LAST line of defence, not the first: `STREAM_RETAIN_SILENT_MS`
+// below hands a silent stream's retain back within minutes, so a lease only
+// reaches this timeout if the retain accounting itself was bypassed. Production
+// ran this at 12× the idle TTL (6 h) while no stream-level bound existed, and
+// 120 dead-socket leases wedged the map for hours — `overflow_no_victim` on
+// every admission, then a hard 503 for any client needing a NEW session. Six
+// hours is far longer than it takes to refill the cap (observed: ~40 min), so
+// the backstop has to sit much closer to the idle TTL.
+export const SESSION_STUCK_TTL_MS = 2 * SESSION_IDLE_TTL_MS;
+// A retain is bounded by LIVENESS, not by the stream's own promise to end.
+//
+// Two ways an SSE body pins `inFlight` at 1 forever if nothing bounds it: a
+// body the runtime never attaches to a socket is never pulled and never
+// cancelled; and a body that WAS pulled, whose client then vanished without a
+// clean close, sits on a `read()` that never settles and a `cancel` that never
+// comes. The second is the one that wedged production — the first `pull`
+// arrives, and after it a dead stream is indistinguishable from a live-but-quiet
+// one until something proves the socket dead.
+//
+// So the window is re-armed on every delivered chunk rather than disarmed on
+// the first `pull`: a stream that has moved no bytes for this long hands its
+// retain back, and takes it straight back if a chunk ever does arrive. Sized
+// above the longest legitimate silence on a live stream — `WF_INLINE_TIMEOUT_MS`
+// (50 s), the gap between a tool call opening its POST stream and writing its
+// JSON-RPC response — so a working tool call never gives up its retain
+// mid-flight. Giving the retain back does not sever anything: it only makes the
+// lease *eligible* for the idle sweeper a full `SESSION_IDLE_TTL_MS` later.
+export const STREAM_RETAIN_SILENT_MS = 2 * 60_000;
 
 export interface Session {
   transport: WebStandardStreamableHTTPServerTransport;
@@ -112,9 +136,11 @@ export interface Session {
   // (open for the life of the client's session) and each POST response stream
   // (open until its JSON-RPC response is written). A session with
   // `inFlight > 0` is not idle, and evicting it would close the transport out
-  // from under a live stream. Every retain is bounded: a stream body nobody
-  // consumed hands its retain back after `STREAM_RETAIN_START_GRACE_MS`, so
-  // `inFlight` can never latch above zero.
+  // from under a live stream. Every retain is bounded by liveness, not by the
+  // stream ending: a body that moves no bytes for `STREAM_RETAIN_SILENT_MS`
+  // hands its retain back (and reclaims it on the next chunk), so `inFlight`
+  // tracks streams that are demonstrably alive rather than streams that merely
+  // never reported their own death.
   inFlight: number;
   /** Privacy-safe event context. Optional only for isolated lease-manager tests. */
   usage?: {
@@ -223,44 +249,61 @@ interface StreamRetain {
  * BOUNDED lifetime. An SSE body outlives the `handleRequest` promise by design:
  * the standalone GET notification channel stays open for the life of the
  * session, and a POST response stream stays open until the tool's JSON-RPC
- * response is written. `release` then fires exactly once — on normal end,
- * client cancel, or error.
+ * response is written. `release` then fires on normal end, client cancel, or
+ * error.
  *
- * A body that is never consumed has none of those endings. Its retain is
- * force-released once `STREAM_RETAIN_START_GRACE_MS` passes with no `pull` and
- * no `cancel`; if a first `pull` arrives after that, the stream is live and
- * takes the retain back. `release` and `reacquire` are therefore balanced in
- * every ordering, and the retain is never released twice.
+ * None of those endings arrive for a body whose client vanished without closing
+ * the connection: `read()` never settles and `cancel` is never called. So the
+ * retain is additionally bounded by LIVENESS — a window re-armed on every
+ * delivered chunk. A stream silent for `STREAM_RETAIN_SILENT_MS` hands its
+ * retain back so the sweeper can reclaim the lease; if a chunk does arrive
+ * later, the stream proves itself alive and takes the retain back.
+ *
+ * `held` makes `release` and `reacquire` balanced in every ordering, so the
+ * retain is never released twice and never leaked.
  */
-function trackStreamLifetime(
+export function trackStreamLifetime(
   body: ReadableStream<Uint8Array>,
   retain: StreamRetain,
+  // The silence window is a real `setTimeout`, not the `utils/clock.ts` seam
+  // (which only fakes `now()`), so tests inject a few milliseconds instead of
+  // waiting out the production default.
+  silentMs: number = STREAM_RETAIN_SILENT_MS,
 ): ReadableStream<Uint8Array> {
   const reader = body.getReader();
-  let started = false;
   let held = true;
   let closed = false;
-  let grace: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
-    grace = undefined;
-    if (started || closed) return;
-    held = false;
-    retain.release();
-    retain.onForceReleased();
-  }, STREAM_RETAIN_START_GRACE_MS);
-  (grace as unknown as { unref?: () => void }).unref?.();
+  let silence: ReturnType<typeof setTimeout> | undefined;
 
   const disarm = (): void => {
-    if (!grace) return;
-    clearTimeout(grace);
-    grace = undefined;
+    if (!silence) return;
+    clearTimeout(silence);
+    silence = undefined;
   };
-  // First evidence the stream is alive. Reclaims a force-released retain.
-  const activate = (): void => {
-    started = true;
+  // Re-armed on every chunk. Fires only while the stream is open, holds the
+  // retain, and has moved nothing for a full window. Deliberately does NOT
+  // re-arm itself after firing: the retain is already back, and the next chunk
+  // (if any) re-arms via `activity`.
+  const arm = (): void => {
     disarm();
-    if (held) return;
-    held = true;
-    retain.reacquire();
+    silence = setTimeout(() => {
+      silence = undefined;
+      if (closed || !held) return;
+      held = false;
+      retain.release();
+      retain.onForceReleased();
+    }, silentMs);
+    (silence as unknown as { unref?: () => void }).unref?.();
+  };
+  // Bytes crossed the wire — the only evidence that distinguishes a live quiet
+  // stream from a dead one. Reclaims a force-released retain.
+  const activity = (): void => {
+    if (closed) return;
+    if (!held) {
+      held = true;
+      retain.reacquire();
+    }
+    arm();
   };
   const finish = (): void => {
     if (closed) return;
@@ -270,9 +313,13 @@ function trackStreamLifetime(
     held = false;
     retain.release();
   };
+
+  // Armed before the first `pull`, so a body the runtime never attaches to a
+  // socket is bounded by the same window as one that stalls after attaching.
+  arm();
+
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
-      activate();
       try {
         const chunk = await reader.read();
         if (chunk.done) {
@@ -280,6 +327,7 @@ function trackStreamLifetime(
           controller.close();
           return;
         }
+        activity();
         controller.enqueue(chunk.value);
       } catch (err) {
         finish();
@@ -407,6 +455,29 @@ export function createSessionLeaseManager(): SessionLeaseManager {
     return session.inFlight === 0 || session.lastSeenAt <= stuckCutoff;
   }
 
+  // Last-resort victim when nothing is evictable: the oldest lease belonging to
+  // an owner that is over `MAX_LIVE_SESSIONS_PER_OWNER`. Severing the hog's
+  // oldest stream costs that client one reconnect; refusing admission instead
+  // costs a DIFFERENT client all of its access, which is the strictly worse
+  // trade. Returns undefined when the map is shared fairly — then a refusal is
+  // honest and the caller answers 503.
+  function dominantOwnerVictim(): string | undefined {
+    const perOwner = new Map<string, number>();
+    for (const session of sessions.values()) {
+      perOwner.set(session.owner, (perOwner.get(session.owner) ?? 0) + 1);
+    }
+    let victimId: string | undefined;
+    let oldestSeenAt = Number.POSITIVE_INFINITY;
+    for (const [sessionId, session] of sessions) {
+      if ((perOwner.get(session.owner) ?? 0) <= MAX_LIVE_SESSIONS_PER_OWNER) continue;
+      if (session.lastSeenAt < oldestSeenAt) {
+        oldestSeenAt = session.lastSeenAt;
+        victimId = sessionId;
+      }
+    }
+    return victimId;
+  }
+
   // Make room for one more lease. Oldest-idle first: a session nobody has
   // touched is the cheapest one to lose. Sessions with in-flight work are only
   // victims once they age past the stuck TTL — a lease holding an open
@@ -433,6 +504,23 @@ export function createSessionLeaseManager(): SessionLeaseManager {
         // refuse — unbounded admission is how 80 consecutive over-cap warns
         // happened in production.
         if (sessions.size >= MAX_LIVE_SESSIONS_HARD) {
+          // At the ceiling with nothing evictable, refusing is only the honest
+          // answer if the map is shared fairly. If one owner is over its share,
+          // it pays for the overflow instead of the next arrival.
+          const hog = dominantOwnerVictim();
+          if (hog) {
+            logger.warn({
+              module: "mcp",
+              action: "mcp.session.owner_share_evicted",
+              msg: "mcp session hard cap reached with no evictable lease — evicting the oldest lease of an owner over its per-owner share",
+              sessions_open: sessions.size,
+              hard_cap: MAX_LIVE_SESSIONS_HARD,
+              per_owner_cap: MAX_LIVE_SESSIONS_PER_OWNER,
+              session_id: hog,
+            });
+            evict(hog, "capacity");
+            return true;
+          }
           logger.warn({
             module: "mcp",
             action: "mcp.session.hard_cap_reached",
@@ -461,7 +549,10 @@ export function createSessionLeaseManager(): SessionLeaseManager {
     for (const session of sessions.values()) {
       if (isEvictable(session, stuckCutoff)) return true;
     }
-    return false;
+    // Nothing evictable — but `evictOverflow` will still take a lease off an
+    // owner that is over its share rather than refuse. The probe has to agree
+    // with the gate it guards, or admission 503s before that ever runs.
+    return dominantOwnerVictim() !== undefined;
   }
 
   return {
@@ -894,9 +985,9 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
               logger.warn({
                 module: "mcp",
                 action: "mcp.session.retain_force_released",
-                msg: "sse body was never pulled or cancelled within the retain grace — releasing its lease retain so the sweeper can reclaim it",
+                msg: "sse body moved no bytes within the retain silence window — releasing its lease retain so the sweeper can reclaim it",
                 session_id: active.transport.sessionId ?? null,
-                grace_ms: STREAM_RETAIN_START_GRACE_MS,
+                silent_ms: STREAM_RETAIN_SILENT_MS,
                 principal_id: principal.id,
                 tenant_id: principal.tenant_id,
               }),
