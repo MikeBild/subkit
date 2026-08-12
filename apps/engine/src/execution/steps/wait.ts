@@ -5,12 +5,11 @@
 //
 // Cap is 24h via Zod (`WaitStepSchema.duration_ms.max`). Multi-day
 // patterns belong on the Schedule + State recipe, not here.
-import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { workflowWaits } from "../../db/schema/workflow_waits.ts";
 import type { WaitStep } from "../../workflows/types.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
+import { clearWaitCheckpoint, writeWaitCheckpoint } from "./wait-checkpoint.ts";
 
 export async function runWaitStep(p: { ctx: StepRunContext; step: WaitStep }): Promise<StepResult> {
   const start = Date.now();
@@ -18,21 +17,9 @@ export async function runWaitStep(p: { ctx: StepRunContext; step: WaitStep }): P
 
   // Checkpoint the wait BEFORE arming the timer. If the engine dies
   // between this insert and the resolve, the boot-time reaper finds the
-  // row and resumes (or re-arms) the wait. Idempotent on conflict —
-  // a retry of the same step does not duplicate.
-  await p.ctx.db
-    .insert(workflowWaits)
-    .values({
-      tenant_id: p.ctx.tenant_id,
-      execution_id: p.ctx.execution_id,
-      workflow_id: p.ctx.workflow_id,
-      step_id: p.step.id,
-      sleep_until_ts: sleepUntil,
-    })
-    .onConflictDoUpdate({
-      target: [workflowWaits.tenant_id, workflowWaits.execution_id, workflowWaits.step_id],
-      set: { sleep_until_ts: sleepUntil, updated_at: new Date() },
-    });
+  // row and resumes (or re-arms) the wait. Skipped for runs the reaper
+  // could not resume anyway — see `wait-checkpoint.ts`.
+  await writeWaitCheckpoint(p.ctx, p.step.id, sleepUntil);
 
   // First step-level audit pair in subkit. `wait_completed` fires
   // unconditionally below (timer / cancelled / error), preserving the
@@ -89,18 +76,7 @@ export async function runWaitStep(p: { ctx: StepRunContext; step: WaitStep }): P
     };
   }
 
-  // Cleanup the checkpoint row whether the wait completed or aborted.
-  // The reaper only acts on rows that survived a process death; a
-  // graceful exit always clears its own row.
-  await p.ctx.db
-    .delete(workflowWaits)
-    .where(
-      and(
-        eq(workflowWaits.tenant_id, p.ctx.tenant_id),
-        eq(workflowWaits.execution_id, p.ctx.execution_id),
-        eq(workflowWaits.step_id, p.step.id),
-      ),
-    );
+  await clearWaitCheckpoint(p.ctx, p.step.id);
 
   await auditAwait(
     {
