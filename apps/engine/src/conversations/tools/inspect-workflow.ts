@@ -3,7 +3,8 @@
 //
 // API shape:
 //   sections: ["instruction" | "input_schema" | "output_schema" |
-//              "output_transform" | "payload" | "response_filters"]
+//              "output_transform" | "payload" | "response_filters" |
+//              "execution_guards"]
 //   steps:    [{ stepId, include: ["config" | "result" |
 //                                   "data_selector" | "instruction"] }]
 //
@@ -26,6 +27,7 @@ const SectionEnum = z.enum([
   "output_transform",
   "payload",
   "response_filters",
+  "execution_guards",
 ]);
 
 const StepIncludeEnum = z.enum(["config", "result", "data_selector", "instruction"]);
@@ -151,6 +153,15 @@ export const inspectWorkflowTool: ConversationTool = {
           }
           case "response_filters":
             result.response_filters = wf.response_filters ?? null;
+            break;
+          case "execution_guards":
+            result.execution_guards = {
+              max_llm_tokens_per_run: wf.max_llm_tokens_per_run ?? null,
+              timeout_ms: wf.timeout_ms ?? null,
+              validation_expression: wf.validation_expression ?? null,
+              validation_function: wf.validation_function ?? null,
+              runtime: wf.runtime ?? null,
+            };
             break;
         }
       }

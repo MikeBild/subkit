@@ -117,6 +117,15 @@ describe("workflowDefFromDraft", () => {
     expect(def.validation_expression).toBe("orders.length > 0");
   });
 
+  it("preserves the per-run LLM token budget", () => {
+    const def = workflowDefFromDraft({
+      name: "Budgeted review",
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+      max_llm_tokens_per_run: 70_000,
+    });
+    expect(def.max_llm_tokens_per_run).toBe(70_000);
+  });
+
   it("projects input_schema_sample so the payload-derived tier reaches SAVED workflows (W4)", () => {
     // `input_schema_sample` is a persisted WorkflowDef field (an internal
     // literal example payload, NOT the public MCP tool input schema). The

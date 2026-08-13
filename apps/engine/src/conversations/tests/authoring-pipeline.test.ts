@@ -390,6 +390,19 @@ describe("GeneratedWorkflowSchema — step breadth bound (P2)", () => {
     });
     expect(parsed.success).toBe(true);
   });
+
+  test("accepts workflow-level governance and runtime fields", () => {
+    const parsed = GeneratedWorkflowSchema.safeParse({
+      name: "budgeted",
+      slug: "budgeted",
+      max_llm_tokens_per_run: 70_000,
+      timeout_ms: 120_000,
+      validation_function: "return input.ok === true;",
+      runtime: { stdlib_version: "1" },
+      steps: [{ id: "a", kind: "wait", duration_ms: 100 }],
+    });
+    expect(parsed.success).toBe(true);
+  });
 });
 
 describe("runAuthoringPipeline — shared deadline / abort degradation (P2)", () => {

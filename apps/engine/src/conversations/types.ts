@@ -354,7 +354,19 @@ export interface WorkflowDraftDocument {
    */
   input_schema_sample?: unknown;
   output_schema?: Record<string, unknown>;
+  validation_expression?: string;
+  validation_function?: string;
   output_transform?: string;
+  output_transform_function?: string;
+  response_filters?: WorkflowDef["response_filters"];
+  timeout_ms?: number;
+  /**
+   * Per-run cumulative LLM-token cap. This is a persisted WorkflowDef field,
+   * not authoring-only metadata, and therefore must survive hydration,
+   * patching, validation, and commit unchanged.
+   */
+  max_llm_tokens_per_run?: number;
+  runtime?: WorkflowDef["runtime"];
   edges?: Array<{ from: string; to: string }>;
   /** Optional pointer to the skill this draft was authored against
    *  (typically via `start_workflow_from_recipe`). Read by the

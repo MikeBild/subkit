@@ -72,6 +72,17 @@ High-value references (by task type):
 
 - Start with the doc/spec that owns the behavior you are about to change. Do not reinvent
   an existing subsystem.
+- **Configuration before deployment.** Workflow definitions, prompts, model
+  parameters, per-run limits, and editorial policy are versioned runtime data.
+  Change them through the existing workflow/settings/knowledge surfaces before
+  considering engine code. Do not start a patch→release→deploy loop for each
+  issue discovered during a user workflow; collect engine gaps and ship them
+  later as one planned maintenance release unless the current goal is otherwise
+  impossible.
+- **Prove the release boundary first.** Before preparing a version bump, state
+  why the existing workflow API, settings overrides/hot reload, or knowledge
+  update path cannot achieve the requested result. Full CI/CD is a release
+  gate, not an exploratory debugging loop.
 - Prefer small, reviewable diffs that preserve existing architecture over broad rewrites.
 - Put shared guidance in this file or a directory-local `AGENTS.md`, never in tool-specific shims.
 - **Use `bun`, not `npm` or `yarn`.** Scripts assume the `bun` runtime.

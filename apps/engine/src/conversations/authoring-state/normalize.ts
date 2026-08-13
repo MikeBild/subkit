@@ -6,7 +6,7 @@
 
 import type { ConnectorView } from "../../connectors/types.ts";
 import { isRecord } from "../../utils/type-guards.ts";
-import type { WorkflowTrigger } from "../../workflows/types.ts";
+import { WORKFLOW_DEF_FIELD_KEYS, type WorkflowTrigger } from "../../workflows/types.ts";
 import type {
   AuthoringCheckpointKey,
   AuthoringCheckpointRecord,
@@ -124,12 +124,16 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const goal = pickString("goal");
   const outputTransform = pickString("output_transform");
   const derivedFromSkillId = pickString("derived_from_skill_id");
-  return {
+  const normalized: WorkflowDraftDocument = {
     name,
     ...(slug ? { slug } : {}),
     ...(description ? { description } : {}),
     ...(goal ? { goal } : {}),
-    ...(derivedFromSkillId ? { derived_from_skill_id: derivedFromSkillId } : {}),
+    ...(derivedFromSkillId
+      ? { derived_from_skill_id: derivedFromSkillId }
+      : base.derived_from_skill_id === null
+        ? { derived_from_skill_id: null }
+        : {}),
     steps: Array.isArray(base.steps)
       ? base.steps.filter((step): step is Record<string, unknown> => isRecord(step))
       : [],
@@ -161,6 +165,31 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
       ? { trigger: base.trigger as WorkflowTrigger }
       : {}),
   };
+
+  // The persisted WorkflowDef schema is the authoritative field roster.
+  // Copy every remaining top-level definition field verbatim so hydration
+  // cannot silently erase a newly-added governance/runtime field before the
+  // author edits or commits the draft. The explicitly-normalized fields above
+  // retain their existing coercion rules; draft-only metadata stays outside
+  // this schema-derived projection.
+  const alreadyNormalized = new Set([
+    "name",
+    "slug",
+    "description",
+    "derived_from_skill_id",
+    "input_schema",
+    "input_schema_sample",
+    "output_schema",
+    "output_transform",
+    "steps",
+    "trigger",
+  ]);
+  const normalizedRecord = normalized as unknown as Record<string, unknown>;
+  for (const key of WORKFLOW_DEF_FIELD_KEYS) {
+    if (alreadyNormalized.has(key) || base[key] === undefined) continue;
+    normalizedRecord[key] = base[key];
+  }
+  return normalized;
 }
 
 export function normalizeConnectorDraft(raw: unknown): ConnectorDraftDocument | null {
