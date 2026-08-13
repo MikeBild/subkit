@@ -363,7 +363,12 @@ export interface ExecutionToolGateState {
 
 export interface ExecutionToolGateDecision {
   exposeExecution: boolean;
-  reason: "bound_saved_workflow" | "named_workflow_slug" | "chat_surface" | "authoring_no_target";
+  reason:
+    | "bound_saved_workflow"
+    | "named_workflow_slug"
+    | "chat_surface"
+    | "explicit_no_run"
+    | "authoring_no_target";
 }
 
 /**

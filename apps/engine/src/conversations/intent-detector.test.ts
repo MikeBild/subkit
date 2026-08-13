@@ -97,6 +97,25 @@ describe("detectUserIntent", () => {
     expect(res.forceTool).toBe("run_workflow");
   });
 
+  test("German separated-verb negation suppresses execution", () => {
+    const res = detectUserIntent(
+      "Bearbeite den bestehenden Workflow-Draft, führe ihn in diesem Turn NICHT aus.",
+    );
+    expect(res.forceTool).toBeUndefined();
+    expect(res.suppressExecution).toBe(true);
+    expect(res.reason).toBe("explicit_no_run_intent");
+  });
+
+  test("German and English prefix negations suppress execution", () => {
+    expect(detectUserIntent("Den Workflow nicht ausführen, sondern nur validieren.")).toMatchObject(
+      { suppressExecution: true, reason: "explicit_no_run_intent" },
+    );
+    expect(detectUserIntent("Do not run the saved workflow; edit the draft only.")).toMatchObject({
+      suppressExecution: true,
+      reason: "explicit_no_run_intent",
+    });
+  });
+
   test("recognizes 'welche workflows habe ich' as enumeration → force no-tools", () => {
     const res = detectUserIntent("welche workflows habe ich");
     expect(res.forceTool).toBeUndefined();
