@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
-    name: build
+  quality:
+    name: quality + build + e2e
     runs-on: ubuntu-24.04
 
     services:
@@ -113,10 +113,6 @@ jobs:
       # so a separate CI migrate step is redundant. Production migrations
       # are embedded in the engine binary and run in-process on every boot.
 
-      - name: Unit + integration tests
-        # Every file gets a fresh process so sessions, pools, workers, and process globals cannot accumulate across suites.
-        run: bun run scripts/test-files-isolated.ts apps packages
-
       - name: AI eval contract
         run: bun run verify:ai
 
@@ -174,6 +170,58 @@ jobs:
 
       - name: Validate docker compose
         run: docker compose config > /dev/null
+
+  test-shards:
+    name: unit + integration (${{ matrix.shard }}/8)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: subkit
+          POSTGRES_PASSWORD: subkit
+          POSTGRES_DB: subkit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U subkit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://subkit:subkit@localhost:5432/subkit
+      MASTER_KEY: 00000000000000000000000000000000000000000000000000000000000000aa
+      LLM_PROVIDER: mock
+      SKIP_DOCKER: "1"
+      TZ: UTC
+      LANG: C.UTF-8
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+      - name: Cache Bun install
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Isolated unit + integration tests
+        # Every file still gets a fresh process. Stable sorted round-robin
+        # assignment makes the eight jobs complete the same exhaustive set
+        # without serializing 1,000+ process starts on one runner.
+        run: bun run scripts/test-files-isolated.ts --shard ${{ matrix.shard }}/8 apps packages
 
   docker-e2e:
     name: docker e2e (image smoke)
@@ -306,3 +354,27 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
+
+  # Preserve the required check name `build`, but make it a true aggregate:
+  # branch protection and release automation cannot pass until every mandatory
+  # quality, isolated-test, image, and secret gate has completed successfully.
+  build:
+    name: build
+    if: always()
+    needs: [quality, test-shards, docker-e2e, secret-scan, dependency-review]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all CI gates
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          TEST_RESULT: ${{ needs.test-shards.result }}
+          DOCKER_RESULT: ${{ needs.docker-e2e.result }}
+          SECRET_RESULT: ${{ needs.secret-scan.result }}
+          DEPENDENCY_RESULT: ${{ needs.dependency-review.result }}
+        run: |
+          set -euo pipefail
+          test "$QUALITY_RESULT" = success
+          test "$TEST_RESULT" = success
+          test "$DOCKER_RESULT" = success
+          test "$SECRET_RESULT" = success
+          test "$DEPENDENCY_RESULT" = success || test "$DEPENDENCY_RESULT" = skipped
