@@ -280,11 +280,6 @@ jobs:
           fi
           OUT="${{ matrix.binary }}_${{ matrix.os }}_${{ matrix.arch }}${EXT}"
           mkdir -p dist
-          # ssh2's OPTIONAL cpu-features native addon is installed on Linux
-          # but never compiled, and bun build --compile cannot bundle the
-          # missing .node (it is simply absent on macOS). Strip it before the
-          # compile — mirrors package.json build:engine + the Dockerfile.
-          rm -rf node_modules/cpu-features
           # The engine binary inlines the embedding model + tokenizer +
           # onnxruntime-web WASM (see embedded-assets.ts); fetch them before
           # the compile, exactly as package.json build:engine does. Skipped
@@ -299,6 +294,7 @@ jobs:
           # resolved. See the same define in package.json build:* scripts.
           bun build "${{ matrix.entry }}" \
             --compile \
+            --external cpu-features \
             $TARGET_FLAG \
             --define "process.env.NODE_ENV=process.env.NODE_ENV" \
             --define "BUILD_VERSION=\"$VERSION\"" \

@@ -145,6 +145,8 @@ async function runBunBuild(
       "build",
       ENTRY,
       "--compile",
+      "--external",
+      "cpu-features",
       `--target=${target.bunTarget}`,
       "--define",
       "process.env.NODE_ENV=process.env.NODE_ENV",
@@ -205,14 +207,6 @@ async function main(): Promise<void> {
   const { dir, version: explicitVersion } = parseArgs(Bun.argv.slice(2));
   const version = await resolveVersion(explicitVersion);
   await mkdir(dir, { recursive: true });
-
-  // ssh2 ships an OPTIONAL cpu-features native addon that is never compiled;
-  // `bun build --compile` chokes trying to bundle the missing .node. Strip it
-  // first — mirrors package.json build:engine, release.yml, and the Dockerfile.
-  await Bun.spawn(["rm", "-rf", join(REPO_ROOT, "node_modules/cpu-features")], {
-    stdout: "inherit",
-    stderr: "inherit",
-  }).exited;
 
   console.log(`staging sk ${version} → ${dir}`);
   // SHA256SUMS lines use the same `<hash>  <name>` (two-space) format as
