@@ -184,6 +184,17 @@ describe("execution-tool gate against a real palette", () => {
     expect(palette.run_workflow).toBeDefined();
   });
 
+  test("an explicit no-run decision removes execution even for a bound workflow", async () => {
+    const palette = await buildRealPalette();
+    const slugs = collectSyntheticWorkflowSlugs(Object.keys(palette));
+    const decision = { exposeExecution: false as const, reason: "explicit_no_run" as const };
+    const removed = applyExecutionToolGate(palette, decision, slugs);
+    expect(removed).toBe(2);
+    expect(palette.run_workflow).toBeUndefined();
+    expect(palette[`wf_${LOOKALIKE_SLUG}`]).toBeUndefined();
+    expect(palette.list_workflows).toBeDefined();
+  });
+
   test("chat surface exposes execution with no bound target and no named slug", async () => {
     // The loop sets `{ exposeExecution: true, reason: "chat_surface" }` for
     // `p.surface === "chat"` INSTEAD of computing the default-deny gate. Chat is

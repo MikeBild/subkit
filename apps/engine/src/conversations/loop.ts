@@ -1048,10 +1048,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const executionGate: ExecutionToolGateDecision =
     p.surface === "chat"
       ? { exposeExecution: true, reason: "chat_surface" }
-      : resolveExecutionToolGate({
-          hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
-          explicitlyNamedWorkflowSlug: namedWorkflowSlug,
-        });
+      : detectedIntent.suppressExecution === true
+        ? { exposeExecution: false, reason: "explicit_no_run" }
+        : resolveExecutionToolGate({
+            hasBoundSavedWorkflow: hasBoundSavedWorkflowTarget,
+            explicitlyNamedWorkflowSlug: namedWorkflowSlug,
+          });
   const removedExecutionTools = applyExecutionToolGate(
     tools,
     executionGate,
@@ -1061,7 +1063,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     logger.debug({
       module: "conversation",
       action: "loop.intent.suppress_run_workflow",
-      msg: "no bound or named saved workflow — execution tools removed from this turn's palette",
+      msg: "execution tools removed from this turn's palette",
       conversation_id: p.conversation_id,
       reason: executionGate.reason,
       removed_count: removedExecutionTools,
