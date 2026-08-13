@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.6] – 2026-08-13
+
+### Fixed
+
+- **Explicit no-run instructions now override saved-workflow execution.** German
+  separable-verb negations such as “führe ihn nicht aus” and English forms such
+  as “do not run” remove both `run_workflow` and the matching `wf_*` tool from
+  an authoring turn, even when a persisted workflow is already bound. Genuine
+  run commands and build-new authoring requests keep their existing routing.
+
 ## [6.2.5] – 2026-08-13
 
 ### Fixed
