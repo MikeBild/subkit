@@ -7,16 +7,87 @@
 
 import { z } from "@hono/zod-openapi";
 import { scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
+import { requestApproval } from "../../../tools/approval.ts";
 import {
   authoringIntentFingerprint,
   type ConfirmIntent,
   intentHasDistinguishingAction,
 } from "../../intent-fingerprint.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
-import { type CommitIntent, commitIntentSchema, describePatchOps } from "./commit-intent.ts";
+import { resolveConversationPrincipal } from "../permission-gate.ts";
+import type { ModelCommitIntent } from "./commit-intent.ts";
+import { commitIntentSchema, describePatchOps, withApprovalHandle } from "./commit-intent.ts";
 import { pauseForUserInput } from "./common.ts";
 
-function buildOverrideWarning(intent: CommitIntent | undefined): string | null {
+function toolForCommitIntent(intent: ModelCommitIntent): string {
+  switch (intent.kind) {
+    case "save_connector_draft":
+    case "save_workflow_draft":
+    case "delete_connector":
+    case "delete_workflow":
+    case "run_workflow":
+    case "create_api_key":
+      return intent.kind;
+    case "apply_workflow_patch":
+      return "edit_workflow_patch";
+    case "update_workflow_metadata":
+      return "update_workflow";
+    case "oauth_completed":
+      return "authenticate_oauth";
+    case "credential_reissue_completed":
+      return "request_connector_reauth";
+    case "rollback_after_execute":
+      return "rollback_after_execute";
+  }
+}
+
+async function approvalBackedMcpIntent(
+  ctx: Parameters<ConversationTool["execute"]>[0],
+  intent: ModelCommitIntent | undefined,
+): Promise<
+  | { ok: true; intent: ModelCommitIntent | undefined; approval_url?: string }
+  | { ok: false; error_code: string; message: string }
+> {
+  if (!intent || ctx.surface !== "mcp") return { ok: true, intent };
+  const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
+  if (!principal) {
+    return {
+      ok: false,
+      error_code: "principal_required",
+      message:
+        "MCP write confirmation requires an authenticated principal. No approval was opened and nothing was written.",
+    };
+  }
+  const approvalId = crypto.randomUUID();
+  const tool = toolForCommitIntent(intent);
+  try {
+    const requested = await requestApproval({
+      db: ctx.db,
+      principal,
+      approval_id: approvalId,
+      tool,
+      surface: "chat",
+      via: "chat",
+      reason: "permission_mode",
+      execution_mode: null,
+      args: { commit_intent: intent },
+    });
+    return {
+      ok: true,
+      intent: withApprovalHandle(intent, approvalId) as unknown as ModelCommitIntent,
+      ...(requested.approval_url ? { approval_url: requested.approval_url } : {}),
+    };
+  } catch {
+    return {
+      ok: false,
+      error_code: "approval_request_failed",
+      message:
+        "The approval could not be persisted. No confirmation was opened and nothing was written.",
+    };
+  }
+}
+
+function buildOverrideWarning(intent: ModelCommitIntent | undefined): string | null {
   if (!intent) return null;
   const payload = intent.payload;
   if (intent.kind === "save_workflow_draft" && payload.force_commit === true) {
@@ -28,7 +99,7 @@ function buildOverrideWarning(intent: CommitIntent | undefined): string | null {
   return null;
 }
 
-function defaultCommitIntent(args: z.infer<typeof inputSchema>): CommitIntent | undefined {
+function defaultCommitIntent(args: z.infer<typeof inputSchema>): ModelCommitIntent | undefined {
   if (args.commit_intent) return args.commit_intent;
   if (args.kind !== "save_workflow_draft") return undefined;
   return {
@@ -83,7 +154,7 @@ export const askUserConfirmTool: ConversationTool = {
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const effectiveCommitIntent = defaultCommitIntent(args);
+    const proposedCommitIntent = defaultCommitIntent(args);
     // Declined-intent guard: if the operator already declined this exact
     // action in THIS conversation, answer with the prior decline instead of
     // re-prompting — even in `auto` mode, because an explicit "no" on an
@@ -101,7 +172,7 @@ export const askUserConfirmTool: ConversationTool = {
     // guard would silently never match.
     const confirmIntent = scrubStringsDeep({
       kind: args.kind,
-      commit_intent: effectiveCommitIntent,
+      commit_intent: proposedCommitIntent,
       target: args.target,
     }) as ConfirmIntent;
     const denied = ctx.getDraft().state?.last_denied_intent;
@@ -176,7 +247,7 @@ export const askUserConfirmTool: ConversationTool = {
     // gate. Without this, the LLM ended up narrating a confused
     // two-step retry ("blocked … now using force_commit") that
     // required a second "approve" from the user.
-    const overrideWarning = buildOverrideWarning(effectiveCommitIntent);
+    const overrideWarning = buildOverrideWarning(proposedCommitIntent);
     const baseSummary = args.summary ?? args.question;
     const summary = overrideWarning ? `${overrideWarning}\n\n${baseSummary}` : baseSummary;
     // Per-op review rows for the partial-accept card. Derive them
@@ -186,13 +257,29 @@ export const askUserConfirmTool: ConversationTool = {
     const partialDiffs =
       args.kind === "partial_diff_approval"
         ? (args.diffs ??
-          (effectiveCommitIntent?.kind === "apply_workflow_patch" &&
-          Array.isArray(effectiveCommitIntent.payload.patches)
-            ? describePatchOps(effectiveCommitIntent.payload.patches)
+          (proposedCommitIntent?.kind === "apply_workflow_patch" &&
+          Array.isArray(proposedCommitIntent.payload.patches)
+            ? describePatchOps(proposedCommitIntent.payload.patches)
             : undefined))
         : undefined;
+    const approvalBacked = await approvalBackedMcpIntent(ctx, proposedCommitIntent);
+    if (!approvalBacked.ok) {
+      return {
+        ok: false,
+        error_code: approvalBacked.error_code,
+        message: approvalBacked.message,
+        data: {
+          error_code: approvalBacked.error_code,
+          reason: approvalBacked.error_code,
+        },
+      };
+    }
+    const effectiveCommitIntent = approvalBacked.intent;
     const input: Record<string, unknown> = { ...args };
     if (effectiveCommitIntent !== undefined) input.commit_intent = effectiveCommitIntent;
+    if (approvalBacked.approval_url !== undefined) {
+      input.approval_url = approvalBacked.approval_url;
+    }
     if (partialDiffs !== undefined) input.diffs = partialDiffs;
     return pauseForUserInput(ctx, {
       tool_name: "ask_user_confirm",
