@@ -42,12 +42,6 @@ RUN set -eux; \
 # engine binary. The compiled engine has no runtime dependency on Node or Vite.
 RUN bun run build:cockpit
 
-# ssh2 pulls an OPTIONAL `cpu-features` native addon. It is not built in this
-# image (nor on the dev mac), so its `.node` is absent; left in place, the
-# `bun build --compile` below fails trying to bundle the missing addon. Remove
-# it so the bundle matches the working mac build (ssh2 runs fine without it).
-RUN rm -rf node_modules/cpu-features
-
 # Fetch the embedded-embedding assets (MiniLM model + tokenizer +
 # onnxruntime-web WASM) that the compile step inlines into the binary. Mirrors
 # the `bun scripts/fetch-embedding-assets.ts` prefix in package.json's
@@ -63,10 +57,12 @@ ARG ENGINE_VERSION
 RUN set -eux; \
     VERSION="${ENGINE_VERSION:-$(bun -e 'console.log(require("./package.json").version)')}"; \
     bun build apps/engine/src/index.ts --compile \
+      --external cpu-features \
       --define "process.env.NODE_ENV=process.env.NODE_ENV" \
       --define "BUILD_VERSION=\"$VERSION\"" \
       --outfile /out/engine; \
     bun build apps/sk/src/index.ts --compile \
+      --external cpu-features \
       --define "process.env.NODE_ENV=process.env.NODE_ENV" \
       --define "BUILD_VERSION=\"$VERSION\"" \
       --outfile /out/sk
