@@ -33,6 +33,12 @@ export interface DetectedIntent {
    * already in the prompt.
    */
   forceNoTools?: boolean;
+  /**
+   * The user explicitly prohibited execution in this turn. The loop removes
+   * saved-workflow execution tools even when a persisted workflow is bound,
+   * so the model cannot turn an edit-only request into a run.
+   */
+  suppressExecution?: boolean;
   /** Human-readable reason — useful for logs / telemetry. */
   reason: string;
 }
@@ -48,6 +54,17 @@ export interface DetectedIntent {
 const RUN_WORKFLOW_PATTERNS = [
   /\b(führe|starte|run|execute|dispatch|trigger)\s.+?\b(workflow|tool|pipeline|aus)/i,
   /\bausf[üu]hren\b/i,
+];
+
+// Explicit no-run language has to win before positive run matching. German
+// separable verbs put the negation between both halves ("führe ihn nicht
+// aus"), while English places it before the verb ("do not run it"). Keep the
+// windows bounded so an unrelated "nicht" earlier in a long request does not
+// disable an intentional run later in the message.
+const NEGATED_RUN_PATTERNS = [
+  /\b(?:führe|fuehre)\b.{0,80}\b(?:nicht|niemals|keinesfalls)\b.{0,24}\baus\b/i,
+  /\b(?:nicht|niemals|keinesfalls)\b.{0,32}\b(?:ausführen|ausfuehren|starten|triggern|dispatchen|runnen)\b/i,
+  /\b(?:do\s+not|don't|never|must\s+not)\b.{0,32}\b(?:run|execute|dispatch|trigger|start)\b/i,
 ];
 
 // "neu(en|es|e) workflow" / "another workflow" / "new pipeline" —
@@ -121,6 +138,15 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
   // pattern still fires for noun-modifier phrasings without an authoring verb.
   const authoringSignal =
     matchesWorkflowAuthoringPattern(text) || NEW_WORKFLOW_MODIFIER_PATTERN.test(text);
+  if (NEGATED_RUN_PATTERNS.some((pattern) => pattern.test(text))) {
+    return authoringSignal
+      ? {
+          startNewWorkflow: true,
+          suppressExecution: true,
+          reason: "authoring_intent_over_ambiguous_run",
+        }
+      : { suppressExecution: true, reason: "explicit_no_run_intent" };
+  }
   for (const pattern of RUN_WORKFLOW_PATTERNS) {
     if (pattern.test(text)) {
       // A co-present build-new signal means the matched "run" is part of an
