@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.5] – 2026-08-13
+
+### Fixed
+
+- **Direct MCP write confirmations now always establish a durable human
+  approval channel.** Model-authored `ask_user_confirm` calls with a commit
+  intent mint the same one-time browser approval URL as policy-generated
+  confirmations; the internal approval handle remains server-side and an
+  unauthenticated request fails closed without opening an approval.
+- **MCP conversation and Tasks clients now exercise the actual browser-owned
+  approval contract.** Human decisions can no longer be simulated through the
+  model-facing elicitation response tool; portal approval creates the governed
+  resume task that completes the pending authoring operation.
+
 ## [6.2.4] – 2026-08-12
 
 ### Fixed
