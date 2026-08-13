@@ -41,6 +41,7 @@ import { applyElicitationOutcome } from "../../persistence/apply-outcome.ts";
 import { alreadyResolved, resolveAndError } from "../elicitation-resolve.ts";
 import { INVALID_ELICIT_RESPONSE } from "../error-codes.ts";
 import type { ToolContext, ToolResult } from "../index.ts";
+import { elicitationInputForClient } from "./commit-intent.ts";
 import {
   type FormBridgeToolName,
   mapAskUserToPrimitiveSchema,
@@ -266,7 +267,7 @@ export async function pauseForUserInput(
           tool_name: p.tool_name,
           summary: p.summary,
           elicitation_id: sensitiveRow.id,
-          input: p.input,
+          input: elicitationInputForClient(p.input),
         },
       };
     }
@@ -436,7 +437,7 @@ export async function pauseForUserInput(
               tool_name: p.tool_name,
               summary: p.summary,
               elicitation_id: row.id,
-              input: p.input,
+              input: elicitationInputForClient(p.input),
             },
           };
         }
@@ -479,7 +480,7 @@ export async function pauseForUserInput(
               tool_name: p.tool_name,
               summary: p.summary,
               elicitation_id: row.id,
-              input: p.input,
+              input: elicitationInputForClient(p.input),
             },
           };
         }
@@ -509,7 +510,7 @@ export async function pauseForUserInput(
             tool_name: p.tool_name,
             summary: p.summary,
             elicitation_id: row.id,
-            input: p.input,
+            input: elicitationInputForClient(p.input),
           },
         };
       }
@@ -537,7 +538,7 @@ export async function pauseForUserInput(
       tool_name: p.tool_name,
       summary: p.summary,
       elicitation_id: row.id,
-      input: p.input,
+      input: elicitationInputForClient(p.input),
     },
   };
 }

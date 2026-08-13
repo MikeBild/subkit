@@ -15,7 +15,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Task } from "@modelcontextprotocol/sdk/types.js";
 import { CallToolResultSchema, CreateTaskResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import { connectors } from "../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { setConfigKey } from "../../config/loader.ts";
+import { connectors, mcpTasks } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { getMcpTask } from "../../mcp/tasks/store.ts";
 import { type McpTestSuite, startMcpTestSuite } from "../../mcp/tests/setup.ts";
@@ -25,10 +27,12 @@ let suite: McpTestSuite;
 let connectorId: string;
 
 beforeAll(async () => {
+  process.env.MASTER_KEY = "b".repeat(64);
   process.env.LLM_PROVIDER = "mock";
   process.env.SK_MCP_MODE = "authoring";
   resetMockProvider();
   suite = await startMcpTestSuite("conversations-tasks", { withQueue: true });
+  await setConfigKey("server.public_base_url", suite.http.baseUrl, { force: true });
   const [row] = await suite.http.db
     .insert(connectors)
     .values({
@@ -87,7 +91,20 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
     return createResult.task.taskId;
   }
 
-  test("full Tasks path: start → input_required → respond_elicitation → completed → tasks/result", async () => {
+  async function decideApproval(approvalUrl: string, decision: "approve" | "decline") {
+    const headers = { authorization: `Bearer ${suite.http.apiKey}` };
+    const page = await fetch(approvalUrl, { headers });
+    const html = await page.text();
+    const csrfToken = /name="csrf_token" value="([^"]+)"/.exec(html)?.[1] ?? "";
+    const grant = new URL(approvalUrl).searchParams.get("grant") ?? "";
+    return await fetch(`${suite.http.baseUrl}/v1/tool-approvals/decide`, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant, decision, csrf_token: csrfToken }).toString(),
+    });
+  }
+
+  test("full Tasks path: start → input_required → browser approval → completed → tasks/result", async () => {
     const client = await suite.connectTasks();
 
     // 1) Task-augmented `conversation_start`: the SDK adds `params.task`
@@ -118,17 +135,36 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
       status: string;
       pending_elicitation_id?: string;
       conversation_id: string;
+      input?: { approval_url?: string };
     };
     expect(getBody.status).toBe("input_required");
     expect(getBody.pending_elicitation_id).toBeDefined();
+    expect(getBody.input?.approval_url).toContain("/v1/tool-approvals/decide");
 
-    // 3) Task-augmented `conversation_respond_elicitation` — spawns a
-    // fresh background turn that resumes the loop and commits.
-    const respondTaskId = await callToolAsTask(client, "conversation_respond_elicitation", {
-      conversation_id: conversationId,
-      elicitation_id: getBody.pending_elicitation_id,
-      output: { confirmed: true },
-    });
+    // 3) The model-callable response tool must not impersonate the human.
+    // Approving in the browser stages the human answer and creates the fresh
+    // background task that resumes the loop and commits.
+    const approval = await decideApproval(getBody.input?.approval_url ?? "", "approve");
+    expect(approval.status).toBe(200);
+    let respondTaskId = "";
+    await waitFor(
+      async () => {
+        const [row] = await suite.http.db
+          .select({ id: mcpTasks.id })
+          .from(mcpTasks)
+          .where(
+            and(
+              eq(mcpTasks.tenant_id, suite.http.tenantId),
+              eq(mcpTasks.conversation_id, conversationId),
+              eq(mcpTasks.kind, "respond_elicitation"),
+            ),
+          )
+          .limit(1);
+        respondTaskId = row?.id ?? "";
+        return respondTaskId.length > 0;
+      },
+      { tries: 40, sleepMs: 100, label: "portal-created response task" },
+    );
 
     // 4) Poll the resume task to a terminal state. The resumed turn
     // commits the workflow → the task derives `completed`.
@@ -161,7 +197,7 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
     }
   }, 30_000);
 
-  test("tasks/cancel of an already-terminal task is accepted (idempotent)", async () => {
+  test("tasks/cancel of an input-required task is accepted", async () => {
     const client = await suite.connectTasks();
 
     const createResult = (await client.request(
@@ -178,8 +214,11 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
     const taskId = createResult.task.taskId;
     expect(taskId.length).toBeGreaterThan(0);
 
-    // Let the turn settle, then cancel — the task is already terminal.
-    await pollTask(client, taskId);
+    // `input_required` is deliberately non-terminal in SEP-1686, so the SDK
+    // forwards cancellation to SubKit. The store-level suite separately pins
+    // cancellation races after a result has already landed.
+    const waiting = await pollTask(client, taskId);
+    expect(waiting.status).toBe("input_required");
     await client.experimental.tasks.cancelTask(taskId);
 
     // After a cancel, derivation puts `cancelled` above `completed`.

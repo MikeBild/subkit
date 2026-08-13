@@ -6,10 +6,11 @@
 // polls `conversation_get` until the turn reaches a terminal state.
 //
 //   conversation_start            → working → poll → input_required
-//   conversation_respond_elicitation → working → poll → completed
+//   browser approval                → working → poll → completed
 //   conversation_commit           → returns the committed workflow id
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { setConfigKey } from "../../config/loader.ts";
 import { connectors } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { type McpTestSuite, startMcpTestSuite } from "../../mcp/tests/setup.ts";
@@ -19,6 +20,7 @@ let suite: McpTestSuite;
 let connectorId: string;
 
 beforeAll(async () => {
+  process.env.MASTER_KEY = "c".repeat(64);
   process.env.LLM_PROVIDER = "mock";
   // The mode-split MCP catalog hides conversation.* by default; this
   // suite tests the authoring cluster specifically, so opt into
@@ -27,6 +29,7 @@ beforeAll(async () => {
   resetMockProvider();
   // withQueue — the conversation tools enqueue a background turn.
   suite = await startMcpTestSuite("conversations", { withQueue: true });
+  await setConfigKey("server.public_base_url", suite.http.baseUrl, { force: true });
   const [row] = await suite.http.db
     .insert(connectors)
     .values({
@@ -55,6 +58,7 @@ interface GetResult {
   events?: unknown[];
   pending_elicitation_id?: string;
   committed_workflow_id?: string;
+  input?: { approval_url?: string };
 }
 
 /** Poll `conversation_get` until the turn leaves `working`. */
@@ -84,7 +88,7 @@ async function pollUntilSettled(
 }
 
 describe("mcp conversation tools", () => {
-  test("start -> respond_elicitation -> commit drives the full loop", async () => {
+  test("start -> browser approval -> commit drives the full loop", async () => {
     const client = await suite.connect();
 
     const list = await client.listTools();
@@ -120,25 +124,49 @@ describe("mcp conversation tools", () => {
     const settled = await pollUntilSettled(client, startParsed.conversation_id);
     expect(settled.status).toBe("input_required");
     expect(settled.pending_elicitation_id).toBeDefined();
+    expect(settled.input?.approval_url).toContain("/v1/tool-approvals/decide");
 
-    // Respond — enqueues another background turn.
-    const respond = await client.callTool({
-      name: "conversation_respond_elicitation",
-      arguments: {
-        conversation_id: startParsed.conversation_id,
-        elicitation_id: settled.pending_elicitation_id,
-        output: { confirmed: true },
-      },
+    // A model-facing tool must not relay the human decision. The browser
+    // portal owns approval and enqueues the background resume turn.
+    const approvalUrl = settled.input?.approval_url ?? "";
+    const headers = { authorization: `Bearer ${suite.http.apiKey}` };
+    const page = await fetch(approvalUrl, { headers });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    const csrfToken = /name="csrf_token" value="([^"]+)"/.exec(html)?.[1] ?? "";
+    const grant = new URL(approvalUrl).searchParams.get("grant") ?? "";
+    const approval = await fetch(`${suite.http.baseUrl}/v1/tool-approvals/decide`, {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant,
+        decision: "approve",
+        csrf_token: csrfToken,
+      }).toString(),
     });
-    expect(respond.isError).toBeFalsy();
-    const respondParsed = JSON.parse(
-      (respond.content as Array<{ text: string }>)[0]?.text ?? "{}",
-    ) as { status: string };
-    expect(respondParsed.status).toBe("working");
+    expect(approval.status).toBe(200);
 
-    // Poll — the resumed turn commits the workflow.
-    const committedPoll = await pollUntilSettled(client, startParsed.conversation_id);
-    expect(committedPoll.status).toBe("completed");
+    // Poll — the portal-created resume turn commits the workflow. Waiting
+    // specifically for `completed` avoids treating the previous pause as a
+    // fresh terminal result before the queue worker has claimed the task.
+    let committedPoll: GetResult | null = null;
+    await waitFor(
+      async () => {
+        const got = await client.callTool({
+          name: "conversation_get",
+          arguments: { conversation_id: startParsed.conversation_id },
+        });
+        expect(got.isError).toBeFalsy();
+        const text = (got.content as Array<{ text: string }>)[0]?.text;
+        if (!text) throw new Error("conversation_get returned no content");
+        const parsed = JSON.parse(text) as GetResult;
+        if (parsed.status !== "completed") return false;
+        committedPoll = parsed;
+        return true;
+      },
+      { tries: 80, sleepMs: 250, label: "conversation_get completed after browser approval" },
+    );
+    if (!committedPoll) throw new Error("conversation_get never completed");
 
     // conversation_commit reports the committed workflow id.
     const commit = await client.callTool({
