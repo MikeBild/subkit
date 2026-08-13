@@ -98,6 +98,50 @@ describe("resolveDefinition — saved source", () => {
     expect(resolved.workflow_version_id).toBe(versionAId);
   });
 
+  test("picks up an atomically promoted workflow version without a process restart", async () => {
+    const before = await resolveDefinition(testDb.db, tenantId, {
+      kind: "saved",
+      workflow_id: workflowAId,
+    });
+    expect(before.workflow_version_id).toBe(versionAId);
+    expect(before.def.max_llm_tokens_per_run).toBeUndefined();
+
+    const [promoted] = await testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: tenantId,
+        workflow_id: workflowAId,
+        version: 2,
+        dag: {
+          name: "a",
+          max_llm_tokens_per_run: 70_000,
+          steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+        },
+      })
+      .returning();
+    if (!promoted) throw new Error("workflow version insert failed");
+
+    try {
+      await testDb.db
+        .update(workflows)
+        .set({ current_version_id: promoted.id })
+        .where(eq(workflows.id, workflowAId));
+
+      // A new run in the same process must resolve the promoted pointer again.
+      const after = await resolveDefinition(testDb.db, tenantId, {
+        kind: "saved",
+        workflow_id: workflowAId,
+      });
+      expect(after.workflow_version_id).toBe(promoted.id);
+      expect(after.def.max_llm_tokens_per_run).toBe(70_000);
+    } finally {
+      await testDb.db
+        .update(workflows)
+        .set({ current_version_id: versionAId })
+        .where(eq(workflows.id, workflowAId));
+    }
+  });
+
   test("refuses to run an archived workflow (#12)", async () => {
     const [c] = await testDb.db
       .insert(workflows)

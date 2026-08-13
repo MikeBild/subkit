@@ -95,6 +95,18 @@ function makeCtx(
 }
 
 describe("edit_workflow_patch", () => {
+  test("adds a workflow-level per-run LLM token budget", async () => {
+    const draftRef = { current: makeDraft() };
+    const result = await editWorkflowPatchTool.execute(
+      makeCtx(() => draftRef.current, draftRef),
+      {
+        patches: [{ op: "add", path: "/max_llm_tokens_per_run", value: 70_000 }],
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(draftRef.current.workflow?.max_llm_tokens_per_run).toBe(70_000);
+  });
+
   test("multi-op patch is applied atomically + persisted to the draft", async () => {
     const draftRef = { current: makeDraft() };
     const result = await editWorkflowPatchTool.execute(
