@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.7] – 2026-08-13
+
+### Fixed
+
+- **Conversation authoring now preserves every canonical workflow-level field.**
+  Hydrating, patching, inspecting, validating, and committing an existing
+  workflow no longer drops execution governance such as
+  `max_llm_tokens_per_run`, timeouts, validation functions, response filters,
+  or runtime metadata. The projection is derived from the canonical
+  `WorkflowDef` schema so future persisted fields do not require another
+  parallel allowlist.
+- **Workflow execution-guard configuration is visible to the authoring agent.**
+  `inspect_workflow` exposes the active token budget, timeout, validation and
+  runtime fields, and the bundled authoring guidance requires real top-level
+  configuration instead of unenforced prose in a description.
+
 ## [6.2.6] – 2026-08-13
 
 ### Fixed

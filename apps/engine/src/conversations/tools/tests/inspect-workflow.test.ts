@@ -81,6 +81,35 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     expect(data.step_count).toBe(1);
   });
 
+  test("returns workflow-level execution guards", async () => {
+    const empty = createEmptyDraftDocument();
+    const draft = withWorkflowDraft(
+      empty,
+      {
+        ...empty.workflow,
+        name: "Budgeted workflow",
+        slug: "budgeted-workflow",
+        steps: [{ id: "wait", kind: "wait", duration_ms: 100 }],
+        max_llm_tokens_per_run: 70_000,
+        timeout_ms: 120_000,
+        validation_function: "return input.publish_allowed === false;",
+        runtime: { stdlib_version: "1" },
+      },
+      "test_seed",
+    );
+    const result = await inspectWorkflowTool.execute(makeCtx(draft), {
+      sections: ["execution_guards"],
+    });
+    expect(result.ok).toBe(true);
+    expect((result.data as Record<string, unknown>).execution_guards).toEqual({
+      max_llm_tokens_per_run: 70_000,
+      timeout_ms: 120_000,
+      validation_expression: null,
+      validation_function: "return input.publish_allowed === false;",
+      runtime: { stdlib_version: "1" },
+    });
+  });
+
   test("returns config + result for multiple steps in a single call", async () => {
     const draft = draftWithSteps([
       { id: "fetch", kind: "request", method: "GET", path: "/v2/projects" },

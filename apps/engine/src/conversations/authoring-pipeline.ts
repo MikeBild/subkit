@@ -47,7 +47,7 @@ import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatte
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
-import { TriggerSchema } from "../workflows/types.ts";
+import { ResponseFilterSchema, TriggerSchema, WorkflowRuntimeSchema } from "../workflows/types.ts";
 import { type ValidationError, validateWorkflowDef } from "../workflows/validator.ts";
 import { runCriticAgent } from "./authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "./authoring-critic/gating.ts";
@@ -159,7 +159,14 @@ export const GeneratedWorkflowSchema = z.object({
   description: z.string().max(2000).optional(),
   input_schema: z.record(z.string(), z.unknown()).optional(),
   output_schema: z.record(z.string(), z.unknown()).optional(),
+  validation_expression: z.string().min(1).optional(),
+  validation_function: z.string().min(1).optional(),
   output_transform: z.string().optional(),
+  output_transform_function: z.string().min(1).optional(),
+  response_filters: z.array(ResponseFilterSchema).optional(),
+  timeout_ms: z.number().int().positive().optional(),
+  max_llm_tokens_per_run: z.number().int().positive().optional(),
+  runtime: WorkflowRuntimeSchema.optional(),
   trigger: TriggerSchema.optional(),
   steps: z.array(z.record(z.string(), z.unknown())).min(1).max(25),
 });
@@ -431,7 +438,16 @@ function toWorkflowDraftDocument(def: GeneratedWorkflow): WorkflowDraftDocument 
     ...(def.description ? { description: def.description } : {}),
     ...(def.input_schema ? { input_schema: def.input_schema } : {}),
     ...(def.output_schema ? { output_schema: def.output_schema } : {}),
+    ...(def.validation_expression ? { validation_expression: def.validation_expression } : {}),
+    ...(def.validation_function ? { validation_function: def.validation_function } : {}),
     ...(def.output_transform ? { output_transform: def.output_transform } : {}),
+    ...(def.output_transform_function
+      ? { output_transform_function: def.output_transform_function }
+      : {}),
+    ...(def.response_filters ? { response_filters: def.response_filters } : {}),
+    ...(def.timeout_ms ? { timeout_ms: def.timeout_ms } : {}),
+    ...(def.max_llm_tokens_per_run ? { max_llm_tokens_per_run: def.max_llm_tokens_per_run } : {}),
+    ...(def.runtime ? { runtime: def.runtime } : {}),
     ...(def.trigger ? { trigger: def.trigger } : {}),
     steps: def.steps,
   };
@@ -932,16 +948,7 @@ export async function runAuthoringPipeline(
   // `build_workflow({ goal })`; the validator ignores them until commit
   // strips the draft down to its WorkflowDef shape). The goal feeds the
   // post-preview judge.
-  const workflowDraft: WorkflowDraftDocument = {
-    name: definition.name,
-    slug: definition.slug,
-    ...(definition.description ? { description: definition.description } : {}),
-    ...(definition.input_schema ? { input_schema: definition.input_schema } : {}),
-    ...(definition.output_schema ? { output_schema: definition.output_schema } : {}),
-    ...(definition.output_transform ? { output_transform: definition.output_transform } : {}),
-    ...(definition.trigger ? { trigger: definition.trigger } : {}),
-    steps: definition.steps,
-  };
+  const workflowDraft = toWorkflowDraftDocument(definition);
   const extra: Record<string, unknown> = {
     goal,
     connector_ids: connectors.map((c) => c.id),

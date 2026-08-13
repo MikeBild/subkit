@@ -445,6 +445,25 @@ Three places to reshape data — pick the smallest one that fits:
 
 See `data-handling.md` for full examples.
 
+## Workflow-level execution guards
+
+These controls live at the workflow root, beside `steps`; they are not step
+parameters and must not be hidden in `description`:
+
+- **`max_llm_tokens_per_run`** — positive integer cap for cumulative prompt
+  plus completion tokens across all LLM-provider calls in one run. Use it for
+  every model-backed workflow whose safe cost ceiling is known.
+- **`timeout_ms`** — positive integer wall-clock timeout for the workflow run.
+- **`validation_function`** / **`validation_expression`** — fail-closed final
+  output invariants. Pick the JavaScript or JSONata form, not both.
+- **`runtime`** — versioned runtime metadata such as `stdlib_version`; preserve
+  existing values when editing a saved workflow.
+
+`inspect_workflow`, `edit_workflow_patch`, draft validation, and
+`save_workflow_draft` preserve these fields. If the operator asks to set one,
+patch the actual top-level field and verify it in the inspected draft; a prose
+mention does not enforce anything at runtime.
+
 ## Output format fidelity — emit the format the goal names, as a string
 
 When the goal names a concrete output FORMAT — "a markdown table", "CSV",
