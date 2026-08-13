@@ -2,7 +2,34 @@ import { statSync } from "node:fs";
 import path from "node:path";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
-const targets = process.argv.slice(2);
+const args = process.argv.slice(2);
+let listOnly = false;
+let shardIndex = 0;
+let shardCount = 1;
+const targets: string[] = [];
+
+for (let index = 0; index < args.length; index += 1) {
+  const arg = args[index];
+  if (arg === "--list") {
+    listOnly = true;
+    continue;
+  }
+  if (arg === "--shard") {
+    const value = args[index + 1];
+    const match = /^(\d+)\/(\d+)$/.exec(value ?? "");
+    if (!match) throw new Error("--shard must use the form <index>/<count>, for example 1/8");
+    const displayIndex = Number(match[1]);
+    shardCount = Number(match[2]);
+    if (shardCount < 1 || displayIndex < 1 || displayIndex > shardCount) {
+      throw new Error("--shard index must be between 1 and count");
+    }
+    shardIndex = displayIndex - 1;
+    index += 1;
+    continue;
+  }
+  if (arg.startsWith("--")) throw new Error(`unknown option: ${arg}`);
+  targets.push(arg);
+}
 const testPatterns = [
   "**/*.test.ts",
   "**/*.test.tsx",
@@ -15,7 +42,9 @@ const testPatterns = [
 ];
 
 if (targets.length === 0) {
-  throw new Error("usage: bun run scripts/test-files-isolated.ts <file-or-directory> [...]");
+  throw new Error(
+    "usage: bun run scripts/test-files-isolated.ts [--list] [--shard <index>/<count>] <file-or-directory> [...]",
+  );
 }
 
 function repoRelative(target: string): string {
@@ -44,11 +73,25 @@ for (const target of targets) {
   }
 }
 
-const orderedTests = [...tests].sort();
-if (orderedTests.length === 0) throw new Error("no test files found");
+const allTests = [...tests].sort();
+if (allTests.length === 0) throw new Error("no test files found");
+
+// Sorted round-robin assignment is deterministic, covers every selected file
+// exactly once, and balances large and small directory groups better than
+// contiguous chunks. Each selected file still runs in its own fresh process.
+const orderedTests = allTests.filter((_, index) => index % shardCount === shardIndex);
+if (orderedTests.length === 0) throw new Error("selected shard contains no test files");
+
+if (listOnly) {
+  process.stdout.write(`${orderedTests.join("\n")}\n`);
+  process.exit(0);
+}
 
 for (const [index, file] of orderedTests.entries()) {
-  process.stdout.write(`[isolated-test] ${index + 1}/${orderedTests.length} ${file}\n`);
+  const shardLabel = shardCount === 1 ? "" : ` shard=${shardIndex + 1}/${shardCount}`;
+  process.stdout.write(
+    `[isolated-test] ${index + 1}/${orderedTests.length}${shardLabel} ${file}\n`,
+  );
   const child = Bun.spawn(["bun", "test", "--timeout", "120000", file], {
     cwd: repoRoot,
     env: { ...process.env, NODE_ENV: "test" },
