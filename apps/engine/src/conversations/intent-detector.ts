@@ -71,10 +71,18 @@ const NEGATED_RUN_PATTERNS = [
 // noun-modifier-only phrases the canonical authoring detector
 // intentionally does NOT match (no authoring verb required, so it can
 // also fire on "I want a new workflow" without `build|create|...`).
+//
+// Artifact identity matters here: "new workflow version/configuration" is
+// an in-place edit of the selected workflow, not a request for a new workflow
+// row. The negative suffix guard keeps those version/configuration nouns from
+// detaching a conversation from its explicit `workflow_id`. This is a safety
+// boundary, not only a language tweak: detaching replaces the hydrated draft
+// with `new-workflow`, so the next save could otherwise target an empty/new
+// artifact instead of the requested existing workflow.
 // Kept here as a supplemental signal alongside the canonical pattern
 // imported from `loop/authoring-intent.ts`.
 const NEW_WORKFLOW_MODIFIER_PATTERN =
-  /\b(neu(?:en|es|e)?|another|new)\b.{0,20}\b(workflows?|pipelines?)\b/i;
+  /\b(neu(?:en|es|e)?|another|new)\b.{0,20}\b(workflows?|pipelines?)\b(?![-\s]*(?:version|revision|definition|configuration|config|konfiguration)\b)/i;
 
 /**
  * Enumeration phrases — the TENANT SNAPSHOT already lists workflows,
