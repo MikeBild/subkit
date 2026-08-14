@@ -17,9 +17,10 @@ import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, loadConfig } from "../../config/loader.ts";
 import { withWorkflowPersisted } from "../../conversations/authoring-state.ts";
-import { appendSnapshot } from "../../conversations/draft.ts";
+import { appendSnapshot, loadDraft } from "../../conversations/draft.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
 import {
+  connectors,
   conversationElicitations,
   conversations,
   conversationToolCalls,
@@ -231,6 +232,141 @@ describe("conversation_start — slug idempotency (resume, not duplicate)", () =
     };
     expect(body.resumed).toBeUndefined();
     expect(body.conversation_id).not.toBe(conv.id);
+  });
+
+  test("an explicit workflow id never resumes an unbound conversation with the same slug", async () => {
+    const target = await seedWorkflow("explicit-binding-repair", [
+      {
+        id: "existing_step",
+        kind: "transform",
+        language: "javascript",
+        expression: "return input.input;",
+      },
+    ]);
+    const [unbound] = await testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: principal.tenant_id,
+        owner_id: principal.id,
+        status: "active",
+        draft: {
+          workflow: {
+            name: "Explicit Binding Repair",
+            slug: target.slug,
+            steps: [],
+          },
+        },
+      })
+      .returning();
+    if (!unbound) throw new Error("seed unbound conversation failed");
+
+    const started = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: {
+        workflow_id: target.workflow_id,
+        message: `edit the existing workflow ${target.slug}`,
+      },
+    });
+    expect(started.isError).toBe(false);
+    const body = JSON.parse(started.content[0]?.text ?? "{}") as {
+      conversation_id: string;
+      resumed?: boolean;
+    };
+    expect(body.resumed).toBeUndefined();
+    expect(body.conversation_id).not.toBe(unbound.id);
+
+    const [created] = await testDb.db
+      .select({ target_workflow_id: conversations.target_workflow_id })
+      .from(conversations)
+      .where(eq(conversations.id, body.conversation_id));
+    expect(created?.target_workflow_id).toBe(target.workflow_id);
+
+    const hydrated = await loadDraft(principal.tenant_id, body.conversation_id, testDb.db);
+    expect(hydrated.workflow.slug).toBe(target.slug);
+    expect(hydrated.workflow.steps.map((step) => step.id)).toEqual(["existing_step"]);
+    expect(hydrated.summary?.active_target?.id).toBe(target.workflow_id);
+  });
+
+  test("an explicit workflow id resumes only the conversation bound to that exact resource", async () => {
+    const target = await seedWorkflow("explicit-binding-resume", [
+      {
+        id: "existing_step",
+        kind: "transform",
+        language: "javascript",
+        expression: "return input.input;",
+      },
+    ]);
+    const [bound] = await testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: principal.tenant_id,
+        owner_id: principal.id,
+        status: "active",
+        target_workflow_id: target.workflow_id,
+        draft: { workflow: { name: "new-workflow", steps: [] } },
+      })
+      .returning();
+    if (!bound) throw new Error("seed bound conversation failed");
+
+    const started = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: {
+        workflow_id: target.workflow_id,
+        message: "apply the requested version changes",
+      },
+    });
+    expect(started.isError).toBe(false);
+    const body = JSON.parse(started.content[0]?.text ?? "{}") as {
+      conversation_id: string;
+      resumed?: boolean;
+    };
+    expect(body.resumed).toBe(true);
+    expect(body.conversation_id).toBe(bound.id);
+  });
+
+  test("an explicit connector id resumes only the conversation bound to that exact resource", async () => {
+    const [connector] = await testDb.db
+      .insert(connectors)
+      .values({
+        tenant_id: principal.tenant_id,
+        slug: "explicit-connector-resume",
+        display_name: "Explicit Connector Resume",
+        driver: "http",
+      })
+      .returning();
+    if (!connector) throw new Error("seed connector failed");
+    const [bound] = await testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: principal.tenant_id,
+        owner_id: principal.id,
+        status: "active",
+        target_connector_id: connector.id,
+        draft: { workflow: { name: "new-workflow", steps: [] } },
+      })
+      .returning();
+    if (!bound) throw new Error("seed connector-bound conversation failed");
+
+    const started = await handleConversationTool({
+      db: testDb.db,
+      principal,
+      name: "conversation_start",
+      args: {
+        connector_id: connector.id,
+        message: "apply the requested connector changes",
+      },
+    });
+    expect(started.isError).toBe(false);
+    const body = JSON.parse(started.content[0]?.text ?? "{}") as {
+      conversation_id: string;
+      resumed?: boolean;
+    };
+    expect(body.resumed).toBe(true);
+    expect(body.conversation_id).toBe(bound.id);
   });
 
   test("a different slug creates a new conversation, not a resume", async () => {
