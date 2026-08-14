@@ -107,13 +107,53 @@ const PROXIMITY_WINDOW = 20;
 // workflows", "run workflow X", "delete the workflow" do not contain
 // any of the authoring verbs and therefore do not match.
 const VERB_TO_NOUN = new RegExp(
-  String.raw`\b(?:${AUTHORING_VERBS.join("|")})\b.{0,${PROXIMITY_WINDOW}}\b(?:${AUTHORING_NOUN})\b`,
+  String.raw`\b(?:${AUTHORING_VERBS.join("|")})\b[^.;!?\n]{0,${PROXIMITY_WINDOW}}\b(?:${AUTHORING_NOUN})\b`,
   "i",
 );
 const NOUN_TO_VERB = new RegExp(
-  String.raw`\b(?:${AUTHORING_NOUN})\b.{0,${PROXIMITY_WINDOW}}\b(?:${AUTHORING_VERBS.join("|")})\b`,
+  String.raw`\b(?:${AUTHORING_NOUN})\b[^.;!?\n]{0,${PROXIMITY_WINDOW}}\b(?:${AUTHORING_VERBS.join("|")})\b`,
   "i",
 );
+
+// Creation intent is polarity-sensitive. A raw regex hit in
+// "do not create a new workflow" or "keinen neuen Workflow erzeugen" is
+// evidence for the opposite action and must never detach a conversation from
+// its explicitly selected saved workflow. Keep this deterministic and local
+// to the matched clause: a negation before a semicolon/full stop must not
+// suppress a later positive request ("do not edit X; create a new workflow").
+const AUTHORING_NEGATION =
+  /\b(?:do\s+not|don't|never|must\s+not|should\s+not|shouldn't|cannot|can't|without|nicht|niemals|keinesfalls|ohne|kein(?:e|en|em|er|es)?)\b/i;
+const NON_NEGATING_IDIOMS = /\b(?:not\s+only|nicht\s+nur)\b/gi;
+
+function hasUnnegatedMatch(text: string, pattern: RegExp): boolean {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const matcher = new RegExp(pattern.source, flags);
+  for (const match of text.matchAll(matcher)) {
+    const index = match.index ?? 0;
+    const clauseStart = Math.max(
+      text.lastIndexOf(";", index - 1),
+      text.lastIndexOf(".", index - 1),
+      text.lastIndexOf("!", index - 1),
+      text.lastIndexOf("?", index - 1),
+      text.lastIndexOf("\n", index - 1),
+    );
+    const prefix = text.slice(Math.max(clauseStart + 1, index - 48), index);
+    const candidate = text.slice(index, index + match[0].length);
+    const polarityWindow = `${prefix}${candidate}`.replace(NON_NEGATING_IDIOMS, "");
+    if (!AUTHORING_NEGATION.test(polarityWindow)) return true;
+  }
+  return false;
+}
+
+/**
+ * Apply the same clause-local polarity rule to supplemental new-artifact
+ * patterns owned by the top-level intent detector (for example noun-only
+ * "another workflow" phrasing). This keeps all paths that can set
+ * `startNewWorkflow` on the same negation semantics.
+ */
+export function matchesPositiveWorkflowCreationPattern(text: string, pattern: RegExp): boolean {
+  return hasUnnegatedMatch(text, pattern);
+}
 
 /**
  * Canonical "user wants to author a new workflow" pattern. Exported so
@@ -126,7 +166,7 @@ const NOUN_TO_VERB = new RegExp(
 export function matchesWorkflowAuthoringPattern(text: string): boolean {
   if (CONNECTOR_OBJECT_REJECT.test(text)) return false;
   if (ENUMERATION_PREFIX_REJECT.test(text)) return false;
-  return VERB_TO_NOUN.test(text) || NOUN_TO_VERB.test(text);
+  return hasUnnegatedMatch(text, VERB_TO_NOUN) || hasUnnegatedMatch(text, NOUN_TO_VERB);
 }
 
 /**

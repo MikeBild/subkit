@@ -148,4 +148,12 @@ describe("detectAuthoringIntent — non-authoring phrases", () => {
   it("does NOT match 'erstelle einen connector für den workflow'", () => {
     expect(detectAuthoringIntent("erstelle einen connector für den workflow")).toBe(false);
   });
+
+  it("does not bridge a workflow noun and creation verb across sentence boundaries", () => {
+    expect(
+      detectAuthoringIntent(
+        "Bearbeite den bestehenden Workflow als neue persistierte Workflow-Version. Erzeuge ausdrücklich keinen neuen Workflow.",
+      ),
+    ).toBe(false);
+  });
 });

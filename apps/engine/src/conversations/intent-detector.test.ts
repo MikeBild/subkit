@@ -169,6 +169,35 @@ describe("detectUserIntent", () => {
     expect(res.suppressExecution).toBe(true);
   });
 
+  test.each([
+    "Erzeuge ausdrücklich keinen neuen Workflow und bearbeite nur den bestehenden.",
+    "Keinen neuen Workflow erzeugen; den gespeicherten Workflow aktualisieren.",
+    "Bearbeite den vorhandenen Workflow, ohne einen neuen Workflow zu erstellen.",
+    "Do not create a new workflow; update the selected workflow in place.",
+    "Update the saved workflow without creating another workflow.",
+  ])("negated new-workflow wording stays bound: %s", (message) => {
+    const res = detectUserIntent(message);
+    expect(res.startNewWorkflow).toBeUndefined();
+    expect(res.forceTool).toBeUndefined();
+  });
+
+  test("sentence boundaries cannot join workflow-version wording to a later negated creation verb", () => {
+    const res = detectUserIntent(
+      "Bearbeite den bestehenden Workflow als neue persistierte Workflow-Version. Erzeuge ausdrücklich keinen neuen Workflow.",
+    );
+    expect(res.startNewWorkflow).toBeUndefined();
+    expect(res.forceTool).toBeUndefined();
+    expect(res.reason).toBe("no_strong_intent");
+  });
+
+  test("a later positive creation clause still wins over an earlier negated clause", () => {
+    const res = detectUserIntent(
+      "Do not modify the old workflow; create a new workflow for the replacement.",
+    );
+    expect(res.startNewWorkflow).toBe(true);
+    expect(res.reason).toBe("explicit_new_workflow_intent");
+  });
+
   test("returns no_strong_intent for ambiguous narrative", () => {
     const res = detectUserIntent(
       "ich glaube der Filter ist schon korrekt, vielleicht sollte ich nochmal schauen",
