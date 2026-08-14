@@ -151,6 +151,24 @@ describe("detectUserIntent", () => {
     expect(res.reason).toBe("explicit_new_workflow_intent");
   });
 
+  test("new version of an existing workflow stays bound to that workflow", () => {
+    const res = detectUserIntent(
+      'Bearbeite ausschließlich den bestehenden Workflow "wf_existing" als neue persistierte Workflow-Version. Führe den Workflow NICHT aus.',
+    );
+    expect(res.startNewWorkflow).toBeUndefined();
+    expect(res.forceTool).toBeUndefined();
+    expect(res.suppressExecution).toBe(true);
+    expect(res.reason).toBe("explicit_no_run_intent");
+  });
+
+  test("new workflow configuration is an in-place edit, not a new artifact", () => {
+    const res = detectUserIntent(
+      "Apply the new workflow configuration to the saved workflow; do not run it.",
+    );
+    expect(res.startNewWorkflow).toBeUndefined();
+    expect(res.suppressExecution).toBe(true);
+  });
+
   test("returns no_strong_intent for ambiguous narrative", () => {
     const res = detectUserIntent(
       "ich glaube der Filter ist schon korrekt, vielleicht sollte ich nochmal schauen",
