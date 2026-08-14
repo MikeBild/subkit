@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.8] – 2026-08-14
+
+### Fixed
+
+- **Editing a new version or configuration keeps the selected workflow
+  identity.** Phrases such as “new persisted workflow version” no longer
+  detach an authoring conversation from its explicit `workflow_id` or replace
+  the hydrated workflow with an empty `new-workflow` draft. New artifacts are
+  still created for explicit “create a new workflow” requests.
+- **Release builds no longer mutate the installed dependency tree.** Optional
+  native `cpu-features` support is externalized consistently instead of being
+  deleted from `node_modules`, so consecutive builds preserve identical
+  dependency and Cockpit artifacts.
+
+### Changed
+
+- **The isolated test suite is deterministically sharded in CI.** All test
+  files still run in fresh processes and exactly once, while eight parallel
+  shards replace the previous hour-long serial startup path. A final required
+  `build` job aggregates every quality, test, Docker and security gate.
+
 ## [6.2.7] – 2026-08-13
 
 ### Fixed
