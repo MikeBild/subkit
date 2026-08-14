@@ -292,4 +292,30 @@ describe("workflow save regressions", () => {
       lifecycle_state: "persisted",
     });
   });
+
+  test("explicitly negating a new workflow keeps the selected workflow hydrated", async () => {
+    const existing = await seedLiveWorkflow("editorial-review-negated", "Editorial Review Negated");
+    const created = await createConversationWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.user_id,
+        workflow_id: existing.id,
+        initial_message:
+          "Bearbeite den bestehenden Workflow als neue persistierte Workflow-Version. Erzeuge ausdrücklich keinen neuen Workflow.",
+        permission_mode: "auto",
+      },
+      ctx.testDb.db,
+    );
+
+    const detail = await getConversation(ctx.tenant_id, created.conversation.id, ctx.testDb.db);
+    expect(detail?.conversation.target_workflow_id).toBe(existing.id);
+    expect(detail?.draft?.workflow.name).toBe("Editorial Review Negated");
+    expect(detail?.draft?.workflow.slug).toBe("editorial-review-negated");
+    expect(detail?.draft?.workflow.steps.map((step) => step.id)).toEqual(["shape"]);
+    expect(detail?.draft?.summary?.active_target).toMatchObject({
+      kind: "workflow",
+      id: existing.id,
+      lifecycle_state: "persisted",
+    });
+  });
 });

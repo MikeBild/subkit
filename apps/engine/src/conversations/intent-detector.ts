@@ -10,7 +10,10 @@
 // false-positives don't hijack benign messages. When no strong signal
 // is present, the caller falls back to `toolChoice="auto"`.
 
-import { matchesWorkflowAuthoringPattern } from "./loop/authoring-intent.ts";
+import {
+  matchesPositiveWorkflowCreationPattern,
+  matchesWorkflowAuthoringPattern,
+} from "./loop/authoring-intent.ts";
 import type { AuthoringSummary, ConversationPermissionMode } from "./types.ts";
 
 export interface DetectedIntent {
@@ -145,7 +148,8 @@ export function detectUserIntent(latestUserText: string | null | undefined): Det
   // window, connector-object reject) in one place; the supplemental modifier
   // pattern still fires for noun-modifier phrasings without an authoring verb.
   const authoringSignal =
-    matchesWorkflowAuthoringPattern(text) || NEW_WORKFLOW_MODIFIER_PATTERN.test(text);
+    matchesWorkflowAuthoringPattern(text) ||
+    matchesPositiveWorkflowCreationPattern(text, NEW_WORKFLOW_MODIFIER_PATTERN);
   if (NEGATED_RUN_PATTERNS.some((pattern) => pattern.test(text))) {
     return authoringSignal
       ? {

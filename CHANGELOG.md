@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.9] – 2026-08-14
+
+### Fixed
+
+- **Negated creation requests preserve an explicitly selected workflow.**
+  English and German phrases such as “do not create a new workflow” and
+  “keinen neuen Workflow erzeugen” no longer become positive creation intent.
+  All creation-intent paths share the same clause-local polarity rule.
+- **Workflow creation intent cannot span sentence boundaries.** A workflow
+  noun in one sentence is no longer combined with a creation verb in the next,
+  preventing version-edit instructions from detaching and replacing a hydrated
+  saved workflow.
+
 ## [6.2.8] – 2026-08-14
 
 ### Fixed
