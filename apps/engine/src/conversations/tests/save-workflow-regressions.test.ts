@@ -252,4 +252,44 @@ describe("workflow save regressions", () => {
       lifecycle_state: "draft_only",
     });
   });
+
+  test("new persisted workflow version keeps the explicit saved-workflow binding", async () => {
+    const existing = await seedLiveWorkflow("editorial-review", "Editorial Review");
+    const created = await createConversationWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.user_id,
+        workflow_id: existing.id,
+        permission_mode: "auto",
+      },
+      ctx.testDb.db,
+    );
+
+    getMockProvider().setConversePlan(created.conversation.id, [
+      { tool: "inspect_workflow_draft", args: {} },
+    ]);
+
+    await appendMessageWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: created.conversation.id,
+        actor_id: ctx.user_id,
+        message:
+          'Bearbeite ausschließlich den bestehenden Workflow "editorial-review" als neue persistierte Workflow-Version. Führe den Workflow NICHT aus.',
+        permission_mode: "auto",
+      },
+      ctx.testDb.db,
+    );
+
+    const detail = await getConversation(ctx.tenant_id, created.conversation.id, ctx.testDb.db);
+    expect(detail?.conversation.target_workflow_id).toBe(existing.id);
+    expect(detail?.draft?.workflow.name).toBe("Editorial Review");
+    expect(detail?.draft?.workflow.slug).toBe("editorial-review");
+    expect(detail?.draft?.workflow.steps.map((step) => step.id)).toEqual(["shape"]);
+    expect(detail?.draft?.summary?.active_target).toMatchObject({
+      kind: "workflow",
+      id: existing.id,
+      lifecycle_state: "persisted",
+    });
+  });
 });
