@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.10] – 2026-08-14
+
+### Fixed
+
+- **Explicit authoring targets now control conversation resumption.** A
+  `conversation_start` carrying a workflow or connector ID resumes only a
+  recent conversation bound to that exact resource. Slug matches and repeated
+  prose can no longer redirect an edit into an unrelated unbound draft.
+- **Existing workflow edits start from the persisted definition.** When no
+  exactly bound conversation exists, the engine creates a new bound session;
+  its draft hydration loads the current workflow version before patches are
+  applied.
+
 ## [6.2.9] – 2026-08-14
 
 ### Fixed

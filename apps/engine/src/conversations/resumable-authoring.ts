@@ -67,6 +67,11 @@ export interface ResumableAuthoringMatch {
   matched_slug: string;
 }
 
+export interface ResumableAuthoringTarget {
+  connector_id?: string;
+  workflow_id?: string;
+}
+
 /** Marker logged when the match was an exact opening-message retry. */
 export const IDENTICAL_MESSAGE_MARKER = "(identical-opening-message)";
 
@@ -155,14 +160,17 @@ export async function findResumableAuthoringConversation(
   owner_id: string,
   message_or_slug: string,
   db: Executor,
+  target: ResumableAuthoringTarget = {},
 ): Promise<ResumableAuthoringMatch | null> {
   if (!owner_id) return null;
   const incoming = extractSlugTokens(message_or_slug);
+  const hasExplicitTarget = Boolean(target.workflow_id || target.connector_id);
   // No explicit slug token in the prompt → cannot tightly identify a
   // target, so never resume — not even via the identical-retry fallback:
   // short token-less prompts ("list users", "status?") are legitimately
-  // re-used across genuinely separate conversations.
-  if (incoming.size === 0) return null;
+  // re-used across genuinely separate conversations. An explicit resource
+  // id is a stronger identity than prose and can safely resume without one.
+  if (incoming.size === 0 && !hasExplicitTarget) return null;
   const incomingNormalized = normalizeMessage(message_or_slug);
 
   const cutoff = new Date(Date.now() - RESUMABLE_AUTHORING_WINDOW_MS);
@@ -179,11 +187,34 @@ export async function findResumableAuthoringConversation(
         eq(conversations.owner_id, owner_id),
         inArray(conversations.status, NON_TERMINAL),
         gte(conversations.updated_at, cutoff),
+        ...(target.workflow_id ? [eq(conversations.target_workflow_id, target.workflow_id)] : []),
+        ...(target.connector_id
+          ? [eq(conversations.target_connector_id, target.connector_id)]
+          : []),
       ),
     )
     .orderBy(desc(conversations.updated_at))
     .limit(CANDIDATE_SCAN);
   if (rows.length === 0) return null;
+
+  // The query already proved tenant, owner, recency, status, and exact
+  // resource identity. Do not let slug prose override that durable binding.
+  if (hasExplicitTarget) {
+    const row = rows[0];
+    if (!row) return null;
+    const matchedResource = target.workflow_id
+      ? "(explicit-workflow-id)"
+      : "(explicit-connector-id)";
+    logger.info({
+      module: "conversation",
+      action: "resumed",
+      tenant_id,
+      owner_id,
+      conversation_id: row.id,
+      matched_slug: matchedResource,
+    });
+    return { conversation_id: row.id, matched_slug: matchedResource };
+  }
 
   const ids = rows.map((r) => r.id);
   // Opening user message per candidate — fetched ascending so the first

@@ -487,6 +487,10 @@ export async function handleConversationTool(
             principal.id,
             parsed.data.message,
             db,
+            {
+              ...(parsed.data.workflow_id ? { workflow_id: parsed.data.workflow_id } : {}),
+              ...(parsed.data.connector_id ? { connector_id: parsed.data.connector_id } : {}),
+            },
           );
       if (resumable) {
         // A resumed start is an APPEND, not a no-op: the incoming message
