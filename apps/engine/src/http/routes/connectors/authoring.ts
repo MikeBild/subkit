@@ -23,12 +23,13 @@ import {
   probeConnector,
   validateConnectorAuthType,
   validateConnectorConfig,
+  validateMcpAuthConsistency,
+  withMcpConfigDefaults,
 } from "../../../connectors/index.ts";
 import {
   importConnectorDraftFromSpec,
   importConnectorFromSpecInputSchema,
 } from "../../../conversations/index.ts";
-import { BadRequestError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { credentialBodyToValue } from "./credential-body.ts";
@@ -104,7 +105,7 @@ const probeRoute = createRoute({
   tags: ["connectors"],
   summary: "Probe a connector definition without saving it",
   description:
-    "Runs the driver's health probe against a definition that does not exist yet. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. Driver `mcp` is not probeable before it is saved: probe it afterwards with `POST /v1/connectors/{id}/mcp/inspect`.",
+    "Runs the driver's health probe against a definition that does not exist yet. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.",
   security: [{ bearerAuth: [] }],
   request: { body: { content: { "application/json": { schema: ProbeConnectorBody } } } },
   responses: {
@@ -114,7 +115,7 @@ const probeRoute = createRoute({
     },
     400: {
       description:
-        "The request cannot be served — a malformed credential, or a driver with no draft probe (`mcp`). Distinct from a 200 `ok:false`, which means the upstream was reached and answered badly.",
+        "The request cannot be served because the credential or connector definition is malformed. Distinct from a 200 `ok:false`, which means the upstream was reached and answered badly.",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -162,7 +163,11 @@ function draftConnectorView(input: z.infer<typeof CreateConnectorSchema>): Conne
     auth_type: input.auth_type ?? "none",
     base_url: input.base_url ?? null,
     dsn: input.dsn ?? null,
-    config: (input.config ?? {}) as Record<string, unknown>,
+    config: withMcpConfigDefaults(
+      input.driver as DriverName,
+      input.auth_type ?? "none",
+      input.config as Record<string, unknown> | undefined,
+    ),
     operator_quirks: (input.operator_quirks ?? {}) as ConnectorView["operator_quirks"],
     template_slug: input.template_slug ?? null,
     template_name: null,
@@ -196,15 +201,18 @@ export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(validateRoute, async (c) => {
     requireAuth(c);
     const body = c.req.valid("json");
+    const effectiveConfig = withMcpConfigDefaults(
+      body.driver as DriverName,
+      body.auth_type ?? "none",
+      body.config as Record<string, unknown> | undefined,
+    );
     // Both driver-dependent fields, so `validate` refuses exactly what
     // `POST /v1/connectors` refuses — an author who validates first must not
     // then be surprised by the save.
     const issues = [
-      ...validateConnectorConfig(
-        body.driver as DriverName,
-        body.config as Record<string, unknown> | undefined,
-      ),
+      ...validateConnectorConfig(body.driver as DriverName, effectiveConfig),
       ...validateConnectorAuthType(body.driver as DriverName, body.auth_type),
+      ...validateMcpAuthConsistency(body.driver as DriverName, body.auth_type, effectiveConfig),
     ];
     // A malformed definition is a 200 with `ok:false`, not a 4xx: the request
     // itself was well-formed, and the caller asked a question rather than
@@ -216,20 +224,6 @@ export function registerAuthoringRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
-
-    // The mcp driver has no draft probe to run. Its session pool resolves a
-    // credential from the vault by connector id and caches the negotiated
-    // session under it, so there is nothing for an unsaved definition to
-    // address — and `probeMcpConnector` refuses a supplied credential for
-    // exactly that reason. Answering here keeps the 200 envelope meaning what
-    // it says: an `ok:false` with a `latency_ms` would report a probe that
-    // never reached a socket.
-    if (body.connector.driver === "mcp") {
-      throw new BadRequestError(
-        "an mcp connector cannot be probed before it is saved — its session and credential are resolved by connector id. Save it with POST /v1/connectors, attach the credential, then handshake with POST /v1/connectors/{id}/mcp/inspect.",
-        { driver: "mcp", probe_after_save: "POST /v1/connectors/{id}/mcp/inspect" },
-      );
-    }
 
     const connector = draftConnectorView(body.connector);
     // An explicit `null` override (rather than leaving it undefined) is what

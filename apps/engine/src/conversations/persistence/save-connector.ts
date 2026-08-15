@@ -403,12 +403,17 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
   // idempotent short-circuit above. Before this carve-out OAuth2 drafts
   // tripped the probe gate, then the 60s `force_save` cooldown — the
   // Gmail-OAuth2 catch-22 from session 37a6d350 (2026-05-12).
-  const requiresProbe =
+  const authCanProbeBeforeSave =
     connector.auth_type !== "oauth2" &&
+    connector.auth_type !== "oauth2_client" &&
+    connector.auth_type !== "oauth2_private_key";
+  const requiresProbe =
+    authCanProbeBeforeSave &&
     (connector.driver === "http" ||
       connector.driver === "graphql" ||
       connector.driver === "postgres" ||
-      connector.driver === "s3");
+      connector.driver === "s3" ||
+      connector.driver === "mcp");
   const requiresCredential =
     connector.auth_type !== undefined &&
     connector.auth_type !== null &&

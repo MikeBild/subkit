@@ -11,7 +11,12 @@ import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list
 import { connectors, credentials } from "../db/schema/index.ts";
 import { BadRequestError } from "../http/errors.ts";
 import { evictServer as evictMcpServer } from "../mcp/client/pool.ts";
-import { validateConnectorAuthType, validateConnectorConfigOrThrow } from "./config-schemas.ts";
+import {
+  validateConnectorAuthType,
+  validateConnectorConfigOrThrow,
+  validateMcpAuthConsistency,
+  withMcpConfigDefaults,
+} from "./config-schemas.ts";
 import { closePoolForConnector } from "./drivers/postgres.ts";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import { buildTemplateBindingFields, resolveConnectorTemplate } from "./template-resolver.ts";
@@ -39,6 +44,16 @@ function assertAuthTypeAllowedForDriver(
 ): void {
   const issues = validateConnectorAuthType(driver, auth_type);
   const first = issues[0];
+  if (!first) return;
+  throw new BadRequestError(first.message, { field: first.path, driver });
+}
+
+function assertMcpAuthConfigConsistent(
+  driver: DriverName,
+  auth_type: ConnectorView["auth_type"],
+  config: Record<string, unknown> | undefined,
+): void {
+  const first = validateMcpAuthConsistency(driver, auth_type, config)[0];
   if (!first) return;
   throw new BadRequestError(first.message, { field: first.path, driver });
 }
@@ -157,12 +172,17 @@ export async function createConnector(
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const resolved = await resolveCreateTemplateBinding(p.tenant_id, p.input, tx);
-    const effective = resolved.effective;
+    const resolvedEffective = resolved.effective;
+    const auth_type = resolvedEffective.auth_type ?? "none";
+    const effective = {
+      ...resolvedEffective,
+      config: withMcpConfigDefaults(resolvedEffective.driver, auth_type, resolvedEffective.config),
+    };
     const slug = effective.slug ?? slugify(effective.name);
     const environment = effective.environment ?? "dev";
-    const auth_type = effective.auth_type ?? "none";
     assertAuthTypeAllowedForDriver(effective.driver, auth_type);
     validateConnectorConfigOrThrow(effective.driver, effective.config);
+    assertMcpAuthConfigConsistent(effective.driver, auth_type, effective.config);
     // Upsert semantics on (tenant_id, environment, slug): when a
     // connector with the same slug already exists in the same
     // environment, treat the call as an update rather than letting the
@@ -555,9 +575,9 @@ export async function updateConnector(
         set.auth_type = enriched.auth_type;
       }
     }
-    // `set.config` is only populated when the patch actually carries one, so a
-    // patch that leaves config alone validates nothing — an existing connector
-    // whose stored config predates this check stays patchable on other fields.
+    // `set.config` is only populated when the patch actually carries one, so
+    // driver-schema validation leaves a pre-existing config untouched. MCP
+    // auth consistency still uses the effective stored-plus-patched pair.
     // `connectors.driver` is NOT NULL, so there is no absent case to
     // default. A `?? "http"` here would validate (say) an mcp config
     // against the strict HTTP schema and reject it with HTTP field names —
@@ -567,11 +587,16 @@ export async function updateConnector(
     // auth kind this patch lands.
     assertAuthTypeAllowedForDriver(
       prior.driver as DriverName,
-      set.auth_type as ConnectorView["auth_type"] | undefined,
+      (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
     );
     validateConnectorConfigOrThrow(
       prior.driver as DriverName,
       set.config as Record<string, unknown>,
+    );
+    assertMcpAuthConfigConsistent(
+      prior.driver as DriverName,
+      (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
+      (set.config ?? prior.config ?? {}) as Record<string, unknown>,
     );
     const [row] = await tx.update(connectors).set(set).where(eq(connectors.id, id)).returning();
     if (!row) return null;

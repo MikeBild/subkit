@@ -21,13 +21,7 @@
 // workspace's bearer token / OAuth access token to another's turn. Every
 // connection, manifest, and tool result lives under its tenant's bucket.
 
-import type { lookup as dnsLookup } from "node:dns/promises";
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { classifyMcpToolSideEffect, type SideEffect } from "@shared/index.ts";
 import {
@@ -35,24 +29,16 @@ import {
   recordMcpExternalToolInvoked,
 } from "../../audit/recorders/index.ts";
 import { getConfig } from "../../config/loader.ts";
-import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
-import { assertEgressAllowed, assertEgressAllowedResolved } from "../../connectors/egress-guard.ts";
+import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import {
   capManifest,
   hashManifest,
-  listAllRemoteTools,
   PER_SERVER_MANIFEST_BYTE_CAP,
-  parseRemoteManifest,
   type RemoteToolDescriptor,
 } from "./manifest.ts";
-import {
-  CLIENT_CAPABILITIES,
-  captureNegotiatedProtocolVersion,
-  negotiatedCapabilities,
-} from "./negotiation.ts";
 import {
   getMcpConnector,
   getMcpSessionBackoff,
@@ -60,6 +46,7 @@ import {
   MCP_CREDENTIAL_ENVIRONMENT,
   type McpConnectorRow,
   McpPreflightError,
+  type McpPreflightErrorCode,
   parkMcpConnectorFailure,
   recordMcpHandshakeState,
   recordMcpNegotiation,
@@ -71,16 +58,18 @@ import {
   MCP_WIRE_METHOD,
   performRemoteCall,
   type RemoteCall,
-  type RemoteCallClient,
   remoteCallTarget,
 } from "./remote-call.ts";
 import { reconcileManifestHash } from "./schema-drift.ts";
 import {
-  invalidateOAuth2TokenForServer,
-  isUnauthorized,
-  resolveAuthHeaders,
-  resolveAuthProvider,
-} from "./session-auth.ts";
+  type McpClientLike,
+  type McpSessionFactories,
+  type NegotiatedServerCapabilities,
+  type OpenMcpSessionResult,
+  openMcpSession,
+  setMcpSessionFactoriesForTests,
+} from "./session.ts";
+import { invalidateOAuth2TokenForServer, isUnauthorized } from "./session-auth.ts";
 
 // Exponential backoff on handshake failure: base * 2^(failures-1), capped.
 const BACKOFF_BASE_MS = 5_000;
@@ -107,7 +96,7 @@ function remoteToolCallTimeoutMs(tenant_id: string): number {
 }
 
 // ── TEST SEAM ────────────────────────────────────────────────────────────────
-// Overrides the SDK client/transport construction inside `connectClient`.
+// Overrides SDK client/transport construction in the shared session opener.
 // Production never sets this; tests inject in-process fakes WITHOUT bun's
 // `mock.module` (module mocks are process-global and leak into every other
 // test file that builds an SDK Client in the same worker). Null by default,
@@ -118,82 +107,15 @@ function remoteToolCallTimeoutMs(tenant_id: string): number {
 // Re-exported so the loop and route layers keep one import path for the
 // descriptor even though the shape now lives with the manifest logic.
 export type { RemoteToolDescriptor } from "./manifest.ts";
-
-/** Structural slice of the SDK `Client` the pool actually uses: the
- *  session verbs it owns, plus the operation methods declared by
- *  `RemoteCallClient` — that module decides which of them an operation
- *  needs, so restating them here would be a second list to keep in sync.
- *
- *  `listTools` is typed loosely on purpose: what comes back is a remote's
- *  claim about itself, and `parseRemoteManifest` is what turns it into
- *  descriptors. Declaring the wire shape here would put the validation in
- *  the type system, where a lying server is not bound by it.
- *
- *  The three negotiation accessors are OPTIONAL. The real SDK `Client`
- *  implements all three; an in-process fake need not, and a client that
- *  cannot answer "what did the server declare" is treated exactly like a
- *  server that declared nothing — which is the conservative direction, so
- *  the resource and prompt adapters are never minted on an unanswered
- *  capability. */
-export interface McpClientLike extends RemoteCallClient {
-  connect(transport: Transport): Promise<void>;
-  listTools(params?: { cursor?: string }): Promise<{
-    tools: unknown[];
-    nextCursor?: string | undefined;
-  }>;
-  close(): Promise<void>;
-  getServerCapabilities?(): ServerCapabilitiesLike | undefined;
-  /** The server's `implementation` block, verbatim. Typed as a bag rather
-   *  than a shape: it is the remote's self-description, we only ever hand
-   *  it to an operator, and pinning a shape here would break on the next
-   *  field the specification adds without buying anything. */
-  getServerVersion?(): Record<string, unknown> | undefined;
-  getInstructions?(): string | undefined;
-}
-
-/** The parts of the server's `initialize` reply the engine acts on. */
-export interface ServerCapabilitiesLike {
-  tools?: unknown;
-  resources?: unknown;
-  prompts?: unknown;
-  [key: string]: unknown;
-}
-
-/**
- * What the remote declared it serves, reduced to the three the engine
- * calls. `null` means the client could not be asked (see `McpClientLike`),
- * which is treated as "declared nothing" everywhere it is read.
- */
-export interface NegotiatedServerCapabilities {
-  tools: boolean;
-  resources: boolean;
-  prompts: boolean;
-}
-
-/** The DNS resolver shape the pre-connect egress gate accepts. */
-type DnsLookup = typeof dnsLookup;
-
-export interface McpPoolTestFactories {
-  /** Replaces `new Client(...)`. Receives the server row so a fake can
-   *  branch per server (URL / slug) without touching the transport. */
-  makeClient?: (row: McpConnectorRow) => McpClientLike;
-  /** Replaces `buildTransport(...)` (including its synchronous literal egress
-   *  guard — the guard has its own dedicated tests). Does NOT bypass the
-   *  DNS-resolved gate in `connectClient`: that one runs on every handshake,
-   *  and a seam that skipped it would make the rebinding protection untestable
-   *  precisely where it is enforced. */
-  makeTransport?: (row: McpConnectorRow, headers: Record<string, string>) => Transport;
-  /** Resolver for the pre-connect DNS gate. Lets a test express the case the
-   *  gate exists for: a hostname that is public at registration and private at
-   *  connect time. Defaults to the real DNS lookup, where an unresolvable
-   *  fixture hostname is deliberately not a block. */
-  lookupDns?: DnsLookup;
-}
-
-let testFactories: McpPoolTestFactories | null = null;
+export type {
+  McpClientLike,
+  NegotiatedServerCapabilities,
+  ServerCapabilitiesLike,
+} from "./session.ts";
+export type McpPoolTestFactories = McpSessionFactories;
 
 export function __setMcpPoolFactoriesForTests(f: McpPoolTestFactories | null): void {
-  testFactories = f;
+  setMcpSessionFactoriesForTests(f);
 }
 
 interface PooledClient {
@@ -245,56 +167,6 @@ function backoffWindow(failures: number): number {
   return Date.now() + delay;
 }
 
-function buildTransport(
-  tenant_id: string,
-  row: McpConnectorRow,
-  headers: Record<string, string>,
-  authProvider?: OAuthClientProvider,
-): StreamableHTTPClientTransport | SSEClientTransport {
-  const url = new URL(row.url);
-  // SSRF / egress guard at the connection boundary: block loopback,
-  // link-local, RFC1918, and cloud-metadata (169.254.169.254) targets
-  // before any bytes (carrying the tenant's resolved bearer/OAuth header)
-  // leave the host. Registration also guards the URL, but a row could have
-  // been seeded out-of-band or the guard mode tightened since; this is the
-  // last gate before connect. Throws EgressBlockedError, caught by
-  // connectClient's handler which parks the server in backoff.
-  // Synchronous literal gate here (this builder is sync). The DNS-RESOLVED
-  // check runs in `connectClient` immediately before this call, so a hostname
-  // that re-points at a private address after registration is caught on every
-  // handshake rather than only at registration. This literal check remains as
-  // the last backstop on the synchronous path.
-  assertEgressAllowed(url, { tenant_id });
-  const requestInit: RequestInit = Object.keys(headers).length > 0 ? { headers } : {};
-  switch (row.transport) {
-    case "http":
-      return new StreamableHTTPClientTransport(url, {
-        requestInit,
-        ...(authProvider ? { authProvider } : {}),
-      });
-    case "sse":
-      return new SSEClientTransport(url, {
-        requestInit,
-        ...(authProvider ? { authProvider } : {}),
-        eventSourceInit: { fetch: (u, init) => getDriverFetch()(u, { ...init, headers }) },
-      });
-    case "stdio":
-      // stdio spawns a local subprocess; not a transport for a
-      // multi-tenant hosted engine (no sandbox, no per-tenant fs).
-      throw new McpPreflightError(
-        "mcp_transport_unsupported",
-        "stdio transport is not supported for external MCP servers",
-      );
-    default: {
-      const exhaustive: never = row.transport;
-      throw new McpPreflightError(
-        "mcp_transport_unsupported",
-        `unknown transport: ${String(exhaustive)}`,
-      );
-    }
-  }
-}
-
 /**
  * Connect (or reconnect) a single server: build the transport, resolve
  * auth by reference, handshake, list tools, hash + cap the manifest,
@@ -313,103 +185,16 @@ async function connectClient(
 ): Promise<ConnectClientOutcome> {
   const bucket = tenantBucket(tenant_id);
   try {
-    const auth = row.auth;
-    const headers = await resolveAuthHeaders(db, tenant_id, row.id, auth, environment);
-    // For oauth2 / M2M kinds the SDK transport's authProvider owns the whole
-    // token lifecycle. bearer/basic/none keep the static header instead.
-    //
-    // oauth2 (interactive): constructs McpDbOAuthClientProvider in
-    //   non-interactive mode — redirectToAuthorization no-ops, so no
-    //   browser opens. A missing/expired token raises UnauthorizedError
-    //   on connect, caught below and parked in backoff.
-    //
-    // oauth2_client_credentials (M2M): constructs ClientCredentialsProvider.
-    //   The SDK fetches the token directly via RFC 9728 discovery on row.url.
-    //   Token is cached in-memory on the provider instance (not persisted).
-    //
-    // oauth2_private_key_jwt (M2M): constructs PrivateKeyJwtProvider.
-    //   Same non-interactive discovery path; signs each token request with
-    //   the stored private key.
-    const authProvider: OAuthClientProvider | undefined = await resolveAuthProvider(
-      db,
-      tenant_id,
-      row,
-      auth,
-      environment,
-      requestSource,
-    );
-    // DNS-resolved egress gate, immediately before connecting.
-    //
-    // Registration resolves the hostname and rejects private targets, but that
-    // verdict is only true for the DNS answer at registration time. A hostname
-    // that resolved publicly then can resolve to 127.0.0.1 or 169.254.169.254
-    // later — the attacker controls the zone, not the row. The literal check
-    // inside `buildTransport` cannot see that: it only reads the URL text.
-    //
-    // So the resolving check runs here, on every handshake, where the bytes are
-    // actually about to leave carrying the tenant's bearer token. The literal
-    // gate inside the builder stays as the last synchronous backstop.
-    //
-    // Runs on every handshake, including when a test factory supplies the
-    // transport — a gate a seam can switch off is not a gate. Fixture
-    // hostnames pass because an unresolvable name is deliberately not a block,
-    // and IP literals short-circuit to the synchronous check.
-    await assertEgressAllowedResolved(
-      new URL(row.url),
-      { tenant_id },
-      testFactories?.lookupDns ? { lookupImpl: testFactories.lookupDns } : {},
-    );
-    // TEST SEAM consumption (see header above `McpPoolTestFactories`):
-    // production always takes the `??` fallback — real transport, real Client.
-    const transport =
-      testFactories?.makeTransport?.(row, headers) ??
-      buildTransport(tenant_id, row, headers, authProvider);
-    // Armed BEFORE connect: the SDK sets the negotiated version from
-    // inside `initialize`, so a wrapper installed afterwards would only
-    // ever read null.
-    const readNegotiatedProtocolVersion = captureNegotiatedProtocolVersion(transport as Transport);
-    const client: McpClientLike =
-      testFactories?.makeClient?.(row) ??
-      new Client(
-        { name: "subkit-mcp-client", version: "1" },
-        { capabilities: CLIENT_CAPABILITIES },
-      );
-    // The concrete transport classes implement `Transport`; the cast
-    // satisfies `exactOptionalPropertyTypes`, where the class's optional
-    // `requestInit?` props don't structurally widen to the interface's.
-    await client.connect(transport as Transport);
-
-    // Capture what the server declared before issuing anything that
-    // depends on it. `tools/list` itself requires the `tools` capability;
-    // a server that declared none is a server with nothing to offer, and
-    // asking anyway would make the SDK throw a plain Error that this
-    // catch would park as a handshake failure — true, but with a reason
-    // an operator cannot act on.
-    const capabilities = negotiatedCapabilities(client);
-    const server_version = client.getServerVersion?.() ?? null;
-    const instructions = client.getInstructions?.() ?? null;
-
-    const raw =
-      capabilities && !capabilities.tools
-        ? []
-        : await listAllRemoteTools(tenant_id, row.slug, row.id, client);
-    const parsed = parseRemoteManifest(raw);
-    if (parsed.rejected.length > 0) {
-      // A dropped tool is a hole in the palette the operator will
-      // otherwise only notice as "the model says it cannot do that".
-      logger.warn({
-        module: "mcp_client",
-        action: "manifest.tools_rejected",
-        msg: "external MCP server advertised tools that could not be admitted; they are absent from the palette",
-        tenant_id,
-        connector_id: row.id,
-        connector_slug: row.slug,
-        rejected_count: parsed.rejected.length,
-        rejected: parsed.rejected,
-      });
-    }
-    const tools = capManifest(tenant_id, row.slug, row.id, parsed.tools);
-    const manifest_hash = hashManifest(tools);
+    const opened = await openMcpSession(db, tenant_id, row, environment, requestSource);
+    const {
+      client,
+      tools,
+      manifest_hash,
+      capabilities,
+      server_version,
+      instructions,
+      readNegotiatedProtocolVersion,
+    } = opened;
 
     // Reconcile against the last-observed hash (drift detection + audit).
     // Done before persisting the new handshake state so the previous hash
@@ -520,6 +305,50 @@ async function connectClient(
     // `last_error` on the row is the engine's own rolled-up verdict, not
     // this attempt's upstream detail.
     return { pooled: null, error: redactUpstreamDetail(message) };
+  }
+}
+
+export type TransientMcpProbeOutcome =
+  | { ok: true; tool_count: number; manifest_hash: string }
+  | { ok: false; detail: string; preflight_error_code?: McpPreflightErrorCode };
+
+/** Probe an unsaved MCP connector without touching pool or persistence state. */
+export async function probeTransientMcpServer(p: {
+  db: Db;
+  tenant_id: string;
+  row: McpConnectorRow;
+  credential: DecryptedCredential | null;
+  requestSource?: RequestSource;
+}): Promise<TransientMcpProbeOutcome> {
+  let opened: OpenMcpSessionResult | null = null;
+  try {
+    opened = await openMcpSession(
+      p.db,
+      p.tenant_id,
+      p.row,
+      p.row.environment,
+      p.requestSource ?? "chat",
+      p.credential,
+    );
+    return {
+      ok: true,
+      tool_count: opened.tools.length,
+      manifest_hash: opened.manifest_hash,
+    };
+  } catch (error) {
+    const message =
+      error instanceof UnauthorizedError
+        ? UNAUTHORIZED_HANDSHAKE_MESSAGE
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    return {
+      ok: false,
+      detail: redactUpstreamDetail(message),
+      ...(error instanceof McpPreflightError ? { preflight_error_code: error.error_code } : {}),
+    };
+  } finally {
+    await opened?.client.close().catch(() => {});
   }
 }
 

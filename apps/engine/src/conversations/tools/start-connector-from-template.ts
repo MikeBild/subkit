@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { withMcpConfigDefaults } from "../../connectors/config-schemas.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { enrichConnectorFromTemplate } from "../../connectors/template-enrichment.ts";
 import { resolveConnectorTemplate } from "../../connectors/template-resolver.ts";
@@ -91,7 +92,7 @@ export const startConnectorFromTemplateTool: ConversationTool = {
       environment: enriched.environment,
       ...(resolvedBaseUrl ? { base_url: resolvedBaseUrl } : {}),
       auth_type: enriched.auth_type,
-      config: enriched.config ?? {},
+      config: withMcpConfigDefaults(enriched.driver, enriched.auth_type ?? "none", enriched.config),
       description: template.description,
       template_slug: template.slug,
       template_name: template.name,

@@ -228,10 +228,7 @@ describe("probeMcpConnector", () => {
     expect(missing.detail).not.toContain("disabled");
   });
 
-  test("a credential override is refused rather than silently ignored", async () => {
-    // Honouring it is impossible — the pool resolves credentials from the
-    // vault by owner id — and ignoring it would authenticate the probe as
-    // an identity the author did not supply.
+  test("a credential override authenticates a throwaway handshake", async () => {
     __resetMcpClientPoolForTests();
     const seeded = await seedSession("probeover", "foxtrot");
     const res = await probeMcpConnector({
@@ -242,13 +239,33 @@ describe("probeMcpConnector", () => {
         slug: "probeover",
         base_url: seeded.url,
         auth_type: "bearer",
+        config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
       }),
-      credential_override: { mode: "bearer", token: "unused" },
+      credential_override: { mode: "bearer", token: "probe-only" },
+      requestSource: "api",
+    });
+    expect(res.ok).toBe(true);
+    expect(res.detail).toContain("2 tool(s)");
+  });
+
+  test("a mismatched override is rejected before the handshake", async () => {
+    const seeded = await seedSession("probeswrong", "foxtrot-wrong");
+    const res = await probeMcpConnector({
+      db: ctx.db,
+      tenant_id: tenantId,
+      connector: connectorView({
+        id: seeded.id,
+        slug: "probeswrong",
+        base_url: seeded.url,
+        auth_type: "bearer",
+        config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
+      }),
+      credential_override: { mode: "basic", username: "u", password: "p" },
       requestSource: "api",
     });
     expect(res.ok).toBe(false);
-    expect(res.error_code).toBe("credential_missing");
-    expect(res.detail).toContain("cannot probe with a supplied credential");
+    expect(res.error_code).toBe("credential_invalid");
+    expect(res.detail).toContain("expected bearer credential");
   });
 
   test("an unserved transport fails before any handshake is attempted", async () => {

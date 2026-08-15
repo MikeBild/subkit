@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { withMcpConfigDefaults } from "../../connectors/config-schemas.ts";
 import type { RecognizedAuth } from "../../connectors/discovery/recognize-auth.ts";
 import { recognizeAuthFromSchemes } from "../../connectors/discovery/recognize-auth.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
@@ -106,7 +107,7 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
           args.base_url,
           5,
           resolvedTemplates.map((entry) => entry.template),
-        )
+        ).filter((match) => match.template.driver === inferredDriver)
       : [];
     const bestUrlMatch = urlMatches[0] ?? null;
     const topTies =
@@ -251,6 +252,7 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
       };
     }
 
+    const effectiveConfig = withMcpConfigDefaults(inferredDriver, auth_type, seedConfig);
     const connector: ConnectorDraftDocument = {
       name: args.name,
       slug: args.name
@@ -264,7 +266,7 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
       ...(resolvedBaseUrl ? { base_url: resolvedBaseUrl } : {}),
       ...(args.dsn ? { dsn: args.dsn } : {}),
       auth_type,
-      config: seedConfig,
+      config: effectiveConfig,
       docs: template?.ingestion_url ? [template.ingestion_url] : [],
       latest_probe: null,
       saved_connector_id: null,

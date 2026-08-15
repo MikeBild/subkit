@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.12] – 2026-08-15
+
+### Fixed
+
+- **New MCP connectors are verified before either connector or credential is
+  persisted.** Draft probing now opens a throwaway MCP session, performs the
+  real `initialize` and paginated `tools/list` handshake through the existing
+  egress and manifest-validation path, and closes it again. A green result
+  atomically saves the connector and encrypted credential; failures leave no
+  connector, credential, pool, backoff, or handshake state behind.
+- **MCP connector definitions keep authentication consistent across every
+  authoring surface.** The connector service, conversational drafts, and REST
+  validation reject mismatches between `auth_type` and `config.mcp.auth.kind`,
+  seed absent MCP transport/auth defaults, and require an endpoint. URL-based
+  template selection is now driver-scoped, so an HTTP template cannot be
+  attached accidentally to an MCP connector on the same host.
+
 ## [6.2.11] – 2026-08-15
 
 ### Fixed

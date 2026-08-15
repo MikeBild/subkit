@@ -15,11 +15,12 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as discoveryService from "../../connectors/discovery/service.ts";
-import { createConnector } from "../../connectors/service.ts";
-import { upsertCredential } from "../../credentials/service.ts";
+import { createConnector, getConnector } from "../../connectors/service.ts";
+import { getCredentialForConnector, upsertCredential } from "../../credentials/service.ts";
 import { conversations as conversationsTable, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { __setMcpPoolFactoriesForTests, type McpClientLike } from "../../mcp/client/pool.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { startLocalTargetServer } from "../../test-helpers/local-http.ts";
 import {
@@ -56,6 +57,7 @@ afterAll(async () => {
 });
 
 afterEach(() => {
+  __setMcpPoolFactoriesForTests(null);
   _resetDraftCredentialCacheForTests();
 });
 
@@ -181,6 +183,97 @@ describe("probe_connector_draft + draft credential", () => {
     } finally {
       await server.stop();
     }
+  });
+
+  test("MCP bearer probe handshakes transiently, then atomically saves connector and credential", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    let closeCount = 0;
+    const fakeClient: McpClientLike = {
+      async connect() {},
+      async listTools() {
+        return {
+          tools: [
+            {
+              name: "content_list",
+              description: "List editorial content",
+              inputSchema: { type: "object" },
+            },
+          ],
+        };
+      },
+      async callTool() {
+        return { content: [], isError: false };
+      },
+      async readResource() {
+        return { contents: [] };
+      },
+      async getPrompt() {
+        return { messages: [] };
+      },
+      async close() {
+        closeCount += 1;
+      },
+    };
+    __setMcpPoolFactoriesForTests({
+      makeClient: () => fakeClient,
+      makeTransport: (_row, headers) => {
+        capturedHeaders = headers;
+        return {} as never;
+      },
+    });
+
+    const conversation_id = await seedConversation();
+    const draft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "ContentKit Editorial MCP PROD",
+        slug: "contentkit-editorial-mcp-prod-test",
+        driver: "mcp",
+        environment: "prod",
+        auth_type: "bearer",
+        base_url: "https://contentkit-editorial.mcpprobetest.invalid/mcp",
+        config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
+      },
+      workflow: { name: "", steps: [] },
+    };
+    const validated = withConnectorValidation(
+      withConnectorInspection(draft),
+      {
+        ...draft.connector,
+        validation: validateConnectorDraft(draft.connector ?? null, []),
+      },
+      true,
+      "validated",
+    );
+    const toolCtx = await buildToolCtx(conversation_id, validated);
+    setDraftCredential(conversation_id, { mode: "bearer", token: "EDITORIAL-TEST-TOKEN" });
+
+    const result = await probeConnectorDraftTool.execute(toolCtx, {});
+    expect(result.ok).toBe(true);
+    expect(capturedHeaders.Authorization).toBe("Bearer EDITORIAL-TEST-TOKEN");
+    expect(closeCount).toBe(1);
+    expect(getDraftCredential(conversation_id)).toBeNull();
+
+    const data = result.data as {
+      auto_saved?: boolean;
+      connector?: { id?: string };
+      latest_probe?: { method?: string };
+    };
+    expect(data.auto_saved).toBe(true);
+    expect(data.latest_probe?.method).toBe("MCP initialize + tools/list");
+    const connectorId = data.connector?.id;
+    expect(connectorId).toBeString();
+    if (!connectorId) throw new Error("auto-save did not return connector id");
+
+    const saved = await getConnector(tenant_id, connectorId, ctx.db);
+    expect(saved).toMatchObject({
+      driver: "mcp",
+      environment: "prod",
+      auth_type: "bearer",
+      config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
+    });
+    const credential = await getCredentialForConnector(tenant_id, connectorId, "prod", ctx.db);
+    expect(credential?.value).toEqual({ mode: "bearer", token: "EDITORIAL-TEST-TOKEN" });
   });
 
   test("returns credential_required when cache is empty for auth-required draft", async () => {

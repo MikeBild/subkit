@@ -4,6 +4,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
+import { probeMcpConnector } from "../../connectors/drivers/mcp.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
@@ -136,7 +137,7 @@ function isTimeoutError(error: unknown): boolean {
 export const probeConnectorDraftTool: ConversationTool = {
   name: "probe_connector_draft",
   description:
-    "Probe the current connector draft before saving it. Use this as the normal verification step for HTTP and GraphQL connectors.",
+    "Probe the current connector draft before saving it. MCP drafts perform a throwaway initialize + tools/list handshake; no draft secret is persisted before success.",
   inputSchema,
   category: "draft_write",
   authoring_resource: "connector",
@@ -557,7 +558,7 @@ export const probeConnectorDraftTool: ConversationTool = {
     const finishWithGreenProbeAutoPersist = async (
       latest_probe: Record<string, unknown>,
       probe_duration_ms: number,
-      probe_status_code: number,
+      probe_status_code?: number,
     ): Promise<ToolResult> => {
       const connectorLabel = connector.name ?? connector.slug ?? "this connector";
       const saveResult = await saveConnectorAtomic({
@@ -600,7 +601,7 @@ export const probeConnectorDraftTool: ConversationTool = {
         driver: effectiveDriver,
         environment: draftView.environment,
         probe_duration_ms,
-        probe_status_code,
+        ...(probe_status_code !== undefined ? { probe_status_code } : {}),
       });
       return {
         ok: true,
@@ -614,6 +615,79 @@ export const probeConnectorDraftTool: ConversationTool = {
         },
       };
     };
+
+    // The transient MCP session closes before a green result is atomically persisted.
+    if (connector.driver === "mcp") {
+      const started = Date.now();
+      const res = await probeMcpConnector({
+        db: ctx.db,
+        tenant_id: ctx.tenant_id,
+        connector: draftView,
+        credential_override: credentialOverride,
+        requestSource: "mcp",
+      });
+      const duration_ms = Date.now() - started;
+      const latest_probe = {
+        ok: res.ok,
+        method: "MCP initialize + tools/list",
+        path: "(protocol handshake)",
+        environment: draftView.environment,
+        duration_ms,
+        summary: res.ok
+          ? `MCP handshake probe succeeded in ${duration_ms}ms: ${res.detail ?? "manifest received"}.`
+          : `MCP handshake probe failed: ${res.detail ?? "unknown error"}`,
+        ...(res.ok
+          ? {}
+          : {
+              failure_code: res.error_code ?? "probe_failed",
+              fingerprint: probeFingerprint,
+            }),
+        probed_at: new Date().toISOString(),
+      };
+      const nextDraft = withConnectorProbe(
+        currentDraft,
+        { ...connector, validation, latest_probe },
+        res.ok,
+        latest_probe.summary,
+        res.ok ? "connector_probed" : "connector_probe_failed",
+      );
+      await ctx.setDraft(nextDraft);
+      await auditAwait(
+        {
+          tenant_id: ctx.tenant_id,
+          actor_type: ctx.actor_id ? "user" : "system",
+          actor_id: ctx.actor_id,
+          action: AuditAction.CONVERSATION_PROBE_CONNECTOR,
+          resource_type: "conversation",
+          resource_id: ctx.conversation_id,
+          result: res.ok ? "success" : "error",
+          metadata: {
+            connector_name: connector.name ?? null,
+            connector_slug: connector.slug ?? null,
+            environment: draftView.environment,
+            driver: "mcp",
+            duration_ms,
+            draft_only: true,
+          },
+        },
+        ctx.db,
+      );
+      if (!res.ok) {
+        return {
+          ok: false,
+          data: buildLifecyclePayload(nextDraft, {
+            connector: {
+              ...toCreateConnectorInput(connector),
+              environment: draftView.environment,
+            },
+            latest_probe,
+            detail: res.detail ?? null,
+            next_best_actions: ["inspect_connector_draft", "update_connector_draft"],
+          }),
+        };
+      }
+      return finishWithGreenProbeAutoPersist(latest_probe, duration_ms);
+    }
 
     // GraphQL connectors ALWAYS use the introspection probe, regardless of
     // the `path` arg. A graphql-driver connector must never fall through to

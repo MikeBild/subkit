@@ -1,3 +1,8 @@
+import {
+  validateConnectorAuthType,
+  validateConnectorConfig,
+  validateMcpAuthConsistency,
+} from "../connectors/config-schemas.ts";
 import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { getBuiltinTemplate } from "../connectors/templates.ts";
 import type { CreateConnectorInput } from "../connectors/types.ts";
@@ -77,7 +82,12 @@ export function validateConnectorDraft(
   if (!connector.environment) missing_fields.push("environment");
   if (!connector.auth_type) missing_fields.push("auth_type");
 
-  if (connector.driver === "http" || connector.driver === "graphql" || connector.driver === "s3") {
+  if (
+    connector.driver === "http" ||
+    connector.driver === "graphql" ||
+    connector.driver === "s3" ||
+    connector.driver === "mcp"
+  ) {
     if (!connector.base_url) missing_fields.push("base_url");
     else {
       const placeholders = extractTemplatePlaceholders(connector.base_url);
@@ -113,6 +123,13 @@ export function validateConnectorDraft(
   if (connector.slug && !/^[a-z0-9][a-z0-9-]*$/u.test(connector.slug)) {
     pushError(errors, "slug", "slug must match /^[a-z0-9][a-z0-9-]*$/");
   }
+  if (connector.driver) {
+    errors.push(
+      ...validateConnectorConfig(connector.driver, connector.config),
+      ...validateConnectorAuthType(connector.driver, connector.auth_type),
+      ...validateMcpAuthConsistency(connector.driver, connector.auth_type, connector.config),
+    );
+  }
   if (connector.template_slug) {
     const template =
       templates.find((candidate) => candidate.slug === connector.template_slug) ??
@@ -120,6 +137,13 @@ export function validateConnectorDraft(
     if (!template) {
       pushError(errors, "template_slug", "template_slug must reference a known connector template");
     } else {
+      if (connector.driver && template.driver !== connector.driver) {
+        pushError(
+          errors,
+          "template_slug",
+          `template '${template.slug}' uses driver '${template.driver}' and cannot be bound to a '${connector.driver}' connector`,
+        );
+      }
       if (connector.auth_type) {
         const allowed = allowedTemplateAuthTypes(template);
         if (!allowed.includes(connector.auth_type)) {
