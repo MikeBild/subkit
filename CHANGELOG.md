@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.11] – 2026-08-15
+
+### Fixed
+
+- **Single-use credential forms work from an authenticated Cockpit browser.**
+  The browser CSRF middleware now recognizes only the exact saved-connector
+  and connector-draft credential setup targets as grant-authenticated form
+  routes. Their short-lived, single-use grant remains mandatory, while
+  neighboring connector writes still require a browser-session CSRF proof.
+
 ## [6.2.10] – 2026-08-14
 
 ### Fixed
