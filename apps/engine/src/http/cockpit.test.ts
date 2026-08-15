@@ -112,6 +112,57 @@ describe("cockpit browser boundary", () => {
     expect(crossSite.status).toBe(403);
   });
 
+  test("allows only the exact single-use credential grant form targets", async () => {
+    const session = { session_id: "session-a", user_id: "user-a", tenant_id: "tenant-a" };
+    const cookie = browserSessionCookie(await signBrowserSession(session));
+    const app = createOpenApiApp();
+    app.use("*", async (c, next) => {
+      c.set("principal", {
+        provider: "oidc",
+        kind: "user",
+        id: session.user_id,
+        tenant_id: session.tenant_id,
+        session_id: session.session_id,
+        roles: [],
+      });
+      return await next();
+    });
+    app.use("*", browserCsrfMiddleware());
+    app.post("/v1/connectors/:id/credentials/setup", (c) => c.json({ ok: true }));
+    app.post("/v1/connector-drafts/:id/credentials/setup", (c) => c.json({ ok: true }));
+    app.put("/v1/connector-drafts/:id/credentials/setup", (c) => c.json({ ok: true }));
+    app.post("/v1/connector-drafts/:id", (c) => c.json({ ok: true }));
+    app.post("/v1/connector-drafts/:id/credentials/setup/extra", (c) => c.json({ ok: true }));
+
+    for (const path of [
+      "/v1/connectors/connector-a/credentials/setup",
+      "/v1/connector-drafts/conversation-a/credentials/setup",
+    ]) {
+      const accepted = await app.request(`http://subkit.test${path}`, {
+        method: "POST",
+        headers: { cookie },
+      });
+      expect(accepted.status).toBe(200);
+    }
+
+    for (const path of [
+      "/v1/connector-drafts/conversation-a",
+      "/v1/connector-drafts/conversation-a/credentials/setup/extra",
+    ]) {
+      const rejected = await app.request(`http://subkit.test${path}`, {
+        method: "POST",
+        headers: { cookie },
+      });
+      expect(rejected.status).toBe(403);
+    }
+
+    const wrongMethod = await app.request(
+      "http://subkit.test/v1/connector-drafts/conversation-a/credentials/setup",
+      { method: "PUT", headers: { cookie } },
+    );
+    expect(wrongMethod.status).toBe(403);
+  });
+
   test("hashes only inline scripts", () => {
     const html = '<script>window.theme="dark"</script><script src="/cockpit/app.js"></script>';
     const hashes = inlineScriptHashes(html);

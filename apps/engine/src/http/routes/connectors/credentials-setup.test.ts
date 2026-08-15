@@ -20,6 +20,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { browserSessionCookie, signBrowserSession } from "../../../auth/browser-session.ts";
 import { setConfigKey } from "../../../config/loader.ts";
 import { generateCredentialSetupGrant } from "../../../connectors/credential-setup-grant.ts";
 import { sha256Hex } from "../../../connectors/oauth-start-grant.ts";
@@ -45,6 +46,7 @@ import {
   conversationElicitations,
   conversations,
   credentials,
+  sessions,
 } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
@@ -392,11 +394,34 @@ describe("unsaved connector draft credential setup", () => {
     expect(formHtml).toContain("Connect Cloudflare Journey");
     expect(formHtml).toContain("API token / bearer token issued by Cloudflare Journey");
 
+    const [browserSession] = await server.db
+      .insert(sessions)
+      .values({
+        tenant_id: server.tenantId,
+        user_id: server.userId,
+        token_sha256: `credential-setup-${conversation.id}`,
+        expires_at: new Date(now() + 60 * 60_000),
+        absolute_expires_at: new Date(now() + 24 * 60 * 60_000),
+        last_seen_at: new Date(now()),
+      })
+      .returning({ id: sessions.id });
+    if (!browserSession) throw new Error("browser session seed failed");
+    const browserCookie = browserSessionCookie(
+      await signBrowserSession({
+        session_id: browserSession.id,
+        user_id: server.userId,
+        tenant_id: server.tenantId,
+      }),
+    );
+
     const submitted = await fetch(
       `${server.baseUrl}/v1/connector-drafts/${conversation.id}/credentials/setup`,
       {
         method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          cookie: browserCookie,
+        },
         body: new URLSearchParams({
           grant: plaintext,
           token: "fresh-cloudflare-token-123",
