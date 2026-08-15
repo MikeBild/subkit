@@ -27,7 +27,9 @@ import {
   connectServerById,
   type InvokeRemoteToolResult,
   invokeRemoteTool,
+  probeTransientMcpServer,
 } from "../../mcp/client/pool.ts";
+import { type McpConnectorRow, parseAuthConfig } from "../../mcp/client/registry.ts";
 import { MCP_WIRE_METHOD, type RemoteCall } from "../../mcp/client/remote-call.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { McpConnectorConfigSchema } from "../config-schemas.ts";
@@ -190,25 +192,62 @@ export async function probeMcpConnector(p: {
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
-  /** See `probeConnector`. The MCP driver CANNOT honour an override: the
-   *  pool resolves credentials from the vault by owner id at handshake
-   *  time, and there is no seam to hand it a value for a row that has no
-   *  id yet. Silently ignoring it would authenticate the probe as some
-   *  other identity than the one the author is testing, so an explicit
-   *  override is refused instead. */
+  /** An override opens a throwaway session and is never written before a green probe. */
   credential_override?: DecryptedCredential | null;
   requestSource?: RequestSource;
 }): Promise<DriverProbeResult> {
   const start = Date.now();
 
   if (p.credential_override !== undefined) {
-    return {
-      ok: false,
-      latency_ms: 0,
-      detail:
-        "the mcp driver cannot probe with a supplied credential — it authenticates through the stored credential for this connector; save the connector and its credential first, then probe",
-      error_code: "credential_missing",
-    };
+    try {
+      const cfg = parseMcpConnectorConfig(p.connector);
+      const rawAuth = (p.connector.config as { mcp?: { auth?: unknown } } | null | undefined)?.mcp
+        ?.auth;
+      const row: McpConnectorRow = {
+        id: p.connector.id,
+        tenant_id: p.tenant_id,
+        slug: p.connector.slug,
+        display_name: p.connector.display_name,
+        transport: cfg.transport,
+        url: p.connector.base_url ?? "",
+        auth: parseAuthConfig((rawAuth as Record<string, unknown> | undefined) ?? null),
+        environment: p.connector.environment,
+        enabled: true,
+      };
+      const outcome = await probeTransientMcpServer({
+        db: p.db,
+        tenant_id: p.tenant_id,
+        row,
+        credential: p.credential_override,
+        ...(p.requestSource ? { requestSource: p.requestSource } : {}),
+      });
+      const latency_ms = Date.now() - start;
+      if (!outcome.ok) {
+        const preflightProbeCode =
+          outcome.preflight_error_code === "credential_missing" ||
+          outcome.preflight_error_code === "credential_invalid"
+            ? outcome.preflight_error_code
+            : null;
+        return {
+          ok: false,
+          latency_ms,
+          detail: outcome.detail,
+          error_code: preflightProbeCode ?? probeErrorFor("handshake_failed", outcome.detail),
+        };
+      }
+      return {
+        ok: true,
+        latency_ms,
+        detail: `handshake ok — ${outcome.tool_count} tool(s)`,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        latency_ms: Date.now() - start,
+        detail: err instanceof Error ? err.message : String(err),
+        error_code: "unknown_upstream_error",
+      };
+    }
   }
 
   let transport: McpDriverConfig["transport"];

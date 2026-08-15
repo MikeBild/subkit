@@ -72,6 +72,16 @@ beforeAll(async () => {
         },
       ],
     },
+    {
+      tenant_id: ctx.tenant_id,
+      slug: "editorial-http-publisher",
+      name: "Editorial HTTP Publisher",
+      driver: "http",
+      base_url: "https://editorial.example.test",
+      auth_type: "bearer",
+      ingestion_source: "openapi",
+      url_pattern: "^https://editorial\\.example\\.test(/|$)",
+    },
   ]);
 });
 
@@ -124,6 +134,27 @@ interface BindingPayload {
 }
 
 describe("start_connector_from_description — template binding", () => {
+  test("does not bind a URL-matched template owned by another driver", async () => {
+    const toolCtx = await createToolCtx();
+    const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
+      name: "Editorial MCP",
+      driver: "mcp",
+      environment: "prod",
+      base_url: "https://editorial.example.test/mcp",
+      auth_type: "bearer",
+      force_new: true,
+    });
+    expect(started.ok).toBe(true);
+    const connector = toolCtx.base.getDraft().connector;
+    expect(connector?.template_slug).toBeNull();
+    expect(connector?.driver).toBe("mcp");
+    expect(connector?.base_url).toBe("https://editorial.example.test/mcp");
+    expect(connector?.config).toEqual({
+      mcp: { transport: "http", auth: { kind: "bearer" } },
+    });
+    expect(connector?.validation?.ok).toBe(true);
+  });
+
   test("same-host guess is overridden by the template's canonical base_url and the result says so", async () => {
     const toolCtx = await createToolCtx();
     const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {

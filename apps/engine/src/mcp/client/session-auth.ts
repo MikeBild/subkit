@@ -26,6 +26,7 @@ import {
   getOAuth2ClientCredential,
   getOAuth2PrivateKeyCredential,
 } from "../../credentials/service.ts";
+import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
@@ -72,7 +73,39 @@ export async function resolveAuthHeaders(
       `mcp.auth.kind '${auth.kind}' references a credential that does not exist for this connector`,
     );
   }
-  const { value } = resolved;
+  return resolveStaticAuthHeaders(auth, resolved.value);
+}
+
+/** Resolve static MCP auth from either a vault value or a single-use draft value. */
+export function resolveStaticAuthHeaders(
+  auth: McpAuthConfig,
+  value: DecryptedCredential | null,
+): Record<string, string> {
+  if (auth.kind === "none") {
+    if (value !== null && value.mode !== "none") {
+      throw new McpPreflightError(
+        "credential_invalid",
+        `mcp.auth.kind 'none' cannot use credential mode '${value.mode}'`,
+      );
+    }
+    return {};
+  }
+  if (
+    auth.kind === "oauth2" ||
+    auth.kind === "oauth2_client_credentials" ||
+    auth.kind === "oauth2_private_key_jwt"
+  ) {
+    throw new McpPreflightError(
+      "credential_invalid",
+      `mcp.auth.kind '${auth.kind}' requires its persisted OAuth provider and cannot use a static draft credential`,
+    );
+  }
+  if (!value) {
+    throw new McpPreflightError(
+      "credential_missing",
+      `mcp.auth.kind '${auth.kind}' requires a credential`,
+    );
+  }
 
   switch (auth.kind) {
     case "bearer": {

@@ -16,12 +16,36 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
 import { connectors } from "../../../db/schema/index.ts";
+import { __setMcpPoolFactoriesForTests, type McpClientLike } from "../../../mcp/client/pool.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 let ctx: HttpTestServer;
 let mock: Server;
 let mockBaseUrl: string;
 let received: { headers: Record<string, string>; url: string }[] = [];
+let mcpHeaders: Record<string, string> = {};
+let mcpCloseCount = 0;
+
+function fakeMcpClient(): McpClientLike {
+  return {
+    async connect() {},
+    async listTools() {
+      return { tools: [{ name: "draft_probe", inputSchema: { type: "object" } }] };
+    },
+    async callTool() {
+      return { content: [], isError: false };
+    },
+    async readResource() {
+      return { contents: [] };
+    },
+    async getPrompt() {
+      return { messages: [] };
+    },
+    async close() {
+      mcpCloseCount += 1;
+    },
+  };
+}
 
 function adminAuth(): Record<string, string> {
   return { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" };
@@ -44,6 +68,13 @@ async function post(path: string, body: unknown): Promise<Response> {
 }
 
 beforeAll(async () => {
+  __setMcpPoolFactoriesForTests({
+    makeClient: () => fakeMcpClient(),
+    makeTransport: (_row, headers) => {
+      mcpHeaders = headers;
+      return {} as never;
+    },
+  });
   ctx = await createHttpTestServer("conn-authoring");
   mock = createServer((req: IncomingMessage, res: ServerResponse) => {
     const headers: Record<string, string> = {};
@@ -60,6 +91,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  __setMcpPoolFactoriesForTests(null);
   mock?.close();
   await ctx?.cleanup();
 }, 30_000);
@@ -251,42 +283,73 @@ describe("driver-scoped auth kinds", () => {
     const body = (await res.json()) as { ok: boolean };
     expect(body.ok).toBe(true);
   });
+
+  test("create seeds MCP transport auth from auth_type when config is omitted", async () => {
+    const res = await post("/v1/connectors", {
+      name: "MCP Seeded Auth",
+      driver: "mcp",
+      environment: "prod",
+      base_url: "https://mcp-seeded.example.test/mcp",
+      auth_type: "bearer",
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { config?: Record<string, unknown> };
+    expect(body.config).toEqual({
+      mcp: { transport: "http", auth: { kind: "bearer" } },
+    });
+  });
+
+  test("patch refuses an MCP auth_type/config mismatch", async () => {
+    const created = await post("/v1/connectors", {
+      name: "MCP Consistency Target",
+      driver: "mcp",
+      environment: "prod",
+      base_url: "https://mcp-consistency.example.test/mcp",
+      auth_type: "bearer",
+    });
+    const { id } = (await created.json()) as { id: string };
+    const patched = await fetch(`${ctx.baseUrl}/v1/connectors/${id}`, {
+      method: "PATCH",
+      headers: adminAuth(),
+      body: JSON.stringify({ auth_type: "basic" }),
+    });
+    expect(patched.status).toBe(400);
+  });
 });
 
 describe("POST /v1/connectors/probe — driver mcp", () => {
-  // The pool resolves an MCP session and its credential by connector id, so
-  // there is nothing an unsaved definition can address. The refusal is a 400
-  // because no probe ran: a 200 `ok:false` on this route means the upstream was
-  // reached and answered badly.
-  test("refuses an unsaved mcp definition and names where to probe instead", async () => {
+  test("handshakes an unsaved definition and closes the throwaway session", async () => {
+    mcpCloseCount = 0;
     const before = await connectorCount();
     const res = await post("/v1/connectors/probe", {
       connector: {
         name: "Unsaved MCP",
         driver: "mcp",
         base_url: "https://mcp.example.com/mcp",
-        config: { mcp: { transport: "http" } },
+        auth_type: "none",
       },
     });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { message: string; details?: Record<string, unknown> };
-    expect(body.message).toContain("/v1/connectors/{id}/mcp/inspect");
-    expect(body.details?.driver).toBe("mcp");
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { ok: boolean }).toMatchObject({ ok: true });
+    expect(mcpCloseCount).toBe(1);
     expect(await connectorCount()).toBe(before);
   });
 
-  test("the same refusal holds when a credential is supplied", async () => {
-    // Otherwise the message would read as "drop the credential and retry",
-    // which does not work either.
+  test("uses the supplied bearer credential without persisting either draft", async () => {
+    mcpHeaders = {};
+    const before = await connectorCount();
     const res = await post("/v1/connectors/probe", {
       connector: {
         name: "Unsaved MCP With Cred",
         driver: "mcp",
         base_url: "https://mcp.example.com/mcp",
-        config: { mcp: { transport: "http" } },
+        auth_type: "bearer",
       },
       credential: { mode: "bearer", token: "PROBE-ONLY-TOKEN" },
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { ok: boolean }).toMatchObject({ ok: true });
+    expect(mcpHeaders.Authorization).toBe("Bearer PROBE-ONLY-TOKEN");
+    expect(await connectorCount()).toBe(before);
   });
 });

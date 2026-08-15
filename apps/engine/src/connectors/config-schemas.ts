@@ -26,7 +26,7 @@
 // saying so explicitly is what stops the next reader from assuming an omission.
 
 import { z } from "zod";
-import { McpAuthConfigSchema } from "../mcp/client/registry.ts";
+import { type McpAuthConfig, McpAuthConfigSchema } from "../mcp/client/registry.ts";
 import { type AuthType, type DriverName, HttpConnectorConfig } from "./types.ts";
 
 /** GraphQL: the endpoint is `base_url` (a GraphQL API has exactly one), so the
@@ -111,6 +111,46 @@ export const CONNECTOR_CONFIG_SCHEMAS: Record<DriverName, z.ZodType> = {
  */
 export const MCP_ONLY_AUTH_TYPES: readonly AuthType[] = ["oauth2_client", "oauth2_private_key"];
 
+const MCP_AUTH_KIND_BY_TYPE: Readonly<Partial<Record<AuthType, McpAuthConfig["kind"]>>> = {
+  none: "none",
+  bearer: "bearer",
+  basic: "basic",
+  oauth2: "oauth2",
+  oauth2_client: "oauth2_client_credentials",
+  oauth2_private_key: "oauth2_private_key_jwt",
+};
+
+export function mcpAuthKindForType(auth_type: AuthType): McpAuthConfig["kind"] | null {
+  return MCP_AUTH_KIND_BY_TYPE[auth_type] ?? null;
+}
+
+/** Seed only absent MCP fields; explicit values remain validation inputs. */
+export function withMcpConfigDefaults(
+  driver: DriverName,
+  auth_type: AuthType,
+  config: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (driver !== "mcp") return { ...(config ?? {}) };
+  const expectedKind = mcpAuthKindForType(auth_type);
+  if (
+    config &&
+    Object.hasOwn(config, "mcp") &&
+    (typeof config.mcp !== "object" || config.mcp === null || Array.isArray(config.mcp))
+  ) {
+    return { ...config };
+  }
+  const existingMcp =
+    config?.mcp && typeof config.mcp === "object" ? (config.mcp as Record<string, unknown>) : {};
+  return {
+    ...(config ?? {}),
+    mcp: {
+      ...existingMcp,
+      ...(existingMcp.transport === undefined ? { transport: "http" } : {}),
+      ...(existingMcp.auth === undefined && expectedKind ? { auth: { kind: expectedKind } } : {}),
+    },
+  };
+}
+
 export interface ConnectorConfigIssue {
   /** Dotted path to the offending key, `"config"` when the whole value is wrong. */
   path: string;
@@ -127,7 +167,16 @@ export function validateConnectorAuthType(
   driver: DriverName,
   auth_type: AuthType | undefined | null,
 ): ConnectorConfigIssue[] {
-  if (!auth_type || driver === "mcp") return [];
+  if (!auth_type) return [];
+  if (driver === "mcp") {
+    if (mcpAuthKindForType(auth_type)) return [];
+    return [
+      {
+        path: "auth_type",
+        message: `auth_type '${auth_type}' is not supported by the mcp transport — use none, bearer, basic, oauth2, oauth2_client, or oauth2_private_key`,
+      },
+    ];
+  }
   if (!MCP_ONLY_AUTH_TYPES.includes(auth_type)) return [];
   return [
     {
@@ -135,6 +184,39 @@ export function validateConnectorAuthType(
       message: `auth_type '${auth_type}' is only declarable by an mcp connector — it identifies an OAuth2 client to a token endpoint and is never applied to a ${driver} request`,
     },
   ];
+}
+
+/** Keep the credential mode aligned with the MCP transport auth strategy. */
+export function validateMcpAuthConsistency(
+  driver: DriverName,
+  auth_type: AuthType | undefined | null,
+  config: Record<string, unknown> | undefined | null,
+): ConnectorConfigIssue[] {
+  if (driver !== "mcp" || !auth_type) return [];
+  const expected = mcpAuthKindForType(auth_type);
+  if (!expected) return [];
+  const block = config?.mcp;
+  if (!block || typeof block !== "object" || Array.isArray(block)) {
+    return [{ path: "config.mcp", message: "config.mcp is required for an mcp connector" }];
+  }
+  const auth = (block as Record<string, unknown>).auth;
+  if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
+    return [
+      {
+        path: "config.mcp.auth.kind",
+        message: `config.mcp.auth.kind must be '${expected}' for auth_type '${auth_type}'`,
+      },
+    ];
+  }
+  const actual = (auth as Record<string, unknown>).kind;
+  return actual === expected
+    ? []
+    : [
+        {
+          path: "config.mcp.auth.kind",
+          message: `config.mcp.auth.kind '${String(actual)}' does not match auth_type '${auth_type}' (expected '${expected}')`,
+        },
+      ];
 }
 
 /**

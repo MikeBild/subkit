@@ -9,9 +9,12 @@ import { describe, expect, test } from "bun:test";
 import {
   CONNECTOR_CONFIG_SCHEMAS,
   MCP_ONLY_AUTH_TYPES,
+  mcpAuthKindForType,
   validateConnectorAuthType,
   validateConnectorConfig,
   validateConnectorConfigOrThrow,
+  validateMcpAuthConsistency,
+  withMcpConfigDefaults,
 } from "./config-schemas.ts";
 import { AuthTypeEnum, DriverEnum } from "./types.ts";
 
@@ -102,6 +105,47 @@ describe("the write-path wrapper", () => {
 });
 
 describe("mcp", () => {
+  test("seeds the transport and auth shape for an otherwise empty draft config", () => {
+    expect(withMcpConfigDefaults("mcp", "bearer", {})).toEqual({
+      mcp: { transport: "http", auth: { kind: "bearer" } },
+    });
+  });
+
+  test("does not overwrite an explicitly authored auth shape", () => {
+    const config = { mcp: { transport: "sse", auth: { kind: "basic" } } };
+    expect(withMcpConfigDefaults("mcp", "bearer", config)).toEqual(config);
+  });
+
+  test("does not repair a malformed explicit MCP block behind the author's back", () => {
+    const config = { mcp: "not-an-object" };
+    const effective = withMcpConfigDefaults("mcp", "bearer", config);
+    expect(effective).toEqual(config);
+    expect(validateConnectorConfig("mcp", effective)).not.toEqual([]);
+  });
+
+  test("maps every supported connector auth type to the MCP transport kind", () => {
+    expect(mcpAuthKindForType("none")).toBe("none");
+    expect(mcpAuthKindForType("bearer")).toBe("bearer");
+    expect(mcpAuthKindForType("basic")).toBe("basic");
+    expect(mcpAuthKindForType("oauth2")).toBe("oauth2");
+    expect(mcpAuthKindForType("oauth2_client")).toBe("oauth2_client_credentials");
+    expect(mcpAuthKindForType("oauth2_private_key")).toBe("oauth2_private_key_jwt");
+    expect(mcpAuthKindForType("header")).toBeNull();
+  });
+
+  test("rejects disagreement between top-level auth_type and config.mcp.auth.kind", () => {
+    expect(
+      validateMcpAuthConsistency("mcp", "bearer", {
+        mcp: { transport: "http", auth: { kind: "basic" } },
+      }),
+    ).toEqual([expect.objectContaining({ path: "config.mcp.auth.kind" })]);
+    expect(
+      validateMcpAuthConsistency("mcp", "bearer", {
+        mcp: { transport: "http", auth: { kind: "bearer" } },
+      }),
+    ).toEqual([]);
+  });
+
   test("accepts the block the migration writes", () => {
     expect(
       validateConnectorConfig("mcp", {
@@ -178,12 +222,19 @@ describe("auth kinds are scoped to the driver that can honour them", () => {
     }
   }
 
-  test("every other auth kind stays valid on every driver", () => {
-    for (const driver of DriverEnum.options) {
+  test("every other auth kind stays valid on non-MCP drivers", () => {
+    for (const driver of DriverEnum.options.filter((candidate) => candidate !== "mcp")) {
       for (const auth_type of AuthTypeEnum.options) {
         if (MCP_ONLY_AUTH_TYPES.includes(auth_type)) continue;
         expect(validateConnectorAuthType(driver, auth_type)).toEqual([]);
       }
+    }
+  });
+
+  test("MCP refuses auth modes its transport cannot represent", () => {
+    for (const auth_type of ["header", "query", "aws_sigv4"] as const) {
+      const issues = validateConnectorAuthType("mcp", auth_type);
+      expect(issues).toEqual([expect.objectContaining({ path: "auth_type" })]);
     }
   });
 
