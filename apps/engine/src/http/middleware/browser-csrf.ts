@@ -12,15 +12,22 @@ const EXEMPT_PREFIXES = [
   "/v1/tool-approvals/",
   "/v1/setup",
 ];
+const GRANT_FORM_PATHS = [
+  /^\/v1\/connectors\/[^/]+\/credentials\/setup$/,
+  /^\/v1\/connector-drafts\/[^/]+\/credentials\/setup$/,
+];
 
-function isExempt(path: string): boolean {
-  return EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
+function isExempt(path: string, method: string): boolean {
+  return (
+    EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix)) ||
+    (method === "POST" && GRANT_FORM_PATHS.some((pattern) => pattern.test(path)))
+  );
 }
 
 export function browserCsrfMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const principal = c.get("principal");
-    if (!MUTATING_METHODS.has(c.req.method) || isExempt(c.req.path)) {
+    if (!MUTATING_METHODS.has(c.req.method) || isExempt(c.req.path, c.req.method)) {
       return await next();
     }
 
