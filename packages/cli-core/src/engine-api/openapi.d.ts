@@ -4659,7 +4659,7 @@ export interface paths {
         put?: never;
         /**
          * Probe a connector definition without saving it
-         * @description Runs the driver's health probe against a definition that does not exist yet. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. Driver `mcp` is not probeable before it is saved: probe it afterwards with `POST /v1/connectors/{id}/mcp/inspect`.
+         * @description Runs the driver's health probe against a definition that does not exist yet. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.
          */
         post: {
             parameters: {
@@ -4683,7 +4683,7 @@ export interface paths {
                         "application/json": components["schemas"]["ProbeConnectorResponse"];
                     };
                 };
-                /** @description The request cannot be served — a malformed credential, or a driver with no draft probe (`mcp`). Distinct from a 200 `ok:false`, which means the upstream was reached and answered badly. */
+                /** @description The request cannot be served because the credential or connector definition is malformed. Distinct from a 200 `ok:false`, which means the upstream was reached and answered badly. */
                 400: {
                     headers: {
                         [name: string]: unknown;

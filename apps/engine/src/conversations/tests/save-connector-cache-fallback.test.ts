@@ -123,6 +123,46 @@ async function seed(slug: string): Promise<{ conversation_id: string; tool_ctx: 
 }
 
 describe("saveConnectorAtomic — draft-credential cache fallback", () => {
+  test("does not save a static-auth MCP draft before a green handshake", async () => {
+    const { conversation_id, tool_ctx } = await seed("mcp-probe-required-seed");
+    const baseDraft: DraftDocument = {
+      mode: "connector_authoring",
+      connector: {
+        name: "mcp-probe-required",
+        slug: "mcp-probe-required",
+        driver: "mcp",
+        environment: "prod",
+        auth_type: "bearer",
+        base_url: "https://mcp-probe-required.example.test/mcp",
+        config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
+      },
+      workflow: { name: "", steps: [] },
+    };
+    const validated = withConnectorValidation(
+      withConnectorInspection(baseDraft),
+      {
+        ...baseDraft.connector,
+        validation: validateConnectorDraft(baseDraft.connector ?? null, []),
+      },
+      true,
+      "validated",
+    );
+    await tool_ctx.setDraft(validated);
+    setDraftCredential(conversation_id, { mode: "bearer", token: "not-yet-probed" });
+
+    const result = await saveConnectorAtomic({
+      ctx: tool_ctx,
+      environment: "prod",
+      reason: "manual_re_issue",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error_code).toBe("connector_not_ready");
+      expect(result.next_best_actions).toContain("probe_connector_draft");
+    }
+  });
+
   test("persists when no inline credential is supplied but the cache has a matching mode", async () => {
     const { conversation_id, tool_ctx } = await seed("cache-fallback-bearer");
     setDraftCredential(conversation_id, { mode: "bearer", token: "secret-from-form" });

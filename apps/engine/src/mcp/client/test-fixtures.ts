@@ -41,6 +41,18 @@ export async function seedMcpConnector(
   db: Executor,
   input: SeedMcpConnectorInput,
 ): Promise<{ id: string; slug: string; url: string }> {
+  const authType =
+    input.auth_type ??
+    (
+      {
+        none: "none",
+        bearer: "bearer",
+        basic: "basic",
+        oauth2: "oauth2",
+        oauth2_client_credentials: "oauth2_client",
+        oauth2_private_key_jwt: "oauth2_private_key",
+      } satisfies Record<McpAuthConfig["kind"], NonNullable<SeedMcpConnectorInput["auth_type"]>>
+    )[input.auth?.kind ?? "none"];
   const view = await createConnector(
     {
       tenant_id: input.tenant_id,
@@ -50,7 +62,7 @@ export async function seedMcpConnector(
         slug: input.slug,
         driver: "mcp",
         environment: input.environment ?? "prod",
-        auth_type: input.auth_type ?? "none",
+        auth_type: authType,
         base_url: input.url,
         config: {
           mcp: {
