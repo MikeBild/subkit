@@ -1104,6 +1104,11 @@ const _baseWorkflowDefSchema = z.object({
   slug: z.string().min(1).optional(),
   description: z.string().optional(),
   /**
+   * Effect advertised when this saved workflow is exposed as an agent tool.
+   * Omission stays conservative: an unclassified workflow may be irreversible.
+   */
+  tool_effect: z.enum(["read", "reversible_write", "irreversible_write"]).optional(),
+  /**
    * Optional pointer to the skill the workflow was authored from
    * (typically via `start_workflow_from_recipe`). When set, the workflow
    * validator enforces a structural superset relationship between the

@@ -30,6 +30,8 @@ export interface WorkflowToolDescriptor {
   name: string;
   /** One-paragraph description sourced from `WorkflowDef.description`, fallback to `name`. */
   description: string;
+  /** Versioned effect declaration; absent declarations are materialized as irreversible. */
+  effect: "read" | "reversible_write" | "irreversible_write";
   /** Materialised JSON Schema for the workflow's input. Empty-object schema when the workflow declares none. */
   inputSchema: { type: "object"; properties?: Record<string, unknown>; [k: string]: unknown };
   /** Declared `output_schema` JSON Schema, when the workflow declares a
@@ -191,6 +193,7 @@ export async function listWorkflowToolsForTenant(
     // (serializeWorkflow) and the MCP resource view.
     const columnDescription = row.description?.trim() ? row.description.trim() : null;
     let description = columnDescription ?? row.name;
+    let effect: WorkflowToolDescriptor["effect"] = "irreversible_write";
     let inputSchema: WorkflowToolDescriptor["inputSchema"] = EMPTY_OBJECT_SCHEMA;
     let outputSchema: WorkflowToolDescriptor["outputSchema"];
     const dag = row.current_version_id ? dagByVersionId.get(row.current_version_id) : undefined;
@@ -198,6 +201,7 @@ export async function listWorkflowToolsForTenant(
       const parsed = WorkflowDefSchema.safeParse(dag);
       if (parsed.success) {
         if (!columnDescription && parsed.data.description) description = parsed.data.description;
+        effect = parsed.data.tool_effect ?? "irreversible_write";
         if (parsed.data.input_schema) {
           inputSchema = toInputSchema(parsed.data.input_schema);
         } else {
@@ -214,6 +218,7 @@ export async function listWorkflowToolsForTenant(
       slug: row.slug,
       name: row.name,
       description,
+      effect,
       inputSchema,
       ...(outputSchema ? { outputSchema } : {}),
       last_executed_at: row.last_executed_at,
