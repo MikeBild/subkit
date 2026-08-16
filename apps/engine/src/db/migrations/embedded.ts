@@ -53,6 +53,7 @@ import sql0032ReflectiveMorg from "./0032_reflective_morg.sql" with { type: "tex
 import sql0033HardCarmellaUnuscione from "./0033_hard_carmella_unuscione.sql" with { type: "text" };
 import sql0034BlushingMagma from "./0034_blushing_magma.sql" with { type: "text" };
 import sql0035McpServersDropped from "./0035_mcp_servers_dropped.sql" with { type: "text" };
+import sql0036FancyThena from "./0036_fancy_thena.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -113,6 +114,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0033_hard_carmella_unuscione": sql0033HardCarmellaUnuscione,
   "0034_blushing_magma": sql0034BlushingMagma,
   "0035_mcp_servers_dropped": sql0035McpServersDropped,
+  "0036_fancy_thena": sql0036FancyThena,
 };
 
 const journal = journalMeta as unknown as Journal;

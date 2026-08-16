@@ -1,19 +1,21 @@
 // Cancel an in-flight execution — POST /v1/executions/{id}/cancel.
 //
 // Three-stage flow:
-//   (a) If the execution is still queued, mark the pg-boss job
+//   (a) Persist an idempotent abort request before any queue race.
+//   (b) If the execution is still queued, mark the pg-boss job
 //       cancelled so the worker never picks it up.
-//   (b) Signal the in-process AbortController if the execution is
-//       running on this process.
-//   (c) Otherwise, write an abort_requested outbox event so another
-//       worker process can observe it.
+//   (c) Signal the in-process AbortController as a zero-latency fast path.
 
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { writeEvent } from "../../../db/events.ts";
+import { actorType, readRequestSource } from "../../../audit/index.ts";
 import { executions } from "../../../db/schema/index.ts";
-import { cancel as abortCancel, finalizeExecution, getAbort } from "../../../execution/index.ts";
+import {
+  cancel as abortCancel,
+  finalizeExecution,
+  requestExecutionAbort,
+} from "../../../execution/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { EXECUTION_RUN_QUEUE } from "../../../queue/index.ts";
 import { NotFoundError } from "../../errors.ts";
@@ -52,7 +54,20 @@ export function registerCancelRoute(app: OpenAPIHono<AppEnv>): void {
     const row = rows[0];
     if (!row) throw new NotFoundError("execution");
 
-    // (a) If the execution is still queued, mark the pg-boss job
+    // Persist first. If a queued job is picked up between the read above and
+    // pg-boss cancellation below, the worker still observes this durable
+    // intent and cannot transition the row to running without seeing it.
+    if (row.status === "queued" || row.status === "running") {
+      await requestExecutionAbort(db, {
+        tenant_id: principal.tenant_id,
+        execution_id: id,
+        actor_type: actorType(principal),
+        actor_id: principal.id,
+        request_source: readRequestSource(c) ?? "api",
+      });
+    }
+
+    // (b) If the execution is still queued, mark the pg-boss job
     // cancelled so the worker never picks it up.
     if (row.status === "queued") {
       try {
@@ -83,23 +98,10 @@ export function registerCancelRoute(app: OpenAPIHono<AppEnv>): void {
       await finalizeExecution(db, principal.tenant_id, id, "aborted", null, null, ["queued"]);
     }
 
-    // (b) Signal the in-process AbortController if the execution is
-    // running on this process.
-    const signaled = abortCancel(id, "cancelled");
-
-    // (c) Otherwise, write an abort_requested outbox event so another
-    // worker process can observe it. In P4 everything runs in one
-    // process so this is effectively a future-cluster-mode hint.
-    if (!signaled && row.status === "running" && !getAbort(id)) {
-      await db.transaction(async (tx) => {
-        await writeEvent(tx, {
-          tenant_id: principal.tenant_id,
-          channel: "execution.status",
-          type: "execution.abort_requested",
-          payload: { execution_id: id },
-        });
-      });
-    }
+    // (c) Keep the process-local signal as the zero-latency fast path. A
+    // worker on another replica observes the durable flag through the abort
+    // monitor instead of depending on which replica consumed an outbox row.
+    abortCancel(id, "cancelled");
     return c.body(null, 202);
   });
 }

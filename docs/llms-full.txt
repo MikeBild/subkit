@@ -2350,6 +2350,24 @@ These constants are not env-overridable except where explicitly noted.
 The intent is that an operator should be able to read this table once
 and know what the engine will and will not do.
 
+### Execution cancellation
+
+Cancellation has a durable control-plane path in addition to the local
+`AbortController` fast path. `POST /v1/executions/:id/cancel` first writes
+`executions.abort_requested_at` and the matching audit/outbox records in one
+transaction. The worker that owns the run polls only its locally registered
+execution ids, grouped by tenant, and aborts the in-flight request when it sees
+the flag. This remains effective when the cancel request reaches another
+replica or the notification stream is interrupted. The worker also refuses the
+queued-to-running transition when the flag already exists.
+
+`queue.abort_poll_interval_ms` controls the observation interval. It defaults
+to 500 ms, is globally scoped, and is read again after every monitor cycle, so
+settings hot-reload changes the next delay without an engine restart. The
+durable cross-replica path and queued-start race are exercised in
+`apps/engine/src/execution/tests/abort.test.ts` and
+`apps/engine/src/execution/execution-state.test.ts`.
+
 ### Result Persistence
 
 Step results are written inline when serialized payload size is
@@ -12013,6 +12031,7 @@ Queue worker
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `queue.abort_poll_interval_ms` | number | `500` | global | no | no | Hot-reloadable interval for workers to observe durable cross-replica execution cancellation requests. |
 | `queue.concurrency` | number | `8` | tenant | no | no |  |
 
 ## tokens

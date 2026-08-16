@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cancel } from "../abort.ts";
+import { cancel, startAbortMonitor } from "../abort.ts";
 import { runExecution } from "../engine.ts";
+import { requestExecutionAbort } from "../state.ts";
 import {
   createEngineCtx,
   createMockServer,
@@ -62,4 +63,63 @@ describe("abort", () => {
     expect(result.status).toBe("aborted");
     expect(result.steps[0]?.status).toBe("aborted");
   }, 15000);
+
+  test("a durable cancellation request reaches the worker without a local route signal", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "cross-replica-abortable",
+      steps: [
+        {
+          kind: "request",
+          id: "slow",
+          method: "GET",
+          url: `${mock.baseUrl}/slow-cross-replica`,
+          timeout_ms: 30_000,
+          max_retries: 0,
+        },
+      ],
+    });
+    const monitor = startAbortMonitor(ctx.testDb.db, { intervalMs: () => 5 });
+    try {
+      const runPromise = runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+      });
+      await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: wait for the worker registry and running row
+      const { executions } = await import("../../db/schema/index.ts");
+      const { eq } = await import("drizzle-orm");
+      const rows = await ctx.testDb.db
+        .select()
+        .from(executions)
+        .where(eq(executions.tenant_id, ctx.tenantId));
+      const target = rows.find((r) => r.workflow_id === workflow_id);
+      expect(target?.status).toBe("running");
+      expect(target?.abort_requested_at).toBeNull();
+      if (!target) throw new Error("cross-replica execution row not found");
+
+      const first = await requestExecutionAbort(ctx.testDb.db, {
+        tenant_id: ctx.tenantId,
+        execution_id: target.id,
+        actor_type: "user",
+        actor_id: null,
+        request_source: "api",
+      });
+      const duplicate = await requestExecutionAbort(ctx.testDb.db, {
+        tenant_id: ctx.tenantId,
+        execution_id: target.id,
+        actor_type: "user",
+        actor_id: null,
+        request_source: "api",
+      });
+      expect(first).toBe(true);
+      expect(duplicate).toBe(false);
+
+      const result = await runPromise;
+      expect(result.status).toBe("aborted");
+      expect(result.steps[0]?.status).toBe("aborted");
+    } finally {
+      monitor.stop();
+    }
+  }, 15_000);
 });

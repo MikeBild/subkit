@@ -1,7 +1,8 @@
 // Persistence helpers for execution / execution_steps / outbox events.
 // Keeps the engine.ts file focused on control flow.
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
+import { AuditAction, type AuditActorType, auditAwait } from "../audit/index.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
@@ -85,12 +86,23 @@ export async function markExecutionRunning(
   // single sandbox clock (per-step + workflow-scope) so `sk.now()` mirrors the
   // row's `started_at` and every sandbox in the run shares one instant.
   started_at: Date,
-): Promise<void> {
+): Promise<boolean> {
+  let applied = false;
   await db.transaction(async (tx) => {
-    await tx
+    const rows = await tx
       .update(executions)
       .set({ status: "running", started_at })
-      .where(eq(executions.id, execution_id));
+      .where(
+        and(
+          eq(executions.tenant_id, tenant_id),
+          eq(executions.id, execution_id),
+          eq(executions.status, "queued"),
+          isNull(executions.abort_requested_at),
+        ),
+      )
+      .returning({ id: executions.id });
+    if (!rows[0]) return;
+    applied = true;
     await writeEvent(tx, {
       tenant_id,
       channel: "execution.status",
@@ -98,12 +110,67 @@ export async function markExecutionRunning(
       payload: { execution_id },
     });
   });
+  if (!applied) return false;
   logger.info({
     module: "execution",
     action: "execution.started",
     msg: "execution started",
     execution_id,
   });
+  return true;
+}
+
+export interface RequestExecutionAbortParams {
+  tenant_id: string;
+  execution_id: string;
+  actor_type: AuditActorType;
+  actor_id: string | null;
+  request_source: string;
+}
+
+/** Persist one idempotent cancellation intent before attempting local delivery. */
+export async function requestExecutionAbort(
+  db: Db,
+  params: RequestExecutionAbortParams,
+): Promise<boolean> {
+  let applied = false;
+  await db.transaction(async (tx) => {
+    const requestedAt = new Date();
+    const rows = await tx
+      .update(executions)
+      .set({ abort_requested_at: requestedAt })
+      .where(
+        and(
+          eq(executions.tenant_id, params.tenant_id),
+          eq(executions.id, params.execution_id),
+          inArray(executions.status, NON_TERMINAL_STATUSES),
+          isNull(executions.abort_requested_at),
+        ),
+      )
+      .returning({ id: executions.id });
+    if (!rows[0]) return;
+    applied = true;
+    await writeEvent(tx, {
+      tenant_id: params.tenant_id,
+      channel: "execution.status",
+      type: "execution.abort_requested",
+      payload: { execution_id: params.execution_id },
+    });
+    await auditAwait(
+      {
+        tenant_id: params.tenant_id,
+        actor_type: params.actor_type,
+        actor_id: params.actor_id,
+        action: AuditAction.EXECUTION_ABORT_REQUESTED,
+        resource_type: "execution",
+        resource_id: params.execution_id,
+        result: "success",
+        metadata: { request_source: params.request_source },
+      },
+      tx,
+    );
+  });
+  return applied;
 }
 
 /** Failure detail carried into the `execution.failed` event payload so a

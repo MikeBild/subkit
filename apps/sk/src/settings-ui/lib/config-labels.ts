@@ -154,6 +154,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "errors.ring_size": "Error buffer size",
   "spec.allow_private_fetch": "Allow private spec fetches",
   "queue.concurrency": "Worker concurrency",
+  "queue.abort_poll_interval_ms": "Execution cancel poll interval (ms)",
   "tokens.monthly_budget": "Monthly token budget",
 
   // ── JS sandbox (QuickJS) ───────────────────────────────────────

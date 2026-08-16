@@ -766,6 +766,16 @@ const SpecSection = z
 const QueueSection = z
   .object({
     concurrency: z.number().int().positive().max(64).default(8).meta(tenant()),
+    abort_poll_interval_ms: z
+      .number()
+      .int()
+      .min(100)
+      .max(10_000)
+      .default(500)
+      .describe(
+        "Hot-reloadable interval for workers to observe durable cross-replica execution cancellation requests.",
+      )
+      .meta(global()),
   })
   .prefault({})
   .describe("Queue worker");

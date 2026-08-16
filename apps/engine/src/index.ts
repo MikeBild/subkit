@@ -9,6 +9,7 @@ import { closeDb, getDb, getPool } from "./db/client.ts";
 import { type DriftReport, detectDrift, runMigrations } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { warmEmbeddings } from "./embeddings/local-provider.ts";
+import { startAbortMonitor } from "./execution/index.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
 import { getScanner, NoopScanner } from "./files/scanner.ts";
@@ -432,6 +433,7 @@ async function runServer(): Promise<void> {
   const listener = await bootPhase("pubsub_listener", () =>
     startListener({ connectionString: getConfig().database.url, db }),
   );
+  const abortMonitor = startAbortMonitor(db);
 
   // Wire the listener into the event-fanout queue. Without this,
   // `execution.failed` and self-healing `notification.emitted` events are
@@ -670,6 +672,7 @@ async function runServer(): Promise<void> {
       await reconciler.stop();
       await stopBoss(SHUTDOWN_DRAIN_TIMEOUT_MS);
       for (const off of fanoutUnsubscribers) off();
+      abortMonitor.stop();
       await stopListener();
       // Drain every postgres-driver connection pool so the database
       // doesn't observe abandoned connections after the engine exits.

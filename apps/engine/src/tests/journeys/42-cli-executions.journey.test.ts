@@ -15,7 +15,10 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { defineCommand } from "citty";
+import { and, eq } from "drizzle-orm";
 import { executionsCommand } from "../../../../sk/src/commands/executions.ts";
+import { auditLog, executions } from "../../db/schema/index.ts";
+import { waitFor } from "../../test-helpers/determinism/index.ts";
 import {
   createJourneyCtx,
   JOURNEY_HOOK_TIMEOUT,
@@ -264,27 +267,39 @@ describe("journey 42: sk executions CLI", () => {
     expect(Array.isArray(body)).toBe(true);
   });
 
-  test("AC5: cancelling an execution via HTTP makes executions get report a terminal state", async () => {
-    // The engine exposes POST /v1/executions/{id}/cancel. The `sk executions abort`
-    // CLI command calls the EngineClient.abortExecution path which currently sends
-    // to /abort (a separate endpoint not yet registered). We exercise the cancel
-    // contract directly via journeyFetch to keep this test green while covering
-    // the same observable behavior — that a cancel request terminates the execution
-    // and the state is reflected by `executions get`.
-    const cancelResp = await journeyFetch(ctx, `/v1/executions/${abortExecutionId}/cancel`, {
-      method: "POST",
-    });
-    // The engine returns 202 Accepted for a successful cancel request.
-    expect(cancelResp.status).toBe(202);
+  test("AC5: CLI cancellation is durable, audited, and reaches a terminal state", async () => {
+    const { stdout: abortStdout } = await run(executionsCommand, ["abort", abortExecutionId]);
+    expect(abortStdout).toContain("aborted");
 
-    // Verify via the CLI that the execution is now in a terminal state.
-    // The queued execution is immediately marked cancelled when still in the
-    // queue; a running one is signalled and transitions asynchronously.
+    const persisted = await waitFor(
+      async () => {
+        const [row] = await ctx.db
+          .select()
+          .from(executions)
+          .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, abortExecutionId)));
+        return row && ["aborted", "failed"].includes(row.status) ? row : undefined;
+      },
+      { tries: 100, sleepMs: 20, label: "cancelled execution terminal" },
+    );
+    expect(persisted.abort_requested_at).toBeInstanceOf(Date);
+    expect(["aborted", "failed"]).toContain(persisted.status);
+
+    const abortAudits = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.resource_id, abortExecutionId),
+          eq(auditLog.action, "execution.abort_requested"),
+        ),
+      );
+    expect(abortAudits).toHaveLength(1);
+
     const { stdout: getStdout } = await run(executionsCommand, ["get", abortExecutionId]);
     const body = JSON.parse(extractLastJson(getStdout));
     expect(body.id).toBe(abortExecutionId);
-    const terminalStatuses = ["aborted", "failed", "cancelled", "queued"];
-    expect(terminalStatuses.includes(body.status as string)).toBe(true);
+    expect(["aborted", "failed"]).toContain(body.status);
   });
 
   test("AC6: executions get with wrong-tenant id returns an error", async () => {

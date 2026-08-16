@@ -139,6 +139,7 @@ export const AuditAction = {
   WORKFLOW_SCHEDULE_NOT_BOUND: "workflow.schedule_not_bound",
 
   EXECUTION_STARTED: "execution.started",
+  EXECUTION_ABORT_REQUESTED: "execution.abort_requested",
   EXECUTION_COMPLETED: "execution.completed",
   EXECUTION_ABORTED: "execution.aborted",
   EXECUTION_AUTO_RETRIED: "execution.auto_retried",

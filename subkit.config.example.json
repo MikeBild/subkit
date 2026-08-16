@@ -179,7 +179,8 @@
     "allow_private_fetch": false
   },
   "queue": {
-    "concurrency": 8
+    "concurrency": 8,
+    "abort_poll_interval_ms": 500
   },
   "tokens": {
     "monthly_budget": 0
