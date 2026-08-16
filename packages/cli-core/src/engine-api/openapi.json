@@ -5248,6 +5248,12 @@
               "null"
             ]
           },
+          "workflow_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "workflow_version_id": {
             "type": [
               "string",
@@ -5301,6 +5307,7 @@
         "required": [
           "id",
           "workflow_id",
+          "workflow_name",
           "workflow_version_id",
           "source_kind",
           "source_ref",
