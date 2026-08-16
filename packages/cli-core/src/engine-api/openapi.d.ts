@@ -14862,6 +14862,7 @@ export interface components {
         Execution: {
             id: string;
             workflow_id: string | null;
+            workflow_name: string | null;
             workflow_version_id: string | null;
             /** @enum {string} */
             source_kind: "saved" | "draft" | "step";

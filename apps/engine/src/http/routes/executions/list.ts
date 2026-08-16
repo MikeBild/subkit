@@ -5,9 +5,9 @@
 //   GET /v1/executions/{id}/steps
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { events, executionSteps, executions } from "../../../db/schema/index.ts";
+import { events, executionSteps, executions, workflows } from "../../../db/schema/index.ts";
 import { listExecutions } from "../../../execution/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -112,7 +112,27 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    return c.json({ items: rows.map(serializeExec), total }, 200);
+    // Name join in one pass, mirroring the schedules route: consumers
+    // render WHAT ran, not an opaque workflow_id.
+    const ids = [
+      ...new Set(rows.map((r) => r.workflow_id).filter((v): v is string => v !== null)),
+    ];
+    const named = ids.length
+      ? await db
+          .select({ id: workflows.id, name: workflows.name })
+          .from(workflows)
+          .where(and(eq(workflows.tenant_id, principal.tenant_id), inArray(workflows.id, ids)))
+      : [];
+    const nameById = new Map(named.map((w) => [w.id, w.name]));
+    return c.json(
+      {
+        items: rows.map((r) =>
+          serializeExec(r, r.workflow_id ? (nameById.get(r.workflow_id) ?? null) : null),
+        ),
+        total,
+      },
+      200,
+    );
   });
 
   app.openapi(getExecutionRoute, async (c) => {
@@ -126,7 +146,16 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     const row = rows[0];
     if (!row) throw new NotFoundError("execution");
-    return c.json(serializeExec(row), 200);
+    const named = row.workflow_id
+      ? await db
+          .select({ name: workflows.name })
+          .from(workflows)
+          .where(
+            and(eq(workflows.tenant_id, principal.tenant_id), eq(workflows.id, row.workflow_id)),
+          )
+          .limit(1)
+      : [];
+    return c.json(serializeExec(row, named[0]?.name ?? null), 200);
   });
 
   app.openapi(getStepsRoute, async (c) => {
