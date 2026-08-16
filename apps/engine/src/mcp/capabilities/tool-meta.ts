@@ -200,24 +200,27 @@ export function buildToolAnnotations(
 }
 
 /**
- * MCP-standard `annotations` for a `wf_<slug>` workflow-run tool. A saved
- * workflow executes its stored steps/connectors — it can send, commit,
- * overwrite, or delete in external systems. So it is advertised as a write
- * AND destructive, so a trusted client gates the run for approval (prod runs
- * also stay confirm-gated by the policy gate); open-world (reaches external
- * systems). Asserting `destructiveHint:false` here would let a model fire a
- * live workflow run with no approval prompt — exactly what we must avoid.
+ * MCP-standard `annotations` for a `wf_<slug>` workflow-run tool. A workflow
+ * without a versioned effect declaration remains destructive. Explicit read
+ * and reversible declarations let a reviewed workflow publish a narrower
+ * contract while every run remains open-world.
  */
-export function buildWorkflowToolAnnotations(): McpToolAnnotations {
+export function buildWorkflowToolAnnotations(
+  effect: "read" | "reversible_write" | "irreversible_write" = "irreversible_write",
+): McpToolAnnotations {
+  const readOnly = effect === "read";
+  const reversible = effect === "reversible_write";
   return {
-    readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: false,
+    readOnlyHint: readOnly,
+    destructiveHint: effect === "irreversible_write",
+    idempotentHint: readOnly || reversible,
     openWorldHint: true,
   };
 }
 
-export function buildWorkflowToolMeta(): SubkitToolMetaEnvelope {
+export function buildWorkflowToolMeta(
+  effect: "read" | "reversible_write" | "irreversible_write" = "irreversible_write",
+): SubkitToolMetaEnvelope {
   // Workflow runs are policy-driven: `run_workflow` is confirm-gated in
   // prod, auto in dev. The MCP dispatch checks `_meta.environment` at
   // call time and the policy gate fires accordingly — we conservatively
@@ -226,8 +229,8 @@ export function buildWorkflowToolMeta(): SubkitToolMetaEnvelope {
   return {
     subkit: {
       category: "workflow_run",
-      confirm_required: true,
-      destructive: true,
+      confirm_required: effect !== "read",
+      destructive: effect === "irreversible_write",
     },
   };
 }

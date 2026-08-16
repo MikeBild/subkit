@@ -103,6 +103,33 @@ describe("mcp tools/list", () => {
     expect(tool?.annotations?.openWorldHint).toBe(true); // wf_* executes connectors → open world
   });
 
+  test("versioned workflow effects reach the MCP wire without weakening the default", async () => {
+    await suite.seedWorkflow({
+      name: "read effect probe",
+      slug: "read-effect-probe",
+      tool_effect: "read",
+      steps: [{ kind: "transform", id: "noop", expression: "$input" }],
+    });
+    await suite.seedWorkflow({
+      name: "reversible effect probe",
+      slug: "reversible-effect-probe",
+      tool_effect: "reversible_write",
+      steps: [{ kind: "transform", id: "noop", expression: "$input" }],
+    });
+    const client = await suite.connect();
+    const byName = new Map((await client.listTools()).tools.map((tool) => [tool.name, tool]));
+    expect(byName.get("wf_read-effect-probe")?.annotations).toMatchObject({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+    });
+    expect(byName.get("wf_reversible-effect-probe")?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+    });
+  });
+
   // P0 (safety) — write/destructive tools must NOT advertise as read-only or
   // assert destructiveHint:false, or claude.ai files them under "always allow".
   test("P0: write tools advertise readOnlyHint:false and never destructiveHint:false", async () => {

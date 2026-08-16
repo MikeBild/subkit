@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.13] – 2026-08-16
+
+### Added
+
+- **Saved workflows can publish a precise, versioned agent-tool effect.** A
+  reviewed workflow may declare itself read-only or a reversible write, and
+  its MCP tool exposes matching standard read-only, destructive, and
+  idempotency hints. Workflows without the declaration remain conservative
+  irreversible writes, preserving the existing approval posture.
+
 ## [6.2.12] – 2026-08-15
 
 ### Fixed
