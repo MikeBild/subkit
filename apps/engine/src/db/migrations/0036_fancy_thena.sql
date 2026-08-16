@@ -1,0 +1,1 @@
+ALTER TABLE "executions" ADD COLUMN "abort_requested_at" timestamp with time zone;

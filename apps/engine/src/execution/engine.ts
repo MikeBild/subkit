@@ -219,6 +219,43 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         input: normalizedInput ?? null,
       });
 
+  // Wire abort: external signal (if any) feeds into the per-execution
+  // controller. The controller is registered so cancel API can find it.
+  const ctrl = registerAbort(execution_id, tenant_id);
+  if (opts.signal) {
+    if (opts.signal.aborted) ctrl.abort("aborted");
+    else opts.signal.addEventListener("abort", () => ctrl.abort("aborted"), { once: true });
+  }
+  const totalTimeoutCtrl = new AbortController();
+  const totalTimer = setTimeout(
+    () => totalTimeoutCtrl.abort("workflow_timeout"),
+    def.timeout_ms ?? WORKFLOW_TIMEOUT_DEFAULT_MS,
+  );
+  const signal = combineSignals([ctrl.signal, totalTimeoutCtrl.signal]);
+
+  const started = await markExecutionRunning(
+    db,
+    tenant_id,
+    execution_id,
+    execution_started_at_date,
+  );
+  if (!started) {
+    // A durable cancel may win while the queue is handing this job to a
+    // worker. Refuse the run before any step, completion audit, outcome
+    // tracking, or workflow-recency mutation can occur. The cancel path owns
+    // the terminal row; this worker only releases its process-local resources.
+    ctrl.abort("cancelled");
+    clearTimeout(totalTimer);
+    unregisterAbort(execution_id);
+    return {
+      execution_id,
+      status: "aborted",
+      output: null,
+      error: { code: "aborted", message: "execution aborted before start" },
+      steps: [],
+    };
+  }
+
   await auditAwait(
     {
       tenant_id,
@@ -236,22 +273,6 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
     },
     db,
   );
-
-  // Wire abort: external signal (if any) feeds into the per-execution
-  // controller. The controller is registered so cancel API can find it.
-  const ctrl = registerAbort(execution_id);
-  if (opts.signal) {
-    if (opts.signal.aborted) ctrl.abort("aborted");
-    else opts.signal.addEventListener("abort", () => ctrl.abort("aborted"), { once: true });
-  }
-  const totalTimeoutCtrl = new AbortController();
-  const totalTimer = setTimeout(
-    () => totalTimeoutCtrl.abort("workflow_timeout"),
-    def.timeout_ms ?? WORKFLOW_TIMEOUT_DEFAULT_MS,
-  );
-  const signal = combineSignals([ctrl.signal, totalTimeoutCtrl.signal]);
-
-  await markExecutionRunning(db, tenant_id, execution_id, execution_started_at_date);
 
   // Per-run LLM-token budget. The cap lives on the workflow def; null
   // means "no per-run cap" (the per-tenant monthly budget still

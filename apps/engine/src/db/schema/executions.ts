@@ -52,6 +52,10 @@ export const executions = pgTable(
     execution_mode: executionModeEnum("execution_mode").notNull(),
     parent_execution_id: uuid("parent_execution_id"),
     result_storage_uri: text("result_storage_uri"),
+    // Durable control-plane intent. The HTTP cancel request may land on a
+    // different replica from the worker that owns the in-memory
+    // AbortController, so the database is the cross-replica source of truth.
+    abort_requested_at: timestamp("abort_requested_at", { withTimezone: true }),
     started_at: timestamp("started_at", { withTimezone: true }),
     finished_at: timestamp("finished_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

@@ -9,13 +9,18 @@
 //       runs before the row is created).
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { executions, tenants } from "../db/schema/index.ts";
+import { auditLog, executionSteps, executions, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { runExecution } from "./engine.ts";
-import { createExecution, finalizeExecution, markExecutionRunning } from "./state.ts";
+import {
+  createExecution,
+  finalizeExecution,
+  markExecutionRunning,
+  requestExecutionAbort,
+} from "./state.ts";
 
 let testDb: TestDb;
 let db: Db;
@@ -77,6 +82,66 @@ describe("finalizeExecution — queued-only guard (#13)", () => {
     // Still running — the queued-cancel path must not abort a row that a
     // concurrent worker already picked up; the abort signal handles that.
     expect(await statusOf(id)).toBe("running");
+  });
+
+  test("a durable abort request prevents queued → running", async () => {
+    const id = await newQueued();
+    await requestExecutionAbort(db, {
+      tenant_id: tenantId,
+      execution_id: id,
+      actor_type: "user",
+      actor_id: null,
+      request_source: "api",
+    });
+    const started = await markExecutionRunning(db, tenantId, id, new Date(FROZEN_NOW));
+    expect(started).toBe(false);
+    expect(await statusOf(id)).toBe("queued");
+  });
+
+  test("a worker that loses the queued → running race performs no run side effects", async () => {
+    const id = await newQueued();
+    await requestExecutionAbort(db, {
+      tenant_id: tenantId,
+      execution_id: id,
+      actor_type: "user",
+      actor_id: null,
+      request_source: "api",
+    });
+    await finalizeExecution(db, tenantId, id, "aborted", null, null, ["queued"]);
+
+    const result = await runExecution({
+      db,
+      tenant_id: tenantId,
+      source: {
+        kind: "draft",
+        definition: {
+          name: "must-not-start",
+          steps: [{ id: "must-not-run", kind: "transform", expression: "$input" }],
+        },
+      },
+      input: { unsafe: true },
+      options: { existing_execution_id: id },
+    });
+
+    expect(result.status).toBe("aborted");
+    expect(result.steps).toEqual([]);
+    expect(await statusOf(id)).toBe("aborted");
+    const steps = await db
+      .select()
+      .from(executionSteps)
+      .where(and(eq(executionSteps.tenant_id, tenantId), eq(executionSteps.execution_id, id)));
+    expect(steps).toEqual([]);
+    const startedAudits = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.resource_id, id),
+          eq(auditLog.action, "execution.started"),
+        ),
+      );
+    expect(startedAudits).toEqual([]);
   });
 });
 

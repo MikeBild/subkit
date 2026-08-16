@@ -243,6 +243,12 @@ describe("consumer read-back per subsystem", () => {
     expect(getConfig().mcp.read_only).toBe(true);
   });
 
+  test("execution abort monitor interval hot-reloads without restart", async () => {
+    expect(getConfig().queue.abort_poll_interval_ms).toBe(500);
+    await setConfigKey("queue.abort_poll_interval_ms", 750, { force: true });
+    expect(getConfig().queue.abort_poll_interval_ms).toBe(750);
+  });
+
   test("getConfig().auth.providers exposes the canonical provider list", () => {
     expect(getConfig().auth.providers).toEqual([
       { protocol: "api_key", id: "api-key", label: "SubKit API key" },

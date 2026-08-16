@@ -191,6 +191,7 @@ Queue worker
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `queue.abort_poll_interval_ms` | number | `500` | global | no | no | Hot-reloadable interval for workers to observe durable cross-replica execution cancellation requests. |
 | `queue.concurrency` | number | `8` | tenant | no | no |  |
 
 ## tokens

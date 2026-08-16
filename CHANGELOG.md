@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.14] – 2026-08-16
+
+### Fixed
+
+- **Execution cancellation now reaches the worker across engine replicas.**
+  The cancel endpoint persists an idempotent, tenant-scoped abort request and
+  audits it atomically before using the process-local fast path. Each worker
+  monitors only its registered executions and aborts an in-flight provider or
+  connector request when the durable flag appears.
+- **A cancel racing with queue pickup can no longer resurrect an execution.**
+  The queued-to-running transition is compare-and-set and refuses a row with a
+  pending abort request. The monitor interval is available as the globally
+  scoped, hot-reloadable `queue.abort_poll_interval_ms` setting.
+
 ## [6.2.13] – 2026-08-16
 
 ### Added
