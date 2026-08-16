@@ -14,6 +14,8 @@ export const ExecSchema = z
     id: z.string(),
     /** NULL for draft and step runs (no persisted workflow row). */
     workflow_id: z.string().nullable(),
+    /** Resolved workflow name so list consumers render WHAT ran, not an id. */
+    workflow_name: z.string().nullable(),
     workflow_version_id: z.string().nullable(),
     source_kind: z.enum(["saved", "draft", "step"]),
     source_ref: z.record(z.string(), z.unknown()).nullable(),
@@ -240,10 +242,14 @@ export const RunTransformResponseSchema = z
   })
   .openapi("ExecutionRunTransformResponse");
 
-export function serializeExec(row: typeof executions.$inferSelect) {
+export function serializeExec(
+  row: typeof executions.$inferSelect,
+  workflowName: string | null = null,
+) {
   return {
     id: row.id,
     workflow_id: row.workflow_id ?? null,
+    workflow_name: workflowName,
     workflow_version_id: row.workflow_version_id ?? null,
     source_kind: (row.source_kind as "saved" | "draft" | "step") ?? "saved",
     source_ref: row.source_ref ?? null,
