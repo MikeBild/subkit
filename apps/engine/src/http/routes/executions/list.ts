@@ -114,9 +114,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     );
     // Name join in one pass, mirroring the schedules route: consumers
     // render WHAT ran, not an opaque workflow_id.
-    const ids = [
-      ...new Set(rows.map((r) => r.workflow_id).filter((v): v is string => v !== null)),
-    ];
+    const ids = [...new Set(rows.map((r) => r.workflow_id).filter((v): v is string => v !== null))];
     const named = ids.length
       ? await db
           .select({ id: workflows.id, name: workflows.name })
