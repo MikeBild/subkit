@@ -8,6 +8,7 @@ import {
   History,
   Inbox,
   KeyRound,
+  LayoutDashboard,
   Library,
   ListChecks,
   type LucideIcon,
@@ -29,12 +30,25 @@ export interface NavigationItem {
 }
 
 export interface NavigationGroup {
-  id: "work" | "build" | "knowledge" | "govern" | "admin";
+  id: "home" | "work" | "build" | "knowledge" | "govern" | "admin";
   labelKey: TranslationKey;
   items: readonly NavigationItem[];
 }
 
 export const NAVIGATION: readonly NavigationGroup[] = [
+  {
+    id: "home",
+    labelKey: "nav.group.home",
+    items: [
+      {
+        labelKey: "nav.overview",
+        path: "/overview",
+        permission: "stats:read",
+        icon: LayoutDashboard,
+        api: ["GET /v1/operator/health-digest"],
+      },
+    ],
+  },
   {
     id: "work",
     labelKey: "nav.group.work",

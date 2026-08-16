@@ -1,19 +1,29 @@
-import { createRootRoute, createRoute, createRouter, redirect } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, Navigate } from "@tanstack/react-router";
 import { AccessPage, ApiAccessPage, OperationsPage, PeoplePage, SettingsPage } from "@/pages/admin";
 import { CATALOG_RESOURCES, CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
+import { OverviewPage } from "@/pages/overview";
 import { RESOURCE_CONFIGS, ResourcePage } from "@/pages/resource";
+import { RunsPage } from "@/pages/runs";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
 
 const rootRoute = createRootRoute({ component: AppShell });
+
+// Session permissions live behind React context, so the landing choice is a
+// rendered client-side redirect instead of a beforeLoad decision.
+function IndexRedirect() {
+  const session = useSession();
+  return (
+    <Navigate to={session.permissions.includes("stats:read") ? "/overview" : "/chat"} replace />
+  );
+}
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  beforeLoad: () => {
-    throw redirect({ to: "/chat" });
-  },
+  component: IndexRedirect,
 });
 const chatRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -32,13 +42,22 @@ const conversationRoute = createRoute({
 });
 
 const dedicatedRoutes = [
+  createRoute({ getParentRoute: () => rootRoute, path: "/overview", component: OverviewPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/runs", component: RunsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/people", component: PeoplePage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/access", component: AccessPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/api-access", component: ApiAccessPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/operations", component: OperationsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),
 ];
-const dedicatedResources = new Set(["people", "access", "api-access", "operations", "settings"]);
+const dedicatedResources = new Set([
+  "runs",
+  "people",
+  "access",
+  "api-access",
+  "operations",
+  "settings",
+]);
 
 const resourceRoutes = Object.keys(RESOURCE_CONFIGS)
   .filter((resource) => !dedicatedResources.has(resource) && !CATALOG_RESOURCES.has(resource))
