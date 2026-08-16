@@ -51,9 +51,9 @@ export async function listWorkflowTools({
     description: describeWorkflowTool(entry),
     inputSchema: entry.inputSchema as Tool["inputSchema"],
     ...(entry.outputSchema ? { outputSchema: entry.outputSchema as Tool["outputSchema"] } : {}),
-    annotations: buildWorkflowToolAnnotations(),
+    annotations: buildWorkflowToolAnnotations(entry.effect),
     execution: { taskSupport: "forbidden" as const },
-    _meta: buildWorkflowToolMeta(),
+    _meta: buildWorkflowToolMeta(entry.effect),
   }));
 }
 

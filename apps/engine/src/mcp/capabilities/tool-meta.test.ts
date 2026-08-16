@@ -85,6 +85,21 @@ describe("buildWorkflowToolAnnotations", () => {
     expect(a.destructiveHint).toBe(true);
     expect(a.openWorldHint).toBe(true);
   });
+
+  test("versioned read and reversible workflow effects produce precise hints", () => {
+    expect(buildWorkflowToolAnnotations("read")).toEqual({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    });
+    expect(buildWorkflowToolAnnotations("reversible_write")).toEqual({
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    });
+  });
 });
 
 describe("listConversationTools annotations", () => {
