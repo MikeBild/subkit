@@ -29,6 +29,7 @@ describe("ConfigSchema", () => {
     expect(result.data.egress.provider_hosts_extra).toEqual([]);
     expect(result.data.errors.ring_size).toBe(100);
     expect(result.data.queue.concurrency).toBe(8);
+    expect(result.data.queue.abort_poll_interval_ms).toBe(500);
     expect(result.data.tokens.monthly_budget).toBe(0);
   });
 
@@ -46,6 +47,14 @@ describe("ConfigSchema", () => {
     const r = ConfigSchema.safeParse({
       database: { url: "postgres://x" },
       queue: { concurrency: 999 },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  test("rejects an execution abort poll interval below the control-plane floor", () => {
+    const r = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      queue: { abort_poll_interval_ms: 99 },
     });
     expect(r.success).toBe(false);
   });

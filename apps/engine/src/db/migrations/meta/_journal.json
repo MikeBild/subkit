@@ -253,6 +253,13 @@
       "when": 1785337942059,
       "tag": "0035_mcp_servers_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786869439067,
+      "tag": "0036_fancy_thena",
+      "breakpoints": true
     }
   ]
 }
