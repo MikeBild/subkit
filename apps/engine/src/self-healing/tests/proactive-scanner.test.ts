@@ -287,6 +287,59 @@ describe("scanForDrift", () => {
     expect(sig.ctx.workflow_step_id).toBe("r");
   });
 
+  test("a response that stopped being describable raises no repair signal", async () => {
+    const { workflow_id, connector_id } = await seedWorkflowWithConnector({});
+    // One non-JSON body collapses the accumulated contract to `unknown`. The
+    // diff has no field to name, so a repair attempt could only ever fail —
+    // and it would be retried on every scan.
+    await testDb.db.insert(schemaVersions).values({
+      tenant_id: tenantId,
+      connector_id,
+      endpoint_key: "POST /graphql",
+      workflow_id,
+      step_id: "r",
+      schema: { type: "object", properties: { data: { type: "string" } } },
+      seen_at: SIXTY_S_AGO,
+    });
+    await testDb.db.insert(schemaVersions).values({
+      tenant_id: tenantId,
+      connector_id,
+      endpoint_key: "POST /graphql",
+      workflow_id,
+      step_id: "r",
+      schema: { type: "unknown" },
+      seen_at: NOW,
+    });
+
+    const result = await scanForDrift({ tenant_id: tenantId }, testDb.db);
+    expect(result.signals.filter((s) => s.signal.kind === "schema_diff")).toEqual([]);
+  });
+
+  test("an endpoint that describes itself again raises no repair signal", async () => {
+    const { workflow_id, connector_id } = await seedWorkflowWithConnector({});
+    await testDb.db.insert(schemaVersions).values({
+      tenant_id: tenantId,
+      connector_id,
+      endpoint_key: "POST /graphql",
+      workflow_id,
+      step_id: "r",
+      schema: { type: "unknown" },
+      seen_at: SIXTY_S_AGO,
+    });
+    await testDb.db.insert(schemaVersions).values({
+      tenant_id: tenantId,
+      connector_id,
+      endpoint_key: "POST /graphql",
+      workflow_id,
+      step_id: "r",
+      schema: { type: "object", properties: { data: { type: "string" } } },
+      seen_at: NOW,
+    });
+
+    const result = await scanForDrift({ tenant_id: tenantId }, testDb.db);
+    expect(result.signals.filter((s) => s.signal.kind === "schema_diff")).toEqual([]);
+  });
+
   test("schema drift is suppressed when only one shape is recorded", async () => {
     const { connector_id, workflow_id } = await seedWorkflowWithConnector({});
     await testDb.db.insert(schemaVersions).values({
