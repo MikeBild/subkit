@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import {
+  connectorNameOf,
   type ExecutionStep,
   joinStepsWithLastRun,
   stepResultPreview,
@@ -37,6 +38,15 @@ export function WorkflowGallery({
   const { t } = useI18n();
   const [runs, setRuns] = useState<Record<string, TestRunResult>>({});
   const [running, setRunning] = useState<string | null>(null);
+
+  const connectors = useQuery({
+    queryKey: ["connectors", "lookup"],
+    queryFn: () =>
+      apiRequest<{ items: { id: string; display_name: string }[] }>("/v1/connectors?limit=200"),
+  });
+  const connectorNames = new Map(
+    (connectors.data?.items ?? []).map((item) => [item.id, item.display_name]),
+  );
 
   const lastExecution = useQuery({
     queryKey: ["workflow", workflowId, "last-execution"],
@@ -124,6 +134,7 @@ export function WorkflowGallery({
         <StepCard
           key={view.definition.id}
           view={view}
+          connectorName={connectorNameOf(view.definition, connectorNames)}
           index={index}
           canRun={canRun}
           running={running === view.definition.id}
@@ -139,6 +150,7 @@ export function WorkflowGallery({
 
 function StepCard({
   view,
+  connectorName,
   index,
   canRun,
   running,
@@ -146,6 +158,7 @@ function StepCard({
   onTest,
 }: {
   view: WorkflowStepView;
+  connectorName: string | null;
   index: number;
   canRun: boolean;
   running: boolean;
@@ -175,10 +188,10 @@ function StepCard({
             {t("workflow.configuration")}
           </p>
           <dl className="grid gap-1 text-sm">
-            {view.definition.connector && (
+            {connectorName && (
               <div className="flex gap-2">
-                <dt className="text-muted-foreground">{t("catalog.driver")}</dt>
-                <dd className="min-w-0 truncate">{view.definition.connector}</dd>
+                <dt className="text-muted-foreground">{t("nav.connectors")}</dt>
+                <dd className="min-w-0 truncate">{connectorName}</dd>
               </div>
             )}
             {view.definition.detail && (

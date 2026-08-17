@@ -5,9 +5,22 @@ export type ExecutionStep = components["schemas"]["ExecutionStep"];
 export interface WorkflowStepDefinition {
   id: string;
   kind: string;
+  /** Connector slug when the step names one. */
   connector: string | null;
+  /** Connector reference, resolved to a name before display — never rendered raw. */
+  connectorId: string | null;
   detail: string | null;
   raw: Record<string, unknown>;
+}
+
+/** The connector a step uses, as a name. Returns null rather than an id. */
+export function connectorNameOf(
+  definition: WorkflowStepDefinition,
+  namesById: ReadonlyMap<string, string>,
+): string | null {
+  if (definition.connector) return definition.connector;
+  if (!definition.connectorId) return null;
+  return namesById.get(definition.connectorId) ?? null;
 }
 
 export interface WorkflowStepView {
@@ -26,7 +39,8 @@ export function readStepDefinition(step: unknown, index: number): WorkflowStepDe
   return {
     id: text(raw.id) ?? `step-${index + 1}`,
     kind: text(raw.kind) ?? text(raw.type) ?? "",
-    connector: text(raw.connector) ?? text(raw.connector_slug) ?? text(raw.connector_id),
+    connector: text(raw.connector) ?? text(raw.connector_slug),
+    connectorId: text(raw.connector_id),
     detail:
       text(raw.expression) ??
       text(raw.path) ??
