@@ -45,6 +45,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -57,6 +58,7 @@ import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
 import { navigationItem, visibleNavigation } from "./navigation";
 import { useSession } from "./session";
+import { useDecisionQueue } from "./use-decisions";
 
 const THEMES: {
   value: Theme;
@@ -158,6 +160,7 @@ export function AppShell() {
                               <span>{label}</span>
                             </Link>
                           </SidebarMenuButton>
+                          {item.path === "/decisions" && <DecisionsCounter />}
                         </SidebarMenuItem>
                       );
                     })}
@@ -209,6 +212,24 @@ export function AppShell() {
       </SidebarInset>
       <Toaster richColors position="bottom-right" />
     </SidebarProvider>
+  );
+}
+
+/**
+ * Exact open count or nothing at all — a stale or guessed badge would be worse
+ * than an absent one, and it always sits on the link it counts.
+ */
+function DecisionsCounter() {
+  const session = useSession();
+  const queue = useDecisionQueue(session.permissions);
+  if (queue.failed || queue.total === null || queue.total === 0) return null;
+  return (
+    <SidebarMenuBadge
+      className={queue.overdue ? "text-destructive" : undefined}
+      data-testid="nav-decisions-count"
+    >
+      {queue.total}
+    </SidebarMenuBadge>
   );
 }
 

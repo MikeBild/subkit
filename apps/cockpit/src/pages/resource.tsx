@@ -63,13 +63,6 @@ export const RESOURCE_CONFIGS: Record<string, ResourceConfig> = {
   knowledge: resource("knowledge", "/v1/knowledge-sources?limit=200", "knowledge:read", true),
   skills: resource("skills", "/v1/skills?limit=200", "skill:read", true),
   files: resource("files", "/v1/files?limit=100", "file:read"),
-  approvals: {
-    ...resource(
-      "approvals",
-      ["/v1/skill-candidates?limit=200", "/v1/patch-candidates?limit=200"],
-      "conversation:approve",
-    ),
-  },
   audit: resource("audit", "/v1/audit-log?limit=200", "audit:read"),
   usage: resource("usage", usageStatsEndpoint, "stats:read"),
   people: resource("people", "/v1/identity/users", "identity:read"),

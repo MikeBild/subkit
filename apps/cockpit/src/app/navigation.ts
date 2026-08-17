@@ -25,6 +25,8 @@ export interface NavigationItem {
   labelKey: TranslationKey;
   path: string;
   permission: string;
+  /** Alternatives to `permission`: the entry shows when any one of them is granted. */
+  anyPermissions?: readonly string[];
   icon: LucideIcon;
   api: readonly string[];
 }
@@ -46,6 +48,14 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         permission: "stats:read",
         icon: LayoutDashboard,
         api: ["GET /v1/operator/health-digest"],
+      },
+      {
+        labelKey: "nav.decisions",
+        path: "/decisions",
+        permission: "workflow:read",
+        anyPermissions: ["workflow:read", "skill:read", "conversation:list", "conversation:read"],
+        icon: ListChecks,
+        api: ["GET /v1/patch-candidates", "GET /v1/skill-candidates", "GET /v1/conversations"],
       },
     ],
   },
@@ -128,13 +138,6 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     labelKey: "nav.group.govern",
     items: [
       {
-        labelKey: "nav.approvals",
-        path: "/approvals",
-        permission: "conversation:approve",
-        icon: ListChecks,
-        api: ["GET /v1/skill-candidates", "GET /v1/patch-candidates"],
-      },
-      {
         labelKey: "nav.audit",
         path: "/audit",
         permission: "audit:read",
@@ -199,7 +202,11 @@ export function visibleNavigation(permissions: readonly string[]): NavigationGro
   const allowed = new Set(permissions);
   return NAVIGATION.map((group) => ({
     ...group,
-    items: group.items.filter((item) => allowed.has(item.permission)),
+    items: group.items.filter((item) =>
+      item.anyPermissions
+        ? item.anyPermissions.some((permission) => allowed.has(permission))
+        : allowed.has(item.permission),
+    ),
   })).filter((group) => group.items.length > 0);
 }
 
