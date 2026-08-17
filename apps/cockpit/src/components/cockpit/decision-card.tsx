@@ -58,9 +58,10 @@ export function DecisionCard({
     enabled: showDiff,
     queryFn: () => getPatchCandidatePreview(item.id),
   });
+  // Replaying needs a recorded response; without one the call only 409s.
   const dryRun = useQuery({
     queryKey: ["patch-candidate", "dry-run", item.id],
-    enabled: showDiff,
+    enabled: showDiff && preview.data?.fixture_available === true,
     retry: false,
     queryFn: () => dryRunPatchCandidate(item.id),
   });
@@ -86,7 +87,11 @@ export function DecisionCard({
           </span>
         )}
         <span data-testid={`${testId}-age`}>
-          {age === 0 ? t("decisions.age.today") : t("decisions.age.days", { days: String(age) })}
+          {age === 0
+            ? t("decisions.age.today")
+            : age === 1
+              ? t("decisions.age.day")
+              : t("decisions.age.days", { days: String(age) })}
         </span>
       </div>
 
@@ -115,8 +120,11 @@ export function DecisionCard({
               before={preview.data.before_step}
               after={preview.data.after_step}
               changedPaths={preview.data.changed_paths}
+              driftSummary={preview.data.drift_summary}
+              patch={preview.data.proposal?.patch}
+              fixtureAvailable={preview.data.fixture_available}
               dryRun={dryRun.data ?? null}
-              dryRunPending={dryRun.isPending}
+              dryRunPending={preview.data.fixture_available === true && dryRun.isPending}
             />
           )}
         </div>

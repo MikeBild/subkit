@@ -2,7 +2,7 @@ import { CircleAlert, CircleCheck } from "lucide-react";
 import type { PatchCandidateDryRun } from "@/api/decisions";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/lib/i18n-context";
-import { computeLineDiff, type DiffLine, isUnchanged, toDiffLines } from "@/lib/line-diff";
+import { type DiffLine, selectChangeView, toDiffLines } from "@/lib/line-diff";
 import { cn } from "@/lib/utils";
 
 export interface DiffCardProps {
@@ -11,6 +11,12 @@ export interface DiffCardProps {
   before: unknown;
   after: unknown;
   changedPaths?: readonly string[];
+  /** What the engine observed, when the proposal carries no step snapshot. */
+  driftSummary?: string | null;
+  /** The proposed change itself — the substance when there is nothing to diff. */
+  patch?: unknown;
+  /** False when no recorded response exists to replay the change against. */
+  fixtureAvailable?: boolean;
   dryRun?: PatchCandidateDryRun | null;
   dryRunPending?: boolean;
   testId: string;
@@ -33,13 +39,18 @@ export function DiffCard({
   before,
   after,
   changedPaths,
+  driftSummary,
+  patch,
+  fixtureAvailable,
   dryRun,
   dryRunPending,
   testId,
 }: DiffCardProps) {
   const { t } = useI18n();
-  const lines = computeLineDiff(toDiffLines(before), toDiffLines(after));
-  const unchanged = lines.length === 0 || isUnchanged(lines);
+  const view = selectChangeView({ before, after, patch });
+  const hasDiff = view.kind === "diff";
+  const lines = view.kind === "diff" ? view.lines : [];
+  const patchLines = view.kind === "patch" ? view.lines : [];
 
   return (
     <section className="rounded-lg border" data-testid={testId}>
@@ -57,7 +68,24 @@ export function DiffCard({
       <div className="grid gap-3 p-3 lg:grid-cols-2">
         <div className="min-w-0">
           <p className="mb-1 text-xs font-medium text-muted-foreground">{t("diff.title")}</p>
-          {unchanged ? (
+          {!hasDiff && patchLines.length > 0 ? (
+            <div className="grid gap-2" data-testid={`${testId}-patch`}>
+              {driftSummary && (
+                <p className="text-xs whitespace-pre-wrap text-muted-foreground">{driftSummary}</p>
+              )}
+              <pre className="max-h-72 overflow-auto rounded-md border bg-muted/40 p-2 text-xs leading-relaxed">
+                {patchLines.map((line, index) => (
+                  <code
+                    key={`patch-${index}-${line}`}
+                    className={cn("block whitespace-pre-wrap", LINE_STYLE.added)}
+                  >
+                    + {line}
+                  </code>
+                ))}
+              </pre>
+              <p className="text-xs text-muted-foreground">{t("diff.noSnapshot")}</p>
+            </div>
+          ) : !hasDiff ? (
             <p className="text-sm text-muted-foreground" data-testid={`${testId}-unchanged`}>
               {t("diff.unchanged")}
             </p>
@@ -112,6 +140,10 @@ export function DiffCard({
                 </pre>
               )}
             </div>
+          ) : fixtureAvailable === false ? (
+            <p className="text-sm text-muted-foreground" data-testid={`${testId}-check-no-fixture`}>
+              {t("diff.checkNoFixture")}
+            </p>
           ) : (
             <p className="text-sm text-muted-foreground" data-testid={`${testId}-check-absent`}>
               {t("diff.checkAbsent")}
