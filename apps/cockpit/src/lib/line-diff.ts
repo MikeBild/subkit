@@ -69,3 +69,26 @@ export function computeLineDiff(before: readonly string[], after: readonly strin
 export function isUnchanged(lines: readonly DiffLine[]): boolean {
   return lines.every((line) => line.type === "context");
 }
+
+export type ChangeView =
+  | { kind: "diff"; lines: DiffLine[] }
+  | { kind: "patch"; lines: string[] }
+  | { kind: "unchanged" };
+
+/**
+ * Distinguishes the three kinds of emptiness a proposal can have: a real
+ * before/after, a scan-found patch with no run to compare against, and a
+ * proposal that genuinely changes nothing. Reporting the middle one as
+ * "changes nothing" hides the change from the person deciding.
+ */
+export function selectChangeView(input: {
+  before: unknown;
+  after: unknown;
+  patch: unknown;
+}): ChangeView {
+  const lines = computeLineDiff(toDiffLines(input.before), toDiffLines(input.after));
+  if (lines.length > 0 && !isUnchanged(lines)) return { kind: "diff", lines };
+  const patchLines = toDiffLines(input.patch);
+  if (patchLines.length > 0) return { kind: "patch", lines: patchLines };
+  return { kind: "unchanged" };
+}
