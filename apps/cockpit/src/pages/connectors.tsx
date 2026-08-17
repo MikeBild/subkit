@@ -16,10 +16,10 @@ import {
   authStateHint,
   authStateLabel,
   connectorAuthState,
+  connectorHealthLabel,
   needsRenewal,
 } from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
-import { statusLabel } from "@/lib/status-label";
 
 type ConnectorItem = components["schemas"]["ConnectorListItem"];
 type ProbeResult = components["schemas"]["ConnectorProbeResult"];
@@ -207,6 +207,8 @@ function ConnectorCard({
 }) {
   const { t } = useI18n();
   const state = connectorAuthState(connector, probe);
+  const healthLabel =
+    connector.health_state === "ok" ? null : connectorHealthLabel(connector.health_state);
   const testId = `connector-card-${index}`;
 
   return (
@@ -238,9 +240,9 @@ function ConnectorCard({
           <span className="text-muted-foreground">· {connector.driver}</span>
         </p>
         <p className="text-xs text-muted-foreground">{t(authStateHint(state))}</p>
-        {connector.health_state !== "ok" && (
+        {healthLabel && (
           <p className="text-xs text-muted-foreground" data-testid={`${testId}-health`}>
-            {t("connectors.health", { state: statusLabel(t, connector.health_state) })}
+            {t("connectors.health", { state: t(healthLabel) })}
             {connector.health_reason ? ` · ${connector.health_reason}` : ""}
           </p>
         )}
