@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, apiText } from "@/api/client";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
+import { WorkflowGallery } from "@/components/cockpit/workflow-gallery";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -103,48 +103,55 @@ function Overview({ record }: { record: RecordValue }) {
   );
 }
 
-function WorkflowBody({ record }: { record: RecordValue }) {
+function WorkflowBody({
+  id,
+  record,
+  canRun,
+}: {
+  id: string;
+  record: RecordValue;
+  canRun: boolean;
+}) {
   const { t } = useI18n();
   const steps = Array.isArray(record.steps)
     ? record.steps.filter((step): step is RecordValue => Boolean(step) && typeof step === "object")
     : [];
   return (
-    <Tabs defaultValue="overview">
+    <Tabs defaultValue="steps">
       <TabsList>
+        <TabsTrigger value="steps" data-testid="workflow-tab-dag">
+          {t("detail.workflow")}
+        </TabsTrigger>
         <TabsTrigger value="overview" data-testid="workflow-tab-overview">
           {t("detail.overview")}
         </TabsTrigger>
-        <TabsTrigger value="dag" data-testid="workflow-tab-dag">
-          {t("detail.workflow")}
-        </TabsTrigger>
       </TabsList>
+      <TabsContent value="steps" className="pt-4">
+        <WorkflowGallery
+          workflowId={id}
+          steps={steps}
+          definition={workflowDraftDefinition(record, steps)}
+          canRun={canRun}
+        />
+      </TabsContent>
       <TabsContent value="overview" className="pt-4">
         <Overview record={record} />
       </TabsContent>
-      <TabsContent value="dag" className="pt-4">
-        <div className="grid gap-3">
-          {steps.length === 0 ? (
-            <p className="rounded-xl border p-6 text-sm text-muted-foreground">
-              {t("workflow.noSteps")}
-            </p>
-          ) : (
-            steps.map((step, index) => (
-              <Card key={String(step.id ?? index)} size="sm">
-                <CardHeader>
-                  <CardTitle>
-                    {recordTitle(step) || t("workflow.step", { count: index + 1 })}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {String(step.kind ?? step.type ?? t("workflow.stepType"))}
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
-      </TabsContent>
     </Tabs>
   );
+}
+
+/** The saved workflow replayed as a draft, so a test run never touches the stored version. */
+function workflowDraftDefinition(
+  record: RecordValue,
+  steps: readonly RecordValue[],
+): Record<string, unknown> {
+  return {
+    name: typeof record.name === "string" ? record.name : "Test run",
+    ...(typeof record.slug === "string" ? { slug: record.slug } : {}),
+    ...(typeof record.description === "string" ? { description: record.description } : {}),
+    steps,
+  };
 }
 
 function SkillBody({
@@ -443,7 +450,9 @@ export function CatalogDetailPage({
       </header>
       <GovernanceBar record={record} canWrite={canWrite} />
       <div className="flex min-h-0 flex-1 flex-col gap-5 p-6">
-        {resource === "workflows" ? <WorkflowBody record={record} /> : null}
+        {resource === "workflows" ? (
+          <WorkflowBody id={id} record={record} canRun={permissions.includes("workflow:run")} />
+        ) : null}
         {resource === "skills" ? <SkillBody id={id} record={record} canWrite={canWrite} /> : null}
         {resource === "knowledge" ? <KnowledgeBody id={id} canWrite={canWrite} /> : null}
         {resource === "files" ? <FileBody id={id} record={record} /> : null}
