@@ -91,6 +91,15 @@ export function WorkflowGallery({
     }
   }
 
+  const schedules = useQuery({
+    queryKey: ["workflow", workflowId, "schedules"],
+    queryFn: () =>
+      apiRequest<{ items: { cron?: string; timezone?: string; enabled?: boolean }[] }>(
+        `/v1/schedules?workflow_id=${encodeURIComponent(workflowId)}`,
+      ),
+  });
+  const activeSchedules = (schedules.data?.items ?? []).filter((entry) => entry.enabled !== false);
+
   const views = joinStepsWithLastRun(steps, runSteps.data?.items ?? []);
   const wholeRun = runs.__workflow;
 
@@ -106,10 +115,19 @@ export function WorkflowGallery({
 
   return (
     <div className="grid gap-3" data-testid="workflow-gallery">
+      <p className="text-xs text-muted-foreground" data-testid="workflow-schedule">
+        {activeSchedules.length > 0
+          ? t("run.schedule", {
+              schedule: activeSchedules
+                .map((entry) => [entry.cron, entry.timezone].filter(Boolean).join(" · "))
+                .join(", "),
+            })
+          : t("run.scheduleNone")}
+      </p>
       {canRun && (
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             disabled={running !== null}
             data-testid="workflow-test-run"
@@ -118,7 +136,7 @@ export function WorkflowGallery({
             <Play data-icon="inline-start" />
             {t(running === "__workflow" ? "workflow.testing" : "workflow.testRun")}
           </Button>
-          <span className="text-xs text-muted-foreground">{t("workflow.testRunHint")}</span>
+          <span className="text-xs text-muted-foreground">{t("workflow.testRunSecondary")}</span>
         </div>
       )}
       {wholeRun && (
