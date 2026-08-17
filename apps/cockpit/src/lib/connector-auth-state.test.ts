@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { connectorAuthState, needsRenewal } from "./connector-auth-state";
+import { connectorAuthState, connectorHealthLabel, needsRenewal } from "./connector-auth-state";
+import { CATALOGS } from "./i18n";
 
 describe("connector auth state", () => {
   test("a rejected credential reads as expired whichever column carries it", () => {
@@ -59,6 +60,21 @@ describe("connector auth state", () => {
         { ok: false, error_code: "remote_api_disabled" },
       ),
     ).toBe("connected");
+  });
+
+  test("every connector health state has a word of its own, never 'unknown'", () => {
+    for (const state of ["ok", "degraded", "needs_update", "needs_reauth", "needs_attention"]) {
+      const key = connectorHealthLabel(state);
+      expect(key).not.toBeNull();
+      const en = CATALOGS.en[key as keyof typeof CATALOGS.en];
+      const de = CATALOGS.de[key as keyof typeof CATALOGS.de];
+      expect(en.toLowerCase()).not.toContain("unknown");
+      expect(de.toLowerCase()).not.toContain("unbekannt");
+    }
+  });
+
+  test("an unmapped health state yields no line rather than an invented one", () => {
+    expect(connectorHealthLabel("something_new")).toBeNull();
   });
 
   test("only credential faults offer a renewal path", () => {
