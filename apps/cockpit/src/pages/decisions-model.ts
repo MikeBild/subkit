@@ -1,5 +1,6 @@
 import type { Conversation } from "@/api/client";
 import type { PatchCandidate, SkillCandidate } from "@/api/decisions";
+import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
 
 export type DecisionKind = "patch" | "skill" | "conversation";
 export type GroupMode = "none" | "kind" | "source";
@@ -48,14 +49,33 @@ export function skillDecision(candidate: SkillCandidate): DecisionItem {
   };
 }
 
+export interface ConversationLabels {
+  fallbackTitle: string;
+  toolActivity: string;
+  hiddenReference: string;
+}
+
+/**
+ * A conversation excerpt is raw model output — it carries tool JSON and
+ * elicitation ids — so it passes through the same redaction the transcript
+ * uses before it can become a title.
+ */
 export function conversationDecision(
   conversation: Conversation,
-  fallbackTitle: string,
+  labels: ConversationLabels,
 ): DecisionItem {
+  const title =
+    conversation.title?.trim() ||
+    conversationExcerpt(
+      conversation.last_message_excerpt,
+      labels.toolActivity,
+      labels.hiddenReference,
+    ) ||
+    labels.fallbackTitle;
   return {
     kind: "conversation",
     id: conversation.id,
-    title: conversation.title?.trim() || conversation.last_message_excerpt?.trim() || fallbackTitle,
+    title: hideTechnicalIdentifiers(title, labels.hiddenReference),
     target: null,
     waitingSince: conversation.updated_at,
     classification: null,
