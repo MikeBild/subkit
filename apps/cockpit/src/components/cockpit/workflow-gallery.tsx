@@ -1,0 +1,233 @@
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Play } from "lucide-react";
+import { useState } from "react";
+import { apiRequest } from "@/api/client";
+import type { components } from "@/api/schema";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useI18n } from "@/lib/i18n-context";
+import { statusLabel } from "@/lib/status-label";
+import {
+  type ExecutionStep,
+  joinStepsWithLastRun,
+  stepResultPreview,
+  type WorkflowStepView,
+} from "@/lib/workflow-steps";
+
+type Execution = components["schemas"]["Execution"];
+
+interface TestRunResult {
+  ok: boolean;
+  preview: string;
+}
+
+export function WorkflowGallery({
+  workflowId,
+  steps,
+  definition,
+  canRun,
+}: {
+  workflowId: string;
+  steps: readonly unknown[];
+  /** The saved definition, replayed as a draft for a whole-workflow test run. */
+  definition: Record<string, unknown>;
+  canRun: boolean;
+}) {
+  const { t } = useI18n();
+  const [runs, setRuns] = useState<Record<string, TestRunResult>>({});
+  const [running, setRunning] = useState<string | null>(null);
+
+  const lastExecution = useQuery({
+    queryKey: ["workflow", workflowId, "last-execution"],
+    queryFn: () =>
+      apiRequest<{ items: Execution[] }>(
+        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=1`,
+      ),
+  });
+  const executionId = lastExecution.data?.items[0]?.id ?? null;
+  const runSteps = useQuery({
+    queryKey: ["execution", executionId, "steps"],
+    enabled: Boolean(executionId),
+    queryFn: () =>
+      apiRequest<{ items: ExecutionStep[] }>(
+        `/v1/executions/${encodeURIComponent(executionId ?? "")}/steps`,
+      ),
+  });
+
+  const test = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      apiRequest<Record<string, unknown>>("/v1/executions", {
+        method: "POST",
+        body: JSON.stringify({ ...body, request_source: "api" }),
+      }),
+  });
+
+  async function runOne(key: string, body: Record<string, unknown>): Promise<void> {
+    setRunning(key);
+    try {
+      const result = await test.mutateAsync(body);
+      setRuns((current) => ({
+        ...current,
+        [key]: { ok: true, preview: JSON.stringify(result, null, 2) },
+      }));
+    } catch (error) {
+      setRuns((current) => ({
+        ...current,
+        [key]: { ok: false, preview: error instanceof Error ? error.message : String(error) },
+      }));
+    } finally {
+      setRunning(null);
+    }
+  }
+
+  const views = joinStepsWithLastRun(steps, runSteps.data?.items ?? []);
+  const wholeRun = runs.__workflow;
+
+  if (views.length === 0)
+    return (
+      <p
+        className="rounded-xl border p-6 text-sm text-muted-foreground"
+        data-testid="workflow-no-steps"
+      >
+        {t("workflow.noSteps")}
+      </p>
+    );
+
+  return (
+    <div className="grid gap-3" data-testid="workflow-gallery">
+      {canRun && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={running !== null}
+            data-testid="workflow-test-run"
+            onClick={() => void runOne("__workflow", { source: "draft", definition })}
+          >
+            <Play data-icon="inline-start" />
+            {t(running === "__workflow" ? "workflow.testing" : "workflow.testRun")}
+          </Button>
+          <span className="text-xs text-muted-foreground">{t("workflow.testRunHint")}</span>
+        </div>
+      )}
+      {wholeRun && (
+        <pre
+          className={`max-h-60 overflow-auto rounded-md border p-2 text-xs ${wholeRun.ok ? "" : "text-destructive"}`}
+          data-testid="workflow-test-result"
+        >
+          {wholeRun.preview}
+        </pre>
+      )}
+
+      {views.map((view, index) => (
+        <StepCard
+          key={view.definition.id}
+          view={view}
+          index={index}
+          canRun={canRun}
+          running={running === view.definition.id}
+          result={runs[view.definition.id] ?? null}
+          onTest={() =>
+            void runOne(view.definition.id, { source: "step", step: view.definition.raw })
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+function StepCard({
+  view,
+  index,
+  canRun,
+  running,
+  result,
+  onTest,
+}: {
+  view: WorkflowStepView;
+  index: number;
+  canRun: boolean;
+  running: boolean;
+  result: TestRunResult | null;
+  onTest: () => void;
+}) {
+  const { t } = useI18n();
+  const testId = `workflow-step-${index}`;
+  const preview = stepResultPreview(view.lastRun);
+
+  return (
+    <Card size="sm" data-testid={testId}>
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          <span className="min-w-0 truncate">{view.definition.id}</span>
+          {view.definition.kind && <Badge variant="outline">{view.definition.kind}</Badge>}
+          {view.lastRun && (
+            <Badge variant="secondary" data-testid={`${testId}-status`}>
+              {statusLabel(t, view.lastRun.status)}
+            </Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3 lg:grid-cols-2">
+        <div className="min-w-0">
+          <p className="mb-1 text-xs font-medium text-muted-foreground">
+            {t("workflow.configuration")}
+          </p>
+          <dl className="grid gap-1 text-sm">
+            {view.definition.connector && (
+              <div className="flex gap-2">
+                <dt className="text-muted-foreground">{t("catalog.driver")}</dt>
+                <dd className="min-w-0 truncate">{view.definition.connector}</dd>
+              </div>
+            )}
+            {view.definition.detail && (
+              <div className="min-w-0">
+                <dd className="truncate font-mono text-xs">{view.definition.detail}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+        <div className="min-w-0">
+          <p className="mb-1 text-xs font-medium text-muted-foreground">
+            {t("workflow.lastResult")}
+          </p>
+          {preview ? (
+            <pre
+              className="max-h-40 overflow-auto rounded-md border bg-muted/40 p-2 text-xs"
+              data-testid={`${testId}-last-result`}
+            >
+              {preview}
+            </pre>
+          ) : (
+            <p className="text-sm text-muted-foreground" data-testid={`${testId}-never-ran`}>
+              {t("workflow.neverRan")}
+            </p>
+          )}
+          {result && (
+            <pre
+              className={`mt-2 max-h-40 overflow-auto rounded-md border p-2 text-xs ${result.ok ? "" : "text-destructive"}`}
+              data-testid={`${testId}-test-result`}
+            >
+              {result.preview}
+            </pre>
+          )}
+        </div>
+      </CardContent>
+      {canRun && (
+        <CardContent className="pt-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={running}
+            data-testid={`${testId}-test`}
+            onClick={onTest}
+          >
+            <Play data-icon="inline-start" />
+            {t(running ? "workflow.testing" : "workflow.testStep")}
+          </Button>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
