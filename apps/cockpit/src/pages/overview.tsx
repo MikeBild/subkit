@@ -4,6 +4,7 @@ import { CircleCheck, ListChecks, RefreshCw } from "lucide-react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
+import { canSeeDecisions } from "@/app/use-decisions";
 import { ContextHelp } from "@/components/cockpit/context-help";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -26,7 +27,7 @@ export function OverviewPage() {
   const { t, dateTime } = useI18n();
   const session = useSession();
   const allowed = session.permissions.includes("stats:read");
-  const canApprove = session.permissions.includes("conversation:approve");
+  const canDecide = canSeeDecisions(session.permissions);
   const title = t("nav.overview");
   const query = useQuery({
     queryKey: ["overview", "health-digest"],
@@ -35,6 +36,8 @@ export function OverviewPage() {
   });
   const digest = query.data;
   const failureGroups = digest ? [...digest.failure_groups].sort((a, b) => b.count - a.count) : [];
+  const stuck = digest?.patch_candidates.items.filter((item) => item.stuck) ?? [];
+  const oldestStuckDays = stuck.reduce((days, item) => Math.max(days, item.age_days), 0);
 
   if (!allowed)
     return (
@@ -100,6 +103,22 @@ export function OverviewPage() {
           </Alert>
         ) : (
           <div className="grid gap-4">
+            {stuck.length > 0 && (
+              <Alert variant="destructive" data-testid="overview-incident">
+                <AlertTitle>
+                  {t("overview.incident.title", { count: String(stuck.length) })}
+                </AlertTitle>
+                <AlertDescription>
+                  {t("overview.incident.description", { days: String(oldestStuckDays) })}
+                </AlertDescription>
+                <Button variant="outline" size="sm" className="mt-3" asChild>
+                  <Link to="/decisions" data-testid="overview-incident-open">
+                    {t("overview.incident.open")}
+                  </Link>
+                </Button>
+              </Alert>
+            )}
+
             <Card data-testid="overview-waiting">
               <CardHeader>
                 <CardTitle>{t("overview.waiting.title")}</CardTitle>
@@ -162,10 +181,10 @@ export function OverviewPage() {
                   </div>
                 )}
               </CardContent>
-              {canApprove && (
+              {canDecide && (
                 <CardFooter>
                   <Button asChild>
-                    <Link to="/approvals" data-testid="overview-open-approvals">
+                    <Link to="/decisions" data-testid="overview-open-decisions">
                       <ListChecks data-icon="inline-start" />
                       {t("overview.waiting.open")}
                     </Link>

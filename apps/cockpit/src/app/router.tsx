@@ -3,6 +3,7 @@ import { AccessPage, ApiAccessPage, OperationsPage, PeoplePage, SettingsPage } f
 import { CATALOG_RESOURCES, CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
+import { DecisionsPage } from "@/pages/decisions";
 import { OverviewPage } from "@/pages/overview";
 import { RESOURCE_CONFIGS, ResourcePage } from "@/pages/resource";
 import { RunsPage } from "@/pages/runs";
@@ -43,6 +44,12 @@ const conversationRoute = createRoute({
 
 const dedicatedRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/overview", component: OverviewPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/decisions", component: DecisionsPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/approvals",
+    component: () => <Navigate to="/decisions" replace />,
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: "/runs", component: RunsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/people", component: PeoplePage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/access", component: AccessPage }),
@@ -51,6 +58,8 @@ const dedicatedRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),
 ];
 const dedicatedResources = new Set([
+  "approvals",
+  "decisions",
   "runs",
   "people",
   "access",
