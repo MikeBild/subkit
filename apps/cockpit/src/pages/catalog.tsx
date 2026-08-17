@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createColumnHelper, type SortingState } from "@tanstack/react-table";
-import { Bot, RefreshCw, Search } from "lucide-react";
+import { Bot, FolderTree, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/api/client";
+import { toast } from "sonner";
+import { ApiError, apiRequest } from "@/api/client";
 import {
   type CockpitColumn,
   type CockpitTableFeatures,
@@ -12,6 +13,14 @@ import { IconButton } from "@/components/cockpit/icon-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Empty,
   EmptyDescription,
@@ -31,6 +40,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
+import {
+  MIN_CATEGORY_SIZE,
+  memberCountAfterMove,
+  recategorizedSlug,
+  UNCATEGORIZED,
+} from "@/lib/workflow-category";
 
 type CatalogResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
 type CatalogRow = Record<string, unknown>;
@@ -38,9 +53,15 @@ type CatalogRow = Record<string, unknown>;
 interface CatalogState {
   q: string;
   status: string;
+  category: string;
   sort: string;
   order: "asc" | "desc";
   page: number;
+}
+
+interface CategoryCount {
+  category: string;
+  count: number;
 }
 
 interface CatalogConfig {
@@ -114,6 +135,7 @@ function parseState(config: CatalogConfig): CatalogState {
   return {
     q: params.get("q") ?? "",
     status: params.get("status") ?? "all",
+    category: params.get("category") ?? "all",
     sort: params.get("sort") ?? config.defaultSort,
     order: order === "asc" ? "asc" : "desc",
     page: Math.max(0, Number(params.get("page") ?? 0) || 0),
@@ -134,6 +156,7 @@ function useCatalogState(config: CatalogConfig) {
         const params = new URLSearchParams();
         if (next.q) params.set("q", next.q);
         if (next.status !== "all") params.set("status", next.status);
+        if (next.category !== "all") params.set("category", next.category);
         if (next.sort !== config.defaultSort) params.set("sort", next.sort);
         if (next.order !== "desc") params.set("order", next.order);
         if (next.page > 0) params.set("page", String(next.page));
@@ -265,6 +288,7 @@ export function CatalogPage({
   const config = CONFIG[resource];
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
+  const [recategorize, setRecategorize] = useState<CatalogRow | null>(null);
   useEffect(() => setSearch(state.q), [state.q]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -284,6 +308,7 @@ export function CatalogPage({
         order: state.order,
       });
       if (state.q) params.set("q", state.q);
+      if (state.category !== "all") params.set("category", state.category);
       if (state.status !== "all") {
         if (resource === "connectors") {
           if (state.status === "enabled" || state.status === "disabled") {
@@ -295,14 +320,22 @@ export function CatalogPage({
           params.set("status", state.status);
         }
       }
-      return apiRequest<{ items: CatalogRow[]; total?: number }>(`${config.endpoint}?${params}`);
+      return apiRequest<{ items: CatalogRow[]; total?: number; categories?: CategoryCount[] }>(
+        `${config.endpoint}?${params}`,
+      );
     },
   });
   const columns = useMemo(() => catalogColumns(resource, t, dateTime), [resource, t, dateTime]);
   const sorting: SortingState = [{ id: state.sort, desc: state.order === "desc" }];
   const rows = query.data?.items ?? [];
   const total = query.data?.total ?? rows.length;
+  const categories = query.data?.categories ?? [];
+  const categoryCounts = useMemo(
+    () => new Map(categories.map((entry) => [entry.category, entry.count])),
+    [categories],
+  );
   const title = t(config.titleKey);
+  const canRecategorize = resource === "workflows" && permissions.includes("workflow:write");
 
   if (!permissions.includes(config.permission)) {
     return (
@@ -334,6 +367,35 @@ export function CatalogPage({
           </Button>
         )}
       </header>
+      {categories.length > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
+          data-testid="catalog-categories"
+        >
+          <Button
+            variant={state.category === "all" ? "default" : "outline"}
+            size="sm"
+            data-testid="catalog-category-all"
+            onClick={() => setState({ category: "all", page: 0 })}
+          >
+            {t("catalog.allCategories")}
+          </Button>
+          {categories.map((entry, index) => (
+            <Button
+              key={entry.category}
+              variant={state.category === entry.category ? "default" : "outline"}
+              size="sm"
+              data-testid={`catalog-category-${index}`}
+              onClick={() => setState({ category: entry.category, page: 0 })}
+            >
+              {categoryLabel(entry.category, t)}
+              <Badge variant="secondary" className="ml-2 tabular-nums">
+                {entry.count}
+              </Badge>
+            </Button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3 border-b p-3">
         <InputGroup className="w-full sm:max-w-md">
           <InputGroupAddon>
@@ -393,8 +455,39 @@ export function CatalogPage({
             <EmptyMedia variant="icon">
               <Search />
             </EmptyMedia>
-            <EmptyTitle>{state.q ? t("resource.noMatches") : t(config.emptyKey)}</EmptyTitle>
-            <EmptyDescription>{t("resource.broaderSearch")}</EmptyDescription>
+            <EmptyTitle>
+              {state.category !== "all"
+                ? t("catalog.noneInCategory", {
+                    category: categoryLabel(state.category, t),
+                  })
+                : state.q
+                  ? t("resource.noMatches")
+                  : t(config.emptyKey)}
+            </EmptyTitle>
+            <EmptyDescription>
+              {state.category !== "all" ? "" : t("resource.broaderSearch")}
+            </EmptyDescription>
+            {state.category !== "all" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                data-testid="catalog-clear-category"
+                onClick={() => setState({ category: "all", page: 0 })}
+              >
+                {t("catalog.allCategories")}
+              </Button>
+            ) : config.actionKey && !state.q ? (
+              <Button asChild className="mt-3">
+                <a
+                  href={`/cockpit/chat/new?prompt=${encodeURIComponent(t(config.actionKey))}`}
+                  data-testid="catalog-empty-action"
+                >
+                  <Bot data-icon="inline-start" />
+                  {t(config.actionKey)}
+                </a>
+              </Button>
+            ) : null}
           </EmptyHeader>
         </Empty>
       ) : (
@@ -410,6 +503,24 @@ export function CatalogPage({
             const id = row.id;
             if (typeof id === "string") window.location.assign(`/cockpit/${resource}/${id}`);
           }}
+          {...(canRecategorize
+            ? {
+                rowActions: (row: CatalogRow, index: number) => (
+                  <IconButton
+                    variant="ghost"
+                    size="icon-sm"
+                    label={t("catalog.changeCategory")}
+                    data-testid={`catalog-recategorize-${index}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setRecategorize(row);
+                    }}
+                  >
+                    <FolderTree />
+                  </IconButton>
+                ),
+              }
+            : {})}
           page={state.page}
           pageSize={PAGE_SIZE}
           total={total}
@@ -422,8 +533,126 @@ export function CatalogPage({
           openLabel={t("common.open")}
         />
       )}
+      {recategorize && (
+        <RecategorizeDialog
+          row={recategorize}
+          categories={categories}
+          counts={categoryCounts}
+          onClose={() => setRecategorize(null)}
+          onDone={() => {
+            setRecategorize(null);
+            void query.refetch();
+          }}
+        />
+      )}
     </main>
   );
+}
+
+/**
+ * A workflow's category is its slug family, so moving it between blocks
+ * renames the slug. The dialog shows the resulting slug and names the
+ * consequence external clients see before anything is written.
+ */
+function RecategorizeDialog({
+  row,
+  categories,
+  counts,
+  onClose,
+  onDone,
+}: {
+  row: CatalogRow;
+  categories: CategoryCount[];
+  counts: ReadonlyMap<string, number>;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useI18n();
+  const slug = typeof row.slug === "string" ? row.slug : "";
+  const currentCategory = typeof row.category === "string" ? row.category : UNCATEGORIZED;
+  const id = typeof row.id === "string" ? row.id : "";
+  const [target, setTarget] = useState(currentCategory);
+  const nextSlug = recategorizedSlug(slug, currentCategory, target);
+  const members = memberCountAfterMove(counts, currentCategory, target);
+  const options = [
+    ...new Set([...categories.map((entry) => entry.category), UNCATEGORIZED, currentCategory]),
+  ];
+
+  const move = useMutation({
+    mutationFn: () =>
+      apiRequest(`/v1/workflows/${encodeURIComponent(id)}/metadata`, {
+        method: "PATCH",
+        body: JSON.stringify({ slug: nextSlug }),
+      }),
+    onSuccess: () => {
+      toast.success(t("catalog.recategorized", { slug: nextSlug }));
+      onDone();
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof ApiError && error.status === 409
+          ? t("catalog.slugTaken", { slug: nextSlug })
+          : t("catalog.recategorizeFailed"),
+      );
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent data-testid="catalog-recategorize-dialog">
+        <DialogHeader>
+          <DialogTitle>{t("catalog.changeCategory")}</DialogTitle>
+          <DialogDescription>{t("catalog.changeCategoryDescription")}</DialogDescription>
+        </DialogHeader>
+        <Select value={target} onValueChange={setTarget}>
+          <SelectTrigger
+            aria-label={t("catalog.changeCategory")}
+            data-testid="catalog-recategorize-select"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {options.map((category, index) => (
+                <SelectItem
+                  key={category}
+                  value={category}
+                  data-testid={`catalog-recategorize-option-${index}`}
+                >
+                  {categoryLabel(category, t)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <p className="text-sm" data-testid="catalog-recategorize-slug">
+          {t("catalog.resultingSlug", { slug: nextSlug })}
+        </p>
+        <p className="text-sm text-muted-foreground">{t("catalog.renameWarning")}</p>
+        {target !== UNCATEGORIZED && members < MIN_CATEGORY_SIZE && (
+          <p className="text-sm text-muted-foreground" data-testid="catalog-recategorize-hint">
+            {t("catalog.categoryTooSmall", { count: String(MIN_CATEGORY_SIZE) })}
+          </p>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} data-testid="catalog-recategorize-cancel">
+            {t("common.cancel")}
+          </Button>
+          <Button
+            disabled={move.isPending || nextSlug === slug}
+            data-testid="catalog-recategorize-confirm"
+            onClick={() => move.mutate()}
+          >
+            {t("catalog.moveWorkflow")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function categoryLabel(category: string, t: ReturnType<typeof useI18n>["t"]): string {
+  return category === UNCATEGORIZED ? t("catalog.categoryOther") : category;
 }
 
 export const CATALOG_RESOURCES = new Set<string>(Object.keys(CONFIG));
