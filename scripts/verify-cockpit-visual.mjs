@@ -6,6 +6,7 @@ const baseUrl = (process.env.COCKPIT_BASE_URL || "http://127.0.0.1:4175").replac
 const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
 const uuid = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
 const routes = [
+  "decisions",
   "chat",
   "inbox",
   "workflows",
@@ -14,7 +15,6 @@ const routes = [
   "knowledge",
   "skills",
   "files",
-  "approvals",
   "audit",
   "usage",
   "people",
