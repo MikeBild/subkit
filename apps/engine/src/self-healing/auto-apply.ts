@@ -13,7 +13,7 @@ import { patchCandidates, workflows, workflowVersions } from "../db/schema/index
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { log } from "../logging/logger.ts";
 import { applyPatchToWorkflowDag, type PatchApplyFailure } from "./patch-apply.ts";
-import { loadWorkflowStepKey } from "./step-snapshot.ts";
+import { resolveCandidateStepKey } from "./step-snapshot.ts";
 
 export type AutoApplyResult =
   | { applied: true; version_id: string; changed_paths: string[] }
@@ -136,16 +136,11 @@ export async function autoApplyPatch(
 }
 
 /**
- * Resolve the DAG step this candidate is about to patch.
+ * Resolve the DAG step this candidate is about to patch, through the same
+ * helper the review preview uses.
  *
- * Two anchors, in order of directness:
- *   1. `diff.workflow_step_id` — the definition step, recorded at proposal
- *      time. Proactive signals have this and nothing else.
- *   2. `diff.step_id` — the failing *execution* row; `loadWorkflowStepKey`
- *      takes the hop from there to the definition.
- *
- * Null when neither resolves, which is a hard stop rather than a guess: a
- * patch with no target must not be recorded as applied.
+ * Null when neither anchor resolves, which is a hard stop rather than a guess:
+ * a patch with no target must not be recorded as applied.
  */
 async function resolvePatchStepKey(
   tx: Executor,
@@ -161,7 +156,5 @@ async function resolvePatchStepKey(
   const diff =
     raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 
-  if (typeof diff.workflow_step_id === "string") return diff.workflow_step_id;
-  if (typeof diff.step_id !== "string") return null;
-  return loadWorkflowStepKey(tenant_id, diff.step_id, tx);
+  return resolveCandidateStepKey(tenant_id, diff, tx);
 }

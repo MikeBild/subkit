@@ -19,7 +19,12 @@ import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { dryRunPatchCandidate, previewPatchCandidate } from "../candidate-review.ts";
 import { diffStepPaths } from "../patch-apply.ts";
 import { runSelfHealingLoop } from "../service.ts";
-import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";
+import {
+  createSelfHealingCtx,
+  SEED_DATA_SELECTOR,
+  SEED_STEP_ID,
+  type SelfHealingTestCtx,
+} from "./setup.ts";
 
 let ctx: SelfHealingTestCtx;
 let candidateId: string;
@@ -89,6 +94,40 @@ describe("previewPatchCandidate", () => {
     // projection at all. Reading the definition is what makes the preview
     // the same diff the apply path writes.
     expect(preview!.before_step?.data_selector).toBe("data.id");
+    expect(preview!.after_step?.data_selector).toBe("data.result.id");
+    expect(preview!.changed_paths).toEqual(["data_selector"]);
+  });
+
+  test("a candidate found by a scan previews from its definition anchor", async () => {
+    // A proactive signal has no failing execution row: it carries
+    // `workflow_step_id` and nothing else. The apply path has always resolved
+    // that anchor; the preview must resolve the same one, or the operator
+    // reviews an empty diff for a patch that would in fact change something.
+    const [row] = await ctx.testDb.db
+      .insert(patchCandidates)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id: ctx.workflow_id,
+        classification: "safe",
+        status: "proposed",
+        diff: {
+          drift_diff: "kind: schema_diff\nwidened: data.id",
+          step_id: null,
+          workflow_step_id: SEED_STEP_ID,
+          proposal: {
+            classification: "safe",
+            kind: "update_field_path",
+            description: "Follow the renamed field",
+            patch: { path: "data.id", value: "data.result.id" },
+            reasoning: "the response moved the id under result",
+          },
+        },
+      })
+      .returning();
+    if (!row) throw new Error("candidate insert failed");
+
+    const preview = await previewPatchCandidate(ctx.tenant_id, row.id, ctx.testDb.db);
+    expect(preview!.before_step?.data_selector).toBe(SEED_DATA_SELECTOR);
     expect(preview!.after_step?.data_selector).toBe("data.result.id");
     expect(preview!.changed_paths).toEqual(["data_selector"]);
   });
