@@ -81,6 +81,18 @@ describe("cockpit test selectors", () => {
     }
   });
 
+  test("never falls back to a database identifier when a name is missing", () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      for (const [index, line] of readFileSync(file, "utf8").split("\n").entries()) {
+        if (/\?\?\s*[a-zA-Z_]+\.([a-z_]*_id|id)\b/.test(line)) {
+          offenders.push(`${file}:${index + 1}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   test("routes icon-only actions through the tooltip composition", () => {
     const offenders: string[] = [];
     for (const file of files) {
