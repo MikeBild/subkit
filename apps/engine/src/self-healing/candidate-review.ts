@@ -19,12 +19,14 @@ import {
 import { type PatchProposal, PatchProposalSchema } from "../llm/flows/repair.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
 import { applyPatchToWorkflowDag } from "./patch-apply.ts";
-import { buildDryRunStep, loadStepSnapshot, loadWorkflowStepKey } from "./step-snapshot.ts";
+import { buildDryRunStep, loadStepSnapshot, resolveCandidateStepKey } from "./step-snapshot.ts";
 import type { DryRunStep } from "./types.ts";
 
 interface CandidateDiffEnvelope {
   proposal: PatchProposal | null;
   drift_diff: string | null;
+  /** Raw envelope, kept so the step anchor resolves exactly as the apply path does. */
+  raw: Record<string, unknown>;
   step_id: string | null;
   dry_run: Record<string, unknown> | null;
 }
@@ -35,6 +37,7 @@ function readCandidateDiff(diff: unknown): CandidateDiffEnvelope {
   return {
     proposal: parsed.success ? parsed.data : null,
     drift_diff: typeof obj.drift_diff === "string" ? obj.drift_diff : null,
+    raw: obj,
     step_id: typeof obj.step_id === "string" ? obj.step_id : null,
     dry_run:
       obj.dry_run && typeof obj.dry_run === "object"
@@ -69,11 +72,10 @@ function projectStep(step: Record<string, unknown>): DryRunStep | null {
 async function loadTargetStep(
   tenant_id: string,
   workflow_id: string,
-  execution_step_id: string | null,
+  diff: Record<string, unknown>,
   db: Db,
 ): Promise<{ dag: unknown; step_key: string } | null> {
-  if (!execution_step_id) return null;
-  const step_key = await loadWorkflowStepKey(tenant_id, execution_step_id, db);
+  const step_key = await resolveCandidateStepKey(tenant_id, diff, db);
   if (!step_key) return null;
 
   const rows = await db
@@ -122,7 +124,7 @@ export async function previewPatchCandidate(
   let before_step: DryRunStep | null = null;
   let after_step: DryRunStep | null = null;
   let changed_paths: string[] = [];
-  const target = await loadTargetStep(tenant_id, row.workflow_id, envelope.step_id, db);
+  const target = await loadTargetStep(tenant_id, row.workflow_id, envelope.raw, db);
   if (target) {
     const steps = Array.isArray((target.dag as Record<string, unknown>)?.steps)
       ? ((target.dag as Record<string, unknown>).steps as Record<string, unknown>[])
