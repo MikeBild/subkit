@@ -372,6 +372,24 @@ export async function listConnectors(
   return { rows: rows.map((r) => toView(r.row)), total };
 }
 
+/**
+ * Catalog block sizes, counted over every connector of the tenant. List
+ * callers render these as filter chips, so they must not shrink to whatever
+ * the current page or filter happens to contain.
+ */
+export async function connectorCategoryCounts(
+  tenant_id: string,
+  exec?: Executor,
+): Promise<Map<string, number>> {
+  const db = exec ?? getDb();
+  const rows = await db
+    .select({ driver: connectors.driver, count: sql<number>`count(*)::int` })
+    .from(connectors)
+    .where(and(eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)))
+    .groupBy(connectors.driver);
+  return new Map(rows.map((r) => [r.driver, Number(r.count)]));
+}
+
 export async function getConnector(
   tenant_id: string,
   id: string,

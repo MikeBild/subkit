@@ -14,7 +14,6 @@ import {
   UpdateConnectorSchema,
 } from "../../../connectors/index.ts";
 import { logger } from "../../../logging/index.ts";
-import { groupByCategory } from "../../../workflows/index.ts";
 
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -184,10 +183,14 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...serialize(r),
       category: connectorSvc.categoryOfConnector(r),
     }));
-    const blocks = groupByCategory(items, (i) => i.category).map((b) => ({
-      category: b.category,
-      count: b.items.length,
-    }));
+    // Blocks describe the catalog, not the page: a chip row derived from the
+    // filtered page would collapse to the chip the caller just picked.
+    const counts = await connectorSvc.connectorCategoryCounts(principal.tenant_id, db);
+    // Biggest block first, ties by name — a connector's category is its driver,
+    // so the catch-all block `groupByCategory` sorts last never occurs here.
+    const blocks = [...counts.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => (a.count !== b.count ? b.count - a.count : a.category < b.category ? -1 : 1));
     return c.json({ items, total, categories: blocks }, 200);
   });
 

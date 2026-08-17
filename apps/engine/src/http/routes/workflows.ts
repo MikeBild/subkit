@@ -623,10 +623,12 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       category: categories.get(w.slug) ?? UNCATEGORIZED,
       connectors: connectorRefs.get(w.id) ?? [],
     }));
-    const blocks = groupByCategory(items, (i) => i.category).map((b) => ({
-      category: b.category,
-      count: b.items.length,
-    }));
+    // Blocks describe the catalog, not the page: a chip row derived from the
+    // filtered page would collapse to the chip the caller just picked.
+    const blocks = groupByCategory(
+      [...categories.values()].map((category) => ({ category })),
+      (i) => i.category,
+    ).map((b) => ({ category: b.category, count: b.items.length }));
     return c.json({ items, total, categories: blocks }, 200);
   });
 
