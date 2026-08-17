@@ -233,19 +233,18 @@ export async function buildOperatorHealthDigest(
   // Pending patch candidates (post-flood-fix: ~1 per endpoint). Order OLDEST
   // first: a candidate's urgency grows with how long it has sat unreviewed, so
   // when the cap bites it must drop the freshest rows, never the stuck ones.
-  const pendingFilter = and(
-    eq(patchCandidates.tenant_id, tenant_id),
-    eq(patchCandidates.status, "proposed"),
-  );
   const [pendingRows, pendingCountRows] = await Promise.all([
     db
       .select()
       .from(patchCandidates)
-      .where(pendingFilter)
+      .where(and(eq(patchCandidates.tenant_id, tenant_id), eq(patchCandidates.status, "proposed")))
       .orderBy(patchCandidates.created_at)
       .limit(MAX_PENDING_PATCHES),
     // True count — the capped items array under-reports past MAX_PENDING_PATCHES.
-    db.select({ cnt: count() }).from(patchCandidates).where(pendingFilter),
+    db
+      .select({ cnt: count() })
+      .from(patchCandidates)
+      .where(and(eq(patchCandidates.tenant_id, tenant_id), eq(patchCandidates.status, "proposed"))),
   ]);
   const pendingTotal = Number(pendingCountRows[0]?.cnt ?? 0);
 
