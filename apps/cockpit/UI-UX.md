@@ -50,6 +50,25 @@ the conversation list, transcript, context drawer and resource results own their
 areas. Resource tables fit their card at every width: narrow screens keep the two primary columns,
 wide screens show at most four, and the row sheet retains all secondary details.
 
+### Decisions surface
+
+Every proposal that needs a person lives on one page (`/decisions`): proposed fixes, skill
+candidates and conversations waiting for an answer. The navigation entry sits directly under the
+overview and carries the exact open count, taken from the engine totals — when a count cannot be
+read it is omitted rather than guessed. Positions waiting longer than three days move into their
+own rubric and turn the counter red, and the overview repeats the same queue as a short list that
+links here.
+
+A proposal is decided where it appears: the diff card carries the before/after lines, the dry-run
+result beside them and the approve/reject actions, both in the conversation and in the queue.
+Both paths call the same engine decision, so the audit trail does not depend on the route taken.
+
+Deviation from the family convention, deliberate: there is no "remind me later" shelf. The engine
+models a patch candidate as proposed, applied, rejected or superseded and has no deferred state;
+inventing a cockpit-local snooze would show a position as parked that the engine still counts as
+open. Rejecting with a note is the honest alternative, and the "decided" and "rejected" shelves
+are read back from those engine states.
+
 ### Product-family evidence
 
 The shared contract is copied into each repository; no Cockpit imports another product at runtime.
