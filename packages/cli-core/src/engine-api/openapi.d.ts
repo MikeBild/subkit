@@ -10092,6 +10092,7 @@ export interface paths {
                     status?: "proposed" | "applied" | "rejected" | "superseded";
                     workflow_id?: string;
                     limit?: number;
+                    order?: "asc" | "desc";
                 };
                 header?: never;
                 path?: never;
@@ -16835,11 +16836,13 @@ export interface components {
         };
         PatchCandidateListResponse: {
             items: components["schemas"]["PatchCandidate"][];
+            total: number;
         };
         PatchCandidate: {
             id: string;
             tenant_id: string;
             workflow_id: string;
+            workflow_name: string | null;
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
@@ -16926,6 +16929,8 @@ export interface components {
             workflow_name: string | null;
             /** @enum {string} */
             classification: "safe" | "unsafe";
+            age_days: number;
+            stuck: boolean;
             summary: string;
         };
         OperatorRiskSignal: {

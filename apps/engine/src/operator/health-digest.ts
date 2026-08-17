@@ -15,7 +15,7 @@
 // the cause reads like a sentence, not a stack trace. Pending patch
 // candidates ride along as the "fixes awaiting review" bucket.
 
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { AuditAction, audit } from "../audit/index.ts";
 import {
   RiskSignalClearedMetadataSchema,
@@ -30,7 +30,7 @@ import { computeRiskSignals, type RiskSignal, takeRiskEdges, topRisk } from "./r
 
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_SCANNED_EXECUTIONS = 500;
-const MAX_PENDING_PATCHES = 50;
+export const MAX_PENDING_PATCHES = 50;
 // A proposed patch older than this has sat unreviewed long enough to be an
 // operational problem in its own right — a self-healing fix was found but
 // never applied, so the underlying workflow keeps failing. An `unsafe` patch
@@ -77,6 +77,8 @@ export interface OperatorHealthDigest {
   /** Outcome-first one-liner for the chat surface. */
   headline: string;
   failure_groups: DigestFailureGroup[];
+  /** `pending` is the exact count of proposed candidates; `items` is capped
+   *  at MAX_PENDING_PATCHES so a backlog can't flood the digest. */
   patch_candidates: { pending: number; items: DigestPatch[] };
   /** Leading-indicator risk signals computed from the live process
    *  gauges/counters vs the operator-tuned predictive thresholds. The
@@ -231,12 +233,21 @@ export async function buildOperatorHealthDigest(
   // Pending patch candidates (post-flood-fix: ~1 per endpoint). Order OLDEST
   // first: a candidate's urgency grows with how long it has sat unreviewed, so
   // when the cap bites it must drop the freshest rows, never the stuck ones.
-  const pendingRows = await db
-    .select()
-    .from(patchCandidates)
-    .where(and(eq(patchCandidates.tenant_id, tenant_id), eq(patchCandidates.status, "proposed")))
-    .orderBy(patchCandidates.created_at)
-    .limit(MAX_PENDING_PATCHES);
+  const pendingFilter = and(
+    eq(patchCandidates.tenant_id, tenant_id),
+    eq(patchCandidates.status, "proposed"),
+  );
+  const [pendingRows, pendingCountRows] = await Promise.all([
+    db
+      .select()
+      .from(patchCandidates)
+      .where(pendingFilter)
+      .orderBy(patchCandidates.created_at)
+      .limit(MAX_PENDING_PATCHES),
+    // True count — the capped items array under-reports past MAX_PENDING_PATCHES.
+    db.select({ cnt: count() }).from(patchCandidates).where(pendingFilter),
+  ]);
+  const pendingTotal = Number(pendingCountRows[0]?.cnt ?? 0);
 
   const patchWfIds = [...new Set(pendingRows.map((r) => r.workflow_id))];
   const patchNameById = patchWfIds.length
@@ -355,7 +366,7 @@ export async function buildOperatorHealthDigest(
     window_hours: windowHours,
     headline,
     failure_groups: failureGroups,
-    patch_candidates: { pending: patchItems.length, items: patchItems },
+    patch_candidates: { pending: pendingTotal, items: patchItems },
     risk,
     rendered,
     all_clear: allClear,

@@ -13252,10 +13252,15 @@
             "items": {
               "$ref": "#/components/schemas/PatchCandidate"
             }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
-          "items"
+          "items",
+          "total"
         ]
       },
       "PatchCandidate": {
@@ -13269,6 +13274,12 @@
           },
           "workflow_id": {
             "type": "string"
+          },
+          "workflow_name": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "classification": {
             "type": "string",
@@ -13304,6 +13315,7 @@
           "id",
           "tenant_id",
           "workflow_id",
+          "workflow_name",
           "classification",
           "status",
           "fixture_id",
@@ -13641,6 +13653,13 @@
               "unsafe"
             ]
           },
+          "age_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stuck": {
+            "type": "boolean"
+          },
           "summary": {
             "type": "string"
           }
@@ -13650,6 +13669,8 @@
           "workflow_id",
           "workflow_name",
           "classification",
+          "age_days",
+          "stuck",
           "summary"
         ]
       },
@@ -29137,6 +29158,18 @@
             },
             "required": false,
             "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "required": false,
+            "name": "order",
             "in": "query"
           }
         ],
