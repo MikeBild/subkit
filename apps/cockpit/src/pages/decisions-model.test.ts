@@ -129,28 +129,68 @@ describe("decision adapters", () => {
     expect(decision.target).toBeNull();
   });
 
+  const LABELS = {
+    fallbackTitle: "Waiting",
+    toolActivity: "Governed action completed",
+    hiddenReference: "internal reference",
+  };
+  const conversationBase = {
+    id: "c1",
+    tenant_id: "t",
+    target_workflow_id: null,
+    target_connector_id: null,
+    status: "awaiting_input",
+    owner_id: null,
+    model: null,
+    created_at: daysAgo(1),
+    updated_at: daysAgo(1),
+  };
+
   test("a conversation falls back from title to excerpt to a label", () => {
-    const base = {
-      id: "c1",
-      tenant_id: "t",
-      target_workflow_id: null,
-      target_connector_id: null,
-      status: "awaiting_input",
-      owner_id: null,
-      model: null,
-      created_at: daysAgo(1),
-      updated_at: daysAgo(1),
-    };
-    expect(conversationDecision({ ...base, title: "Rename the field" }, "Waiting").title).toBe(
-      "Rename the field",
-    );
+    expect(
+      conversationDecision({ ...conversationBase, title: "Rename the field" }, LABELS).title,
+    ).toBe("Rename the field");
     expect(
       conversationDecision(
-        { ...base, title: null, last_message_excerpt: "Shall I apply" },
-        "Waiting",
+        { ...conversationBase, title: null, last_message_excerpt: "Shall I apply" },
+        LABELS,
       ).title,
     ).toBe("Shall I apply");
-    expect(conversationDecision({ ...base, title: null }, "Waiting").title).toBe("Waiting");
+    expect(conversationDecision({ ...conversationBase, title: null }, LABELS).title).toBe(
+      "Waiting",
+    );
+  });
+
+  test("a raw tool excerpt never becomes a title carrying an identifier", () => {
+    const decision = conversationDecision(
+      {
+        ...conversationBase,
+        title: null,
+        last_message_excerpt:
+          '{"tool":"run_workflow","output":{"status":"awaiting_input","elicitation_id":"7b7f5376-5127-413e-aaec-bc79f14ef8e5"}}',
+      },
+      LABELS,
+    );
+    expect(decision.title).toBe("Governed action completed");
+    expect(decision.title).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+    );
+  });
+
+  test("an identifier inside prose is redacted rather than shown", () => {
+    const decision = conversationDecision(
+      {
+        ...conversationBase,
+        title: null,
+        last_message_excerpt:
+          "**ContentKit Editorial MCP PROD** ist gespeichert und live. - Connector-ID: `2f65bdfb-0e86-4d70-b197-048062ca94ce` (prod)",
+      },
+      LABELS,
+    );
+    expect(decision.title).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+    );
+    expect(decision.title).toContain("internal reference");
   });
 
   test("a skill candidate carries its scope as target", () => {
