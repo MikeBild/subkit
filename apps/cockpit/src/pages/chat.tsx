@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop, List, MessageSquarePlus, PanelRight, Pencil, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  apiRequest,
   appendConversationMessage,
   type Conversation,
   cancelConversation,
@@ -13,6 +14,7 @@ import {
   type UiMessage,
 } from "@/api/client";
 import { dryRunPatchCandidate, getPatchCandidatePreview } from "@/api/decisions";
+import { useSession } from "@/app/session";
 import {
   Confirmation,
   ConfirmationAction,
@@ -165,6 +167,70 @@ function PatchProposalDiff({ candidateId, testId }: { candidateId: string; testI
       dryRun={dryRun.data ?? null}
       dryRunPending={dryRun.isPending}
     />
+  );
+}
+
+const STARTERS: TranslationKey[] = ["chat.starter.capabilities", "chat.starter.lastRun"];
+
+/** An empty chat offers the next move instead of an empty field. */
+function StarterCards({
+  onPick,
+  disabled,
+}: {
+  onPick: (prompt: string) => void;
+  disabled: boolean;
+}) {
+  const { t } = useI18n();
+  const session = useSession();
+  const catalog = useQuery({
+    queryKey: ["chat", "starter-catalog"],
+    enabled: session.permissions.includes("workflow:read"),
+    queryFn: () =>
+      apiRequest<{ categories: { category: string; count: number }[] }>("/v1/workflows?limit=1"),
+  });
+  const categories = catalog.data?.categories ?? [];
+
+  return (
+    <div className="mt-6 grid gap-3" data-testid="chat-starters">
+      <div className="grid gap-2 sm:grid-cols-2">
+        {STARTERS.map((key, index) => (
+          <Button
+            key={key}
+            variant="outline"
+            className="h-auto justify-start py-3 text-left whitespace-normal"
+            disabled={disabled}
+            data-testid={`chat-starter-${index}`}
+            onClick={() => onPick(t(key))}
+          >
+            {t(key)}
+          </Button>
+        ))}
+      </div>
+      {categories.length > 0 && (
+        <div className="grid gap-2" data-testid="chat-starter-catalog">
+          <p className="text-xs text-muted-foreground">{t("chat.starter.catalog")}</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {categories.slice(0, 6).map((entry, index) => (
+              <Button
+                key={entry.category}
+                variant="ghost"
+                size="sm"
+                disabled={disabled}
+                data-testid={`chat-starter-category-${index}`}
+                onClick={() =>
+                  onPick(t("chat.starter.categoryPrompt", { category: entry.category }))
+                }
+              >
+                {entry.category}
+                <Badge variant="secondary" className="ml-2 tabular-nums">
+                  {entry.count}
+                </Badge>
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -575,7 +641,7 @@ export function ChatPage() {
                     className="grid flex-1 place-items-center py-16 text-center"
                     data-testid="chat-empty"
                   >
-                    <div className="max-w-md">
+                    <div className="max-w-2xl">
                       <span className="mx-auto grid size-10 place-items-center rounded-full bg-muted">
                         <MessageSquarePlus />
                       </span>
@@ -583,6 +649,10 @@ export function ChatPage() {
                       <p className="mt-1 text-sm text-muted-foreground">
                         {t("chat.empty.description")}
                       </p>
+                      <StarterCards
+                        onPick={(prompt) => send.mutate(prompt)}
+                        disabled={send.isPending}
+                      />
                     </div>
                   </div>
                 ) : (
