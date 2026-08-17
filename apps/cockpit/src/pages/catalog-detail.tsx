@@ -3,6 +3,7 @@ import { ArrowLeft, Bot, CheckCircle2, Pencil, RefreshCw, ShieldCheck } from "lu
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, apiText } from "@/api/client";
+import { AgentPanel } from "@/components/cockpit/agent-panel";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { WorkflowGallery } from "@/components/cockpit/workflow-gallery";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -423,6 +424,9 @@ export function CatalogDetailPage({
           <p className="mt-1 text-sm text-muted-foreground">{t(DESCRIPTION_KEYS[resource])}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {resource === "workflows" && permissions.includes("conversation:write") && (
+            <AgentPanel workflowId={id} workflowName={recordTitle(record)} />
+          )}
           {resource !== "files" && canWrite && (
             <MetadataDialog resource={resource} id={id} record={record} />
           )}
