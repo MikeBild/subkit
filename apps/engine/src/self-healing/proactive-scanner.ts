@@ -255,6 +255,24 @@ async function scanSchemaShapeDriftForTenant(
     if (!after || !before) continue;
     const diff = diffShapesDeep(before.schema, after.schema);
     if (diff.widened.length === 0) continue;
+    // A root-level `unknown` on either side is not a schema change anyone can
+    // patch: the response stopped being describable (a non-JSON body), or it
+    // became describable again. The diff carries no field to name, so a repair
+    // attempt can only fail — every scan, forever. Record it and move on.
+    if (before.schema.type === "unknown" || after.schema.type === "unknown") {
+      logger.info({
+        module: "self-healing",
+        action: "proactive_scan.uninformative_drift",
+        msg: "response shape collapsed to unknown — no field-level change to repair",
+        tenant_id,
+        workflow_id,
+        connector_id,
+        endpoint_key,
+        step_id,
+        direction: after.schema.type === "unknown" ? "collapsed" : "recovered",
+      });
+      continue;
+    }
 
     const signal: DriftSignal = {
       kind: "schema_diff",

@@ -53,9 +53,16 @@ export function deriveShape(value: unknown): SchemaShape {
  * Accumulate observed response evidence without treating an omitted
  * property as a contract removal. Incompatible concrete types widen
  * to unknown so proactive drift can still flag the type change once.
+ *
+ * "Once" is why a widened root heals: a single non-JSON body — an error page
+ * on a 200, an empty response — collapses the whole contract to `unknown`,
+ * and without recovery every later observation merges back to `unknown`, no
+ * new row is ever written, and the drift scan re-reports the same collapse
+ * forever. Adopting the next concrete shape keeps the one flag and lets the
+ * endpoint describe itself again.
  */
 export function mergeObservedShapes(previous: SchemaShape, observed: SchemaShape): SchemaShape {
-  return mergeShapes(previous, observed, false);
+  return mergeShapes(previous, observed, true);
 }
 
 function mergeShapes(

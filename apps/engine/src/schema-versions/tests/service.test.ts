@@ -237,6 +237,25 @@ describe("schema-versions/service", () => {
     expect(mergeObservedShapes(widened, deriveShape({ value: 2 }))).toEqual(widened);
   });
 
+  test("a collapsed root describes itself again on the next concrete response", () => {
+    // One non-JSON body (an error page on a 200) collapses the whole contract.
+    const collapsed = mergeObservedShapes(
+      deriveShape({ data: { search: { nodes: [] } } }),
+      deriveShape("<html>rate limited</html>"),
+    );
+    expect(collapsed).toEqual({ type: "unknown" });
+
+    // Without recovery the row never changes again and the drift scan reports
+    // the same collapse on every pass, forever.
+    const healed = mergeObservedShapes(collapsed, deriveShape({ data: { ok: true } }));
+    expect(healed).toMatchObject({ type: "object" });
+  });
+
+  test("a widened property still holds — only the root recovers", () => {
+    const widened = mergeObservedShapes(deriveShape({ value: 1 }), deriveShape({ value: "one" }));
+    expect(mergeObservedShapes(widened, deriveShape({ value: 2 }))).toEqual(widened);
+  });
+
   test("empty arrays gain a concrete item shape when evidence arrives", () => {
     expect(
       mergeObservedShapes(deriveShape({ rows: [] }), deriveShape({ rows: [{ id: 1 }] })),
