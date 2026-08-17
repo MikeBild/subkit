@@ -100,6 +100,27 @@ export async function loadWorkflowStepKey(
   return rows[0]?.step_key ?? null;
 }
 
+/**
+ * Resolve the definition step a candidate's diff points at.
+ *
+ * Two anchors, in order of directness:
+ *   1. `workflow_step_id` — the definition step recorded at proposal time. A
+ *      proactive signal has this and nothing else.
+ *   2. `step_id` — the failing *execution* row, one hop from the definition.
+ *
+ * Preview and apply resolve through this one function so the operator can
+ * never review a different step than the one the apply path rewrites.
+ */
+export async function resolveCandidateStepKey(
+  tenant_id: string,
+  diff: Record<string, unknown>,
+  exec: Executor,
+): Promise<string | null> {
+  if (typeof diff.workflow_step_id === "string") return diff.workflow_step_id;
+  if (typeof diff.step_id !== "string") return null;
+  return loadWorkflowStepKey(tenant_id, diff.step_id, exec);
+}
+
 export async function loadStepSnapshot(
   tenant_id: string,
   step_id: string,
