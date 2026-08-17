@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  connectorNameOf,
   type ExecutionStep,
   joinStepsWithLastRun,
   readStepDefinition,
@@ -80,5 +81,28 @@ describe("step result preview", () => {
 
   test("a step that never ran has nothing to show", () => {
     expect(stepResultPreview(null)).toBeNull();
+  });
+});
+
+describe("the connector a step uses", () => {
+  const names = new Map([["d11b5b98-6c7b-4919-9276-74e5f4b4891b", "Radar API"]]);
+
+  test("resolves a reference to the connector name", () => {
+    const definition = readStepDefinition(
+      { id: "a", kind: "request", connector_id: "d11b5b98-6c7b-4919-9276-74e5f4b4891b" },
+      0,
+    );
+    expect(definition.connector).toBeNull();
+    expect(connectorNameOf(definition, names)).toBe("Radar API");
+  });
+
+  test("shows nothing rather than the raw reference when it cannot be resolved", () => {
+    const definition = readStepDefinition({ id: "a", connector_id: "unknown-id" }, 0);
+    expect(connectorNameOf(definition, names)).toBeNull();
+  });
+
+  test("prefers a slug the step names directly", () => {
+    const definition = readStepDefinition({ id: "a", connector: "radar-api" }, 0);
+    expect(connectorNameOf(definition, names)).toBe("radar-api");
   });
 });
