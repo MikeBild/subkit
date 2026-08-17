@@ -1,8 +1,10 @@
 import { createRootRoute, createRoute, createRouter, Navigate } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { AccessPage, ApiAccessPage, OperationsPage, PeoplePage, SettingsPage } from "@/pages/admin";
 import { CATALOG_RESOURCES, CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
+import { ConnectorsPage } from "@/pages/connectors";
 import { DecisionsPage } from "@/pages/decisions";
 import { OverviewPage } from "@/pages/overview";
 import { RESOURCE_CONFIGS, ResourcePage } from "@/pages/resource";
@@ -81,16 +83,21 @@ const resourceRoutes = Object.keys(RESOURCE_CONFIGS)
     }),
   );
 
+// Connectors present as cards with their connection state, not as a table.
+const catalogListOverrides: Record<string, () => ReactNode> = { connectors: ConnectorsPage };
+
 const catalogRoutes = [...CATALOG_RESOURCES].flatMap((resource) => [
   createRoute({
     getParentRoute: () => rootRoute,
     path: `/${resource}`,
-    component: () => {
-      const session = useSession();
-      return (
-        <CatalogPage resource={resource as DetailResource} permissions={session.permissions} />
-      );
-    },
+    component:
+      catalogListOverrides[resource] ??
+      (() => {
+        const session = useSession();
+        return (
+          <CatalogPage resource={resource as DetailResource} permissions={session.permissions} />
+        );
+      }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,

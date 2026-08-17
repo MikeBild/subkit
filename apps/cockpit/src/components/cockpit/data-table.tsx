@@ -17,6 +17,7 @@ import {
   Columns3,
   MoreHorizontal,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,12 +62,15 @@ export function DataTable<TData extends RowData>({
   recordsLabel,
   actionsLabel,
   openLabel,
+  rowActions,
 }: {
   columns: CockpitColumn<TData>[];
   data: TData[];
   sorting: SortingState;
   onSortingChange(value: SortingState): void;
   onOpen(row: TData): void;
+  /** Row-level actions rendered next to the open button, e.g. an inline picker. */
+  rowActions?: (row: TData, index: number) => ReactNode;
   page: number;
   pageSize: number;
   total: number;
@@ -184,18 +188,21 @@ export function DataTable<TData extends RowData>({
                   </TableCell>
                 ))}
                 <TableCell>
-                  <IconButton
-                    variant="ghost"
-                    size="icon-sm"
-                    label={openLabel}
-                    data-testid={`data-table-open-${index}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onOpen(row.original);
-                    }}
-                  >
-                    <MoreHorizontal />
-                  </IconButton>
+                  <span className="flex items-center justify-end gap-1">
+                    {rowActions?.(row.original, index)}
+                    <IconButton
+                      variant="ghost"
+                      size="icon-sm"
+                      label={openLabel}
+                      data-testid={`data-table-open-${index}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpen(row.original);
+                      }}
+                    >
+                      <MoreHorizontal />
+                    </IconButton>
+                  </span>
                 </TableCell>
               </TableRow>
             ))}
