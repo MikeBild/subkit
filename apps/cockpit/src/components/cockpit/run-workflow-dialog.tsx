@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n-context";
+import { statusLabel } from "@/lib/status-label";
 import {
   buildInput,
   type InputSchemaSource,
@@ -91,7 +92,9 @@ export function RunWorkflowDialog({
       }),
     onSuccess: (result) => {
       setConfirming(false);
-      setOutcome(result.execution?.status ?? result.status ?? t("run.started"));
+      const status = result.execution?.status ?? result.status;
+      // Engine statuses are English identifiers; they get a word first.
+      setOutcome(status ? statusLabel(t, status) : t("run.started"));
     },
     onError: (error) => {
       setConfirming(false);
