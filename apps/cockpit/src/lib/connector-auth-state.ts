@@ -73,3 +73,20 @@ export function authStateHint(state: ConnectorAuthState): TranslationKey {
 export function needsRenewal(state: ConnectorAuthState): boolean {
   return state === "expired" || state === "credentials_missing";
 }
+
+const HEALTH_LABELS: Record<string, TranslationKey> = {
+  ok: "connectors.healthState.ok",
+  degraded: "connectors.healthState.degraded",
+  needs_update: "connectors.healthState.needsUpdate",
+  needs_reauth: "connectors.healthState.needsReauth",
+  needs_attention: "connectors.healthState.needsAttention",
+};
+
+/**
+ * The connector rollup has its own vocabulary; running it through the run-status
+ * labels rendered every one of them as "unknown", which the state vocabulary
+ * forbids. An unmapped value returns null so the caller omits the line.
+ */
+export function connectorHealthLabel(healthState: string): TranslationKey | null {
+  return HEALTH_LABELS[healthState] ?? null;
+}
