@@ -311,7 +311,9 @@ export function DecisionsPage() {
                 queue.sources.skills ? listSkillCandidatesByStatus("approved") : null,
               ]);
               return [
-                ...(patches?.items ?? []).map((entry) => entry.workflow_name ?? entry.workflow_id),
+                ...(patches?.items ?? []).map(
+                  (entry) => entry.workflow_name ?? t("decisions.fallbackTitle.patch"),
+                ),
                 ...(skills?.items ?? []).map((entry) => entry.title),
               ];
             }}
@@ -326,7 +328,9 @@ export function DecisionsPage() {
                 queue.sources.skills ? listSkillCandidatesByStatus("rejected") : null,
               ]);
               return [
-                ...(patches?.items ?? []).map((entry) => entry.workflow_name ?? entry.workflow_id),
+                ...(patches?.items ?? []).map(
+                  (entry) => entry.workflow_name ?? t("decisions.fallbackTitle.patch"),
+                ),
                 ...(skills?.items ?? []).map((entry) => entry.title),
               ];
             }}
