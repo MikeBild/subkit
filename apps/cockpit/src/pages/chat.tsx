@@ -139,8 +139,10 @@ function PatchProposalDiff({ candidateId, testId }: { candidateId: string; testI
     queryKey: ["patch-candidate", "preview", candidateId],
     queryFn: () => getPatchCandidatePreview(candidateId),
   });
+  // Replaying needs a recorded response; without one the call only 409s.
   const dryRun = useQuery({
     queryKey: ["patch-candidate", "dry-run", candidateId],
+    enabled: preview.data?.fixture_available === true,
     retry: false,
     queryFn: () => dryRunPatchCandidate(candidateId),
   });
@@ -164,8 +166,11 @@ function PatchProposalDiff({ candidateId, testId }: { candidateId: string; testI
       before={preview.data.before_step}
       after={preview.data.after_step}
       changedPaths={preview.data.changed_paths}
+      driftSummary={preview.data.drift_summary}
+      patch={preview.data.proposal?.patch}
+      fixtureAvailable={preview.data.fixture_available}
       dryRun={dryRun.data ?? null}
-      dryRunPending={dryRun.isPending}
+      dryRunPending={preview.data.fixture_available === true && dryRun.isPending}
     />
   );
 }

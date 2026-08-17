@@ -473,6 +473,7 @@ const EN = {
   "decisions.effect.skill": "Approving promotes the candidate into a skill.",
   "decisions.effect.conversation": "The conversation waits for your answer.",
   "decisions.age.today": "Waiting since today",
+  "decisions.age.day": "Waiting 1 day",
   "decisions.age.days": "Waiting {days} days",
   "decisions.agedTitle": "Waiting longer",
   "decisions.showMore": "Show more",
@@ -511,6 +512,10 @@ const EN = {
   "diff.checkPassed": "The change replays without an error.",
   "diff.checkFailed": "The check failed.",
   "diff.checkAbsent": "No check available for this proposal.",
+  "diff.checkNoFixture":
+    "No recorded response to replay this against. Run the workflow once, then the check becomes possible.",
+  "diff.noSnapshot":
+    "This proposal came from a scan, so there is no before-and-after of a run to compare.",
   "diff.fixtureRecorded": "Checked against a recorded response.",
   "diff.fixtureSynthesized": "Checked against a synthesized response.",
   "overview.failures.allClear": "No failing runs in the observed window.",
@@ -1097,6 +1102,7 @@ const DE: Record<TranslationKey, string> = {
   "decisions.effect.skill": "Eine Freigabe macht aus dem Kandidaten einen Skill.",
   "decisions.effect.conversation": "Die Konversation wartet auf deine Antwort.",
   "decisions.age.today": "Wartet seit heute",
+  "decisions.age.day": "Wartet 1 Tag",
   "decisions.age.days": "Wartet {days} Tage",
   "decisions.agedTitle": "Liegt schon länger",
   "decisions.showMore": "Mehr anzeigen",
@@ -1135,6 +1141,10 @@ const DE: Record<TranslationKey, string> = {
   "diff.checkPassed": "Die Änderung läuft fehlerfrei durch.",
   "diff.checkFailed": "Die Prüfung ist fehlgeschlagen.",
   "diff.checkAbsent": "Für diesen Vorschlag gibt es keine Prüfung.",
+  "diff.checkNoFixture":
+    "Es liegt keine aufgezeichnete Antwort zum Nachspielen vor. Nach einem Lauf des Workflows wird die Prüfung möglich.",
+  "diff.noSnapshot":
+    "Dieser Vorschlag stammt aus einer Prüfung im Hintergrund; ein Vorher-Nachher eines Laufs gibt es dazu nicht.",
   "diff.fixtureRecorded": "Gegen eine aufgezeichnete Antwort geprüft.",
   "diff.fixtureSynthesized": "Gegen eine erzeugte Antwort geprüft.",
   "overview.failures.allClear": "Keine fehlgeschlagenen Ausführungen im beobachteten Zeitraum.",
