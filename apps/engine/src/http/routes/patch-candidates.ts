@@ -1,8 +1,10 @@
 // Patch Candidate HTTP surface.
 //
 // Routes:
-//   GET    /v1/patch-candidates                — list (optional status + workflow filters)
+//   GET    /v1/patch-candidates                — list (status/workflow filters, order, exact total)
 //   GET    /v1/patch-candidates/:id            — fetch one
+//   GET    /v1/patch-candidates/:id/preview    — human-readable before/after preview
+//   POST   /v1/patch-candidates/:id/dry-run    — replay against a recorded/synthesized fixture
 //   POST   /v1/patch-candidates/:id/approve    — manual apply (writes audit + workflow_version)
 //   POST   /v1/patch-candidates/:id/reject     — reject with optional reason
 //
@@ -11,9 +13,9 @@
 // context stays in one place.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { patchCandidates } from "../../db/schema/index.ts";
+import { patchCandidates, workflows } from "../../db/schema/index.ts";
 import {
   approvePatchCandidate,
   dryRunPatchCandidate,
@@ -31,6 +33,8 @@ const PatchCandidateSchema = z
     id: z.string(),
     tenant_id: z.string(),
     workflow_id: z.string(),
+    // Joined from workflows — null when the workflow row is gone.
+    workflow_name: z.string().nullable(),
     classification: z.enum(["safe", "unsafe"]),
     status: z.enum(["proposed", "applied", "rejected", "superseded"]),
     fixture_id: z.string().nullable(),
@@ -41,7 +45,12 @@ const PatchCandidateSchema = z
   .openapi("PatchCandidate");
 
 const ListResponse = z
-  .object({ items: z.array(PatchCandidateSchema) })
+  .object({
+    items: z.array(PatchCandidateSchema),
+    // True matching-row count for the applied filters (ignores limit)
+    // — clients rendering counts must not derive them from a capped page.
+    total: z.number().int().min(0),
+  })
   .openapi("PatchCandidateListResponse");
 
 const ListQuery = z
@@ -49,16 +58,20 @@ const ListQuery = z
     status: z.enum(["proposed", "applied", "rejected", "superseded"]).optional(),
     workflow_id: z.string().uuid().optional(),
     limit: z.coerce.number().int().positive().max(200).optional(),
+    // `asc` keeps the oldest candidate inside the page — the decisions
+    // queue reviews stalest-first.
+    order: z.enum(["asc", "desc"]).optional(),
   })
   .openapi("ListPatchCandidatesQuery");
 
 const RejectBody = z.object({ reason: z.string().optional() }).openapi("RejectPatchCandidateBody");
 
-function serialize(row: typeof patchCandidates.$inferSelect) {
+function serialize(row: typeof patchCandidates.$inferSelect, workflowName: string | null) {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
     workflow_id: row.workflow_id,
+    workflow_name: workflowName,
     classification: row.classification,
     status: row.status,
     fixture_id: row.fixture_id ?? null,
@@ -235,13 +248,28 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const tenantConds = [eq(patchCandidates.tenant_id, principal.tenant_id)];
     if (q.status) tenantConds.push(eq(patchCandidates.status, q.status));
     if (q.workflow_id) tenantConds.push(eq(patchCandidates.workflow_id, q.workflow_id));
-    const rows = await db
-      .select()
-      .from(patchCandidates)
-      .where(and(...tenantConds))
-      .orderBy(desc(patchCandidates.created_at))
-      .limit(q.limit ?? 50);
-    return c.json({ items: rows.map(serialize) }, 200);
+    const [rows, countRows] = await Promise.all([
+      db
+        .select({ candidate: patchCandidates, workflow_name: workflows.name })
+        .from(patchCandidates)
+        .leftJoin(workflows, eq(workflows.id, patchCandidates.workflow_id))
+        .where(and(...tenantConds))
+        .orderBy(
+          q.order === "asc" ? asc(patchCandidates.created_at) : desc(patchCandidates.created_at),
+        )
+        .limit(q.limit ?? 50),
+      db
+        .select({ cnt: count() })
+        .from(patchCandidates)
+        .where(and(...tenantConds)),
+    ]);
+    return c.json(
+      {
+        items: rows.map((r) => serialize(r.candidate, r.workflow_name)),
+        total: Number(countRows[0]?.cnt ?? 0),
+      },
+      200,
+    );
   });
 
   app.openapi(getRouteSpec, async (c) => {
@@ -249,13 +277,14 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const rows = await db
-      .select()
+      .select({ candidate: patchCandidates, workflow_name: workflows.name })
       .from(patchCandidates)
+      .leftJoin(workflows, eq(workflows.id, patchCandidates.workflow_id))
       .where(and(eq(patchCandidates.tenant_id, principal.tenant_id), eq(patchCandidates.id, id)))
       .limit(1);
     const row = rows[0];
     if (!row) throw new NotFoundError("patch_candidate");
-    return c.json(serialize(row), 200);
+    return c.json(serialize(row.candidate, row.workflow_name), 200);
   });
 
   app.openapi(previewRoute, async (c) => {

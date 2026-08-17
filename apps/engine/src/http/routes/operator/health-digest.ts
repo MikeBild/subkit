@@ -34,6 +34,8 @@ const PatchSchema = z
     workflow_id: z.string().nullable(),
     workflow_name: z.string().nullable(),
     classification: z.enum(["safe", "unsafe"]),
+    age_days: z.number().int().nonnegative(),
+    stuck: z.boolean(),
     summary: z.string(),
   })
   .openapi("OperatorDigestPatch");
@@ -56,7 +58,11 @@ const DigestResponse = z
     window_hours: z.number().int(),
     headline: z.string(),
     failure_groups: z.array(FailureGroupSchema),
-    patch_candidates: z.object({ pending: z.number().int(), items: z.array(PatchSchema) }),
+    patch_candidates: z.object({
+      // Exact count of proposed candidates; `items` is capped.
+      pending: z.number().int(),
+      items: z.array(PatchSchema),
+    }),
     risk: z.array(RiskSignalSchema),
     rendered: z.string(),
     all_clear: z.boolean(),

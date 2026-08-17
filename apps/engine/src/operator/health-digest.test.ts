@@ -14,7 +14,7 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
-import { buildOperatorHealthDigest } from "./health-digest.ts";
+import { buildOperatorHealthDigest, MAX_PENDING_PATCHES } from "./health-digest.ts";
 
 let testDb: TestDb;
 let tenant_id: string;
@@ -235,5 +235,33 @@ describe("buildOperatorHealthDigest", () => {
     expect(digest.patch_candidates.items[1]?.stuck).toBe(false);
     expect(digest.headline).toContain("stuck");
     expect(digest.rendered).toContain("stuck 5d");
+  });
+
+  test("pending reports the exact count when the backlog exceeds the item cap", async () => {
+    const [t] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "t-digest-backlog", display_name: "Backlog" })
+      .returning();
+    const [wf] = await testDb.db
+      .insert(workflows)
+      .values({ tenant_id: t!.id, slug: "bulk", name: "Bulk", lifecycle: "active" })
+      .returning();
+
+    const now = getTestNow();
+    const backlog = MAX_PENDING_PATCHES + 5;
+    await testDb.db.insert(patchCandidates).values(
+      Array.from({ length: backlog }, (_, i) => ({
+        tenant_id: t!.id,
+        workflow_id: wf!.id,
+        classification: "safe" as const,
+        status: "proposed" as const,
+        created_at: new Date(now - i * 60_000),
+        diff: { proposal: { description: `Fix ${i}` } },
+      })),
+    );
+
+    const digest = await buildOperatorHealthDigest(testDb.db, t!.id, { audit: false });
+    expect(digest.patch_candidates.pending).toBe(backlog);
+    expect(digest.patch_candidates.items.length).toBe(MAX_PENDING_PATCHES);
   });
 });
