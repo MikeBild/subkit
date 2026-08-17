@@ -69,7 +69,11 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
         ),
         ...(skills?.items ?? []).map(skillDecision),
         ...(conversations?.items ?? []).map((conversation) =>
-          conversationDecision(conversation, t("decisions.fallbackTitle.conversation")),
+          conversationDecision(conversation, {
+            fallbackTitle: t("decisions.fallbackTitle.conversation"),
+            toolActivity: t("chat.toolActivity"),
+            hiddenReference: t("tool.referenceHiddenInline"),
+          }),
         ),
       ];
       const total = (patches?.total ?? 0) + (skills?.total ?? 0) + (conversations?.total ?? 0);

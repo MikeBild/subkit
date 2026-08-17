@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import type { DecisionItem, DecisionKind } from "@/pages/decisions-model";
 import { ageInDays } from "@/pages/decisions-model";
 
@@ -79,7 +80,11 @@ export function DecisionCard({
             )}
           </Badge>
         )}
-        {item.target && <span className="min-w-0 truncate">{item.target}</span>}
+        {item.target && (
+          <span className="min-w-0 truncate">
+            {hideTechnicalIdentifiers(item.target, t("tool.referenceHiddenInline"))}
+          </span>
+        )}
         <span data-testid={`${testId}-age`}>
           {age === 0 ? t("decisions.age.today") : t("decisions.age.days", { days: String(age) })}
         </span>
@@ -89,7 +94,7 @@ export function DecisionCard({
         className="mt-2 line-clamp-2 text-sm font-medium break-words"
         data-testid={`${testId}-title`}
       >
-        {item.title}
+        {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
       </p>
       <p className="mt-1 text-xs text-muted-foreground">{t(KIND_EFFECT[item.kind])}</p>
 
