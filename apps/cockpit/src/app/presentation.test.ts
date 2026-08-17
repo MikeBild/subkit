@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
-import { asToolPart } from "@/pages/chat";
+import { asToolPart } from "@/lib/tool-parts";
 
 describe("cockpit presentation", () => {
   test("hides UUIDs in conversational text", () => {

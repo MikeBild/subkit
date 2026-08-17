@@ -12,6 +12,7 @@ import {
   respondToToolCall,
   type UiMessage,
 } from "@/api/client";
+import { dryRunPatchCandidate, getPatchCandidatePreview } from "@/api/decisions";
 import {
   Confirmation,
   ConfirmationAction,
@@ -36,8 +37,8 @@ import {
   ToolHeader,
   ToolInput,
   ToolOutput,
-  type ToolPart,
 } from "@/components/ai-elements/tool";
+import { DiffCard } from "@/components/cockpit/diff-card";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +78,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
+import { asToolPart, patchCandidateId, withToolResult } from "@/lib/tool-parts";
 import { cn } from "@/lib/utils";
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
 
@@ -128,24 +130,53 @@ function textFromPart(part: unknown): string | null {
   return typeof record.text === "string" ? record.text : null;
 }
 
-export function asToolPart(part: unknown): ToolPart | null {
-  if (!part || typeof part !== "object") return null;
-  const record = part as Record<string, unknown>;
-  if (
-    typeof record.type !== "string" ||
-    !(record.type === "dynamic-tool" || record.type.startsWith("tool-"))
-  )
-    return null;
-  return part as ToolPart;
+/** The proposal is decided where it appeared, so the diff renders inside the tool card. */
+function PatchProposalDiff({ candidateId, testId }: { candidateId: string; testId: string }) {
+  const { t } = useI18n();
+  const preview = useQuery({
+    queryKey: ["patch-candidate", "preview", candidateId],
+    queryFn: () => getPatchCandidatePreview(candidateId),
+  });
+  const dryRun = useQuery({
+    queryKey: ["patch-candidate", "dry-run", candidateId],
+    retry: false,
+    queryFn: () => dryRunPatchCandidate(candidateId),
+  });
+
+  if (preview.isPending)
+    return (
+      <p className="text-sm text-muted-foreground" data-testid={`${testId}-loading`}>
+        {t("decisions.diffLoading")}
+      </p>
+    );
+  if (preview.error || !preview.data)
+    return (
+      <p className="text-sm text-destructive" data-testid={`${testId}-error`}>
+        {t("decisions.diffFailed")}
+      </p>
+    );
+  return (
+    <DiffCard
+      testId={testId}
+      targetLabel={preview.data.proposal?.description ?? t("decisions.kind.patch")}
+      before={preview.data.before_step}
+      after={preview.data.after_step}
+      changedPaths={preview.data.changed_paths}
+      dryRun={dryRun.data ?? null}
+      dryRunPending={dryRun.isPending}
+    />
+  );
 }
 
 function ChatMessage({
   message,
   messageIndex,
+  pendingApprovalId,
   onDecision,
 }: {
   message: UiMessage;
   messageIndex: number;
+  pendingApprovalId: string | null;
   onDecision: (toolCallId: string, approved: boolean) => void;
 }) {
   const { t } = useI18n();
@@ -173,8 +204,10 @@ function ChatMessage({
                 </BubbleContent>
               </Bubble>
             );
-          const tool = asToolPart(part);
-          if (!tool) return null;
+          const called = asToolPart(part, pendingApprovalId);
+          if (!called) return null;
+          const tool = withToolResult(called, message.parts);
+          const candidateId = patchCandidateId(tool);
           return (
             <Tool
               key={`${message.id}-tool-${partIndex}`}
@@ -197,6 +230,12 @@ function ChatMessage({
               )}
               <ToolContent>
                 <ToolInput input={tool.input} />
+                {candidateId && (
+                  <PatchProposalDiff
+                    candidateId={candidateId}
+                    testId={`chat-message-${messageIndex}-tool-${partIndex}-diff`}
+                  />
+                )}
                 <Confirmation approval={tool.approval} state={tool.state}>
                   <ConfirmationRequest>
                     <ConfirmationTitle>{t("chat.approval.review")}</ConfirmationTitle>
@@ -555,6 +594,7 @@ export function ChatPage() {
                       <ChatMessage
                         message={message}
                         messageIndex={index}
+                        pendingApprovalId={resume?.pending_approval?.id ?? null}
                         onDecision={(toolCallId, approved) =>
                           decide.mutate({ toolCallId, approved })
                         }
