@@ -13,11 +13,15 @@ AI Elements render messages, tool calls, approval cards, suggestions and the pro
 
 Navigation follows the work instead of the engine's directory tree:
 
+- **Home** — Overview and Decisions
 - **Work** — Chat and Inbox
-- **Build** — Workflows and Runs
-- **Resources** — Connectors, Knowledge, Skills and Files
-- **Govern** — Approvals, Audit log and Usage
+- **Build** — Workflows, Runs and Connectors
+- **Knowledge** — Knowledge, Skills and Files
+- **Govern** — Audit log and Usage
 - **Admin** — People, Access, API access, Operations and Engine settings
+
+`src/app/navigation.ts` is the one declaration of that table and the source of
+this list; when the two disagree the code is right and this paragraph is stale.
 
 Every entry declares its required effective permission and engine endpoint. Entries are omitted
 when the browser session lacks that permission; the server remains the authorization authority.
@@ -47,27 +51,115 @@ contracts.
 
 The application shell is exactly one viewport high. The shell never grows with a long transcript;
 the conversation list, transcript, context drawer and resource results own their respective scroll
-areas. Resource tables fit their card at every width: narrow screens keep the two primary columns,
-wide screens show at most four, and the row sheet retains all secondary details.
+areas. Resource tables fit their container at every width: narrow screens fall back to a card
+carrying the first three cells, wide screens show up to seven columns, and the row sheet or detail
+page retains all secondary details.
+
+The desktop cap used to be four columns, and four was right for as long as every list rendered the
+same generic key/value rows: with no list able to say which of its fields mattered, a fifth column
+was a fifth guess. Explicit per-list column sets changed the arithmetic. Under the old cap the
+fourth column went to a timestamp on all eight lists, so the relation the operator actually came
+for — which connectors a workflow reaches, which workflow a run belongs to, which workflows use a
+connector — never reached the screen at all. Seven is the number at which each list can carry its
+identity, its state, its relation and its time without a scroll.
+
+The cost is contained because the widening does not relax the layout rules that keep tables honest.
+Every table stays `table-fixed` inside `overflow-x-clip` (`src/components/ui/table.tsx`), every
+column declares its own width through `columnDef.meta.width`, and cells wrap instead of pushing the
+page sideways. A column that cannot state a width does not belong in the set.
+
+One page frame (`src/components/cockpit/page-frame.tsx`) and one table
+(`src/components/cockpit/data-table.tsx`) render every list. The frame owns the heading, the visible
+one-sentence page description, the single primary action and which element scrolls; the table owns
+the toolbar strip, the column picker, refresh, sorting, paging and all four load states. Refresh sits
+in the table's own action column rather than in the page header, because it acts on the rows and not
+on the page. Cell shapes — text, state, date, size, relation link and relation chips — come from
+`src/components/cockpit/table-columns.tsx` so a date on Runs and a date on Files cannot drift apart.
 
 ### Decisions surface
 
 Every proposal that needs a person lives on one page (`/decisions`): proposed fixes, skill
 candidates and conversations waiting for an answer. The navigation entry sits directly under the
 overview and carries the exact open count, taken from the engine totals — when a count cannot be
-read it is omitted rather than guessed. Positions waiting longer than three days move into their
-own rubric and turn the counter red, and the overview repeats the same queue as a short list that
-links here.
+read it is omitted rather than guessed. Because each of the three sources is fetched with a page
+cap, the page states how many of the counted positions it is actually showing rather than letting
+the badge and the column disagree in silence.
+
+The count never appears without its sources. A bare number is a demand of unknown origin, so the
+heading is followed by the split — how many are fixes distilled from failing runs, how many are
+proposed skills, how many are conversations — and each filter chip carries its own share of it.
+Every card then names where it came from before it names what it is, and what it acts on as a
+name: two of the three sources carry only an id for their target, so the client resolves those ids
+against the workflow and connector catalogues and renders nothing at all when it cannot. A resolved
+name or an em dash; never an id.
+
+The queue's first division is what a position is doing to you, not how old it is. A conversation
+waiting for an answer is stopped — an elicitation is pending and the agent loop is suspended
+mid-turn — while a proposed fix blocks nothing and instead lets its workflow keep running and keep
+failing. Age still divides the second pile, because that is the honest measure there, but it can no
+longer put the position nobody is waiting on above the one that is stopped dead. Where the engine
+supplies a deadline the queue sorts by it and says how long is left; a lapsed position moves into
+its own muted rubric rather than sitting in the working queue as if it were still decidable.
 
 A proposal is decided where it appears: the diff card carries the before/after lines, the dry-run
 result beside them and the approve/reject actions, both in the conversation and in the queue.
 Both paths call the same engine decision, so the audit trail does not depend on the route taken.
+Inside either card the diff renders without a frame of its own — cards do not nest, and a bordered
+diff inside a bordered card inside a bordered `pre` was three frames for one thing.
+
+A proposed skill states the model's confidence as a word with its scale named and the number of
+observed cases it rests on. Never a bar, never a percentage, and never the success colour for
+"high": a model's confidence is a claim about itself, not a measurement of the world.
 
 Deviation from the family convention, deliberate: there is no "remind me later" shelf. The engine
 models a patch candidate as proposed, applied, rejected or superseded and has no deferred state;
 inventing a cockpit-local snooze would show a position as parked that the engine still counts as
 open. Rejecting with a note is the honest alternative, and the "decided" and "rejected" shelves
 are read back from those engine states.
+
+### Overview surface
+
+The overview answers what is happening, and links to where it is decided. It carries the incident
+banner, a compact line saying how many positions are waiting and how long the oldest has been
+there, the root-cause failure groups, and the runs that happened recently.
+
+Deviation from the family convention, deliberate: Zone A links to the decision queue without
+reproducing any of it. The convention allows the overview to show the queue's top positions as well
+as link to them, and this product did exactly that — the same rows as `/decisions`, not decidable
+here, and titled from a different field, so the two pages disagreed about what one candidate was
+called. A count and a link cannot disagree with anything.
+
+Failures are split by origin. A person building a workflow can fail two dozen trial runs in an
+afternoon, and an overview that counts those alongside a scheduled job failing nightly reports a
+crisis that is not happening — so authoring and manual runs sit under their own heading beneath the
+scheduled ones.
+
+There is no "next scheduled run" tile. The engine exposes a cron expression, a timezone and a
+paused flag, and computes no next-fire instant anywhere; a time this page derived itself would be a
+guess presented as a fact.
+
+### Conversation surface
+
+Chat does not take the shared page frame, and that is a recorded decision rather than an oversight:
+it is a two-column workspace with three independent scroll regions, not a heading above a scrolling
+body.
+
+A conversation carries a name. The engine derives one from the first request and a boot backfill
+named the rows that predate it; where a conversation genuinely has none, the list borrows the last
+message rather than falling through to a placeholder while an excerpt sits unused beside it.
+
+A governed action carries its own name too. The transcript reads a tool name through an explicit
+registry with a humanising fallback, so a card says which action ran instead of repeating one
+generic phrase; a saved workflow keeps the speaking name whoever saved it chose, unhumanised. Reads
+that changed nothing collapse to one shimmering line per action and group once they are finished,
+because six lookups an agent made to orient itself are one fact, not six cards. How a call ended
+comes from the engine's own persisted verdict — the human decision first, the machine result
+second — and a call that has sat without a result for five minutes reads as unfinished rather than
+as permanently running.
+
+A running action shows its latest log line and its age from the live stream. Neither survives a
+reload, and neither pretends to: no per-call duration is persisted anywhere, so a reloaded
+transcript shows no timer rather than a fabricated one.
 
 ### Product-family evidence
 
