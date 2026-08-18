@@ -830,9 +830,11 @@ export const DiagnosticsDriftReadMetadataSchema = z.object({
   embedded: z.number().int().nonnegative(),
   /** Number of rows currently in `drizzle.__drizzle_migrations`. */
   db: z.number().int().nonnegative(),
-  /** Rows in the DB whose hash isn't in the embedded set. */
+  /** Tagged rows whose identity does not match the embedded set. */
   unknown: z.number().int().nonnegative(),
-  /** Embedded migrations whose hash isn't in the DB. */
+  /** Accepted tagless rows retained from the pre-squash journal. */
+  historical: z.number().int().nonnegative(),
+  /** Embedded migration identities absent from the DB. */
   missing: z.number().int().nonnegative(),
 });
 export type DiagnosticsDriftReadMetadata = z.infer<typeof DiagnosticsDriftReadMetadataSchema>;
@@ -849,7 +851,7 @@ export const DiagnosticsVersionReadMetadataSchema = z.object({
   latest_version: z.string().optional(),
   /** Whether the boot-time check observed a newer release. */
   update_available: z.boolean(),
-  /** Whether the embedded migration set diverges from `__drizzle_migrations`. */
+  /** Whether tagged or missing journal identities disagree with the embedded set. */
   schema_drift: z.boolean(),
 });
 export type DiagnosticsVersionReadMetadata = z.infer<typeof DiagnosticsVersionReadMetadataSchema>;

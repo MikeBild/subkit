@@ -22,19 +22,21 @@ describe("detectDrift", () => {
   test("clean DB reports no drift", async () => {
     const report = await detectDrift(ctx.db);
     expect(report.unknown_in_db).toEqual([]);
+    expect(report.historical_in_db).toEqual([]);
     expect(report.missing_in_db).toEqual([]);
   });
 
-  test("an unknown row in the journal surfaces in unknown_in_db", async () => {
+  test("an unknown tagged row in the journal surfaces in unknown_in_db", async () => {
     const fakeHash = "deadbeefcafebabefacefeed".padEnd(64, "0");
     await ctx.db.execute(
-      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at")
-          VALUES (${fakeHash}, ${999_999_999_999})`,
+      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag")
+          VALUES (${fakeHash}, ${999_999_999_999}, ${"9999_foreign_lineage"})`,
     );
 
     const report = await detectDrift(ctx.db);
     const unknownHashes = report.unknown_in_db.map((r) => r.hash);
     expect(unknownHashes).toContain(fakeHash);
+    expect(report.historical_in_db).toEqual([]);
     // Sanity: the embedded set is still considered fully applied.
     expect(report.missing_in_db).toEqual([]);
 
@@ -42,6 +44,24 @@ describe("detectDrift", () => {
     await ctx.db.execute(
       sql`DELETE FROM "drizzle"."__drizzle_migrations" WHERE hash = ${fakeHash}`,
     );
+  });
+
+  test("a tagless pre-squash row is accepted history rather than drift", async () => {
+    const historicalHash = "pre-squash-history".padEnd(64, "0");
+    await ctx.db.execute(
+      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag")
+          VALUES (${historicalHash}, ${999_999_999_998}, NULL)`,
+    );
+    try {
+      const report = await detectDrift(ctx.db);
+      expect(report.unknown_in_db).toEqual([]);
+      expect(report.historical_in_db.map((r) => r.hash)).toContain(historicalHash);
+      expect(report.missing_in_db).toEqual([]);
+    } finally {
+      await ctx.db.execute(
+        sql`DELETE FROM "drizzle"."__drizzle_migrations" WHERE hash = ${historicalHash}`,
+      );
+    }
   });
 
   test("a deleted row surfaces in missing_in_db", async () => {

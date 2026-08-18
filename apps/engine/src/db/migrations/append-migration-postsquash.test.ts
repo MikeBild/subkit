@@ -19,7 +19,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
-import { runMigrations } from "../migrate.ts";
+import { detectDrift, runMigrations } from "../migrate.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./embedded.ts";
 
@@ -60,6 +60,10 @@ describe("appended migration — post-squash inflated count + orphan tag-NULL ro
     );
     const totalRows = await rowCount(ctx, sql`true`);
     expect(totalRows).toBeGreaterThan(EMBEDDED_MIGRATIONS.length + 40);
+    const prodShapeDrift = await detectDrift(ctx.db);
+    expect(prodShapeDrift.unknown_in_db).toEqual([]);
+    expect(prodShapeDrift.historical_in_db).toHaveLength(50);
+    expect(prodShapeDrift.missing_in_db).toEqual([]);
 
     // Synthetic appended migration: idx BELOW the inflated count (so a
     // positional regression would wrongly skip it), fresh tag/hash absent from

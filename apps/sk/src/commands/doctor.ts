@@ -212,15 +212,18 @@ export const doctorCommand = defineCommand({
       try {
         const report = await client.driftReport();
         const unknown = report.unknown_in_db.length;
+        const historical = report.historical_in_db.length;
         const missing = report.missing_in_db.length;
         if (unknown === 0 && missing === 0) {
           results.push({
             name: "schema_drift",
             status: "ok",
-            detail: `embedded=${report.embedded_migration_count} db=${report.db_migration_count} (in sync)`,
+            detail:
+              `embedded=${report.embedded_migration_count} db=${report.db_migration_count} ` +
+              `(current${historical > 0 ? `; accepted_history=${historical}` : ""})`,
           });
         } else {
-          const status: CheckStatus = unknown > 0 ? "blocked" : "warn";
+          const status: CheckStatus = "blocked";
           const firstHashes = report.unknown_in_db
             .slice(0, 3)
             .map((r) => r.hash.slice(0, 12))
@@ -231,6 +234,7 @@ export const doctorCommand = defineCommand({
             detail:
               `embedded=${report.embedded_migration_count} db=${report.db_migration_count} ` +
               `unknown_in_db=${unknown}${firstHashes ? ` (${firstHashes}…)` : ""} ` +
+              `accepted_history=${historical} ` +
               `missing_in_db=${missing}`,
             hint:
               unknown > 0

@@ -68,10 +68,12 @@ describe("/v1/diagnostics/drift", () => {
       embedded_migration_count: number;
       db_migration_count: number;
       unknown_in_db: unknown[];
+      historical_in_db: unknown[];
       missing_in_db: unknown[];
     };
     expect(body.embedded_migration_count).toBe(body.db_migration_count);
     expect(body.unknown_in_db).toEqual([]);
+    expect(body.historical_in_db).toEqual([]);
     expect(body.missing_in_db).toEqual([]);
 
     // R2-W3: assert the audit row landed in audit_log. With auditAwait
@@ -96,19 +98,21 @@ describe("/v1/diagnostics/drift", () => {
       embedded?: number;
       db?: number;
       unknown?: number;
+      historical?: number;
       missing?: number;
     };
     expect(meta.embedded).toBe(body.embedded_migration_count);
     expect(meta.db).toBe(body.db_migration_count);
     expect(meta.unknown).toBe(0);
+    expect(meta.historical).toBe(0);
     expect(meta.missing).toBe(0);
   });
 
-  test("an unknown row surfaces in unknown_in_db", async () => {
+  test("an unknown tagged row surfaces in unknown_in_db", async () => {
     const fakeHash = "deadbeefcafebabefacefeed".padEnd(64, "0");
     await srv.db.execute(
-      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at")
-          VALUES (${fakeHash}, ${999_999_999_999})`,
+      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag")
+          VALUES (${fakeHash}, ${999_999_999_999}, ${"9999_foreign_lineage"})`,
     );
     try {
       const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, { headers: adminHeaders() });
@@ -124,6 +128,31 @@ describe("/v1/diagnostics/drift", () => {
     } finally {
       await srv.db.execute(
         sql`DELETE FROM "drizzle"."__drizzle_migrations" WHERE hash = ${fakeHash}`,
+      );
+    }
+  });
+
+  test("a tagless pre-squash row is reported as accepted history", async () => {
+    const historicalHash = "pre-squash-history".padEnd(64, "0");
+    await srv.db.execute(
+      sql`INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at", "tag")
+          VALUES (${historicalHash}, ${999_999_999_998}, NULL)`,
+    );
+    try {
+      const res = await fetch(`${srv.baseUrl}/v1/diagnostics/drift`, { headers: adminHeaders() });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        unknown_in_db: unknown[];
+        historical_in_db: Array<{ hash: string }>;
+        db_migration_count: number;
+        embedded_migration_count: number;
+      };
+      expect(body.unknown_in_db).toEqual([]);
+      expect(body.historical_in_db.map((r) => r.hash)).toContain(historicalHash);
+      expect(body.db_migration_count).toBe(body.embedded_migration_count + 1);
+    } finally {
+      await srv.db.execute(
+        sql`DELETE FROM "drizzle"."__drizzle_migrations" WHERE hash = ${historicalHash}`,
       );
     }
   });
