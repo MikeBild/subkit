@@ -119,6 +119,69 @@ export type ConnectorOauthCallbackFailedPayload = z.infer<
 >;
 
 /**
+ * Payload contract for `connector.auth_failed` on the
+ * `notification.emitted` channel. Emitted on the false→true edge of
+ * `connectors.needs_reauth` (see `connectors/reauth.ts`).
+ *
+ * Lives here rather than in `webhooks/events/catalog.ts` so the emitter can
+ * parse against it without `connectors/` → `webhooks/` → `pubsub/` import
+ * cycle; the catalog re-exports it as the published event schema.
+ *
+ * Field semantics:
+ *   - `severity`     — pinned to `"error"`; the fanout's severity extractor
+ *                      reads this key off the payload.
+ *   - `workflow_id`  — `null` when the failure is not workflow-scoped; the
+ *                      fanout's workflow extractor reads this key.
+ *   - `reason`       — short failure token recorded on `auth_failed_reason`.
+ *   - `reauth_url`   — stable reconnect endpoint, `null` when no public
+ *                      engine origin resolves.
+ */
+export const ConnectorAuthFailedPayloadSchema = z.object({
+  severity: z.literal("error"),
+  workflow_id: z.string().uuid().nullable(),
+  connector_id: z.string().uuid(),
+  connector_slug: z.string().min(1),
+  reason: z.string(),
+  reauth_url: z.string().nullable(),
+});
+
+export type ConnectorAuthFailedPayload = z.infer<typeof ConnectorAuthFailedPayloadSchema>;
+
+/**
+ * Payload contract for `connector.health_changed` on the
+ * `notification.emitted` channel. Emitted on a `connectors.health_state`
+ * transition edge (see `connectors/health-state.ts`).
+ *
+ * `to_state` carries the full `ConnectorHealthState` vocabulary rather than
+ * only the degradation states: the emitter's parameter type is that union,
+ * so narrowing here would encode the caller's `state !== "ok"` guard in a
+ * second place. The emitter builds a `ConnectorHealthChangedPayload`-typed
+ * object, so a state added to the domain union but not to this enum fails
+ * to compile.
+ *
+ *   - `severity`     — `"error"` for a removed endpoint, `"warn"` otherwise.
+ *   - `from_state`   — previous `health_state` as stored (free-form string:
+ *                      it is read back from SQL, not from the union).
+ *   - `error_code`   — stable machine code (`endpoint_removed`,
+ *                      `endpoint_deprecated`, …) or `null`.
+ *   - `sunset_at`    — vendor-announced removal date (ISO) or `null`.
+ */
+export const ConnectorHealthChangedPayloadSchema = z.object({
+  severity: z.enum(["error", "warn"]),
+  workflow_id: z.string().uuid().nullable(),
+  connector_id: z.string().uuid(),
+  connector_slug: z.string().min(1),
+  from_state: z.string().min(1),
+  to_state: z.enum(["ok", "degraded", "needs_update", "needs_reauth"]),
+  error_code: z.string().nullable(),
+  reason: z.string(),
+  sunset_at: z.string().nullable(),
+  successor_uri: z.string().nullable(),
+});
+
+export type ConnectorHealthChangedPayload = z.infer<typeof ConnectorHealthChangedPayloadSchema>;
+
+/**
  * Channels the listener fans out to in-process subscribers. The literal
  * list is `satisfies`-typed against `readonly OutboxChannel[]` so the
  * compiler rejects any drift from the union in `db/events.ts` — a

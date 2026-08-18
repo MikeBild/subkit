@@ -33,6 +33,10 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { logger } from "../logging/logger.ts";
+import {
+  type ConnectorHealthChangedPayload,
+  ConnectorHealthChangedPayloadSchema,
+} from "../pubsub/types.ts";
 import type { DeprecationSignal } from "./health.ts";
 
 export type ConnectorHealthState = "ok" | "degraded" | "needs_update" | "needs_reauth";
@@ -271,8 +275,9 @@ export async function setWorkflowHealth(
 /**
  * Operator-facing `connector.health_changed` notification. Same channel
  * contract as emitConnectorAuthFailed (reauth.ts): `notification.emitted` is
- * the only channel wired into the fanout queue, and the payload carries the
- * keys the fanout extractors read (`severity`, `workflow_id`).
+ * the only channel wired into the fanout queue. The payload is parsed through
+ * `ConnectorHealthChangedPayloadSchema` — the same schema the published event
+ * catalog exposes — so the shape is enforced here rather than asserted.
  */
 async function emitConnectorHealthChanged(
   tx: Executor,
@@ -289,25 +294,25 @@ async function emitConnectorHealthChanged(
     workflow_id: string | null;
   },
 ): Promise<void> {
+  const payload: ConnectorHealthChangedPayload = {
+    // A removed endpoint blocks workflows today → error; deprecated/degraded
+    // are warnings. The catalog's `actionable` predicate splits on the same
+    // `error_code`.
+    severity: ev.error_code === "endpoint_removed" ? "error" : "warn",
+    workflow_id: ev.workflow_id,
+    connector_id: ev.connector_id,
+    connector_slug: ev.connector_slug,
+    from_state: ev.from_state,
+    to_state: ev.to_state,
+    error_code: ev.error_code,
+    reason: ev.reason,
+    sunset_at: ev.sunset_at,
+    successor_uri: ev.successor_uri,
+  };
   await writeEvent(tx, {
     tenant_id: ev.tenant_id,
     channel: "notification.emitted",
     type: "connector.health_changed",
-    payload: {
-      // Read by webhooks/outbound/fanout.ts:extractSeverity. A removed
-      // endpoint blocks workflows today → error; deprecated/degraded are
-      // actionable warnings.
-      severity: ev.error_code === "endpoint_removed" ? "error" : "warn",
-      // Read by extractWorkflowId — null when not workflow-scoped.
-      workflow_id: ev.workflow_id,
-      connector_id: ev.connector_id,
-      connector_slug: ev.connector_slug,
-      from_state: ev.from_state,
-      to_state: ev.to_state,
-      error_code: ev.error_code,
-      reason: ev.reason,
-      sunset_at: ev.sunset_at,
-      successor_uri: ev.successor_uri,
-    },
+    payload: ConnectorHealthChangedPayloadSchema.parse(payload),
   });
 }
