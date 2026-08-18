@@ -23,6 +23,7 @@ import {
   skillCandidates,
   tenants,
 } from "../../db/schema/index.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 interface EvidenceItem {
@@ -101,7 +102,10 @@ beforeAll(async () => {
 
   // Insert three evidence rows out of chronological order so a naive
   // insertion-order read would fail the "newest first" assertion.
-  const base = Date.now();
+  // A frozen instant, not the wall clock: the ordering assertion below is about
+  // relative timestamps, and a test that reads the real clock is one that can
+  // fail on a slow machine for reasons unrelated to what it measures.
+  const base = FROZEN_NOW;
   await srv.db.insert(skillCandidateEvidence).values([
     {
       skill_candidate_id: candidateWithEvidenceId,
