@@ -11,7 +11,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../db/schema/audit.ts";
-import { executions, workflows, workflowVersions } from "../db/schema/index.ts";
+import {
+  events,
+  executionSteps,
+  executions,
+  workflows,
+  workflowVersions,
+} from "../db/schema/index.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./recovery.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./tests/setup.ts";
@@ -109,6 +115,19 @@ describe("recoverCrashedExecutions", () => {
 
     // Started 12h ago — well past the 9h grace window.
     const stuckId = await insertRunningExecution(workflow_id, version_id, 12 * 60 * 60 * 1000);
+    const [stuckStep] = await ctx.testDb.db
+      .insert(executionSteps)
+      .values({
+        tenant_id: ctx.tenantId,
+        execution_id: stuckId,
+        step_key: "stuck-request",
+        step_index: 0,
+        kind: "request",
+        status: "running",
+        started_at: new Date(TEST_NOW_MS - 60_000),
+      })
+      .returning({ id: executionSteps.id });
+    if (!stuckStep) throw new Error("step insert failed");
     // Started 1h ago — well under the threshold.
     const liveId = await insertRunningExecution(workflow_id, version_id, 60 * 60 * 1000);
 
@@ -120,6 +139,13 @@ describe("recoverCrashedExecutions", () => {
     )[0];
     expect(stuckRow?.status).toBe("timed_out");
     expect(stuckRow?.finished_at).not.toBeNull();
+    const recoveredStep = (
+      await ctx.testDb.db.select().from(executionSteps).where(eq(executionSteps.id, stuckStep.id))
+    )[0];
+    expect(recoveredStep?.status).toBe("timed_out");
+    expect(recoveredStep?.finished_at).not.toBeNull();
+    expect(recoveredStep?.duration_ms).toBeGreaterThanOrEqual(60_000);
+    expect((recoveredStep?.error as { code?: string } | null)?.code).toBe("timed_out");
 
     const liveRow = (
       await ctx.testDb.db.select().from(executions).where(eq(executions.id, liveId))
@@ -145,6 +171,153 @@ describe("recoverCrashedExecutions", () => {
     expect(typeof meta.timeout_ms).toBe("number");
     expect(meta.workflow_id).toBe(workflow_id);
     expect(meta.source).toBe("boot_recovery");
+    expect(meta.recovered_status).toBe("timed_out");
+  });
+
+  test("honours a durable abort request immediately and terminalizes its running step", async () => {
+    const { workflow_id, version_id } = await createWorkflowRow(ctx, {
+      name: "crash-recovery-abort-requested",
+      slug: "crash-recovery-abort-requested",
+      timeout_ms: 4 * 60 * 60 * 1000,
+      steps: [{ id: "slow", kind: "transform", expression: "$input" }],
+    });
+    const executionId = await insertRunningExecution(workflow_id, version_id, 60_000);
+    const abortRequestedAt = new Date(TEST_NOW_MS - 5_000);
+    await ctx.testDb.db
+      .update(executions)
+      .set({ abort_requested_at: abortRequestedAt })
+      .where(eq(executions.id, executionId));
+    const [step] = await ctx.testDb.db
+      .insert(executionSteps)
+      .values({
+        tenant_id: ctx.tenantId,
+        execution_id: executionId,
+        step_key: "slow",
+        step_index: 0,
+        kind: "transform",
+        status: "running",
+        started_at: new Date(TEST_NOW_MS - 30_000),
+      })
+      .returning({ id: executionSteps.id });
+    if (!step) throw new Error("step insert failed");
+
+    const { recovered } = await recoverCrashedExecutions(ctx.testDb.db, {
+      now: new Date(TEST_NOW_MS),
+    });
+    expect(recovered).toBe(1);
+
+    const execution = (
+      await ctx.testDb.db.select().from(executions).where(eq(executions.id, executionId))
+    )[0];
+    expect(execution?.status).toBe("aborted");
+    expect(execution?.finished_at).not.toBeNull();
+
+    const recoveredStep = (
+      await ctx.testDb.db.select().from(executionSteps).where(eq(executionSteps.id, step.id))
+    )[0];
+    expect(recoveredStep?.status).toBe("aborted");
+    expect(recoveredStep?.finished_at).not.toBeNull();
+    expect((recoveredStep?.error as { code?: string } | null)?.code).toBe("aborted");
+
+    const audits = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "execution.crash_recovered"),
+          eq(auditLog.resource_id, executionId),
+        ),
+      );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.reason).toBe("engine_crash_recovery_abort_requested");
+    const metadata = audits[0]?.metadata as Record<string, unknown>;
+    expect(metadata.recovered_status).toBe("aborted");
+    expect(metadata.abort_requested_at).toBe(abortRequestedAt.toISOString());
+  });
+
+  test("repairs running steps whose parent execution was already terminalized", async () => {
+    const { workflow_id, version_id } = await createWorkflowRow(ctx, {
+      name: "crash-recovery-historical-step-invariant",
+      slug: "crash-recovery-historical-step-invariant",
+      steps: [{ id: "orphaned-step", kind: "transform", expression: "$input" }],
+    });
+    const executionId = await insertRunningExecution(workflow_id, version_id, 60_000);
+    const parentFinishedAt = new Date(TEST_NOW_MS - 10_000);
+    await ctx.testDb.db
+      .update(executions)
+      .set({ status: "timed_out", finished_at: parentFinishedAt })
+      .where(eq(executions.id, executionId));
+    const [step] = await ctx.testDb.db
+      .insert(executionSteps)
+      .values({
+        tenant_id: ctx.tenantId,
+        execution_id: executionId,
+        step_key: "orphaned-step",
+        step_index: 0,
+        kind: "transform",
+        status: "running",
+        started_at: new Date(TEST_NOW_MS - 30_000),
+      })
+      .returning({ id: executionSteps.id });
+    if (!step) throw new Error("step insert failed");
+
+    const first = await recoverCrashedExecutions(ctx.testDb.db, {
+      now: new Date(TEST_NOW_MS),
+    });
+    expect(first).toEqual({ recovered: 0, reconciled_steps: 1 });
+
+    const recoveredStep = (
+      await ctx.testDb.db.select().from(executionSteps).where(eq(executionSteps.id, step.id))
+    )[0];
+    expect(recoveredStep?.status).toBe("timed_out");
+    expect(recoveredStep?.finished_at).toEqual(parentFinishedAt);
+    expect(recoveredStep?.duration_ms).toBe(20_000);
+    expect((recoveredStep?.error as { code?: string } | null)?.code).toBe("timed_out");
+
+    const audits = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "execution.crash_recovered"),
+          eq(auditLog.resource_id, executionId),
+        ),
+      );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]?.reason).toBe("execution_step_state_reconciliation");
+    const metadata = audits[0]?.metadata as Record<string, unknown>;
+    expect(metadata.reconciled_step_count).toBe(1);
+    expect(metadata.recovered_status).toBe("timed_out");
+
+    const stepEvents = await ctx.testDb.db
+      .select()
+      .from(events)
+      .where(and(eq(events.tenant_id, ctx.tenantId), eq(events.type, "execution.step.finished")));
+    expect(
+      stepEvents.some((event) => {
+        const payload = event.payload as Record<string, unknown>;
+        return (
+          payload.execution_id === executionId &&
+          payload.reason === "execution_step_state_reconciliation" &&
+          payload.status === "timed_out"
+        );
+      }),
+    ).toBe(true);
+
+    const second = await recoverCrashedExecutions(ctx.testDb.db, {
+      now: new Date(TEST_NOW_MS + 1_000),
+    });
+    expect(second).toEqual({ recovered: 0, reconciled_steps: 0 });
+    const auditsAfterRetry = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, "execution.crash_recovered"),
+          eq(auditLog.resource_id, executionId),
+        ),
+      );
+    expect(auditsAfterRetry).toHaveLength(1);
   });
 
   test("default threshold is 9h when workflow has no timeout_ms", async () => {

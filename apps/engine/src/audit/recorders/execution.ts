@@ -1,8 +1,9 @@
 // Execution audit recorders.
 //
-// The crash-recovery recorder is fired once per row that the boot-time
-// `recoverCrashedExecutions` reaper transitions out of `running` into
-// `timed_out`. It exists so compliance tooling can spot crashes by
+// The crash-recovery recorder is fired once per execution whose state is
+// repaired by `recoverCrashedExecutions`: either the execution itself is
+// terminalized, or stale running step rows are reconciled from an already
+// terminal parent. It exists so compliance tooling can spot crash residue by
 // scanning `audit_log` (rather than reading runtime structured logs)
 // and so the operator gets a non-null `reason` + actor metadata for
 // the forced state change.
@@ -20,11 +21,9 @@ export interface RecordExecutionCrashRecoveredParams extends RecorderBase {
 }
 
 /**
- * Audit a `running` → `timed_out` transition forced by the engine
- * boot-time crash recovery sweep. The metadata MUST carry the timing
- * context (`started_at`, `recovered_at`, `timeout_ms`,
- * `actor_type: "system"`) so an operator triaging the audit row has
- * everything they need without joining back to the executions table.
+ * Audit an execution/step state repair forced by the engine crash-recovery
+ * sweep. Metadata carries the transition's timing and classification context
+ * so an operator can triage the repair without joining runtime logs.
  */
 export async function recordExecutionCrashRecovered(
   p: RecordExecutionCrashRecoveredParams,

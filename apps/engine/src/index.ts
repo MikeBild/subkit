@@ -362,7 +362,7 @@ async function runServer(): Promise<void> {
     const overrideThresholdMs = resolveCrashRecoveryThresholdMs(
       process.env.SK_EXECUTION_CRASH_RECOVERY_THRESHOLD_MS,
     );
-    const { recovered } = await recoverCrashedExecutions(
+    const { recovered, reconciled_steps } = await recoverCrashedExecutions(
       db,
       overrideThresholdMs ? { overrideThresholdMs } : {},
     );
@@ -371,6 +371,7 @@ async function runServer(): Promise<void> {
       action: "crash_recovery_complete",
       msg: "boot-time crash recovery sweep finished",
       recovered,
+      reconciled_steps,
     });
   } catch (err) {
     logger.error({

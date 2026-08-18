@@ -19,7 +19,7 @@ describe("startCrashRecoveryMonitor", () => {
       recover: async () => {
         recoverCalls += 1;
         if (recoverCalls === 1) await first;
-        return { recovered: 0 };
+        return { recovered: 0, reconciled_steps: 0 };
       },
     });
 
