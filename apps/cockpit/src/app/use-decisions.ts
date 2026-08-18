@@ -6,6 +6,7 @@ import {
   listProposedSkillCandidates,
 } from "@/api/decisions";
 import { useI18n } from "@/lib/i18n-context";
+import type { NameIndex } from "@/lib/name-index";
 import {
   buildNameIndex,
   EMPTY_NAME_INDEX,
@@ -29,6 +30,12 @@ export interface DecisionSources {
 
 export interface DecisionQueue {
   items: DecisionItem[];
+  /** Resolves the ids a decision carries to names, so the context columns can
+   *  say which workflow rather than "Workflow". */
+  names: NameIndex;
+  /** Whether this person may open a run. Decides whether the failing-run link
+   *  appears at all — the permission is evaluated per object. */
+  canReadRuns: boolean;
   /** Exact open count from the engine totals, or null while unknown. */
   total: number | null;
   /** True when the page is showing fewer positions than the engine counted —
@@ -131,6 +138,8 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
   const total = query.data?.total ?? null;
   return {
     items,
+    names: nameIndex,
+    canReadRuns: permissions.includes("execution:read"),
     total,
     capped: total !== null && items.length < total,
     overdue: hasOverdue(items, Date.now()),
