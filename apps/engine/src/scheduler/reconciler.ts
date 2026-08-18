@@ -44,6 +44,7 @@ import { runElicitationExpiry } from "./elicitation-expiry-runner.ts";
 import { runEndpointContractScanForTenant } from "./endpoint-contract-scan-runner.ts";
 import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
+import { runNotificationInboxRetention } from "./notification-inbox-retention-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
@@ -83,14 +84,20 @@ const MCP_OAUTH_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
  *  retention sweeps. */
 const CHAT_DEDUP_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
+/** Fixed cadence for the cli_notification_inbox retention sweep. Hourly,
+ *  like the other retention sweeps; the sweep filters by
+ *  `now() - notifications.inbox.retention_days` so a concurrent instance
+ *  is a no-op. */
+const NOTIFICATION_INBOX_RETENTION_CADENCE_MS = 60 * 60 * 1000;
+
 /** Fixed cadence for the `tool_approvals` retention sweep. Hourly, like the
- *  other retention sweeps: the rows are bounded by a 15-minute TTL plus a
+ *  other retention sweeps: the rows are bounded by a 24-hour TTL plus a
  *  1-day retention window, and the sweep filters by `now() - interval ...`
  *  so a concurrent instance is a no-op. */
 const TOOL_APPROVALS_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
 /** Fixed cadence for the approval-backed elicitation expiry sweep. Five
- *  minutes — the approvals it reconciles die on a 15-minute TTL, so a
+ *  minutes — the approvals it reconciles die on a 24-hour TTL, so a
  *  stranded `awaiting_input` conversation is reactivated within roughly one
  *  TTL plus one cadence. Multi-instance overlap is a no-op: the sweep's
  *  writes ride CAS predicates (`status = 'pending'`,
@@ -338,6 +345,9 @@ export class SchedulerReconciler {
   /** Last instant the chat_events_seen retention sweep ran. */
   private lastChatDedupCleanupAt: Date | null = null;
 
+  /** Last instant the cli_notification_inbox retention sweep ran. */
+  private lastNotificationInboxRetentionAt: Date | null = null;
+
   /** Last instant the tool_approvals retention sweep ran. */
   private lastToolApprovalsCleanupAt: Date | null = null;
 
@@ -555,6 +565,19 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "chat_dedup_cleanup_failed",
         msg: "scheduler chat-dedup cleanup pass failed",
+        ...errorFields(err),
+      });
+    });
+    // cli_notification_inbox retention sweep. Same hour-throttle pattern;
+    // `ack` marks read instead of deleting, so this is the only path that
+    // ever removes an inbox row.
+    await retryTransient(() => this.reconcileNotificationInboxRetention(), {
+      label: "notification_inbox_retention",
+    }).catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "notification_inbox_retention_failed",
+        msg: "scheduler notification-inbox retention pass failed",
         ...errorFields(err),
       });
     });
@@ -1134,6 +1157,21 @@ export class SchedulerReconciler {
     }
     this.lastChatDedupCleanupAt = now;
     await runChatDedupCleanup(now, this.opts.db);
+  }
+
+  /**
+   * Throttle the `cli_notification_inbox` retention sweep. Same semantics
+   * as `reconcileChatDedupCleanup` — the sweep filters by
+   * `now() - notifications.inbox.retention_days`, so a concurrent
+   * instance is a no-op.
+   */
+  async reconcileNotificationInboxRetention(now: Date = new Date()): Promise<void> {
+    if (this.lastNotificationInboxRetentionAt !== null) {
+      const elapsed = now.getTime() - this.lastNotificationInboxRetentionAt.getTime();
+      if (elapsed < NOTIFICATION_INBOX_RETENTION_CADENCE_MS) return;
+    }
+    this.lastNotificationInboxRetentionAt = now;
+    await runNotificationInboxRetention(now, this.opts.db);
   }
 
   /**

@@ -284,24 +284,35 @@ const deliveriesCmd = defineCommand({
 
 const inboxListArgs = {
   all: { type: "boolean", description: "Show everything queued, ignoring the stored cursor" },
+  unread: { type: "boolean", description: "Only tasks you have not marked read" },
+  actionable: { type: "boolean", description: "Only tasks that need someone to act" },
   limit: { type: "string", description: "Max rows (<=500)" },
   json: { type: "boolean", description: "JSON output" },
 } as const;
 
 async function runInboxList(args: {
   all?: boolean | undefined;
+  unread?: boolean | undefined;
+  actionable?: boolean | undefined;
   limit?: string | undefined;
   json?: boolean | undefined;
 }): Promise<void> {
   const client = makeClient();
   try {
-    const query: { since?: number; limit?: number } = {};
+    const query: {
+      since?: number;
+      limit?: number;
+      unread_only?: boolean;
+      actionable_only?: boolean;
+    } = {};
     if (!args.all) query.since = getNotificationInboxCursor();
     if (args.limit) query.limit = Number(args.limit);
+    if (args.unread) query.unread_only = true;
+    if (args.actionable) query.actionable_only = true;
     const { items, cursor } = await client.getNotificationInbox(query);
     emitList(
       !!args.json,
-      ["id", "severity", "event_type", "created_at"],
+      ["id", "severity", "actionable", "event_type", "created_at"],
       items as unknown as Record<string, unknown>[],
     );
     // Advance the stored cursor so the next call only surfaces newer
@@ -319,7 +330,7 @@ const inboxListCmd = defineCommand({
 });
 
 const inboxAckCmd = defineCommand({
-  meta: { name: "ack", description: "Acknowledge (delete) inbox notifications up to a cursor" },
+  meta: { name: "ack", description: "Mark inbox notifications read up to a cursor" },
   args: {
     "up-to": {
       type: "string",

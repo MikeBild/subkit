@@ -924,6 +924,23 @@ const NotificationsSection = z
           .meta(tenant()),
       })
       .prefault({}),
+    inbox: z
+      .object({
+        // Nothing deletes an inbox row on the request path any more —
+        // `ack` marks read instead of deleting — so this window is the
+        // only thing bounding the table.
+        retention_days: z
+          .number()
+          .int()
+          .min(1)
+          .max(365)
+          .default(30)
+          .describe(
+            "Days a notification inbox task survives before the retention sweep deletes it.",
+          )
+          .meta(global()),
+      })
+      .prefault({}),
   })
   .prefault({})
   .describe("sk REPL notification preferences");
