@@ -90,8 +90,29 @@ heading is followed by the split — how many are fixes distilled from failing r
 proposed skills, how many are conversations — and each filter chip carries its own share of it.
 Every card then names where it came from before it names what it is, and what it acts on as a
 name: two of the three sources carry only an id for their target, so the client resolves those ids
-against the workflow and connector catalogues and renders nothing at all when it cannot. A resolved
-name or an em dash; never an id.
+against the workflow and connector catalogues. An id we hold is always a valid route and always
+becomes a link; what degrades when the catalogue cannot name the thing is the LABEL, which falls
+back to the word for its kind. A name or a kind, never an id.
+
+Each card carries two context columns — where this came from, and what it affects. The first names
+the cause in words, links the run that failed and names the endpoint that moved; the second links
+the workflow or connector a decision would act on. A run is linked only for someone holding
+`execution:read`, because that permission is evaluated per object and a link nobody may follow is
+worse than no link.
+
+Expanding a card shows the full reasoning and the raw source data, and this is not decoration: a
+proposed fix carries the engine's own account of what drifted, the model's stated justification,
+the classifier's argument and the attempts that were dropped — all of which arrive with the list
+and were previously read and discarded. A proposed skill shows the text approval would promote,
+with its examples, pitfalls and referenced documentation, and the observed cases it rests on. A
+waiting conversation shows the question being asked. Before this, a person was asked to approve a
+skill body they had never seen and a repair whose cause was never stated.
+
+Deviation from the family convention, deliberate: the queue is not a 780px column. §8.2 asks for
+one, and one was right while a card held a badge, a title and two buttons. A card that has to
+carry the evidence for a decision does not fit in it, and the space beside it was empty. The page
+uses the same full-width frame as every other surface; long prose inside a card is capped at a
+reading measure instead, because the typographic limit belongs to the text and not to the page.
 
 The queue's first division is what a position is doing to you, not how old it is. A conversation
 waiting for an answer is stopped — an elicitation is pending and the agent loop is suspended

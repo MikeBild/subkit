@@ -45,16 +45,43 @@ const conversation = {
 // Deliberately unfriendly: a conversation the engine never named must make the
 // cockpit's own fallback wording appear in a screenshot. Fixtures that always
 // carry a title are fixtures that can never photograph "Untitled".
-const conversations = Array.from({ length: 32 }, (_, index) => ({
-  ...conversation,
-  id: index === 0 ? uuid : `conversation-${index}`,
-  title: index % 3 === 0 ? null : `Arbeitsauftrag ${index + 1}`,
-  last_message_excerpt:
-    index % 4 === 0
-      ? `{"tool":"run_workflow","output":{"execution_id":"${uuid}"}}`
-      : "Eine lange, aber verständliche Zusammenfassung des letzten Arbeitsschritts.",
-  updated_at: new Date(Date.parse(conversation.updated_at) - index * 60_000).toISOString(),
-}));
+// Deadlines are stamped against the run, not against a frozen fixture instant:
+// with a fixed date every waiting card is already expired by the time anyone
+// looks, and the state that matters — blocking, with time left — is never seen.
+const SWEEP_NOW = Date.now();
+
+const conversations = Array.from({ length: 32 }, (_, index) => {
+  // Every third conversation is waiting on an answer, and carries the question
+  // it is waiting on. Without that the decisions queue photographs a card that
+  // says "waiting for your answer" and nothing about what for.
+  const waiting = index % 3 === 1;
+  return {
+    ...conversation,
+    id: index === 0 ? uuid : `conversation-${index}`,
+    title: index % 3 === 0 ? null : `Arbeitsauftrag ${index + 1}`,
+    status: waiting ? "awaiting_input" : conversation.status,
+    last_message_excerpt:
+      index % 4 === 0
+        ? `{"tool":"run_workflow","output":{"execution_id":"${uuid}"}}`
+        : "Eine lange, aber verständliche Zusammenfassung des letzten Arbeitsschritts.",
+    ...(index % 6 === 1 ? { target_workflow_id: uuid } : {}),
+    ...(waiting
+      ? {
+          pending_elicitation_expires_at: new Date(
+            SWEEP_NOW + (index === 1 ? -3_600_000 : index * 3_600_000 + 1_800_000),
+          ).toISOString(),
+          pending_elicitation_summary:
+            "Der Monatsreport schreibt künftig nach PROD. Soll ich die gespeicherte Version dafür ersetzen?",
+          pending_elicitation_tool: "ask_user_confirm",
+        }
+      : {
+          pending_elicitation_expires_at: null,
+          pending_elicitation_summary: null,
+          pending_elicitation_tool: null,
+        }),
+    updated_at: new Date(Date.parse(conversation.updated_at) - index * 60_000).toISOString(),
+  };
+});
 
 const baseMessages = [
   {
@@ -714,14 +741,140 @@ async function mockApi(route) {
         },
       ],
     });
-  if (path === "/v1/skill-candidates" || path === "/v1/patch-candidates")
+  if (path === "/v1/patch-candidates")
     return json(route, {
+      total: 2,
       items: [
         {
           id: uuid,
-          title: "Sichere Fehlerbehandlung",
+          tenant_id: uuid,
+          workflow_id: uuid,
+          workflow_name: "Monatsreport",
+          connector_id: uuid,
+          endpoint_key: "GET /reports/v1",
+          classification: "safe",
           status: "proposed",
-          created_at: "2026-08-10T07:00:00.000Z",
+          fixture_id: uuid,
+          created_at: new Date(SWEEP_NOW - 36 * 3_600_000).toISOString(),
+          updated_at: new Date(SWEEP_NOW - 36 * 3_600_000).toISOString(),
+          // The whole envelope the engine ships with the list. Every field here
+          // was previously fetched and discarded.
+          diff: {
+            execution_id: uuid,
+            step_id: "fetch",
+            workflow_step_id: "fetch",
+            drift_diff: "kind: schema_diff\nwidened: data.id\nadded: data.result\nremoved: (none)",
+            drift_signal: { kind: "schema_diff" },
+            classification_reasons: ["field rename only", "no new outbound host"],
+            proposal: {
+              classification: "safe",
+              kind: "update_field_path",
+              description: "Feld folgt der Umbenennung: data.id → data.result.id",
+              patch: { path: "data.id", value: "data.result.id" },
+              reasoning:
+                "Die Antwort trägt die Kennung seit dem 8. August unter result. Der Schritt liest weiterhin den alten Pfad und bekommt deshalb undefined.",
+            },
+          },
+        },
+        {
+          // A proactive candidate with no step snapshot — the one case where the
+          // diff card says "this proposal changes nothing". It belongs in a
+          // screenshot, not in production.
+          id: "patch-2",
+          tenant_id: uuid,
+          workflow_id: uuid,
+          workflow_name: "Umsatzrollup",
+          connector_id: null,
+          endpoint_key: null,
+          classification: "unsafe",
+          status: "proposed",
+          fixture_id: null,
+          created_at: "2026-08-05T07:00:00.000Z",
+          updated_at: "2026-08-05T07:00:00.000Z",
+          diff: {
+            execution_id: null,
+            drift_diff: "kind: stdlib_version_drift\nrecorded_major: 1\ncurrent_major: 2",
+            drift_signal: { kind: "stdlib_version_drift" },
+            classification_reasons: ["major version change", "no fixture to replay against"],
+            rejection_chain: [
+              { attempt: 1, reason: "unsafe classification (major version change) and no fixture" },
+            ],
+            proposal: { classification: "unsafe", kind: "other", description: "Baustein anheben" },
+          },
+        },
+      ],
+    });
+  if (path === `/v1/patch-candidates/${uuid}/preview`)
+    return json(route, {
+      candidate_id: uuid,
+      workflow_id: uuid,
+      classification: "safe",
+      status: "proposed",
+      drift_summary: "kind: schema_diff\nwidened: data.id",
+      fixture_available: true,
+      before_step: { id: "fetch", kind: "request", data_selector: "data.id" },
+      after_step: { id: "fetch", kind: "request", data_selector: "data.result.id" },
+      changed_paths: ["data_selector"],
+      proposal: { kind: "update_field_path", patch: { path: "data.id" } },
+    });
+  if (path === `/v1/patch-candidates/${uuid}/dry-run`)
+    return json(route, {
+      ok: true,
+      error: null,
+      value_preview: '{ "id": "rep_8842" }',
+      fixture_source: "recorded",
+    });
+  if (path === `/v1/skill-candidates/${uuid}/evidence`)
+    return json(route, {
+      items: [
+        {
+          id: "ev-1",
+          skill_candidate_id: uuid,
+          execution_id: uuid,
+          patch_candidate_id: null,
+          evidence_type: "step_failure",
+          summary: "Schritt fetch lief nach dem Feldwechsel ins Leere",
+          captured_at: "2026-08-09T07:00:00.000Z",
+        },
+        {
+          id: "ev-2",
+          skill_candidate_id: uuid,
+          execution_id: null,
+          patch_candidate_id: uuid,
+          evidence_type: "patch_applied",
+          summary: "Dieselbe Korrektur hat den Lauf danach repariert",
+          captured_at: "2026-08-08T07:00:00.000Z",
+        },
+      ],
+    });
+  if (path === "/v1/skill-candidates")
+    return json(route, {
+      total: 1,
+      items: [
+        {
+          id: uuid,
+          tenant_id: uuid,
+          scope: "workflow",
+          connector_id: null,
+          workflow_id: uuid,
+          endpoint_key: null,
+          pattern_kind: "repair_pattern",
+          title: "Umbenannte Antwortfelder zuerst prüfen",
+          // The text approval would promote. Never rendered before this change.
+          body: "Wenn ein Schritt plötzlich undefined liest, hat das System meist ein Feld verschoben statt es zu entfernen.\n\nErst die Antwortstruktur mit der aufgezeichneten vergleichen, dann den Pfad nachziehen — ein neuer Aufruf ist selten nötig.",
+          examples: ["data.id wurde zu data.result.id"],
+          best_practices: ["Aufgezeichnete Antwort als Vergleich heranziehen"],
+          pitfalls: ["Nicht den ganzen Schritt neu schreiben, nur den Pfad"],
+          doc_refs: ["docs/concepts/self-healing.md"],
+          evidence_count: 2,
+          confidence: "high",
+          status: "proposed",
+          promoted_skill_id: null,
+          fingerprint: "fp-1",
+          version: 1,
+          tags: ["domain:reporting"],
+          created_at: new Date(SWEEP_NOW - 20 * 3_600_000).toISOString(),
+          updated_at: new Date(SWEEP_NOW - 20 * 3_600_000).toISOString(),
         },
       ],
     });
@@ -809,6 +962,37 @@ async function assertChat(page, label) {
     .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().width));
   if (assistantWidths.some((width) => width > layout.main.width - 24))
     throw new Error(`${label} message content reaches outside its readable column`);
+}
+
+/**
+ * A page's content must start where its own heading starts.
+ *
+ * This shipped broken twice. First the scrollbar shifted a centred column
+ * against its title; then the padding sat INSIDE the width cap in the body and
+ * outside it in the header, indenting the content by exactly one padding step.
+ * Both were found by looking at a screenshot, which is the wrong instrument —
+ * a 32px offset is a measurement, so measure it.
+ */
+async function assertHeadingAlignment(page, label) {
+  const offset = await page.evaluate(() => {
+    const heading = document.querySelector("main h1");
+    if (!heading) return null;
+    // The first thing the body renders, whatever it is: a card, a table, a
+    // paragraph. Its left edge is what a reader compares the title against.
+    const body = document.querySelector(
+      'main [data-testid$="-context"], main article, main [data-slot="table-container"], main section, main p',
+    );
+    if (!body) return null;
+    const a = heading.getBoundingClientRect();
+    const b = body.getBoundingClientRect();
+    if (b.width === 0 || b.top < a.bottom) return null;
+    return Math.round(b.left - a.left);
+  });
+  // Null means the page has no heading or nothing below it to compare against.
+  if (offset === null) return;
+  if (Math.abs(offset) > 2) {
+    throw new Error(`${label} indents its content ${offset}px against its own heading`);
+  }
 }
 
 async function assertTables(page, label) {
@@ -942,6 +1126,7 @@ for (const locale of variants) {
         throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong theme`);
       await assertViewport(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertTables(page, `${locale.artifact}/${viewport.name}/${route}`);
+      await assertHeadingAlignment(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "access") {
@@ -978,6 +1163,38 @@ for (const locale of variants) {
           path: resolve(outputDir, `${locale.artifact}-desktop-${resource}-detail.png`),
           fullPage: false,
         });
+      }
+      // The expanded decision card. The sweep only ever photographed collapsed
+      // cards, which is how a surface that asks people to approve things they
+      // cannot see stayed green through 252 screenshots.
+      await page.goto(`${baseUrl}/cockpit/decisions`, { waitUntil: "networkidle" });
+      let expandedCards = 0;
+      for (const prefix of ["decision", "decision-expired", "decision-deferred", "decision-aged"]) {
+        // Two positions per section, because the three kinds expand to entirely
+        // different panels and one of them is always second in its section.
+        for (const position of [0, 1]) {
+          const toggle = page.locator(`[data-testid="${prefix}-${position}-toggle"]`);
+          if (!(await toggle.count())) continue;
+          await toggle.first().scrollIntoViewIfNeeded();
+          await toggle.first().click();
+          await page
+            .locator(`[data-testid="${prefix}-${position}-detail"]`)
+            .waitFor({ state: "visible", timeout: 10_000 });
+          await page.waitForTimeout(300);
+          await page.screenshot({
+            path: resolve(
+              outputDir,
+              `${locale.artifact}-desktop-${prefix}-${position}-expanded.png`,
+            ),
+            fullPage: false,
+          });
+          expandedCards += 1;
+        }
+      }
+      // Silence is not success: a loop that matched nothing would otherwise
+      // report a green sweep for a surface it never opened.
+      if (expandedCards === 0) {
+        throw new Error(`${locale.artifact}: no decision card exposed an expand toggle`);
       }
       await page.goto(`${baseUrl}/cockpit/chat`, { waitUntil: "networkidle" });
       await page.locator('[data-testid="conversation-new"]').click();
