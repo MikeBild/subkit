@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -12,9 +13,9 @@ import {
 } from "@/api/decisions";
 import { useSession } from "@/app/session";
 import { useDecisionQueue } from "@/app/use-decisions";
-import { ContextHelp } from "@/components/cockpit/context-help";
 import { DecisionCard } from "@/components/cockpit/decision-card";
 import { IconButton } from "@/components/cockpit/icon-button";
+import { PageFrame } from "@/components/cockpit/page-frame";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,13 +23,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { cn } from "@/lib/utils";
 import {
+  countByKind,
   type DecisionItem,
   type DecisionKind,
   filterByKinds,
   type GroupMode,
   groupDecisions,
-  splitByAge,
+  partitionByUrgency,
 } from "./decisions-model";
 
 const KINDS: DecisionKind[] = ["conversation", "patch", "skill"];
@@ -120,8 +123,10 @@ export function DecisionsPage() {
 
   const open = queue.items.filter((item) => !decided.includes(item.id));
   const filtered = filterByKinds(open, preferences.kinds);
-  const { current, aged } = splitByAge(filtered, Date.now());
+  const urgency = partitionByUrgency(filtered, Date.now());
+  const { current, aged } = urgency.deferred;
   const isFiltered = preferences.kinds.length > 0 && open.length > filtered.length;
+  const counts = countByKind(open);
 
   if (!queue.sources.patches && !queue.sources.skills && !queue.sources.conversations)
     return (
@@ -137,7 +142,7 @@ export function DecisionsPage() {
     const groups = groupDecisions(items, preferences.group);
     let position = 0;
     return groups.map((group) => (
-      <div key={group.key} className="grid gap-2">
+      <div key={group.key} className="grid gap-2 pt-2 first:pt-0">
         {preferences.group !== "none" && (
           <p className="text-xs font-medium text-muted-foreground">
             {preferences.group === "kind"
@@ -165,183 +170,252 @@ export function DecisionsPage() {
   }
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col" data-testid="decisions-page">
-      {/* One column: the heading shares the queue's axis, so a wide window does
-          not strand the title at the edge while the cards float in the middle. */}
-      <header className="shrink-0 border-b px-4 py-4 sm:px-6" data-testid="decisions-header">
-        <div className="mx-auto flex w-full max-w-[780px] flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-1.5">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
-            <ContextHelp
-              label={t("resource.about", { resource: title })}
-              testId="decisions-description"
-            >
-              {t("decisions.description")}
-            </ContextHelp>
-          </div>
-          <IconButton
-            variant="outline"
-            label={t("common.refresh")}
-            data-testid="decisions-refresh"
-            onClick={() => queue.refetch()}
+    <PageFrame
+      testId="decisions-page"
+      title={title}
+      description={t("decisions.description")}
+      scroll="page"
+      width="column"
+      action={
+        <IconButton
+          variant="outline"
+          label={t("common.refresh")}
+          data-testid="decisions-refresh"
+          onClick={() => queue.refetch()}
+        >
+          <RefreshCw className={queue.isFetching ? "animate-spin" : undefined} />
+        </IconButton>
+      }
+    >
+      <div className="grid gap-6">
+        {/* The number on the badge used to stand alone, which made it read as a
+            demand of unknown origin. Naming its three sources answers "where do
+            these come from" before anyone has to ask. */}
+        {queue.total !== null && queue.total > 0 && (
+          <p className="-mt-2 text-xs text-muted-foreground" data-testid="decisions-sources">
+            {t("decisions.sources", {
+              total: String(queue.total),
+              patches: String(counts.patch),
+              skills: String(counts.skill),
+              conversations: String(counts.conversation),
+            })}
+            {queue.capped
+              ? ` ${t("decisions.capped", {
+                  shown: String(open.length),
+                  total: String(queue.total),
+                })}`
+              : ""}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-2" data-testid="decisions-toolbar">
+          <Button
+            variant={preferences.kinds.length === 0 ? "default" : "outline"}
+            size="sm"
+            data-testid="decisions-chip-all"
+            onClick={() => persist({ ...preferences, kinds: [] })}
           >
-            <RefreshCw className={queue.isFetching ? "animate-spin" : undefined} />
-          </IconButton>
-        </div>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mx-auto grid w-full max-w-[780px] gap-4">
-          <div
-            className="flex flex-wrap items-center gap-2 border-b pb-4"
-            data-testid="decisions-toolbar"
-          >
+            {t("decisions.chip.all")}
+          </Button>
+          {KINDS.map((kind, index) => (
             <Button
-              variant={preferences.kinds.length === 0 ? "default" : "outline"}
+              key={kind}
+              variant={preferences.kinds.includes(kind) ? "default" : "outline"}
               size="sm"
-              data-testid="decisions-chip-all"
-              onClick={() => persist({ ...preferences, kinds: [] })}
+              data-testid={`decisions-chip-${index}`}
+              onClick={() =>
+                persist({
+                  ...preferences,
+                  kinds: preferences.kinds.includes(kind)
+                    ? preferences.kinds.filter((entry) => entry !== kind)
+                    : [...preferences.kinds, kind],
+                })
+              }
             >
-              {t("decisions.chip.all")}
+              {t(KIND_LABEL[kind])}
             </Button>
-            {KINDS.map((kind, index) => (
+          ))}
+          <span className="flex items-center gap-2 sm:ml-auto">
+            <span className="text-xs text-muted-foreground">{t("decisions.group.label")}</span>
+            {GROUP_MODES.map((mode, index) => (
               <Button
-                key={kind}
-                variant={preferences.kinds.includes(kind) ? "default" : "outline"}
+                key={mode}
+                variant={preferences.group === mode ? "default" : "ghost"}
                 size="sm"
-                data-testid={`decisions-chip-${index}`}
-                onClick={() =>
-                  persist({
-                    ...preferences,
-                    kinds: preferences.kinds.includes(kind)
-                      ? preferences.kinds.filter((entry) => entry !== kind)
-                      : [...preferences.kinds, kind],
-                  })
-                }
+                data-testid={`decisions-group-${index}`}
+                onClick={() => persist({ ...preferences, group: mode })}
               >
-                {t(KIND_LABEL[kind])}
+                {t(GROUP_LABEL[mode])}
               </Button>
             ))}
-            <span className="flex items-center gap-2 sm:ml-auto">
-              <span className="text-xs text-muted-foreground">{t("decisions.group.label")}</span>
-              {GROUP_MODES.map((mode, index) => (
-                <Button
-                  key={mode}
-                  variant={preferences.group === mode ? "default" : "ghost"}
-                  size="sm"
-                  data-testid={`decisions-group-${index}`}
-                  onClick={() => persist({ ...preferences, group: mode })}
-                >
-                  {t(GROUP_LABEL[mode])}
-                </Button>
-              ))}
-            </span>
-          </div>
+          </span>
+        </div>
 
-          {queue.isPending ? (
-            <div className="grid gap-2" role="status" aria-label={t("common.loading")}>
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-24 w-full" />
-            </div>
-          ) : queue.failed ? (
-            <Alert variant="destructive" data-testid="decisions-error">
-              <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
-              <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
+        {queue.isPending ? (
+          <div className="grid gap-2" role="status" aria-label={t("common.loading")}>
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : queue.failed ? (
+          <Alert variant="destructive" data-testid="decisions-error">
+            <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
+            <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              data-testid="decisions-retry"
+              onClick={() => queue.refetch()}
+            >
+              {t("session.retry")}
+            </Button>
+          </Alert>
+        ) : filtered.length === 0 ? (
+          isFiltered ? (
+            <div
+              className="flex min-h-52 flex-col items-center justify-center rounded-lg border p-4 text-center"
+              data-testid="decisions-empty-filtered"
+            >
+              <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
               <Button
                 variant="outline"
                 size="sm"
                 className="mt-3"
-                data-testid="decisions-retry"
-                onClick={() => queue.refetch()}
+                data-testid="decisions-show-all"
+                onClick={() => persist({ ...preferences, kinds: [] })}
               >
-                {t("session.retry")}
+                {t("decisions.showAll")}
               </Button>
-            </Alert>
-          ) : filtered.length === 0 ? (
-            isFiltered ? (
-              <div
-                className="rounded-lg border p-6 text-center"
-                data-testid="decisions-empty-filtered"
-              >
-                <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                  data-testid="decisions-show-all"
-                  onClick={() => persist({ ...preferences, kinds: [] })}
-                >
-                  {t("decisions.showAll")}
-                </Button>
-              </div>
-            ) : (
-              <div className="rounded-lg border p-6 text-center" data-testid="decisions-empty">
-                <CircleCheck
-                  aria-hidden="true"
-                  className="mx-auto size-6 text-emerald-600 dark:text-emerald-400"
-                />
-                <p className="mt-2 text-sm font-medium">{t("decisions.emptyTitle")}</p>
-                <p className="text-sm text-muted-foreground">{t("decisions.emptyDescription")}</p>
-              </div>
-            )
+            </div>
           ) : (
-            <>
-              {current.length > 0 && (
-                <section className="grid gap-2" data-testid="decisions-current">
-                  {renderGroups(current, "decision")}
-                </section>
-              )}
-              {aged.length > 0 && (
-                <section className="grid gap-2" data-testid="decisions-aged">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-semibold">{t("decisions.agedTitle")}</h2>
-                    <Badge variant="secondary" className="tabular-nums">
-                      {aged.length}
-                    </Badge>
+            <div
+              className="flex min-h-52 flex-col items-center justify-center rounded-lg border p-4 text-center"
+              data-testid="decisions-empty"
+            >
+              <CircleCheck
+                aria-hidden="true"
+                className="mx-auto size-6 text-emerald-600 dark:text-emerald-400"
+              />
+              <p className="mt-2 text-sm font-medium">{t("decisions.emptyTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("decisions.emptyDescription")}</p>
+            </div>
+          )
+        ) : (
+          <>
+            {urgency.expired.length > 0 && (
+              <DecisionSection
+                testId="decisions-expired"
+                title={t("decisions.section.expired")}
+                hint={t("decisions.section.expiredHint")}
+                count={urgency.expired.length}
+                muted
+              >
+                {renderGroups(urgency.expired, "decision-expired")}
+              </DecisionSection>
+            )}
+            {urgency.blocking.length > 0 && (
+              <DecisionSection
+                testId="decisions-blocking"
+                title={t("decisions.section.blocking")}
+                hint={t("decisions.section.blockingHint")}
+                count={urgency.blocking.length}
+              >
+                {renderGroups(urgency.blocking, "decision")}
+              </DecisionSection>
+            )}
+            {(current.length > 0 || aged.length > 0) && (
+              <DecisionSection
+                testId="decisions-deferred"
+                title={t("decisions.section.deferred")}
+                hint={t("decisions.section.deferredHint")}
+                count={current.length + aged.length}
+              >
+                {current.length > 0 && (
+                  <div className="grid gap-2" data-testid="decisions-current">
+                    {renderGroups(current, "decision-deferred")}
                   </div>
-                  {renderGroups(aged, "decision-aged")}
-                </section>
-              )}
-            </>
-          )}
+                )}
+                {aged.length > 0 && (
+                  <div className="mt-2 grid gap-2 border-t pt-4" data-testid="decisions-aged">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold">{t("decisions.agedTitle")}</h3>
+                      <Badge variant="secondary" className="tabular-nums">
+                        {aged.length}
+                      </Badge>
+                    </div>
+                    {renderGroups(aged, "decision-aged")}
+                  </div>
+                )}
+              </DecisionSection>
+            )}
+          </>
+        )}
 
-          <DecisionShelf
-            titleKey="decisions.shelf.decided"
-            testId="decisions-shelf-decided"
-            enabled={queue.sources.patches || queue.sources.skills}
-            load={async () => {
-              const [patches, skills] = await Promise.all([
-                queue.sources.patches ? listPatchCandidatesByStatus("applied") : null,
-                queue.sources.skills ? listSkillCandidatesByStatus("approved") : null,
-              ]);
-              return [
-                ...(patches?.items ?? []).map(
-                  (entry) => entry.workflow_name ?? t("decisions.fallbackTitle.patch"),
-                ),
-                ...(skills?.items ?? []).map((entry) => entry.title),
-              ];
-            }}
-          />
-          <DecisionShelf
-            titleKey="decisions.shelf.discarded"
-            testId="decisions-shelf-discarded"
-            enabled={queue.sources.patches || queue.sources.skills}
-            load={async () => {
-              const [patches, skills] = await Promise.all([
-                queue.sources.patches ? listPatchCandidatesByStatus("rejected") : null,
-                queue.sources.skills ? listSkillCandidatesByStatus("rejected") : null,
-              ]);
-              return [
-                ...(patches?.items ?? []).map(
-                  (entry) => entry.workflow_name ?? t("decisions.fallbackTitle.patch"),
-                ),
-                ...(skills?.items ?? []).map((entry) => entry.title),
-              ];
-            }}
-          />
-        </div>
+        <DecisionShelf
+          titleKey="decisions.shelf.decided"
+          testId="decisions-shelf-decided"
+          enabled={queue.sources.patches || queue.sources.skills}
+          load={async () => {
+            const [patches, skills] = await Promise.all([
+              queue.sources.patches ? listPatchCandidatesByStatus("applied") : null,
+              queue.sources.skills ? listSkillCandidatesByStatus("approved") : null,
+            ]);
+            return [
+              ...(patches?.items ?? []).map(
+                (entry) => entry.workflow_name ?? t("decisions.fallbackTitle.patch"),
+              ),
+              ...(skills?.items ?? []).map((entry) => entry.title),
+            ];
+          }}
+        />
+        <DecisionShelf
+          titleKey="decisions.shelf.discarded"
+          testId="decisions-shelf-discarded"
+          enabled={queue.sources.patches || queue.sources.skills}
+          load={async () => {
+            const [patches, skills] = await Promise.all([
+              queue.sources.patches ? listPatchCandidatesByStatus("rejected") : null,
+              queue.sources.skills ? listSkillCandidatesByStatus("rejected") : null,
+            ]);
+            return [
+              ...(patches?.items ?? []).map(
+                (entry) => entry.workflow_name ?? t("decisions.fallbackTitle.patch"),
+              ),
+              ...(skills?.items ?? []).map((entry) => entry.title),
+            ];
+          }}
+        />
       </div>
-    </main>
+    </PageFrame>
+  );
+}
+
+/** One rubric of the queue: what it is, what it costs, and how many. */
+function DecisionSection({
+  testId,
+  title,
+  hint,
+  count,
+  muted = false,
+  children,
+}: {
+  testId: string;
+  title: string;
+  hint: string;
+  count: number;
+  muted?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section className={cn("grid gap-2", muted && "opacity-70")} data-testid={testId}>
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <Badge variant="secondary" className="tabular-nums">
+          {count}
+        </Badge>
+      </div>
+      <p className="-mt-1 text-xs text-muted-foreground">{hint}</p>
+      {children}
+    </section>
   );
 }
 
@@ -369,13 +443,13 @@ function DecisionShelf({ titleKey, testId, enabled, load }: DecisionShelfProps) 
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start opacity-70"
+          className="w-full justify-start px-4 opacity-70"
           data-testid={`${testId}-toggle`}
         >
           {t(titleKey)}
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="grid gap-1 px-3 pb-3 text-sm text-muted-foreground opacity-70">
+      <CollapsibleContent className="grid gap-1 px-4 pb-4 text-sm text-muted-foreground opacity-70">
         {query.isPending ? (
           <span>{t("common.loading")}</span>
         ) : query.error ? (

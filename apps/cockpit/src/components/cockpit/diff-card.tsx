@@ -21,6 +21,8 @@ export interface DiffCardProps {
   fixtureAvailable?: boolean;
   dryRun?: PatchCandidateDryRun | null;
   dryRunPending?: boolean;
+  /** Rendered inside another card. Drops the frame so cards do not nest. */
+  embedded?: boolean;
   testId: string;
 }
 
@@ -47,6 +49,7 @@ export function DiffCard({
   fixtureAvailable,
   dryRun,
   dryRunPending,
+  embedded = false,
   testId,
 }: DiffCardProps) {
   const { t } = useI18n();
@@ -56,8 +59,21 @@ export function DiffCard({
   const patchLines = view?.kind === "patch" ? view.lines : [];
 
   return (
-    <section className="rounded-lg border" data-testid={testId}>
-      <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
+    <section
+      // Embedded inside a decision card or a tool card, this must NOT draw its
+      // own frame: a card inside a card reads as two separate things and is
+      // what made the queue look mis-spaced. A separator says "same thing,
+      // more detail" without a second border radius fighting the first.
+      className={embedded ? "mt-3 border-t pt-3" : "rounded-lg border"}
+      data-testid={testId}
+    >
+      <header
+        className={
+          embedded
+            ? "flex flex-wrap items-center gap-2 pb-2"
+            : "flex flex-wrap items-center gap-2 border-b px-4 py-2"
+        }
+      >
         <span className="min-w-0 truncate text-sm font-medium" data-testid={`${testId}-target`}>
           {targetLabel}
         </span>
@@ -68,7 +84,7 @@ export function DiffCard({
         ) : null}
       </header>
 
-      <div className="grid gap-3 p-3 lg:grid-cols-2">
+      <div className={embedded ? "grid gap-3 lg:grid-cols-2" : "grid gap-3 p-4 lg:grid-cols-2"}>
         <div className="min-w-0">
           <p className="mb-1 text-xs font-medium text-muted-foreground">{t("diff.title")}</p>
           {!hasDiff && patchLines.length > 0 ? (
