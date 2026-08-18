@@ -4,10 +4,14 @@ import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
-import { conversationMessages, conversations } from "../../db/schema/index.ts";
-import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
+import {
+  conversationElicitations,
+  conversationMessages,
+  conversations,
+} from "../../db/schema/index.ts";
 import { now } from "../../utils/clock.ts";
 import { cancelConversationAbort } from "../abort.ts";
+import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
 import type { ConversationRecord, ConversationStatus } from "../types.ts";
 import { rowToRecord } from "./shared.ts";
 
@@ -56,6 +60,10 @@ export interface ListConversationsParams {
 export interface ConversationListItem extends ConversationRecord {
   last_message_role: string | null;
   last_message_excerpt: string | null;
+  /** When this conversation's pending prompt lapses, or null when nothing is
+   *  waiting. The only real deadline in the product — a review queue cannot
+   *  tell "running out" from "just sitting there" without it. */
+  pending_elicitation_expires_at: string | null;
 }
 
 function conversationListConds(p: ListConversationsParams) {
@@ -82,41 +90,6 @@ function conversationListConds(p: ListConversationsParams) {
     if (search) tenantConds.push(search);
   }
   return tenantConds;
-}
-
-function stringifyConversationExcerpt(content: unknown): string | null {
-  // Human-facing excerpt — strip every `[file:fid_<uuid>]` sentinel to
-  // a `[file]` placeholder so the raw fid never lands in a UI list or
-  // notification body. The conversation list is rendered to operators;
-  // a leaked sentinel is both unreadable and a low-grade information
-  // disclosure (the fid is tenant-scoped but still an internal id).
-  const stripped = (raw: string): string => stripFileSentinelsForDisplay(raw);
-  if (typeof content === "string") {
-    const trimmed = content.trim();
-    return trimmed.length > 0 ? stripped(trimmed) : null;
-  }
-  if (content === null || content === undefined) return null;
-  if (typeof content === "object" && content !== null) {
-    const obj = content as Record<string, unknown>;
-    if (typeof obj.text === "string" && obj.text.trim().length > 0) {
-      return stripped(obj.text.trim());
-    }
-    if (typeof obj.summary === "string" && obj.summary.trim().length > 0) {
-      return stripped(obj.summary.trim());
-    }
-  }
-  try {
-    const raw = JSON.stringify(content);
-    return raw.length > 2 ? stripped(raw) : null;
-  } catch {
-    return stripped(String(content));
-  }
-}
-
-function truncateExcerpt(text: string, max = 140): string {
-  const squashed = text.replace(/\s+/g, " ").trim();
-  if (squashed.length <= max) return squashed;
-  return `${squashed.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
 }
 
 export async function listConversations(
@@ -170,12 +143,38 @@ export async function listConversations(
     });
   }
 
+  // The deadline a waiting conversation is actually running out of. One
+  // grouped query for the whole page, served by the existing
+  // `(conversation_id, status)` index — deliberately NOT a join onto the main
+  // select, which would multiply rows against a 1:N table and break the
+  // limit/offset pagination that `countConversations` is paired with.
+  // `min` because a conversation with two pending prompts dies on the earlier.
+  const deadlineRows = await exec
+    .select({
+      conversation_id: conversationElicitations.conversation_id,
+      expires_at: sql<Date>`min(${conversationElicitations.expires_at})`,
+    })
+    .from(conversationElicitations)
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, p.tenant_id),
+        inArray(conversationElicitations.conversation_id, conversationIds),
+        eq(conversationElicitations.status, "pending"),
+      ),
+    )
+    .groupBy(conversationElicitations.conversation_id);
+  const deadlineByConversation = new Map(
+    deadlineRows.map((row) => [row.conversation_id, new Date(row.expires_at)]),
+  );
+
   return rows.map((row) => {
     const latest = latestByConversation.get(row.id);
+    const deadline = deadlineByConversation.get(row.id);
     return {
       ...rowToRecord(row),
       last_message_role: latest?.role ?? null,
       last_message_excerpt: latest?.excerpt ?? null,
+      pending_elicitation_expires_at: deadline ? deadline.toISOString() : null,
     };
   });
 }

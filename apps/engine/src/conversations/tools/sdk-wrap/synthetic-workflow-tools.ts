@@ -288,7 +288,7 @@ async function executeSyntheticRun(
         workflow_id: entry.workflow_id,
         workflow_slug: entry.slug,
       };
-      await updateToolCallOutput(db, toolCallId, dupOutput);
+      await updateToolCallOutput(db, toolCallId, dupOutput, "denied");
       events.push({
         type: "tool_result",
         call_id: toolCallId,
@@ -374,7 +374,12 @@ async function executeSyntheticRun(
           }
         : {}),
     };
-    await updateToolCallOutput(db, toolCallId, output);
+    await updateToolCallOutput(
+      db,
+      toolCallId,
+      output,
+      heldPreview ? "pending" : ok ? "ok" : "error",
+    );
     await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "tool", {
       tool: name,
       output,
@@ -544,7 +549,7 @@ async function executeSyntheticRun(
       workflow_slug: entry.slug,
       error: msg,
     };
-    await updateToolCallOutput(db, toolCallId, output);
+    await updateToolCallOutput(db, toolCallId, output, "error");
     events.push({
       type: "tool_result",
       call_id: toolCallId,

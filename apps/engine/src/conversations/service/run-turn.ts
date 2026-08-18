@@ -308,10 +308,12 @@ async function runRequestCredentialFormEvent(
   // DB-pause `data` payload in `pauseForUserInput`, persisted by
   // invoke.ts). Replay never re-sends it once answered: the resolved
   // elicitation output takes priority in `buildModelMessages`.
-  await updateToolCallOutput(exec, toolCallId, {
-    status: "awaiting_input",
-    elicitation_id: elicitation.id,
-  });
+  await updateToolCallOutput(
+    exec,
+    toolCallId,
+    { status: "awaiting_input", elicitation_id: elicitation.id },
+    "pending",
+  );
   recordConversationToolCall({
     category: "draft_write",
     tool: "ask_user_form",

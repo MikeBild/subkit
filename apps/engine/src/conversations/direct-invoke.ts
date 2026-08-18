@@ -39,7 +39,7 @@ import { PendingElicitationBlockedError } from "./service/shared.ts";
 import { computeLineDiff } from "./text-line-diff.ts";
 import { getTool, type ToolContext, type ToolResult } from "./tools/index.ts";
 import { checkToolPermission, type ToolPermissionResult } from "./tools/permission-gate.ts";
-import { normalizeToolResultPayload } from "./tools/result-payload.ts";
+import { normalizeToolResultPayload, toolCallOutcome } from "./tools/result-payload.ts";
 import type { DraftDocument } from "./types.ts";
 
 /**
@@ -250,7 +250,7 @@ export async function invokeConversationToolDirect(
     await langfuseSpan.finish({ status: "error", error: err });
     const msg = err instanceof Error ? err.message : String(err);
     const output = { error: msg };
-    await updateToolCallOutput(p.db, toolCallId, output);
+    await updateToolCallOutput(p.db, toolCallId, output, "error");
     recordConversationToolCall({
       category: tool.category,
       tool: tool.name,
@@ -271,7 +271,7 @@ export async function invokeConversationToolDirect(
     output: resultPayload,
     status: result.ok ? "success" : "error",
   });
-  await updateToolCallOutput(p.db, toolCallId, resultPayload);
+  await updateToolCallOutput(p.db, toolCallId, resultPayload, toolCallOutcome(result));
 
   // Draft snapshot after every successful draft mutation — same
   // rollback contract as the loop path.

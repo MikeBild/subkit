@@ -26,6 +26,9 @@ export interface ResumeSummary {
     id: string;
     tool_name: string;
     summary: string;
+    /** When this approval lapses. The only real deadline in the product;
+     *  without it a client cannot tell "running out" from "just waiting". */
+    expires_at: string;
   } | null;
   next_action: string;
   one_sentence: string;
@@ -38,6 +41,9 @@ export interface BuildResumeSummaryParams {
     id: string;
     tool_name: string;
     summary?: string | null;
+    /** ISO instant the prompt lapses. Carried through so the resume banner —
+     *  and the decision queue reading it — can say how long is left. */
+    expires_at: string;
   } | null;
 }
 
@@ -105,6 +111,7 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
         id: pendingElicitation.id,
         tool_name: pendingElicitation.tool_name,
         summary: pendingElicitation.summary ?? "",
+        expires_at: pendingElicitation.expires_at,
       }
     : null;
 

@@ -210,7 +210,9 @@ export async function injectSyntheticToolCall(p: {
     },
     approval_required: false,
   });
-  await updateToolCallOutput(p.db, callId, p.synthetic);
+  // The harness states the outcome of the write it performed; `p.synthetic`
+  // is an envelope it built, not a `ToolResult` a classifier could read.
+  await updateToolCallOutput(p.db, callId, p.synthetic, p.synthetic.ok ? "ok" : "error");
   // Confirmation-state column carries `confirmed` so the read path
   // and observability dashboards can filter on harness-driven writes.
   await p.db

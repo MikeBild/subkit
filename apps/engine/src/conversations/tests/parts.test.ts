@@ -26,6 +26,9 @@ function call(
     input: {},
     output: null,
     approval_required: false,
+    confirmation_state: null,
+    approved_at: null,
+    outcome: null,
     ...overrides,
   };
 }
@@ -68,7 +71,13 @@ describe("toMessageParts", () => {
         input: { scope: "tenant" },
         phase: "result",
       },
-      { type: "tool_result", call_id: "call-1", tool: "listSkills", output: { count: 3 } },
+      {
+        type: "tool_result",
+        call_id: "call-1",
+        tool: "listSkills",
+        output: { count: 3 },
+        outcome: null,
+      },
     ]);
   });
 

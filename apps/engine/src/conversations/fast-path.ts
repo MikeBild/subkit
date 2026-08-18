@@ -56,6 +56,7 @@ import {
 } from "./fast-path-lists.ts";
 import { renderRunOutput } from "./fast-path-render.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "./persist.ts";
+import type { ToolCallOutcome } from "./tools/result-payload.ts";
 import type { ConversationStatus, TurnEvent } from "./types.ts";
 
 export type FastPathStatus = "active" | "awaiting_input";
@@ -282,6 +283,11 @@ async function persistFastPathTurn(
   input: Record<string, unknown>,
   output: Record<string, unknown>,
   reply: string,
+  /** How this fast-path call ended. The fast path builds its output envelope
+   *  by hand rather than from a `ToolResult`, so there is nothing to classify
+   *  and the caller states it. Keep it identical to the `outcome` the
+   *  adjacent `recordConversationToolCall` reports. */
+  outcome: ToolCallOutcome,
   /** Engine-only bookkeeping — never replayed into LLM context, never projected
    *  to a client. The confirm gate parks its approval id here. */
   confirmation_data?: Record<string, unknown>,
@@ -302,7 +308,7 @@ async function persistFastPathTurn(
     approval_required: false,
     ...(confirmation_data ? { confirmation_data } : {}),
   });
-  await updateToolCallOutput(p.db, toolCallId, output);
+  await updateToolCallOutput(p.db, toolCallId, output, outcome);
   await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", { tool, output });
   const events: TurnEvent[] = [
     {
@@ -527,6 +533,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
             skipped_llm: true,
           },
           reply,
+          "denied",
         );
         recordConversationToolCall({
           category: "tenant_read",
@@ -549,6 +556,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       {},
       { ok: payload.ok, ...payload.data, skipped_llm: true },
       payload.reply,
+      payload.ok ? "ok" : "error",
     );
     recordConversationToolCall({
       category: "tenant_read",
@@ -609,6 +617,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       { catalogs: multiKinds },
       { ok: anyOk, catalogs: dataByKind, skipped_llm: true },
       reply,
+      anyOk ? "ok" : "error",
     );
     recordConversationToolCall({
       category: "tenant_read",
@@ -666,6 +675,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
               skipped_llm: true,
             },
             reply,
+            "denied",
           );
           recordConversationToolCall({
             category: "tenant_read",
@@ -688,6 +698,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         { execution_id: execId },
         { ok: payload.ok, ...payload.data, skipped_llm: true },
         payload.reply,
+        payload.ok ? "ok" : "error",
       );
       recordConversationToolCall({
         category: "tenant_read",
@@ -763,6 +774,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
             skipped_llm: true,
           },
           reply,
+          "denied",
         );
         recordConversationToolCall({
           category: "tenant_write",
@@ -828,6 +840,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
             suggested_command: `/workflows run ${resolved.slug}`,
           },
           `Confirm: run ${resolved.slug} in dev?`,
+          "pending",
           { approval_id: confirm_id },
         );
         // The pending envelope is NOT a denial — the operator may yet
@@ -857,6 +870,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         { workflow: resolved.slug, environment: "dev" },
         { ok: payload.ok, ...payload.data, skipped_llm: true },
         payload.reply,
+        payload.ok ? "ok" : "error",
       );
       // `runExecution` already emits its own execution audit row.
       // We previously stamped a CONVERSATION_COMMITTED row here, but
@@ -983,6 +997,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           {},
           { ok: false, error_code: claim.code, message: claim.message, skipped_llm: true },
           claim.message,
+          "error",
         );
         recordConversationToolCall({
           category: "tenant_write",
@@ -1025,6 +1040,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           replayArgs,
           { ok: false, error: "workflow_not_found", skipped_llm: true },
           reply,
+          "error",
         );
         recordConversationToolCall({
           category: "tenant_write",
@@ -1067,6 +1083,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
             skipped_llm: true,
           },
           reply,
+          "denied",
         );
         recordConversationToolCall({
           category: "tenant_write",
@@ -1099,6 +1116,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           replayArgs,
           { ok: false, error_code: "approval_audit_failed", skipped_llm: true },
           reply,
+          "error",
         );
         recordConversationToolCall({
           category: "tenant_write",
@@ -1120,6 +1138,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         replayArgs,
         { ok: payload.ok, ...payload.data, skipped_llm: true },
         payload.reply,
+        payload.ok ? "ok" : "error",
       );
       recordConversationToolCall({
         category: "tenant_write",

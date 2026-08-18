@@ -134,6 +134,16 @@ export const conversationToolCalls = pgTable(
     //   proposed | tested | confirmed | declined | partial | oauth_success
     //   | oauth_failure | auto_declined
     confirmation_state: text("confirmation_state"),
+    // How the call ended, in the same vocabulary the Prometheus
+    // `conversation_tool_calls_total` counter labels with:
+    //   ok | error | denied | pending  (`observability/instrumentation.ts`).
+    // Nullable with no backfill on purpose: `output` alone cannot tell a
+    // failure from a success (a structured `ok:false` with neither
+    // `error_code` nor `message` normalises to a payload byte-identical to a
+    // success — see `conversations/tools/result-payload.test.ts`), so a
+    // backfill would have to guess. NULL is the honest "unknown" for rows
+    // written before this column existed.
+    outcome: text("outcome"),
     confirmation_data: jsonb("confirmation_data"),
     // Append-only UI-action log per tool call.
     // [{ type: "user_tested" | "user_confirmed" | "user_partial" | "user_declined"
