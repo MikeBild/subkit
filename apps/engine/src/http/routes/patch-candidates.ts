@@ -35,6 +35,12 @@ const PatchCandidateSchema = z
     workflow_id: z.string(),
     // Joined from workflows — null when the workflow row is gone.
     workflow_name: z.string().nullable(),
+    // Which connection and which of its endpoints drifted. Both are on the row
+    // and neither was ever serialized, so a reviewer could see that a workflow
+    // needs repairing without being told WHERE. Null for a workflow-scoped
+    // signal that names no endpoint at all.
+    connector_id: z.string().nullable(),
+    endpoint_key: z.string().nullable(),
     classification: z.enum(["safe", "unsafe"]),
     status: z.enum(["proposed", "applied", "rejected", "superseded"]),
     fixture_id: z.string().nullable(),
@@ -72,6 +78,8 @@ function serialize(row: typeof patchCandidates.$inferSelect, workflowName: strin
     tenant_id: row.tenant_id,
     workflow_id: row.workflow_id,
     workflow_name: workflowName,
+    connector_id: row.connector_id ?? null,
+    endpoint_key: row.endpoint_key ?? null,
     classification: row.classification,
     status: row.status,
     fixture_id: row.fixture_id ?? null,
