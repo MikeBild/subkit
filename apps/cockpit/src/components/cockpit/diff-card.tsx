@@ -10,6 +10,8 @@ export interface DiffCardProps {
   targetLabel: string;
   before: unknown;
   after: unknown;
+  /** Ready-made lines, e.g. the hunks a conversation streams while it works. */
+  lines?: readonly DiffLine[];
   changedPaths?: readonly string[];
   /** What the engine observed, when the proposal carries no step snapshot. */
   driftSummary?: string | null;
@@ -38,6 +40,7 @@ export function DiffCard({
   targetLabel,
   before,
   after,
+  lines: streamed,
   changedPaths,
   driftSummary,
   patch,
@@ -47,10 +50,10 @@ export function DiffCard({
   testId,
 }: DiffCardProps) {
   const { t } = useI18n();
-  const view = selectChangeView({ before, after, patch });
-  const hasDiff = view.kind === "diff";
-  const lines = view.kind === "diff" ? view.lines : [];
-  const patchLines = view.kind === "patch" ? view.lines : [];
+  const view = streamed ? null : selectChangeView({ before, after, patch });
+  const hasDiff = streamed ? true : view?.kind === "diff";
+  const lines = streamed ?? (view?.kind === "diff" ? view.lines : []);
+  const patchLines = view?.kind === "patch" ? view.lines : [];
 
   return (
     <section className="rounded-lg border" data-testid={testId}>

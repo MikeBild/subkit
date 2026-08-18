@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
 import { asToolPart } from "@/lib/tool-parts";
+import { asStreamedDiff } from "@/pages/chat";
 
 describe("cockpit presentation", () => {
   test("hides UUIDs in conversational text", () => {
@@ -31,5 +32,37 @@ describe("cockpit presentation", () => {
       }),
     ).not.toBeNull();
     expect(asToolPart({ type: "text", text: "hello" })).toBeNull();
+  });
+});
+
+describe("streamed diff frames", () => {
+  test("renders the hunks the engine already computed", () => {
+    const diff = asStreamedDiff({
+      type: "diff",
+      title: "radar-collect-weekly · v4",
+      language: "json",
+      hunks: [
+        { kind: " ", text: "{" },
+        { kind: "-", text: '  "data_selector": "data.id"' },
+        { kind: "+", text: '  "data_selector": "data.result.id"' },
+      ],
+    });
+    expect(diff?.title).toBe("radar-collect-weekly · v4");
+    expect(diff?.lines).toEqual([
+      { type: "context", text: "{" },
+      { type: "removed", text: '  "data_selector": "data.id"' },
+      { type: "added", text: '  "data_selector": "data.result.id"' },
+    ]);
+  });
+
+  test("ignores every other frame and empty diffs", () => {
+    expect(asStreamedDiff({ type: "text_delta", text: "hallo" })).toBeNull();
+    expect(asStreamedDiff({ type: "diff", hunks: [] })).toBeNull();
+    expect(asStreamedDiff({ type: "diff" })).toBeNull();
+  });
+
+  test("an unknown hunk marker reads as context rather than being dropped", () => {
+    const diff = asStreamedDiff({ type: "diff", hunks: [{ kind: "?", text: "unklar" }] });
+    expect(diff?.lines).toEqual([{ type: "context", text: "unklar" }]);
   });
 });

@@ -22,7 +22,7 @@ import {
   recordProactiveDriftSignal,
   recordProactiveDriftUnanchored,
 } from "../observability/instrumentation.ts";
-import { processDriftSignal, scanForDrift } from "../self-healing/index.ts";
+import { driftSignalContext, processDriftSignal, scanForDrift } from "../self-healing/index.ts";
 
 /**
  * Execute one proactive drift scan for a single tenant.
@@ -101,22 +101,11 @@ export async function runProactiveDriftScanForTenant(
       try {
         const result = await processDriftSignal(
           signal,
-          {
-            tenant_id: ctx.tenant_id,
-            workflow_id: ctx.workflow_id,
-            execution_id: ctx.execution_id,
-            step_id: ctx.step_id,
-            // A proactive signal has no failing execution row, so this is the
-            // only anchor its candidate will ever carry. Dropping it here
-            // leaves a candidate that can be neither previewed nor applied.
-            ...(ctx.workflow_step_id ? { workflow_step_id: ctx.workflow_step_id } : {}),
-            ...(ctx.connector_id ? { connector_id: ctx.connector_id } : {}),
-            ...(ctx.endpoint_key ? { endpoint_key: ctx.endpoint_key } : {}),
+          driftSignalContext(ctx, {
             actor_id: null,
             source: "proactive_scheduler",
             scan_id,
-            repair_input: ctx.repair_input,
-          },
+          }),
           // Auto-apply `safe` rename/widening drift so a clean proactive
           // signal heals itself instead of parking forever. The policy
           // still parks anything unsafe, and the endpoint dedup guard in
