@@ -16341,12 +16341,51 @@
                     "integer",
                     "null"
                   ]
+                },
+                "tag": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "required": [
                 "row_id",
                 "hash",
-                "created_at"
+                "created_at",
+                "tag"
+              ]
+            }
+          },
+          "historical_in_db": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "row_id": {
+                  "type": "integer"
+                },
+                "hash": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "tag": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "row_id",
+                "hash",
+                "created_at",
+                "tag"
               ]
             }
           },
@@ -16384,6 +16423,7 @@
         },
         "required": [
           "unknown_in_db",
+          "historical_in_db",
           "missing_in_db",
           "engine_version",
           "embedded_migration_count",

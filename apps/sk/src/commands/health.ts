@@ -221,15 +221,18 @@ export const healthCommand = defineCommand({
     // Schema drift — one line; `sk doctor` owns resolution guidance.
     if (drift) {
       const unknown = drift.unknown_in_db.length;
+      const historical = drift.historical_in_db.length;
       const missing = drift.missing_in_db.length;
       process.stdout.write(`\n${pc.bold("Schema")}\n`);
       if (unknown === 0 && missing === 0) {
         process.stdout.write(
-          `  ${pc.green("✔")} embedded=${drift.embedded_migration_count} db=${drift.db_migration_count} (in sync)\n`,
+          `  ${pc.green("✔")} embedded=${drift.embedded_migration_count} db=${drift.db_migration_count} ` +
+            `(current${historical > 0 ? `; accepted_history=${historical}` : ""})\n`,
         );
       } else {
         process.stdout.write(
-          `  ${pc.yellow("⚠")} drift: unknown_in_db=${unknown} missing_in_db=${missing} — run \`sk doctor\` for resolution\n`,
+          `  ${pc.yellow("⚠")} drift: unknown_in_db=${unknown} accepted_history=${historical} ` +
+            `missing_in_db=${missing} — run \`sk doctor\` for resolution\n`,
         );
       }
     }
