@@ -260,6 +260,20 @@
       "when": 1786869439067,
       "tag": "0036_fancy_thena",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787054129803,
+      "tag": "0037_yielding_tinkerer",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1787054993566,
+      "tag": "0038_solid_baron_zemo",
+      "breakpoints": true
     }
   ]
 }

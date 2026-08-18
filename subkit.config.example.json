@@ -212,6 +212,9 @@
       "thresholdSec": 30,
       "quietHoursStart": "",
       "quietHoursEnd": ""
+    },
+    "inbox": {
+      "retention_days": 30
     }
   },
   "connectors": {
