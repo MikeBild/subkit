@@ -1,4 +1,4 @@
-// Engine boot-time crash recovery.
+// Engine crash recovery.
 //
 // Scenario: the engine process exits hard (OOM kill, kernel panic,
 // SIGKILL from the orchestrator) while one or more executions are
@@ -6,7 +6,8 @@
 // the worker that owned them is gone, no one will ever flip them to a
 // terminal state, and the API surface keeps reporting them as live.
 //
-// On boot we SELECT every `running` execution whose `started_at` is
+// On boot and on a periodic reconciliation pass we SELECT every `running`
+// execution whose `started_at` is
 // older than `workflow.timeout_ms × 1.5` (defaulting to 6h × 1.5 = 9h
 // when the workflow has no explicit timeout). Each row is forced to
 // `timed_out` inside a transaction that:
@@ -26,9 +27,10 @@
 
 import { eq, sql } from "drizzle-orm";
 import { recordExecutionCrashRecovered } from "../audit/recorders/index.ts";
+import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { executions, workflows, workflowVersions } from "../db/schema/index.ts";
+import { executions, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 
 /** 6h default — the upper bound used when no workflow timeout is set. */
@@ -40,6 +42,7 @@ const MAX_RECOVER_PER_PASS = 1000;
 
 export interface RecoverCrashedExecutionsOptions {
   now?: Date;
+  source?: "boot_recovery" | "periodic_recovery";
   /**
    * Per-tenant override threshold in ms. If provided and positive,
    * trumps the per-workflow `timeout_ms × 1.5` calculation. Useful for
@@ -86,10 +89,13 @@ export async function recoverCrashedExecutions(
   opts: RecoverCrashedExecutionsOptions = {},
 ): Promise<RecoverCrashedExecutionsResult> {
   const now = opts.now ?? new Date();
+  const source = opts.source ?? "boot_recovery";
 
   // Candidate select. We pull the workflow's `timeout_ms` out of the
-  // dag JSON of the workflow's *current_version_id* — falling back to
-  // the default when the field is missing. The threshold is computed
+  // dag JSON of the exact workflow version bound to the execution — falling
+  // back to the default when the field is missing. Reading the workflow's
+  // current version here would let a later edit silently change the timeout
+  // contract of an already-running execution. The threshold is computed
   // per-row in JS (not SQL) so the override and the multiplier stay
   // visible at the call site rather than buried inside an INTERVAL
   // expression.
@@ -105,8 +111,7 @@ export async function recoverCrashedExecutions(
       >`NULLIF(${workflowVersions.dag}->>'timeout_ms', '')::int`,
     })
     .from(executions)
-    .leftJoin(workflows, eq(workflows.id, executions.workflow_id))
-    .leftJoin(workflowVersions, eq(workflowVersions.id, workflows.current_version_id))
+    .leftJoin(workflowVersions, eq(workflowVersions.id, executions.workflow_version_id))
     .where(eq(executions.status, "running"))
     .limit(MAX_RECOVER_PER_PASS)) as CandidateRow[];
 
@@ -164,7 +169,7 @@ export async function recoverCrashedExecutions(
           timeout_ms: thresholdMs,
           workflow_timeout_ms: row.workflow_timeout_ms,
           age_ms: ageMs,
-          source: "boot_recovery",
+          source,
         },
         // Bind the audit insert to the caller's db handle so tests
         // using a disposable per-file database land the row in the
@@ -199,4 +204,93 @@ export async function recoverCrashedExecutions(
   }
 
   return { recovered };
+}
+
+export interface CrashRecoveryMonitor {
+  stop(): void;
+  checkNow(): Promise<RecoverCrashedExecutionsResult>;
+}
+
+/**
+ * Periodically reconcile executions whose owning worker disappeared.
+ *
+ * A boot-only sweep has a race: when an execution is younger than its grace
+ * window during startup, it remains `running` forever because no later pass
+ * revisits it. The recursive timer reads the setting after every pass, so an
+ * operator can tune the cadence through SubKit settings without a deployment.
+ * A single-flight guard prevents overlapping global scans on a slow database;
+ * the row-level compare-and-set in recoverCrashedExecutions keeps concurrent
+ * engine replicas safe.
+ */
+export function startCrashRecoveryMonitor(
+  db: Db,
+  options: {
+    intervalMs?: () => number;
+    recover?: () => Promise<RecoverCrashedExecutionsResult>;
+  } = {},
+): CrashRecoveryMonitor {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let activeCheck: Promise<RecoverCrashedExecutionsResult> | null = null;
+
+  const intervalMs =
+    options.intervalMs ?? (() => getConfig().queue.crash_recovery_sweep_interval_ms);
+  const recover =
+    options.recover ??
+    (() => {
+      const overrideThresholdMs = resolveCrashRecoveryThresholdMs(
+        process.env.SK_EXECUTION_CRASH_RECOVERY_THRESHOLD_MS,
+      );
+      return recoverCrashedExecutions(db, {
+        source: "periodic_recovery",
+        ...(overrideThresholdMs !== undefined ? { overrideThresholdMs } : {}),
+      });
+    });
+
+  const checkNow = async (): Promise<RecoverCrashedExecutionsResult> => {
+    if (activeCheck) return activeCheck;
+    activeCheck = recover();
+    try {
+      return await activeCheck;
+    } finally {
+      activeCheck = null;
+    }
+  };
+
+  const schedule = (): void => {
+    if (stopped) return;
+    timer = setTimeout(() => {
+      void checkNow()
+        .then(({ recovered }) => {
+          if (recovered > 0) {
+            logger.info({
+              module: "queue",
+              action: "crash_recovery.periodic_complete",
+              msg: "periodic crash recovery sweep finished",
+              recovered,
+            });
+          }
+        })
+        .catch((err) => {
+          logger.error({
+            module: "queue",
+            action: "crash_recovery.periodic_failed",
+            msg: "periodic crash recovery sweep failed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        })
+        .finally(schedule);
+    }, intervalMs());
+    if (typeof timer.unref === "function") timer.unref();
+  };
+
+  schedule();
+  return {
+    checkNow,
+    stop(): void {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      timer = null;
+    },
+  };
 }

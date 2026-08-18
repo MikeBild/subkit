@@ -12035,6 +12035,7 @@ Queue worker
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `queue.abort_poll_interval_ms` | number | `500` | global | no | no | Hot-reloadable interval for workers to observe durable cross-replica execution cancellation requests. |
 | `queue.concurrency` | number | `8` | tenant | no | no |  |
+| `queue.crash_recovery_sweep_interval_ms` | number | `60000` | global | no | no | Hot-reloadable interval for reconciling executions orphaned by a worker or engine restart. |
 
 ## tokens
 Token budget
