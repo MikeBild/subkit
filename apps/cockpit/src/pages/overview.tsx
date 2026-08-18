@@ -5,8 +5,8 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
 import { canSeeDecisions } from "@/app/use-decisions";
-import { ContextHelp } from "@/components/cockpit/context-help";
 import { IconButton } from "@/components/cockpit/icon-button";
+import { PageFrame } from "@/components/cockpit/page-frame";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,8 +20,11 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
+import { statusLabel } from "@/lib/status-label";
+import type { FailureGroup, HealthDigest } from "./overview-model";
+import { partitionFailures, recentRuns, waitingSummary } from "./overview-model";
 
-type HealthDigest = components["schemas"]["OperatorHealthDigest"];
+type Execution = components["schemas"]["Execution"];
 
 export function OverviewPage() {
   const { t, dateTime } = useI18n();
@@ -34,8 +37,19 @@ export function OverviewPage() {
     enabled: allowed,
     queryFn: () => apiRequest<HealthDigest>("/v1/operator/health-digest"),
   });
+  // `stats:read` does not imply `execution:read`, so the recent-runs block is
+  // gated on its own permission rather than on the page's.
+  const canSeeRuns = session.permissions.includes("execution:read");
+  const runsQuery = useQuery({
+    queryKey: ["overview", "recent-runs"],
+    enabled: canSeeRuns,
+    staleTime: 30_000,
+    queryFn: () => apiRequest<{ items: Execution[] }>("/v1/executions?limit=8"),
+  });
   const digest = query.data;
-  const failureGroups = digest ? [...digest.failure_groups].sort((a, b) => b.count - a.count) : [];
+  const { incidents, trials } = partitionFailures(digest?.failure_groups ?? []);
+  const waiting = digest ? waitingSummary(digest) : { total: 0, oldestDays: 0, stuckCount: 0 };
+  const recent = recentRuns(runsQuery.data?.items ?? []);
   const stuck = digest?.patch_candidates.items.filter((item) => item.stuck) ?? [];
   const oldestStuckDays = stuck.reduce((days, item) => Math.max(days, item.age_days), 0);
 
@@ -50,22 +64,12 @@ export function OverviewPage() {
     );
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col" data-testid="overview-page">
-      <header
-        className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:px-8"
-        data-testid="overview-header"
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
-            <ContextHelp
-              label={t("resource.about", { resource: title })}
-              testId="overview-description"
-            >
-              {t("overview.description")}
-            </ContextHelp>
-          </div>
-        </div>
+    <PageFrame
+      testId="overview-page"
+      title={title}
+      description={t("overview.description")}
+      scroll="page"
+      action={
         <IconButton
           variant="outline"
           label={t("common.refresh")}
@@ -74,194 +78,254 @@ export function OverviewPage() {
         >
           <RefreshCw className={query.isFetching ? "animate-spin" : undefined} />
         </IconButton>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 lg:p-8">
-        {query.isPending ? (
-          <div
-            className="grid gap-3"
-            data-testid="overview-loading"
-            role="status"
-            aria-label={t("common.loading")}
+      }
+    >
+      {query.isPending ? (
+        <div
+          className="grid gap-3"
+          data-testid="overview-loading"
+          role="status"
+          aria-label={t("common.loading")}
+        >
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      ) : query.error || !digest ? (
+        <Alert variant="destructive" data-testid="overview-error">
+          <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
+          <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            data-testid="overview-retry"
+            onClick={() => void query.refetch()}
           >
-            <Skeleton className="h-40 w-full" />
-            <Skeleton className="h-40 w-full" />
-          </div>
-        ) : query.error || !digest ? (
-          <Alert variant="destructive" data-testid="overview-error">
-            <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
-            <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              data-testid="overview-retry"
-              onClick={() => void query.refetch()}
-            >
-              {t("session.retry")}
-            </Button>
-          </Alert>
-        ) : (
-          <div className="grid gap-4">
-            {stuck.length > 0 && (
-              <Alert variant="destructive" data-testid="overview-incident">
-                <AlertTitle>
-                  {t("overview.incident.title", { count: String(stuck.length) })}
-                </AlertTitle>
-                <AlertDescription>
-                  {t("overview.incident.description", { days: String(oldestStuckDays) })}
-                </AlertDescription>
-                <Button variant="outline" size="sm" className="mt-3" asChild>
-                  <Link to="/decisions" data-testid="overview-incident-open">
-                    {t("overview.incident.open")}
+            {t("session.retry")}
+          </Button>
+        </Alert>
+      ) : (
+        <div className="grid gap-4">
+          {stuck.length > 0 && (
+            <Alert variant="destructive" data-testid="overview-incident">
+              <AlertTitle>
+                {t("overview.incident.title", { count: String(stuck.length) })}
+              </AlertTitle>
+              <AlertDescription>
+                {t("overview.incident.description", { days: String(oldestStuckDays) })}
+              </AlertDescription>
+              <Button variant="outline" size="sm" className="mt-3" asChild>
+                <Link to="/decisions" data-testid="overview-incident-open">
+                  {t("overview.incident.open")}
+                </Link>
+              </Button>
+            </Alert>
+          )}
+
+          {/* Zone A. This used to render the full candidate list a second
+                time — the same rows as /decisions, not decidable here, and
+                titled from a different field, so the two pages disagreed about
+                what one candidate was called. A count and a link cannot
+                disagree with anything. */}
+          <Card data-testid="overview-waiting">
+            <CardHeader>
+              <CardTitle>{t("overview.waiting.title")}</CardTitle>
+              <CardDescription>{t("overview.waiting.description")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {waiting.total > 0 ? (
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span
+                    className="text-3xl font-semibold tabular-nums"
+                    data-testid="overview-waiting-count"
+                  >
+                    {waiting.total}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {t("overview.waiting.pendingLabel")}
+                  </span>
+                  {waiting.oldestDays > 0 && (
+                    <span
+                      className="text-sm text-muted-foreground"
+                      data-testid="overview-waiting-oldest"
+                    >
+                      {t("overview.waiting.oldest", { days: String(waiting.oldestDays) })}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                  data-testid="overview-waiting-clear"
+                >
+                  <CircleCheck aria-hidden="true" className="shrink-0" />
+                  <span>
+                    {t("overview.waiting.none")}{" "}
+                    {t("overview.waiting.checked", { date: dateTime(digest.generated_at) })}
+                  </span>
+                </div>
+              )}
+            </CardContent>
+            {canDecide && waiting.total > 0 && (
+              <CardFooter>
+                <Button asChild>
+                  <Link to="/decisions" data-testid="overview-open-decisions">
+                    <ListChecks data-icon="inline-start" />
+                    {t("overview.waiting.open")}
                   </Link>
                 </Button>
-              </Alert>
+              </CardFooter>
             )}
+          </Card>
 
-            <Card data-testid="overview-waiting">
-              <CardHeader>
-                <CardTitle>{t("overview.waiting.title")}</CardTitle>
-                <CardDescription>{t("overview.waiting.description")}</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3">
-                {digest.patch_candidates.pending > 0 ? (
-                  <>
-                    <div className="flex items-baseline gap-2">
-                      <span
-                        className="text-3xl font-semibold tabular-nums"
-                        data-testid="overview-waiting-count"
-                      >
-                        {digest.patch_candidates.pending}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        {t("overview.waiting.pendingLabel")}
-                      </span>
-                    </div>
-                    <div className="grid gap-2" data-testid="overview-waiting-items">
-                      {digest.patch_candidates.items.map((item, index) => (
-                        <div
-                          key={`${item.summary}-${index}`}
-                          className="rounded-lg border p-3"
-                          data-testid={`overview-waiting-item-${index}`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <p className="min-w-0 text-sm font-medium break-words">
-                              {item.summary}
-                            </p>
-                            <Badge
-                              variant={item.classification === "safe" ? "secondary" : "destructive"}
-                            >
-                              {t(
-                                item.classification === "safe"
-                                  ? "overview.classification.safe"
-                                  : "overview.classification.unsafe",
-                              )}
-                            </Badge>
-                          </div>
-                          {item.workflow_name && (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {item.workflow_name}
-                            </p>
-                          )}
-                        </div>
+          <Card data-testid="overview-failures">
+            <CardHeader>
+              <CardTitle>{t("operations.failures")}</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              {digest.all_clear || (incidents.length === 0 && trials.length === 0) ? (
+                <div
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                  data-testid="overview-failures-clear"
+                >
+                  <CircleCheck aria-hidden="true" className="shrink-0" />
+                  <span>{t("overview.failures.allClear")}</span>
+                </div>
+              ) : (
+                <>
+                  {incidents.map((failure, index) => (
+                    <FailureRow
+                      key={`${failure.signature}-${index}`}
+                      failure={failure}
+                      testId={`overview-failure-${index}`}
+                      dateTime={dateTime}
+                      lastSeenLabel={t("overview.failures.lastSeen", {
+                        date: dateTime(failure.last_seen),
+                      })}
+                    />
+                  ))}
+                  {/* Trial runs sit under their own heading. A person building
+                        a workflow can fail two dozen runs in an afternoon, and
+                        counting those as incidents reports a crisis that is not
+                        happening. */}
+                  {trials.length > 0 && (
+                    <div className="mt-2 grid gap-2 border-t pt-3" data-testid="overview-trials">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {t("overview.failures.fromTrials")}
+                      </p>
+                      {trials.map((failure, index) => (
+                        <FailureRow
+                          key={`${failure.signature}-${index}`}
+                          failure={failure}
+                          testId={`overview-trial-${index}`}
+                          dateTime={dateTime}
+                          lastSeenLabel={t("overview.failures.lastSeen", {
+                            date: dateTime(failure.last_seen),
+                          })}
+                        />
                       ))}
                     </div>
-                  </>
-                ) : (
-                  <div
-                    className="flex items-center gap-2 text-sm text-muted-foreground"
-                    data-testid="overview-waiting-clear"
-                  >
-                    <CircleCheck aria-hidden="true" className="shrink-0" />
-                    <span>
-                      {t("overview.waiting.none")}{" "}
-                      {t("overview.waiting.checked", { date: dateTime(digest.generated_at) })}
-                    </span>
-                  </div>
-                )}
-              </CardContent>
-              {canDecide && (
-                <CardFooter>
-                  <Button asChild>
-                    <Link to="/decisions" data-testid="overview-open-decisions">
-                      <ListChecks data-icon="inline-start" />
-                      {t("overview.waiting.open")}
-                    </Link>
-                  </Button>
-                </CardFooter>
+                  )}
+                </>
               )}
-            </Card>
+            </CardContent>
+          </Card>
 
-            <Card data-testid="overview-failures">
+          {canSeeRuns && (
+            <Card data-testid="overview-recent">
               <CardHeader>
-                <CardTitle>{t("operations.failures")}</CardTitle>
+                <CardTitle>{t("overview.recent.title")}</CardTitle>
+                <CardDescription>{t("overview.recent.description")}</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-2">
-                {digest.all_clear || failureGroups.length === 0 ? (
-                  <div
-                    className="flex items-center gap-2 text-sm text-muted-foreground"
-                    data-testid="overview-failures-clear"
-                  >
-                    <CircleCheck aria-hidden="true" className="shrink-0" />
-                    <span>{t("overview.failures.allClear")}</span>
-                  </div>
+                {recent.length === 0 ? (
+                  <p className="text-sm text-muted-foreground" data-testid="overview-recent-empty">
+                    {t("overview.recent.empty")}
+                  </p>
                 ) : (
-                  failureGroups.map((failure, index) => (
+                  recent.map((run, index) => (
                     <div
-                      key={`${failure.signature}-${index}`}
-                      className="rounded-lg border p-3"
-                      data-testid={`overview-failure-${index}`}
+                      key={run.id}
+                      className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border p-3"
+                      data-testid={`overview-recent-${index}`}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="min-w-0 text-sm font-medium break-words">{failure.cause}</p>
-                        <Badge variant="secondary" className="tabular-nums">
-                          {failure.count}
-                        </Badge>
-                      </div>
-                      {(failure.workflow_name || failure.guidance) && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {[failure.workflow_name, failure.guidance].filter(Boolean).join(" · ")}
-                        </p>
-                      )}
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {t("overview.failures.lastSeen", { date: dateTime(failure.last_seen) })}
-                      </p>
+                      <span className="min-w-0 truncate text-sm font-medium">
+                        {run.name ?? t("overview.recent.unnamed")}
+                      </span>
+                      <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                        <Badge variant="secondary">{statusLabel(t, run.status)}</Badge>
+                        {run.startedAt ? dateTime(run.startedAt) : "—"}
+                        <span className="tabular-nums">
+                          {run.durationMs === null
+                            ? "—"
+                            : t("overview.recent.duration", {
+                                seconds: String(Math.round(run.durationMs / 1000)),
+                              })}
+                        </span>
+                      </span>
                     </div>
                   ))
                 )}
               </CardContent>
             </Card>
+          )}
 
-            {digest.risk.length > 0 && (
-              <Card data-testid="overview-risks">
-                <CardHeader>
-                  <CardTitle>{t("operations.risks")}</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2">
-                  {digest.risk.map((risk, index) => (
-                    <div
-                      key={`${risk.headline}-${index}`}
-                      className="rounded-lg border p-3"
-                      data-testid={`overview-risk-${index}`}
-                    >
-                      <div className="flex gap-2">
-                        <p className="min-w-0 text-sm font-medium break-words">{risk.headline}</p>
-                        <Badge variant={risk.severity === "critical" ? "destructive" : "outline"}>
-                          {t(
-                            risk.severity === "critical" ? "severity.critical" : "severity.warning",
-                          )}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{risk.detail}</p>
+          {digest.risk.length > 0 && (
+            <Card data-testid="overview-risks">
+              <CardHeader>
+                <CardTitle>{t("operations.risks")}</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                {digest.risk.map((risk, index) => (
+                  <div
+                    key={`${risk.headline}-${index}`}
+                    className="rounded-lg border p-3"
+                    data-testid={`overview-risk-${index}`}
+                  >
+                    <div className="flex gap-2">
+                      <p className="min-w-0 text-sm font-medium break-words">{risk.headline}</p>
+                      <Badge variant={risk.severity === "critical" ? "destructive" : "outline"}>
+                        {t(risk.severity === "critical" ? "severity.critical" : "severity.warning")}
+                      </Badge>
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )}
+                    <p className="mt-1 text-xs text-muted-foreground">{risk.detail}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+    </PageFrame>
+  );
+}
+
+/** One root-cause group. Shared by the incident list and the trial list so the
+ *  two can never drift into different shapes. */
+function FailureRow({
+  failure,
+  testId,
+  lastSeenLabel,
+}: {
+  failure: FailureGroup;
+  testId: string;
+  dateTime: (value: string) => string;
+  lastSeenLabel: string;
+}) {
+  return (
+    <div className="rounded-lg border p-3" data-testid={testId}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="min-w-0 text-sm font-medium break-words">{failure.cause}</p>
+        <Badge variant="secondary" className="tabular-nums">
+          {failure.count}
+        </Badge>
       </div>
-    </main>
+      {(failure.workflow_name || failure.guidance) && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {[failure.workflow_name, failure.guidance].filter(Boolean).join(" · ")}
+        </p>
+      )}
+      <p className="mt-1 text-xs text-muted-foreground">{lastSeenLabel}</p>
+    </div>
   );
 }
