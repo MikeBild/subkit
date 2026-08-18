@@ -3,6 +3,7 @@ import { ArrowLeft, Bot, CheckCircle2, Pencil, RefreshCw, ShieldCheck } from "lu
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest, apiText } from "@/api/client";
+import type { components } from "@/api/schema";
 import { AgentPanel } from "@/components/cockpit/agent-panel";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
@@ -27,6 +28,7 @@ import { statusLabel } from "@/lib/status-label";
 
 type DetailResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
 type RecordValue = Record<string, unknown>;
+type ProbeResult = components["schemas"]["ConnectorProbeResult"];
 
 const ENDPOINTS: Record<DetailResource, string> = {
   workflows: "/v1/workflows",
@@ -383,10 +385,14 @@ export function CatalogDetailPage({
       : resource === "connectors"
         ? `&connector_id=${encodeURIComponent(id)}`
         : "";
+  // A probe result is a paragraph that names latency or the missing scopes,
+  // not a cell in a list. It belongs on the connector it describes.
   const probe = useMutation({
     mutationFn: () =>
-      apiRequest<RecordValue>(`/v1/connectors/${encodeURIComponent(id)}/test`, { method: "POST" }),
-    onSuccess: () => toast.success(t("detail.testPassed")),
+      apiRequest<ProbeResult>(`/v1/connectors/${encodeURIComponent(id)}/test`, { method: "POST" }),
+    onSuccess: (result) => {
+      if (result.ok) toast.success(t("detail.testPassed"));
+    },
   });
 
   if (!canRead)
@@ -461,6 +467,36 @@ export function CatalogDetailPage({
         </div>
       </header>
       <GovernanceBar record={record} canWrite={canWrite} />
+      {resource === "connectors" && probe.data && (
+        <div className="border-b px-6 py-4" data-testid="connector-probe-result">
+          <p
+            className={
+              probe.data.ok ? "text-sm text-success" : "text-sm font-medium text-destructive"
+            }
+          >
+            {probe.data.ok
+              ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
+              : (probe.data.detail ?? t("connectors.probeFailed"))}
+          </p>
+          {probe.data.missing_scopes && probe.data.missing_scopes.length > 0 && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("connectors.missingScopes", { scopes: probe.data.missing_scopes.join(", ") })}
+            </p>
+          )}
+          {!probe.data.ok && probe.data.provider_action_url && (
+            <Button variant="outline" size="sm" className="mt-3" asChild>
+              <a
+                href={probe.data.provider_action_url}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="connector-renew"
+              >
+                {t("connectors.renew")}
+              </a>
+            </Button>
+          )}
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 flex-col gap-5 p-6">
         {resource === "workflows" ? (
           <WorkflowBody id={id} record={record} canRun={permissions.includes("workflow:run")} />

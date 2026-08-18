@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { presentationRows, usageStatsEndpoint } from "@/pages/resource";
+import { formatDurationMs, usageRows, usageStatsEndpoint, usageTotals } from "@/pages/usage-model";
 
-describe("cockpit resource presentation", () => {
+describe("cockpit usage presentation", () => {
   test("supplies the required usage window", () => {
     const endpoint = usageStatsEndpoint(new Date("2026-08-10T12:00:00.000Z"));
     expect(endpoint).toContain("bucket=day");
@@ -10,21 +10,19 @@ describe("cockpit resource presentation", () => {
 
   test("turns usage buckets into readable rows", () => {
     expect(
-      presentationRows("usage", [
-        {
-          groups: [
-            {
-              buckets: [
-                {
-                  ts: "2026-08-10T00:00:00.000Z",
-                  executions: 4,
-                  duration_ms: { avg: 1200, p95: 2400 },
-                },
-              ],
-            },
-          ],
-        },
-      ]),
+      usageRows({
+        groups: [
+          {
+            buckets: [
+              {
+                ts: "2026-08-10T00:00:00.000Z",
+                executions: 4,
+                duration_ms: { avg: 1200, p95: 2400 },
+              },
+            ],
+          },
+        ],
+      }),
     ).toEqual([
       {
         date: "2026-08-10T00:00:00.000Z",
@@ -35,27 +33,41 @@ describe("cockpit resource presentation", () => {
     ]);
   });
 
-  test("exposes setting provenance without dumping nested metadata", () => {
+  test("keeps an unmeasured duration missing rather than calling it zero", () => {
+    const [row] = usageRows({
+      groups: [{ buckets: [{ ts: "2026-08-10T00:00:00.000Z", executions: 0 }] }],
+    });
+    expect(row?.average_duration_ms).toBeNull();
+    expect(formatDurationMs(row?.average_duration_ms ?? null)).toBe("—");
+  });
+
+  test("ignores an envelope that carries no groups", () => {
+    expect(usageRows(null)).toEqual([]);
+    expect(usageRows({})).toEqual([]);
+  });
+
+  test("reads the headline totals and the success rate they imply", () => {
     expect(
-      presentationRows("settings", [
-        {
-          items: [
-            {
-              path: "execution.timeout_ms",
-              value: 5000,
-              meta: { source: "default", scope: "tenant", requiresRestart: false },
-            },
-          ],
+      usageTotals({
+        totals: {
+          executions: { count: 40, by_status: { completed: 36, failed: 4 } },
+          duration_ms: { avg: 1110, p95: 2300 },
         },
-      ]),
-    ).toEqual([
-      {
-        path: "execution.timeout_ms",
-        value: 5000,
-        source: "default",
-        scope: "tenant",
-        requires_restart: false,
-      },
-    ]);
+      }),
+    ).toEqual({
+      executions: 40,
+      averageDurationMs: 1110,
+      p95DurationMs: 2300,
+      successRatePercent: 90,
+    });
+  });
+
+  test("reports no success rate when nothing ran", () => {
+    expect(usageTotals({ totals: { executions: { count: 0, by_status: {} } } })).toEqual({
+      executions: 0,
+      averageDurationMs: null,
+      p95DurationMs: null,
+      successRatePercent: null,
+    });
   });
 });

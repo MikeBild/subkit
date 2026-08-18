@@ -1,14 +1,14 @@
 import { createRootRoute, createRoute, createRouter, Navigate } from "@tanstack/react-router";
-import type { ReactNode } from "react";
 import { AccessPage, ApiAccessPage, OperationsPage, PeoplePage, SettingsPage } from "@/pages/admin";
+import { AuditPage } from "@/pages/audit";
 import { CATALOG_RESOURCES, CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
-import { ConnectorsPage } from "@/pages/connectors";
 import { DecisionsPage } from "@/pages/decisions";
+import { InboxPage } from "@/pages/inbox";
 import { OverviewPage } from "@/pages/overview";
-import { RESOURCE_CONFIGS, ResourcePage } from "@/pages/resource";
 import { RunsPage } from "@/pages/runs";
+import { UsagePage } from "@/pages/usage";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
 
@@ -44,6 +44,9 @@ const conversationRoute = createRoute({
   component: ChatPage,
 });
 
+// Every page is its own module (CUI-PAGE-2). There is no generic resource
+// renderer any more: a list that cannot say which columns it has cannot say
+// which relations matter either.
 const dedicatedRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/overview", component: OverviewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/decisions", component: DecisionsPage }),
@@ -52,52 +55,27 @@ const dedicatedRoutes = [
     path: "/approvals",
     component: () => <Navigate to="/decisions" replace />,
   }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/inbox", component: InboxPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/runs", component: RunsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/audit", component: AuditPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/usage", component: UsagePage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/people", component: PeoplePage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/access", component: AccessPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/api-access", component: ApiAccessPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/operations", component: OperationsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),
 ];
-const dedicatedResources = new Set([
-  "approvals",
-  "decisions",
-  "runs",
-  "people",
-  "access",
-  "api-access",
-  "operations",
-  "settings",
-]);
-
-const resourceRoutes = Object.keys(RESOURCE_CONFIGS)
-  .filter((resource) => !dedicatedResources.has(resource) && !CATALOG_RESOURCES.has(resource))
-  .map((resource) =>
-    createRoute({
-      getParentRoute: () => rootRoute,
-      path: `/${resource}`,
-      component: () => {
-        const session = useSession();
-        return <ResourcePage resource={resource} permissions={session.permissions} />;
-      },
-    }),
-  );
-
-// Connectors present as cards with their connection state, not as a table.
-const catalogListOverrides: Record<string, () => ReactNode> = { connectors: ConnectorsPage };
 
 const catalogRoutes = [...CATALOG_RESOURCES].flatMap((resource) => [
   createRoute({
     getParentRoute: () => rootRoute,
     path: `/${resource}`,
-    component:
-      catalogListOverrides[resource] ??
-      (() => {
-        const session = useSession();
-        return (
-          <CatalogPage resource={resource as DetailResource} permissions={session.permissions} />
-        );
-      }),
+    component: () => {
+      const session = useSession();
+      return (
+        <CatalogPage resource={resource as DetailResource} permissions={session.permissions} />
+      );
+    },
   }),
   createRoute({
     getParentRoute: () => rootRoute,
@@ -121,7 +99,6 @@ const routeTree = rootRoute.addChildren([
   conversationRoute,
   ...dedicatedRoutes,
   ...catalogRoutes,
-  ...resourceRoutes,
 ]);
 
 export const router = createRouter({ routeTree, basepath: "/cockpit" });

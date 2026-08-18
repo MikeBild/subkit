@@ -1,31 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import type { SortingState } from "@tanstack/react-table";
+import { Search } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
-import { ContextHelp } from "@/components/cockpit/context-help";
-import { IconButton } from "@/components/cockpit/icon-button";
+import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
+import { PageFrame } from "@/components/cockpit/page-frame";
+import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -42,92 +28,34 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import {
+  formatRunDuration,
+  RUN_STATUSES,
+  requestSourceLabel,
+  runDurationMs,
+  runName,
+  SOURCE_KIND_KEYS,
+} from "@/pages/runs-model";
+
+// Re-exported so callers that already know these names keep working; the
+// definitions live in the pure model module beside its test.
+export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, runName };
 
 type Execution = components["schemas"]["Execution"];
 type ExecutionList = components["schemas"]["ExecutionListResponse"];
 type ExecutionStep = components["schemas"]["ExecutionStep"];
 type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
 
-export const RUN_STATUSES = [
-  "queued",
-  "running",
-  "succeeded",
-  "failed",
-  "aborted",
-  "timed_out",
-] as const;
-
-const SOURCE_KIND_KEYS: Record<Execution["source_kind"], TranslationKey> = {
-  saved: "runs.sourceKind.saved",
-  draft: "runs.sourceKind.draft",
-  step: "runs.sourceKind.step",
-};
-
-const REQUEST_SOURCE_KEYS: Partial<Record<string, TranslationKey>> = {
-  api: "runs.source.api",
-  cli: "runs.source.cli",
-  mcp: "runs.source.mcp",
-  webhook: "runs.source.webhook",
-  "tool-chain": "runs.source.toolChain",
-  scheduler: "runs.source.scheduler",
-  chat: "runs.source.chat",
-};
-
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
-
-export function runName(run: Execution, t: Translate): string {
-  if (run.workflow_name?.trim()) return run.workflow_name;
-  return t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved");
-}
-
-function requestSourceLabel(source: string, t: Translate): string {
-  const key = REQUEST_SOURCE_KEYS[source];
-  return key ? t(key) : t("common.unknown");
-}
-
-export function formatRunDuration(locale: Locale, ms: number): string {
-  if (ms < 1_000) return `${Math.max(0, Math.round(ms))} ms`;
-  const tenths = Math.round(ms / 100) / 10;
-  if (tenths < 60) {
-    const seconds = new Intl.NumberFormat(LOCALE_TAGS[locale], {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    }).format(tenths);
-    return `${seconds} s`;
-  }
-  // Round to whole seconds first so 119.6 s carries into "2m 0s", never "1m 60s".
-  const totalSeconds = Math.round(ms / 1_000);
-  return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`;
-}
-
-export function runDurationMs(run: Pick<Execution, "started_at" | "finished_at">): number | null {
-  if (!run.started_at || !run.finished_at) return null;
-  const ms = Date.parse(run.finished_at) - Date.parse(run.started_at);
-  return Number.isFinite(ms) && ms >= 0 ? ms : null;
-}
+const PAGE_SIZE = 25;
 
 function previewText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return text?.trim() ? text : null;
-}
-
-function RunDuration({ run }: { run: Pick<Execution, "started_at" | "finished_at"> }) {
-  const { locale } = useI18n();
-  const ms = runDurationMs(run);
-  return <>{ms === null ? "—" : formatRunDuration(locale, ms)}</>;
 }
 
 function EvidenceBlock({
@@ -180,12 +108,12 @@ function RunDetail({ run }: { run: Execution }) {
     : null;
   const facts: Array<[string, string]> = [
     [t("resource.field.status"), statusLabel(t, current.status)],
-    [t("runs.column.started"), current.started_at ? dateTime(current.started_at) : "—"],
-    [t("runs.detail.finished"), current.finished_at ? dateTime(current.finished_at) : "—"],
+    [t("runs.column.started"), current.started_at ? dateTime(current.started_at) : MISSING],
+    [t("runs.detail.finished"), current.finished_at ? dateTime(current.finished_at) : MISSING],
     [
       t("runs.column.duration"),
       runDurationMs(current) === null
-        ? "—"
+        ? MISSING
         : formatRunDuration(locale, runDurationMs(current) ?? 0),
     ],
     [t("runs.column.source"), requestSourceLabel(current.request_source, t)],
@@ -264,7 +192,7 @@ function RunDetail({ run }: { run: Execution }) {
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {step.duration_ms === null
-                        ? "—"
+                        ? MISSING
                         : formatRunDuration(locale, step.duration_ms)}
                     </p>
                     {stepError && (
@@ -284,33 +212,106 @@ function RunDetail({ run }: { run: Execution }) {
 }
 
 export function RunsPage() {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const session = useSession();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Execution | null>(null);
+  const debouncedSearch = useDebouncedValue(search);
   const allowed = session.permissions.includes("execution:read");
   const title = t("resource.runs.title");
   const query = useQuery({
-    queryKey: ["runs", statusFilter],
+    queryKey: ["runs", statusFilter, page],
     enabled: allowed,
     queryFn: () => {
-      const params = new URLSearchParams({ limit: "100" });
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(page * PAGE_SIZE),
+      });
       if (statusFilter !== "all") params.set("status", statusFilter);
       return apiRequest<ExecutionList>(`/v1/executions?${params}`);
     },
   });
   const items = useMemo(() => query.data?.items ?? [], [query.data]);
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
+  // `/v1/executions` has no free-text parameter, so the needle narrows the
+  // page the engine returned rather than pretending to search the whole log.
+  const rows = useMemo(() => {
+    const needle = debouncedSearch.trim().toLowerCase();
     if (!needle) return items;
     return items.filter((run) => runName(run, t).toLowerCase().includes(needle));
-  }, [items, search, t]);
-  const total = query.data?.total ?? filtered.length;
+  }, [items, debouncedSearch, t]);
+  const total = query.data?.total ?? items.length;
+
+  const columns = useMemo<CockpitColumn<Execution>[]>(() => {
+    const column = tableColumns<Execution>({ t, dateTime });
+    // `/v1/executions` accepts no `sort`, and `manualSorting` means a sort
+    // click that the engine cannot honour would silently do nothing. So the
+    // runs table declares no sortable column at all.
+    return [
+      column.status("status", (run) => run.status, t("resource.field.status"), {
+        width: "w-[13%]",
+      }),
+      column.link(
+        "workflow",
+        (run): Relation | null => ({
+          href: run.workflow_id
+            ? `/cockpit/workflows/${encodeURIComponent(run.workflow_id)}`
+            : null,
+          label: runName(run, t),
+        }),
+        t("runs.column.workflow"),
+        { width: "w-[26%]" },
+      ),
+      column.date("started_at", (run) => run.started_at, t("runs.column.started"), {
+        width: "w-[19%]",
+      }),
+      column.custom(
+        "duration",
+        (run) => runDurationMs(run),
+        t("runs.column.duration"),
+        (run) => {
+          const ms = runDurationMs(run);
+          return (
+            <span className="tabular-nums">
+              {ms === null ? MISSING : formatRunDuration(locale, ms)}
+            </span>
+          );
+        },
+        { width: "w-[12%]" },
+      ),
+      column.custom(
+        "request_source",
+        (run) => run.request_source,
+        t("runs.column.source"),
+        (run) => requestSourceLabel(run.request_source, t),
+        { width: "w-[15%]" },
+      ),
+      column.custom(
+        "kind",
+        (run) => run.source_kind,
+        t("resource.field.kind"),
+        // A child run says so in a word. There is no run detail route, so it
+        // does not pretend to link to the parent.
+        (run) =>
+          run.parent_execution_id
+            ? `${t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved")} · ${t("runs.childRun")}`
+            : t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved"),
+        { width: "w-[15%]" },
+      ),
+    ];
+  }, [t, dateTime, locale]);
+
+  const hasActiveFilters = Boolean(debouncedSearch.trim()) || statusFilter !== "all";
+  const resetFilters = useCallback(() => {
+    setSearch("");
+    setStatusFilter("all");
+    setPage(0);
+  }, []);
 
   if (!allowed)
     return (
-      <main className="p-6" data-testid="resource-permission-denied">
+      <main className="p-6" data-testid="resource-runs">
         <Alert data-testid="resource-permission-alert">
           <AlertTitle>{t("resource.permission.title")}</AlertTitle>
           <AlertDescription>{t("resource.permission.description")}</AlertDescription>
@@ -319,198 +320,110 @@ export function RunsPage() {
     );
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col" data-testid="resource-runs">
-      <header
-        className="flex flex-col gap-4 border-b p-6 sm:flex-row sm:items-end sm:justify-between"
-        data-testid="runs-header"
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h1 className="text-2xl font-semibold tracking-tight" data-testid="runs-title">
-              {title}
-            </h1>
-            <ContextHelp label={t("resource.about", { resource: title })} testId="runs-description">
-              {t("resource.runs.description")}
-            </ContextHelp>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex flex-wrap items-center gap-2 p-4" data-testid="runs-toolbar">
-        <InputGroup className="w-full sm:max-w-sm">
-          <InputGroupAddon>
-            <Search />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={t("runs.search")}
-            aria-label={t("runs.search")}
-            data-testid="runs-search"
-          />
-        </InputGroup>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger
-            className="w-44"
-            aria-label={t("catalog.filterStatus")}
-            data-testid="runs-status-filter"
-          >
-            <SelectValue placeholder={t("catalog.allStatuses")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all" data-testid="runs-status-all">
-                {t("catalog.allStatuses")}
-              </SelectItem>
-              {RUN_STATUSES.map((status) => (
-                <SelectItem key={status} value={status} data-testid={`runs-status-${status}`}>
-                  {statusLabel(t, status)}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <IconButton
-          variant="outline"
-          label={t("common.refresh")}
-          data-testid="runs-refresh"
-          onClick={() => void query.refetch()}
-        >
-          <RefreshCw className={query.isFetching ? "animate-spin" : undefined} />
-        </IconButton>
-      </div>
-
-      {query.isPending ? (
-        <div
-          className="grid gap-3 p-6"
-          data-testid="runs-loading"
-          role="status"
-          aria-label={t("common.loading")}
-        >
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-48 w-full" />
-        </div>
-      ) : query.error ? (
-        <Alert variant="destructive" className="m-6" data-testid="runs-error">
-          <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
-          <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            data-testid="runs-retry"
-            onClick={() => void query.refetch()}
-          >
-            {t("session.retry")}
-          </Button>
-        </Alert>
-      ) : filtered.length === 0 ? (
-        <Empty className="flex-1" data-testid="runs-empty">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Search />
-            </EmptyMedia>
-            <EmptyTitle>{search ? t("resource.noMatches") : t("resource.runs.empty")}</EmptyTitle>
-            <EmptyDescription>
-              {search ? t("resource.broaderSearch") : t("resource.emptyDescription")}
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <ScrollArea className="h-0 min-h-0 flex-1 px-4 pb-4" data-testid="runs-results">
-          <Card className="min-w-0 overflow-hidden" data-testid="runs-table-card">
-            <CardHeader className="sr-only">
-              <CardTitle>{title}</CardTitle>
-              <CardDescription>{t("resource.records", { count: filtered.length })}</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="hidden md:block" data-testid="runs-desktop-table">
-                <Table data-testid="runs-table">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[30%]">{t("runs.column.workflow")}</TableHead>
-                      <TableHead className="w-[16%]">{t("resource.field.status")}</TableHead>
-                      <TableHead className="w-[22%]">{t("runs.column.started")}</TableHead>
-                      <TableHead className="w-[14%]">{t("runs.column.duration")}</TableHead>
-                      <TableHead className="w-[18%]">{t("runs.column.source")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map((run, index) => (
-                      <TableRow key={index} data-testid={`runs-row-${index}`}>
-                        <TableCell className="max-w-0 min-w-0">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            className="h-auto max-w-full justify-start p-0 text-left font-medium hover:bg-transparent hover:underline"
-                            data-testid={`runs-row-${index}-open`}
-                            onClick={() => setSelected(run)}
-                          >
-                            <span className="truncate">{runName(run, t)}</span>
-                          </Button>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{statusLabel(t, run.status)}</Badge>
-                        </TableCell>
-                        <TableCell className="max-w-0 min-w-0 truncate">
-                          {run.started_at ? dateTime(run.started_at) : "—"}
-                        </TableCell>
-                        <TableCell className="tabular-nums">
-                          <RunDuration run={run} />
-                        </TableCell>
-                        <TableCell className="max-w-0 min-w-0 truncate">
-                          {requestSourceLabel(run.request_source, t)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="grid divide-y md:hidden" data-testid="runs-mobile-list">
-                {filtered.map((run, index) => (
-                  <article
-                    className="grid min-w-0 gap-3 p-4"
-                    key={index}
-                    data-testid="runs-mobile-row"
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="h-auto min-w-0 justify-start p-0 text-left font-medium hover:bg-transparent hover:underline"
-                      data-testid={`runs-mobile-row-${index}-open`}
-                      onClick={() => setSelected(run)}
-                    >
-                      <span className="truncate">{runName(run, t)}</span>
-                    </Button>
-                    <dl className="grid min-w-0 gap-2">
-                      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
-                        <dt className="text-xs text-muted-foreground">
-                          {t("resource.field.status")}
-                        </dt>
-                        <dd className="min-w-0 text-right text-sm">
-                          <Badge variant="outline">{statusLabel(t, run.status)}</Badge>
-                        </dd>
-                      </div>
-                      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
-                        <dt className="text-xs text-muted-foreground">
-                          {t("runs.column.started")}
-                        </dt>
-                        <dd className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
-                          {run.started_at ? dateTime(run.started_at) : "—"}
-                        </dd>
-                      </div>
-                    </dl>
-                  </article>
-                ))}
-              </div>
-            </CardContent>
-            <CardFooter className="flex-wrap justify-between gap-2 border-t py-3 text-xs text-muted-foreground">
-              <span>{t("runs.showing", { count: filtered.length, total })}</span>
-              <span>{t("resource.workspaceScoped")}</span>
-            </CardFooter>
-          </Card>
-        </ScrollArea>
-      )}
+    <PageFrame
+      testId="resource-runs"
+      title={title}
+      description={t("resource.runs.description")}
+      scroll="content"
+    >
+      <DataTable
+        columns={columns}
+        data={rows}
+        toolbar={
+          <>
+            <InputGroup className="w-full sm:max-w-xs">
+              <InputGroupAddon>
+                <Search />
+              </InputGroupAddon>
+              <InputGroupInput
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t("runs.search")}
+                aria-label={t("runs.search")}
+                data-testid="runs-search"
+              />
+            </InputGroup>
+            <Select
+              value={statusFilter}
+              onValueChange={(status) => {
+                setStatusFilter(status);
+                setPage(0);
+              }}
+            >
+              <SelectTrigger
+                className="w-44"
+                aria-label={t("catalog.filterStatus")}
+                data-testid="runs-status-filter"
+              >
+                <SelectValue placeholder={t("catalog.allStatuses")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all" data-testid="runs-status-all">
+                    {t("catalog.allStatuses")}
+                  </SelectItem>
+                  {RUN_STATUSES.map((status) => (
+                    <SelectItem key={status} value={status} data-testid={`runs-status-${status}`}>
+                      {statusLabel(t, status)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="runs-clear-filters"
+                onClick={resetFilters}
+              >
+                {t("catalog.clearFilters")}
+              </Button>
+            )}
+          </>
+        }
+        onRefresh={() => void query.refetch()}
+        refreshing={query.isFetching}
+        refreshLabel={t("common.refresh")}
+        pending={query.isPending}
+        error={
+          query.error
+            ? {
+                title: t("resource.loadFailed", { resource: title }),
+                description: t("resource.loadFailedDescription"),
+                retryLabel: t("session.retry"),
+                onRetry: () => void query.refetch(),
+              }
+            : null
+        }
+        emptyState={{
+          zero: {
+            title: t("resource.runs.empty"),
+            description: t("resource.emptyDescription"),
+          },
+          filtered: {
+            title: t("resource.noMatches"),
+            description: t("resource.broaderSearch"),
+            resetLabel: t("catalog.clearFilters"),
+            onReset: resetFilters,
+          },
+        }}
+        hasActiveFilters={hasActiveFilters}
+        sorting={[] as SortingState}
+        onSortingChange={() => {}}
+        onOpen={(run) => setSelected(run)}
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={setPage}
+        previousLabel={t("catalog.previous")}
+        nextLabel={t("catalog.next")}
+        columnsLabel={t("catalog.columns")}
+        recordsLabel={t("catalog.records")}
+        loadedLabel={t("catalog.loaded", { count: rows.length })}
+        actionsLabel={t("common.actions")}
+        openLabel={t("common.open")}
+      />
 
       <Sheet open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
         <SheetContent
@@ -528,6 +441,6 @@ export function RunsPage() {
           {selected && <RunDetail run={selected} />}
         </SheetContent>
       </Sheet>
-    </main>
+    </PageFrame>
   );
 }
