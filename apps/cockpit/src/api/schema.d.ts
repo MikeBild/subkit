@@ -7354,6 +7354,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/skill-candidates/{id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the observed cases a skill candidate was distilled from
+         * @description Approving a candidate adds operating knowledge the agent will act on, so a reviewer needs to see what it rests on. The rows were always recorded and indexed; until now only their COUNT reached any client, which asks a person to trust a number.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["SkillCandidateEvidence"][];
+                        };
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/skill-candidates/{id}/approve": {
         parameters: {
             query?: never;
@@ -16303,6 +16355,15 @@ export interface components {
             created_at: string;
             updated_at: string;
         };
+        SkillCandidateEvidence: {
+            id: string;
+            skill_candidate_id: string;
+            execution_id: string | null;
+            patch_candidate_id: string | null;
+            evidence_type: string;
+            summary: string;
+            captured_at: string;
+        };
         ApproveSkillCandidateResponse: {
             candidate: components["schemas"]["SkillCandidate"];
             skill_id: string;
@@ -16443,6 +16504,8 @@ export interface components {
             last_message_role?: string | null;
             last_message_excerpt?: string | null;
             pending_elicitation_expires_at?: string | null;
+            pending_elicitation_summary?: string | null;
+            pending_elicitation_tool?: string | null;
         };
         ConversationRunOutcome: {
             conversation: components["schemas"]["Conversation"];
@@ -16972,6 +17035,8 @@ export interface components {
             tenant_id: string;
             workflow_id: string;
             workflow_name: string | null;
+            connector_id: string | null;
+            endpoint_key: string | null;
             /** @enum {string} */
             classification: "safe" | "unsafe";
             /** @enum {string} */
