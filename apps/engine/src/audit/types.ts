@@ -143,10 +143,9 @@ export const AuditAction = {
   EXECUTION_COMPLETED: "execution.completed",
   EXECUTION_ABORTED: "execution.aborted",
   EXECUTION_AUTO_RETRIED: "execution.auto_retried",
-  // Engine boot reaped a `running` execution that had been in-flight for
-  // longer than `workflow.timeout_ms × 1.5` (or the env-configured
-  // fallback). The row was forced to `timed_out` so the operator can
-  // see that the previous engine instance crashed mid-flight.
+  // A boot or periodic recovery sweep repaired execution state after a worker
+  // disappeared: either a stale running execution was terminalized or running
+  // step rows were reconciled from their already-terminal parent.
   EXECUTION_CRASH_RECOVERED: "execution.crash_recovered",
 
   // Persistent workflow run state: cross-run watermark / cursor

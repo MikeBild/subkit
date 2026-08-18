@@ -115,7 +115,12 @@ export const executionSteps = pgTable(
     started_at: timestamp("started_at", { withTimezone: true }),
     finished_at: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("execution_steps_execution_started_idx").on(t.execution_id, t.started_at)],
+  (t) => [
+    index("execution_steps_execution_started_idx").on(t.execution_id, t.started_at),
+    index("execution_steps_running_execution_idx")
+      .on(t.execution_id)
+      .where(sql`${t.status} = 'running'`),
+  ],
 );
 
 // ----- execution_fixtures ---------------------------------------------------
