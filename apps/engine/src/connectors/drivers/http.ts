@@ -24,6 +24,7 @@ import { assertEgressAllowedResolved, assertRobotsAllowed } from "../egress-guar
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import { type ProbeEndpoint, ProbeEndpointSchema } from "../templates.ts";
 import type { ConnectorView } from "../types.ts";
+import { settleOnAbort } from "./abort-boundary.ts";
 import { signSigV4Request } from "./aws-sigv4.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
 import { shouldPromoteToFile } from "./file-promotion.ts";
@@ -1001,7 +1002,7 @@ export async function executePlannedHttpRequest(params: {
     level: "debug",
     thresholdMs: 1000,
     fields: { method: params.method, url_host: params.url.host },
-    fn: () => getDriverFetch()(params.url, init),
+    fn: () => settleOnAbort(getDriverFetch()(params.url, init), params.signal),
   });
   const maxResponseBytes = resolveMaxResponseBytes(params.tenant_id);
   const buf = await readBodyBytesCapped(
