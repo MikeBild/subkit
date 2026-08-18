@@ -33,7 +33,12 @@
     "CUI-WORDS-1": { "enforced_by": ["scripts/verify-cockpit-visual.mjs"] },
     "CUI-WORDS-2": { "enforced_by": ["apps/cockpit/src/app/testids.test.ts"] },
     "CUI-SEV-1": { "enforced_by": ["apps/cockpit/src/app/cockpit-ui-contract.test.ts"] },
-    "CUI-SEV-2": { "enforced_by": ["apps/cockpit/src/app/resource-presentation.test.ts"] },
+    "CUI-SEV-2": {
+      "enforced_by": [
+        "apps/cockpit/src/components/cockpit/table-columns.test.ts",
+        "apps/cockpit/src/app/resource-presentation.test.ts"
+      ]
+    },
     "CUI-LOAD-1": { "enforced_by": ["scripts/verify-cockpit-visual.mjs"] },
     "CUI-LOAD-2": { "enforced_by": ["scripts/verify-cockpit-visual.mjs"] },
     "CUI-LOAD-3": { "enforced_by": ["scripts/verify-cockpit-visual.mjs"] },

@@ -1,15 +1,14 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { createColumnHelper, type SortingState } from "@tanstack/react-table";
-import { Bot, FolderTree, RefreshCw, Search } from "lucide-react";
+import type { SortingState } from "@tanstack/react-table";
+import { Bot, FolderTree, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
-import {
-  type CockpitColumn,
-  type CockpitTableFeatures,
-  DataTable,
-} from "@/components/cockpit/data-table";
+import type { components } from "@/api/schema";
+import { type CockpitColumn, DataTable } from "@/components/cockpit/data-table";
 import { IconButton } from "@/components/cockpit/icon-button";
+import { PageFrame } from "@/components/cockpit/page-frame";
+import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,13 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import {
   Select,
@@ -37,23 +29,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { authStateLabel, connectorAuthState } from "@/lib/connector-auth-state";
+import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   MIN_CATEGORY_SIZE,
   memberCountAfterMove,
   recategorizedSlug,
   UNCATEGORIZED,
 } from "@/lib/workflow-category";
+import { workflowsByConnector } from "@/pages/connectors-model";
+import { connectorHref, triggerLabelKey } from "@/pages/workflows-model";
 
 type CatalogResource = "workflows" | "connectors" | "knowledge" | "skills" | "files";
 type CatalogRow = Record<string, unknown>;
+type ConnectorListItem = components["schemas"]["ConnectorListItem"];
+type WorkflowListItem = components["schemas"]["WorkflowListItem"];
 
 interface CatalogState {
   q: string;
   status: string;
   category: string;
+  /** Workflows only: the connector slug whose users are being listed. */
+  connector: string;
+  /** Files only: the resource a file is attached to. */
+  linkedTo: string;
   sort: string;
   order: "asc" | "desc";
   page: number;
@@ -67,10 +69,10 @@ interface CategoryCount {
 interface CatalogConfig {
   endpoint: string;
   permission: string;
-  titleKey: Parameters<ReturnType<typeof useI18n>["t"]>[0];
-  descriptionKey: Parameters<ReturnType<typeof useI18n>["t"]>[0];
-  emptyKey: Parameters<ReturnType<typeof useI18n>["t"]>[0];
-  actionKey?: Parameters<ReturnType<typeof useI18n>["t"]>[0];
+  titleKey: TranslationKey;
+  descriptionKey: TranslationKey;
+  emptyKey: TranslationKey;
+  actionKey?: TranslationKey;
   defaultSort: string;
   statuses: string[];
 }
@@ -128,6 +130,8 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
 };
 
 const PAGE_SIZE = 25;
+/** One read, inverted client-side, instead of one relation lookup per row. */
+const RELATION_INDEX_LIMIT = 200;
 
 function parseState(config: CatalogConfig): CatalogState {
   const params = new URLSearchParams(window.location.search);
@@ -136,6 +140,8 @@ function parseState(config: CatalogConfig): CatalogState {
     q: params.get("q") ?? "",
     status: params.get("status") ?? "all",
     category: params.get("category") ?? "all",
+    connector: params.get("connector") ?? "",
+    linkedTo: params.get("linked_to") ?? "",
     sort: params.get("sort") ?? config.defaultSort,
     order: order === "asc" ? "asc" : "desc",
     page: Math.max(0, Number(params.get("page") ?? 0) || 0),
@@ -157,6 +163,8 @@ function useCatalogState(config: CatalogConfig) {
         if (next.q) params.set("q", next.q);
         if (next.status !== "all") params.set("status", next.status);
         if (next.category !== "all") params.set("category", next.category);
+        if (next.connector) params.set("connector", next.connector);
+        if (next.linkedTo) params.set("linked_to", next.linkedTo);
         if (next.sort !== config.defaultSort) params.set("sort", next.sort);
         if (next.order !== "desc") params.set("order", next.order);
         if (next.page > 0) params.set("page", String(next.page));
@@ -170,110 +178,346 @@ function useCatalogState(config: CatalogConfig) {
   return [state, setState] as const;
 }
 
-function stringValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (Array.isArray(value)) return String(value.length);
-  return String(value);
+function stringField(row: CatalogRow, field: string): string | null {
+  const value = row[field];
+  return typeof value === "string" && value ? value : null;
 }
 
-function bytes(value: unknown): string {
-  if (typeof value !== "number") return "—";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+function stringList(row: CatalogRow, field: string): string[] {
+  const value = row[field];
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+const SCOPE_KEYS: Record<string, TranslationKey> = {
+  global: "scope.global",
+  connector: "scope.connector",
+  workflow: "scope.workflow",
+};
+
+const SIDE_EFFECT_KEYS: Record<string, TranslationKey> = {
+  none: "sideEffects.none",
+  read: "sideEffects.read",
+  write: "sideEffects.write",
+  destructive: "sideEffects.destructive",
+};
+
+/**
+ * Workflow health rides on the name rather than taking an eighth column.
+ *
+ * A healthy workflow says nothing — the row is already the good news. An
+ * unhealthy one carries a dot AND the engine's own word plus its reason,
+ * because a colour on its own tells a person who cannot see it nothing
+ * (CUI-A11Y-5), and a `title=` or a hover-only tooltip is unreachable by
+ * keyboard and invisible on touch (CUI-WORDS-2).
+ */
+function HealthMark({ row }: { row: CatalogRow }) {
+  const { t } = useI18n();
+  const state = stringField(row, "health_state");
+  if (!state || state === "ok") return null;
+  const reason = stringField(row, "health_reason");
+  const tone = state === "degraded" ? "bg-destructive" : "bg-warning";
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${tone}`} />
+      <span className="min-w-0">
+        {t("workflows.health", { state: statusLabel(t, state) })}
+        {reason ? ` · ${reason}` : ""}
+      </span>
+    </span>
+  );
 }
 
 function catalogColumns(
   resource: CatalogResource,
   t: ReturnType<typeof useI18n>["t"],
   dateTime: ReturnType<typeof useI18n>["dateTime"],
+  relations: {
+    connectorIdBySlug: ReadonlyMap<string, string>;
+    workflowsByConnectorSlug: ReadonlyMap<string, { id: string; name: string }[]>;
+    canReadWorkflows: boolean;
+    onCategory(category: string): void;
+  },
 ): CockpitColumn<CatalogRow>[] {
-  const helper = createColumnHelper<CockpitTableFeatures, CatalogRow>();
-  const text = (id: string, field: string, label: string, sortable = true) =>
-    helper.accessor((row) => row[field], {
-      id,
-      header: label,
-      enableSorting: sortable,
-      cell: ({ getValue }) => stringValue(getValue()),
-    });
-  const status = (id: string, field: string, label: string, sortable = true) =>
-    helper.accessor((row) => row[field], {
-      id,
-      header: label,
-      enableSorting: sortable,
-      cell: ({ getValue }) => (
-        <Badge variant="outline">{statusLabel(t, stringValue(getValue()))}</Badge>
-      ),
-    });
-  const date = (id: string, field: string, label: string) =>
-    helper.accessor((row) => row[field], {
-      id,
-      header: label,
-      cell: ({ getValue }) => {
-        const value = getValue();
-        return typeof value === "string" ? dateTime(value) : "—";
-      },
-    });
+  const column = tableColumns<CatalogRow>({ t, dateTime });
 
   if (resource === "workflows") {
     return [
-      text("name", "name", t("common.name")),
-      status("lifecycle", "lifecycle", t("catalog.lifecycle")),
-      text("version", "current_version", t("catalog.version"), false),
-      text("connectors", "connectors", t("nav.connectors"), false),
-      date("updated_at", "updated_at", t("catalog.updated")),
-    ];
-  }
-  if (resource === "connectors") {
-    return [
-      text("name", "display_name", t("common.name")),
-      text("driver", "driver", t("catalog.driver")),
-      text("environment", "environment", t("catalog.environment")),
-      status("health", "health_state", t("catalog.health"), false),
-      helper.accessor((row) => row.enabled, {
-        id: "enabled",
-        header: t("catalog.enabled"),
-        cell: ({ getValue }) => (
-          <Badge variant="outline">{getValue() === true ? t("common.yes") : t("common.no")}</Badge>
+      column.custom(
+        "name",
+        (row) => row.name,
+        t("common.name"),
+        (row) => (
+          <span className="flex min-w-0 flex-col gap-1">
+            <span className="min-w-0 font-medium">{stringField(row, "name") ?? MISSING}</span>
+            <HealthMark row={row} />
+          </span>
         ),
+        { sortable: true, width: "w-[21%]" },
+      ),
+      column.status("lifecycle", (row) => row.lifecycle, t("catalog.lifecycle"), {
+        sortable: true,
+        width: "w-[11%]",
       }),
-      date("updated_at", "updated_at", t("catalog.updated")),
+      column.custom(
+        "category",
+        (row) => row.category,
+        t("catalog.block"),
+        (row, index) => {
+          const category = stringField(row, "category");
+          if (!category) return MISSING;
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-ml-2 h-auto py-1 font-normal"
+              data-testid={`catalog-block-${index}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                relations.onCategory(category);
+              }}
+            >
+              {category}
+            </Button>
+          );
+        },
+        { width: "w-[12%]" },
+      ),
+      column.chips(
+        "connectors",
+        (row) =>
+          stringList(row, "connectors").map((slug) => ({
+            href: connectorHref(slug, relations.connectorIdBySlug),
+            label: slug,
+          })),
+        t("resource.connectors.title"),
+        { width: "w-[16%]" },
+      ),
+      column.custom(
+        "trigger",
+        (row) => row.trigger,
+        t("catalog.trigger"),
+        (row) => t(triggerLabelKey(row.trigger as WorkflowListItem["trigger"] | null | undefined)),
+        { width: "w-[11%]" },
+      ),
+      column.date("last_executed_at", (row) => row.last_executed_at, t("catalog.lastRun"), {
+        width: "w-[14%]",
+      }),
+      column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
+        sortable: true,
+        width: "w-[14%]",
+      }),
     ];
   }
+
+  if (resource === "connectors") {
+    const columns: CockpitColumn<CatalogRow>[] = [
+      column.link(
+        "name",
+        (row): Relation | null => {
+          const name = stringField(row, "display_name");
+          const id = stringField(row, "id");
+          return name
+            ? { href: id ? `/cockpit/connectors/${encodeURIComponent(id)}` : null, label: name }
+            : null;
+        },
+        t("common.name"),
+        { sortable: true, width: "w-[20%]" },
+      ),
+      column.custom(
+        "auth",
+        (row) => row.health_state,
+        t("catalog.auth"),
+        (row) => t(authStateLabel(connectorAuthState(row as ConnectorListItem))),
+        { width: "w-[14%]" },
+      ),
+      column.status("health", (row) => row.health_state, t("catalog.health"), {
+        width: "w-[13%]",
+      }),
+      column.custom(
+        "enabled",
+        (row) => row.enabled,
+        t("catalog.enabled"),
+        (row) => (
+          <Badge variant="outline">{row.enabled === true ? t("common.yes") : t("common.no")}</Badge>
+        ),
+        { sortable: true, width: "w-[10%]" },
+      ),
+      column.text("environment", (row) => row.environment, t("catalog.environment"), {
+        sortable: true,
+        width: "w-[12%]",
+      }),
+      column.text("driver", (row) => row.driver, t("catalog.driver"), {
+        sortable: true,
+        width: "w-[11%]",
+      }),
+    ];
+    // Without workflow:read the relation cannot be read at all. Dropping the
+    // column is honest; rendering "0" would claim a measured count.
+    if (relations.canReadWorkflows) {
+      columns.push(
+        column.link(
+          "used_by",
+          (row): Relation | null => {
+            const slug = stringField(row, "slug");
+            if (!slug) return null;
+            const users = relations.workflowsByConnectorSlug.get(slug) ?? [];
+            if (users.length === 0) return null;
+            return {
+              href: `/cockpit/workflows?connector=${encodeURIComponent(slug)}`,
+              label: t("connectors.usedByCount", { count: users.length }),
+            };
+          },
+          t("catalog.usedBy"),
+          { width: "w-[15%]" },
+        ),
+      );
+    }
+    return columns;
+  }
+
   if (resource === "knowledge") {
     return [
-      text("name", "name", t("common.name")),
-      status("status", "status", t("resource.field.status")),
-      text("source_type", "source_type", t("catalog.sourceType")),
-      text("chunks", "chunk_count", t("catalog.chunks"), false),
-      helper.accessor((row) => row.bytes_total, {
-        id: "bytes_total",
-        header: t("catalog.size"),
-        cell: ({ getValue }) => bytes(getValue()),
+      column.text("name", (row) => row.name, t("common.name"), {
+        sortable: true,
+        width: "w-[22%]",
       }),
-      date("updated_at", "updated_at", t("catalog.updated")),
+      column.status("status", (row) => row.status, t("resource.field.status"), {
+        sortable: true,
+        width: "w-[12%]",
+      }),
+      column.link(
+        "scope",
+        (row): Relation | null => {
+          const scope = stringField(row, "scope");
+          if (!scope) return null;
+          const workflowId = stringField(row, "workflow_id");
+          const key = SCOPE_KEYS[scope];
+          return {
+            href:
+              scope === "workflow" && workflowId
+                ? `/cockpit/workflows/${encodeURIComponent(workflowId)}`
+                : null,
+            label: key ? t(key) : scope,
+          };
+        },
+        t("resource.field.scope"),
+        { width: "w-[14%]" },
+      ),
+      column.text("source_type", (row) => row.source_type, t("catalog.sourceType"), {
+        sortable: true,
+        width: "w-[14%]",
+      }),
+      column.text("chunk_count", (row) => row.chunk_count, t("catalog.chunks"), {
+        width: "w-[9%]",
+      }),
+      column.bytes("bytes_total", (row) => row.bytes_total, t("catalog.size"), {
+        sortable: true,
+        width: "w-[11%]",
+      }),
+      column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
+        sortable: true,
+        width: "w-[14%]",
+      }),
     ];
   }
+
   if (resource === "skills") {
     return [
-      text("title", "title", t("resource.field.title")),
-      status("status", "status", t("resource.field.status")),
-      text("scope", "scope", t("resource.field.scope")),
-      text("maturity", "maturity", t("catalog.maturity"), false),
-      text("version", "version", t("catalog.version")),
-      date("updated_at", "updated_at", t("catalog.updated")),
+      column.text("title", (row) => row.title, t("resource.field.title"), {
+        sortable: true,
+        width: "w-[22%]",
+      }),
+      column.status("status", (row) => row.status, t("resource.field.status"), {
+        sortable: true,
+        width: "w-[12%]",
+      }),
+      column.link(
+        "scope",
+        (row): Relation | null => {
+          const scope = stringField(row, "scope");
+          if (!scope) return null;
+          const connectorId = stringField(row, "connector_id");
+          const workflowId = stringField(row, "workflow_id");
+          const href =
+            scope === "connector" && connectorId
+              ? `/cockpit/connectors/${encodeURIComponent(connectorId)}`
+              : scope === "workflow" && workflowId
+                ? `/cockpit/workflows/${encodeURIComponent(workflowId)}`
+                : null;
+          const key = SCOPE_KEYS[scope];
+          return { href, label: key ? t(key) : scope };
+        },
+        t("resource.field.scope"),
+        { sortable: true, width: "w-[13%]" },
+      ),
+      column.custom(
+        "side_effects",
+        (row) => row.side_effects,
+        t("catalog.sideEffects"),
+        (row) => {
+          const value = stringField(row, "side_effects");
+          const key = value ? SIDE_EFFECT_KEYS[value] : undefined;
+          return key ? t(key) : (value ?? MISSING);
+        },
+        { width: "w-[13%]" },
+      ),
+      column.custom(
+        "maturity",
+        (row) => row.maturity,
+        t("catalog.maturity"),
+        // The engine's enum is two English words; rendering them raw is the
+        // same defect as an untranslated status.
+        (row) =>
+          row.maturity === "experimental"
+            ? t("catalog.maturity.experimental")
+            : t("catalog.maturity.stable"),
+        { width: "w-[12%]" },
+      ),
+      column.text("version", (row) => row.version, t("catalog.version"), {
+        sortable: true,
+        width: "w-[9%]",
+      }),
+      column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
+        sortable: true,
+        width: "w-[14%]",
+      }),
     ];
   }
+
   return [
-    text("filename", "filename", t("catalog.filename")),
-    status("status", "status", t("resource.field.status")),
-    text("content_type", "content_type", t("catalog.contentType")),
-    helper.accessor((row) => row.size_bytes, {
-      id: "size_bytes",
-      header: t("catalog.size"),
-      cell: ({ getValue }) => bytes(getValue()),
+    column.link(
+      "filename",
+      (row): Relation | null => {
+        const filename = stringField(row, "filename");
+        const id = stringField(row, "id");
+        return filename
+          ? { href: id ? `/cockpit/files/${encodeURIComponent(id)}` : null, label: filename }
+          : null;
+      },
+      t("catalog.filename"),
+      { sortable: true, width: "w-[27%]" },
+    ),
+    column.status("status", (row) => row.status, t("resource.field.status"), {
+      sortable: true,
+      width: "w-[13%]",
     }),
-    date("created_at", "created_at", t("resource.field.createdAt")),
+    column.status("scan_result", (row) => row.scan_result, t("catalog.scanResult"), {
+      width: "w-[14%]",
+    }),
+    column.text("content_type", (row) => row.content_type, t("catalog.contentType"), {
+      sortable: true,
+      width: "w-[18%]",
+    }),
+    column.bytes("size_bytes", (row) => row.size_bytes, t("catalog.size"), {
+      sortable: true,
+      width: "w-[12%]",
+    }),
+    column.date("created_at", (row) => row.created_at, t("resource.field.createdAt"), {
+      sortable: true,
+      width: "w-[16%]",
+    }),
   ];
 }
 
@@ -289,13 +533,11 @@ export function CatalogPage({
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
   const [recategorize, setRecategorize] = useState<CatalogRow | null>(null);
+  const debouncedSearch = useDebouncedValue(search);
   useEffect(() => setSearch(state.q), [state.q]);
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (search !== state.q) setState({ q: search, page: 0 });
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [search, setState, state.q]);
+    if (debouncedSearch !== state.q) setState({ q: debouncedSearch, page: 0 });
+  }, [debouncedSearch, setState, state.q]);
 
   const query = useQuery({
     queryKey: ["catalog", resource, state],
@@ -309,6 +551,8 @@ export function CatalogPage({
       });
       if (state.q) params.set("q", state.q);
       if (state.category !== "all") params.set("category", state.category);
+      if (resource === "workflows" && state.connector) params.set("connector", state.connector);
+      if (resource === "files" && state.linkedTo) params.set("linked_to", state.linkedTo);
       if (state.status !== "all") {
         if (resource === "connectors") {
           if (state.status === "enabled" || state.status === "disabled") {
@@ -325,7 +569,59 @@ export function CatalogPage({
       );
     },
   });
-  const columns = useMemo(() => catalogColumns(resource, t, dateTime), [resource, t, dateTime]);
+
+  // Workflows name their connectors by slug; the detail route needs an id.
+  const connectorIndex = useQuery({
+    queryKey: ["catalog-connector-index"],
+    enabled: resource === "workflows" && permissions.includes("connector:read"),
+    queryFn: () =>
+      apiRequest<{ items: ConnectorListItem[] }>(`/v1/connectors?limit=${RELATION_INDEX_LIMIT}`),
+  });
+  const connectorIdBySlug = useMemo(
+    () => new Map((connectorIndex.data?.items ?? []).map((item) => [item.slug, item.id])),
+    [connectorIndex.data],
+  );
+
+  // The engine answers "which connectors does this workflow use"; the connector
+  // list needs the other direction, so one read is inverted here.
+  const canReadWorkflows = permissions.includes("workflow:read");
+  const workflowIndex = useQuery({
+    queryKey: ["catalog-workflow-index"],
+    enabled: resource === "connectors" && canReadWorkflows,
+    queryFn: () =>
+      apiRequest<{ items: WorkflowListItem[] }>(`/v1/workflows?limit=${RELATION_INDEX_LIMIT}`),
+  });
+  const workflowsByConnectorSlug = useMemo(
+    () =>
+      workflowsByConnector(
+        (workflowIndex.data?.items ?? []).map((item) => ({
+          id: item.id,
+          name: item.name,
+          connectors: item.connectors,
+        })),
+      ),
+    [workflowIndex.data],
+  );
+
+  const onCategory = useCallback((category: string) => setState({ category, page: 0 }), [setState]);
+  const columns = useMemo(
+    () =>
+      catalogColumns(resource, t, dateTime, {
+        connectorIdBySlug,
+        workflowsByConnectorSlug,
+        canReadWorkflows,
+        onCategory,
+      }),
+    [
+      resource,
+      t,
+      dateTime,
+      connectorIdBySlug,
+      workflowsByConnectorSlug,
+      canReadWorkflows,
+      onCategory,
+    ],
+  );
   const sorting: SortingState = [{ id: state.sort, desc: state.order === "desc" }];
   const rows = query.data?.items ?? [];
   const total = query.data?.total ?? rows.length;
@@ -336,11 +632,22 @@ export function CatalogPage({
   );
   const title = t(config.titleKey);
   const canRecategorize = resource === "workflows" && permissions.includes("workflow:write");
+  const hasActiveFilters =
+    Boolean(state.q) ||
+    state.status !== "all" ||
+    state.category !== "all" ||
+    Boolean(state.connector) ||
+    Boolean(state.linkedTo);
+
+  const resetFilters = useCallback(() => {
+    setSearch("");
+    setState({ q: "", status: "all", category: "all", connector: "", linkedTo: "", page: 0 });
+  }, [setState]);
 
   if (!permissions.includes(config.permission)) {
     return (
-      <main className="p-6">
-        <Alert>
+      <main className="p-6" data-testid={`catalog-${resource}`}>
+        <Alert data-testid="resource-permission-alert">
           <AlertTitle>{t("resource.permission.title")}</AlertTitle>
           <AlertDescription>{t("resource.permission.description")}</AlertDescription>
         </Alert>
@@ -348,137 +655,130 @@ export function CatalogPage({
     );
   }
 
+  const primaryAction = config.actionKey ? (
+    <Button asChild>
+      <a
+        href={`/cockpit/chat/new?prompt=${encodeURIComponent(t(config.actionKey))}`}
+        data-testid="catalog-primary-action"
+      >
+        <Bot data-icon="inline-start" />
+        {t(config.actionKey)}
+      </a>
+    </Button>
+  ) : undefined;
+
   return (
-    <main className="flex min-h-0 flex-1 flex-col" data-testid={`catalog-${resource}`}>
-      <header className="flex flex-col gap-4 border-b p-6 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t(config.descriptionKey)}</p>
-        </div>
-        {config.actionKey && (
-          <Button asChild>
-            <a
-              href={`/cockpit/chat/new?prompt=${encodeURIComponent(t(config.actionKey))}`}
-              data-testid="catalog-primary-action"
-            >
-              <Bot data-icon="inline-start" />
-              {t(config.actionKey)}
-            </a>
-          </Button>
-        )}
-      </header>
-      {categories.length > 0 && (
-        <div
-          className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
-          data-testid="catalog-categories"
-        >
-          <Button
-            variant={state.category === "all" ? "default" : "outline"}
-            size="sm"
-            data-testid="catalog-category-all"
-            onClick={() => setState({ category: "all", page: 0 })}
-          >
-            {t("catalog.allCategories")}
-          </Button>
-          {categories.map((entry, index) => (
-            <Button
-              key={entry.category}
-              variant={state.category === entry.category ? "default" : "outline"}
-              size="sm"
-              data-testid={`catalog-category-${index}`}
-              onClick={() => setState({ category: entry.category, page: 0 })}
-            >
-              {categoryLabel(entry.category, t)}
-              <Badge variant="secondary" className="ml-2 tabular-nums">
-                {entry.count}
-              </Badge>
-            </Button>
-          ))}
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-3 border-b p-3">
-        <InputGroup className="w-full sm:max-w-md">
-          <InputGroupAddon>
-            <Search />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={t("resource.search", { resource: title })}
-            aria-label={t("resource.search", { resource: title })}
-            data-testid="catalog-search"
-          />
-        </InputGroup>
-        <Select value={state.status} onValueChange={(status) => setState({ status, page: 0 })}>
-          <SelectTrigger
-            className="w-44"
-            aria-label={t("catalog.filterStatus")}
-            data-testid="catalog-status-filter"
-          >
-            <SelectValue placeholder={t("catalog.allStatuses")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all" data-testid="catalog-status-all">
-                {t("catalog.allStatuses")}
-              </SelectItem>
-              {config.statuses.map((status) => (
-                <SelectItem key={status} value={status} data-testid={`catalog-status-${status}`}>
-                  {statusLabel(t, status)}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-        <IconButton
-          variant="outline"
-          label={t("common.refresh")}
-          data-testid="catalog-refresh"
-          onClick={() => query.refetch()}
-        >
-          <RefreshCw />
-        </IconButton>
-      </div>
-      {query.isPending ? (
-        <div className="flex flex-col gap-3 p-6" role="status">
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-      ) : query.error ? (
-        <Alert variant="destructive" className="m-6">
-          <AlertTitle>{t("resource.loadFailed", { resource: title })}</AlertTitle>
-          <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
-        </Alert>
-      ) : rows.length === 0 ? (
-        <Empty className="flex-1">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Search />
-            </EmptyMedia>
-            <EmptyTitle>
-              {state.category !== "all"
-                ? t("catalog.noneInCategory", {
-                    category: categoryLabel(state.category, t),
-                  })
-                : state.q
-                  ? t("resource.noMatches")
-                  : t(config.emptyKey)}
-            </EmptyTitle>
-            <EmptyDescription>
-              {state.category !== "all" ? "" : t("resource.broaderSearch")}
-            </EmptyDescription>
-            {state.category !== "all" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                data-testid="catalog-clear-category"
-                onClick={() => setState({ category: "all", page: 0 })}
+    <PageFrame
+      testId={`catalog-${resource}`}
+      title={title}
+      description={t(config.descriptionKey)}
+      action={primaryAction}
+      scroll="content"
+    >
+      <DataTable
+        columns={columns}
+        data={rows}
+        toolbar={
+          <>
+            <InputGroup className="w-full sm:max-w-xs">
+              <InputGroupAddon>
+                <Search />
+              </InputGroupAddon>
+              <InputGroupInput
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t("resource.search", { resource: title })}
+                aria-label={t("resource.search", { resource: title })}
+                data-testid="catalog-search"
+              />
+            </InputGroup>
+            <Select value={state.status} onValueChange={(status) => setState({ status, page: 0 })}>
+              <SelectTrigger
+                className="w-44"
+                aria-label={t("catalog.filterStatus")}
+                data-testid="catalog-status-filter"
               >
-                {t("catalog.allCategories")}
+                <SelectValue placeholder={t("catalog.allStatuses")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all" data-testid="catalog-status-all">
+                    {t("catalog.allStatuses")}
+                  </SelectItem>
+                  {config.statuses.map((status) => (
+                    <SelectItem
+                      key={status}
+                      value={status}
+                      data-testid={`catalog-status-${status}`}
+                    >
+                      {statusLabel(t, status)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {categories.length > 0 && (
+              <Select
+                value={state.category}
+                onValueChange={(category) => setState({ category, page: 0 })}
+              >
+                <SelectTrigger
+                  className="w-44"
+                  aria-label={t("catalog.block")}
+                  data-testid="catalog-category-filter"
+                >
+                  <SelectValue placeholder={t("catalog.allCategories")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="all" data-testid="catalog-category-all">
+                      {t("catalog.allCategories")}
+                    </SelectItem>
+                    {categories.map((entry, index) => (
+                      <SelectItem
+                        key={entry.category}
+                        value={entry.category}
+                        data-testid={`catalog-category-${index}`}
+                      >
+                        {`${categoryLabel(entry.category, t)} (${entry.count})`}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            )}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="catalog-clear-filters"
+                onClick={resetFilters}
+              >
+                {t("catalog.clearFilters")}
               </Button>
-            ) : config.actionKey && !state.q ? (
-              <Button asChild className="mt-3">
+            )}
+          </>
+        }
+        onRefresh={() => void query.refetch()}
+        refreshing={query.isFetching}
+        refreshLabel={t("common.refresh")}
+        pending={query.isPending}
+        error={
+          query.error
+            ? {
+                title: t("resource.loadFailed", { resource: title }),
+                description: t("resource.loadFailedDescription"),
+                retryLabel: t("session.retry"),
+                onRetry: () => void query.refetch(),
+              }
+            : null
+        }
+        emptyState={{
+          zero: {
+            title: t(config.emptyKey),
+            description: t("resource.emptyDescription"),
+            action: config.actionKey ? (
+              <Button asChild variant="outline" size="sm">
                 <a
                   href={`/cockpit/chat/new?prompt=${encodeURIComponent(t(config.actionKey))}`}
                   data-testid="catalog-empty-action"
@@ -487,52 +787,55 @@ export function CatalogPage({
                   {t(config.actionKey)}
                 </a>
               </Button>
-            ) : null}
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <DataTable
-          columns={columns}
-          data={rows}
-          sorting={sorting}
-          onSortingChange={(next) => {
-            const first = next[0];
-            if (first) setState({ sort: first.id, order: first.desc ? "desc" : "asc", page: 0 });
-          }}
-          onOpen={(row) => {
-            const id = row.id;
-            if (typeof id === "string") window.location.assign(`/cockpit/${resource}/${id}`);
-          }}
-          {...(canRecategorize
-            ? {
-                rowActions: (row: CatalogRow, index: number) => (
-                  <IconButton
-                    variant="ghost"
-                    size="icon-sm"
-                    label={t("catalog.changeCategory")}
-                    data-testid={`catalog-recategorize-${index}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setRecategorize(row);
-                    }}
-                  >
-                    <FolderTree />
-                  </IconButton>
-                ),
-              }
-            : {})}
-          page={state.page}
-          pageSize={PAGE_SIZE}
-          total={total}
-          onPageChange={(page) => setState({ page })}
-          previousLabel={t("catalog.previous")}
-          nextLabel={t("catalog.next")}
-          columnsLabel={t("catalog.columns")}
-          recordsLabel={t("catalog.records")}
-          actionsLabel={t("common.actions")}
-          openLabel={t("common.open")}
-        />
-      )}
+            ) : undefined,
+          },
+          filtered: {
+            title: t("resource.noMatches"),
+            description: t("resource.broaderSearch"),
+            resetLabel: t("catalog.clearFilters"),
+            onReset: resetFilters,
+          },
+        }}
+        hasActiveFilters={hasActiveFilters}
+        sorting={sorting}
+        onSortingChange={(next) => {
+          const first = next[0];
+          if (first) setState({ sort: first.id, order: first.desc ? "desc" : "asc", page: 0 });
+        }}
+        onOpen={(row) => {
+          const id = row.id;
+          if (typeof id === "string") window.location.assign(`/cockpit/${resource}/${id}`);
+        }}
+        {...(canRecategorize
+          ? {
+              rowActions: (row: CatalogRow, index: number) => (
+                <IconButton
+                  variant="ghost"
+                  size="icon-sm"
+                  label={t("catalog.changeCategory")}
+                  data-testid={`catalog-recategorize-${index}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setRecategorize(row);
+                  }}
+                >
+                  <FolderTree />
+                </IconButton>
+              ),
+            }
+          : {})}
+        page={state.page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={(page) => setState({ page })}
+        previousLabel={t("catalog.previous")}
+        nextLabel={t("catalog.next")}
+        columnsLabel={t("catalog.columns")}
+        recordsLabel={t("catalog.records")}
+        loadedLabel={t("catalog.loaded", { count: rows.length })}
+        actionsLabel={t("common.actions")}
+        openLabel={t("common.open")}
+      />
       {recategorize && (
         <RecategorizeDialog
           row={recategorize}
@@ -545,7 +848,7 @@ export function CatalogPage({
           }}
         />
       )}
-    </main>
+    </PageFrame>
   );
 }
 
