@@ -35,18 +35,25 @@ export function PageFrame({
   width?: "full" | "column";
   children: ReactNode;
 }) {
-  // A reading column must be centred in the SAME box as its own heading.
-  // Centring only the content leaves the column offset by half a scrollbar
-  // from the title that names it, which reads as a broken page.
+  // A reading column must be centred in the SAME box as its own heading, and
+  // the padding must sit OUTSIDE that box in both places. Putting `p-8` on the
+  // same element as `max-w-[780px]` makes the box include its own padding, so
+  // the content starts exactly one padding-width right of the title naming it —
+  // 32px at `lg`, plainly visible, and the reason this surface still looked
+  // misaligned after the scrollbar gutter was fixed.
   const column = width === "column" ? "mx-auto w-full max-w-[780px]" : undefined;
-  // And the scroll owner has to reserve the gutter, or the column re-acquires
-  // that same offset the moment the body outgrows one screen — invisible on
-  // overlay scrollbars, which is exactly how it shipped unnoticed.
+  // The scroll owner reserves the gutter symmetrically, so a growing body
+  // cannot shift the centre. `both-edges` is the operative part; plain `stable`
+  // would only move the step to the other side.
   const gutter = width === "column" ? "[scrollbar-gutter:stable_both-edges]" : undefined;
 
   return (
     <main className="flex min-h-0 flex-1 flex-col" data-testid={testId}>
-      <header className="shrink-0 border-b px-5 py-4 sm:px-8">
+      {/* Header and body carry the SAME horizontal padding at every breakpoint.
+          They used to differ between `sm` and `lg` — 32px against 24px — which
+          indented every page's content against its own heading in exactly the
+          window sizes nobody screenshots. */}
+      <header className="shrink-0 border-b px-4 py-4 sm:px-6 lg:px-8">
         <div
           className={cn("flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between", column)}
         >
@@ -60,15 +67,22 @@ export function PageFrame({
         </div>
       </header>
       {toolbar && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-5 py-3 sm:px-8">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-3 sm:px-6 lg:px-8">
           {toolbar}
         </div>
       )}
       {scroll === "content" ? (
         <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", column)}>{children}</div>
       ) : (
-        <div className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto", gutter)}>
-          <div className={cn("p-4 sm:p-6 lg:p-8", column)}>{children}</div>
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6 lg:px-8",
+            gutter,
+          )}
+        >
+          {/* The width cap goes on an inner element so the padding above stays
+              outside it — the same nesting the header uses. */}
+          <div className={column}>{children}</div>
         </div>
       )}
     </main>
