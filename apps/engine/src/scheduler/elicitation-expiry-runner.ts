@@ -1,6 +1,6 @@
 // Zombie reconciliation for time-bounded elicitations.
 //
-// The chat confirm gate mints a `tool_approvals` row (15-minute TTL, see
+// The chat confirm gate mints a `tool_approvals` row (24-hour TTL, see
 // `tools/approval.ts`), opens an `ask_user_confirm` elicitation carrying the
 // approval handle, and parks the conversation in `awaiting_input`. When the
 // operator never answers, the approval dies on its TTL — and the retention

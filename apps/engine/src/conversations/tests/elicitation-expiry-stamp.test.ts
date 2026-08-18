@@ -3,7 +3,7 @@
 //
 // The sweep selects on `expires_at` alone, so this value IS the bound. An
 // approval-backed confirm that inherits the 7-day human window would sit pending
-// for a week after its 15-minute approval died — the conversation wedged in
+// for a week after its 24-hour approval died — the conversation wedged in
 // `awaiting_input` exactly as before, only slower. Asserting the column is
 // merely non-null does not catch that; these tests assert the VALUE.
 
@@ -83,11 +83,13 @@ describe("createElicitation stamps the bounding expiry", () => {
     );
 
     const windowMs = await stampedWindowMs(row.id);
-    // Allow a couple of seconds of clock/round-trip slack, but nothing near the
-    // 7-day human window — that difference is the whole bug.
+    // Allow a couple of seconds of clock/round-trip slack. The second bound is
+    // the point: an approval must be stamped with the approval window and not
+    // with the ordinary 7-day prompt window — a lapsed approval that the sweep
+    // cannot select is exactly how conversations wedged in `awaiting_input`.
     expect(windowMs).toBeGreaterThan(APPROVAL_TTL_MS - 10_000);
     expect(windowMs).toBeLessThan(APPROVAL_TTL_MS + 10_000);
-    expect(windowMs).toBeLessThan(ELICITATION_HUMAN_TTL_MS / 100);
+    expect(windowMs).toBeLessThan(ELICITATION_HUMAN_TTL_MS);
   });
 
   test("a draft-credential prompt gets the grant's own embedded expiry", async () => {

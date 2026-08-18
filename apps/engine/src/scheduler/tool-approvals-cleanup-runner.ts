@@ -51,7 +51,7 @@ import { errorFields, logger } from "../logging/logger.ts";
  *  anchor itself would degrade both to `unknown_confirmation`), and long
  *  enough for an operator to reconstruct a failed confirmation the next
  *  morning. Past that the row is pure secret-material liability: with a
- *  15-minute `APPROVAL_TTL_MS`, no ciphertext survives ~24h15m. */
+ *  24-hour `APPROVAL_TTL_MS`, no ciphertext survives ~48h. */
 const APPROVAL_RETENTION = sql`interval '1 day'`;
 
 /**
