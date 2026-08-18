@@ -6,6 +6,7 @@ import { apiRequest } from "@/api/client";
 import { useSession } from "@/app/session";
 import { ContextHelp } from "@/components/cockpit/context-help";
 import { IconButton } from "@/components/cockpit/icon-button";
+import { PageFrame } from "@/components/cockpit/page-frame";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -158,25 +159,15 @@ function AdminFrame({
 }) {
   const { t } = useI18n();
   return (
-    <main className="flex min-h-0 flex-1 flex-col" data-testid={testId}>
-      <header className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:px-8">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{t(titleKey)}</h1>
-            <ContextHelp
-              label={t("resource.about", { resource: t(titleKey) })}
-              testId={`${testId}-help`}
-            >
-              {t(descriptionKey)}
-            </ContextHelp>
-          </div>
-        </div>
-        {action}
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8">
-        {children}
-      </div>
-    </main>
+    <PageFrame
+      testId={testId}
+      title={t(titleKey)}
+      description={t(descriptionKey)}
+      action={action}
+      scroll="page"
+    >
+      {children}
+    </PageFrame>
   );
 }
 
