@@ -19,6 +19,7 @@ import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import { appendMessage } from "../persist.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
+import { deriveConversationTitle } from "../title.ts";
 import type { ConversationRecord } from "../types.ts";
 import { normalizePermissionMode, rowToRecord } from "./shared.ts";
 
@@ -258,6 +259,13 @@ export async function createConversation(
     initialMessageId = await appendMessage(exec, p.tenant_id, row.id, "user", {
       text: initialMessage,
     });
+    // `appendMessage` just titled the row, but `row` was read before that
+    // update. Without carrying the title over, the one response that CREATED
+    // the title — the 201 body and the `conversation_started` frame built from
+    // it — would still report `title: null`.
+    if (row.title === null) {
+      row.title = deriveConversationTitle({ text: initialMessage });
+    }
   }
 
   return {

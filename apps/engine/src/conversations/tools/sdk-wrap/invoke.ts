@@ -65,7 +65,7 @@ import {
   resolveConversationPrincipal,
   type ToolPermissionResult,
 } from "../permission-gate.ts";
-import { normalizeToolResultPayload } from "../result-payload.ts";
+import { normalizeToolResultPayload, toolCallOutcome } from "../result-payload.ts";
 import { truncateForLlm } from "../truncate.ts";
 import { decideConfirm } from "./confirm-decision.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
@@ -899,7 +899,7 @@ export function wrapOne(
               existing_elicitation_id: signals.pendingElicitation.elicitation_id,
               existing_tool: signals.pendingElicitation.tool_name,
             };
-            await updateToolCallOutput(db, toolCallId, dupOutput);
+            await updateToolCallOutput(db, toolCallId, dupOutput, "denied");
             events.push({
               type: "tool_result",
               call_id: toolCallId,
@@ -1060,7 +1060,7 @@ export function wrapOne(
                     reason: "approval_request_failed",
                   },
                 };
-                await updateToolCallOutput(db, toolCallId, failure.data);
+                await updateToolCallOutput(db, toolCallId, failure.data, "error");
                 events.push({
                   type: "tool_result",
                   call_id: toolCallId,
@@ -1178,7 +1178,8 @@ export function wrapOne(
                 }`
               : `policy_confirm_required — nothing ran, and this turn has no way to release ${inner.name}: no approval handle could be opened for it. Tell the user the action must be performed from an authenticated session.`,
           };
-          await updateToolCallOutput(db, toolCallId, output);
+          // Awaiting the operator's decision — nothing ran and nothing was refused.
+          await updateToolCallOutput(db, toolCallId, output, "pending");
           events.push({
             type: "tool_result",
             call_id: toolCallId,
@@ -1247,7 +1248,7 @@ export function wrapOne(
                 message: err.message,
               },
             };
-            await updateToolCallOutput(db, toolCallId, output);
+            await updateToolCallOutput(db, toolCallId, output, "error");
             events.push({
               type: "tool_result",
               call_id: toolCallId,
@@ -1398,7 +1399,7 @@ export function wrapOne(
           await langfuseSpan.finish({ status: "error", error: err });
           const msg = err instanceof Error ? err.message : String(err);
           const output = { error: msg };
-          await updateToolCallOutput(db, toolCallId, output);
+          await updateToolCallOutput(db, toolCallId, output, "error");
           events.push({
             type: "tool_result",
             call_id: toolCallId,
@@ -1457,7 +1458,7 @@ export function wrapOne(
           output: resultPayload,
           status: result.ok ? "success" : "error",
         });
-        await updateToolCallOutput(db, toolCallId, resultPayload);
+        await updateToolCallOutput(db, toolCallId, resultPayload, toolCallOutcome(result));
 
         // Draft snapshot after every successful draft_write tool. Gives
         // the operator a rollback target if the next edit goes wrong;

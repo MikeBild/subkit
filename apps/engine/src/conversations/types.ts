@@ -5,6 +5,7 @@ import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-re
 import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import type { Citation } from "./citations.ts";
+import type { ToolCallOutcome } from "./tools/result-payload.ts";
 
 export type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
 /**
@@ -115,6 +116,25 @@ export interface ConversationToolCallRecord {
    * ignores unanchored calls rather than guessing their placement.
    */
   parent_message_id?: string | null;
+  /**
+   * Multi-state confirmation machine for calls that needed a human
+   * decision: proposed | tested | confirmed | declined | partial |
+   * oauth_success | oauth_failure | auto_declined. Null for read-only
+   * calls, which never enter it.
+   */
+  confirmation_state: string | null;
+  /** When the human decision landed. Null while none was needed or none has. */
+  approved_at: string | null;
+  /**
+   * How the call ended. Null for rows written before the column existed —
+   * "unknown", not "ok".
+   *
+   * `approved_by_user_id`, `confirmation_data` and `interaction_log` stay
+   * off this projection on purpose: the first is a bare uuid a client
+   * could only render as a uuid, the second is engine-internal bookkeeping
+   * (see `insertToolCall`), and the third has no consumer.
+   */
+  outcome: ToolCallOutcome | null;
 }
 
 export type AuthoringMode =
@@ -799,6 +819,9 @@ export interface ConversationResumeSummary {
     id: string;
     tool_name: string;
     summary: string;
+    /** When this approval lapses — mirrors `ResumeSummary` in `resume.ts`;
+     *  the two shapes are hand-duplicated and must move together. */
+    expires_at: string;
   } | null;
   next_action: string;
   one_sentence: string;
@@ -835,7 +858,15 @@ export type ContentPart =
       input: unknown;
       phase: "partial" | "called" | "result";
     }
-  | { type: "tool_result"; call_id: string; tool: string; output: unknown }
+  // `outcome` is repeated here from the flat `tool_calls` array so a
+  // transcript renderer can badge a result without cross-referencing.
+  | {
+      type: "tool_result";
+      call_id: string;
+      tool: string;
+      output: unknown;
+      outcome: ToolCallOutcome | null;
+    }
   | { type: "data"; data_type: string; payload: unknown };
 
 export interface UIMessage {

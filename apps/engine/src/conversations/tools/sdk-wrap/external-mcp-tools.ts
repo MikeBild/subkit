@@ -370,7 +370,7 @@ async function executeExternalMcpTool(
       reason: decision.reason ?? "permission_denied",
       status: "failed",
     };
-    await updateToolCallOutput(db, toolCallId, output);
+    await updateToolCallOutput(db, toolCallId, output, "denied");
     events.push({
       type: "tool_result",
       call_id: toolCallId,
@@ -445,7 +445,7 @@ async function executeExternalMcpTool(
       connector_slug,
       remote_tool: spec.target,
     };
-    await updateToolCallOutput(db, toolCallId, output);
+    await updateToolCallOutput(db, toolCallId, output, "error");
     events.push({
       type: "tool_result",
       call_id: toolCallId,
@@ -471,7 +471,7 @@ async function executeExternalMcpTool(
       connector_slug,
       remote_tool: spec.target,
     };
-    await updateToolCallOutput(db, toolCallId, output);
+    await updateToolCallOutput(db, toolCallId, output, "denied");
     events.push({
       type: "tool_result",
       call_id: toolCallId,
@@ -517,7 +517,7 @@ async function executeExternalMcpTool(
           connector_slug,
           remote_tool: spec.target,
         };
-        await updateToolCallOutput(db, toolCallId, dupOutput);
+        await updateToolCallOutput(db, toolCallId, dupOutput, "denied");
         events.push({
           type: "tool_result",
           call_id: toolCallId,
@@ -619,7 +619,7 @@ async function executeExternalMcpTool(
         remote_tool: spec.target,
         pending_output: pendingOutput,
       };
-      await updateToolCallOutput(db, toolCallId, output);
+      await updateToolCallOutput(db, toolCallId, output, "pending");
       events.push({
         type: "tool_result",
         call_id: toolCallId,
@@ -681,7 +681,7 @@ async function executeExternalMcpTool(
       connector_slug,
       remote_tool: spec.target,
     };
-    await updateToolCallOutput(db, toolCallId, output);
+    await updateToolCallOutput(db, toolCallId, output, "error");
     events.push({
       type: "tool_result",
       call_id: toolCallId,
@@ -726,7 +726,7 @@ async function executeExternalMcpTool(
         connector_slug,
         remote_tool: spec.target,
       };
-      await updateToolCallOutput(db, toolCallId, output);
+      await updateToolCallOutput(db, toolCallId, output, "error");
       events.push({
         type: "tool_result",
         call_id: toolCallId,
@@ -795,7 +795,7 @@ async function executeExternalMcpTool(
       ? { structured_content: invoked.structured_content }
       : {}),
   };
-  await updateToolCallOutput(db, toolCallId, fullPayload);
+  await updateToolCallOutput(db, toolCallId, fullPayload, invoked.ok ? "ok" : "error");
   await appendMessage(db, ctx.tenant_id, ctx.conversation_id, "tool", {
     tool: name,
     output: fullPayload,
