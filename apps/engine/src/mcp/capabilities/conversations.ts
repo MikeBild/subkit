@@ -447,7 +447,7 @@ async function refuseApprovalElicitation(
                 "Once they decide, the engine resolves this pause and carries out the held call on its own — you do not need to do anything else, and you must not relay their answer back through this tool. "
               : "The user grants or declines it themselves on the surface where it was raised. "),
           approval_window:
-            "Approvals expire 15 minutes after they are raised. If nobody decides in time the engine cancels the pause, reactivates the conversation, and the held call never runs.",
+            "Approvals expire 24 hours after they are raised. If nobody decides in time the engine cancels the pause, reactivates the conversation, and the held call never runs.",
           next_best_actions: ["conversation_get"],
         }),
       },
