@@ -343,7 +343,11 @@ export async function finalizeStepRow(
         request_meta: result.request_meta ?? null,
         error: result.error ?? null,
       })
-      .where(eq(executionSteps.id, step_row_id))
+      // A recovery sweep may have terminalized this row after its worker
+      // disappeared. Keep step completion first-writer-wins just like the
+      // execution-level finalize path; a late worker must not resurrect a
+      // recovered `aborted` or `timed_out` step.
+      .where(and(eq(executionSteps.id, step_row_id), eq(executionSteps.status, "running")))
       .returning({
         tenant_id: executionSteps.tenant_id,
         execution_id: executionSteps.execution_id,

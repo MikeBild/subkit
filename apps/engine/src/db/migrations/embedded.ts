@@ -56,6 +56,7 @@ import sql0035McpServersDropped from "./0035_mcp_servers_dropped.sql" with { typ
 import sql0036FancyThena from "./0036_fancy_thena.sql" with { type: "text" };
 import sql0037YieldingTinkerer from "./0037_yielding_tinkerer.sql" with { type: "text" };
 import sql0038SolidBaronZemo from "./0038_solid_baron_zemo.sql" with { type: "text" };
+import sql0039CloudyZodiak from "./0039_cloudy_zodiak.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -119,6 +120,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0036_fancy_thena": sql0036FancyThena,
   "0037_yielding_tinkerer": sql0037YieldingTinkerer,
   "0038_solid_baron_zemo": sql0038SolidBaronZemo,
+  "0039_cloudy_zodiak": sql0039CloudyZodiak,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -18,6 +18,8 @@ import { runExecution } from "./engine.ts";
 import {
   createExecution,
   finalizeExecution,
+  finalizeStepRow,
+  insertStepRow,
   markExecutionRunning,
   requestExecutionAbort,
 } from "./state.ts";
@@ -65,6 +67,36 @@ describe("finalizeExecution — compare-and-set (#14)", () => {
     // A racing cancel/timeout must NOT clobber the recorded success.
     await finalizeExecution(db, tenantId, id, "failed", null);
     expect(await statusOf(id)).toBe("succeeded");
+  });
+});
+
+describe("finalizeStepRow — compare-and-set", () => {
+  test("a late worker cannot overwrite a step terminalized by recovery", async () => {
+    const executionId = await newQueued();
+    await markExecutionRunning(db, tenantId, executionId, new Date(FROZEN_NOW));
+    const stepId = await insertStepRow(db, {
+      tenant_id: tenantId,
+      execution_id: executionId,
+      step_key: "stuck",
+      step_index: 0,
+      kind: "transform",
+    });
+    await db
+      .update(executionSteps)
+      .set({ status: "timed_out", finished_at: new Date(FROZEN_NOW) })
+      .where(eq(executionSteps.id, stepId));
+
+    await finalizeStepRow(
+      db,
+      stepId,
+      "succeeded",
+      { status: "succeeded", output: { late: true }, retry_count: 0, duration_ms: 1 },
+      { output_preview: { late: true }, result_preview: null, result_storage_uri: null },
+    );
+
+    const [step] = await db.select().from(executionSteps).where(eq(executionSteps.id, stepId));
+    expect(step?.status).toBe("timed_out");
+    expect(step?.output_preview).toBeNull();
   });
 });
 
