@@ -36,9 +36,27 @@ function item(
     expiresAt: null,
     confidence: null,
     evidenceCount: null,
+    summary: null,
+    detail: { kind: "patch", evidence: PATCH_EVIDENCE },
     ...overrides,
   };
 }
+
+/** A patch candidate carrying nothing — the shape a fixture needs so the model
+ *  under test is exercised, not the fixture's own optional fields. */
+const PATCH_EVIDENCE = {
+  workflowId: null,
+  workflowName: null,
+  connectorId: null,
+  endpointKey: null,
+  executionId: null,
+  driftKind: null,
+  driftSummary: null,
+  reasoning: null,
+  proposalKind: null,
+  classificationReasons: [],
+  rejections: [],
+};
 
 describe("decision age", () => {
   test("counts whole days waited", () => {
@@ -106,6 +124,8 @@ describe("decision adapters", () => {
         tenant_id: "t",
         workflow_id: "w",
         workflow_name: "Daily report",
+        connector_id: null,
+        endpoint_key: null,
         classification: "safe",
         status: "proposed",
         fixture_id: null,
@@ -127,6 +147,8 @@ describe("decision adapters", () => {
         tenant_id: "t",
         workflow_id: "w",
         workflow_name: null,
+        connector_id: null,
+        endpoint_key: null,
         classification: "unsafe",
         status: "proposed",
         fixture_id: null,

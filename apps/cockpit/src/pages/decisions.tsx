@@ -158,6 +158,8 @@ export function DecisionsPage() {
               item={item}
               index={index}
               testIdPrefix={prefix}
+              names={queue.names}
+              canReadRuns={queue.canReadRuns}
               busy={busyId === item.id}
               canDecide={item.kind === "patch" ? canDecidePatches : canDecideSkills}
               onApprove={(target) => decide.mutate({ item: target, approve: true, reason: "" })}
@@ -175,7 +177,6 @@ export function DecisionsPage() {
       title={title}
       description={t("decisions.description")}
       scroll="page"
-      width="column"
       action={
         <IconButton
           variant="outline"

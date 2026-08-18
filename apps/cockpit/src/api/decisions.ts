@@ -7,6 +7,7 @@ export type PatchCandidatePreview = components["schemas"]["PatchCandidatePreview
 export type PatchCandidateDryRun = components["schemas"]["PatchCandidateDryRunResponse"];
 export type SkillCandidate = components["schemas"]["SkillCandidate"];
 export type SkillCandidateList = components["schemas"]["SkillCandidateListResponse"];
+export type SkillCandidateEvidence = components["schemas"]["SkillCandidateEvidence"];
 export type ConversationList = components["schemas"]["ConversationListResponse"];
 
 const QUEUE_LIMIT = 200;
@@ -72,4 +73,16 @@ export function rejectSkillCandidate(id: string, reason: string): Promise<unknow
     method: "POST",
     body: JSON.stringify(reason ? { reason } : {}),
   });
+}
+
+/**
+ * The observed cases a proposed skill was distilled from.
+ *
+ * Fetched only when a card is expanded: the list already carries the count, and
+ * one request per open card is one request — there is never more than one open.
+ */
+export function listSkillCandidateEvidence(
+  id: string,
+): Promise<{ items: SkillCandidateEvidence[] }> {
+  return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}/evidence`);
 }
