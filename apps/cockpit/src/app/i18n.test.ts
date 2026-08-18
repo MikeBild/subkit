@@ -61,6 +61,35 @@ describe("cockpit i18n", () => {
     expect(statusLabel((key) => translate("en", key), "future_state")).toBe("Unknown");
   });
 
+  test("gives every status the engine can persist a word of its own", () => {
+    // The state vocabulary forbids "unknown": a value the engine stores must
+    // read as a word, not as a placeholder. These are the statuses that reach
+    // an operator through executions, conversations and candidates.
+    const persisted = [
+      "queued",
+      "running",
+      "succeeded",
+      "failed",
+      "aborted",
+      "timed_out",
+      "active",
+      "awaiting_input",
+      "committed",
+      "abandoned",
+      "proposed",
+      "applied",
+      "rejected",
+      "superseded",
+      "approved",
+    ];
+    for (const status of persisted) {
+      for (const locale of ["en", "de"] as const) {
+        const label = statusLabel((key) => translate(locale, key), status);
+        expect(label).not.toBe(translate(locale, "status.unknown"));
+      }
+    }
+  });
+
   test("localizes every built-in role exposed by administration", () => {
     for (const key of [
       "role.admin",

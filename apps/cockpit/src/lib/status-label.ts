@@ -16,6 +16,9 @@ const STATUS_KEYS: Partial<Record<string, TranslationKey>> = {
   timed_out: "status.timedOut",
   approved: "status.approved",
   rejected: "status.rejected",
+  proposed: "status.proposed",
+  applied: "status.applied",
+  superseded: "status.superseded",
 };
 
 export function statusLabel(translate: (key: TranslationKey) => string, value: string): string {
