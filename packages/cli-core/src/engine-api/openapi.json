@@ -3896,6 +3896,27 @@
           "updated_at": {
             "type": "string"
           },
+          "last_executed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "health_state": {
+            "type": "string"
+          },
+          "health_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "health_changed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "steps": {
             "type": "array",
             "items": {}
@@ -3972,6 +3993,10 @@
           "current_version",
           "created_at",
           "updated_at",
+          "last_executed_at",
+          "health_state",
+          "health_reason",
+          "health_changed_at",
           "steps",
           "input_schema",
           "output_schema",
@@ -11059,6 +11084,12 @@
               "string",
               "null"
             ]
+          },
+          "pending_elicitation_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -11156,7 +11187,9 @@
           },
           "tool_calls": {
             "type": "array",
-            "items": {}
+            "items": {
+              "$ref": "#/components/schemas/ConversationToolCall"
+            }
           },
           "draft": {},
           "resume_summary": {
@@ -11241,12 +11274,16 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "expires_at": {
+                    "type": "string"
                   }
                 },
                 "required": [
                   "id",
                   "tool_name",
-                  "summary"
+                  "summary",
+                  "expires_at"
                 ]
               },
               "next_action": {
@@ -11296,6 +11333,69 @@
           "role",
           "parts",
           "created_at"
+        ]
+      },
+      "ConversationToolCall": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "input": {},
+          "output": {},
+          "approval_required": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "parent_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confirmation_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "approved_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "ok",
+              "error",
+              "denied",
+              "pending",
+              null
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "tool",
+          "approval_required",
+          "created_at",
+          "confirmation_state",
+          "approved_at",
+          "outcome"
         ]
       },
       "PatchConversationBody": {
@@ -14950,11 +15050,21 @@
           },
           "cursor": {
             "type": "number"
+          },
+          "unread_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "actionable_unread_count": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
           "items",
-          "cursor"
+          "cursor",
+          "unread_count",
+          "actionable_unread_count"
         ]
       },
       "CliNotificationInboxItem": {
@@ -14970,6 +15080,30 @@
             "type": "string"
           },
           "event_payload": {},
+          "actionable": {
+            "type": "boolean"
+          },
+          "resource_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "read_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "type": "string"
           }
@@ -14978,6 +15112,11 @@
           "id",
           "severity",
           "event_type",
+          "actionable",
+          "resource_type",
+          "resource_id",
+          "read",
+          "read_at",
           "created_at"
         ]
       },
@@ -15003,6 +15142,47 @@
         },
         "required": [
           "up_to_cursor"
+        ]
+      },
+      "CliNotificationInboxMarkReadResponse": {
+        "type": "object",
+        "properties": {
+          "marked": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "marked"
+        ]
+      },
+      "CliNotificationInboxIdsRequest": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "minItems": 1,
+            "maxItems": 500
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "CliNotificationInboxMarkUnreadResponse": {
+        "type": "object",
+        "properties": {
+          "unmarked": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "unmarked"
         ]
       },
       "OutboxEventListResponse": {
@@ -15065,6 +15245,8 @@
               "connector.oauth.refreshed",
               "connector.oauth.callback_succeeded",
               "connector.oauth.callback_failed",
+              "connector.auth_failed",
+              "connector.health_changed",
               "patch.proposed",
               "patch.applied",
               "apikey.rotated",
@@ -31122,7 +31304,7 @@
         "tags": [
           "notifications"
         ],
-        "summary": "Pull pending sk CLI inbox notifications",
+        "summary": "List inbox tasks with this caller's read state",
         "security": [
           {
             "bearerAuth": []
@@ -31150,6 +31332,30 @@
             "required": false,
             "name": "limit",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "unread_only",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "actionable_only",
+            "in": "query"
           }
         ],
         "responses": {
@@ -31171,7 +31377,7 @@
         "tags": [
           "notifications"
         ],
-        "summary": "Acknowledge (consume) sk CLI inbox notifications up to a cursor",
+        "summary": "Mark this caller's inbox tasks read up to a cursor",
         "security": [
           {
             "bearerAuth": []
@@ -31193,6 +31399,104 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CliNotificationInboxAckResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Principal is not a user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/notifications/inbox/read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark specific inbox tasks read for this caller",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliNotificationInboxIdsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliNotificationInboxMarkReadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Principal is not a user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/notifications/inbox/unread": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Restore unread state on specific inbox tasks for this caller",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliNotificationInboxIdsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliNotificationInboxMarkUnreadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Principal is not a user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

@@ -235,6 +235,7 @@ sk REPL notification preferences
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `notifications.inbox.retention_days` | number | `30` | global | no | no | Days a notification inbox task survives before the retention sweep deletes it. |
 | `notifications.push.enabled` | boolean | `false` | tenant | no | no | OS push notifications for long-running execution completion. |
 | `notifications.push.quietHoursEnd` | string | `""` | tenant | no | no | Quiet-hours window end (HH:MM, local TZ). Empty disables the window. |
 | `notifications.push.quietHoursStart` | string | `""` | tenant | no | no | Quiet-hours window start (HH:MM, local TZ). Empty disables the window. |
