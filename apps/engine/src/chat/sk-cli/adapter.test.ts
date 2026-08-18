@@ -18,6 +18,7 @@ import { eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/index.ts";
 import { cliNotificationInbox } from "../../db/schema/notifications.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { classifyEvent } from "../../webhooks/events/catalog.ts";
 import type { ChatDelivery } from "../types.ts";
 import { SkCliAdapter } from "./adapter.ts";
 
@@ -172,5 +173,50 @@ describe("SkCliAdapter.send", () => {
     const row = rows.find((r) => String(r.id) === result.platform_message_id);
     expect(row?.severity).toBe("info");
     expect(row?.event_type).toBe("notification");
+  });
+
+  test("persists the classifier's verdict on insert", async () => {
+    const adapter = new SkCliAdapter(testDb.db);
+    const connectorId = "00000000-0000-4000-8000-00000000ca11";
+    const result = await adapter.send(
+      makeDelivery(tenantAId, {
+        severity: "error",
+        event_type: "connector.auth_failed",
+        event_payload: { connector_id: connectorId, reason: "credential_rejected" },
+      }),
+    );
+
+    const rows = await testDb.db
+      .select()
+      .from(cliNotificationInbox)
+      .where(eq(cliNotificationInbox.tenant_id, tenantAId));
+    const row = rows.find((r) => String(r.id) === result.platform_message_id);
+    const expected = classifyEvent("connector.auth_failed", {
+      connector_id: connectorId,
+      reason: "credential_rejected",
+    });
+    expect(expected.actionable).toBe(true);
+    expect(row?.actionable).toBe(expected.actionable);
+    expect(row?.resource_type).toBe(expected.resource_type);
+    expect(row?.resource_id).toBe(expected.resource_id);
+  });
+
+  test("an unclassifiable event type persists as not actionable, pointing at nothing", async () => {
+    const adapter = new SkCliAdapter(testDb.db);
+    const result = await adapter.send(
+      makeDelivery(tenantAId, {
+        event_type: "not.a.catalog.event",
+        event_payload: { connector_id: "00000000-0000-4000-8000-00000000ca12" },
+      }),
+    );
+
+    const rows = await testDb.db
+      .select()
+      .from(cliNotificationInbox)
+      .where(eq(cliNotificationInbox.tenant_id, tenantAId));
+    const row = rows.find((r) => String(r.id) === result.platform_message_id);
+    expect(row?.actionable).toBe(false);
+    expect(row?.resource_type).toBeNull();
+    expect(row?.resource_id).toBeNull();
   });
 });

@@ -353,13 +353,18 @@ export const AuditAction = {
   SK_CLI_LOGIN: "sk_cli.login",
   SK_CLI_LOGOUT: "sk_cli.logout",
   SK_CLI_TENANT_SWITCHED: "sk_cli.tenant_switched",
-  // The CLI acknowledged (consumed → DELETEd) a window of
-  // `cli_notification_inbox` rows up to a cursor. Emitted from
-  // `POST /v1/notifications/inbox/ack`. The DELETE is a state change, so
-  // AGENTS.md requires the audit row; metadata carries `up_to_cursor`
-  // and the `acked` rowcount so operators can reconstruct the consume
-  // watermark without reading the (now-deleted) rows.
+  // A caller marked a window of `cli_notification_inbox` rows read, up to
+  // a cursor. Emitted from `POST /v1/notifications/inbox/ack`. The read
+  // mark is a state change, so AGENTS.md requires the audit row; metadata
+  // carries `up_to_cursor` and `marked` (the rows that were still unread
+  // for this caller) so operators can reconstruct the watermark. The rows
+  // themselves survive — only the retention sweep deletes them.
   SK_CLI_INBOX_ACKED: "sk_cli.inbox_acked",
+  /** Retention sweep pruned `cli_notification_inbox` rows past the
+   *  configured window; read marks cascade with them. Emitted once per
+   *  successful sweep under SYSTEM_TENANT_ID with `deleted` and
+   *  `duration_ms` in metadata. */
+  NOTIFICATION_INBOX_PRUNED: "notification.inbox_pruned",
 
   APPROVAL_REQUESTED: "approval.requested",
   // A HUMAN granted (or refused to grant) the approval, out of band, through

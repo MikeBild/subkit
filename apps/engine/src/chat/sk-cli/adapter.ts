@@ -4,15 +4,15 @@
 // receive inbound traffic. The notification dispatcher resolves it as a
 // process-global fallback (registered at boot in `index.ts`) and routes
 // matched deliveries here. Each `send()` persists ONE
-// `cli_notification_inbox` row, scoped to the delivery's tenant. The CLI
-// later polls `GET /v1/notifications/inbox` and acknowledges consumed
-// rows. No remote API, no rate limit, no circuit breaker — a local
-// INSERT.
+// `cli_notification_inbox` row, scoped to the delivery's tenant, with
+// the event's `classifyEvent` verdict baked in. No remote API, no rate
+// limit, no circuit breaker — a local INSERT.
 
 import type { Db } from "../../db/client.ts";
 import { cliNotificationInbox } from "../../db/schema/notifications.ts";
 import { logger } from "../../logging/logger.ts";
 import type { NotificationAdapter } from "../../notifications/service.ts";
+import { classifyEvent } from "../../webhooks/events/catalog.ts";
 import type { ChatDelivery } from "../types.ts";
 
 export class SkCliAdapter implements NotificationAdapter {
@@ -25,6 +25,10 @@ export class SkCliAdapter implements NotificationAdapter {
     const severity = notification?.severity ?? "info";
     const event_type = notification?.event_type ?? "notification";
     const event_payload = notification?.event_payload ?? null;
+    // Classify at write time, not read time: `actionable_only` on the
+    // list route has to be a SQL predicate underneath the cursor, or
+    // paging returns short and empty pages.
+    const classification = classifyEvent(event_type, event_payload);
 
     const inserted = await this.db
       .insert(cliNotificationInbox)
@@ -33,6 +37,9 @@ export class SkCliAdapter implements NotificationAdapter {
         severity,
         event_type,
         event_payload,
+        actionable: classification.actionable,
+        resource_type: classification.resource_type,
+        resource_id: classification.resource_id,
       })
       .returning({ id: cliNotificationInbox.id });
 
