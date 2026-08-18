@@ -59,11 +59,13 @@ export const ConversationSchema = z
     updated_at: z.string(),
     last_message_role: z.string().nullable().optional(),
     last_message_excerpt: z.string().nullable().optional(),
-    // When this conversation's pending prompt lapses. Populated by the list
-    // path only — like the two excerpt fields above — because the single-
-    // conversation responses that share this schema have no use for it and
-    // must not be forced to compute it.
+    // The pending prompt: when it lapses, what it asks, and which tool raised
+    // it. Populated by the list path only — like the two excerpt fields above —
+    // because the single-conversation responses that share this schema have no
+    // use for them and must not be forced to compute them.
     pending_elicitation_expires_at: z.string().nullable().optional(),
+    pending_elicitation_summary: z.string().nullable().optional(),
+    pending_elicitation_tool: z.string().nullable().optional(),
   })
   .openapi("Conversation");
 

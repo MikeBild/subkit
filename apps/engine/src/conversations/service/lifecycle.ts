@@ -64,6 +64,13 @@ export interface ConversationListItem extends ConversationRecord {
    *  waiting. The only real deadline in the product — a review queue cannot
    *  tell "running out" from "just sitting there" without it. */
   pending_elicitation_expires_at: string | null;
+  /** What the conversation is actually asking. A queue that says only "waiting
+   *  for your answer" asks a person to open every entry to find out which one
+   *  they can answer; the question is the thing that lets them choose. */
+  pending_elicitation_summary: string | null;
+  /** Which `ask_user_*` raised it — a confirmation reads differently from a
+   *  free-text question, and the queue can say so without opening anything. */
+  pending_elicitation_tool: string | null;
 }
 
 function conversationListConds(p: ListConversationsParams) {
@@ -143,16 +150,22 @@ export async function listConversations(
     });
   }
 
-  // The deadline a waiting conversation is actually running out of. One
-  // grouped query for the whole page, served by the existing
+  // The pending prompt a waiting conversation is running out of, AND what it
+  // asks. One query for the whole page, served by the existing
   // `(conversation_id, status)` index — deliberately NOT a join onto the main
   // select, which would multiply rows against a 1:N table and break the
   // limit/offset pagination that `countConversations` is paired with.
-  // `min` because a conversation with two pending prompts dies on the earlier.
-  const deadlineRows = await exec
-    .select({
+  //
+  // `distinct on` rather than `min(expires_at)`: the deadline alone answered
+  // "how long have I got" but not "got for what", and the question lives on the
+  // same row. The ordering picks the prompt that lapses first — the one that
+  // actually bites — and carries its own summary and tool with it.
+  const pendingRows = await exec
+    .selectDistinctOn([conversationElicitations.conversation_id], {
       conversation_id: conversationElicitations.conversation_id,
-      expires_at: sql<Date>`min(${conversationElicitations.expires_at})`,
+      expires_at: conversationElicitations.expires_at,
+      summary: conversationElicitations.summary,
+      tool_name: conversationElicitations.tool_name,
     })
     .from(conversationElicitations)
     .where(
@@ -162,19 +175,22 @@ export async function listConversations(
         eq(conversationElicitations.status, "pending"),
       ),
     )
-    .groupBy(conversationElicitations.conversation_id);
-  const deadlineByConversation = new Map(
-    deadlineRows.map((row) => [row.conversation_id, new Date(row.expires_at)]),
-  );
+    .orderBy(conversationElicitations.conversation_id, asc(conversationElicitations.expires_at));
+  const pendingByConversation = new Map(pendingRows.map((row) => [row.conversation_id, row]));
 
   return rows.map((row) => {
     const latest = latestByConversation.get(row.id);
-    const deadline = deadlineByConversation.get(row.id);
+    const pending = pendingByConversation.get(row.id);
     return {
       ...rowToRecord(row),
       last_message_role: latest?.role ?? null,
       last_message_excerpt: latest?.excerpt ?? null,
-      pending_elicitation_expires_at: deadline ? deadline.toISOString() : null,
+      pending_elicitation_expires_at: pending ? pending.expires_at.toISOString() : null,
+      // The question is human-written prose from a tool call, so it goes
+      // through the same clipping the message excerpts do rather than arriving
+      // at a list row at whatever length it happens to be.
+      pending_elicitation_summary: pending?.summary ? truncateExcerpt(pending.summary) : null,
+      pending_elicitation_tool: pending?.tool_name ?? null,
     };
   });
 }
