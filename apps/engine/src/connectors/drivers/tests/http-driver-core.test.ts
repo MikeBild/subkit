@@ -11,6 +11,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { upsertCredential } from "../../../credentials/service.ts";
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import {
   createMockServer,
   jsonResponse,
@@ -207,6 +208,26 @@ describe("buildRequestPlan — credential resolution", () => {
 });
 
 describe("executePlannedHttpRequest", () => {
+  test("rejects on abort even when the transport promise ignores the signal", async () => {
+    const controller = new AbortController();
+    const transportThatNeverSettles = (() =>
+      new Promise<Response>(() => {})) as unknown as typeof fetch;
+
+    const request = withDriverFetchForTests(transportThatNeverSettles, () =>
+      executePlannedHttpRequest({
+        tenant_id: tenantId,
+        method: "POST",
+        url: new URL("https://example.invalid/hung"),
+        headers: {},
+        body: { bounded: true },
+        signal: controller.signal,
+      }),
+    );
+    controller.abort("step timeout");
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError", message: "step timeout" });
+  });
+
   test("GET against the mock server round-trips status, headers, and JSON body", async () => {
     const result = await executePlannedHttpRequest({
       tenant_id: tenantId,
