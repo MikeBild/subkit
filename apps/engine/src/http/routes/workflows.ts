@@ -38,6 +38,15 @@ const WorkflowSchema = z
     current_version: z.number().nullable(),
     created_at: z.string(),
     updated_at: z.string(),
+    // When this workflow last ran, and how it is doing. Both are stored on
+    // the workflow row and were previously readable only through
+    // `GET /v1/diagnostics/integrations`, which forced a catalog client to
+    // make a second, differently-permissioned request to answer "did this
+    // ever run" — the two surfaces report the same strings.
+    last_executed_at: z.string().nullable(),
+    health_state: z.string(),
+    health_reason: z.string().nullable(),
+    health_changed_at: z.string().nullable(),
     steps: z.array(z.unknown()),
     input_schema: z.record(z.string(), z.unknown()).nullable(),
     output_schema: z.record(z.string(), z.unknown()).nullable(),
@@ -153,6 +162,10 @@ function serializeWorkflow(w: svc.WorkflowView) {
     current_version: w.current_version,
     created_at: w.created_at.toISOString(),
     updated_at: w.updated_at.toISOString(),
+    last_executed_at: w.last_executed_at?.toISOString() ?? null,
+    health_state: w.health_state,
+    health_reason: w.health_reason,
+    health_changed_at: w.health_changed_at?.toISOString() ?? null,
     steps: w.steps as unknown[],
     // Schema fields surfaced for non-MCP HTTP callers (CI smoke tests,
     // SDK clients, external orchestrators). MCP exposes them via the
