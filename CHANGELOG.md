@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.5] – 2026-08-18
+
+### Added
+
+- **Loops can stop after the first non-tolerated body failure.** Set
+  `fail_fast: true` on a `loop` to skip the remaining body steps and later
+  iterations after a body step governed by `on_error: "fail"` fails. Existing
+  workflows keep the collect-all default until they opt in.
+
 ## [6.2.14] – 2026-08-16
 
 ### Fixed
