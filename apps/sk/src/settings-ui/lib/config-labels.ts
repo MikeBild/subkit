@@ -175,6 +175,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "ui.statusline.format": "Status-line layout",
 
   // ── Notifications ──────────────────────────────────────────────
+  "notifications.inbox.retention_days": "Inbox retention (days)",
   "notifications.push.enabled": "Push notifications",
   "notifications.push.thresholdSec": "Push threshold (seconds)",
   "notifications.push.quietHoursStart": "Quiet hours start (HH:MM)",

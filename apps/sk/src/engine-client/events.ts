@@ -112,23 +112,43 @@ export const eventsMethods = {
   },
   getNotificationInbox(
     this: EngineClient,
-    query: { since?: number; limit?: number } = {},
+    query: {
+      since?: number;
+      limit?: number;
+      unread_only?: boolean;
+      actionable_only?: boolean;
+    } = {},
   ): Promise<{
     items: Array<{
       id: number;
       severity: string;
       event_type: string;
       event_payload: unknown;
+      actionable: boolean;
+      resource_type: string | null;
+      resource_id: string | null;
+      read: boolean;
+      read_at: string | null;
       created_at: string;
     }>;
     cursor: number;
+    unread_count: number;
+    actionable_unread_count: number;
   }> {
     return this.request("GET", "/v1/notifications/inbox", undefined, {
       since: query.since,
       limit: query.limit,
+      unread_only: query.unread_only,
+      actionable_only: query.actionable_only,
     });
   },
   ackNotificationInbox(this: EngineClient, up_to_cursor: number): Promise<{ acked: number }> {
     return this.request("POST", "/v1/notifications/inbox/ack", { up_to_cursor });
+  },
+  markNotificationInboxRead(this: EngineClient, ids: number[]): Promise<{ marked: number }> {
+    return this.request("POST", "/v1/notifications/inbox/read", { ids });
+  },
+  markNotificationInboxUnread(this: EngineClient, ids: number[]): Promise<{ unmarked: number }> {
+    return this.request("POST", "/v1/notifications/inbox/unread", { ids });
   },
 };

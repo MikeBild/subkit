@@ -218,4 +218,83 @@ describe("notifications: fanout → _cli/_inbox end-to-end", () => {
     expect(inbox[0]?.severity).toBe("error");
     expect(inbox[0]?.event_type).toBe("execution.failed");
   });
+
+  test("an actionable event lands with actionable=true and a resource pointer", async () => {
+    await wipe();
+    await seedDefaultCliRule();
+    const resolver = makeAdapterResolver(ctx.db);
+    const connectorId = "00000000-0000-4000-8000-0000000000c1";
+
+    await fanoutEvent({
+      db: ctx.db,
+      boss: fakeBoss,
+      tenant_id: ctx.tenant_id,
+      event_type: "connector.auth_failed",
+      event_row_id: 6,
+      payload: { severity: "error", connector_id: connectorId, reason: "credential_rejected" },
+      notificationAdapterResolver: resolver,
+    });
+
+    const inbox = await ctx.db
+      .select()
+      .from(cliNotificationInbox)
+      .where(eq(cliNotificationInbox.tenant_id, ctx.tenant_id));
+    expect(inbox.length).toBe(1);
+    expect(inbox[0]?.actionable).toBe(true);
+    expect(inbox[0]?.resource_type).toBe("connector");
+    expect(inbox[0]?.resource_id).toBe(connectorId);
+  });
+
+  test("a purely informational event lands with actionable=false", async () => {
+    await wipe();
+    await seedDefaultCliRule();
+    const resolver = makeAdapterResolver(ctx.db);
+
+    await fanoutEvent({
+      db: ctx.db,
+      boss: fakeBoss,
+      tenant_id: ctx.tenant_id,
+      event_type: "execution.succeeded",
+      event_row_id: 7,
+      payload: {
+        execution_id: "00000000-0000-4000-8000-0000000000e1",
+        workflow_id: "00000000-0000-4000-8000-0000000000f1",
+        duration_ms: 12,
+      },
+      notificationAdapterResolver: resolver,
+    });
+
+    const inbox = await ctx.db
+      .select()
+      .from(cliNotificationInbox)
+      .where(eq(cliNotificationInbox.tenant_id, ctx.tenant_id));
+    expect(inbox.length).toBe(1);
+    expect(inbox[0]?.event_type).toBe("execution.succeeded");
+    expect(inbox[0]?.actionable).toBe(false);
+  });
+
+  test("an unknown event type lands all-null/false without throwing", async () => {
+    await wipe();
+    await seedDefaultCliRule();
+    const resolver = makeAdapterResolver(ctx.db);
+
+    await fanoutEvent({
+      db: ctx.db,
+      boss: fakeBoss,
+      tenant_id: ctx.tenant_id,
+      event_type: "totally.unknown.event",
+      event_row_id: 8,
+      payload: { severity: "warn", whatever: true },
+      notificationAdapterResolver: resolver,
+    });
+
+    const inbox = await ctx.db
+      .select()
+      .from(cliNotificationInbox)
+      .where(eq(cliNotificationInbox.tenant_id, ctx.tenant_id));
+    expect(inbox.length).toBe(1);
+    expect(inbox[0]?.actionable).toBe(false);
+    expect(inbox[0]?.resource_type).toBeNull();
+    expect(inbox[0]?.resource_id).toBeNull();
+  });
 });
