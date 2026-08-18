@@ -35,6 +35,7 @@ import { workflows, workflowVersions } from "../db/schema/workflows.ts";
 import { logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { diffShapesDeep } from "../schema-versions/service.ts";
+import type { SignalSource } from "./service.ts";
 import { scanStdlibDrift } from "./stdlib-drift-scan.ts";
 import type { DriftSignal, SchemaShape } from "./types.ts";
 
@@ -82,6 +83,48 @@ export interface ScannedSignalContext {
 export interface ScannedSignal {
   signal: DriftSignal;
   ctx: ScannedSignalContext;
+}
+
+/**
+ * Translate a scanned signal's context into the shape `processDriftSignal`
+ * persists.
+ *
+ * Both callers — the scheduler runner and the operator scan route — used to
+ * rebuild this field by field, and both silently dropped `workflow_step_id`.
+ * A proactive signal has no failing execution row, so that anchor is the only
+ * link between the resulting candidate and the step it proposes to change:
+ * without it the candidate can be neither previewed nor applied. One
+ * translation means a field added here can never again reach only one caller.
+ */
+export function driftSignalContext(
+  ctx: ScannedSignalContext,
+  extra: { actor_id: string | null; source: SignalSource; scan_id: string },
+): {
+  tenant_id: string;
+  workflow_id: string;
+  execution_id: null;
+  step_id: null;
+  workflow_step_id?: string;
+  connector_id?: string;
+  endpoint_key?: string;
+  actor_id: string | null;
+  source: SignalSource;
+  scan_id: string;
+  repair_input: ScannedSignalContext["repair_input"];
+} {
+  return {
+    tenant_id: ctx.tenant_id,
+    workflow_id: ctx.workflow_id,
+    execution_id: ctx.execution_id,
+    step_id: ctx.step_id,
+    ...(ctx.workflow_step_id ? { workflow_step_id: ctx.workflow_step_id } : {}),
+    ...(ctx.connector_id ? { connector_id: ctx.connector_id } : {}),
+    ...(ctx.endpoint_key ? { endpoint_key: ctx.endpoint_key } : {}),
+    actor_id: extra.actor_id,
+    source: extra.source,
+    scan_id: extra.scan_id,
+    repair_input: ctx.repair_input,
+  };
 }
 
 /**

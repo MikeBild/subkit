@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { patchCandidates, schemaVersions } from "../../db/schema/index.ts";
+import { driftSignalContext } from "../../self-healing/proactive-scanner.ts";
 import {
   createSelfHealingCtx,
   SEED_STEP_ID,
@@ -72,4 +73,41 @@ describe("proactive drift scan", () => {
     expect(diff?.step_id).toBeNull();
     expect(diff?.workflow_step_id).toBe(SEED_STEP_ID);
   }, 90_000);
+
+  test("the shared translation carries every anchor a caller may hold", () => {
+    // Both scan callers — the scheduler runner and the operator HTTP route —
+    // build their process context here. Rebuilding it by hand is what dropped
+    // the anchor twice, so the translation is what the test pins.
+    const context = driftSignalContext(
+      {
+        tenant_id: "t",
+        workflow_id: "w",
+        execution_id: null,
+        step_id: null,
+        workflow_step_id: SEED_STEP_ID,
+        connector_id: "c",
+        endpoint_key: "GET /users/1",
+        repair_input: { failing_step_id: "proactive:schema_diff" },
+      },
+      { actor_id: null, source: "proactive_admin", scan_id: "s" },
+    );
+    expect(context.workflow_step_id).toBe(SEED_STEP_ID);
+    expect(context.connector_id).toBe("c");
+    expect(context.endpoint_key).toBe("GET /users/1");
+    expect(context.repair_input.failing_step_id).toBe("proactive:schema_diff");
+  });
+
+  test("a signal without a definition anchor omits the field rather than nulling it", () => {
+    const context = driftSignalContext(
+      {
+        tenant_id: "t",
+        workflow_id: "w",
+        execution_id: null,
+        step_id: null,
+        repair_input: { failing_step_id: "proactive:stdlib" },
+      },
+      { actor_id: null, source: "proactive_scheduler", scan_id: "s" },
+    );
+    expect("workflow_step_id" in context).toBe(false);
+  });
 });

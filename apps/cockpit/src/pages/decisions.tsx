@@ -166,32 +166,36 @@ export function DecisionsPage() {
 
   return (
     <main className="flex min-h-0 flex-1 flex-col" data-testid="decisions-page">
-      <header
-        className="flex shrink-0 flex-col items-stretch justify-between gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:px-8"
-        data-testid="decisions-header"
-      >
-        <div className="flex items-center gap-1.5">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
-          <ContextHelp
-            label={t("resource.about", { resource: title })}
-            testId="decisions-description"
+      {/* One column: the heading shares the queue's axis, so a wide window does
+          not strand the title at the edge while the cards float in the middle. */}
+      <header className="shrink-0 border-b px-4 py-4 sm:px-6" data-testid="decisions-header">
+        <div className="mx-auto flex w-full max-w-[780px] flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+            <ContextHelp
+              label={t("resource.about", { resource: title })}
+              testId="decisions-description"
+            >
+              {t("decisions.description")}
+            </ContextHelp>
+          </div>
+          <IconButton
+            variant="outline"
+            label={t("common.refresh")}
+            data-testid="decisions-refresh"
+            onClick={() => queue.refetch()}
           >
-            {t("decisions.description")}
-          </ContextHelp>
+            <RefreshCw className={queue.isFetching ? "animate-spin" : undefined} />
+          </IconButton>
         </div>
-        <IconButton
-          variant="outline"
-          label={t("common.refresh")}
-          data-testid="decisions-refresh"
-          onClick={() => queue.refetch()}
-        >
-          <RefreshCw className={queue.isFetching ? "animate-spin" : undefined} />
-        </IconButton>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         <div className="mx-auto grid w-full max-w-[780px] gap-4">
-          <div className="flex flex-wrap items-center gap-2" data-testid="decisions-toolbar">
+          <div
+            className="flex flex-wrap items-center gap-2 border-b pb-4"
+            data-testid="decisions-toolbar"
+          >
             <Button
               variant={preferences.kinds.length === 0 ? "default" : "outline"}
               size="sm"
@@ -218,7 +222,7 @@ export function DecisionsPage() {
                 {t(KIND_LABEL[kind])}
               </Button>
             ))}
-            <span className="ml-auto flex items-center gap-2">
+            <span className="flex items-center gap-2 sm:ml-auto">
               <span className="text-xs text-muted-foreground">{t("decisions.group.label")}</span>
               {GROUP_MODES.map((mode, index) => (
                 <Button
