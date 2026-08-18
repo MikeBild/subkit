@@ -261,16 +261,30 @@ describe("conversation.run-turn worker — failure path", () => {
 
     // A CONVERSATION_TURN_FAILED audit row was written with the failure
     // reason + the mcp_task correlation id.
-    const audits = await queue.testDb.db
-      .select()
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.tenant_id, tenantId),
-          eq(auditLog.action, "conversation.turn_failed"),
-          eq(auditLog.resource_id, conversation_id),
-        ),
-      );
+    //
+    // Waited for on its own terms rather than inherited from the
+    // failure_reason wait above: the handler stamps failure_reason FIRST and
+    // writes this row afterwards, so a test that wakes on the stamp and reads
+    // the audit table immediately is racing a window it did not measure. It
+    // holds on an idle machine and loses under load, which is the shape of a
+    // flake that only ever fails in CI.
+    const auditRows = async () =>
+      await queue.testDb.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, tenantId),
+            eq(auditLog.action, "conversation.turn_failed"),
+            eq(auditLog.resource_id, conversation_id),
+          ),
+        );
+    await waitFor(async () => (await auditRows()).length > 0, {
+      tries: 80,
+      sleepMs: 250,
+      label: "conversation.turn_failed audit row",
+    });
+    const audits = await auditRows();
     expect(audits).toHaveLength(1);
     expect(audits[0]?.result).toBe("error");
     expect(audits[0]?.reason).toContain("overloaded");
