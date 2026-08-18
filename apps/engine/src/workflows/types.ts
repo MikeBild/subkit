@@ -975,6 +975,12 @@ export const LoopStepSchema = z
     data_selector: z.string().optional(),
     body: z.array(z.string()),
     /**
+     * Stop after the first body step whose effective on_error policy is
+     * "fail". The default preserves the historical collect-all behaviour,
+     * while expensive or side-effecting loops can opt into bounded failure.
+     */
+    fail_fast: z.boolean().optional(),
+    /**
      * RETIRED authoring field — legacy passthrough only, never authored
      * anew. Loop items are addressed as `$item` (JSONata) / `${item.…}`
      * (strings), with `$loop_index` for the iteration counter.
