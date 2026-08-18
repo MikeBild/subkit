@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.4] – 2026-08-19
+
+### Fixed
+
+- **Migration diagnostics distinguish accepted history from real drift.**
+  Tagless journal rows retained from the pre-squash lineage are reported as
+  accepted history instead of blocking `sk doctor`; unknown tagged identities
+  and missing embedded identities remain blocking failures.
+- **Schema-drift status now follows the migration runner's stable identity
+  contract.** The diagnostics API, audit metadata, engine health state and CLI
+  agree on the same tag-and-hash classification.
+
 ## [6.6.3] – 2026-08-19
 
 ### Fixed
