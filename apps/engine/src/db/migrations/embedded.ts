@@ -54,6 +54,8 @@ import sql0033HardCarmellaUnuscione from "./0033_hard_carmella_unuscione.sql" wi
 import sql0034BlushingMagma from "./0034_blushing_magma.sql" with { type: "text" };
 import sql0035McpServersDropped from "./0035_mcp_servers_dropped.sql" with { type: "text" };
 import sql0036FancyThena from "./0036_fancy_thena.sql" with { type: "text" };
+import sql0037YieldingTinkerer from "./0037_yielding_tinkerer.sql" with { type: "text" };
+import sql0038SolidBaronZemo from "./0038_solid_baron_zemo.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -115,6 +117,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0034_blushing_magma": sql0034BlushingMagma,
   "0035_mcp_servers_dropped": sql0035McpServersDropped,
   "0036_fancy_thena": sql0036FancyThena,
+  "0037_yielding_tinkerer": sql0037YieldingTinkerer,
+  "0038_solid_baron_zemo": sql0038SolidBaronZemo,
 };
 
 const journal = journalMeta as unknown as Journal;

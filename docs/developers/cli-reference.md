@@ -1013,6 +1013,8 @@ _No arguments._
 Read and acknowledge queued notifications
 
 - `--all` — Show everything queued, ignoring the stored cursor
+- `--unread` — Only tasks you have not marked read
+- `--actionable` — Only tasks that need someone to act
 - `--limit` (string) — Max rows (<=500)
 - `--json` — JSON output
 

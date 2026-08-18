@@ -11846,12 +11846,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Pull pending sk CLI inbox notifications */
+        /** List inbox tasks with this caller's read state */
         get: {
             parameters: {
                 query?: {
                     since?: number | null;
                     limit?: number;
+                    unread_only?: "true" | "false";
+                    actionable_only?: "true" | "false";
                 };
                 header?: never;
                 path?: never;
@@ -11887,7 +11889,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Acknowledge (consume) sk CLI inbox notifications up to a cursor */
+        /** Mark this caller's inbox tasks read up to a cursor */
         post: {
             parameters: {
                 query?: never;
@@ -11908,6 +11910,113 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["CliNotificationInboxAckResponse"];
+                    };
+                };
+                /** @description Principal is not a user */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/notifications/inbox/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark specific inbox tasks read for this caller */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CliNotificationInboxIdsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CliNotificationInboxMarkReadResponse"];
+                    };
+                };
+                /** @description Principal is not a user */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/notifications/inbox/unread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore unread state on specific inbox tasks for this caller */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CliNotificationInboxIdsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CliNotificationInboxMarkUnreadResponse"];
+                    };
+                };
+                /** @description Principal is not a user */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
             };
@@ -14486,6 +14595,10 @@ export interface components {
             current_version: number | null;
             created_at: string;
             updated_at: string;
+            last_executed_at: string | null;
+            health_state: string;
+            health_reason: string | null;
+            health_changed_at: string | null;
             steps: unknown[];
             input_schema: {
                 [key: string]: unknown;
@@ -16329,6 +16442,7 @@ export interface components {
             updated_at: string;
             last_message_role?: string | null;
             last_message_excerpt?: string | null;
+            pending_elicitation_expires_at?: string | null;
         };
         ConversationRunOutcome: {
             conversation: components["schemas"]["Conversation"];
@@ -16354,7 +16468,7 @@ export interface components {
         ConversationDetail: {
             conversation: components["schemas"]["Conversation"];
             messages: components["schemas"]["UIMessage"][];
-            tool_calls: unknown[];
+            tool_calls: components["schemas"]["ConversationToolCall"][];
             draft?: unknown;
             resume_summary?: {
                 active_target: {
@@ -16373,6 +16487,7 @@ export interface components {
                     id: string;
                     tool_name: string;
                     summary: string;
+                    expires_at: string;
                 } | null;
                 next_action: string;
                 one_sentence: string;
@@ -16383,6 +16498,20 @@ export interface components {
             role: string;
             parts: unknown[];
             created_at: string;
+        };
+        ConversationToolCall: {
+            id: string;
+            conversation_id: string;
+            tool: string;
+            input?: unknown;
+            output?: unknown;
+            approval_required: boolean;
+            created_at: string;
+            parent_message_id?: string | null;
+            confirmation_state: string | null;
+            approved_at: string | null;
+            /** @enum {string|null} */
+            outcome: "ok" | "error" | "denied" | "pending" | null;
         };
         PatchConversationBody: {
             model?: string | null;
@@ -17248,12 +17377,19 @@ export interface components {
         CliNotificationInboxListResponse: {
             items: components["schemas"]["CliNotificationInboxItem"][];
             cursor: number;
+            unread_count: number;
+            actionable_unread_count: number;
         };
         CliNotificationInboxItem: {
             id: number;
             severity: string;
             event_type: string;
             event_payload?: unknown;
+            actionable: boolean;
+            resource_type: string | null;
+            resource_id: string | null;
+            read: boolean;
+            read_at: string | null;
             created_at: string;
         };
         CliNotificationInboxAckResponse: {
@@ -17261,6 +17397,15 @@ export interface components {
         };
         CliNotificationInboxAckRequest: {
             up_to_cursor: number;
+        };
+        CliNotificationInboxMarkReadResponse: {
+            marked: number;
+        };
+        CliNotificationInboxIdsRequest: {
+            ids: number[];
+        };
+        CliNotificationInboxMarkUnreadResponse: {
+            unmarked: number;
         };
         OutboxEventListResponse: {
             items: components["schemas"]["OutboxEvent"][];
@@ -17276,7 +17421,7 @@ export interface components {
         };
         EmitEventBody: {
             /** @enum {string} */
-            type: "execution.succeeded" | "execution.failed" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed";
+            type: "execution.succeeded" | "execution.failed" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "connector.auth_failed" | "connector.health_changed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed";
             payload: {
                 [key: string]: unknown;
             };
