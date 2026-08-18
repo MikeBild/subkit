@@ -15,6 +15,7 @@ import {
 } from "@/api/client";
 import { dryRunPatchCandidate, getPatchCandidatePreview } from "@/api/decisions";
 import { useSession } from "@/app/session";
+import { BackgroundTools } from "@/components/ai-elements/background-tools";
 import {
   Confirmation,
   ConfirmationAction,
@@ -81,9 +82,13 @@ import { useI18n } from "@/lib/i18n-context";
 import type { DiffLine } from "@/lib/line-diff";
 import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
-import { asToolPart, patchCandidateId, withToolResult } from "@/lib/tool-parts";
+import { patchCandidateId, toolPartVerdict } from "@/lib/tool-parts";
+import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation";
 import { cn } from "@/lib/utils";
+import { conversationRow } from "./chat-list-model";
+import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
+import { dedupeBackground, groupMessageParts } from "./chat-transcript";
 
 const QUICK_START: readonly TranslationKey[] = [
   "chat.quick.workflow",
@@ -191,6 +196,7 @@ function PatchProposalDiff({ candidateId, testId }: { candidateId: string; testI
   return (
     <DiffCard
       testId={testId}
+      embedded
       targetLabel={preview.data.proposal?.description ?? t("decisions.kind.patch")}
       before={preview.data.before_step}
       after={preview.data.after_step}
@@ -268,6 +274,22 @@ function StarterCards({
   );
 }
 
+/** What to call an action that gets a card of its own. */
+function actionLabel(t: Translate, toolName: string): string {
+  const label = toolLabel(toolName);
+  if (label.kind === "workflow") return t("tool.name.runNamedWorkflow", { name: label.slug });
+  if (label.kind === "literal") return label.text;
+  if (label.kind === "background") return t(label.words.past);
+  return t(label.key);
+}
+
+/** What to call a background read, in the tense that matches its state. */
+function backgroundLabel(t: Translate, toolName: string, running: boolean): string {
+  const label = toolLabel(toolName);
+  if (label.kind === "background") return t(running ? label.words.active : label.words.past);
+  return actionLabel(t, toolName);
+}
+
 function ChatMessage({
   message,
   messageIndex,
@@ -288,26 +310,52 @@ function ChatMessage({
       data-testid={`chat-message-${messageIndex}`}
     >
       <MessageContent data-testid={`chat-message-${messageIndex}-content`}>
-        {message.parts.map((part, partIndex) => {
-          const text = textFromPart(part);
-          if (text)
+        {groupMessageParts(message.parts, pendingApprovalId).map((group) => {
+          if (group.kind === "background") {
+            return (
+              <BackgroundTools
+                key={`${message.id}-bg-${group.index}`}
+                testId={`chat-message-${messageIndex}-background-${group.index}`}
+                lines={dedupeBackground(group.tools).map((line) => ({
+                  label: backgroundLabel(t, line.toolName, line.running),
+                  count: line.count,
+                  running: line.running,
+                }))}
+              />
+            );
+          }
+          if (group.kind === "part") {
+            const text = textFromPart(group.part);
+            if (!text) return null;
             return (
               <Bubble
-                key={`${message.id}-text-${partIndex}`}
+                key={`${message.id}-text-${group.index}`}
                 variant={from === "user" ? "default" : "ghost"}
                 align={from === "user" ? "end" : "start"}
               >
-                <BubbleContent data-testid={`chat-message-${messageIndex}-text-${partIndex}`}>
+                <BubbleContent data-testid={`chat-message-${messageIndex}-text-${group.index}`}>
                   <MessageResponse>
                     {hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"))}
                   </MessageResponse>
                 </BubbleContent>
               </Bubble>
             );
-          const called = asToolPart(part, pendingApprovalId);
-          if (!called) return null;
-          const tool = withToolResult(called, message.parts);
+          }
+          const tool = group.tool;
+          const partIndex = group.index;
           const candidateId = patchCandidateId(tool);
+          const verdict = toolPartVerdict(tool);
+          const stale = isStaleCall({
+            messageCreatedAt: message.created_at,
+            hasResult: tool.state === "output-available" || tool.state === "output-error",
+            isStreaming: false,
+            now: Date.now(),
+          });
+          const outcomeKey = toolOutcomeKey({
+            confirmationState: verdict.confirmationState,
+            outcome: verdict.outcome,
+            stale,
+          });
           return (
             <Tool
               key={`${message.id}-tool-${partIndex}`}
@@ -319,16 +367,28 @@ function ChatMessage({
                   type={tool.type}
                   state={tool.state}
                   toolName={tool.toolName}
+                  title={actionLabel(t, tool.toolName)}
+                  outcomeKey={outcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
               ) : (
                 <ToolHeader
                   type={tool.type}
                   state={tool.state}
+                  title={actionLabel(t, tool.type.replace(/^tool-/, ""))}
+                  outcomeKey={outcomeKey}
                   data-testid={`chat-message-${messageIndex}-tool-${partIndex}-toggle`}
                 />
               )}
               <ToolContent>
+                {stale && (
+                  <p
+                    className="text-muted-foreground text-sm"
+                    data-testid={`chat-message-${messageIndex}-tool-${partIndex}-stale`}
+                  >
+                    {t("tool.stale.description")}
+                  </p>
+                )}
                 <ToolInput input={tool.input} />
                 {candidateId && (
                   <PatchProposalDiff
@@ -409,42 +469,59 @@ function ConversationList({
       </div>
       <ScrollArea className="h-0 min-h-0 flex-1">
         <div className="grid gap-1 p-2">
-          {conversations.map((conversation, index) => (
-            <div key={conversation.id} className="group flex min-w-0 items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                data-testid={`conversation-item-${index}`}
-                onClick={() => onSelect(conversation.id)}
-                className={cn(
-                  "h-auto min-w-0 flex-1 justify-start rounded-lg px-3 py-2.5 text-left",
-                  activeId === conversation.id && "bg-muted text-foreground hover:bg-muted",
-                )}
-              >
-                <span className="block min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">
-                    {conversation.title || t("chat.untitled")}
+          {conversations.map((conversation, index) => {
+            const row = conversationRow(conversation, {
+              untitled: t("chat.untitled"),
+              status: statusLabel(t, conversation.status),
+              excerpt:
+                conversationExcerpt(
+                  conversation.last_message_excerpt,
+                  t("chat.toolActivity"),
+                  t("tool.referenceHidden"),
+                  (toolName) => actionLabel(t, toolName),
+                ) || null,
+            });
+            return (
+              <div key={conversation.id} className="group flex min-w-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  data-testid={`conversation-item-${index}`}
+                  onClick={() => onSelect(conversation.id)}
+                  className={cn(
+                    "h-auto min-w-0 flex-1 justify-start rounded-lg px-3 py-2.5 text-left",
+                    activeId === conversation.id && "bg-muted text-foreground hover:bg-muted",
+                  )}
+                >
+                  <span className="block min-w-0 flex-1">
+                    <span
+                      className="block truncate text-sm font-medium"
+                      data-testid={`conversation-item-${index}-title`}
+                    >
+                      {row.title}
+                    </span>
+                    {row.secondary && (
+                      <span
+                        className="block truncate text-xs font-normal text-muted-foreground"
+                        data-testid={`conversation-item-${index}-secondary`}
+                      >
+                        {row.secondary}
+                      </span>
+                    )}
                   </span>
-                  <span className="block truncate text-xs font-normal text-muted-foreground">
-                    {conversationExcerpt(
-                      conversation.last_message_excerpt,
-                      t("chat.toolActivity"),
-                      t("tool.referenceHidden"),
-                    ) || statusLabel(t, conversation.status)}
-                  </span>
-                </span>
-              </Button>
-              <IconButton
-                label={t("chat.rename")}
-                variant="ghost"
-                className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                data-testid={`conversation-rename-${index}`}
-                onClick={() => onRename(conversation)}
-              >
-                <Pencil />
-              </IconButton>
-            </div>
-          ))}
+                </Button>
+                <IconButton
+                  label={t("chat.rename")}
+                  variant="ghost"
+                  className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+                  data-testid={`conversation-rename-${index}`}
+                  onClick={() => onRename(conversation)}
+                >
+                  <Pencil />
+                </IconButton>
+              </div>
+            );
+          })}
         </div>
       </ScrollArea>
     </div>
@@ -479,6 +556,18 @@ export function ChatPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [streamedText, setStreamedText] = useState("");
   const [streamedDiffs, setStreamedDiffs] = useState<StreamedDiff[]>([]);
+  // The engine has always streamed `tool_call_start`, `tool_log` and
+  // `tool_call_end`; the page dropped every frame but `text_delta` and `diff`,
+  // so a long-running action showed nothing at all while it worked.
+  const [liveCalls, setLiveCalls] = useState<LiveCall[]>([]);
+  const [liveTick, setLiveTick] = useState(0);
+  const anyLive = liveCalls.some((call) => !call.done);
+  useEffect(() => {
+    if (!anyLive) return;
+    // One timer for the page, not one per card.
+    const timer = setInterval(() => setLiveTick((tick) => tick + 1), 250);
+    return () => clearInterval(timer);
+  }, [anyLive]);
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -515,9 +604,15 @@ export function ChatPage() {
     mutationFn: async (message: string) => {
       setStreamedText("");
       setStreamedDiffs([]);
+      setLiveCalls([]);
       const onEvent = (event: { type: string; [key: string]: unknown }) => {
         if (event.type === "text_delta" && typeof event.text === "string") {
           setStreamedText((currentText) => currentText + event.text);
+          return;
+        }
+        const live = reduceLiveCall(event);
+        if (live) {
+          setLiveCalls((calls) => applyLiveCall(calls, live));
           return;
         }
         // A change the engine proposes mid-turn: show it while it is being
@@ -541,6 +636,7 @@ export function ChatPage() {
       setCreatePrompt("");
       setStreamedText("");
       setStreamedDiffs([]);
+      setLiveCalls([]);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
         queryClient.invalidateQueries({ queryKey: ["conversation", result.conversation.id] }),
@@ -713,6 +809,39 @@ export function ChatPage() {
                       />
                     </MessageScrollerItem>
                   ))
+                )}
+                {liveCalls.length > 0 && (
+                  <MessageScrollerItem scrollAnchor={!streamedText && streamedDiffs.length === 0}>
+                    {/* `liveTick` is the render trigger: the interval bumps it so
+                        the ages below re-read the clock. Reading it here is what
+                        makes that dependency visible instead of incidental. */}
+                    <div className="grid gap-1" data-testid="chat-live-calls" data-tick={liveTick}>
+                      {liveCalls.map((call, index) => {
+                        const running = elapsedMs(call, Date.now());
+                        return (
+                          <div
+                            key={call.callId}
+                            className="flex flex-wrap items-baseline gap-2 text-xs text-muted-foreground"
+                            data-testid={`chat-live-call-${index}`}
+                          >
+                            <span className="font-medium">
+                              {call.toolName ? actionLabel(t, call.toolName) : t("tool.action")}
+                            </span>
+                            {call.logTail && (
+                              <span className="min-w-0 truncate">{call.logTail}</span>
+                            )}
+                            {running !== null && (
+                              <span className="tabular-nums">
+                                {t("overview.recent.duration", {
+                                  seconds: String(Math.round(running / 1000)),
+                                })}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </MessageScrollerItem>
                 )}
                 {streamedDiffs.length > 0 && (
                   <MessageScrollerItem scrollAnchor={!streamedText}>
