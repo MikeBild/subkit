@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.3] – 2026-08-19
+
+### Fixed
+
+- **Durable abort requests recover immediately after a worker disappears.** A
+  periodic or boot-time recovery pass now moves the orphaned execution to
+  `aborted` without waiting for its workflow timeout.
+- **Execution, step, event, and audit state recover atomically.** Running step
+  rows are terminalized in the same transaction as their parent execution,
+  and a late worker cannot overwrite the recovered state.
+- **Recovery repairs inconsistent rows left by earlier engine versions.** A
+  bounded, indexed reconciliation pass finds running steps beneath an already
+  terminal execution, applies the parent's terminal status, emits the missing
+  step event, and records the repair in the audit trail.
+
 ## [6.6.2] – 2026-08-18
 
 ### Fixed
