@@ -83,6 +83,7 @@ import {
   inferStateDrivenFollowUpTool,
 } from "./intent-detector.ts";
 import { RUN_VERB_RE } from "./intent-patterns.ts";
+import { resolveConversationAttemptRoutes } from "./loop/attempt-route.ts";
 import {
   DEFAULT_BUDGET,
   MAX_REPAIRS_PER_TURN,
@@ -1118,7 +1119,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
    * error. Usage rows are written per-step with `modelId` as the
    * `model` column so fallback attempts show up as distinct rows.
    */
-  async function runOnce(modelId: string, prebuiltMessages?: ModelMessage[]): Promise<void> {
+  async function runOnce(
+    modelId: string,
+    attemptProvider: typeof route.provider,
+    prebuiltMessages?: ModelMessage[],
+  ): Promise<void> {
     let lastStepEnd = now();
     // The model this attempt's CURRENT step actually runs on. `modelId` is
     // only the base the attempt started from — when the step-router swaps a
@@ -1153,7 +1158,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     // here and re-throw it on drain failure. See
     // apps/engine/src/llm/errors.ts for our classification taxonomy.
     let capturedError: unknown;
-    const resolvedModel = await resolveLanguageModel(route.provider, modelId, p.tenant_id);
+    const resolvedModel = await resolveLanguageModel(attemptProvider, modelId, p.tenant_id);
     const streamAbortSignal = mergeAbortSignals([
       turnAbortCtrl.signal,
       AbortSignal.timeout(Math.min(10 * 60_000, 30_000 * budget)),
@@ -1167,10 +1172,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     // ignore it. Enabled unconditionally for Claude models — the flag
     // on ModelRoute gates per-tenant opt-out if needed.
     const cacheSupported =
-      (route.provider === "anthropic" ||
-        route.provider === "vertex" ||
-        route.provider === "bedrock" ||
-        route.provider === "gateway") &&
+      (attemptProvider === "anthropic" ||
+        attemptProvider === "vertex" ||
+        attemptProvider === "bedrock" ||
+        attemptProvider === "gateway") &&
       /claude/i.test(modelId);
     const cacheBlocks = timePhase("converse.split_cache_blocks", () =>
       splitPromptIntoBlocks(prompt, "converse"),
@@ -1231,7 +1236,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ) {
         return false;
       }
-      return supportsExtendedThinking(route.provider, modelId);
+      return supportsExtendedThinking(attemptProvider, modelId);
     })();
     // Anthropic API rejects thinking + forced tool_choice (observed as
     // `converse.failed` ×3 in session 0498925e). The decision lives in
@@ -1252,7 +1257,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       msg: "resolved per-turn provider gates",
       conversation_id: p.conversation_id,
       tenant_id: p.tenant_id,
-      provider: route.provider,
+      provider: attemptProvider,
       model: modelId,
       stage: draft.summary?.stage ?? "idle",
       parallel_tools_enabled: turnStageReadOnly,
@@ -1263,8 +1268,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     // Anthropic-native server-side web search. Only valid for Anthropic
     // Claude models, and only when the tenant has the `llm.web_search`
     // config leaf enabled (default on). Billed per search by Anthropic.
-    // The mock path (route.provider !== "anthropic") never adds it, so
-    // determinism in the integration suite is preserved.
+    // Non-Anthropic attempts never add it, including cross-provider
+    // fallbacks; the mock integration suite therefore stays deterministic.
     const webSearchSetting = (() => {
       try {
         return getConfig(p.tenant_id).llm.web_search === true;
@@ -1273,7 +1278,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         return false;
       }
     })();
-    const webSearchEnabled = anthropicWebSearchApplies(route.provider, modelId, webSearchSetting);
+    const webSearchEnabled = anthropicWebSearchApplies(attemptProvider, modelId, webSearchSetting);
     const turnTools: ToolSet = webSearchEnabled
       ? { ...tools, web_search: buildAnthropicWebSearchTool(5) }
       : tools;
@@ -1448,7 +1453,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             messages: routedMessages,
             model: stepModel,
             tenantDefaultModelId: modelId,
-            provider: route.provider,
+            provider: attemptProvider,
             toolsByName,
             signals: stepRouterSignals,
             turnThinkingEnabled: thinkingThisTurn,
@@ -1462,7 +1467,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           if (decision.modelId && decision.modelId !== modelId) {
             try {
               result.model = await resolveLanguageModel(
-                route.provider,
+                attemptProvider,
                 decision.modelId,
                 p.tenant_id,
               );
@@ -1499,7 +1504,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 msg: "could not resolve upgraded model — sticking with tenant default",
                 conversation_id: p.conversation_id,
                 tenant_id: p.tenant_id,
-                provider: route.provider,
+                provider: attemptProvider,
                 target: decision.modelId,
                 fallback_model: modelId,
                 error: err instanceof Error ? err.message : String(err),
@@ -1567,7 +1572,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       runtimeContext: {
         tenant_id: p.tenant_id,
         conversation_id: p.conversation_id,
-        provider: route.provider,
+        provider: attemptProvider,
         model: modelId,
       },
       telemetry: {
@@ -1866,11 +1871,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
+  const attempts = resolveConversationAttemptRoutes(route, seedModel);
   let cancelled = false;
   try {
     // Attempt #1 reuses the preflight `messages` build; fallback
     // attempts rebuild inside runOnce (see its parameter note).
-    await runOnce(seedModel, messages);
+    await runOnce(attempts.primary.model, attempts.primary.provider, messages);
   } catch (primaryErr) {
     // Cancel-vs-error split — see `abort.ts` header for reason coverage.
     if (isExpectedCancellation(primaryErr, turnAbortCtrl.signal)) {
@@ -1924,7 +1930,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         kind: providerErr.kind,
       });
       try {
-        await runOnce(route.fallback);
+        await runOnce(attempts.fallback.model, attempts.fallback.provider);
       } catch (fbErr) {
         if (isExpectedCancellation(fbErr, turnAbortCtrl.signal)) {
           cancelled = true;
