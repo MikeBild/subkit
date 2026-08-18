@@ -153,6 +153,8 @@ function ContextColumn({
   entries: ContextEntry[];
   testId: string;
 }) {
+  const { t } = useI18n();
+  const safe = (text: string) => hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"));
   return (
     <div className="min-w-0">
       <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{heading}</p>
@@ -168,16 +170,17 @@ function ContextColumn({
                 className="min-w-0 truncate underline underline-offset-2"
                 data-testid={`${testId}-link-${index}`}
               >
-                {entry.label}
+                {safe(entry.label)}
               </Link>
             ) : (
               <span className="min-w-0 truncate" data-testid={`${testId}-item-${index}`}>
-                {entry.label}
+                {safe(entry.label)}
               </span>
             )}
+            {/* An endpoint key is engine prose and routinely embeds an id. */}
             {entry.note && (
               <span className="min-w-0 truncate font-mono text-muted-foreground text-xs">
-                {entry.note}
+                {safe(entry.note)}
               </span>
             )}
           </li>
@@ -207,14 +210,30 @@ function DetailBlock({
 }
 
 function DetailList({ items }: { items: string[] }) {
+  const { t } = useI18n();
   return (
     <ul className="grid list-disc gap-1 pl-5 text-sm">
       {items.map((entry, index) => (
         <li key={`${entry}-${index}`} className="max-w-prose break-words">
-          {entry}
+          {hideTechnicalIdentifiers(entry, t("tool.referenceHiddenInline"))}
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Free text from the engine, with ids taken out. Reasoning, drift output and
+ *  skill bodies all quote real records; none of it may put an id on screen. */
+function DetailText({
+  children,
+  className,
+  ...rest
+}: { children: string; className?: string } & Record<`data-${string}`, string>) {
+  const { t } = useI18n();
+  return (
+    <p className={className} {...rest}>
+      {hideTechnicalIdentifiers(children, t("tool.referenceHiddenInline"))}
+    </p>
   );
 }
 
@@ -245,33 +264,33 @@ function DecisionDetailPanel({
           <DetailBlock heading={t("decisions.detail.reasoning")}>
             <p className="max-w-prose text-sm">{t(changeKey)}</p>
             {evidence.reasoning && (
-              <p
+              <DetailText
                 className="max-w-prose text-sm text-muted-foreground break-words"
                 data-testid={`${testId}-reasoning`}
               >
                 {evidence.reasoning}
-              </p>
+              </DetailText>
             )}
           </DetailBlock>
         )}
         {!changeKey && evidence.reasoning && (
           <DetailBlock heading={t("decisions.detail.reasoning")}>
-            <p
+            <DetailText
               className="max-w-prose text-sm text-muted-foreground break-words"
               data-testid={`${testId}-reasoning`}
             >
               {evidence.reasoning}
-            </p>
+            </DetailText>
           </DetailBlock>
         )}
         {evidence.driftSummary && (
           <DetailBlock heading={t("decisions.detail.rawDrift")}>
-            <pre
-              className="max-h-52 overflow-auto rounded-md border bg-muted/40 p-2 text-xs leading-relaxed whitespace-pre-wrap"
+            <DetailText
+              className="max-h-52 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap"
               data-testid={`${testId}-drift`}
             >
               {evidence.driftSummary}
-            </pre>
+            </DetailText>
           </DetailBlock>
         )}
         {evidence.classificationReasons.length > 0 && (
@@ -295,7 +314,9 @@ function DecisionDetailPanel({
     return (
       <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
         <DetailBlock heading={t("decisions.detail.skillBody")} testId={`${testId}-body`}>
-          <p className="max-w-prose text-sm break-words whitespace-pre-wrap">{detail.body}</p>
+          <DetailText className="max-w-prose text-sm break-words whitespace-pre-wrap">
+            {detail.body}
+          </DetailText>
         </DetailBlock>
         {sections.examples.length > 0 && (
           <DetailBlock heading={t("decisions.detail.examples")}>
@@ -322,7 +343,7 @@ function DecisionDetailPanel({
             <div className="flex flex-wrap gap-1">
               {sections.tags.map((tag) => (
                 <Badge key={tag} variant="outline">
-                  {tag}
+                  {hideTechnicalIdentifiers(tag, t("tool.referenceHiddenInline"))}
                 </Badge>
               ))}
             </div>
@@ -336,9 +357,9 @@ function DecisionDetailPanel({
   return (
     <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
       <DetailBlock heading={t("decisions.detail.question")} testId={`${testId}-question`}>
-        <p className="max-w-prose text-sm break-words">
+        <DetailText className="max-w-prose text-sm break-words">
           {detail.question ?? t("decisions.detail.noQuestion")}
-        </p>
+        </DetailText>
       </DetailBlock>
     </div>
   );
@@ -374,7 +395,9 @@ function SkillEvidenceList({
           {(evidence.data?.items ?? []).map((entry, index) => (
             <li key={entry.id} className="flex flex-wrap items-baseline gap-2">
               <span className="text-muted-foreground text-xs">{dateTime(entry.captured_at)}</span>
-              <span className="min-w-0 max-w-prose break-words">{entry.summary}</span>
+              <span className="min-w-0 max-w-prose break-words">
+                {hideTechnicalIdentifiers(entry.summary, t("tool.referenceHiddenInline"))}
+              </span>
               {/* A run the person cannot open is not linked — the permission is
                   evaluated per object, so the link would lead to a refusal. */}
               {entry.execution_id && canReadRuns && (

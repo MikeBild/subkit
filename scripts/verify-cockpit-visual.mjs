@@ -751,7 +751,7 @@ async function mockApi(route) {
           workflow_id: uuid,
           workflow_name: "Monatsreport",
           connector_id: uuid,
-          endpoint_key: "GET /reports/v1",
+          endpoint_key: `POST /workflows/${uuid}/reports`,
           classification: "safe",
           status: "proposed",
           fixture_id: uuid,
@@ -771,8 +771,7 @@ async function mockApi(route) {
               kind: "update_field_path",
               description: "Feld folgt der Umbenennung: data.id → data.result.id",
               patch: { path: "data.id", value: "data.result.id" },
-              reasoning:
-                "Die Antwort trägt die Kennung seit dem 8. August unter result. Der Schritt liest weiterhin den alten Pfad und bekommt deshalb undefined.",
+              reasoning: `Die Antwort trägt die Kennung seit dem 8. August unter result. Lauf ${uuid} liest weiterhin den alten Pfad und bekommt deshalb undefined.`,
             },
           },
         },
@@ -793,7 +792,7 @@ async function mockApi(route) {
           updated_at: "2026-08-05T07:00:00.000Z",
           diff: {
             execution_id: null,
-            drift_diff: "kind: stdlib_version_drift\nrecorded_major: 1\ncurrent_major: 2",
+            drift_diff: `kind: stdlib_version_drift\nresource_id: ${uuid}\nrecorded_major: 1\ncurrent_major: 2`,
             drift_signal: { kind: "stdlib_version_drift" },
             classification_reasons: ["major version change", "no fixture to replay against"],
             rejection_chain: [
@@ -862,7 +861,7 @@ async function mockApi(route) {
           title: "Umbenannte Antwortfelder zuerst prüfen",
           // The text approval would promote. Never rendered before this change.
           body: "Wenn ein Schritt plötzlich undefined liest, hat das System meist ein Feld verschoben statt es zu entfernen.\n\nErst die Antwortstruktur mit der aufgezeichneten vergleichen, dann den Pfad nachziehen — ein neuer Aufruf ist selten nötig.",
-          examples: ["data.id wurde zu data.result.id"],
+          examples: [`data.id wurde zu data.result.id (Lauf ${uuid})`],
           best_practices: ["Aufgezeichnete Antwort als Vergleich heranziehen"],
           pitfalls: ["Nicht den ganzen Schritt neu schreiben, nur den Pfad"],
           doc_refs: ["docs/concepts/self-healing.md"],
