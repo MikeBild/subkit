@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { humaniseToolName } from "@/lib/tool-presentation";
 import { cn } from "@/lib/utils";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
@@ -23,6 +24,15 @@ export type ToolPart = ToolUIPart | DynamicToolUIPart;
 
 export type ToolHeaderProps = {
   title?: string;
+  /** The engine's word for how this call ended. Outranks the part's own state:
+   *  a declined call is "declined", not "completed". */
+  outcomeKey?: TranslationKey | null;
+  /** The most recent log line while the call runs. Live stream only. */
+  logTail?: string | null;
+  /** How long the call has been running, in ms. Live stream only — no duration
+   *  is persisted, so a reloaded transcript shows none rather than a made-up
+   *  one. */
+  elapsedMs?: number | null;
 } & Omit<ComponentProps<typeof CollapsibleTrigger>, "children" | "type"> &
   (
     | { type: ToolUIPart["type"]; state: ToolUIPart["state"]; toolName?: never }
@@ -68,30 +78,56 @@ export function presentationValue(value: unknown, hidden: string): unknown {
   );
 }
 
+function formatElapsed(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
 export const ToolHeader = ({
   className,
   title,
+  outcomeKey,
+  logTail,
+  elapsedMs,
   type: _type,
   state,
-  toolName: _toolName,
+  toolName,
   ...props
 }: ToolHeaderProps) => {
   const { t } = useI18n();
-  const actionName = title ?? t("tool.action");
+  // The name used to be discarded here — `toolName` was destructured into an
+  // unused binding and no caller passed a `title`, so every card in every
+  // transcript read the same generic phrase and a person could not tell a
+  // catalogue lookup from a workflow that actually ran.
+  const actionName = title ?? (toolName ? humaniseToolName(toolName) : t("tool.action"));
+  const statusWord = t(outcomeKey ?? statusLabels[state]);
 
   return (
     <CollapsibleTrigger
       className={cn("flex w-full items-center justify-between gap-4 p-3", className)}
       {...props}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate font-medium text-sm">{actionName}</span>
-        <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
+        <Badge className="shrink-0 gap-1.5 rounded-full text-xs" variant="secondary">
           {statusIcons[state]}
-          {t(statusLabels[state])}
+          {statusWord}
         </Badge>
+        {logTail ? (
+          <span className="hidden min-w-0 truncate text-muted-foreground text-xs sm:inline">
+            {logTail}
+          </span>
+        ) : null}
       </div>
-      <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+      <div className="flex shrink-0 items-center gap-2">
+        {typeof elapsedMs === "number" ? (
+          <span className="tabular-nums text-muted-foreground text-xs">
+            {formatElapsed(elapsedMs)}
+          </span>
+        ) : null}
+        <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+      </div>
     </CollapsibleTrigger>
   );
 };
