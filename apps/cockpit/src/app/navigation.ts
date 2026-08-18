@@ -47,7 +47,9 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         path: "/overview",
         permission: "stats:read",
         icon: LayoutDashboard,
-        api: ["GET /v1/operator/health-digest"],
+        // The recent-runs block is gated separately on `execution:read`, which
+        // `stats:read` does not imply.
+        api: ["GET /v1/operator/health-digest", "GET /v1/executions"],
       },
       {
         labelKey: "nav.decisions",
@@ -55,7 +57,15 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         permission: "workflow:read",
         anyPermissions: ["workflow:read", "skill:read", "conversation:list", "conversation:read"],
         icon: ListChecks,
-        api: ["GET /v1/patch-candidates", "GET /v1/skill-candidates", "GET /v1/conversations"],
+        // The last two resolve a decision's target to a NAME. Without them a
+        // card can only show an id, and ids are banned from every surface.
+        api: [
+          "GET /v1/patch-candidates",
+          "GET /v1/skill-candidates",
+          "GET /v1/conversations",
+          "GET /v1/workflows",
+          "GET /v1/connectors",
+        ],
       },
     ],
   },
@@ -88,7 +98,8 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         path: "/workflows",
         permission: "workflow:read",
         icon: Workflow,
-        api: ["GET /v1/workflows"],
+        // The connector read is the slug→id index the connector chips need.
+        api: ["GET /v1/workflows", "GET /v1/connectors"],
       },
       {
         labelKey: "nav.runs",
@@ -102,7 +113,8 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         path: "/connectors",
         permission: "connector:read",
         icon: Cable,
-        api: ["GET /v1/connectors"],
+        // The workflow read is inverted into the "used by" relation.
+        api: ["GET /v1/connectors", "GET /v1/workflows"],
       },
     ],
   },
