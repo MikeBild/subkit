@@ -93,6 +93,7 @@ export async function readBodyBytesCapped(
   res: Response,
   maxBytes: number,
   path: string,
+  signal?: AbortSignal,
 ): Promise<Buffer> {
   const cl = res.headers.get("content-length");
   if (cl) {
@@ -106,7 +107,7 @@ export async function readBodyBytesCapped(
   }
   const body = res.body;
   if (!body || typeof body.getReader !== "function") {
-    const buf = Buffer.from(await res.arrayBuffer());
+    const buf = Buffer.from(await awaitWithAbort(res.arrayBuffer(), signal));
     if (buf.byteLength > maxBytes) {
       throw new HttpRequestInvalidError(
         `response too large: exceeds max_response_bytes ${maxBytes}`,
@@ -119,7 +120,9 @@ export async function readBodyBytesCapped(
   const chunks: Uint8Array[] = [];
   let total = 0;
   while (true) {
-    const { done, value } = await reader.read();
+    const { done, value } = await awaitWithAbort(reader.read(), signal, () => {
+      void reader.cancel().catch(() => {});
+    });
     if (done) break;
     if (value) {
       total += value.byteLength;
@@ -142,8 +145,45 @@ export async function readBodyCapped(
   res: Response,
   maxBytes: number,
   path: string,
+  signal?: AbortSignal,
 ): Promise<string> {
-  return (await readBodyBytesCapped(res, maxBytes, path)).toString("utf8");
+  return (await readBodyBytesCapped(res, maxBytes, path, signal)).toString("utf8");
+}
+
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("The operation was aborted", "AbortError");
+}
+
+async function awaitWithAbort<T>(
+  operation: Promise<T>,
+  signal?: AbortSignal,
+  onAbort?: () => void,
+): Promise<T> {
+  if (!signal) return await operation;
+  if (signal.aborted) {
+    onAbort?.();
+    throw abortError(signal);
+  }
+  let handleAbort: (() => void) | null = null;
+  const aborted = new Promise<never>((_, reject) => {
+    handleAbort = () => {
+      onAbort?.();
+      reject(abortError(signal));
+    };
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+  try {
+    const result = await Promise.race([operation, aborted]);
+    // Bun may resolve a pending body read with `{ done: true }` when fetch's
+    // signal aborts instead of rejecting that read. The signal is still the
+    // authority: never turn an aborted response into a successful empty body.
+    if (signal.aborted) throw abortError(signal);
+    return result;
+  } finally {
+    if (handleAbort) signal.removeEventListener("abort", handleAbort);
+  }
 }
 
 // RFC 7230 §3.2.6 token characters.
@@ -964,7 +1004,12 @@ export async function executePlannedHttpRequest(params: {
     fn: () => getDriverFetch()(params.url, init),
   });
   const maxResponseBytes = resolveMaxResponseBytes(params.tenant_id);
-  const buf = await readBodyBytesCapped(res, maxResponseBytes, params.url.toString());
+  const buf = await readBodyBytesCapped(
+    res,
+    maxResponseBytes,
+    params.url.toString(),
+    params.signal,
+  );
   const headerObj: Record<string, string> = {};
   res.headers.forEach((v, k) => {
     headerObj[k] = v;
