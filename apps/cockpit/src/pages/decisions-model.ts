@@ -1,6 +1,7 @@
 import type { Conversation } from "@/api/client";
 import type { PatchCandidate, SkillCandidate } from "@/api/decisions";
 import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
+import type { ConversationEvidence, PatchEvidence, SkillEvidence } from "./decisions-context";
 
 export type DecisionKind = "patch" | "skill" | "conversation";
 export type GroupMode = "none" | "kind" | "source";
@@ -46,6 +47,34 @@ export interface DecisionItem {
   /** The model's own confidence in a proposed skill, and what it rests on. */
   confidence: "low" | "medium" | "high" | null;
   evidenceCount: number | null;
+  /** One concrete sentence about what this position actually is — the proposed
+   *  change, the opening of the skill text, the question being asked. Distinct
+   *  from `title`, which is a name. */
+  summary: string | null;
+  /** Everything the expanded panel needs. Carried rather than re-fetched: it
+   *  all arrived with the list, and dropping it here is what made a reviewer
+   *  approve things they could not see. */
+  detail: DecisionDetail;
+}
+
+/** The kind-specific evidence an expanded card renders. */
+export type DecisionDetail =
+  | { kind: "patch"; evidence: PatchEvidence }
+  | { kind: "skill"; evidence: SkillEvidence; body: string; sections: SkillSections }
+  | {
+      kind: "conversation";
+      evidence: ConversationEvidence;
+      question: string | null;
+      tool: string | null;
+    };
+
+/** The four lists a proposed skill carries beside its body. */
+export interface SkillSections {
+  examples: string[];
+  bestPractices: string[];
+  pitfalls: string[];
+  docRefs: string[];
+  tags: string[];
 }
 
 /** Positions older than this move into their own rubric and turn the nav counter red. */
@@ -58,11 +87,11 @@ export function ageInDays(waitingSince: string, now: number): number {
 }
 
 export function patchDecision(candidate: PatchCandidate, fallbackTitle: string): DecisionItem {
-  const proposal = readProposal(candidate.diff);
+  const envelope = readDiffEnvelope(candidate.diff);
   return {
     kind: "patch",
     id: candidate.id,
-    title: proposal?.description?.trim() || fallbackTitle,
+    title: envelope.description?.trim() || fallbackTitle,
     target: candidate.workflow_name ?? null,
     origin: "observedFailure",
     waitingSince: candidate.created_at,
@@ -70,6 +99,23 @@ export function patchDecision(candidate: PatchCandidate, fallbackTitle: string):
     expiresAt: null,
     confidence: null,
     evidenceCount: null,
+    summary: envelope.description?.trim() ?? null,
+    detail: {
+      kind: "patch",
+      evidence: {
+        workflowId: candidate.workflow_id ?? null,
+        workflowName: candidate.workflow_name ?? null,
+        connectorId: candidate.connector_id ?? null,
+        endpointKey: candidate.endpoint_key ?? null,
+        executionId: envelope.executionId,
+        driftKind: envelope.driftKind,
+        driftSummary: envelope.driftSummary,
+        reasoning: envelope.reasoning,
+        proposalKind: envelope.proposalKind,
+        classificationReasons: envelope.classificationReasons,
+        rejections: envelope.rejections,
+      },
+    },
   };
 }
 
@@ -100,6 +146,26 @@ export function skillDecision(
     expiresAt: null,
     confidence: candidate.confidence ?? null,
     evidenceCount: typeof candidate.evidence_count === "number" ? candidate.evidence_count : null,
+    summary: firstParagraph(candidate.body),
+    detail: {
+      kind: "skill",
+      evidence: {
+        scope: candidate.scope,
+        workflowId: candidate.workflow_id ?? null,
+        connectorId: candidate.connector_id ?? null,
+        endpointKey: candidate.endpoint_key ?? null,
+        evidenceCount:
+          typeof candidate.evidence_count === "number" ? candidate.evidence_count : null,
+      },
+      body: candidate.body ?? "",
+      sections: {
+        examples: stringList(candidate.examples),
+        bestPractices: stringList(candidate.best_practices),
+        pitfalls: stringList(candidate.pitfalls),
+        docRefs: stringList(candidate.doc_refs),
+        tags: stringList(candidate.tags),
+      },
+    },
   };
 }
 
@@ -138,15 +204,103 @@ export function conversationDecision(
     expiresAt: conversation.pending_elicitation_expires_at ?? null,
     confidence: null,
     evidenceCount: null,
+    // The question, not the title. A queue that says only "waiting for your
+    // answer" makes a person open every entry to find the one they can answer.
+    summary: conversation.pending_elicitation_summary
+      ? hideTechnicalIdentifiers(conversation.pending_elicitation_summary, labels.hiddenReference)
+      : null,
+    detail: {
+      kind: "conversation",
+      evidence: {
+        conversationId: conversation.id,
+        targetWorkflowId: conversation.target_workflow_id ?? null,
+        targetConnectorId: conversation.target_connector_id ?? null,
+      },
+      question: conversation.pending_elicitation_summary
+        ? hideTechnicalIdentifiers(conversation.pending_elicitation_summary, labels.hiddenReference)
+        : null,
+      tool: conversation.pending_elicitation_tool ?? null,
+    },
   };
 }
 
-function readProposal(diff: unknown): { description?: string } | null {
-  if (typeof diff !== "object" || diff === null) return null;
-  const proposal = (diff as { proposal?: unknown }).proposal;
-  if (typeof proposal !== "object" || proposal === null) return null;
-  const description = (proposal as { description?: unknown }).description;
-  return { description: typeof description === "string" ? description : undefined };
+function str(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+}
+
+/** The opening of a skill body — enough to know what it claims, not the whole text. */
+function firstParagraph(body: unknown): string | null {
+  const text = str(body);
+  if (!text) return null;
+  const paragraph = text
+    .split(/\n\s*\n/)[0]
+    ?.replace(/\s+/g, " ")
+    .trim();
+  return paragraph && paragraph.length > 0 ? paragraph : null;
+}
+
+/**
+ * Everything a patch candidate's `diff` blob carries.
+ *
+ * The engine ships this whole envelope with the list as `z.unknown()`. Reading
+ * only `proposal.description` out of it — which is what this used to do — left
+ * the reviewer without the cause, the reasoning, the failing run or the
+ * classifier's argument, all of which were already in hand.
+ */
+function readDiffEnvelope(diff: unknown): {
+  description: string | null;
+  reasoning: string | null;
+  proposalKind: string | null;
+  driftKind: string | null;
+  driftSummary: string | null;
+  executionId: string | null;
+  classificationReasons: string[];
+  rejections: string[];
+} {
+  const empty = {
+    description: null,
+    reasoning: null,
+    proposalKind: null,
+    driftKind: null,
+    driftSummary: null,
+    executionId: null,
+    classificationReasons: [],
+    rejections: [],
+  };
+  if (typeof diff !== "object" || diff === null) return empty;
+  const envelope = diff as Record<string, unknown>;
+  const proposal =
+    typeof envelope.proposal === "object" && envelope.proposal !== null
+      ? (envelope.proposal as Record<string, unknown>)
+      : {};
+  const signal =
+    typeof envelope.drift_signal === "object" && envelope.drift_signal !== null
+      ? (envelope.drift_signal as Record<string, unknown>)
+      : {};
+  const rejections = Array.isArray(envelope.rejection_chain)
+    ? envelope.rejection_chain
+        .map((entry) =>
+          typeof entry === "object" && entry !== null
+            ? str((entry as Record<string, unknown>).reason)
+            : null,
+        )
+        .filter((reason): reason is string => reason !== null)
+    : [];
+  return {
+    description: str(proposal.description),
+    reasoning: str(proposal.reasoning),
+    proposalKind: str(proposal.kind),
+    driftKind: str(signal.kind),
+    driftSummary: str(envelope.drift_diff),
+    executionId: str(envelope.execution_id),
+    classificationReasons: stringList(envelope.classification_reasons),
+    rejections,
+  };
 }
 
 /** A deadline closer than this makes a position urgent rather than merely open. */

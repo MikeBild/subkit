@@ -1,14 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useState } from "react";
-import { dryRunPatchCandidate, getPatchCandidatePreview } from "@/api/decisions";
+import {
+  dryRunPatchCandidate,
+  getPatchCandidatePreview,
+  listSkillCandidateEvidence,
+} from "@/api/decisions";
 import { DiffCard } from "@/components/cockpit/diff-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import type { NameIndex } from "@/lib/name-index";
+import { EMPTY_NAME_INDEX } from "@/lib/name-index";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import type { ContextEntry, DecisionContext } from "@/pages/decisions-context";
+import {
+  conversationContext,
+  driftKindKey,
+  patchContext,
+  proposalKindKey,
+  skillContext,
+} from "@/pages/decisions-context";
 import type { DecisionItem, DecisionKind, DecisionOrigin } from "@/pages/decisions-model";
 import { ageInDays } from "@/pages/decisions-model";
 
@@ -60,6 +75,325 @@ function deadlineLabel(
   return { label: t("decisions.expiresIn", { time }), expired: false };
 }
 
+type Translate = ReturnType<typeof useI18n>["t"];
+
+/** True when expanding this card would actually show something. */
+function detailHasContent(item: DecisionItem): boolean {
+  const detail = item.detail;
+  if (detail.kind === "patch") return true;
+  if (detail.kind === "skill") return detail.body.trim().length > 0;
+  return Boolean(detail.question);
+}
+
+/** Translate one decision's raw evidence into the two context columns. */
+function decisionContext(
+  item: DecisionItem,
+  t: Translate,
+  names: NameIndex,
+  canReadRuns: boolean,
+): DecisionContext {
+  const labels = {
+    cause: null as string | null,
+    causeFallback: t("decisions.drift.unknown"),
+    failedRun: t("decisions.context.failedRun"),
+    endpoint: t("decisions.context.connector"),
+    workflow: t("decisions.context.workflow"),
+    conversation: t("decisions.openConversation"),
+    allWorkflows: t("decisions.target.allWorkflows"),
+    noTarget: t("decisions.target.none"),
+    pattern: t(ORIGIN_LABEL[item.origin]),
+    observedCases:
+      item.evidenceCount !== null
+        ? t("decisions.evidence", { count: String(item.evidenceCount) })
+        : "",
+  };
+  const detail = item.detail;
+  if (detail.kind === "patch") {
+    const causeKey = driftKindKey(detail.evidence.driftKind);
+    return patchContext(
+      detail.evidence,
+      { ...labels, cause: causeKey ? t(causeKey) : null },
+      names,
+      canReadRuns,
+    );
+  }
+  if (detail.kind === "skill") return skillContext(detail.evidence, labels, names);
+  return conversationContext(detail.evidence, labels, names);
+}
+
+/** The two columns: what produced this, and what a decision would act on. */
+function ContextColumns({ context, testId }: { context: DecisionContext; testId: string }) {
+  const { t } = useI18n();
+  if (context.sources.length === 0 && context.targets.length === 0) return null;
+  return (
+    <div
+      className="mt-3 grid gap-3 rounded-md bg-muted/40 p-3 sm:grid-cols-2"
+      data-testid={`${testId}-context`}
+    >
+      <ContextColumn
+        heading={t("decisions.context.sources")}
+        entries={context.sources}
+        testId={`${testId}-sources`}
+      />
+      <ContextColumn
+        heading={t("decisions.context.targets")}
+        entries={context.targets}
+        testId={`${testId}-targets`}
+      />
+    </div>
+  );
+}
+
+function ContextColumn({
+  heading,
+  entries,
+  testId,
+}: {
+  heading: string;
+  entries: ContextEntry[];
+  testId: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{heading}</p>
+      <ul className="mt-1 grid gap-1">
+        {entries.map((entry, index) => (
+          <li
+            key={`${entry.label}-${index}`}
+            className="flex min-w-0 flex-wrap items-baseline gap-2 text-sm"
+          >
+            {entry.href ? (
+              <Link
+                to={entry.href}
+                className="min-w-0 truncate underline underline-offset-2"
+                data-testid={`${testId}-link-${index}`}
+              >
+                {entry.label}
+              </Link>
+            ) : (
+              <span className="min-w-0 truncate" data-testid={`${testId}-item-${index}`}>
+                {entry.label}
+              </span>
+            )}
+            {entry.note && (
+              <span className="min-w-0 truncate font-mono text-muted-foreground text-xs">
+                {entry.note}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** A labelled block of raw evidence. Renders nothing when there is none — an
+ *  empty heading claims the engine recorded something it did not. */
+function DetailBlock({
+  heading,
+  children,
+  testId,
+}: {
+  heading: string;
+  children: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div className="grid gap-1" {...(testId ? { "data-testid": testId } : {})}>
+      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{heading}</p>
+      {children}
+    </div>
+  );
+}
+
+function DetailList({ items }: { items: string[] }) {
+  return (
+    <ul className="grid list-disc gap-1 pl-5 text-sm">
+      {items.map((entry, index) => (
+        <li key={`${entry}-${index}`} className="max-w-prose break-words">
+          {entry}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * What the convention calls for when a row is expanded: the full reasoning and
+ * the raw source data (§8.4). Every field below already arrived with the list —
+ * a reviewer was being asked to approve a change whose justification, whose
+ * observed cause and whose actual text were all one property away.
+ */
+function DecisionDetailPanel({
+  item,
+  testId,
+  canReadRuns,
+}: {
+  item: DecisionItem;
+  testId: string;
+  canReadRuns: boolean;
+}) {
+  const { t } = useI18n();
+  const detail = item.detail;
+
+  if (detail.kind === "patch") {
+    const { evidence } = detail;
+    const changeKey = proposalKindKey(evidence.proposalKind);
+    return (
+      <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
+        {changeKey && (
+          <DetailBlock heading={t("decisions.detail.reasoning")}>
+            <p className="max-w-prose text-sm">{t(changeKey)}</p>
+            {evidence.reasoning && (
+              <p
+                className="max-w-prose text-sm text-muted-foreground break-words"
+                data-testid={`${testId}-reasoning`}
+              >
+                {evidence.reasoning}
+              </p>
+            )}
+          </DetailBlock>
+        )}
+        {!changeKey && evidence.reasoning && (
+          <DetailBlock heading={t("decisions.detail.reasoning")}>
+            <p
+              className="max-w-prose text-sm text-muted-foreground break-words"
+              data-testid={`${testId}-reasoning`}
+            >
+              {evidence.reasoning}
+            </p>
+          </DetailBlock>
+        )}
+        {evidence.driftSummary && (
+          <DetailBlock heading={t("decisions.detail.rawDrift")}>
+            <pre
+              className="max-h-52 overflow-auto rounded-md border bg-muted/40 p-2 text-xs leading-relaxed whitespace-pre-wrap"
+              data-testid={`${testId}-drift`}
+            >
+              {evidence.driftSummary}
+            </pre>
+          </DetailBlock>
+        )}
+        {evidence.classificationReasons.length > 0 && (
+          <DetailBlock heading={t("decisions.detail.classification")}>
+            <DetailList items={evidence.classificationReasons} />
+          </DetailBlock>
+        )}
+        {/* Why earlier attempts were dropped is the most honest account of why a
+            proposal is still rated unsafe. */}
+        {evidence.rejections.length > 0 && (
+          <DetailBlock heading={t("decisions.detail.rejected")} testId={`${testId}-rejections`}>
+            <DetailList items={evidence.rejections} />
+          </DetailBlock>
+        )}
+      </div>
+    );
+  }
+
+  if (detail.kind === "skill") {
+    const { sections } = detail;
+    return (
+      <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
+        <DetailBlock heading={t("decisions.detail.skillBody")} testId={`${testId}-body`}>
+          <p className="max-w-prose text-sm break-words whitespace-pre-wrap">{detail.body}</p>
+        </DetailBlock>
+        {sections.examples.length > 0 && (
+          <DetailBlock heading={t("decisions.detail.examples")}>
+            <DetailList items={sections.examples} />
+          </DetailBlock>
+        )}
+        {sections.bestPractices.length > 0 && (
+          <DetailBlock heading={t("decisions.detail.bestPractices")}>
+            <DetailList items={sections.bestPractices} />
+          </DetailBlock>
+        )}
+        {sections.pitfalls.length > 0 && (
+          <DetailBlock heading={t("decisions.detail.pitfalls")}>
+            <DetailList items={sections.pitfalls} />
+          </DetailBlock>
+        )}
+        {sections.docRefs.length > 0 && (
+          <DetailBlock heading={t("decisions.detail.docRefs")}>
+            <DetailList items={sections.docRefs} />
+          </DetailBlock>
+        )}
+        {sections.tags.length > 0 && (
+          <DetailBlock heading={t("decisions.detail.tags")}>
+            <div className="flex flex-wrap gap-1">
+              {sections.tags.map((tag) => (
+                <Badge key={tag} variant="outline">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          </DetailBlock>
+        )}
+        <SkillEvidenceList id={item.id} testId={testId} canReadRuns={canReadRuns} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
+      <DetailBlock heading={t("decisions.detail.question")} testId={`${testId}-question`}>
+        <p className="max-w-prose text-sm break-words">
+          {detail.question ?? t("decisions.detail.noQuestion")}
+        </p>
+      </DetailBlock>
+    </div>
+  );
+}
+
+/** The runs a proposed skill was distilled from. The count was always on the
+ *  card; the cases themselves were recorded, indexed, and read by nothing. */
+function SkillEvidenceList({
+  id,
+  testId,
+  canReadRuns,
+}: {
+  id: string;
+  testId: string;
+  canReadRuns: boolean;
+}) {
+  const { t, dateTime } = useI18n();
+  const evidence = useQuery({
+    queryKey: ["skill-candidate", "evidence", id],
+    queryFn: () => listSkillCandidateEvidence(id),
+  });
+
+  return (
+    <DetailBlock heading={t("decisions.detail.evidence")} testId={`${testId}-evidence`}>
+      {evidence.isPending ? (
+        <p className="text-sm text-muted-foreground">{t("decisions.detail.evidenceLoading")}</p>
+      ) : evidence.error ? (
+        <p className="text-sm text-destructive">{t("decisions.detail.evidenceFailed")}</p>
+      ) : (evidence.data?.items.length ?? 0) === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("decisions.detail.evidenceEmpty")}</p>
+      ) : (
+        <ul className="grid gap-1 text-sm">
+          {(evidence.data?.items ?? []).map((entry, index) => (
+            <li key={entry.id} className="flex flex-wrap items-baseline gap-2">
+              <span className="text-muted-foreground text-xs">{dateTime(entry.captured_at)}</span>
+              <span className="min-w-0 max-w-prose break-words">{entry.summary}</span>
+              {/* A run the person cannot open is not linked — the permission is
+                  evaluated per object, so the link would lead to a refusal. */}
+              {entry.execution_id && canReadRuns && (
+                <Link
+                  to="/runs"
+                  className="underline underline-offset-2"
+                  data-testid={`${testId}-evidence-run-${index}`}
+                >
+                  {t("decisions.context.failedRun")}
+                </Link>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </DetailBlock>
+  );
+}
+
 export interface DecisionCardProps {
   item: DecisionItem;
   index: number;
@@ -69,6 +403,12 @@ export interface DecisionCardProps {
   onApprove: (item: DecisionItem) => void;
   onReject: (item: DecisionItem, reason: string) => void;
   testIdPrefix?: string;
+  /** Resolves the ids on this decision to names. Without it the context columns
+   *  still render — they just say "Workflow" where they could say which one. */
+  names?: NameIndex;
+  /** Whether this person may open a run. The permission is evaluated per
+   *  object, so a link for someone without it leads to a refusal. */
+  canReadRuns?: boolean;
 }
 
 export function DecisionCard({
@@ -80,6 +420,8 @@ export function DecisionCard({
   onApprove,
   onReject,
   testIdPrefix = "decision",
+  names = EMPTY_NAME_INDEX,
+  canReadRuns = false,
 }: DecisionCardProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -90,6 +432,8 @@ export function DecisionCard({
   const age = ageInDays(item.waitingSince, now);
   const deadline = deadlineLabel(item.expiresAt, now, t);
   const showDiff = expanded && item.kind === "patch";
+  const context = decisionContext(item, t, names, canReadRuns);
+  const hasDetail = detailHasContent(item);
 
   const preview = useQuery({
     queryKey: ["patch-candidate", "preview", item.id],
@@ -120,10 +464,7 @@ export function DecisionCard({
           </Badge>
         )}
         {item.target ? (
-          // `truncate` sets `white-space: nowrap`, so a flex item without a
-          // width bound takes its intrinsic width and pushes the whole column
-          // sideways instead of ellipsing. The bound is what makes it truncate.
-          <span className="min-w-0 max-w-[22ch] truncate" data-testid={`${testId}-target`}>
+          <span className="min-w-0 truncate" data-testid={`${testId}-target`}>
             {hideTechnicalIdentifiers(item.target, t("tool.referenceHiddenInline"))}
           </span>
         ) : (
@@ -159,12 +500,26 @@ export function DecisionCard({
         {t(ORIGIN_LABEL[item.origin])}
       </p>
 
+      {/* No line clamp: the title was cut at two lines because the column was
+          780px wide. It is not any more, and a truncated title is a name the
+          reader has to guess at. */}
       <p
-        className="mt-2 line-clamp-2 text-sm font-medium break-words"
+        className="mt-2 max-w-prose text-sm font-medium break-words"
         data-testid={`${testId}-title`}
       >
         {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
       </p>
+      {/* What this position concretely is — the proposed change, the opening of
+          the skill text, the question asked. `title` is a name; this is the
+          thing a person needs in order to choose. */}
+      {item.summary && item.summary !== item.title && (
+        <p
+          className="mt-1 max-w-prose text-sm text-muted-foreground break-words"
+          data-testid={`${testId}-summary`}
+        >
+          {hideTechnicalIdentifiers(item.summary, t("tool.referenceHiddenInline"))}
+        </p>
+      )}
       <p className="mt-1 text-xs text-muted-foreground">{t(KIND_EFFECT[item.kind])}</p>
       {item.confidence && (
         // A model's confidence is a claim, not a measurement: a word with its
@@ -177,6 +532,10 @@ export function DecisionCard({
             : ""}
         </p>
       )}
+
+      <ContextColumns context={context} testId={testId} />
+
+      {expanded && <DecisionDetailPanel item={item} testId={testId} canReadRuns={canReadRuns} />}
 
       {showDiff && (
         <div className="mt-3">
@@ -221,7 +580,7 @@ export function DecisionCard({
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {item.kind === "patch" && !compact && (
+          {hasDetail && !compact && (
             <Button
               variant="ghost"
               size="sm"
@@ -231,14 +590,16 @@ export function DecisionCard({
               {t(expanded ? "decisions.showLess" : "decisions.showMore")}
             </Button>
           )}
+          {/* A waiting conversation has no approve/reject here — the answer
+              happens in the chat — so going there IS the action. */}
           {item.kind === "conversation" && (
-            <Button variant="ghost" size="sm" asChild>
+            <Button size="sm" asChild>
               <Link
                 to="/chat/$conversationId"
                 params={{ conversationId: item.id }}
                 data-testid={`${testId}-source`}
               >
-                {t("decisions.openSource")}
+                {t("decisions.openConversation")}
               </Link>
             </Button>
           )}
