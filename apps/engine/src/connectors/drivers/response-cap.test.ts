@@ -80,4 +80,26 @@ describe("readBodyBytesCapped", () => {
       HttpRequestInvalidError,
     );
   });
+
+  test("stops a body read when the request signal aborts after headers", async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise(() => {});
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const controller = new AbortController();
+    const pending = readBodyBytesCapped(
+      new Response(stream),
+      1024,
+      "https://x/y",
+      controller.signal,
+    );
+    queueMicrotask(() => controller.abort("timeout"));
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(cancelled).toBe(true);
+  });
 });
