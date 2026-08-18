@@ -9,6 +9,7 @@ import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../skill-candidates/index.ts";
 import {
   type ApproveSkillCandidateParams,
+  SkillCandidateEvidenceSchema,
   SkillCandidatePatternSchema,
   SkillCandidateSchema,
 } from "../../skill-candidates/index.ts";
@@ -67,6 +68,30 @@ const getRoute = createRoute({
     200: {
       description: "OK",
       content: { "application/json": { schema: SkillCandidateSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+const evidenceRoute = createRoute({
+  method: "get",
+  path: "/v1/skill-candidates/{id}/evidence",
+  tags: ["skill-candidates"],
+  summary: "List the observed cases a skill candidate was distilled from",
+  description:
+    "Approving a candidate adds operating knowledge the agent will act on, so a reviewer " +
+    "needs to see what it rests on. The rows were always recorded and indexed; until now " +
+    "only their COUNT reached any client, which asks a person to trust a number.",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: {
+        "application/json": {
+          schema: z.object({ items: z.array(SkillCandidateEvidenceSchema) }),
+        },
+      },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -168,6 +193,7 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
   // `/reject`. Without these, both ran on authentication alone — a read-only
   // credential could promote a candidate into a Skill. Mirrors the explicit
   // per-sub-path registration in `patch-candidates.ts` and `skills.ts`.
+  app.use("/v1/skill-candidates/:id/evidence", requirePermission("skill:read"));
   app.use("/v1/skill-candidates/:id/approve", requirePermission("skill:write"));
   app.use("/v1/skill-candidates/:id/reject", requirePermission("skill:write"));
   // Approving with `status: "active"` both promotes AND activates. Activating
@@ -209,6 +235,19 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const candidate = await svc.getSkillCandidate(principal.tenant_id, id, db);
     if (!candidate) throw new NotFoundError("skill_candidate");
     return c.json(candidate, 200);
+  });
+
+  app.openapi(evidenceRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    // The service returns an empty array for a candidate in another tenant,
+    // which would read as "no evidence" rather than "not yours" — so the
+    // existence check happens here and answers 404.
+    const candidate = await svc.getSkillCandidate(principal.tenant_id, id, db);
+    if (!candidate) throw new NotFoundError("skill_candidate");
+    const items = await svc.getSkillCandidateEvidence(principal.tenant_id, id, db);
+    return c.json({ items }, 200);
   });
 
   app.openapi(approveRoute, async (c) => {
