@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.2] – 2026-08-18
+
+### Fixed
+
+- **Executions orphaned by a worker or engine restart are reconciled
+  periodically.** Recovery is no longer limited to engine startup, so rows
+  that were still inside their timeout window during boot cannot remain in
+  `running` forever.
+- **Crash recovery uses the workflow version recorded on the execution.**
+  Later workflow edits can no longer change the timeout contract used to
+  recover an older run.
+
+### Added
+
+- **The recovery sweep interval is a global hot-reloadable setting.** Operators
+  can tune `queue.crash_recovery_sweep_interval_ms` without rebuilding or
+  restarting the engine.
+
 ## [6.4.7] – 2026-08-18
 
 ### Fixed
