@@ -42,7 +42,7 @@ export type {
   ScanResult,
   UnanchoredDrift,
 } from "./proactive-scanner.ts";
-export { scanForDrift } from "./proactive-scanner.ts";
+export { driftSignalContext, scanForDrift } from "./proactive-scanner.ts";
 export type {
   ProcessSignalOptions,
   ProcessSignalResult,

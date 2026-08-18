@@ -37,7 +37,12 @@ import {
   recordProactiveDriftSignal,
   recordProactiveDriftUnanchored,
 } from "../../observability/index.ts";
-import { processDriftSignal, type SignalSource, scanForDrift } from "../../self-healing/index.ts";
+import {
+  driftSignalContext,
+  processDriftSignal,
+  type SignalSource,
+  scanForDrift,
+} from "../../self-healing/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -391,18 +396,7 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
         try {
           const result = await processDriftSignal(
             signal,
-            {
-              tenant_id: ctx.tenant_id,
-              workflow_id: ctx.workflow_id,
-              execution_id: ctx.execution_id,
-              step_id: ctx.step_id,
-              ...(ctx.connector_id ? { connector_id: ctx.connector_id } : {}),
-              ...(ctx.endpoint_key ? { endpoint_key: ctx.endpoint_key } : {}),
-              actor_id: principal.id,
-              source,
-              scan_id,
-              repair_input: ctx.repair_input,
-            },
+            driftSignalContext(ctx, { actor_id: principal.id, source, scan_id }),
             { allowAutoApply: false },
             db,
           );

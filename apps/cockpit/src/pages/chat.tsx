@@ -78,6 +78,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import type { DiffLine } from "@/lib/line-diff";
 import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
 import { statusLabel } from "@/lib/status-label";
 import { asToolPart, patchCandidateId, withToolResult } from "@/lib/tool-parts";
@@ -123,6 +124,34 @@ function localizedNextAction(value: string | null | undefined, t: Translate): st
   if (!value) return t("chat.context.nextActionDefault");
   if (value === "Continue the conversation.") return t("chat.context.continue");
   return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
+}
+
+export interface StreamedDiff {
+  title: string;
+  lines: DiffLine[];
+}
+
+const HUNK_TYPE: Record<string, DiffLine["type"]> = {
+  "+": "added",
+  "-": "removed",
+  " ": "context",
+};
+
+/** Reads a `diff` turn event; the engine already computed the hunks. */
+export function asStreamedDiff(event: {
+  type: string;
+  [key: string]: unknown;
+}): StreamedDiff | null {
+  if (event.type !== "diff" || !Array.isArray(event.hunks)) return null;
+  const lines: DiffLine[] = [];
+  for (const hunk of event.hunks) {
+    if (!hunk || typeof hunk !== "object") continue;
+    const { kind, text } = hunk as { kind?: unknown; text?: unknown };
+    if (typeof text !== "string") continue;
+    lines.push({ type: HUNK_TYPE[typeof kind === "string" ? kind : " "] ?? "context", text });
+  }
+  if (lines.length === 0) return null;
+  return { title: typeof event.title === "string" ? event.title : "", lines };
 }
 
 function textFromPart(part: unknown): string | null {
@@ -449,6 +478,7 @@ export function ChatPage() {
   const [conversationSearch, setConversationSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [streamedText, setStreamedText] = useState("");
+  const [streamedDiffs, setStreamedDiffs] = useState<StreamedDiff[]>([]);
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -484,10 +514,16 @@ export function ChatPage() {
   const send = useMutation({
     mutationFn: async (message: string) => {
       setStreamedText("");
+      setStreamedDiffs([]);
       const onEvent = (event: { type: string; [key: string]: unknown }) => {
         if (event.type === "text_delta" && typeof event.text === "string") {
           setStreamedText((currentText) => currentText + event.text);
+          return;
         }
+        // A change the engine proposes mid-turn: show it while it is being
+        // worked out, not only once the turn ends and the state refetches.
+        const diff = asStreamedDiff(event);
+        if (diff) setStreamedDiffs((current) => [...current, diff]);
       };
       if (activeId) return appendConversationMessage(activeId, message, onEvent);
       const params = new URLSearchParams(window.location.search);
@@ -504,6 +540,7 @@ export function ChatPage() {
       setCreateOpen(false);
       setCreatePrompt("");
       setStreamedText("");
+      setStreamedDiffs([]);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
         queryClient.invalidateQueries({ queryKey: ["conversation", result.conversation.id] }),
@@ -676,6 +713,22 @@ export function ChatPage() {
                       />
                     </MessageScrollerItem>
                   ))
+                )}
+                {streamedDiffs.length > 0 && (
+                  <MessageScrollerItem scrollAnchor={!streamedText}>
+                    <div className="grid gap-3" data-testid="chat-streamed-diffs">
+                      {streamedDiffs.map((diff, index) => (
+                        <DiffCard
+                          key={`${diff.title}-${index}`}
+                          testId={`chat-streamed-diff-${index}`}
+                          targetLabel={diff.title}
+                          before={null}
+                          after={null}
+                          lines={diff.lines}
+                        />
+                      ))}
+                    </div>
+                  </MessageScrollerItem>
                 )}
                 {streamedText && (
                   <MessageScrollerItem scrollAnchor>
