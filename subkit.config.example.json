@@ -180,7 +180,8 @@
   },
   "queue": {
     "concurrency": 8,
-    "abort_poll_interval_ms": 500
+    "abort_poll_interval_ms": 500,
+    "crash_recovery_sweep_interval_ms": 60000
   },
   "tokens": {
     "monthly_budget": 0

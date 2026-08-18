@@ -30,6 +30,7 @@ describe("ConfigSchema", () => {
     expect(result.data.errors.ring_size).toBe(100);
     expect(result.data.queue.concurrency).toBe(8);
     expect(result.data.queue.abort_poll_interval_ms).toBe(500);
+    expect(result.data.queue.crash_recovery_sweep_interval_ms).toBe(60_000);
     expect(result.data.tokens.monthly_budget).toBe(0);
   });
 
@@ -55,6 +56,14 @@ describe("ConfigSchema", () => {
     const r = ConfigSchema.safeParse({
       database: { url: "postgres://x" },
       queue: { abort_poll_interval_ms: 99 },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  test("rejects a crash recovery sweep interval below the operational floor", () => {
+    const r = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      queue: { crash_recovery_sweep_interval_ms: 999 },
     });
     expect(r.success).toBe(false);
   });

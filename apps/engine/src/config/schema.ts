@@ -776,6 +776,16 @@ const QueueSection = z
         "Hot-reloadable interval for workers to observe durable cross-replica execution cancellation requests.",
       )
       .meta(global()),
+    crash_recovery_sweep_interval_ms: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(300_000)
+      .default(60_000)
+      .describe(
+        "Hot-reloadable interval for reconciling executions orphaned by a worker or engine restart.",
+      )
+      .meta(global()),
   })
   .prefault({})
   .describe("Queue worker");

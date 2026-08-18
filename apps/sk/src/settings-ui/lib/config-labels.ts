@@ -155,6 +155,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "spec.allow_private_fetch": "Allow private spec fetches",
   "queue.concurrency": "Worker concurrency",
   "queue.abort_poll_interval_ms": "Execution cancel poll interval (ms)",
+  "queue.crash_recovery_sweep_interval_ms": "Orphaned execution recovery interval (ms)",
   "tokens.monthly_budget": "Monthly token budget",
 
   // ── JS sandbox (QuickJS) ───────────────────────────────────────

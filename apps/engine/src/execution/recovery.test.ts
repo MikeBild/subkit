@@ -11,7 +11,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../db/schema/audit.ts";
-import { executions } from "../db/schema/index.ts";
+import { executions, workflows, workflowVersions } from "../db/schema/index.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./recovery.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./tests/setup.ts";
@@ -59,6 +59,45 @@ async function insertRunningExecution(
 }
 
 describe("recoverCrashedExecutions", () => {
+  test("uses the immutable workflow version bound to the execution", async () => {
+    const { workflow_id, version_id } = await createWorkflowRow(ctx, {
+      name: "crash-recovery-version-binding",
+      slug: "crash-recovery-version-binding",
+      timeout_ms: 1_000,
+      steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+    });
+    const stuckId = await insertRunningExecution(workflow_id, version_id, 2_000);
+
+    const [replacement] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenantId,
+        workflow_id,
+        version: 2,
+        dag: {
+          name: "crash-recovery-version-binding",
+          slug: "crash-recovery-version-binding",
+          timeout_ms: 60_000,
+          steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+        },
+      })
+      .returning({ id: workflowVersions.id });
+    if (!replacement) throw new Error("replacement workflow version insert failed");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: replacement.id })
+      .where(eq(workflows.id, workflow_id));
+
+    const { recovered } = await recoverCrashedExecutions(ctx.testDb.db, {
+      now: new Date(TEST_NOW_MS),
+    });
+    expect(recovered).toBe(1);
+    const row = (
+      await ctx.testDb.db.select().from(executions).where(eq(executions.id, stuckId))
+    )[0];
+    expect(row?.status).toBe("timed_out");
+  });
+
   test("promotes a running execution past timeout_ms × 1.5", async () => {
     const { workflow_id, version_id } = await createWorkflowRow(ctx, {
       name: "crash-recovery-wf-1",

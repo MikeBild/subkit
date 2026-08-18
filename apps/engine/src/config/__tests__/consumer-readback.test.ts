@@ -249,6 +249,12 @@ describe("consumer read-back per subsystem", () => {
     expect(getConfig().queue.abort_poll_interval_ms).toBe(750);
   });
 
+  test("crash recovery sweep interval hot-reloads without restart", async () => {
+    expect(getConfig().queue.crash_recovery_sweep_interval_ms).toBe(60_000);
+    await setConfigKey("queue.crash_recovery_sweep_interval_ms", 5_000, { force: true });
+    expect(getConfig().queue.crash_recovery_sweep_interval_ms).toBe(5_000);
+  });
+
   test("getConfig().auth.providers exposes the canonical provider list", () => {
     expect(getConfig().auth.providers).toEqual([
       { protocol: "api_key", id: "api-key", label: "SubKit API key" },
