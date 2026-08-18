@@ -41,3 +41,54 @@ export function normalizeToolResultPayload(result: ToolResult): unknown {
       : {}),
   };
 }
+
+/**
+ * How a tool call ended. Same four values the Prometheus
+ * `conversation_tool_calls_total` counter labels with
+ * (`recordConversationToolCall`), so one word means the same thing on a
+ * dashboard and on a persisted `conversation_tool_calls.outcome`.
+ */
+export type ToolCallOutcome = "ok" | "error" | "denied" | "pending";
+
+/**
+ * Error codes that mean "a policy or permission refused this", as opposed
+ * to "the tool ran and failed". Each is emitted by a refusal path in this
+ * repo: `permission_denied` by the RBAC gate's default envelope and by the
+ * `denyResult` of `call_connector` / `request_connector_reauth` (the RBAC
+ * evaluator's reason form is `permission_denied:<permission>`);
+ * `policy_confirm_required` and `not_available_on_surface` by the palette
+ * dispatcher's chat renderer.
+ */
+const DENIAL_CODES = ["permission_denied", "policy_confirm_required", "not_available_on_surface"];
+
+function isDenialCode(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  return DENIAL_CODES.some((code) => value === code || value.startsWith(`${code}:`));
+}
+
+/**
+ * Classify a `ToolResult` into the persisted outcome vocabulary. The
+ * failure branch of `ToolResult` makes every distinguishing field optional,
+ * so this discriminator has to be computed while the result is still in
+ * hand — `normalizeToolResultPayload`'s output cannot be re-read for it.
+ */
+export function toolCallOutcome(result: ToolResult): ToolCallOutcome {
+  // A pause means the turn stopped on a human decision that has not
+  // happened yet — pending regardless of the `ok` flag the pausing tool
+  // used to halt the loop.
+  if (result.pause !== undefined) return "pending";
+  if (result.ok) return "ok";
+  if (isDenialCode(result.error_code)) return "denied";
+  const data = result.data;
+  if (typeof data === "object" && data !== null) {
+    const rec = data as Record<string, unknown>;
+    if (rec.denied === true) return "denied";
+    if (isDenialCode(rec.error_code)) return "denied";
+    if (isDenialCode(rec.error)) return "denied";
+    const nested = rec.error;
+    if (typeof nested === "object" && nested !== null) {
+      if (isDenialCode((nested as Record<string, unknown>).code)) return "denied";
+    }
+  }
+  return "error";
+}

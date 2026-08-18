@@ -59,6 +59,11 @@ export const ConversationSchema = z
     updated_at: z.string(),
     last_message_role: z.string().nullable().optional(),
     last_message_excerpt: z.string().nullable().optional(),
+    // When this conversation's pending prompt lapses. Populated by the list
+    // path only — like the two excerpt fields above — because the single-
+    // conversation responses that share this schema have no use for it and
+    // must not be forced to compute it.
+    pending_elicitation_expires_at: z.string().nullable().optional(),
   })
   .openapi("Conversation");
 
@@ -75,6 +80,30 @@ export const UIMessageSchema = z
   })
   .openapi("UIMessage");
 
+/**
+ * One persisted conversation tool call, as projected to clients.
+ * `approved_by_user_id`, `confirmation_data` and `interaction_log` are
+ * deliberately absent — a bare uuid, engine-internal bookkeeping, and a
+ * field with no consumer respectively.
+ */
+export const ConversationToolCallSchema = z
+  .object({
+    id: z.string(),
+    conversation_id: z.string(),
+    tool: z.string(),
+    input: z.unknown(),
+    output: z.unknown(),
+    approval_required: z.boolean(),
+    created_at: z.string(),
+    parent_message_id: z.string().nullable().optional(),
+    confirmation_state: z.string().nullable(),
+    approved_at: z.string().nullable(),
+    // Null means "not recorded" (a row written before the engine persisted
+    // an outcome), never "succeeded".
+    outcome: z.enum(["ok", "error", "denied", "pending"]).nullable(),
+  })
+  .openapi("ConversationToolCall");
+
 export const ConversationDetailSchema = z
   .object({
     conversation: ConversationSchema,
@@ -84,7 +113,7 @@ export const ConversationDetailSchema = z
      * tool-call rows.
      */
     messages: z.array(UIMessageSchema),
-    tool_calls: z.array(z.unknown()),
+    tool_calls: z.array(ConversationToolCallSchema),
     draft: z.unknown(),
     resume_summary: z
       .object({
@@ -104,6 +133,9 @@ export const ConversationDetailSchema = z
             id: z.string(),
             tool_name: z.string(),
             summary: z.string(),
+            /** When this approval lapses. Non-null: the column is NOT NULL and
+             *  `elicitationExpiry` stamps every row. */
+            expires_at: z.string(),
           })
           .nullable(),
         next_action: z.string(),

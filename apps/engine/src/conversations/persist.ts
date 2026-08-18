@@ -28,11 +28,13 @@ import {
   recordFileLlmCapDowngrade,
   recordFileLlmInlineBytes,
 } from "../observability/instrumentation.ts";
+import { ensureConversationTitle } from "./title.ts";
 import {
   approxValueSize,
   buildElidedToolOutputStub,
   TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS,
 } from "./tool-output-elision.ts";
+import type { ToolCallOutcome } from "./tools/result-payload.ts";
 import { rememberRaw, truncateForLlm } from "./tools/truncate.ts";
 
 const MAX_REPLAY_MESSAGES = 24;
@@ -229,6 +231,11 @@ export async function appendMessage(
     .values({ tenant_id, conversation_id, role, content: content as Record<string, unknown> })
     .returning({ id: conversationMessages.id });
   assertInsertRow(row, "conversation_messages");
+  // Name the conversation from its first request. Deliberately AFTER the scrub
+  // above, so a pasted secret can never become a title. The helper's
+  // `title IS NULL` guard makes every later message a no-op, so this stays a
+  // single indexed UPDATE that fires meaningfully exactly once per session.
+  if (role === "user") await ensureConversationTitle(db, tenant_id, conversation_id, content);
   return row.id;
 }
 
@@ -297,14 +304,20 @@ export async function setToolCallParentMessage(
     .where(inArray(conversationToolCalls.id, ids));
 }
 
+/**
+ * `outcome` is required, not derived: a persisted `output` cannot be
+ * classified after the fact (`toolCallOutcome` in `tools/result-payload.ts`
+ * needs the live `ToolResult`), so the writer states it.
+ */
 export async function updateToolCallOutput(
   db: Executor,
   tool_call_id: string,
   output: unknown,
+  outcome: ToolCallOutcome,
 ): Promise<void> {
   await db
     .update(conversationToolCalls)
-    .set({ output: output as Record<string, unknown> })
+    .set({ output: output as Record<string, unknown>, outcome })
     .where(eq(conversationToolCalls.id, tool_call_id));
 }
 
@@ -618,6 +631,7 @@ export async function buildModelMessages(
             approved_at: conversationToolCalls.approved_at,
             approved_by_user_id: conversationToolCalls.approved_by_user_id,
             confirmation_state: conversationToolCalls.confirmation_state,
+            outcome: conversationToolCalls.outcome,
             confirmation_data: conversationToolCalls.confirmation_data,
             interaction_log: conversationToolCalls.interaction_log,
             created_at: conversationToolCalls.created_at,

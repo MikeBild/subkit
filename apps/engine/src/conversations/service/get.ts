@@ -93,6 +93,8 @@ export async function getConversation(
           typeof (pendingElicitationRows[0].input as { summary?: unknown })?.summary === "string"
             ? ((pendingElicitationRows[0].input as { summary?: string }).summary ?? null)
             : null,
+        // Already on the selected row — no extra query for the deadline.
+        expires_at: pendingElicitationRows[0].expires_at.toISOString(),
       }
     : null;
   const resumeSummary = shouldShowResumeSummary({
@@ -133,6 +135,9 @@ export async function getConversation(
         approval_required: c.approval_required,
         created_at: c.created_at.toISOString(),
         parent_message_id: c.parent_message_id,
+        confirmation_state: c.confirmation_state,
+        approved_at: c.approved_at ? c.approved_at.toISOString() : null,
+        outcome: (c.outcome as ConversationToolCallRecord["outcome"]) ?? null,
       }),
     ),
     draft,

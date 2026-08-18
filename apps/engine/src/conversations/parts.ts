@@ -44,6 +44,7 @@ export function toMessageParts(
         call_id: tc.id,
         tool: tc.tool,
         output: tc.output,
+        outcome: tc.outcome,
       });
     }
   }

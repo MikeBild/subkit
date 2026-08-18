@@ -1,0 +1,1 @@
+ALTER TABLE "conversation_tool_calls" ADD COLUMN "outcome" text;
