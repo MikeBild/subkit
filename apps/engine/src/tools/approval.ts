@@ -92,24 +92,37 @@ import {
 import { ARGS_CONFIRM_ID_KEY, ARGS_CONFIRM_KEY } from "./policy.ts";
 import type { ConfirmReason, ToolSurface } from "./types.ts";
 
-/** How long an approval lives, from mint to claim. It must cover the WHOLE
- *  out-of-band round trip now: the human opening the portal link, reading what
- *  will be written, deciding, and the model claiming afterwards. Short enough
- *  that a leaked confirm_id is not a standing capability.
+/** How long an approval lives, from mint to decision. It must cover the WHOLE
+ *  out-of-band round trip: the human opening the portal link, reading what
+ *  will be written, deciding, and the model claiming afterwards.
+ *
+ *  A working day, not a coffee break. This was fifteen minutes, which bounded
+ *  the deliberation to roughly one sitting — and that is not how the decision
+ *  actually reaches a person. A conversation parked on an approval appears in
+ *  the decisions queue, and whoever opens that queue an hour later found it
+ *  already swept: the request had expired unanswered and unseen. A review queue
+ *  whose items die before anyone can read them is not a review queue.
+ *
+ *  The exposure this trades away is bounded on both ends. A leaked confirm_id
+ *  is good for a day rather than a quarter-hour, and it is still not a standing
+ *  capability: `APPROVAL_CLAIM_WINDOW_MS` below keeps the post-grant window at
+ *  ten minutes, the approval is single-use, and the retention sweep still
+ *  destroys the ciphertext once the row lapses.
  *
  *  ONE CLOCK: `expires_at` is written as `now() + interval` evaluated by
  *  Postgres, and the CAS compares it against Postgres' `now()`. The app
  *  clock (`utils/clock.now()`) never participates — mixing the two made the
  *  TTL depend on host clock skew between the engine and the database. */
-export const APPROVAL_TTL_MS = 15 * 60 * 1000;
+export const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** How long the harness has to CLAIM an approval after a human granted it.
  *
  *  `APPROVAL_TTL_MS` above bounds the human's deliberation, measured from mint.
  *  It used to bound the claim too, which made the claim window whatever the
- *  person happened to leave over — a decision at mint+14:59 left one second, and
- *  `consumeApproval` refuses on `expires_at > now()`. `decideApproval` therefore
- *  re-stamps `expires_at` on grant, and this is that window.
+ *  person happened to leave over — a decision taken at the edge of the window
+ *  left the harness a second to claim in, and `consumeApproval` refuses on
+ *  `expires_at > now()`. `decideApproval` therefore re-stamps `expires_at` on
+ *  grant, and this is that window.
  *
  *  Generous enough to survive a queue backlog or an engine restart between the
  *  grant and the resumed turn, short enough that a granted-but-unclaimed
@@ -519,7 +532,7 @@ async function decideApproval(
               granted_by_user_id,
               granted_via: via,
               // A grant OPENS the claim window. `expires_at` was set from mint
-              // time, so a human who deliberated for 14 of their 15 minutes left
+              // time, so a human who deliberated to the edge of their window left
               // the harness a one-second window to claim in — and the claim CAS
               // requires `expires_at > now()`. Production hit exactly that: a
               // decision at mint+10:34 lapsed at mint+15:00 and the paused

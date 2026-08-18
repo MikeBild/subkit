@@ -711,7 +711,7 @@ describe("conversation_respond_elicitation", () => {
     // …and it must not send an MCP client to a "chat UI" that does not exist for
     // it. The window stays stated, in its own field.
     expect(body.message).not.toContain("chat UI");
-    expect(body.approval_window).toContain("expire 15 minutes after they are raised");
+    expect(body.approval_window).toContain("expire 24 hours after they are raised");
 
     // Nothing was resolved: the row is still pending, with no output staged —
     // the refusal happens BEFORE stageElicitationAnswer would touch it.
