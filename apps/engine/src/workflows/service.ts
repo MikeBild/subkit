@@ -74,6 +74,16 @@ export interface WorkflowView {
   current_version: number | null;
   created_at: Date;
   updated_at: Date;
+  /** When the engine last started a run of this workflow. Null until the
+   *  first one. Bumped by `execution/engine.ts`; read here so a catalog row
+   *  can say "last run" without a second query per workflow. */
+  last_executed_at: Date | null;
+  /** Reconciled operational state, written only through
+   *  `connectors/health-state.ts`. Same vocabulary as
+   *  `GET /v1/diagnostics/integrations` reports. */
+  health_state: string;
+  health_reason: string | null;
+  health_changed_at: Date | null;
   definition: WorkflowDef;
   steps: WorkflowDef["steps"];
 }
@@ -141,6 +151,10 @@ async function loadWorkflowView(
     current_version: version,
     created_at: wf.created_at,
     updated_at: wf.updated_at,
+    last_executed_at: wf.last_executed_at ?? null,
+    health_state: wf.health_state,
+    health_reason: wf.health_reason ?? null,
+    health_changed_at: wf.health_changed_at ?? null,
     definition: def,
     steps: def.steps,
   };
