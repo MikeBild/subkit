@@ -9,6 +9,10 @@ export {
   stopListener,
 } from "./listener.ts";
 export {
+  type ConnectorAuthFailedPayload,
+  ConnectorAuthFailedPayloadSchema,
+  type ConnectorHealthChangedPayload,
+  ConnectorHealthChangedPayloadSchema,
   type ConnectorOauthCallbackFailedPayload,
   ConnectorOauthCallbackFailedPayloadSchema,
   ConnectorOauthCallbackFailedReasons,

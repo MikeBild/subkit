@@ -25,6 +25,10 @@ import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { logger } from "../logging/logger.ts";
+import {
+  type ConnectorAuthFailedPayload,
+  ConnectorAuthFailedPayloadSchema,
+} from "../pubsub/types.ts";
 import type { ConnectorView } from "./types.ts";
 
 /**
@@ -133,11 +137,9 @@ export async function clearConnectorReauth(
  * completion signaling. Self-healing emits `patch.proposed` on this same
  * `notification.emitted` channel — we mirror that.)
  *
- * The payload carries every key the fanout's extractors read:
- *   - `severity: "error"`  → extractSeverity resolves "error"
- *   - `workflow_id`        → extractWorkflowId (null when not workflow-scoped)
- *   - plus connector_id / connector_slug / reason / reauth_url for the
- *     notification body so the operator knows which connector to fix and how.
+ * The payload is parsed through `ConnectorAuthFailedPayloadSchema` — the same
+ * schema the published event catalog exposes — so the shape the fanout's
+ * extractors depend on is enforced here, not asserted in a comment.
  *
  * MUST be called inside the SAME transaction as markConnectorNeedsReauth so
  * the state flip and the outbox event commit atomically.
@@ -153,20 +155,19 @@ export async function emitConnectorAuthFailed(
     reauth_url: string | null;
   },
 ): Promise<void> {
+  const payload: ConnectorAuthFailedPayload = {
+    severity: "error",
+    workflow_id: ev.workflow_id ?? null,
+    connector_id: ev.connector_id,
+    connector_slug: ev.connector_slug,
+    reason: ev.reason,
+    reauth_url: ev.reauth_url,
+  };
   await writeEvent(tx, {
     tenant_id: ev.tenant_id,
     channel: "notification.emitted",
     type: "connector.auth_failed",
-    payload: {
-      // Read by webhooks/outbound/fanout.ts:extractSeverity — resolves "error".
-      severity: "error",
-      // Read by extractWorkflowId — null when the failure is not workflow-scoped.
-      workflow_id: ev.workflow_id ?? null,
-      connector_id: ev.connector_id,
-      connector_slug: ev.connector_slug,
-      reason: ev.reason,
-      reauth_url: ev.reauth_url,
-    },
+    payload: ConnectorAuthFailedPayloadSchema.parse(payload),
   });
 }
 
