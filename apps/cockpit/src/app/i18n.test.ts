@@ -63,24 +63,61 @@ describe("cockpit i18n", () => {
 
   test("gives every status the engine can persist a word of its own", () => {
     // The state vocabulary forbids "unknown": a value the engine stores must
-    // read as a word, not as a placeholder. These are the statuses that reach
-    // an operator through executions, conversations and candidates.
+    // read as a word, not as a placeholder. This list is every state that can
+    // reach an operator, not only the execution and conversation ones — the
+    // catalogue vocabulary below used to fall through to the placeholder, and
+    // it did so twice per page, because the state column and the filter
+    // dropdown resolve the same values through this one function.
     const persisted = [
+      // executions
       "queued",
       "running",
       "succeeded",
       "failed",
       "aborted",
       "timed_out",
+      // conversations
       "active",
       "awaiting_input",
       "committed",
       "abandoned",
+      // decisions
       "proposed",
       "applied",
       "rejected",
       "superseded",
       "approved",
+      // workflow and skill lifecycle
+      "draft",
+      "archived",
+      // connectors
+      "enabled",
+      "disabled",
+      "ok",
+      "degraded",
+      "needs_update",
+      "needs_reauth",
+      "needs_attention",
+      // knowledge sources
+      "inactive",
+      "processing",
+      "error",
+      // files
+      "pending",
+      "uploading",
+      "scanning",
+      "ready",
+      "expired",
+      // notification severity
+      "debug",
+      "info",
+      "warn",
+      "critical",
+      // file scan verdicts
+      "clean",
+      "infected",
+      "noop",
+      "timeout",
     ];
     for (const status of persisted) {
       for (const locale of ["en", "de"] as const) {
