@@ -6,6 +6,9 @@ const baseUrl = (process.env.COCKPIT_BASE_URL || "http://127.0.0.1:4175").replac
 const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
 const uuid = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
 const routes = [
+  // The landing page was never photographed, which is how a whole class of
+  // page-shell defect stayed invisible to this sweep.
+  "overview",
   "decisions",
   "chat",
   "inbox",
@@ -39,10 +42,13 @@ const conversation = {
   last_message_excerpt: `{"tool":"run_workflow","output":{"execution_id":"${uuid}"}}`,
 };
 
+// Deliberately unfriendly: a conversation the engine never named must make the
+// cockpit's own fallback wording appear in a screenshot. Fixtures that always
+// carry a title are fixtures that can never photograph "Untitled".
 const conversations = Array.from({ length: 32 }, (_, index) => ({
   ...conversation,
   id: index === 0 ? uuid : `conversation-${index}`,
-  title: index % 3 === 0 ? "Unbenannte Unterhaltung" : `Arbeitsauftrag ${index + 1}`,
+  title: index % 3 === 0 ? null : `Arbeitsauftrag ${index + 1}`,
   last_message_excerpt:
     index % 4 === 0
       ? `{"tool":"run_workflow","output":{"execution_id":"${uuid}"}}`
@@ -91,6 +97,62 @@ const baseMessages = [
   },
 ];
 
+const toolTurn = [
+  {
+    // A whole turn as the engine actually persists one: a run of reads the
+    // agent made to orient itself, then the calls that changed something.
+    // Without this the sweep never photographed a tool card at all, which is
+    // how every card in the product came to read the same three words unnoticed.
+    id: "message-5",
+    role: "assistant",
+    created_at: "2026-08-10T08:04:00.000Z",
+    parts: [
+      { type: "tool_call", call_id: "bg-1", tool: "list_workflows", input: { limit: 50 } },
+      { type: "tool_result", call_id: "bg-1", output: { items: [] }, outcome: "ok" },
+      { type: "tool_call", call_id: "bg-2", tool: "get_workflow", input: {} },
+      { type: "tool_result", call_id: "bg-2", output: { id: "x" }, outcome: "ok" },
+      { type: "tool_call", call_id: "bg-3", tool: "get_workflow", input: {} },
+      { type: "tool_result", call_id: "bg-3", output: { id: "y" }, outcome: "ok" },
+      { type: "tool_call", call_id: "bg-4", tool: "search_knowledge_v2", input: { q: "report" } },
+      { type: "tool_result", call_id: "bg-4", output: { hits: 3 }, outcome: "ok" },
+      {
+        type: "tool_call",
+        call_id: "act-1",
+        tool: "wf_monatsreport-konsolidiert",
+        input: { environment: "dev" },
+      },
+      {
+        type: "tool_result",
+        call_id: "act-1",
+        output: { rows: 42 },
+        outcome: "ok",
+        confirmation_state: "confirmed",
+      },
+      {
+        type: "tool_call",
+        call_id: "act-2",
+        tool: "approve_patch_candidate",
+        input: { candidate_id: uuid },
+      },
+      {
+        type: "tool_result",
+        call_id: "act-2",
+        output: { ok: false, error_code: "conflict" },
+        outcome: "error",
+        confirmation_state: "declined",
+      },
+      // No result at all: the call the stream lost. It must read as unfinished
+      // rather than as permanently running.
+      {
+        type: "tool_call",
+        call_id: "act-3",
+        tool: "create_schedule",
+        input: { cron: "0 6 * * *" },
+      },
+    ],
+  },
+];
+
 const messages = [
   ...baseMessages,
   ...Array.from({ length: 36 }, (_, index) => ({
@@ -107,6 +169,7 @@ const messages = [
       },
     ],
   })),
+  ...toolTurn,
 ];
 
 function json(route, body, status = 200) {
@@ -278,59 +341,183 @@ async function mockApi(route) {
       "/v1/files",
     ].includes(path)
   ) {
-    const item =
-      path === "/v1/workflows"
-        ? {
-            id: uuid,
-            name: "Monatsreport",
-            lifecycle: "active",
-            current_version: 8,
-            connectors: ["reporting"],
-            updated_at: conversation.updated_at,
-          }
-        : path === "/v1/connectors"
-          ? {
-              id: uuid,
-              display_name: "Reporting API",
-              driver: "http",
-              environment: "prod",
-              health_state: "ok",
-              enabled: true,
-              updated_at: conversation.updated_at,
-            }
-          : path === "/v1/knowledge-sources"
-            ? {
-                id: uuid,
-                name: "Betriebshandbuch",
-                status: "active",
-                source_type: "file_upload",
-                chunk_count: 12,
-                bytes_total: 18400,
-                updated_at: conversation.updated_at,
-              }
-            : path === "/v1/skills"
-              ? {
-                  id: uuid,
-                  title: "Sichere Reports",
-                  status: "active",
-                  scope: "global",
-                  maturity: "stable",
-                  version: 3,
-                  updated_at: conversation.updated_at,
-                }
-              : {
-                  id: uuid,
-                  filename: "report-notes.md",
-                  status: "ready",
-                  content_type: "text/markdown",
-                  size_bytes: 1840,
-                  created_at: conversation.updated_at,
-                };
+    // Every list gets rows the pleasant path never produces: the awkward
+    // lifecycle values, an unhealthy row, a name far past the column width,
+    // an empty relation and an unmeasured size. A fixture that is uniformly
+    // healthy photographs a console nobody operates.
+    const rowFor = (index) => {
+      const rotate = index % 4;
+      if (path === "/v1/workflows")
+        return {
+          slug: `reporting-monatsreport-${index}`,
+          name:
+            index === 1
+              ? "Monatsreport für alle Tochtergesellschaften inklusive Nachbuchungen und Konsolidierung"
+              : `Monatsreport ${index + 1}`,
+          category: index % 2 === 0 ? "reporting" : "betrieb",
+          lifecycle: ["active", "draft", "archived", "active"][rotate],
+          current_version: 8,
+          connectors: rotate === 2 ? [] : ["reporting-api", "mailer"].slice(0, rotate + 1),
+          trigger:
+            rotate === 1
+              ? { kind: "schedule", cron: "0 6 * * *", tz: "UTC" }
+              : rotate === 3
+                ? { kind: "webhook", source: "stripe", events: [], verify: "none" }
+                : null,
+          health_state: rotate === 3 ? "degraded" : rotate === 1 ? "needs_attention" : "ok",
+          health_reason: rotate === 3 ? "Drei Läufe in Folge fehlgeschlagen." : null,
+          last_executed_at: rotate === 2 ? null : conversation.updated_at,
+          updated_at: conversation.updated_at,
+        };
+      if (path === "/v1/connectors")
+        return {
+          slug: ["reporting-api", "mailer", "warehouse", "legacy-crm"][rotate],
+          display_name: ["Reporting API", "Mailer", "Warehouse", "Legacy CRM"][rotate],
+          category: index % 2 === 0 ? "reporting" : "betrieb",
+          driver: ["http", "graphql", "postgres", "s3"][rotate],
+          environment: index % 2 === 0 ? "prod" : "dev",
+          auth_type: rotate === 2 ? "none" : "oauth2",
+          health_state: ["ok", "needs_reauth", "ok", "degraded"][rotate],
+          health_reason: rotate === 3 ? "Endpunkt antwortet mit 502." : null,
+          needs_reauth: rotate === 1,
+          auth_failed_at: rotate === 1 ? conversation.updated_at : null,
+          enabled: rotate !== 2,
+          updated_at: conversation.updated_at,
+        };
+      if (path === "/v1/knowledge-sources")
+        return {
+          name: `Betriebshandbuch ${index + 1}`,
+          status: ["active", "processing", "error", "inactive"][rotate],
+          scope: rotate === 1 ? "workflow" : "global",
+          workflow_id: rotate === 1 ? uuid : null,
+          source_type: "file_upload",
+          chunk_count: 12,
+          bytes_total: rotate === 2 ? null : 18400,
+          updated_at: conversation.updated_at,
+        };
+      if (path === "/v1/skills")
+        return {
+          title: `Sichere Reports ${index + 1}`,
+          status: ["active", "draft", "archived", "active"][rotate],
+          scope: ["global", "connector", "workflow", "global"][rotate],
+          connector_id: rotate === 1 ? uuid : null,
+          workflow_id: rotate === 2 ? uuid : null,
+          side_effects: ["read", "write", "destructive", "none"][rotate],
+          maturity: rotate === 1 ? "experimental" : "stable",
+          version: 3,
+          updated_at: conversation.updated_at,
+        };
+      return {
+        filename: `report-notes-${index + 1}.md`,
+        status: ["ready", "scanning", "failed", "expired"][rotate],
+        scan_result: ["clean", "noop", "infected", "timeout"][rotate],
+        content_type: "text/markdown",
+        size_bytes: rotate === 2 ? null : 1840,
+        created_at: conversation.updated_at,
+      };
+    };
     const items = Array.from({ length: 42 }, (_, index) => ({
-      ...item,
+      ...rowFor(index),
       id: index === 0 ? uuid : `catalog-record-${index}`,
     }));
-    return json(route, { items, total: items.length });
+    const categories =
+      path === "/v1/workflows" || path === "/v1/connectors"
+        ? [
+            { category: "reporting", count: 21 },
+            { category: "betrieb", count: 21 },
+          ]
+        : undefined;
+    return json(route, { items, total: items.length, ...(categories ? { categories } : {}) });
+  }
+  if (path === "/v1/executions") {
+    // The run list has no duration field and no sort: an unfinished run, a
+    // failed one and a child run all have to survive the sweep.
+    const items = Array.from({ length: 24 }, (_, index) => {
+      const rotate = index % 4;
+      const started = new Date(Date.parse(conversation.updated_at) - index * 300_000);
+      return {
+        id: index === 0 ? uuid : `execution-${index}`,
+        workflow_id: rotate === 2 ? null : uuid,
+        workflow_name:
+          rotate === 2
+            ? null
+            : index === 1
+              ? "Monatsreport für alle Tochtergesellschaften inklusive Nachbuchungen und Konsolidierung"
+              : `Monatsreport ${index + 1}`,
+        workflow_version_id: null,
+        source_kind: ["saved", "draft", "step", "saved"][rotate],
+        source_ref: null,
+        status: ["succeeded", "running", "failed", "timed_out"][rotate],
+        request_source: ["scheduler", "chat", "api", "carrier-pigeon"][rotate],
+        parent_execution_id: rotate === 2 ? uuid : null,
+        started_at: started.toISOString(),
+        finished_at: rotate === 1 ? null : new Date(started.getTime() + 119_600).toISOString(),
+        created_at: started.toISOString(),
+      };
+    });
+    return json(route, { items, total: 240, next_cursor: null });
+  }
+  if (path === "/v1/audit-log") {
+    const items = Array.from({ length: 24 }, (_, index) => {
+      const rotate = index % 4;
+      return {
+        id: index === 0 ? uuid : `audit-${index}`,
+        ts: new Date(Date.parse(conversation.updated_at) - index * 120_000).toISOString(),
+        tenant_id: uuid,
+        actor_type: ["user", "system_account", "system", "user"][rotate],
+        actor_id: rotate === 2 ? null : uuid,
+        action: ["workflow.update", "connector.test", "skill.archive", "settings.write"][rotate],
+        resource_type: ["workflow", "connector", "skill", "settings"][rotate],
+        resource_id: rotate === 3 ? null : uuid,
+        result: ["success", "success", "denied", "error"][rotate],
+        trace_id: null,
+        ip: null,
+        user_agent: null,
+        reason: rotate === 2 ? "Rolle deckt skill:write nicht ab." : null,
+        metadata: {},
+      };
+    });
+    return json(route, { items, next_cursor: "audit-cursor-2" });
+  }
+  if (path === "/v1/notifications/inbox") {
+    // A real inbox row: whether a person has to act, what it concerns, and
+    // whether THIS person has read it. Deliberately mixed so a screenshot shows
+    // the read and unread treatments side by side, and one row carries a
+    // resource type the cockpit has no surface for — that must render as a word
+    // rather than as a link to nowhere.
+    const EVENTS = [
+      ["execution.failed", true, "execution"],
+      ["connector.auth_failed", true, "connector"],
+      ["patch.proposed", true, "patch_candidate"],
+      ["execution.succeeded", false, "execution"],
+      ["workflow.updated", false, "workflow"],
+      ["something.unmapped", false, null],
+    ];
+    // Honour the filters, or a screenshot shows "needs you" selected next to
+    // rows that plainly do not.
+    const actionableOnly = url.searchParams.get("actionable_only") === "true";
+    const unreadOnly = url.searchParams.get("unread_only") === "true";
+    return json(route, {
+      items: Array.from({ length: 12 }, (_, index) => {
+        const [event_type, actionable, resource_type] = EVENTS[index % EVENTS.length];
+        const read = index % 3 === 0;
+        return {
+          id: index + 1,
+          severity: ["error", "warn", "info", "critical"][index % 4],
+          event_type,
+          event_payload: {},
+          actionable,
+          resource_type,
+          resource_id: resource_type ? uuid : null,
+          read,
+          read_at: read ? conversation.updated_at : null,
+          created_at: new Date(Date.parse(conversation.updated_at) - index * 600_000).toISOString(),
+        };
+      }).filter((item) => (!actionableOnly || item.actionable) && (!unreadOnly || !item.read)),
+      cursor: 12,
+      unread_count: 8,
+      actionable_unread_count: 4,
+    });
   }
   if (path === "/v1/stats/executions") {
     if (!url.searchParams.get("bucket") || !url.searchParams.get("from"))
@@ -368,15 +555,66 @@ async function mockApi(route) {
     });
   }
   if (path === "/v1/operator/health-digest")
+    // Deliberately NOT all-clear. An all-clear fixture photographs the one
+    // state that needs no design, and it also contradicted the decision
+    // counter in the same screenshot. Failures carry both origins so the
+    // trial-run split is visible, and one candidate is stuck.
     return json(route, {
       generated_at: "2026-08-10T09:00:00.000Z",
       window_hours: 24,
-      headline: "Alle überwachten Systeme arbeiten normal.",
-      failure_groups: [],
-      patch_candidates: { pending: 0, items: [] },
+      headline: "Ein geplanter Lauf scheitert wiederholt.",
+      failure_groups: [
+        {
+          signature: "monthly:fetch:http_502",
+          workflow_id: uuid,
+          workflow_name: "Monatsreport",
+          step_key: "fetch",
+          error_code: "http_502",
+          origin: "scheduled",
+          count: 14,
+          last_seen: "2026-08-10T08:40:00.000Z",
+          cause: "Das angebundene System antwortet seit gestern mit einem Fehler.",
+          guidance: "Zugangsdaten prüfen und den Lauf erneut anstoßen.",
+        },
+        {
+          signature: "draft:transform:type_error",
+          workflow_id: uuid,
+          workflow_name: "Entwurf: Umsatzrollup",
+          step_key: "transform",
+          error_code: "type_error",
+          origin: "authoring",
+          count: 23,
+          last_seen: "2026-08-10T08:10:00.000Z",
+          cause: "Ein Testlauf beim Bauen ist an der Umwandlung gescheitert.",
+          guidance: "",
+        },
+      ],
+      patch_candidates: {
+        pending: 3,
+        items: [
+          {
+            id: uuid,
+            workflow_id: uuid,
+            workflow_name: "Monatsreport",
+            classification: "safe",
+            age_days: 19,
+            stuck: true,
+            summary: "Feld umbenannt: total → total_amount",
+          },
+          {
+            id: uuid,
+            workflow_id: uuid,
+            workflow_name: "Umsatzrollup",
+            classification: "unsafe",
+            age_days: 1,
+            stuck: false,
+            summary: "Antwort enthält ein zusätzliches Feld",
+          },
+        ],
+      },
       risk: [],
-      rendered: "All clear",
-      all_clear: true,
+      rendered: "Attention needed",
+      all_clear: false,
     });
   if (path === "/v1/settings")
     return json(route, {
@@ -503,13 +741,13 @@ async function mockApi(route) {
 
 function markerFor(route) {
   if (route === "chat") return '[data-testid="chat-workspace"]';
-  // Decisions and connectors own their page rather than rendering through the
-  // generic catalog table, so they carry their own mount marker.
+  if (route === "overview") return '[data-testid="overview-page"]';
+  // Decisions owns its page rather than rendering a list of records.
   if (route === "decisions") return '[data-testid="decisions-page"]';
-  if (route === "connectors") return '[data-testid="connectors-page"]';
   if (["people", "access", "api-access", "operations", "settings"].includes(route))
     return `[data-testid="admin-${route}"]`;
-  if (["workflows", "knowledge", "skills", "files"].includes(route))
+  // Connectors render through the shared catalog table like every other list.
+  if (["workflows", "connectors", "knowledge", "skills", "files"].includes(route))
     return `[data-testid="catalog-${route}"]`;
   return `[data-testid="resource-${route}"]`;
 }
@@ -677,17 +915,24 @@ for (const locale of variants) {
           { cause: error },
         );
       }
+      // Every list renders its failure as the table's own retry row, so one
+      // selector covers all of them.
       await page
-        .locator('[data-testid="resource-error"]')
+        .locator('[data-testid="data-table-retry"]')
         .waitFor({ state: "hidden" })
         .catch(() => {});
-      if (
-        await page
-          .locator('[data-testid="resource-error"]')
-          .isVisible()
-          .catch(() => false)
-      )
-        throw new Error(`${locale.artifact}/${viewport.name}/${route} displays a resource error`);
+      for (const errorSelector of [
+        '[data-testid="data-table-retry"]',
+        '[data-testid="overview-error"]',
+      ]) {
+        if (
+          await page
+            .locator(errorSelector)
+            .isVisible()
+            .catch(() => false)
+        )
+          throw new Error(`${locale.artifact}/${viewport.name}/${route} displays a resource error`);
+      }
       const text = await page.locator("body").innerText();
       if (text.includes(uuid))
         throw new Error(`${locale.artifact}/${viewport.name}/${route} exposes a UUID`);
@@ -773,7 +1018,7 @@ for (const locale of variants) {
         fullPage: false,
       });
       await page.goto(`${baseUrl}/cockpit/usage`, { waitUntil: "networkidle" });
-      await page.locator('[data-testid="resource-refresh"]').hover();
+      await page.locator('[data-testid="data-table-refresh"]').hover();
       await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
       await page.screenshot({
