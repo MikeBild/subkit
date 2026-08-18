@@ -148,14 +148,24 @@ export const diagnosticsMethods = {
    * Detailed schema-drift report. Backed by `/v1/diagnostics/drift`,
    * which requires `audit:read`. Surfaces the rows in
    * `drizzle.__drizzle_migrations` that are unknown to the engine
-   * binary and the embedded migrations whose hash isn't in the DB
-   * (informational — the boot path applies these on the same boot).
+   * binary, accepted pre-squash history, and missing embedded identities.
    */
   driftReport(this: EngineClient): Promise<{
     engine_version: string;
     embedded_migration_count: number;
     db_migration_count: number;
-    unknown_in_db: Array<{ row_id: number; hash: string; created_at: number | null }>;
+    unknown_in_db: Array<{
+      row_id: number;
+      hash: string;
+      created_at: number | null;
+      tag: string | null;
+    }>;
+    historical_in_db: Array<{
+      row_id: number;
+      hash: string;
+      created_at: number | null;
+      tag: string | null;
+    }>;
     missing_in_db: Array<{ idx: number; tag: string; hash: string }>;
   }> {
     return this.request("GET", DIAGNOSTICS_DRIFT_PATH);

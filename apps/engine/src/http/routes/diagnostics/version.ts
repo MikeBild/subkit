@@ -37,9 +37,7 @@ const VersionResponse = z
     /** Whether the boot probe observed a newer release. Defaults to
      *  false when no probe data is available. */
     update_available: z.boolean(),
-    /** Whether the embedded migration set diverges from the rows in
-     *  `drizzle.__drizzle_migrations`. Mirrors the field that used to
-     *  ship on `/v1/health`. */
+    /** Whether tagged or missing journal identities disagree with the embedded set. */
     schema_drift: z.boolean(),
     /** How many migrations are baked into this binary. Lets operators
      *  cross-check that a deploy is what they expect without joining

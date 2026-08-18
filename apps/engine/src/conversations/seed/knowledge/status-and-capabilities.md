@@ -119,10 +119,10 @@ Behind `audit:read` (kept off public `/v1/health` so anonymous callers cannot fi
 - `engine_version` — version baked in at compile time.
 - `latest_version` (optional) — newest release the boot probe found; absent if the probe is disabled or has not finished its first cycle.
 - `update_available` — boolean; whether a newer release was observed.
-- `schema_drift` — boolean; whether the embedded migration set diverges from the rows in `drizzle.__drizzle_migrations`.
+- `schema_drift` — boolean; whether tagged journal identities disagree with the embedded migration set. Tagless pre-squash rows are reported separately as accepted history.
 - `embedded_migrations_count` — how many migrations are baked into this binary.
 
-How to read: use to confirm "is this deploy current and is its schema in sync?" `schema_drift: true` signals the running binary's migrations do not match what the database recorded.
+How to read: use to confirm "is this deploy current and is its schema in sync?" `schema_drift: true` signals an unknown tagged identity or a missing embedded identity. A non-zero accepted-history count alone is not drift.
 
 ## Quick map: question → read
 

@@ -52,10 +52,12 @@ export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db") ?? getDb();
     const report = await detectDrift(db);
     const embedded = listEmbeddedMigrations();
-    // total rows in drizzle.__drizzle_migrations = (embedded ∩ DB) ∪ (unknown rows)
-    //                                           = (embedded.length - missing_in_db.length) + unknown_in_db.length
+    // Journal history is append-only, so accepted pre-squash rows remain part of the DB count.
     const db_migration_count =
-      embedded.length - report.missing_in_db.length + report.unknown_in_db.length;
+      embedded.length -
+      report.missing_in_db.length +
+      report.unknown_in_db.length +
+      report.historical_in_db.length;
 
     // Parse metadata through the schema, then
     // await the audit row before returning. Drift reads are
@@ -65,6 +67,7 @@ export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
       embedded: embedded.length,
       db: db_migration_count,
       unknown: report.unknown_in_db.length,
+      historical: report.historical_in_db.length,
       missing: report.missing_in_db.length,
     });
     await auditAwait(
@@ -91,6 +94,7 @@ export function registerDriftRoute(app: OpenAPIHono<AppEnv>): void {
         embedded_migration_count: embedded.length,
         db_migration_count,
         unknown_in_db: report.unknown_in_db,
+        historical_in_db: report.historical_in_db,
         missing_in_db: report.missing_in_db,
       },
       200,

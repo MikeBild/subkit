@@ -49,10 +49,11 @@ export interface MigrationReport {
  * redeclaring the columns. Keeps the runtime + the OpenAPI surface
  * locked together.
  */
-export const UnknownInDbRowSchema = z.object({
+export const MigrationJournalRowSchema = z.object({
   row_id: z.number().int(),
   hash: z.string(),
   created_at: z.number().int().nullable(),
+  tag: z.string().nullable(),
 });
 
 export const MissingInDbRowSchema = z.object({
@@ -62,12 +63,11 @@ export const MissingInDbRowSchema = z.object({
 });
 
 export const DriftReportSchema = z.object({
-  /** Rows present in `drizzle.__drizzle_migrations` whose hash is not
-   *  in this binary's embedded set. Indicates the DB was migrated by a
-   *  different binary lineage — an actionable signal. */
-  unknown_in_db: z.array(UnknownInDbRowSchema),
-  /** Embedded migrations whose hash is not in the DB. Informational —
-   *  `runMigrations` would apply these on the same boot. */
+  /** Tagged rows that do not match this binary's embedded migration identities. */
+  unknown_in_db: z.array(MigrationJournalRowSchema),
+  /** Tagless pre-squash rows retained as immutable journal history. */
+  historical_in_db: z.array(MigrationJournalRowSchema),
+  /** Embedded migration identities that are absent from the DB. */
   missing_in_db: z.array(MissingInDbRowSchema),
 });
 
@@ -341,11 +341,9 @@ async function applyMigrations(
  * Compare the database's `drizzle.__drizzle_migrations` rows against
  * this binary's embedded set.
  *
- * `unknown_in_db.length > 0` means the DB carries migration rows from
- * a binary lineage this engine doesn't recognise. That is the
- * symptom: prod had 27 such rows and three subsystems failed because
- * the schema state didn't match the engine's expectations. Operators
- * should treat this as a deploy-time alarm.
+ * Modern migration identity is the stable tag + hash pair. Tagless
+ * rows predate identity tracking and remain as accepted journal
+ * history after a baseline squash; a tagged mismatch is actionable.
  *
  * Side effect: the function calls `ensureMigrationsTable`
  * before reading, which `CREATE EXTENSION IF NOT EXISTS pgcrypto`,
@@ -358,30 +356,47 @@ async function applyMigrations(
 export async function detectDrift(db: Db): Promise<DriftReport> {
   await ensureMigrationsTable(db);
   const rows = (await db.execute(
-    sql`SELECT id, hash, created_at FROM "drizzle"."__drizzle_migrations" ORDER BY id`,
+    sql`SELECT id, hash, created_at, tag FROM "drizzle"."__drizzle_migrations" ORDER BY id`,
   )) as unknown as {
-    rows: Array<{ id: number; hash: string; created_at: number | null }>;
+    rows: Array<{ id: number; hash: string; created_at: number | null; tag: string | null }>;
   };
   const dbRows = rows.rows ?? [];
 
-  const embeddedHashes = new Set(EMBEDDED_MIGRATIONS.map((m) => m.hash));
-  const dbHashes = new Set(dbRows.map((r) => r.hash));
+  const embeddedByTag = new Map(EMBEDDED_MIGRATIONS.map((m) => [m.tag, m.hash]));
+  const embeddedByHash = new Map(EMBEDDED_MIGRATIONS.map((m) => [m.hash, m.tag]));
 
   const unknown_in_db = dbRows
-    .filter((r) => !embeddedHashes.has(r.hash))
+    .filter((r) => {
+      if (r.tag === null) return false;
+      return embeddedByTag.get(r.tag) !== r.hash || embeddedByHash.get(r.hash) !== r.tag;
+    })
     .map((r) => ({
       row_id: r.id,
       hash: r.hash,
       created_at: r.created_at,
+      tag: r.tag,
     }));
 
-  const missing_in_db = EMBEDDED_MIGRATIONS.filter((m) => !dbHashes.has(m.hash)).map((m) => ({
-    idx: m.idx,
-    tag: m.tag,
-    hash: m.hash,
-  }));
+  const historical_in_db = dbRows
+    .filter((r) => r.tag === null && !embeddedByHash.has(r.hash))
+    .map((r) => ({
+      row_id: r.id,
+      hash: r.hash,
+      created_at: r.created_at,
+      tag: r.tag,
+    }));
 
-  return { unknown_in_db, missing_in_db };
+  const currentTags = new Set(
+    dbRows.flatMap((r) => (r.tag !== null && embeddedByTag.get(r.tag) === r.hash ? [r.tag] : [])),
+  );
+  const legacyCurrentHashes = new Set(
+    dbRows.filter((r) => r.tag === null && embeddedByHash.has(r.hash)).map((r) => r.hash),
+  );
+  const missing_in_db = EMBEDDED_MIGRATIONS.filter(
+    (m) => !currentTags.has(m.tag) && !legacyCurrentHashes.has(m.hash),
+  ).map((m) => ({ idx: m.idx, tag: m.tag, hash: m.hash }));
+
+  return { unknown_in_db, historical_in_db, missing_in_db };
 }
 
 /** Read-only accessor for tests + diagnostics. */

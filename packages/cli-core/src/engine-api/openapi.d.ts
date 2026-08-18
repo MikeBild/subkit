@@ -17725,6 +17725,13 @@ export interface components {
                 row_id: number;
                 hash: string;
                 created_at: number | null;
+                tag: string | null;
+            }[];
+            historical_in_db: {
+                row_id: number;
+                hash: string;
+                created_at: number | null;
+                tag: string | null;
             }[];
             missing_in_db: {
                 idx: number;
