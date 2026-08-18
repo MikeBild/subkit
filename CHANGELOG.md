@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.7] – 2026-08-18
+
+### Fixed
+
+- **HTTP request deadlines no longer depend on the runtime transport settling.**
+  The engine now rejects its observed request promise when the execution or
+  step signal aborts, even if a stalled Bun `fetch` ignores the signal and
+  remains pending. Step timeouts and execution cancellation therefore reach a
+  terminal persisted state instead of leaving runs stuck in `running`.
+
 ## [6.4.6] – 2026-08-18
 
 ### Fixed
