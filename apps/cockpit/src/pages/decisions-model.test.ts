@@ -6,6 +6,7 @@ import {
   filterByKinds,
   groupDecisions,
   hasOverdue,
+  partitionByUrgency,
   patchDecision,
   skillDecision,
   sortDecisions,
@@ -18,14 +19,24 @@ function daysAgo(days: number): string {
   return new Date(NOW - days * 86_400_000).toISOString();
 }
 
-function item(kind: DecisionItem["kind"], days: number, id = `${kind}-${days}`): DecisionItem {
+function item(
+  kind: DecisionItem["kind"],
+  days: number,
+  id = `${kind}-${days}`,
+  overrides: Partial<DecisionItem> = {},
+): DecisionItem {
   return {
     kind,
     id,
     title: `${kind} ${days}`,
     target: null,
+    origin: kind === "conversation" ? "conversation" : "observedFailure",
     waitingSince: daysAgo(days),
     classification: null,
+    expiresAt: null,
+    confidence: null,
+    evidenceCount: null,
+    ...overrides,
   };
 }
 
@@ -193,7 +204,7 @@ describe("decision adapters", () => {
     expect(decision.title).toContain("internal reference");
   });
 
-  test("a skill candidate carries its scope as target", () => {
+  test("a skill candidate names its target, and says nothing when it cannot", () => {
     const decision = skillDecision({
       id: "s1",
       tenant_id: "t",
@@ -219,6 +230,90 @@ describe("decision adapters", () => {
       updated_at: daysAgo(4),
     });
     expect(decision.title).toBe("Retry on 429");
-    expect(decision.target).toBe("workflow");
+    // The scope word used to be rendered as the target, so a card scoped to a
+    // workflow said the literal string "workflow" where a person expected the
+    // name of one. Nothing beats a wrong name.
+    expect(decision.target).toBeNull();
+    expect(decision.origin).toBe("repairPattern");
+    expect(decision.confidence).toBe("medium");
+    expect(decision.evidenceCount).toBe(2);
+  });
+
+  test("a resolved name reaches the card as the target", () => {
+    const decision = skillDecision(
+      {
+        id: "s2",
+        tenant_id: "t",
+        scope: "workflow",
+        connector_id: null,
+        endpoint_key: null,
+        workflow_id: "wf-1",
+        pattern_kind: "failure_pattern",
+        title: "Retry on 429",
+        body: "",
+        examples: [],
+        best_practices: [],
+        pitfalls: [],
+        doc_refs: [],
+        evidence_count: 5,
+        confidence: "high",
+        status: "proposed",
+        promoted_skill_id: null,
+        fingerprint: "f",
+        version: 1,
+        tags: [],
+        created_at: daysAgo(4),
+        updated_at: daysAgo(4),
+      },
+      "GA4 Tagesreport",
+    );
+    expect(decision.target).toBe("GA4 Tagesreport");
+    expect(decision.origin).toBe("failurePattern");
+  });
+});
+
+describe("urgency", () => {
+  test("a stopped conversation outranks an older proposal nothing waits on", () => {
+    // Age alone put the thing nobody is waiting on above the thing that is
+    // stopped dead — this is the split that fixes that.
+    const rubrics = partitionByUrgency(
+      [item("patch", 9, "old-patch"), item("conversation", 0, "fresh-talk")],
+      NOW,
+    );
+    expect(rubrics.blocking.map((entry) => entry.id)).toEqual(["fresh-talk"]);
+    expect(rubrics.deferred.aged.map((entry) => entry.id)).toEqual(["old-patch"]);
+  });
+
+  test("a lapsed deadline moves a position out of the working queue entirely", () => {
+    const expired = item("conversation", 1, "gone", {
+      expiresAt: new Date(NOW - 60_000).toISOString(),
+    });
+    const rubrics = partitionByUrgency([expired], NOW);
+    expect(rubrics.expired.map((entry) => entry.id)).toEqual(["gone"]);
+    expect(rubrics.blocking).toEqual([]);
+  });
+
+  test("the nearest deadline sorts first, ahead of the oldest position", () => {
+    const soon = item("conversation", 0, "soon", {
+      expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+    });
+    const later = item("conversation", 5, "later", {
+      expiresAt: new Date(NOW + 20 * 60 * 60_000).toISOString(),
+    });
+    expect(sortDecisions([later, soon]).map((entry) => entry.id)).toEqual(["soon", "later"]);
+  });
+
+  test("a deadline inside a day counts as urgent even though nothing lapsed yet", () => {
+    const soon = item("conversation", 0, "soon", {
+      expiresAt: new Date(NOW + 60 * 60_000).toISOString(),
+    });
+    expect(hasOverdue([soon], NOW)).toBe(true);
+  });
+
+  test("an unreadable deadline is treated as no deadline, not as expired", () => {
+    const broken = item("conversation", 0, "broken", { expiresAt: "not a date" });
+    const rubrics = partitionByUrgency([broken], NOW);
+    expect(rubrics.expired).toEqual([]);
+    expect(rubrics.blocking.map((entry) => entry.id)).toEqual(["broken"]);
   });
 });
