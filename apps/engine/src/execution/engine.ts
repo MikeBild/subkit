@@ -1124,6 +1124,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
               if (loopBodyFailure === null) {
                 loopBodyFailure = { step_id: bodyStep.id, result: bodyOutcome.result };
               }
+              if (loopStep.fail_fast === true) break;
             } else if (bodyFailed) {
               // on_error:"continue" on the body step — the container stays
               // green, so the tolerated failure surfaces as a warning
@@ -1151,6 +1152,7 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
             }
           }
           iterationResults.push(bodyResults);
+          if (loopStep.fail_fast === true && loopBodyFailure !== null) break;
         }
         scope[step.id] = wrapEnvelope({
           data: iterationResults,

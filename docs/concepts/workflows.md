@@ -94,7 +94,7 @@ flowchart LR
 | `request` | Calls a system through a connector — HTTP, GraphQL, SQL, S3, or a remote MCP server. One step kind, five drivers, so retry, backoff, and the audit envelope behave identically whichever system is on the other end. |
 | `transform` | Reshapes data between steps in a sandboxed JavaScript expression — no network access, bounded time and memory. |
 | `branch` | Deterministic conditional routing — the engine evaluates the condition and dispatches the matching branch, no inference, no fallthrough. |
-| `loop` | Iterates a collection, running its body once per item. |
+| `loop` | Iterates a collection, running its body once per item. Expensive or side-effecting loops can set `fail_fast: true` to stop after the first non-tolerated body failure; the default collects every iteration result. |
 | `parallel` | Fans out independent step sequences concurrently and merges their results. |
 | `wait` | A deliberate delay (up to 24 h) — polling, rate-limit pacing, human-paced flows. |
 | `wait_for_event` | Pauses the run for an external signal — the human-in-the-loop gate. The run resumes when the signal arrives, or takes an explicit timeout path the author defines. The shipped `merge-pr-after-approval` recipe is the canonical example: open a PR, wait up to 24 h for approval, merge or abandon. |

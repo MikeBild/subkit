@@ -340,4 +340,42 @@ describe("onError modes", () => {
       ]),
     );
   });
+
+  test("loop fail_fast stops the current body and later iterations after the first failure", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "loop-fail-fast",
+      steps: [
+        {
+          kind: "loop",
+          id: "each",
+          over: "$input",
+          body: ["write_it", "must_not_run"],
+          fail_fast: true,
+        },
+        {
+          kind: "request",
+          id: "write_it",
+          method: "POST",
+          url: `${mock.baseUrl}/fail/x`,
+          max_retries: 0,
+        },
+        {
+          kind: "request",
+          id: "must_not_run",
+          method: "GET",
+          url: `${mock.baseUrl}/ok`,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: [1, 2, 3],
+    });
+    expect(result.status).toBe("failed");
+    const iterations = result.output as Array<Record<string, unknown>>;
+    expect(iterations).toHaveLength(1);
+    expect(Object.keys(iterations[0] ?? {})).toEqual(["write_it"]);
+  });
 });
