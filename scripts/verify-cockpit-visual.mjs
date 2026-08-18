@@ -503,9 +503,13 @@ async function mockApi(route) {
 
 function markerFor(route) {
   if (route === "chat") return '[data-testid="chat-workspace"]';
+  // Decisions and connectors own their page rather than rendering through the
+  // generic catalog table, so they carry their own mount marker.
+  if (route === "decisions") return '[data-testid="decisions-page"]';
+  if (route === "connectors") return '[data-testid="connectors-page"]';
   if (["people", "access", "api-access", "operations", "settings"].includes(route))
     return `[data-testid="admin-${route}"]`;
-  if (["workflows", "connectors", "knowledge", "skills", "files"].includes(route))
+  if (["workflows", "knowledge", "skills", "files"].includes(route))
     return `[data-testid="catalog-${route}"]`;
   return `[data-testid="resource-${route}"]`;
 }
