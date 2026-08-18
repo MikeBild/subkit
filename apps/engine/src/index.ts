@@ -10,7 +10,11 @@ import { type DriftReport, detectDrift, runMigrations } from "./db/migrate.ts";
 import { printIssuedKey, seedAtBoot } from "./db/seed.ts";
 import { warmEmbeddings } from "./embeddings/local-provider.ts";
 import { startAbortMonitor } from "./execution/index.ts";
-import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./execution/recovery.ts";
+import {
+  recoverCrashedExecutions,
+  resolveCrashRecoveryThresholdMs,
+  startCrashRecoveryMonitor,
+} from "./execution/recovery.ts";
 import { reapOrphanedWaits } from "./execution/wait-reaper.ts";
 import { getScanner, NoopScanner } from "./files/scanner.ts";
 import { setHealthState } from "./http/health-state.ts";
@@ -376,6 +380,8 @@ async function runServer(): Promise<void> {
       ...errorFields(err),
     });
   }
+  const crashRecoveryMonitor = startCrashRecoveryMonitor(db);
+  recordBootConsumer("crash-recovery");
 
   // Reap orphaned wait checkpoints. Re-enqueues `execution.run`
   // for every row in `workflow_waits` (`sendAfter:sleep_until_ts` for
@@ -672,6 +678,7 @@ async function runServer(): Promise<void> {
       await reconciler.stop();
       await stopBoss(SHUTDOWN_DRAIN_TIMEOUT_MS);
       for (const off of fanoutUnsubscribers) off();
+      crashRecoveryMonitor.stop();
       abortMonitor.stop();
       await stopListener();
       // Drain every postgres-driver connection pool so the database
