@@ -311,8 +311,12 @@ parameters belong in the JSON request body. The original object is preserved;
 ```
 
 When pagination is set, the envelope's `data` is the concatenated array of
-items across pages. `status_code` reflects the last page's status. `max_pages`
-is workflow-configurable and has a hard ceiling of 1000. Reaching the limit
+items across pages. Set `output_mode: "pages"` when the workflow must preserve
+each unmodified response body, for example to hash and archive raw source pages
+before normalization. In that mode `data` is the ordered array of response
+bodies; `items_path` still controls termination. `status_code` reflects the
+last page's status. `max_pages` is workflow-configurable and has a hard ceiling
+of 1000. Reaching either the page limit or the engine's memory-safety ceiling
 before the endpoint terminates fails the step; SubKit never reports a bounded
 prefix as a complete collection.
 

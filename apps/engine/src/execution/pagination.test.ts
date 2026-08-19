@@ -56,6 +56,29 @@ describe("pagination strategies", () => {
     expect(strategy.next({ rows: [] }, 2).done).toBe(true);
   });
 
+  test("page output mode preserves ordered response bodies without changing termination", () => {
+    const strategy = makeStrategy(
+      {
+        strategy: "offset",
+        page_size: 2,
+        offset_param: "startRow",
+        limit_param: "rowLimit",
+        items_path: "rows",
+        output_mode: "pages",
+      },
+      context,
+    );
+    const first = { rows: [{ id: 1 }, { id: 2 }], metadata: { source: "raw-1" } };
+    const last = { rows: [{ id: 3 }], metadata: { source: "raw-2" } };
+    const output: unknown[] = [];
+
+    strategy.merge(output, first);
+    expect(strategy.next(first, 1).done).toBe(false);
+    strategy.merge(output, last);
+    expect(strategy.next(last, 2).done).toBe(true);
+    expect(output).toEqual([first, last]);
+  });
+
   test("request signature is stable across object key order and covers body config", () => {
     const left = paginationSignature({
       base_url: "https://example.test/report",
