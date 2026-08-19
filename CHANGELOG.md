@@ -4,9 +4,13 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [6.7.0] – 2026-08-19
+## [6.7.1] – 2026-08-19
 
 ### Fixed
+
+- **Release versions remain immutable after their first workflow attempt.** The
+  tag command now checks GitHub Actions history as well as live Git tags, so a
+  deleted tag or Release cannot make an already-used version available again.
 
 - **The local isolated-test gate now uses the same default mock LLM provider as CI.** The
   runner previously set `NODE_ENV=test` without supplying the provider default already used by

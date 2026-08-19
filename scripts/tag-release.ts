@@ -24,6 +24,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { releaseVersionWasUsed } from "./release-history.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -71,6 +72,41 @@ const localTag = (() => {
 const remoteTag = git("ls-remote", "--tags", "origin", `refs/tags/${tag}`);
 
 require_(remoteTag === "", `${tag} already exists on origin — bump to the next version`);
+
+// Tags and Releases are mutable in GitHub even though release identities must
+// not be. A previously published tag can therefore disappear while its
+// workflow run remains in Actions history. That happened with v6.7.0: the tag
+// and Release had been deleted, so the old tag-only guard allowed the version
+// to be reused. Treat every previous release workflow run — including failed
+// and cancelled attempts — as an immutable claim on the version.
+try {
+  const releaseRuns = execFileSync(
+    "gh",
+    [
+      "run",
+      "list",
+      "--workflow",
+      "release.yml",
+      "--branch",
+      tag,
+      "--limit",
+      "1",
+      "--json",
+      "databaseId",
+    ],
+    { cwd: REPO, encoding: "utf8" },
+  );
+  require_(
+    !releaseVersionWasUsed(releaseRuns),
+    `${tag} already appears in release workflow history — versions are never reused`,
+  );
+} catch (err) {
+  problems.push(
+    `cannot verify immutable release history for ${tag}: ${
+      err instanceof Error ? err.message : String(err)
+    }`,
+  );
+}
 if (localTag !== "") {
   // The v5.9.0 case: a leftover local tag pointing at a commit the rebase
   // orphaned. Deleting it silently would hide exactly the mistake worth
