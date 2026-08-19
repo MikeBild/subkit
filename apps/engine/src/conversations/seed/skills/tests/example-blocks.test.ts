@@ -269,14 +269,13 @@ function walk(value: unknown, path: string, offenders: string[]): void {
 /**
  * Lint pagination drift: the real PaginationSchema uses `strategy:`
  * (offset/page/cursor) plus the schema-canonical field names. Older
- * skill examples used `mode:` + `items_path` / `total_path` /
+ * skill examples used `mode:` + `total_path` /
  * `cursor_param` / `cursor_path` / `page_size_param` / `has_more_path`,
  * none of which exist on the type. Surface those so the drift fix
  * doesn't silently regress.
  */
 const PAGINATION_DRIFT_FIELDS = new Set([
   "mode",
-  "items_path",
   "total_path",
   "cursor_param",
   "cursor_path",

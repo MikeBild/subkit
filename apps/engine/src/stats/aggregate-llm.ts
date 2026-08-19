@@ -13,7 +13,7 @@ import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";
 
-export type LlmGroupDim = "model" | "flow" | "user";
+export type LlmGroupDim = "model" | "flow" | "user" | "workflow";
 
 export interface LlmStatsParams {
   tenantId: string;
@@ -68,21 +68,25 @@ export interface LlmStatsResult {
   };
 }
 
-const LATENCY = sql`latency_ms::float8`;
+const LATENCY = sql`llm_usage.latency_ms::float8`;
 
 function dimColumn(dim: LlmGroupDim): SQL {
-  if (dim === "model") return sql`model`;
-  if (dim === "user") return sql`user_id`;
-  return sql`flow`;
+  if (dim === "model") return sql`llm_usage.model`;
+  if (dim === "user") return sql`llm_usage.user_id`;
+  // The id, not the name: a workflow can be renamed, and a report that
+  // silently splits one workflow into two because somebody edited its title is
+  // worse than one that makes the caller resolve an id.
+  if (dim === "workflow") return sql`executions.workflow_id`;
+  return sql`llm_usage.flow`;
 }
 
 function tokenSelect(): SQL {
   return sql`
-    coalesce(sum(prompt_tokens), 0)::float8 as tok_prompt,
-    coalesce(sum(completion_tokens), 0)::float8 as tok_completion,
-    coalesce(sum(cache_read_tokens), 0)::float8 as tok_cache_read,
-    coalesce(sum(cache_creation_tokens), 0)::float8 as tok_cache_creation,
-    coalesce(sum(total_tokens), 0)::float8 as tok_total
+    coalesce(sum(llm_usage.prompt_tokens), 0)::float8 as tok_prompt,
+    coalesce(sum(llm_usage.completion_tokens), 0)::float8 as tok_completion,
+    coalesce(sum(llm_usage.cache_read_tokens), 0)::float8 as tok_cache_read,
+    coalesce(sum(llm_usage.cache_creation_tokens), 0)::float8 as tok_cache_creation,
+    coalesce(sum(llm_usage.total_tokens), 0)::float8 as tok_total
   `;
 }
 
@@ -121,22 +125,45 @@ function readLatency(row: Record<string, unknown>): LatencyAgg {
 }
 
 function buildWhere(p: LlmStatsParams): SQL {
+  // Every column is qualified because `workflow` grouping joins `executions`,
+  // which carries its own `tenant_id` and `created_at`. An unqualified name
+  // becomes ambiguous the moment that join appears, and Postgres reports it as
+  // a syntax error rather than picking one — which is the good outcome, but
+  // only if the qualification is here rather than remembered later.
   const conds: SQL[] = [
-    sql`tenant_id = ${p.tenantId}`,
-    sql`created_at >= ${p.from}`,
-    sql`created_at < ${p.to}`,
+    sql`llm_usage.tenant_id = ${p.tenantId}`,
+    sql`llm_usage.created_at >= ${p.from}`,
+    sql`llm_usage.created_at < ${p.to}`,
   ];
-  if (p.model && p.model.length > 0) conds.push(sql`model in ${p.model}`);
-  if (p.flow && p.flow.length > 0) conds.push(sql`flow in ${p.flow}`);
+  if (p.model && p.model.length > 0) conds.push(sql`llm_usage.model in ${p.model}`);
+  if (p.flow && p.flow.length > 0) conds.push(sql`llm_usage.flow in ${p.flow}`);
   // Narrowing predicate ONLY — always within the tenant scope above.
-  if (p.userId) conds.push(sql`user_id = ${p.userId}`);
+  if (p.userId) conds.push(sql`llm_usage.user_id = ${p.userId}`);
   return sql.join(conds, sql` and `);
+}
+
+/**
+ * The FROM clause, with `executions` joined in only when a workflow dimension
+ * asks for it.
+ *
+ * WHY conditional: every other grouping answers from `llm_usage` alone, and
+ * making them all pay for a join so one of them can work would be the wrong
+ * trade on the hot path.
+ *
+ * WHY LEFT: a row without an execution is not an error — the conversational
+ * flows have no workflow at all, and they must still be counted, under an
+ * empty key rather than dropped.
+ */
+function fromClause(p: LlmStatsParams): SQL {
+  return p.groupBy.includes("workflow")
+    ? sql`llm_usage left join executions on executions.id = llm_usage.execution_id`
+    : sql`llm_usage`;
 }
 
 /** See aggregate-executions.ts: bucket + tz are bound params; the SELECT
  *  alias `bucket_ts` is what GROUP BY references. */
 function bucketExpr(p: LlmStatsParams): SQL {
-  return sql`date_trunc(${p.bucket}, created_at at time zone ${p.tz})`;
+  return sql`date_trunc(${p.bucket}, llm_usage.created_at at time zone ${p.tz})`;
 }
 
 const GROUP_BY_BUCKET = sql`bucket_ts`;
@@ -165,7 +192,7 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
         count(*)::int as calls,
         ${tokenSelect()},
         ${latencySelect()}
-      from llm_usage
+      from ${fromClause(p)}
       where ${where}
       group by ${groupByClause}
       order by bucket_ts asc
@@ -182,9 +209,9 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
         ${bucket} as bucket_ts,
         result,
         count(*)::int as n
-      from llm_usage
+      from ${fromClause(p)}
       where ${where}
-      group by ${groupByClause}, result
+      group by ${groupByClause}, llm_usage.result
     `)
   ).rows as Record<string, unknown>[];
 
@@ -209,7 +236,7 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
               count(*)::int as calls,
               ${tokenSelect()},
               ${latencySelect()}
-            from llm_usage
+            from ${fromClause(p)}
             where ${where}
             group by ${sql.join(groupCols, sql`, `)}
           `)
@@ -222,17 +249,17 @@ export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsR
         count(*)::int as calls,
         ${tokenSelect()},
         ${latencySelect()}
-      from llm_usage
+      from ${fromClause(p)}
       where ${where}
     `)
   ).rows[0] ?? {}) as Record<string, unknown>;
 
   const byResultRows = (
     await db.execute(sql`
-      select result, count(*)::int as n
-      from llm_usage
+      select llm_usage.result, count(*)::int as n
+      from ${fromClause(p)}
       where ${where}
-      group by result
+      group by llm_usage.result
     `)
   ).rows as Record<string, unknown>[];
 

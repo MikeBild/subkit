@@ -1001,6 +1001,10 @@ shape that fails at runtime. Follow the order:
    from documentation.
 5. **`search_docs` and `search_knowledge`.** Look up endpoints, auth,
    pagination, response structure. Do not guess paths from the URL.
+   For a POST search/report API, use one request step with
+   `pagination.parameter_location: "body"`, the vendor's offset/limit names,
+   `items_path`, and a bounded `max_pages`; do not unroll guessed page counts
+   into duplicate steps.
 6. **Only then** call `author_workflow` to build the draft (and
    `edit_workflow_patch` for any targeted edit afterwards). The pipeline
    grounds generation in the recorded shapes; without them it generates

@@ -218,8 +218,7 @@ export interface PaginationCheckpoint {
   page_idx: number;
   /** Total items accumulated across already-consumed pages. */
   accumulated_count: number;
-  /** Hash of `{base_url, path_or_url, query}` so a future resume
-   *  rejects when the workflow mutated. */
+  /** Hash of URL, query, body and pagination configuration. */
   signature: string;
 }
 
@@ -247,12 +246,11 @@ export type RequestMeta =
       /** Number of pages walked during pagination. Absent on
        *  non-paginated requests. */
       pages_fetched?: number;
-      /** Logical page resumed-from when a checkpoint was honored. */
+      /** Legacy diagnostic field retained for API compatibility. */
       resumed_from_page?: number;
-      /** Item count carried over from the resume checkpoint. */
+      /** Legacy diagnostic field retained for API compatibility. */
       resumed_accumulated_count?: number;
-      /** Resume cursor persisted alongside this run for crash
-       *  recovery. */
+      /** Progress checkpoint; retries restart at page 1 for complete output. */
       pagination_checkpoint?: PaginationCheckpoint;
       extras?: Record<string, unknown>;
     }

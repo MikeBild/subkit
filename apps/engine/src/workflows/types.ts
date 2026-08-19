@@ -75,24 +75,33 @@ export const PaginationSchema = z
   .union([
     z.object({
       strategy: z.literal("offset"),
-      page_size: z.number().int().positive().max(1000).default(100),
+      page_size: z.number().int().positive().max(100_000).default(100),
       offset_param: z.string().default("offset"),
       limit_param: z.string().default("limit"),
+      parameter_location: z.enum(["query", "body"]).optional(),
+      items_path: z.string().optional(),
       stop_when_empty_path: z.string().optional(),
+      max_pages: z.number().int().positive().max(1000).optional(),
     }),
     z.object({
       strategy: z.literal("page"),
-      page_size: z.number().int().positive().max(1000).default(100),
+      page_size: z.number().int().positive().max(100_000).default(100),
       page_param: z.string().default("page"),
       limit_param: z.string().default("page_size"),
       start_page: z.number().int().min(0).default(1),
+      parameter_location: z.enum(["query", "body"]).optional(),
+      items_path: z.string().optional(),
+      max_pages: z.number().int().positive().max(1000).optional(),
     }),
     z.object({
       strategy: z.literal("cursor"),
       cursor_request_param: z.string(),
       cursor_response_path: z.string(),
-      page_size: z.number().int().positive().max(1000).optional(),
+      page_size: z.number().int().positive().max(100_000).optional(),
       limit_param: z.string().optional(),
+      parameter_location: z.enum(["query", "body"]).optional(),
+      items_path: z.string().optional(),
+      max_pages: z.number().int().positive().max(1000).optional(),
     }),
   ])
   .openapi("Pagination");

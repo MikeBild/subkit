@@ -11,7 +11,12 @@ import type { AppEnv } from "../../openapi.ts";
 import { resolveWindow } from "./bucket-window.ts";
 import { LlmStatsQuery, LlmStatsResponse } from "./schemas.ts";
 
-const LLM_DIMS: LlmGroupDim[] = ["model", "flow", "user"];
+// `workflow` reaches through `executions` to the workflow that ran the call.
+// It exists because model and flow together still cannot answer "which
+// workflow is spending the money" — the question the August 2026 cost
+// investigation actually turned on, and the one that previously forced a
+// direct SQL query over ssh because no endpoint could serve it.
+const LLM_DIMS: LlmGroupDim[] = ["model", "flow", "user", "workflow"];
 
 const route = createRoute({
   method: "get",
