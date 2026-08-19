@@ -43,6 +43,12 @@ describe("classifyHttpSideEffect — override (author escape hatch)", () => {
   test("override:write wins over a GET", () => {
     expect(classifyHttpSideEffect({ method: "GET", override: "write" })).toBe("write");
   });
+
+  test("override:read cannot downgrade structurally mutating HTTP methods", () => {
+    for (const method of ["PUT", "PATCH", "DELETE"]) {
+      expect(classifyHttpSideEffect({ method, override: "read" })).toBe("write");
+    }
+  });
 });
 
 describe("classifyHttpSideEffect — GraphQL", () => {
@@ -102,6 +108,11 @@ describe("classifyHttpSideEffect — S3", () => {
     expect(classifyHttpSideEffect({ s3: true, method: "LIST" })).toBe("read");
     expect(classifyHttpSideEffect({ s3: true, method: "PUT" })).toBe("write");
     expect(classifyHttpSideEffect({ s3: true, method: "DELETE" })).toBe("write");
+  });
+
+  test("override:read cannot downgrade an S3 mutation", () => {
+    expect(classifyHttpSideEffect({ s3: true, method: "PUT", override: "read" })).toBe("write");
+    expect(classifyHttpSideEffect({ s3: true, method: "DELETE", override: "read" })).toBe("write");
   });
 });
 

@@ -6,7 +6,7 @@
 // `side_effects` step override winning in BOTH directions.
 
 import { describe, expect, test } from "bun:test";
-import { RequestStepSchema } from "../../workflows/types.ts";
+import { type RequestStep, RequestStepSchema } from "../../workflows/types.ts";
 import {
   classifyRequestStepSideEffects,
   redactHeldRequestHeaders,
@@ -16,6 +16,10 @@ const CONNECTOR_ID = "11111111-2222-4333-8444-555555555555";
 
 function step(partial: Record<string, unknown>) {
   return RequestStepSchema.parse({ kind: "request", id: "s", ...partial });
+}
+
+function legacyStep(partial: Record<string, unknown>): RequestStep {
+  return { kind: "request", id: "s", method: "GET", ...partial } as RequestStep;
 }
 
 describe("classifyRequestStepSideEffects · HTTP methods", () => {
@@ -47,6 +51,12 @@ describe("classifyRequestStepSideEffects · explicit override wins both directio
     expect(
       classifyRequestStepSideEffects(step({ method: "GET", url, side_effects: "write" })),
     ).toBe("write");
+  });
+
+  test.each([["PUT"], ["PATCH"], ["DELETE"]])("%s cannot be forced to read", (method) => {
+    expect(classifyRequestStepSideEffects(legacyStep({ method, url, side_effects: "read" }))).toBe(
+      "write",
+    );
   });
 
   test("override beats the GraphQL operation rule", () => {
@@ -277,6 +287,19 @@ describe("classifyRequestStepSideEffects · S3", () => {
     expect(
       classifyRequestStepSideEffects(
         step({ connector_id: CONNECTOR_ID, method: "PUT", s3: { key: "a.json" } }),
+      ),
+    ).toBe("write");
+  });
+
+  test("PUT remains write when a legacy definition claims read", () => {
+    expect(
+      classifyRequestStepSideEffects(
+        legacyStep({
+          connector_id: CONNECTOR_ID,
+          method: "PUT",
+          side_effects: "read",
+          s3: { key: "a.json" },
+        }),
       ),
     ).toBe("write");
   });
