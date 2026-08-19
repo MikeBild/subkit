@@ -17533,7 +17533,7 @@
             }
           },
           "400": {
-            "description": "Invalid window",
+            "description": "Invalid window, or an unusable group_by",
             "content": {
               "application/json": {
                 "schema": {
