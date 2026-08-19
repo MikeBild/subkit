@@ -61,6 +61,9 @@ Idempotency rule (driver-enforced):
 - `GET` / `HEAD` / `OPTIONS`: retry on 5xx, 429, connection errors.
 - `POST` / `PUT` / `PATCH` / `DELETE`: retry only on 429 and connection
   errors. Servers are responsible for honoring `Idempotency-Key`.
+- A request explicitly classified with `side_effects: "read"` is retry-safe
+  on 5xx even when the transport method is POST, which covers read-only search
+  APIs without treating ordinary writes as idempotent.
 
 Retry envelope: 5 attempts max, 200ms base, 30s cap, ±20% jitter.
 429 with `Retry-After` overrides the schedule (cap 1h).

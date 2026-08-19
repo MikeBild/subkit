@@ -1,15 +1,12 @@
 // Pagination loop helpers. The request step driver hands each page-fetch
 // call back to a strategy object that decides:
-//   - the URL/query for the next page
+//   - the URL/query or JSON body parameters for the next page
 //   - whether to stop (empty page, page count cap, missing cursor)
 // All three strategies cap at 1,000 requests per step.
 //
-// Checkpointing: every PAGINATION_CHECKPOINT_INTERVAL pages the strategy
-// state is persisted to `execution_steps.request_meta.pagination_checkpoint`
-// so a long-paginated request can resume after engine restart / step timeout
-// instead of restarting from page 1. The checkpoint includes a request
-// signature hash so a re-authored workflow doesn't accidentally pick up a
-// stale resume position.
+// Checkpointing records progress for diagnostics. A retry restarts at page 1
+// until accumulated page data itself has durable storage; skipping pages from
+// a cursor-only checkpoint would otherwise return an incomplete result.
 
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -20,8 +17,8 @@ import { applySelector } from "./selectors.ts";
 export const MAX_PAGES = 1000;
 export const PAGE_PROGRESS_INTERVAL = 50;
 
-/** Pages between checkpoint writes. Tunable via env so an operator can
- *  trade write amplification against blast radius on a restart. */
+/** Pages between progress-checkpoint writes. Tunable to balance diagnostic
+ *  granularity against write amplification. */
 export const PAGINATION_CHECKPOINT_INTERVAL: number = (() => {
   const raw = process.env.PAGINATION_CHECKPOINT_INTERVAL;
   if (!raw) return 50;
@@ -37,36 +34,31 @@ export interface PageContext {
 export interface NextPage {
   url: string;
   done: boolean;
+  body_parameters?: Record<string, string | number>;
 }
 
 export interface PaginationStrategyState {
   next(prevResponse: unknown, pageIdx: number): NextPage;
   merge(acc: unknown[], pageBody: unknown): unknown[];
-  /** Snapshot of the strategy's internal cursor/offset/page state — captured
-   *  AFTER `merge()` so the value reflects the next URL to fetch on resume.
-   *  `lastBody` is the most recently fetched page body (cursor strategies
-   *  read the next cursor from it; offset/page strategies ignore it). */
+  /** Snapshot of progress after `merge()`. `lastBody` lets cursor strategies
+   *  record the next cursor without using it to skip unstored page data. */
   snapshot(lastBody: unknown): PaginationCheckpointState;
 }
 
-/** The strategy-specific state that, together with the request signature,
- *  uniquely identifies "where are we in this paginated request". */
+/** Strategy-specific progress observed during a paginated request. */
 export type PaginationCheckpointState =
   | { kind: "offset"; offset: number }
   | { kind: "page"; page: number }
   | { kind: "cursor"; cursor: string | null };
 
-/** What gets persisted to `execution_steps.request_meta.pagination_checkpoint`.
- *  `signature` is a sha256 of the request shape so a workflow re-author that
- *  flips a query param doesn't accidentally resume against the new shape. */
+/** Progress persisted to `execution_steps.request_meta.pagination_checkpoint`. */
 export interface PaginationCheckpoint {
   state: PaginationCheckpointState;
-  /** Page index of the LAST successfully fetched page. The next page-fetch
-   *  on resume is `page_idx + 1`. */
+  /** Count of successfully fetched pages at checkpoint time. */
   page_idx: number;
   /** Number of records collected in `acc` so far. */
   accumulated_count: number;
-  /** Hash of the request signature (base_url + path_or_url + query). */
+  /** Hash of URL, query, body and pagination configuration. */
   signature: string;
   /** ISO-8601 timestamp the checkpoint was written. */
   written_at: string;
@@ -76,18 +68,31 @@ export function paginationSignature(input: {
   base_url: string;
   path_or_url: string;
   query: Record<string, unknown>;
+  body?: unknown;
+  pagination?: unknown;
 }): string {
-  // Stable JSON: sort query keys so {a,b} and {b,a} hash identically.
-  const sortedQuery: Record<string, unknown> = {};
-  for (const k of Object.keys(input.query).sort()) {
-    sortedQuery[k] = input.query[k];
-  }
-  const payload = JSON.stringify({
-    base_url: input.base_url,
-    path_or_url: input.path_or_url,
-    query: sortedQuery,
-  });
+  const payload = JSON.stringify(
+    sortJsonValue({
+      base_url: input.base_url,
+      path_or_url: input.path_or_url,
+      query: input.query,
+      body: input.body ?? null,
+      pagination: input.pagination ?? null,
+    }),
+  );
   return createHash("sha256").update(payload).digest("hex");
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJsonValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, sortJsonValue(nested)]),
+    );
+  }
+  return value;
 }
 
 function buildUrl(base: URL, query: Record<string, string>): string {
@@ -101,7 +106,10 @@ interface OffsetSpec {
   page_size: number;
   offset_param: string;
   limit_param: string;
+  parameter_location?: "query" | "body";
+  items_path?: string;
   stop_when_empty_path?: string;
+  max_pages?: number;
 }
 
 interface PageSpec {
@@ -110,6 +118,9 @@ interface PageSpec {
   page_param: string;
   limit_param: string;
   start_page: number;
+  parameter_location?: "query" | "body";
+  items_path?: string;
+  max_pages?: number;
 }
 
 interface CursorSpec {
@@ -118,58 +129,38 @@ interface CursorSpec {
   cursor_response_path: string;
   page_size?: number;
   limit_param?: string;
+  parameter_location?: "query" | "body";
+  items_path?: string;
+  max_pages?: number;
 }
 
 export type PaginationSpec = OffsetSpec | PageSpec | CursorSpec;
 
-export function makeStrategy(
-  spec: PaginationSpec,
-  ctx: PageContext,
-  seed?: PaginationCheckpointState | null,
-): PaginationStrategyState {
-  // On a seeded resume the strategy's internal counter holds "the last page
-  // that was successfully fetched". The first next() call after a resume must
-  // therefore advance to the *following* page before emitting the URL — that
-  // matches the steady-state semantics where next() emits "what to fetch
-  // now". Plain (non-seeded) starts initialise to the user-declared origin
-  // and emit the very first page on idx=0.
+export function makeStrategy(spec: PaginationSpec, ctx: PageContext): PaginationStrategyState {
   if (spec.strategy === "offset") {
-    const seeded = seed && seed.kind === "offset";
-    let offset = seeded ? seed.offset : 0;
+    let offset = 0;
     return {
       next(prev, idx) {
         if (idx === 0) {
-          if (seeded) {
-            offset += spec.page_size;
-          } else {
-            offset = 0;
-          }
-          return {
-            url: buildUrl(ctx.baseUrl, {
-              ...ctx.baseQuery,
-              [spec.offset_param]: String(offset),
-              [spec.limit_param]: String(spec.page_size),
-            }),
-            done: false,
-          };
+          offset = 0;
+          return buildNextPage(spec, ctx, {
+            [spec.offset_param]: offset,
+            [spec.limit_param]: spec.page_size,
+          });
         }
         // Stop when the previous response was empty / shorter than page size.
-        const arr = extractArray(prev, spec.stop_when_empty_path);
+        const arr = extractArray(prev, spec.items_path ?? spec.stop_when_empty_path);
         if (!arr || arr.length === 0 || arr.length < spec.page_size) {
           return { url: "", done: true };
         }
         offset += spec.page_size;
-        return {
-          url: buildUrl(ctx.baseUrl, {
-            ...ctx.baseQuery,
-            [spec.offset_param]: String(offset),
-            [spec.limit_param]: String(spec.page_size),
-          }),
-          done: false,
-        };
+        return buildNextPage(spec, ctx, {
+          [spec.offset_param]: offset,
+          [spec.limit_param]: spec.page_size,
+        });
       },
       merge(acc, body) {
-        const arr = extractArray(body, spec.stop_when_empty_path);
+        const arr = extractArray(body, spec.items_path ?? spec.stop_when_empty_path);
         if (Array.isArray(arr)) acc.push(...arr);
         else acc.push(body);
         return acc;
@@ -180,41 +171,28 @@ export function makeStrategy(
     };
   }
   if (spec.strategy === "page") {
-    const seeded = seed && seed.kind === "page";
-    let page = seeded ? seed.page : spec.start_page;
+    let page = spec.start_page;
     return {
       next(prev, idx) {
         if (idx === 0) {
-          if (seeded) {
-            page += 1;
-          } else {
-            page = spec.start_page;
-          }
-          return {
-            url: buildUrl(ctx.baseUrl, {
-              ...ctx.baseQuery,
-              [spec.page_param]: String(page),
-              [spec.limit_param]: String(spec.page_size),
-            }),
-            done: false,
-          };
+          page = spec.start_page;
+          return buildNextPage(spec, ctx, {
+            [spec.page_param]: page,
+            [spec.limit_param]: spec.page_size,
+          });
         }
-        const arr = extractArray(prev);
+        const arr = extractArray(prev, spec.items_path);
         if (!arr || arr.length === 0 || arr.length < spec.page_size) {
           return { url: "", done: true };
         }
         page += 1;
-        return {
-          url: buildUrl(ctx.baseUrl, {
-            ...ctx.baseQuery,
-            [spec.page_param]: String(page),
-            [spec.limit_param]: String(spec.page_size),
-          }),
-          done: false,
-        };
+        return buildNextPage(spec, ctx, {
+          [spec.page_param]: page,
+          [spec.limit_param]: spec.page_size,
+        });
       },
       merge(acc, body) {
-        const arr = extractArray(body);
+        const arr = extractArray(body, spec.items_path);
         if (Array.isArray(arr)) acc.push(...arr);
         else acc.push(body);
         return acc;
@@ -225,51 +203,40 @@ export function makeStrategy(
     };
   }
   // cursor
-  // For cursor pagination the snapshot stores "the cursor to USE for the next
-  // page" — not the cursor that was just used. The next cursor only becomes
-  // available after a page fetch (it's read out of the response body via
-  // `cursor_response_path`), so we capture it after the URL is built and
-  // expose it via snapshot(). On resume the seeded value is fed straight
-  // into the next URL.
-  const seededCursor = seed && seed.kind === "cursor" ? seed.cursor : null;
-  let cursor: string | null = seededCursor;
+  // The cursor snapshot records the next cursor as progress evidence. Runtime
+  // retries still restart at the origin until page data is durably accumulated.
+  let cursor: string | null = null;
   return {
     next(prev, idx) {
       if (idx === 0) {
-        const params: Record<string, string> = { ...ctx.baseQuery };
+        const params: Record<string, string | number> = {};
         if (cursor !== null) params[spec.cursor_request_param] = cursor;
-        if (spec.limit_param && spec.page_size != null)
-          params[spec.limit_param] = String(spec.page_size);
-        return { url: buildUrl(ctx.baseUrl, params), done: false };
+        if (spec.limit_param && spec.page_size != null) params[spec.limit_param] = spec.page_size;
+        return buildNextPage(spec, ctx, params);
       }
-      const next = applySelector(spec.cursor_response_path, prev);
+      const next = applyPaginationSelector(spec.cursor_response_path, prev);
       if (next == null || next === "" || (Array.isArray(next) && next.length === 0)) {
         return { url: "", done: true };
       }
       cursor = String(Array.isArray(next) ? next[0] : next);
-      const params: Record<string, string> = {
-        ...ctx.baseQuery,
+      const params: Record<string, string | number> = {
         [spec.cursor_request_param]: cursor,
       };
-      if (spec.limit_param && spec.page_size != null)
-        params[spec.limit_param] = String(spec.page_size);
-      return { url: buildUrl(ctx.baseUrl, params), done: false };
+      if (spec.limit_param && spec.page_size != null) params[spec.limit_param] = spec.page_size;
+      return buildNextPage(spec, ctx, params);
     },
     merge(acc, body) {
-      const arr = extractArray(body);
+      const arr = extractArray(body, spec.items_path);
       if (Array.isArray(arr)) acc.push(...arr);
       else acc.push(body);
       return acc;
     },
     snapshot(lastBody) {
-      // Read the *next* cursor from the most recently fetched page body so a
-      // resume can jump straight to the following URL. If the body has no
-      // cursor field the response is treated as terminal and the snapshot
-      // records `null` — a resumed strategy will then start fresh.
+      // Record the next cursor from the most recently fetched response.
       let nextCursor: string | null = cursor;
       if (lastBody !== null && lastBody !== undefined) {
         try {
-          const v = applySelector(spec.cursor_response_path, lastBody);
+          const v = applyPaginationSelector(spec.cursor_response_path, lastBody);
           if (v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) {
             nextCursor = String(Array.isArray(v) ? v[0] : v);
           }
@@ -279,6 +246,27 @@ export function makeStrategy(
       }
       return { kind: "cursor", cursor: nextCursor };
     },
+  };
+}
+
+function buildNextPage(
+  spec: PaginationSpec,
+  ctx: PageContext,
+  parameters: Record<string, string | number>,
+): NextPage {
+  if (spec.parameter_location === "body") {
+    return {
+      url: buildUrl(ctx.baseUrl, ctx.baseQuery),
+      done: false,
+      body_parameters: parameters,
+    };
+  }
+  return {
+    url: buildUrl(ctx.baseUrl, {
+      ...ctx.baseQuery,
+      ...Object.fromEntries(Object.entries(parameters).map(([key, value]) => [key, String(value)])),
+    }),
+    done: false,
   };
 }
 
@@ -345,14 +333,10 @@ function extractArray(body: unknown, path?: string): unknown[] | null {
   if (body == null) return null;
   if (Array.isArray(body)) return body;
   if (path) {
-    try {
-      const v = applySelector(path, body);
-      if (Array.isArray(v)) return v;
-      if (v == null) return null;
-      return [v];
-    } catch {
-      return null;
-    }
+    const v = applyPaginationSelector(path, body);
+    if (Array.isArray(v)) return v;
+    if (v == null) return [];
+    throw new Error(`pagination items path ${path} did not select an array`);
   }
   // Heuristic: pick the first array property.
   if (typeof body === "object") {
@@ -361,4 +345,8 @@ function extractArray(body: unknown, path?: string): unknown[] | null {
     }
   }
   return null;
+}
+
+function applyPaginationSelector(path: string, value: unknown): unknown {
+  return applySelector(path.startsWith("$") ? path : `$.${path}`, value);
 }
