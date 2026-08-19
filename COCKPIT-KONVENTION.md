@@ -1,6 +1,6 @@
 # Cockpit-Konvention
 
-Version 1.2 · 17.08.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
+Version 1.4 · 17.08.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
 
 **Modell: Konvention statt Bibliothek.** Jedes Produkt bleibt eigenständig — eigenes Repo, eigene shadcn-Komponenten (vendored, wie shadcn gedacht ist), eigene Releases, kein shared Package. Geteilt wird nur dieses Dokument. Eine Kopie liegt in jedem Repo; Abweichungen sind erlaubt, wo das Produkt es begründet — die Konvention ist der Default, nicht das Gesetz.
 
@@ -8,6 +8,8 @@ Referenz-Implementierung: der Zielbild-Prototyp (Artefakt „kit-cockpit-zielbil
 
 Änderungen v1.1: neuer §8 Entscheidungs-Grammatik (hebt das Muster aus der WorkKit-Übergabe auf Familienebene); §1 Zone A verweist auf §8.
 Änderungen v1.2: neue §9 Diff-Freigabe, §10 Sammlungs-Listen, §11 Verbindungs-Status (heben die Muster aus der SubKit-Übergabe auf Familienebene); §4 um „Leere führt zur Handlung" ergänzt.
+Änderungen v1.3: §6 um kanonische Gruppennamen ergänzt; Umsetzungs-Vehikel für §§2–6 ist die Übergabe „shell-paket" (ein gleichförmiger Konformitäts-PR je Repo).
+Änderungen v1.4: Endnutzer-Patterns aus den Produktivitäts-Leitfäden gehoben (Übergabe „endnutzer-pattern-adaption"): §5 Zusammenfassungszeile, §8.3 drei Arten von Nein, §8.5 Geschichte vs. Zustand, §11 Fähigkeits-Inventur, neu §12 Berichts-Grammatik, §13 Prüfen vor Reparieren, §14 Modus & Schranken.
 
 ---
 
@@ -52,9 +54,13 @@ Gemessene Null („0 · zuletzt geprüft vor 2 min") ≠ nicht erfasst (Hohlzell
 
 Deutsch auf oberster Ebene; Fachbegriffe (SRE, API-Namen) erst in der Detailtiefe. Rollen-Label einheitlich „Administrator". Destruktive Aktionen (Löschen, Verwerfen, Widerrufen) nie als rote Primärfläche in Listenzeilen — ins ⋯-Menü mit Bestätigung. Titel sind Zusammenfassungen, nie rohe Prompts oder UUIDs; Auto-Titel aus dem ersten Auftrag, wo kein Titel existiert.
 
+**Zusammenfassungszeile.** Jedes benannte Objekt trägt eine 1–2-Satz-Zusammenfassung, und Listen zeigen sie unter dem Titel — einmal geschrieben (beim Anlegen, notfalls generiert), hundertmal gelesen. Der Lesepfad ist dreistufig: Landkarte (Bereichs-Start) → Zusammenfassungszeile → Volltext; Volltextsuche ist Fallback, nicht Haupteingang.
+
 ## 6. Struktur-Konstanten
 
 Sidebar links: Wortmarke, gruppierte Navigation, Account unten (Avatar · E-Mail · Rolle · Menü: Profil/Sprache/Darstellung/Abmelden). Installation-Sektion enthält mindestens: System · Einstellungen · Zugangsdaten · Benachrichtigungen · Audit. Deep-Links funktionieren; unbekannte Routen zeigen eine gestaltete Seite mit Rückweg. Mandanten-Switcher trennt Prod/Test, Test ausblendbar.
+
+**Kanonische Gruppennamen.** Geteilte Konzepte heißen in allen sechs Produkten gleich: die Admin-Gruppe heißt **„Installation"** (nie „Administration"), der Entscheidungs-Eintrag ist **ungruppiert** unter der Übersicht (§8.1), die Rolle heißt **„Administrator"** (eine Schreibweise, keine Versalien-Varianten). Produktspezifische Gruppen (Wiki, Überwachung, …) bleiben frei benannt — aber deutsch und in Normalschreibung.
 
 ## 7. Drift-Kontrolle ohne Shared Code
 
@@ -70,9 +76,11 @@ Jedes Produkt, das menschliche Entscheidungen sammelt (Freigaben, Reviews, Budge
 
 **8.3 Zeile.** Meta-Zeile (Status-Glyph + Art-Badge · Quell-Referenz als Link · Frist „Entscheiden bis …" wo vorhanden, mit Herkunft) → Titel (line-clamp-2, nie UUID) → Wirkung in einer Zeile → Quellzeile. Aktionen rechts unten: Buttons benennen die Handlung („Freigeben", „Ablehnen", „Änderung anfordern" — nie „OK"). Ablehnung klappt ein Notizfeld in der Zeile auf. Entscheidung verlässt die Seite nie; Optimistic-Hide + Toast, Fehler bringt die Zeile zurück. ⋯-Menü: Später erinnern (Presets + eigener Zeitpunkt) · Dauerhaft verwerfen (mit Bestätigung; wenn endgültig, sagt die UI das) · Quelle öffnen.
 
+**Drei Arten von Nein.** Wo das Produkt sie kennt, unterscheidet die Zeile: Ablehnung **mit** Begründung (schickt zurück ans Nacharbeiten) · Ablehnung **ohne** Begründung (beendet) · **Verwerfen** (folgenlos — als „folgenlos" beschriftet). Eine unbeantwortete Frist verfällt sichtbar als „verfallen (nicht entschieden)", nie stillschweigend. Ein wiederholter identischer Vorschlag zeigt die frühere Ablehnung samt Begründung — die Oberfläche bohrt nicht nach, bis der Mensch ja sagt. Wo Auftraggeber und Freigeber getrennte Rollen sind, zeigt die Zeile, wer entscheiden darf; die eigene Beauftragung ist markiert.
+
 **8.4 Aufklappen.** Zeilen mit mehr Kontext tragen unten links einen benannten Toggle („Mehr anzeigen"), nie einen nackten Chevron. Aufgeklappt: volle Begründung, Rohdaten der Quelle, ggf. Formular für strukturierte Rückfragen. Die Entscheidungs-Buttons wandern ins Panel (kollabiert Kompakt-Form, expandiert Voll-Form).
 
-**8.5 Regale.** Unter der aktiven Queue: einklappbare Sektionen „Zurückgestellt" (mit Wiedervorlage-Zeit), „Verworfen", „Entschieden" — gedimmt, mit Rückhol-Aktion wo die API es erlaubt.
+**8.5 Regale.** Unter der aktiven Queue: einklappbare Sektionen „Zurückgestellt" (mit Wiedervorlage-Zeit), „Verworfen", „Entschieden" — gedimmt, mit Rückhol-Aktion wo die API es erlaubt. Grundsatz dahinter: **Zustand und Geschichte sind getrennte Flächen.** Die Queue zeigt nur den aktuellen Zustand (Erledigtes verschwindet, nichts wird durchgestrichen); die vollständige Geschichte wohnt im Audit/Aktivitätsprotokoll (append, nie gekürzt).
 
 **8.6 Leere.** Nie etwas offen: grüner Check, „Alles erledigt" + „Gerade wartet keine Entscheidung auf dich." Nur weggefiltert: eigene, kompaktere Meldung mit Hinweis auf die Filter. Beide getrennt testbar (§4 gilt).
 
@@ -97,3 +105,17 @@ Jede Sammlung gleichrangiger Objekte (Workflows, Skills, Quellen, Checks, Spaces
 ## 11. Verbindungs-Status
 
 Alles, was eine Fremdsystem-Verbindung repräsentiert (Connector, Binding, Quelle, Site), zeigt sich als Karte oder Zeile mit drei Pflichtangaben: **Auth-Zustand** als Wort + Badge (verbunden · abgelaufen · Zugangsdaten fehlen · nie eingerichtet — Vokabular nach §2/§4), **Umgebung** (dev/prod-Badge, wo das Produkt Umgebungen kennt) und **„Verbindung testen"** als sichtbare Aktion mit Ergebnis in place. Ein abgelaufener OAuth-Zustand nennt den Weg zur Erneuerung — kein Rot ohne Weg zur Ursache (§1).
+
+**Fähigkeits-Inventur.** Die Karte beantwortet die wichtigere Frage: **Was darf diese Verbindung?** Fähigkeitsliste (lesen · suchen · schreiben · …) plus Risikostufe als Badge (lesen · nach draußen · **schreibt**). Schreibrecht ist nie Kleingedrucktes — „ein Server, der schreiben darf, ohne dass du es weißt, ist keine Verbindung, sondern eine offene Tür." Ergänzend gehört zu jeder Installation eine **Rechte-Inventur**: angesammelte Einzelfreigaben, stehende Grants und Schlüssel mit Alter, letzter Nutzung und Widerruf in place — Rechte häufen sich still an, die Inventur macht es zur Entscheidung.
+
+## 12. Berichts-Grammatik
+
+Jeder automatisch erzeugte Bericht oder Digest endet mit einem Block „**Was du entscheiden musst**" — dessen Positionen sind dieselben wie in der Entscheidungs-Queue (§8) und verlinken dorthin. Ein Bericht ohne Befund ist kein leerer Lauf, sondern der Beleg, dass geprüft wurde: „0 Befunde · geprüft vor 2 min" (§4). Die **Reihe** der Berichte ist sichtbar — Lücken (ausgefallene Läufe) erscheinen als Lücke, nicht als Stille. Drei Nicht-Zustände bleiben unterscheidbar: geprüft-nichts-gefunden · nie hingeschaut · kein Zugang. Erfolgs-Aussagen verlinken ihren Beleg — eine Messung mit Herkunft, nie die Behauptung des Agenten; Assistenten-Antworten zitieren ihre Quellobjekte als Links.
+
+## 13. Prüfen vor Reparieren
+
+Wo ein Produkt automatisch pflegt, heilt oder aufräumt, sind Prüfen und Reparieren **zwei getrennte Aktionen in fester Reihenfolge**: „Prüfen" liest und ändert nichts (Ergebnis: Bericht nach §12); „Reparieren" folgt danach und nur in erlaubten Zonen. Ein Bearbeiter, der sein eigenes Ergebnis bewertet, meldet Erfolg — deshalb nie ein Knopf für beides. Sicherungen, familienweit: erst die Änderungsliste zeigen, dann ändern; ab einer Schwelle rückfragen; **Löschen ist immer ein Vorschlag, nie eine automatische Handlung**; bei Unsicherheit nicht anfassen; ein Befund ist kein Auftrag — der Mensch entscheidet pro Befund. Prüf-Ergebnisse nennen die Version des Maßstabs, gegen den sie liefen; der Maßstab hat eine Quelle und keine Kopien.
+
+## 14. Modus & Schranken
+
+Jeder Freigabe-/Autonomie-Modus zeigt am Wähler seine **Gate-Matrix**: welche Gates bleiben, welche entfallen — der Name allein sagt nichts über die Schranke, und zwei Modi mit gleicher Matrix sind eine Lesefalle. Regel- und Policy-Listen kennzeichnen jede Zeile als **Leitplanke** (Anweisungstext an das Modell — eine Bitte) oder **Grenze** (erzwungen durch Rechteprüfung, Abschottung oder nutzlastgebundene Freigabe). Wer beides gleich darstellt, verkauft Ordnung als Sicherheit.
