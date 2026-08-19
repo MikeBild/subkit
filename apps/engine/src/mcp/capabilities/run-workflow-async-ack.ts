@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull, ne } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, ne } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { conversations, executions } from "../../db/schema/index.ts";
 import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
@@ -36,6 +36,7 @@ export async function findBackgroundExecutionId(opts: {
         and(
           eq(executions.tenant_id, tenant_id),
           eq(executions.workflow_id, wf.id),
+          isNull(executions.parent_execution_id),
           gte(executions.created_at, new Date(since)),
         ),
       )
