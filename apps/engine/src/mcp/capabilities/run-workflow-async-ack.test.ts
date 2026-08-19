@@ -26,7 +26,11 @@ afterAll(async () => {
   await suite.cleanup();
 });
 
-async function seedRunningExecution(workflowId: string, createdAt: Date): Promise<string> {
+async function seedRunningExecution(
+  workflowId: string,
+  createdAt: Date,
+  parentExecutionId: string | null = null,
+): Promise<string> {
   const [row] = await suite.http.db
     .insert(executions)
     .values({
@@ -36,6 +40,7 @@ async function seedRunningExecution(workflowId: string, createdAt: Date): Promis
       status: "running",
       request_source: "chat",
       execution_mode: "dev",
+      parent_execution_id: parentExecutionId,
       created_at: createdAt,
     })
     .returning();
@@ -62,6 +67,25 @@ describe("findBackgroundExecutionId", () => {
       since,
     });
     expect(found).toBe(newer);
+  });
+
+  test("does not return a newer child execution of the same workflow", async () => {
+    const wf = await suite.seedWorkflow({
+      slug: "async-ack-concurrent-child",
+      name: "Async Ack Concurrent Child",
+      steps: [],
+    });
+    const since = FROZEN_NOW;
+    const topLevel = await seedRunningExecution(wf.id, new Date(since + 10));
+    await seedRunningExecution(wf.id, new Date(since + 50), topLevel);
+
+    const found = await findBackgroundExecutionId({
+      db: suite.http.db,
+      tenant_id: suite.http.tenantId,
+      workflowRef: wf.slug,
+      since,
+    });
+    expect(found).toBe(topLevel);
   });
 
   test("resolves a UUID workflow reference as well as a slug", async () => {
@@ -152,8 +176,16 @@ describe("findBackgroundExecutionId", () => {
 
 describe("resolveConversationBoundWorkflowId", () => {
   test("returns the bound target of the caller's most-recent non-abandoned conversation", async () => {
-    const wfA = await suite.seedWorkflow({ slug: "bound-a", name: "Bound A", steps: [] });
-    const wfB = await suite.seedWorkflow({ slug: "bound-b", name: "Bound B", steps: [] });
+    const wfA = await suite.seedWorkflow({
+      slug: "bound-a",
+      name: "Bound A",
+      steps: [],
+    });
+    const wfB = await suite.seedWorkflow({
+      slug: "bound-b",
+      name: "Bound B",
+      steps: [],
+    });
     // Older conversation bound to A, newer bound to B — the newer must win.
     await suite.http.db.insert(conversations).values({
       tenant_id: suite.http.tenantId,
@@ -180,7 +212,11 @@ describe("resolveConversationBoundWorkflowId", () => {
 
   test("ignores abandoned conversations and rows with no bound target", async () => {
     const owner = "00000000-0000-4000-8000-000000000182";
-    const wf = await suite.seedWorkflow({ slug: "bound-c", name: "Bound C", steps: [] });
+    const wf = await suite.seedWorkflow({
+      slug: "bound-c",
+      name: "Bound C",
+      steps: [],
+    });
     // Most-recent is abandoned (must be skipped); an active one with no
     // target (must be skipped); the older active+bound one must win.
     await suite.http.db.insert(conversations).values({
