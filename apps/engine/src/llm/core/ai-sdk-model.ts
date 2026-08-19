@@ -517,7 +517,7 @@ export class AiSdkModel implements SubkitLlm {
   }
 }
 
-function extractCacheRead(meta: unknown): number {
+export function extractCacheRead(meta: unknown): number {
   if (!meta || typeof meta !== "object") return 0;
   const m = meta as Record<string, Record<string, unknown>>;
   // Anthropic direct
@@ -528,7 +528,7 @@ function extractCacheRead(meta: unknown): number {
   return Number(gwUsage?.cache_read_input_tokens ?? 0);
 }
 
-function extractCacheCreation(meta: unknown): number {
+export function extractCacheCreation(meta: unknown): number {
   if (!meta || typeof meta !== "object") return 0;
   const m = meta as Record<string, Record<string, unknown>>;
   const anthUsage = m.anthropic?.usage as { cache_creation_input_tokens?: number } | undefined;

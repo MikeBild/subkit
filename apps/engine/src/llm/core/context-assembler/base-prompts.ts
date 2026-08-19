@@ -25,8 +25,13 @@ export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "we
 // reason: the engine does not compose that prompt at all. The workflow author
 // wrote the request body; the engine only carries it to the provider and books
 // the tokens.
+//
+// `tool_repair` is excluded for the same reason. It writes its own two-message
+// exchange inline in `llm/core/repair-tool-call.ts` — a system line telling the
+// model to re-emit valid arguments and nothing else — precisely so a malformed
+// tool call is not answered with the entire assembled context that produced it.
 const BASE_SYSTEM_PROMPTS: Record<
-  Exclude<LlmFlow, "converse" | "suggest_next" | "workflow_step">,
+  Exclude<LlmFlow, "converse" | "suggest_next" | "workflow_step" | "tool_repair">,
   string
 > = {
   generate: [
@@ -128,6 +133,12 @@ export async function basePromptFor(
     // `llm/core/suggestion-prompt.ts` directly. Throwing here keeps a
     // future drift towards the heavy assembler from compiling.
     throw new Error("basePromptFor: suggest_next must use suggestion-prompt.ts");
+  }
+  if (flow === "tool_repair") {
+    // Same rule, and the throw matters more here than the message: answering a
+    // malformed tool call with the whole assembled context is how a cheap
+    // two-message correction turns into another full-price turn.
+    throw new Error("basePromptFor: tool_repair composes its own messages");
   }
   return { content: BASE_SYSTEM_PROMPTS[flow] };
 }

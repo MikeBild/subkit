@@ -1364,6 +1364,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           system: callSystem,
           error,
           model: resolvedModel,
+          // Without this the repair reaches the provider through
+          // `generateObject` directly and never touches the accounting that
+          // wraps `invoke()` — spent, billed, and missing from `llm_usage`.
+          accounting: {
+            tenant_id: p.tenant_id,
+            conversation_id: p.conversation_id,
+            ...actorFields(p.principal),
+            db: p.db,
+          },
           onRepair: () => {
             stepRouterSignals.hadRepairThisTurn = true;
             // G7: capture which tool's repair drove the upgrade so the
