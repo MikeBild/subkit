@@ -342,6 +342,8 @@ interface DoOnePageParams {
   /** Names the connector in failure hints ("Connector 'jira' returned 410…"). */
   connector_slug?: string | null;
   retry_policy: RetryPolicy;
+  /** Allows safe retries for semantically read-only POST search endpoints. */
+  retry_safe: boolean;
   /** Explicit workflow contract statuses. Non-2xx responses listed here are
    *  returned to the step instead of being converted into RequestError before
    *  the request-level expected_statuses gate can inspect them. */
@@ -537,7 +539,7 @@ async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult> {
         continue;
       }
       if (res.status >= 500) {
-        if (!isIdempotent(p.method) && !is_additional_retry_status) {
+        if (!p.retry_safe && !isIdempotent(p.method) && !is_additional_retry_status) {
           throw new RequestError(`http ${res.status}`, "http_5xx", res.status, {
             health_hint: healthHintMeta(res.status, res.headers, {
               slug: p.connector_slug,
@@ -664,6 +666,21 @@ export interface ResolvedMultipartPart {
   content_type?: string;
 }
 
+function materializePaginatedBody(
+  baseBody: unknown,
+  parameters?: Record<string, string | number>,
+): unknown {
+  if (!parameters) return baseBody;
+  if (baseBody === undefined || baseBody === null) return { ...parameters };
+  if (typeof baseBody === "object" && !Array.isArray(baseBody)) {
+    return { ...(baseBody as Record<string, unknown>), ...parameters };
+  }
+  throw new RequestError(
+    "body pagination requires a JSON object body or no body",
+    "request_invalid",
+  );
+}
+
 export interface RunRequestStepParams {
   ctx: StepRunContext;
   step: RequestStep;
@@ -686,8 +703,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // plan construction and policy hooks — i.e. immediately before its
   // network call) and returned as a `held` outcome instead of being
   // dispatched. Read-classified steps execute live, unchanged.
-  const holdThisStep =
-    p.ctx.hold_writes === true && classifyRequestStepSideEffects(p.step) === "write";
+  const requestIsReadOnly = classifyRequestStepSideEffects(p.step) === "read";
+  const holdThisStep = p.ctx.hold_writes === true && !requestIsReadOnly;
   const max_attempts = (p.step.max_retries ?? 4) + 1; // 1 initial + N retries
   const timeoutMs = p.step.timeout_ms ?? REQUEST_TIMEOUT_DEFAULT_MS;
   const timeoutCtrl = new AbortController();
@@ -1885,7 +1902,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // each retry is a fresh key. Step.id is the author-facing identifier
   // (matches the workflow definition), so a retried write that crosses an
   // engine restart still maps back to the same logical step.
-  const idempotencyBase = isIdempotent(p.step.method) ? null : `${p.ctx.execution_id}:${p.step.id}`;
+  const idempotencyBase =
+    requestIsReadOnly || isIdempotent(p.step.method) ? null : `${p.ctx.execution_id}:${p.step.id}`;
   const lastIdempotencyKey: { value: string | null } = { value: null };
   // Pre-populate the diagnostic envelope with what we are about to send.
   // Without this, a failure before the first response handler runs (e.g.
@@ -1920,19 +1938,22 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         method: p.step.method ?? "GET",
         digest,
       };
-  // Body schema validation runs BEFORE the hold-writes return so a preview
-  // fails exactly like the live run would. Holding first masked a
-  // request_body_schema_violation as a green held step — the preview judge
-  // saw a materialized body the live dispatch would refuse to send (a
-  // preview↔live output-shape divergence). Same guard as the live path:
-  // non-paginated steps only.
-  if (
-    !p.step.pagination &&
-    effectiveBodySchema &&
-    resolvedStepBody !== undefined &&
-    resolvedStepBody !== null
-  ) {
-    const bodyErrs = checkRequired(resolvedStepBody, effectiveBodySchema);
+  let heldRequestUrl = baseUrl.toString();
+  let heldRequestBody: unknown = resolvedStepBody;
+  if (p.step.pagination) {
+    const previewStrategy = makeStrategy(p.step.pagination as PaginationSpec, {
+      baseUrl,
+      baseQuery: {},
+    });
+    const firstPage = previewStrategy.next(null, 0);
+    heldRequestUrl = firstPage.url;
+    heldRequestBody = materializePaginatedBody(resolvedStepBody, firstPage.body_parameters);
+  }
+  // Validate the exact first request materialization before hold-writes so a
+  // preview and live dispatch enforce the same body contract. Later pages are
+  // validated again after their pagination parameters are materialized.
+  if (effectiveBodySchema && heldRequestBody !== undefined && heldRequestBody !== null) {
+    const bodyErrs = checkRequired(heldRequestBody, effectiveBodySchema);
     if (bodyErrs.length > 0) {
       clearTimeout(timer);
       return {
@@ -1957,9 +1978,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     return heldStepResult({
       start,
       method: p.step.method ?? "GET",
-      url: baseUrl.toString(),
+      url: heldRequestUrl,
       headers,
-      body: resolvedStepBody ?? null,
+      body: heldRequestBody ?? null,
       request_meta: { ...last_meta, extras: { ...(last_meta.extras ?? {}), held: true } },
     });
   }
@@ -2050,6 +2071,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           connector_id: p.step.connector_id ?? null,
           connector_slug: activeConnector?.slug ?? null,
           retry_policy,
+          retry_safe: requestIsReadOnly,
           ...(effectiveExpectedStatuses
             ? { accepted_statuses: new Set(effectiveExpectedStatuses) }
             : {}),
@@ -2320,33 +2342,30 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         request_meta: last_meta,
       };
     }
-    // paginated request — checkpoint + resume.
+    // Paginated request. Checkpoints are progress evidence only: without a
+    // durable page accumulator, skipping completed pages would make the
+    // returned result incomplete, so every retry starts at page 1.
     //
-    // Signature: hash of {base_url, path_or_url, query} so a workflow
-    // re-author that flips a query param invalidates the resume position
-    // (we'd otherwise feed the new request shape into the old offset/cursor).
+    // The signature covers URL, query, body and pagination config so progress
+    // evidence is never attributed to a different workflow shape.
     const requestSignature = paginationSignature({
       base_url: baseUrl.origin + baseUrl.pathname,
       path_or_url: p.step.path ?? p.step.url ?? "/",
       query: { ...(p.step.query ?? {}) },
+      body: resolvedStepBody ?? null,
+      pagination: p.step.pagination,
     });
-    let resumeSeed: PaginationCheckpoint["state"] | null = null;
-    let resumePageIdx = 0;
-    let resumeAccumulatedCount = 0;
     try {
       const existing = await readPaginationCheckpoint(p.ctx.tenant_id, p.ctx.step_row_id, p.ctx.db);
       if (existing && existing.signature === requestSignature) {
-        resumeSeed = existing.state;
-        resumePageIdx = existing.page_idx;
-        resumeAccumulatedCount = existing.accumulated_count;
         logger.info({
           module: "pagination",
-          action: "resumed",
-          msg: "pagination resumed from checkpoint",
+          action: "restart_from_origin",
+          msg: "pagination restarts from page 1 to preserve a complete result",
           execution_id: p.ctx.execution_id,
           step_id: p.step.id,
-          from_page: existing.page_idx,
-          accumulated_count: existing.accumulated_count,
+          prior_page: existing.page_idx,
+          prior_accumulated_count: existing.accumulated_count,
         });
       }
     } catch (err) {
@@ -2360,11 +2379,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    const strat = makeStrategy(
-      p.step.pagination as PaginationSpec,
-      { baseUrl, baseQuery: {} },
-      resumeSeed,
-    );
+    const paginationSpec = p.step.pagination as PaginationSpec;
+    const strat = makeStrategy(paginationSpec, { baseUrl, baseQuery: {} });
     const acc: unknown[] = [];
     let prev: unknown = null;
     let pageIdx = 0;
@@ -2381,11 +2397,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     // Most recent page's response headers — the deprecation early-warning on
     // the paginated success path reads Deprecation/Sunset from here.
     let lastPageHeaders: Record<string, string> = {};
-    // Local mirror of the most recently issued checkpoint write. Carried
-    // forward into `last_meta` so the failure path persists the resume
-    // position even though the actual write to the row is fire-and-forget.
+    // Local mirror of the most recently issued progress-checkpoint write.
     let latestCheckpoint: PaginationCheckpoint | null = null;
-    while (pageIdx < MAX_PAGES) {
+    const maxPages = paginationSpec.max_pages ?? MAX_PAGES;
+    while (pageIdx < maxPages) {
       if (accBytes >= ACC_BYTE_CAP) {
         paginationTruncated = true;
         logger.warn({
@@ -2402,12 +2417,22 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       }
       const next = strat.next(prev, pageIdx);
       if (next.done) break;
+      const pageBody = materializePaginatedBody(resolvedStepBody, next.body_parameters);
+      if (effectiveBodySchema && pageBody !== undefined && pageBody !== null) {
+        const bodyErrs = checkRequired(pageBody, effectiveBodySchema);
+        if (bodyErrs.length > 0) {
+          throw new RequestError(
+            `request body schema violation: ${bodyErrs.join("; ")}`,
+            "request_invalid",
+          );
+        }
+      }
       const callPage = () =>
         doOnePage({
           url: next.url,
           method: p.step.method,
           headers,
-          body: resolvedStepBody ?? null,
+          body: pageBody ?? null,
           max_attempts,
           signal,
           retry_total_ms: retryTotal,
@@ -2415,6 +2440,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           connector_id: p.step.connector_id ?? null,
           connector_slug: activeConnector?.slug ?? null,
           retry_policy,
+          retry_safe: requestIsReadOnly,
           ...(effectiveExpectedStatuses
             ? { accepted_statuses: new Set(effectiveExpectedStatuses) }
             : {}),
@@ -2463,11 +2489,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       accBytes += res.bytes_in;
       pageIdx += 1;
       pages_fetched += 1;
-      // Logical page number = "what page have we now finished" across the
-      // physical run + any prior resumed runs. Used in the checkpoint so a
-      // future restart sees the right resume point.
-      const logicalPageIdx = resumePageIdx + pageIdx;
-      const logicalAccumulated = resumeAccumulatedCount + acc.length;
+      const logicalPageIdx = pageIdx;
+      const logicalAccumulated = acc.length;
       // Pagination checkpoint goes on the typed `pagination_checkpoint`
       // field; the recovery path reads it directly from there.
       const checkpointTyped = latestCheckpoint
@@ -2542,6 +2565,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           });
         });
       }
+    }
+    if (pageIdx >= maxPages && !strat.next(prev, pageIdx).done) {
+      throw new RequestError(
+        `pagination reached max_pages=${maxPages} before the endpoint terminated`,
+        "request_invalid",
+      );
     }
     if (inFlightCheckpoint) await inFlightCheckpoint;
     // Circuit-breaker reset + re-auth clear on the PAGINATED success path (the
@@ -2627,13 +2656,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         : {}),
       request_meta: {
         ...last_meta,
-        pages_fetched: resumePageIdx + pages_fetched,
-        ...(resumePageIdx > 0
-          ? {
-              resumed_from_page: resumePageIdx,
-              resumed_accumulated_count: resumeAccumulatedCount,
-            }
-          : {}),
+        pages_fetched,
       } as RequestMeta,
     };
   } catch (err) {

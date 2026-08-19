@@ -234,7 +234,9 @@ never set auth headers manually in the step.
 ## Pagination
 
 Set `pagination` on the step. The driver follows the spec until the terminator,
-concatenating `data`:
+concatenating the selected items. Pagination parameters default to the query
+string; set `parameter_location: "body"` for JSON POST search APIs. All values
+below live in the workflow version and can be changed without an engine deploy.
 
 ### Offset
 
@@ -245,7 +247,8 @@ concatenating `data`:
     "page_size": 100,
     "offset_param": "offset",
     "limit_param": "limit",
-    "stop_when_empty_path": "results"
+    "items_path": "results",
+    "max_pages": 100
   }
 }
 ```
@@ -259,7 +262,8 @@ concatenating `data`:
     "page_size": 50,
     "page_param": "page",
     "limit_param": "per_page",
-    "start_page": 1
+    "start_page": 1,
+    "items_path": "items"
   }
 }
 ```
@@ -272,14 +276,45 @@ concatenating `data`:
     "strategy": "cursor",
     "cursor_request_param": "after",
     "cursor_response_path": "paging.next.after",
-    "page_size": 100
+    "page_size": 100,
+    "limit_param": "limit",
+    "items_path": "results"
+  }
+}
+```
+
+### POST body offset
+
+Use this shape for APIs such as search/report endpoints whose pagination
+parameters belong in the JSON request body. The original object is preserved;
+`startRow` and `rowLimit` are replaced for each page.
+
+```json
+{
+  "id": "fetch_report",
+  "kind": "request",
+  "method": "POST",
+  "side_effects": "read",
+  "connector_id": "<connector_id>",
+  "path": "/v1/report:run",
+  "body": { "startDate": "2026-07-01", "endDate": "2026-07-28" },
+  "pagination": {
+    "strategy": "offset",
+    "parameter_location": "body",
+    "page_size": 25000,
+    "offset_param": "startRow",
+    "limit_param": "rowLimit",
+    "items_path": "rows",
+    "max_pages": 100
   }
 }
 ```
 
 When pagination is set, the envelope's `data` is the concatenated array of
-items across pages. `status_code` reflects the last page's status. The driver
-caps at MAX_PAGES = 1000 iterations.
+items across pages. `status_code` reflects the last page's status. `max_pages`
+is workflow-configurable and has a hard ceiling of 1000. Reaching the limit
+before the endpoint terminates fails the step; SubKit never reports a bounded
+prefix as a complete collection.
 
 ## Retries and 429
 
@@ -289,6 +324,8 @@ there is no nested `onError` object. Defaults:
 - GET / HEAD / OPTIONS retry on 5xx + 429 + connection errors
 - POST / PUT / PATCH / DELETE retry on 429 + connection errors only
   (idempotency rule — non-idempotent verbs do not retry on 5xx)
+- A POST explicitly marked `side_effects: "read"` also retries 5xx because it
+  is a read-only search request, not an external write.
 
 Override per step:
 

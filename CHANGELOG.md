@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.6] – 2026-08-19
+
+### Added
+
+- **HTTP pagination can place offset, page, limit, or cursor parameters in a
+  JSON request body.** `parameter_location`, `items_path`, `page_size`, and
+  `max_pages` are stored in each workflow version, so vendor-specific GSC,
+  GA4, and other report settings can change without an engine deployment.
+- **Read-only POST searches use the read retry contract.** A request explicitly
+  classified as `side_effects: "read"` retries transient 5xx responses without
+  adding write idempotency metadata.
+
+### Fixed
+
+- **Pagination retries always return a complete collection.** Progress
+  checkpoints remain diagnostic evidence, but a retry restarts at page one
+  until accumulated page data has durable storage; it no longer skips earlier
+  pages and returns only a suffix.
+- **Documented bare pagination paths now work.** Values such as `rows` and
+  `paging.next.after` are normalized to selectors while explicit `$` selectors
+  remain supported.
+- **Page limits fail closed.** Reaching `max_pages` before the endpoint signals
+  completion fails the step instead of reporting a bounded prefix as complete.
+
 ## [6.6.4] – 2026-08-19
 
 ### Fixed

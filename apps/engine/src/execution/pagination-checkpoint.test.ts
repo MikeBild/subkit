@@ -1,12 +1,11 @@
-// Pagination resume — checkpoint write/read + integration with runRequestStep.
+// Pagination progress checkpoint + complete retry integration.
 //
 // Two scenarios:
 //   1. A 200-page run that fails at page 51 must persist
 //      `request_meta.pagination_checkpoint` after page 50 (the checkpoint
 //      window) so the row reflects the resume position.
-//   2. Re-running the same step_row_id reads that checkpoint and resumes
-//      from page 51. The total accumulated count = 200 * 50 = 10_000 across
-//      both runs.
+//   2. Re-running the same step_row_id restarts at page 1 and returns all
+//      10,000 items. Cursor-only resume would silently discard pages 1..50.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -132,6 +131,111 @@ function makeStepRunCtx(input: {
 }
 
 describe("pagination checkpoint", () => {
+  test("POST body pagination materializes vendor parameters and concatenates items", async () => {
+    const seenBodies: Array<Record<string, unknown>> = [];
+    let failFirstRead = true;
+    const postMock = await createMockServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      seenBodies.push(body);
+      if (failFirstRead) {
+        failFirstRead = false;
+        jsonResponse(res, 503, { error: "temporary" });
+        return;
+      }
+      const startRow = Number(body.startRow);
+      const rows = startRow === 0 ? [{ key: "a" }, { key: "b" }] : [{ key: "c" }];
+      jsonResponse(res, 200, { rows });
+    });
+
+    try {
+      const { execution_id, step_row_id } = await createExecutionRow();
+      const step: RequestStep = {
+        id: "search-console",
+        kind: "request",
+        method: "POST",
+        side_effects: "read",
+        url: `${postMock.baseUrl}/searchAnalytics/query`,
+        body: { startDate: "2026-07-01", dimensions: ["query", "page"] },
+        body_schema: {
+          type: "object",
+          required: ["startDate", "dimensions", "startRow", "rowLimit"],
+        },
+        pagination: {
+          strategy: "offset",
+          parameter_location: "body",
+          page_size: 2,
+          offset_param: "startRow",
+          limit_param: "rowLimit",
+          items_path: "rows",
+          max_pages: 10,
+        },
+        max_retries: 1,
+        retry_backoff_ms: 50,
+      };
+      const ctx = makeStepRunCtx({ execution_id, step_row_id, step });
+      const result = await runRequestStep({ ctx, step, scope: {} });
+
+      expect(result.status).toBe("succeeded");
+      expect(result.output).toEqual([{ key: "a" }, { key: "b" }, { key: "c" }]);
+      expect(seenBodies).toEqual([
+        {
+          startDate: "2026-07-01",
+          dimensions: ["query", "page"],
+          startRow: 0,
+          rowLimit: 2,
+        },
+        {
+          startDate: "2026-07-01",
+          dimensions: ["query", "page"],
+          startRow: 0,
+          rowLimit: 2,
+        },
+        {
+          startDate: "2026-07-01",
+          dimensions: ["query", "page"],
+          startRow: 2,
+          rowLimit: 2,
+        },
+      ]);
+    } finally {
+      await postMock.close();
+    }
+  });
+
+  test("max_pages fails closed instead of returning a silent prefix", async () => {
+    const limitMock = await createMockServer((_req, res) => {
+      jsonResponse(res, 200, { rows: [{ id: 1 }, { id: 2 }] });
+    });
+    try {
+      const { execution_id, step_row_id } = await createExecutionRow();
+      const step: RequestStep = {
+        id: "bounded-report",
+        kind: "request",
+        method: "GET",
+        url: `${limitMock.baseUrl}/report`,
+        pagination: {
+          strategy: "offset",
+          page_size: 2,
+          offset_param: "offset",
+          limit_param: "limit",
+          items_path: "rows",
+          max_pages: 1,
+        },
+        max_retries: 0,
+      };
+      const ctx = makeStepRunCtx({ execution_id, step_row_id, step });
+      const result = await runRequestStep({ ctx, step, scope: {} });
+
+      expect(result.status).toBe("failed");
+      expect(result.error?.message).toContain("max_pages=1");
+      expect(limitMock.callCount()).toBe(1);
+    } finally {
+      await limitMock.close();
+    }
+  });
+
   test("write + read round-trip preserves shape and signature", async () => {
     const { step_row_id } = await createExecutionRow();
     const cp: PaginationCheckpoint = {
@@ -174,7 +278,7 @@ describe("pagination checkpoint", () => {
     expect((meta.pagination_checkpoint as Record<string, unknown>).page_idx).toBe(2);
   });
 
-  test("failed-then-resume flow: 200-page run aborts at page 51, restart picks up from page 51", async () => {
+  test("failed run restarts at page 1 and returns a complete result", async () => {
     serverHits = 0;
     failOnPage = 51;
     const { execution_id, step_row_id } = await createExecutionRow();
@@ -210,39 +314,31 @@ describe("pagination checkpoint", () => {
       base_url: `${new URL(`${mock.baseUrl}/items`).origin}/items`,
       path_or_url: `${mock.baseUrl}/items`,
       query: {},
+      body: null,
+      pagination: step.pagination,
     });
     expect(cp?.signature).toBe(expectedSig);
 
-    // Second run: same step_row_id, same step. Lift the failure and let it
-    // run to completion. The strategy must seed from the checkpoint and
-    // resume at page 51 — verified by both the final accumulated count
-    // and the fact that pages 1..50 do NOT hit the mock again.
+    // Second run: same step_row_id and request shape. The checkpoint is read
+    // as progress evidence, but the fetch restarts at page 1 because the
+    // earlier page bodies were not durably stored.
     failOnPage = null;
-    const hitsBeforeResume = serverHits;
+    const hitsBeforeRetry = serverHits;
 
     const ctx2 = makeStepRunCtx({ execution_id, step_row_id, step });
     const r2 = await runRequestStep({ ctx: ctx2, step, scope: {} });
     expect(r2.status).toBe("succeeded");
-    // Output is just the second-run accumulator (pages 51..200) — the
-    // first 50 pages live in the prior run's already-discarded result.
-    // What matters for the test is that no duplicate fetches happened.
-    const hitsForResume = serverHits - hitsBeforeResume;
-    // Expect 150 page fetches (51..200) + 1 trailing empty / short-page
-    // detection — the page strategy stops when `arr.length < page_size`,
-    // and page 200 returns exactly page_size items so there's a 201 fetch
-    // that returns empty items.
-    expect(hitsForResume).toBeGreaterThanOrEqual(150);
-    expect(hitsForResume).toBeLessThanOrEqual(151);
-    // Output items reflect resume-only accumulation: 150 pages × PAGE_SIZE.
+    const hitsForRetry = serverHits - hitsBeforeRetry;
+    expect(hitsForRetry).toBeGreaterThanOrEqual(200);
+    expect(hitsForRetry).toBeLessThanOrEqual(201);
     const items = r2.output as unknown[];
-    expect(items.length).toBe(150 * PAGE_SIZE);
-    // Resume metadata is now first-class on the http variant.
+    expect(items.length).toBe(TOTAL_PAGES * PAGE_SIZE);
     const meta = r2.request_meta as {
       resumed_from_page?: number;
       resumed_accumulated_count?: number;
     };
-    expect(meta.resumed_from_page).toBe(50);
-    expect(meta.resumed_accumulated_count).toBe(50 * PAGE_SIZE);
+    expect(meta.resumed_from_page).toBeUndefined();
+    expect(meta.resumed_accumulated_count).toBeUndefined();
   });
 
   test("signature mismatch invalidates resume", async () => {

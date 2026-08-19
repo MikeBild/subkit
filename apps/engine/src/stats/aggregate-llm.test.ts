@@ -10,8 +10,10 @@
 // Requires a real Postgres database — set REQUIRES_PG=0 to skip.
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { executions } from "../db/schema/executions.ts";
 import { tenants } from "../db/schema/identity.ts";
 import { llmUsage } from "../db/schema/llm.ts";
+import { workflows, workflowVersions } from "../db/schema/workflows.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { aggregateLlm } from "./aggregate-llm.ts";
 
@@ -179,6 +181,82 @@ describe.skipIf(skip)("aggregateLlm", () => {
     const haikuGroup = result.groups.find((g) => g.key.model === "claude-haiku-4-5")!;
     expect(haikuGroup.totals.calls).toBe(1);
     expect(haikuGroup.totals.tokens.total).toBe(150);
+  });
+
+  test("group_by workflow attributes spend to the workflow that ran the call", async () => {
+    // The question a model-and-flow breakdown cannot answer, and the reason
+    // this dimension exists: two workflows on the same model are one row until
+    // you can split them.
+    const [wf] = await testDb.db
+      .insert(workflows)
+      .values({ tenant_id: tenantId, slug: "editorial", name: "Editorial", lifecycle: "active" })
+      .returning();
+    const [exec] = await testDb.db
+      .insert(executions)
+      .values({
+        tenant_id: tenantId,
+        workflow_id: wf!.id,
+        status: "succeeded",
+        request_source: "api",
+        execution_mode: "prod",
+      })
+      .returning();
+
+    await testDb.db.insert(llmUsage).values([
+      {
+        tenant_id: tenantId,
+        flow: "workflow_step",
+        model: "claude-fable-5",
+        prompt_tokens: 1000,
+        completion_tokens: 500,
+        total_tokens: 1500,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        latency_ms: 900,
+        result: "success",
+        execution_id: exec!.id,
+        created_at: INSIDE_TS,
+        month_bucket: monthBucket(INSIDE_TS),
+      },
+      {
+        // No execution at all — a conversational call. It must still be
+        // counted, under an empty key, not dropped by the join.
+        tenant_id: tenantId,
+        flow: "converse",
+        model: "claude-fable-5",
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        latency_ms: 20,
+        result: "success",
+        created_at: INSIDE_TS,
+        month_bucket: monthBucket(INSIDE_TS),
+      },
+    ]);
+
+    const result = await aggregateLlm(testDb.db, {
+      tenantId,
+      bucket: "hour",
+      from: FROM,
+      to: TO,
+      tz: "UTC",
+      groupBy: ["workflow"],
+    });
+
+    const attributed = result.groups.find((g) => g.key.workflow === wf!.id);
+    expect(attributed).toBeDefined();
+    expect(attributed!.totals.calls).toBe(1);
+    expect(attributed!.totals.tokens.total).toBe(1500);
+
+    // The unattributed call is present, not swallowed.
+    const orphan = result.groups.find((g) => g.key.workflow === "");
+    expect(orphan).toBeDefined();
+    expect(orphan!.totals.calls).toBe(1);
+
+    // And the join must not change the window total.
+    expect(result.totals.calls.total).toBe(2);
   });
 
   test("group_by flow produces per-flow group keys", async () => {
