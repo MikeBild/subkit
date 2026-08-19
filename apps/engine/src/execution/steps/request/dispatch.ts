@@ -2389,11 +2389,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     // memory bound — 1000 pages × 545KB bodies (the observed GitHub page
     // size) would buffer ~545MB in one step and was a confirmed driver of
     // the engine's multi-GB RSS. `bytes_in` per page is already measured
-    // by the driver; when the running total crosses the cap, pagination
-    // stops with a loud `pagination_truncated` warning instead of an OOM.
+    // by the driver; when another page would be required after the running
+    // total crosses the cap, the step fails instead of returning a prefix.
     const ACC_BYTE_CAP = 64 * 1024 * 1024;
     let accBytes = 0;
-    let paginationTruncated = false;
     // Most recent page's response headers — the deprecation early-warning on
     // the paginated success path reads Deprecation/Sunset from here.
     let lastPageHeaders: Record<string, string> = {};
@@ -2401,22 +2400,14 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
     let latestCheckpoint: PaginationCheckpoint | null = null;
     const maxPages = paginationSpec.max_pages ?? MAX_PAGES;
     while (pageIdx < maxPages) {
-      if (accBytes >= ACC_BYTE_CAP) {
-        paginationTruncated = true;
-        logger.warn({
-          module: "execution",
-          action: "request.pagination_truncated",
-          msg: "pagination stopped at the in-memory byte cap",
-          execution_id: p.ctx.execution_id,
-          step_id: p.step.id,
-          pages_fetched,
-          accumulated_bytes: accBytes,
-          byte_cap: ACC_BYTE_CAP,
-        });
-        break;
-      }
       const next = strat.next(prev, pageIdx);
       if (next.done) break;
+      if (accBytes >= ACC_BYTE_CAP) {
+        throw new RequestError(
+          `pagination exceeded the ${Math.round(ACC_BYTE_CAP / (1024 * 1024))}MB in-memory byte cap before the endpoint terminated`,
+          "request_invalid",
+        );
+      }
       const pageBody = materializePaginatedBody(resolvedStepBody, next.body_parameters);
       if (effectiveBodySchema && pageBody !== undefined && pageBody !== null) {
         const bodyErrs = checkRequired(pageBody, effectiveBodySchema);
@@ -2643,17 +2634,6 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       output: acc,
       retry_count: retryCounter.value,
       duration_ms: Date.now() - start,
-      ...(paginationTruncated
-        ? {
-            warnings: [
-              {
-                code: "pagination_truncated" as const,
-                message: `pagination stopped after ${pages_fetched} pages at the ${Math.round(ACC_BYTE_CAP / (1024 * 1024))}MB in-memory cap — the result is a bounded prefix. Narrow the query (filters, date range, per_page) or process pages incrementally.`,
-                details: { pages_fetched, accumulated_bytes: accBytes, byte_cap: ACC_BYTE_CAP },
-              },
-            ],
-          }
-        : {}),
       request_meta: {
         ...last_meta,
         pages_fetched,
