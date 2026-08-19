@@ -16,6 +16,17 @@ export type LlmFlow =
   | "generate"
   | "extract"
   | "repair"
+  /**
+   * The in-band retry after a model emits a tool call whose arguments fail
+   * validation. Its own flow and not folded into `repair`, which is the
+   * self-healing patch proposal — two different mechanisms, two different
+   * cost profiles, and one name over both would make either unreadable.
+   *
+   * Small by design: capped at two per turn, because a model that keeps
+   * emitting malformed calls is in a degenerate state and buying more repairs
+   * does not help. It went unrecorded until 2026-08-19 all the same.
+   */
+  | "tool_repair"
   | "converse"
   | "discover"
   | "summarize"

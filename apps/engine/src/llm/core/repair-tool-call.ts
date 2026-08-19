@@ -22,8 +22,12 @@ import type {
 } from "ai";
 import { generateObject, jsonSchema } from "ai";
 import type { ZodType } from "zod";
+import type { AuditActorType } from "../../audit/types.ts";
+import type { Executor } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
+import { account } from "../accounting/accountant.ts";
+import { extractCacheCreation, extractCacheRead } from "./ai-sdk-model.ts";
 import { normalizeSchema } from "./schema-normalizer.ts";
 
 export interface RepairToolCallParams<TOOLS extends ToolSet> {
@@ -36,12 +40,87 @@ export interface RepairToolCallParams<TOOLS extends ToolSet> {
   model: LanguageModel;
   /** Callback invoked when repair fired so the loop can flip a signal flag. */
   onRepair?: () => void;
+  /**
+   * Who to bill this to. Optional only because two tests construct the params
+   * without a tenant; every production path supplies it.
+   *
+   * This call went unrecorded from the day it was written. It reaches the
+   * provider through `generateObject` directly rather than through `invoke()`,
+   * so none of the accounting wrapped around the latter applied — the tokens
+   * were spent, billed, and absent from `llm_usage`. Small in volume (capped at
+   * two per turn) and exactly the kind of omission that is invisible until
+   * somebody reconciles a provider invoice against the ledger.
+   */
+  accounting?: {
+    tenant_id: string;
+    conversation_id?: string | undefined;
+    /** From `actorFields(principal)` — the same attribution every other row uses. */
+    user_id?: string | null | undefined;
+    actor_type?: AuditActorType | undefined;
+    /** Executor for the usage row. Omitted falls back to the ambient pool. */
+    db?: Executor | undefined;
+  };
+}
+
+/**
+ * Record what the repair cost.
+ *
+ * Best-effort and silent on failure, matching the accountant's own contract:
+ * the corrected tool call is already in hand, and refusing to return it because
+ * a bookkeeping row would not insert would turn a recovered turn into a failed
+ * one. A warning is logged; the caller is not told.
+ *
+ * The model id is read off the resolved model rather than passed in, so this
+ * bills whatever the loop actually escalated to rather than what it started
+ * with.
+ */
+export async function recordRepairUsage(
+  accounting: RepairToolCallParams<ToolSet>["accounting"],
+  model: LanguageModel,
+  result: {
+    usage?: { inputTokens?: number | undefined; outputTokens?: number | undefined } | undefined;
+    providerMetadata?: unknown;
+  },
+  latencyMs: number,
+): Promise<void> {
+  if (!accounting) return;
+  try {
+    await account(
+      {
+        tenant_id: accounting.tenant_id,
+        metadata: {
+          tenant_id: accounting.tenant_id,
+          flow: "tool_repair",
+          ...(accounting.conversation_id ? { conversation_id: accounting.conversation_id } : {}),
+        },
+        model: typeof model === "string" ? model : (model.modelId ?? "unknown"),
+        usage: {
+          input_tokens: Number(result.usage?.inputTokens ?? 0),
+          output_tokens: Number(result.usage?.outputTokens ?? 0),
+          cache_read_tokens: extractCacheRead(result.providerMetadata),
+          cache_creation_tokens: extractCacheCreation(result.providerMetadata),
+        },
+        latency_ms: latencyMs,
+        result: "success",
+        user_id: accounting.user_id ?? null,
+        actor_type: accounting.actor_type ?? "system",
+      },
+      accounting.db,
+    );
+  } catch (err) {
+    logger.warn({
+      module: "llm",
+      action: "repair_tool_call.accounting_failed",
+      msg: "tool-call repair succeeded but its usage row did not write",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export async function repairToolCall<TOOLS extends ToolSet>(
   params: RepairToolCallParams<TOOLS>,
 ): Promise<LanguageModelV3ToolCall | null> {
-  const { toolCall, tools, error, model, onRepair } = params;
+  const { toolCall, tools, error, model, onRepair, accounting } = params;
   logger.info({
     module: "llm",
     action: "repair_tool_call.started",
@@ -189,6 +268,7 @@ export async function repairToolCall<TOOLS extends ToolSet>(
     return null;
   }
   const { schema: normalizedSchema } = normalizeSchema(jsonSchemaShape);
+  const startedAt = Date.now();
   try {
     const repaired = await generateObject({
       model,
@@ -213,6 +293,7 @@ export async function repairToolCall<TOOLS extends ToolSet>(
       // AI SDK 7 requires opting in to system-role messages inside `messages`.
       allowSystemInMessages: true,
     });
+    await recordRepairUsage(accounting, model, repaired, Date.now() - startedAt);
     onRepair?.();
     logger.info({
       module: "llm",
