@@ -50,6 +50,7 @@ import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../../../conn
 import type { Db } from "../../../db/client.ts";
 import { connectorEndpointSchemas, connectors } from "../../../db/schema/index.ts";
 import type { ResolvedFile } from "../../../files/resolver.ts";
+import { recordUsage } from "../../../llm/accounting/budget.ts";
 import {
   estimateLlmCallTokens,
   isLlmProviderUrl,
@@ -1968,6 +1969,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   // the row reflects the resume position by the time we return.
   let inFlightCheckpoint: Promise<void> | null = null;
   try {
+    // KNOWN GAP: LLM budget enforcement and `llm_usage` accounting live in this
+    // branch only, so a PAGINATED request step to a provider host is neither
+    // capped nor booked. Left as-is deliberately rather than restructured on
+    // speculation — no provider chat endpoint paginates, and production
+    // currently has 7 LLM-connector steps, none of them paginated. Move the
+    // accounting out if that ever stops being true.
     if (!p.step.pagination) {
       const httpEgressInput = activeConnector
         ? {
@@ -2075,6 +2082,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         const usage = parseLlmUsage(res.body);
         if (usage) {
           p.ctx.llm_budget.account(usage);
+          const model = extractModelHint(resolvedStepBody, res.body);
           await auditAwait(
             {
               tenant_id: p.ctx.tenant_id,
@@ -2085,10 +2093,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               result: "success",
               metadata: {
                 provider: baseUrl.hostname,
-                model: extractModelHint(resolvedStepBody, res.body),
+                model,
                 prompt_tokens: usage.prompt_tokens,
                 completion_tokens: usage.completion_tokens,
                 total_tokens: usage.total_tokens,
+                cache_read_tokens: usage.cache_read_tokens,
+                cache_creation_tokens: usage.cache_creation_tokens,
                 run_total_tokens: p.ctx.llm_budget.total,
                 workflow_id: p.ctx.workflow_id,
                 step_id: p.step.id,
@@ -2096,6 +2106,43 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             },
             p.ctx.db,
           );
+          // …and into `llm_usage`, which is where every cost question is
+          // actually asked from. The audit row above has recorded these
+          // numbers all along, but nothing joins audit rows to answer "what
+          // did this month cost": the editorial workflows spent real money on
+          // claude-fable-5 and gpt-5.6 and reported zero LLM cost, because a
+          // connector-borne call never reached this table. The host detection
+          // and the parse were already here; only the write was missing.
+          //
+          // Deliberately not fatal: a bookkeeping failure must not fail a step
+          // that already succeeded upstream.
+          try {
+            await recordUsage(
+              {
+                tenant_id: p.ctx.tenant_id,
+                flow: "workflow_step",
+                model: model ?? baseUrl.hostname,
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                cache_read_tokens: usage.cache_read_tokens,
+                cache_creation_tokens: usage.cache_creation_tokens,
+                latency_ms: Date.now() - start,
+                result: "success",
+                actor_type: "system",
+                execution_id: p.ctx.execution_id,
+              },
+              p.ctx.db,
+            );
+          } catch (err) {
+            logger.warn({
+              module: "execution",
+              action: "llm_usage.record_failed",
+              msg: "connector LLM call succeeded but its usage row could not be written",
+              execution_id: p.ctx.execution_id,
+              step_id: p.step.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
       }
       // Apply response filters. Promoted binary bodies skip them —
