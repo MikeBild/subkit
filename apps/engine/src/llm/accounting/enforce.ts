@@ -92,9 +92,17 @@ export class LlmBudgetExceededError extends Error {
 }
 
 export interface LlmCallUsage {
+  /**
+   * INCLUSIVE of cache reads and creations, which is the convention the rest
+   * of the engine stores and `weightedTotalTokens` subtracts back out. The
+   * providers disagree about this, so `parseLlmUsage` normalises rather than
+   * passing each one's number through.
+   */
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
 }
 
 /** Per-run accumulator. One instance per `runExecution` invocation. */
@@ -185,29 +193,62 @@ export function parseLlmUsage(body: unknown): LlmCallUsage | null {
   if (!usage || typeof usage !== "object") return null;
   const u = usage as Record<string, unknown>;
 
-  // OpenAI shape — `prompt_tokens` + `completion_tokens` (+ `total_tokens`).
-  const promptOpenai = numberish(u.prompt_tokens);
-  const completionOpenai = numberish(u.completion_tokens);
-  if (promptOpenai !== null || completionOpenai !== null) {
-    const prompt = promptOpenai ?? 0;
-    const completion = completionOpenai ?? 0;
-    const total = numberish(u.total_tokens) ?? prompt + completion;
-    return { prompt_tokens: prompt, completion_tokens: completion, total_tokens: total };
-  }
-
-  // Anthropic shape — `input_tokens` + `output_tokens`.
-  const promptAnthropic = numberish(u.input_tokens);
-  const completionAnthropic = numberish(u.output_tokens);
-  if (promptAnthropic !== null || completionAnthropic !== null) {
-    const prompt = promptAnthropic ?? 0;
-    const completion = completionAnthropic ?? 0;
+  // Chat-Completions shape — `prompt_tokens` + `completion_tokens`, with the
+  // cached slice already inside `prompt_tokens`.
+  const promptChat = numberish(u.prompt_tokens);
+  const completionChat = numberish(u.completion_tokens);
+  if (promptChat !== null || completionChat !== null) {
+    const prompt = promptChat ?? 0;
+    const completion = completionChat ?? 0;
+    const details = asRecord(u.prompt_tokens_details);
+    const cacheRead = numberish(details?.cached_tokens) ?? 0;
     return {
       prompt_tokens: prompt,
       completion_tokens: completion,
-      total_tokens: prompt + completion,
+      total_tokens: numberish(u.total_tokens) ?? prompt + completion,
+      cache_read_tokens: cacheRead,
+      cache_creation_tokens: numberish(details?.cache_write_tokens) ?? 0,
     };
   }
-  return null;
+
+  // Both remaining shapes spell the counters `input_tokens`/`output_tokens`
+  // and then disagree about what `input_tokens` MEANS, so the cache detail
+  // object is the discriminator rather than the counter names.
+  const inputTokens = numberish(u.input_tokens);
+  const outputTokens = numberish(u.output_tokens);
+  if (inputTokens === null && outputTokens === null) return null;
+  const input = inputTokens ?? 0;
+  const completion = outputTokens ?? 0;
+
+  // Responses shape — `input_tokens` ALREADY includes the cached and
+  // cache-written slices (measured: 22800 = 1531 + 21266 + 3 fresh).
+  const responseDetails = asRecord(u.input_tokens_details);
+  if (responseDetails) {
+    return {
+      prompt_tokens: input,
+      completion_tokens: completion,
+      total_tokens: numberish(u.total_tokens) ?? input + completion,
+      cache_read_tokens: numberish(responseDetails.cached_tokens) ?? 0,
+      cache_creation_tokens: numberish(responseDetails.cache_write_tokens) ?? 0,
+    };
+  }
+
+  // Messages shape — `input_tokens` EXCLUDES both cache slices, so they are
+  // added in to reach the inclusive convention.
+  const cacheRead = numberish(u.cache_read_input_tokens) ?? 0;
+  const cacheCreate = numberish(u.cache_creation_input_tokens) ?? 0;
+  const prompt = input + cacheRead + cacheCreate;
+  return {
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: prompt + completion,
+    cache_read_tokens: cacheRead,
+    cache_creation_tokens: cacheCreate,
+  };
+}
+
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
 function numberish(v: unknown): number | null {
