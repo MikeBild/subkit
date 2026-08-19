@@ -19,6 +19,18 @@ import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../core/base-types.ts";
 import { recordUsage } from "./budget.ts";
 
+/**
+ * `llm_usage.execution_id` and `.conversation_id` are `uuid` columns fed from
+ * free-form telemetry metadata. Guard the shape here rather than letting
+ * Postgres raise inside the best-effort catch below, where the cost of a bad
+ * value is the entire usage row rather than one missing attribution.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value);
+}
+
 export interface AccountParams {
   tenant_id: string;
   metadata: SubkitLlmTelemetryMetadata;
@@ -103,10 +115,18 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
     if (cacheRead > 0) entry.cache_read_tokens = cacheRead;
     if (cacheCreate > 0) entry.cache_creation_tokens = cacheCreate;
     if (p.error !== undefined) entry.error = p.error;
-    if (typeof p.metadata.execution_id === "string") {
+    // `telemetry_metadata` is free-form, but these two keys are not telemetry
+    // once they reach here — they become foreign keys. Both columns are
+    // `uuid`, so a non-uuid string does not degrade to a bad reference, it
+    // aborts the INSERT, and the catch below turns that into a lost row: the
+    // provider bills the call and `llm_usage` never hears about it.
+    //
+    // Dropping an unusable id costs one attribution. Keeping it costs the
+    // whole row.
+    if (isUuid(p.metadata.execution_id)) {
       entry.execution_id = p.metadata.execution_id;
     }
-    if (typeof p.metadata.conversation_id === "string") {
+    if (isUuid(p.metadata.conversation_id)) {
       entry.conversation_id = p.metadata.conversation_id;
     }
     await recordUsage(entry, exec);
