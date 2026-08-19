@@ -489,7 +489,8 @@ export async function processDriftSignal(
       repair = await runRepairFlow(
         {
           tenant_id: ctx.tenant_id,
-          execution_id: ctx.execution_id ?? ctx.scan_id ?? "proactive",
+          execution_id: ctx.execution_id ?? null,
+          ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
           failing_step: {
             id: ctx.repair_input.failing_step_id,
             ...(ctx.repair_input.request !== undefined

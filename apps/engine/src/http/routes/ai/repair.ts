@@ -14,7 +14,11 @@ import type { AppEnv } from "../../openapi.ts";
 
 const RepairBody = z
   .object({
-    execution_id: z.string(),
+    // A uuid, like `connector_id` below. It is copied into
+    // `llm_usage.execution_id`, a uuid column, so accepting any string here
+    // only moves the rejection to a place where it is swallowed instead of
+    // reported. Existence is the foreign key's job, not the schema's.
+    execution_id: z.string().uuid(),
     failing_step_id: z.string(),
     drift_diff: z.string().min(1),
     connector_id: z.string().uuid().optional(),

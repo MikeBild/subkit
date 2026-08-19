@@ -23,6 +23,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { bytea, tenantId, timestamps } from "./_common.ts";
+import { executions } from "./executions.ts";
 import { tenants } from "./identity.ts";
 
 export const tenantLlmSettings = pgTable(
@@ -131,7 +132,21 @@ export const llmUsage = pgTable(
     // `total_tokens` here is the effective-cost weighting (cache reads at
     // 10 %, cache creation at 125 %); see llm/pricing.ts.
     month_bucket: bigint("month_bucket", { mode: "number" }).notNull(),
-    execution_id: uuid("execution_id"),
+    // FK with ON DELETE SET NULL, not the no-FK treatment `user_id` gets
+    // above. The reason `user_id` has no FK — a hard delete must never destroy
+    // the append-only financial ledger — argues FOR this one rather than
+    // against it: SET NULL clears an attribution, it does not remove a row, so
+    // the ledger survives an execution being deleted while the reference stays
+    // honest.
+    //
+    // Without it, anything uuid-shaped could be written here and look like an
+    // execution forever. 163 rows carried a `self_healing_scans.id` from
+    // 2026-06-26 until this constraint, and nothing noticed: a wrong-but-valid
+    // uuid produces no error, no log line, and a join that silently returns
+    // nothing. The column claimed a relationship the database was not checking.
+    execution_id: uuid("execution_id").references(() => executions.id, {
+      onDelete: "set null",
+    }),
     conversation_id: uuid("conversation_id"),
   },
   (t) => [
