@@ -75,6 +75,21 @@ ssh root@<engine-host> 'journalctl -u subkit-engine --since "60 seconds ago" | g
 `SHA256SUMS` uses a no-separator format (`<hash>engine_linux_x64`); extract the
 hash with `grep -oE '^[0-9a-f]{64}'` on the matching line, not `awk '{print $1}'`.
 
+## Probe endpoints
+
+The engine answers four probe paths, two names for each of two probes:
+
+| Path | Probe | Codes |
+| --- | --- | --- |
+| `GET /v1/health`, `GET /health` | liveness — the process is up; `db_connected` is informational | 200 |
+| `GET /v1/readyz`, `GET /ready` | readiness — refuses traffic while the database is unreachable or the unit is draining | 200 / 503 |
+
+All four are unauthenticated and answer without an `Authorization` header. The
+versioned pair is the documented API contract and the only one in
+`openapi.json`; the unversioned pair exists so an infrastructure probe that
+knows only `/health` and `/ready` does not read a 404 as a dead service. Gate
+load-balancer routing on a readiness path, never on a liveness one.
+
 ## Serving the `sk` CLI from the engine (`/install`)
 
 Users install the CLI by running `curl -fsSL https://<engine-hostname>/install | bash`

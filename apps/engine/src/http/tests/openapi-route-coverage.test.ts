@@ -41,6 +41,14 @@ const EXCLUDED_ROUTES = new Set<string>([
   "GET /openapi.json",
   "GET /metrics",
   "GET /llms/{param}",
+  // Unversioned probe aliases. The probes themselves ARE documented — as
+  // `GET /v1/health` and `GET /v1/readyz`, with their schemas. These two are
+  // the same handlers under the names an infrastructure probe defaults to;
+  // publishing them would put a second name for one operation into the spec
+  // and into every generated client. `routes/health.ts` owns the aliasing and
+  // `health.test.ts` pins that they answer identically and stay out of here.
+  "GET /health",
+  "GET /ready",
   // Tool-approval decision forms and inbound webhooks have external/raw
   // contracts. MCP authorization and browser identity flows are documented.
   "POST /v1/tool-approvals/decide",
