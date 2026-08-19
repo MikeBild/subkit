@@ -17,6 +17,15 @@ jobs:
   quality:
     name: quality + build + e2e
     runs-on: ubuntu-24.04
+    # Every job carries a cap. On 2026-08-19 this job's `apt-get install
+    # expect` step hung; with no cap it sat in_progress for four hours and
+    # would have held on to GitHub's six-hour default. Because the
+    # concurrency group above is keyed on the ref and does not cancel
+    # in-progress pushes, that one stalled step blocked CI for every later
+    # commit on main — a hung step became a stopped pipeline.
+    # The caps are ~3x the observed maximum (quality 9 min, shards 7,
+    # secret scan 1), so they bound a hang without making a slow run flaky.
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -174,6 +183,7 @@ jobs:
   test-shards:
     name: unit + integration (${{ matrix.shard }}/8)
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -284,6 +294,7 @@ jobs:
 
   secret-scan:
     name: secret scan (gitleaks)
+    timeout-minutes: 10
     # We invoke the gitleaks binary directly instead of
     # `gitleaks/gitleaks-action@v2`: that action runs `gitleaks detect`
     # WITHOUT passing `--config` (and does not wire GITLEAKS_CONFIG into a
@@ -363,6 +374,7 @@ jobs:
     if: always()
     needs: [quality, test-shards, docker-e2e, secret-scan, dependency-review]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Require all CI gates
         env:
