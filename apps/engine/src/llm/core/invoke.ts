@@ -628,10 +628,10 @@ async function dispatchReal<T>(
     content: m.content_parts ?? m.content,
   }));
 
-  const messages: SubkitLlmMessage[] = [
-    ...systemMessages.map((m) => ({ role: m.role as "system", content: m.content })),
-    ...userMessages,
-  ];
+  // Spread rather than re-shape: the previous `.map` rebuilt each message from
+  // role and content alone, which silently discarded the cache hint that the
+  // line above had just attached.
+  const messages: SubkitLlmMessage[] = [...systemMessages, ...userMessages];
 
   const model = new AiSdkModel({
     tenantId: params.tenant_id,

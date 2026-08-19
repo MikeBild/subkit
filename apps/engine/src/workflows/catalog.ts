@@ -224,5 +224,15 @@ export async function listWorkflowToolsForTenant(
       last_executed_at: row.last_executed_at,
     });
   }
+  // Stable wire order, decided AFTER the LRU cap picked WHICH workflows.
+  //
+  // Recency answers "which 40 fit the palette"; it must not also decide the
+  // order they are emitted in. These become synthetic `wf_<slug>` tools, and
+  // the tools array is rendered in front of the only cache breakpoint — so a
+  // scheduled run finishing anywhere in the tenant reordered the array and
+  // invalidated the cached prefix of every conversation that followed.
+  // Measured before this: 2.7 cache reads per cache write on the converse
+  // flow, where a stable prefix should give ten to twenty.
+  out.sort((left, right) => (left.slug < right.slug ? -1 : left.slug > right.slug ? 1 : 0));
   return out;
 }

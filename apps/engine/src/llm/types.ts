@@ -21,7 +21,14 @@ export type LlmFlow =
   | "summarize"
   | "suggest_next"
   | "critic_authoring"
-  | "judge";
+  | "judge"
+  /**
+   * An LLM call made by a workflow `request` step through an ordinary HTTP
+   * connector. Distinct from the flows above: the engine did not choose the
+   * model or build the prompt, it only carried the call — but it is the same
+   * money, and leaving it out is why the editorial pipeline reported zero.
+   */
+  | "workflow_step";
 
 export type LlmProviderKind = ProviderKind;
 
@@ -198,6 +205,16 @@ export interface AssembleContextParams {
 /** Result of Context Enhancement — ready for an SDK call. */
 export interface EnhancedPrompt {
   system: string;
+  /**
+   * `system`, still split into the sections the assembler built it from, each
+   * flagged with whether it survives a turn.
+   *
+   * The splitter used to re-derive this by cutting `system` on blank lines and
+   * matching two known headers, which mis-classified everything it did not
+   * recognise as stable AND cut multi-paragraph sections in half. The assembler
+   * knows the answer already; this carries it rather than guessing it back.
+   */
+  system_sections?: Array<{ text: string; volatile: boolean }>;
   messages: UserTurn[];
   token_counts: {
     system: number;

@@ -250,7 +250,7 @@ describe("critic advisory ↔ prior_failures — post-pipeline contract", () => 
 describe("Critic system prompt — invariant snapshot", () => {
   test("BASE_SYSTEM_PROMPTS.critic_authoring carries the no-patch / structured-verdict invariants", async () => {
     const mod = await import("../../llm/core/context-assembler.ts");
-    const text = await mod.basePromptFor("critic_authoring");
+    const text = (await mod.basePromptFor("critic_authoring")).content;
     // Author intent must persist across edits — if these fail, the
     // prompt was changed without updating the invariants doc-tested
     // here. Discuss before relaxing.

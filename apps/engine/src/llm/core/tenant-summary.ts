@@ -11,7 +11,7 @@
 // Only the `converse` flow uses this. Generate / repair / extract keep
 // their prior one-shot behaviour.
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import { totalOverWindow } from "../../db/list-result.ts";
 import { connectors, workflows } from "../../db/schema/index.ts";
@@ -55,6 +55,11 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
       })
       .from(workflows)
       .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)))
+      // Slug order, and not for tidiness. Without an ORDER BY the rows arrive
+      // in whatever order the heap hands them over, which shifts when a row is
+      // updated — a scheduled run touching `last_executed_at` was enough to
+      // reorder this block between two turns of the same conversation.
+      .orderBy(asc(workflows.slug))
       .limit(MAX_WORKFLOWS_IN_SUMMARY),
     exec
       .select({
@@ -67,6 +72,7 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
       })
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)))
+      .orderBy(asc(connectors.slug), asc(connectors.environment))
       .limit(MAX_CONNECTORS_IN_SUMMARY),
   ]);
   return {

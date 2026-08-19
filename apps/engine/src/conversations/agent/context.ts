@@ -210,8 +210,12 @@ export async function generateMainAgentSystemPrompt(
   if (input.surface) sections.push(SK_ACTION_HONESTY);
   // The chat surface never authors — an authoring-focus block would
   // instruct the model to progress a draft it has no tools for.
+  // Returned SEPARATELY rather than pushed into the body: this block names the
+  // current authoring stage, its checkpoints and the next required action, so
+  // it changes on every turn. Inside the body it sat in the cached prefix and
+  // invalidated everything behind it — the base prompt, every skill index and
+  // every loaded skill body — once per turn.
   const focusBlock = input.surface === "chat" ? "" : authoringFocusPrompt(input.authoring_hint);
-  if (focusBlock) sections.push(focusBlock);
   // Mode-aware behaviour skill loading: always-load core + the
   // mode-specific bodies for the current authoring mode (workflow /
   // connector / execution / diagnosis). conversational-authoring is
@@ -220,5 +224,8 @@ export async function generateMainAgentSystemPrompt(
   // palette carries no authoring tools, so authoring behaviour bodies
   // would only instruct the model toward tools it cannot call.
   sections.push(loadAgentSkills(resolveAgentSkillsForMode(input.surface === "chat" ? null : mode)));
-  return { content: sections.join("\n\n") };
+  return {
+    content: sections.join("\n\n"),
+    ...(focusBlock ? { volatile: focusBlock } : {}),
+  };
 }
