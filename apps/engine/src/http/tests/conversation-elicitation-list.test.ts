@@ -15,13 +15,16 @@
 //     one that expires FIRST, not an arbitrary one a naive rewrite might pick
 //   - no pending elicitation → null for all three fields
 //   - a resolved (non-pending) elicitation contributes nothing
-//   - a long summary is clipped through `truncateExcerpt`, same as the
-//     message-excerpt fields
+//   - a long question arrives WHOLE, unlike the message-excerpt fields beside
+//     it: the surface clips it, the engine does not, or expanding a decision
+//     card could never show more than its collapsed line
+//   - the payload guard nonetheless binds on a runaway question
 //   - cross-tenant isolation and the deadline field itself, which a prior
 //     `min(expires_at)` implementation already covered and must keep passing
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { PENDING_QUESTION_MAX } from "../../conversations/service/lifecycle.ts";
 import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -163,21 +166,42 @@ describe("GET /v1/conversations — pending_elicitation_*", () => {
     expect(item.pending_elicitation_tool).toBeNull();
   });
 
-  test("a very long summary is clipped through truncateExcerpt", async () => {
+  test("a long question arrives whole, not as an excerpt of itself", async () => {
+    // Longer than the 140-char excerpt budget the two message fields use, and
+    // longer than the longest prompt production actually holds. A reader who
+    // expands the card must get more than the collapsed line already showed,
+    // which is impossible if the engine clips before sending.
     const id = await seedConversation("long-summary");
-    const longSummary = "x".repeat(500);
+    const question = `Should I overwrite the existing schedule? ${"Details follow. ".repeat(30)}`;
+    expect(question.length).toBeGreaterThan(400);
     await seedElicitation({
       conversation_id: id,
       tenant_id: srv.tenantId,
       expires_at: new Date(getTestNow() + 60_000),
-      summary: longSummary,
+      summary: question,
       tool_name: "ask_user_form",
     });
 
     const item = await fetchItem(id);
-    expect(item.pending_elicitation_summary).not.toBeNull();
-    const clipped = item.pending_elicitation_summary as string;
-    expect(clipped.length).toBeLessThan(longSummary.length);
+    expect(item.pending_elicitation_summary).toBe(question.trim());
+  });
+
+  test("a runaway question still meets the payload guard", async () => {
+    // The bound is a guard against a malformed tool call inflating a 200-row
+    // page, not a display rule — so it has to actually bind somewhere.
+    const id = await seedConversation("runaway-summary");
+    const runaway = "x".repeat(PENDING_QUESTION_MAX + 500);
+    await seedElicitation({
+      conversation_id: id,
+      tenant_id: srv.tenantId,
+      expires_at: new Date(getTestNow() + 60_000),
+      summary: runaway,
+      tool_name: "ask_user_form",
+    });
+
+    const clipped = (await fetchItem(id)).pending_elicitation_summary as string;
+    expect(clipped).not.toBeNull();
+    expect(clipped.length).toBeLessThanOrEqual(PENDING_QUESTION_MAX);
     expect(clipped.endsWith("…")).toBe(true);
   });
 

@@ -63,6 +63,9 @@ export const ConversationSchema = z
     // it. Populated by the list path only — like the two excerpt fields above —
     // because the single-conversation responses that share this schema have no
     // use for them and must not be forced to compute them.
+    //
+    // Unlike the two excerpt fields, the question is NOT clipped for display:
+    // it arrives whole, and the surface decides how much of it to show.
     pending_elicitation_expires_at: z.string().nullable().optional(),
     pending_elicitation_summary: z.string().nullable().optional(),
     pending_elicitation_tool: z.string().nullable().optional(),

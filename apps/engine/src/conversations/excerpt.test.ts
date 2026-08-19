@@ -12,6 +12,8 @@ describe("truncateExcerpt", () => {
   });
 
   test("marks a clipped string with an ellipsis at every length", () => {
+    // No spaces at all: the word-boundary preference has nothing to prefer, so
+    // the clip is hard and lands exactly on the budget.
     const text = "a".repeat(200);
     expect(truncateExcerpt(text, 50)).toHaveLength(50);
     expect(truncateExcerpt(text, 50).endsWith("…")).toBe(true);
@@ -22,6 +24,31 @@ describe("truncateExcerpt", () => {
   test("does not clip text that exactly fits", () => {
     const text = "b".repeat(50);
     expect(truncateExcerpt(text, 50)).toBe(text);
+  });
+
+  test("stops at a word boundary rather than mid-word", () => {
+    // The case that shipped to production: a 50-char title cut "bound" to "b".
+    const clipped = truncateExcerpt(
+      "Reauthenticate the existing Anthropic connector bound to dev",
+      50,
+    );
+    expect(clipped).toBe("Reauthenticate the existing Anthropic connector…");
+    expect(clipped.length).toBeLessThanOrEqual(50);
+  });
+
+  test("refuses a back-off that would spend more than half the budget", () => {
+    // One short word, then an unbroken run. Backing off to that space would
+    // return "go…" and throw away everything the reader came for.
+    const clipped = truncateExcerpt(`go ${"x".repeat(80)}`, 40);
+    expect(clipped.startsWith("go x")).toBe(true);
+    expect(clipped).toHaveLength(40);
+  });
+
+  test("never exceeds max, whatever the boundary", () => {
+    const text = "one two three four five six seven eight nine ten eleven twelve";
+    for (const max of [5, 12, 20, 33, 50]) {
+      expect(truncateExcerpt(text, max).length).toBeLessThanOrEqual(max);
+    }
   });
 });
 
