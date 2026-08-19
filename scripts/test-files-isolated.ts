@@ -92,9 +92,11 @@ for (const [index, file] of orderedTests.entries()) {
   process.stdout.write(
     `[isolated-test] ${index + 1}/${orderedTests.length}${shardLabel} ${file}\n`,
   );
+  const childEnv = { ...process.env, NODE_ENV: "test" };
+  childEnv.LLM_PROVIDER ??= "mock";
   const child = Bun.spawn(["bun", "test", "--timeout", "120000", file], {
     cwd: repoRoot,
-    env: { ...process.env, NODE_ENV: "test" },
+    env: childEnv,
     stdout: "inherit",
     stderr: "inherit",
   });

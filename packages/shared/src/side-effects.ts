@@ -8,8 +8,9 @@
 // conversations layer can use it without pulling in the execution
 // machinery (per packages/shared/AGENTS.md).
 //
-//   - explicit `override` ALWAYS wins (the author's escape hatch for a
-//     POST that is semantically a search, or a GET that mutates)
+//   - explicit `write` always wins. Explicit `read` can describe a
+//     semantically read-only POST, but cannot downgrade PUT / PATCH /
+//     DELETE or an S3 mutation; those transports are structurally writes.
 //   - GraphQL: `query` = read; `mutation` / `subscription` = write. The
 //     operation is taken from the explicit operation or inferred from the
 //     document's leading keyword (a bare `{ … }` shorthand is a query).
@@ -36,7 +37,7 @@ export type McpOperation = "call_tool" | "read_resource" | "get_prompt";
  *  `RequestStep` and a `call_connector` argument object can shape into.
  *  Only the fields relevant to the active driver need be set. */
 export interface SideEffectInput {
-  /** Author override; honored verbatim before any inference. */
+  /** Author override; mutating HTTP/S3 verbs cannot be downgraded to read. */
   override?: SideEffect | null;
   /** HTTP / S3 method (defaults to GET when omitted). */
   method?: string | null;
@@ -142,7 +143,8 @@ export function classifyMcpToolSideEffect(
 }
 
 export function classifyHttpSideEffect(input: SideEffectInput): SideEffect {
-  if (input.override) return input.override;
+  if (input.override === "write") return "write";
+  if (input.override === "read" && readOverrideIsSafe(input)) return "read";
   if (input.mcp) {
     return input.mcp.operation === "call_tool" ? "write" : "read";
   }
@@ -159,4 +161,11 @@ export function classifyHttpSideEffect(input: SideEffectInput): SideEffect {
     return S3_READ_METHODS.has(method) ? "read" : "write";
   }
   return httpMethodIsRead(method) ? "read" : "write";
+}
+
+function readOverrideIsSafe(input: SideEffectInput): boolean {
+  if (input.mcp || input.graphql || input.sql) return true;
+  const method = (input.method ?? "GET").toUpperCase();
+  if (input.s3) return S3_READ_METHODS.has(method);
+  return httpMethodIsRead(method) || method === "POST";
 }

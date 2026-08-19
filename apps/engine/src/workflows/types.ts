@@ -260,7 +260,8 @@ export const RequestStepSchema = z
      * GraphQL `query` = read, `mutation`/`subscription` = write;
      * SQL SELECT-only = read, anything else = write; S3 GET/HEAD/LIST
      * = read. Set `"read"` for a POST that is semantically a search,
-     * or `"write"` to force-hold a GET that mutates server state.
+     * or `"write"` to force-hold a GET that mutates server state. PUT,
+     * PATCH, DELETE and S3 mutations cannot be downgraded to reads.
      */
     side_effects: z.enum(["read", "write"]).optional(),
     url: z.string().optional(),
@@ -583,6 +584,20 @@ export const RequestStepSchema = z
     const HTTP_VERBS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
     const S3_VERBS = new Set(["GET", "PUT", "HEAD", "DELETE", "LIST"]);
     const SQL_VERBS = new Set(["SELECT", "INSERT", "UPDATE", "DELETE", "CALL"]);
+
+    if (
+      s.side_effects === "read" &&
+      s.graphql === undefined &&
+      s.sql === undefined &&
+      s.mcp === undefined &&
+      ["PUT", "PATCH", "DELETE"].includes(s.method ?? "GET")
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["side_effects"],
+        message: `side_effects:"read" cannot downgrade mutating method ${s.method}`,
+      });
+    }
 
     if (s.s3 !== undefined) {
       // S3 block present — step.method must be S3-compatible.
