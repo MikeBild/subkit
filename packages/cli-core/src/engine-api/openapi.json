@@ -13336,7 +13336,8 @@
         "type": "object",
         "properties": {
           "execution_id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "failing_step_id": {
             "type": "string"

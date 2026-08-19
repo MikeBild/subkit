@@ -47,7 +47,23 @@ export interface PreviousRepairAttempt {
 
 export interface RepairParams {
   tenant_id: string;
-  execution_id: string;
+  /**
+   * The execution being repaired, or null when there is none.
+   *
+   * Nullable on purpose. While this was a required `string`, the proactive
+   * caller had no execution to name and filled it with whatever was at hand —
+   * a `self_healing_scans.id`, or the literal "proactive". A scan id is a
+   * well-formed uuid, so 163 rows were written into `llm_usage.execution_id`
+   * that look like an execution reference and resolve to nothing; "proactive"
+   * is not a uuid at all, so that insert throws and is swallowed by the
+   * best-effort accounting catch, losing the row outright.
+   *
+   * A required field that a caller cannot honestly fill does not get filled
+   * honestly. Null is the answer to "which execution?" when there is none.
+   */
+  execution_id: string | null;
+  /** The proactive scan that triggered this repair, when it was not an execution. */
+  scan_id?: string | undefined;
   failing_step: {
     id: string;
     request?: unknown;
@@ -72,6 +88,45 @@ export interface RepairResult {
   tokens: EnhancedPrompt["token_counts"];
   model_used: string;
   fell_back: boolean;
+}
+
+/**
+ * The line that tells the model what it is looking at.
+ *
+ * It used to be `Execution: ${p.execution_id}` unconditionally, which read
+ * "Execution: <a self_healing_scans uuid>" or "Execution: proactive" whenever
+ * there was no execution — a false statement about the origin, made to the
+ * one reader who cannot check it.
+ *
+ * Exported so it can be tested without a provider: this and `repairTelemetry`
+ * are the whole of what the nullable `execution_id` changed, and neither
+ * should need a live LLM call to pin down.
+ */
+export function repairOrigin(p: Pick<RepairParams, "execution_id" | "scan_id">): string {
+  if (p.execution_id) return `Execution: ${p.execution_id}`;
+  if (p.scan_id) return `Proactive scan: ${p.scan_id} (no execution)`;
+  return "Proactive repair (no execution)";
+}
+
+/**
+ * Telemetry for the repair call.
+ *
+ * `execution_id` appears only when there is one. The accountant copies that
+ * key straight into `llm_usage.execution_id`, so putting anything else there
+ * is a claim about a row in `executions` — and the column had no foreign key
+ * to test the claim until migration 0040. The scan gets its own key rather
+ * than borrowing that one.
+ */
+export function repairTelemetry(
+  p: Pick<RepairParams, "execution_id" | "scan_id" | "failing_step">,
+  attempt: number,
+): Record<string, string | number | boolean> {
+  return {
+    ...(p.execution_id ? { execution_id: p.execution_id } : {}),
+    ...(p.scan_id ? { scan_id: p.scan_id } : {}),
+    failing_step: p.failing_step.id,
+    attempt,
+  };
 }
 
 export async function runRepairFlow(p: RepairParams, exec?: Db): Promise<RepairResult> {
@@ -103,7 +158,7 @@ export async function runRepairFlow(p: RepairParams, exec?: Db): Promise<RepairR
       : "";
 
   const userContent = [
-    `Execution: ${p.execution_id}`,
+    repairOrigin(p),
     `Failing step: ${p.failing_step.id}`,
     "",
     "Drift diff:",
@@ -120,11 +175,7 @@ export async function runRepairFlow(p: RepairParams, exec?: Db): Promise<RepairR
       prior_failures: priorFailures,
       ...(p.connector_id ? { connector_id: p.connector_id } : {}),
       schema: PatchProposalRuntimeSchema,
-      telemetry_metadata: {
-        execution_id: p.execution_id,
-        failing_step: p.failing_step.id,
-        attempt: previous.length + 1,
-      },
+      telemetry_metadata: repairTelemetry(p, previous.length + 1),
     },
     exec,
   );

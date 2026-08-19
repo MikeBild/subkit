@@ -281,6 +281,13 @@
       "when": 1787088713435,
       "tag": "0039_cloudy_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1787138857040,
+      "tag": "0040_regular_lady_ursula",
+      "breakpoints": true
     }
   ]
 }

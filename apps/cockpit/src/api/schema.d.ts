@@ -17007,6 +17007,7 @@ export interface components {
             fell_back: boolean;
         };
         AiRepairBody: {
+            /** Format: uuid */
             execution_id: string;
             failing_step_id: string;
             drift_diff: string;
