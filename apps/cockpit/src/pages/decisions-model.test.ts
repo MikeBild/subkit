@@ -8,6 +8,7 @@ import {
   hasOverdue,
   partitionByUrgency,
   patchDecision,
+  QUESTION_LINE_MAX,
   skillDecision,
   sortDecisions,
   splitByAge,
@@ -224,6 +225,69 @@ describe("decision adapters", () => {
       /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
     );
     expect(decision.title).toContain("internal reference");
+  });
+
+  test("the collapsed line clips the question, the panel keeps it whole", () => {
+    // The reason the engine stopped clipping: if both came from one excerpt,
+    // expanding a card showed exactly what the collapsed line already showed.
+    // Squashed and trimmed, the way the engine sends it.
+    const question =
+      `Should I overwrite the existing schedule? ${"Here is the reasoning. ".repeat(20)}`.trim();
+    const decision = conversationDecision(
+      {
+        ...conversationBase,
+        title: "Rename the field",
+        pending_elicitation_summary: question,
+        pending_elicitation_tool: null,
+      },
+      LABELS,
+    );
+    const summary = decision.summary as string;
+    expect(summary.length).toBeLessThanOrEqual(QUESTION_LINE_MAX);
+    expect(summary.endsWith("…")).toBe(true);
+    // Cut at a word boundary: what survives is a prefix of the question that
+    // the original continues with a space, not half of a word.
+    const kept = summary.slice(0, -1);
+    expect(question.startsWith(`${kept} `)).toBe(true);
+    if (decision.detail.kind !== "conversation") throw new Error("expected a conversation detail");
+    expect(decision.detail.question).toBe(question);
+    expect((decision.detail.question as string).length).toBeGreaterThan(summary.length);
+  });
+
+  test("a short question is not clipped and reaches both places intact", () => {
+    const question = "Should I overwrite the existing schedule?";
+    const decision = conversationDecision(
+      {
+        ...conversationBase,
+        title: "Rename the field",
+        pending_elicitation_summary: question,
+        pending_elicitation_tool: null,
+      },
+      LABELS,
+    );
+    expect(decision.summary).toBe(question);
+    if (decision.detail.kind !== "conversation") throw new Error("expected a conversation detail");
+    expect(decision.detail.question).toBe(question);
+  });
+
+  test("an identifier in the question is hidden in the line AND in the panel", () => {
+    // The clip runs after the redaction, so a long question cannot smuggle an
+    // id past it by sitting beyond the cut.
+    const question = `Load the v6 workflow c1d9b3db-882e-4f2c-8fd0-5f0017c4aef1 as the draft target? ${"Context follows. ".repeat(20)}`;
+    const decision = conversationDecision(
+      {
+        ...conversationBase,
+        title: "Rename the field",
+        pending_elicitation_summary: question,
+        pending_elicitation_tool: null,
+      },
+      LABELS,
+    );
+    const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
+    expect(decision.summary).not.toMatch(uuid);
+    if (decision.detail.kind !== "conversation") throw new Error("expected a conversation detail");
+    expect(decision.detail.question).not.toMatch(uuid);
+    expect(decision.detail.question).toContain("internal reference");
   });
 
   test("a skill candidate names its target, and says nothing when it cannot", () => {

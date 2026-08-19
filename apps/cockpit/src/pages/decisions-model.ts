@@ -1,6 +1,6 @@
 import type { Conversation } from "@/api/client";
 import type { PatchCandidate, SkillCandidate } from "@/api/decisions";
-import { conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
+import { clipAtWord, conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
 import type { ConversationEvidence, PatchEvidence, SkillEvidence } from "./decisions-context";
 
 export type DecisionKind = "patch" | "skill" | "conversation";
@@ -169,6 +169,15 @@ export function skillDecision(
   };
 }
 
+/**
+ * How much of a question the collapsed card shows.
+ *
+ * Long enough that most real questions arrive whole — the median pending prompt
+ * is shorter than this — and short enough that a queue of a hundred stays a
+ * queue rather than a wall of prose.
+ */
+export const QUESTION_LINE_MAX = 180;
+
 export interface ConversationLabels {
   fallbackTitle: string;
   toolActivity: string;
@@ -206,8 +215,19 @@ export function conversationDecision(
     evidenceCount: null,
     // The question, not the title. A queue that says only "waiting for your
     // answer" makes a person open every entry to find the one they can answer.
+    //
+    // Clipped here and whole below: the collapsed line has to stay scannable
+    // across a queue of a hundred, and the panel has to be worth opening. The
+    // engine sends the question in full precisely so this split is the
+    // surface's to make.
     summary: conversation.pending_elicitation_summary
-      ? hideTechnicalIdentifiers(conversation.pending_elicitation_summary, labels.hiddenReference)
+      ? clipAtWord(
+          hideTechnicalIdentifiers(
+            conversation.pending_elicitation_summary,
+            labels.hiddenReference,
+          ),
+          QUESTION_LINE_MAX,
+        )
       : null,
     detail: {
       kind: "conversation",
