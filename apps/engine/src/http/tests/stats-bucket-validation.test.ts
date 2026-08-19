@@ -194,3 +194,37 @@ describe("response envelope shape", () => {
     expect(body.totals).toBeDefined();
   });
 });
+
+// ---- group_by validation on /v1/stats/llm ----------------------------------
+//
+// The aggregator groups by at most two dimensions. The route used to filter
+// silently: a third dimension and an unrecognised name both disappeared, and
+// the response said nothing about it. These pin the refusal instead — the same
+// contract /v1/stats/usage has always had.
+
+describe("/v1/stats/llm group_by validation", () => {
+  const win = "bucket=day&from=2026-01-10T00:00:00.000Z&to=2026-01-15T00:00:00.000Z";
+
+  test("three dimensions → 400 group_by_too_many, not a silent two", async () => {
+    const res = await authedFetch(`/v1/stats/llm?${win}&group_by=model,flow,workflow`);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; details?: { reason?: string } };
+    expect(body.code).toBe("bad_request");
+    expect(body.details?.reason).toBe("group_by_too_many");
+  });
+
+  test("an unknown dimension → 400 group_by_invalid, not a silent drop", async () => {
+    const res = await authedFetch(`/v1/stats/llm?${win}&group_by=model,tenant`);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; details?: { reason?: string } };
+    expect(body.code).toBe("bad_request");
+    expect(body.details?.reason).toBe("group_by_invalid");
+  });
+
+  test("model,workflow is served — the pairing the cost report needs", async () => {
+    const res = await authedFetch(`/v1/stats/llm?${win}&group_by=model,workflow`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { groups: unknown[] };
+    expect(Array.isArray(body.groups)).toBe(true);
+  });
+});
