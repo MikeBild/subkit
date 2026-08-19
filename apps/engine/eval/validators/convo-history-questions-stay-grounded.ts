@@ -7,8 +7,9 @@ interface Input {
 
 export async function validate(fixture: FixtureRecord): Promise<ValidationResult> {
   const prompt = await basePromptFor("converse", "sk_interactive");
+  const promptText = [prompt.content, prompt.volatile].filter(Boolean).join("\n\n");
   const input = fixture.input as Input;
-  const missing = input.required_phrases.filter((phrase) => !prompt.includes(phrase));
+  const missing = input.required_phrases.filter((phrase) => !promptText.includes(phrase));
   if (missing.length > 0) {
     return {
       pass: false,

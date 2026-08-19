@@ -11,12 +11,13 @@ interface Input {
 export async function validate(fixture: FixtureRecord): Promise<ValidationResult> {
   const input = fixture.input as Input;
   const prompt = await basePromptFor("converse", "sk_interactive");
+  const promptText = [prompt.content, prompt.volatile].filter(Boolean).join("\n\n");
   const failures: string[] = [];
 
-  if (!prompt.includes("tenant_create_schedule")) {
+  if (!promptText.includes("tenant_create_schedule")) {
     failures.push("prompt is missing tenant_create_schedule guidance");
   }
-  if (!prompt.includes("every:<seconds>")) {
+  if (!promptText.includes("every:<seconds>")) {
     failures.push("prompt is missing every:<seconds> guidance");
   }
 
