@@ -1,17 +1,18 @@
 // GET /metrics — Prometheus text exposition.
 //
-// Gated behind `requireScope("metrics:read")`. Scrapers should be seeded
-// with an API key carrying that scope (see `db/seed.ts` — the
-// `metrics-scraper` account); admins bypass the scope check so operators
-// who rotate keys without thinking about scopes still see the endpoint.
+// Deliberately ungated inside the product: the shared scrape key is checked
+// once at the edge (Caddy) for every product, and a second check here would
+// only add a way for the two to disagree. Whether the port is reachable from
+// outside that edge is a deployment property, not one this route enforces.
+// `metrics:read` and the `metrics_scraper` role stay seeded in
+// `../../rbac/seed.ts` — they predate this edge check, and dropping them
+// would be a migration with nothing on the other side.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { getMetrics, refreshProcessUptime } from "../../observability/index.ts";
-import { requireScope } from "../middleware/scope.ts";
 import type { AppEnv } from "../openapi.ts";
 
 export function registerMetricsRoute(app: OpenAPIHono<AppEnv>): void {
-  app.use("/metrics", requireScope("metrics:read"));
   app.get("/metrics", (c) => {
     refreshProcessUptime();
     const body = getMetrics().render();
