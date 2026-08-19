@@ -560,7 +560,7 @@ export interface paths {
                         "application/json": components["schemas"]["StatsLlmResponse"];
                     };
                 };
-                /** @description Invalid window */
+                /** @description Invalid window, or an unusable group_by */
                 400: {
                     headers: {
                         [name: string]: unknown;
