@@ -70,9 +70,16 @@ const conversations = Array.from({ length: 32 }, (_, index) => {
           pending_elicitation_expires_at: new Date(
             SWEEP_NOW + (index === 1 ? -3_600_000 : index * 3_600_000 + 1_800_000),
           ).toISOString(),
+          // Alternating lengths on purpose. A question that fits shows the
+          // collapsed line uncut; one that does not is the only way a
+          // screenshot can prove the expanded panel carries more than the
+          // line above it — the defect that made expanding a conversation
+          // card pointless was invisible to a short fixture.
           pending_elicitation_summary:
-            "Der Monatsreport schreibt künftig nach PROD. Soll ich die gespeicherte Version dafür ersetzen?",
-          pending_elicitation_tool: "ask_user_confirm",
+            index % 2 === 1
+              ? `Der Monatsreport schreibt künftig nach PROD statt in die Ablage. Soll ich die gespeicherte Version dafür ersetzen? Betroffen sind der Schreibschritt und die Zielangabe; alles andere bleibt, wie es ist. Der letzte Lauf ${uuid} hat die neue Zielangabe schon einmal trocken geprüft.`
+              : "Soll ich die gespeicherte Version ersetzen?",
+          pending_elicitation_tool: index % 2 === 1 ? "ask_user_confirm" : "ask_user_form",
         }
       : {
           pending_elicitation_expires_at: null,

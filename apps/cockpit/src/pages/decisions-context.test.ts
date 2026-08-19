@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { buildNameIndex } from "@/lib/name-index";
 import {
+  answerKindKey,
   type ContextLabels,
   conversationContext,
   driftKindKey,
@@ -224,5 +225,25 @@ describe("vocabulary", () => {
     expect(driftKindKey("something_new")).toBeNull();
     expect(driftKindKey(null)).toBeNull();
     expect(proposalKindKey("something_new")).toBeNull();
+    expect(answerKindKey("some_new_prompt")).toBeNull();
+    expect(answerKindKey(null)).toBeNull();
+  });
+
+  test("every prompting tool the engine can raise says what answer it wants", () => {
+    for (const tool of [
+      "ask_user_text",
+      "ask_user_confirm",
+      "ask_user_choice",
+      "ask_user_multi",
+      "ask_user_form",
+      "ask_user_form_gate",
+    ]) {
+      expect(answerKindKey(tool)).not.toBeNull();
+    }
+  });
+
+  test("the gate variant of a form asks for the same thing as a form", () => {
+    // Two code paths, one thing wanted — a reader must not see two words for it.
+    expect(answerKindKey("ask_user_form_gate")).toBe(answerKindKey("ask_user_form"));
   });
 });
