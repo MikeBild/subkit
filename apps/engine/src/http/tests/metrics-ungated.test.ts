@@ -1,8 +1,9 @@
-// /metrics carries no product-internal gate: the shared scrape key is
-// checked once at the edge (Caddy), so every principal — including none
-// at all — gets the Prometheus document. This test pins that, and pins
-// the absence of the `scope_missing:metrics:read` denial the route used
-// to write, so the gate cannot come back unnoticed.
+// /metrics carries no product-internal gate: every principal — including
+// none at all — gets the Prometheus document. This test pins that, and
+// pins the absence of the `scope_missing:metrics:read` denial the route
+// used to write, so the gate cannot come back unnoticed. It says nothing
+// about what a deployment puts in front of the port, which is the half
+// this repo cannot verify.
 //
 // The test spins up its own http server so we can seed the extra api
 // keys directly and still reach the same route surface as a real
