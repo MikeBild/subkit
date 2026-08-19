@@ -43,6 +43,16 @@ export async function cancelConversation(
   return rowToRecord(row);
 }
 
+/**
+ * Payload guard on the question a waiting conversation carries.
+ *
+ * Not a display length — see the note at the call site. Sized against the real
+ * distribution (longest pending prompt in production: 482 characters) so that
+ * clipping here means a tool call went wrong, not that a person wrote a long
+ * question.
+ */
+export const PENDING_QUESTION_MAX = 2000;
+
 export interface ListConversationsParams {
   tenant_id: string;
   status?: ConversationStatus;
@@ -186,10 +196,19 @@ export async function listConversations(
       last_message_role: latest?.role ?? null,
       last_message_excerpt: latest?.excerpt ?? null,
       pending_elicitation_expires_at: pending ? pending.expires_at.toISOString() : null,
-      // The question is human-written prose from a tool call, so it goes
-      // through the same clipping the message excerpts do rather than arriving
-      // at a list row at whatever length it happens to be.
-      pending_elicitation_summary: pending?.summary ? truncateExcerpt(pending.summary) : null,
+      // The whole question, not an excerpt of it. Clipping at 140 here made the
+      // decision queue's expanded panel show the reader exactly what its
+      // collapsed line already showed — the caller could not recover what the
+      // engine had thrown away. How much of a question fits on a card is a
+      // decision the surface makes, so the surface gets the text and makes it.
+      //
+      // The bound that remains is a payload guard, not a display rule: it is
+      // wide enough that no real question meets it (the longest pending prompt
+      // in production is a third of it) and narrow enough that one malformed
+      // tool call cannot inflate a 200-row page.
+      pending_elicitation_summary: pending?.summary
+        ? truncateExcerpt(pending.summary, PENDING_QUESTION_MAX)
+        : null,
       pending_elicitation_tool: pending?.tool_name ?? null,
     };
   });

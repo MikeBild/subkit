@@ -44,9 +44,23 @@ export function stringifyConversationExcerpt(content: unknown): string | null {
   }
 }
 
-/** Squash whitespace and clip to `max`, marking a clipped string with `…`. */
+/**
+ * Squash whitespace and clip to at most `max`, marking a clipped string with `…`.
+ *
+ * The clip prefers the last word boundary inside the budget. "Reauthenticate the
+ * existing Anthropic connector b…" makes a reader guess at a word the text
+ * already contained; stopping at "connector" costs one word and guesses at
+ * nothing. The boundary is preferred, not required — a run with no space near
+ * the limit (a URL, an id, a script with no spaces) still clips hard rather than
+ * collapsing to a fragment, which is why the back-off is refused when it would
+ * spend more than half the budget.
+ */
 export function truncateExcerpt(text: string, max = 140): string {
   const squashed = text.replace(/\s+/g, " ").trim();
   if (squashed.length <= max) return squashed;
-  return `${squashed.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
+  const budget = Math.max(1, max - 1);
+  const clipped = squashed.slice(0, budget);
+  const lastSpace = clipped.lastIndexOf(" ");
+  const body = lastSpace * 2 >= budget ? clipped.slice(0, lastSpace) : clipped;
+  return `${body.trimEnd()}…`;
 }
