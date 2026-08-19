@@ -18,6 +18,7 @@ import { EMPTY_NAME_INDEX } from "@/lib/name-index";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import type { ContextEntry, DecisionContext } from "@/pages/decisions-context";
 import {
+  answerKindKey,
   conversationContext,
   driftKindKey,
   patchContext,
@@ -354,13 +355,21 @@ function DecisionDetailPanel({
     );
   }
 
+  // The question in full, not the clipped line the collapsed card carries —
+  // that split is why the engine stopped sending an excerpt of it.
+  const answerKey = answerKindKey(detail.tool);
   return (
     <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
       <DetailBlock heading={t("decisions.detail.question")} testId={`${testId}-question`}>
-        <DetailText className="max-w-prose text-sm break-words">
+        <DetailText className="max-w-prose text-sm break-words whitespace-pre-wrap">
           {detail.question ?? t("decisions.detail.noQuestion")}
         </DetailText>
       </DetailBlock>
+      {answerKey && (
+        <DetailBlock heading={t("decisions.detail.answerKind")} testId={`${testId}-answer-kind`}>
+          <p className="max-w-prose text-sm text-muted-foreground">{t(answerKey)}</p>
+        </DetailBlock>
+      )}
     </div>
   );
 }

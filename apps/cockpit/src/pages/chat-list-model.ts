@@ -10,6 +10,8 @@
 // So: prefer the name, then the person's own words, then anything else that was
 // said, and only then admit there is nothing to show.
 
+import { clipAtWord } from "@/lib/presentation";
+
 /** Titles live in a narrow rail; past this they stop being scannable. */
 export const TITLE_MAX = 72;
 
@@ -28,20 +30,10 @@ export interface ConversationRow {
   named: boolean;
 }
 
-/**
- * Clip at a word boundary.
- *
- * A clipped title and a wrapped excerpt are different facts, so this happens in
- * the model rather than through `line-clamp`: a reader can tell that the text
- * was cut, and the second line is free to say something else.
- */
+/** Clip a title to the rail's width. The rule itself lives in `lib/presentation`
+ *  because the decision queue clips conversation prose too. */
 export function clipTitle(text: string, max = TITLE_MAX): string {
-  const squashed = text.replace(/\s+/g, " ").trim();
-  if (squashed.length <= max) return squashed;
-  const cut = squashed.slice(0, max - 1);
-  const lastSpace = cut.lastIndexOf(" ");
-  const body = lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut;
-  return `${body.trimEnd()}…`;
+  return clipAtWord(text, max);
 }
 
 export interface ConversationRowLabels {

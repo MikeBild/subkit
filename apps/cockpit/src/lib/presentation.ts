@@ -1,6 +1,28 @@
 const UUID_PATTERN =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 
+/**
+ * Clip at a word boundary, marking a clipped string with `…`.
+ *
+ * A clipped line and a wrapped one are different facts, so this happens in the
+ * model rather than through `line-clamp`: a reader can tell the text was cut,
+ * and whatever renders below is free to say something else. The boundary is
+ * preferred, not required — an unbroken run clips hard rather than collapsing
+ * to a fragment.
+ *
+ * Two surfaces clip conversation prose — the chat list's titles and the
+ * decision queue's collapsed question — and a second copy of this rule is how
+ * they start disagreeing about what a message said.
+ */
+export function clipAtWord(text: string, max: number): string {
+  const squashed = text.replace(/\s+/g, " ").trim();
+  if (squashed.length <= max) return squashed;
+  const cut = squashed.slice(0, Math.max(1, max - 1));
+  const lastSpace = cut.lastIndexOf(" ");
+  const body = lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return `${body.trimEnd()}…`;
+}
+
 export function hideTechnicalIdentifiers(value: string, replacement: string): string {
   return value.replace(UUID_PATTERN, replacement);
 }
