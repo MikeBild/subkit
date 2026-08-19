@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.7.0] – 2026-08-19
+
+### Fixed
+
+- **The local isolated-test gate now uses the same default mock LLM provider as CI.** The
+  runner previously set `NODE_ENV=test` without supplying the provider default already used by
+  CI and the isolated E2E runner, so provider-facing unit tests could fail locally before their
+  stubs were reached. An explicit caller setting still wins.
+
+- **Dry-run previews cannot dispatch mutating transports through a false read
+  override.** Workflow validation rejects `side_effects: "read"` on PUT,
+  PATCH, DELETE, and S3 mutations, while runtime classification keeps legacy
+  definitions held. Read-only POST searches remain supported.
+
 ## [6.6.6] – 2026-08-19
 
 ### Added
