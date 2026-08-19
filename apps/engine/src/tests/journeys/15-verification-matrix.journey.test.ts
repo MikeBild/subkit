@@ -63,10 +63,9 @@ describe("journey: verification matrix (docs/33)", () => {
     expect(health.status).toBe("ok");
     expect(health.db_connected).toBe(true);
 
-    // `/metrics` is gated behind `requireScope("metrics:read")`. The
-    // suite's admin key bypasses scope checks via its admin role, so
-    // hitting the endpoint with the suite bearer token still yields a
-    // 200 + a non-empty Prometheus document.
+    // `/metrics` carries no product-internal gate; the bearer token is
+    // sent because the matrix step models a real operator scrape, not
+    // because the route needs it.
     const metricsRes = await fetch(`${ctx.baseUrl}/metrics`, {
       headers: { authorization: `Bearer ${ctx.apiKey}` },
     });

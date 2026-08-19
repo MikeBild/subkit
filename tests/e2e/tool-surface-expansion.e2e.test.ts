@@ -57,8 +57,8 @@ describe("tool surface expansion", () => {
   }, 30_000);
 
   test("/metrics exposes conversation_tool_calls_total counter", async () => {
-    // /metrics requires the `metrics:read` scope. Admin API keys carry
-    // unrestricted scope so this authenticates.
+    // /metrics is ungated inside the product; the admin bearer is sent
+    // only to mirror how the deployed scrape path reaches it.
     const r = await fetch(`${env.baseUrl}/metrics`, {
       headers: { Authorization: `Bearer ${env.personas.admin.apiKey}` },
     });
