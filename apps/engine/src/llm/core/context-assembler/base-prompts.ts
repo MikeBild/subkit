@@ -21,7 +21,14 @@ import type { AuthoringPromptHint, LlmFlow } from "../../types.ts";
 
 export type ConversationSurface = "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
 
-const BASE_SYSTEM_PROMPTS: Record<Exclude<LlmFlow, "converse" | "suggest_next">, string> = {
+// `workflow_step` is excluded alongside the two below, and for a plainer
+// reason: the engine does not compose that prompt at all. The workflow author
+// wrote the request body; the engine only carries it to the provider and books
+// the tokens.
+const BASE_SYSTEM_PROMPTS: Record<
+  Exclude<LlmFlow, "converse" | "suggest_next" | "workflow_step">,
+  string
+> = {
   generate: [
     "You are the subkit workflow engine's generate flow.",
     "Turn the user's description into a typed WorkflowDef draft.",
@@ -90,17 +97,30 @@ const BASE_SYSTEM_PROMPTS: Record<Exclude<LlmFlow, "converse" | "suggest_next">,
  * branch only so legacy callers (tests, eval fixtures) that ask for
  * the converse base get a small helpful fallback rather than throwing.
  */
+/** A base prompt, split into the part that survives a turn and the part that does not. */
+export interface BasePrompt {
+  /** Stable across turns of one conversation — safe inside the cached prefix. */
+  content: string;
+  /** Per-turn; must be rendered behind the cache breakpoint. */
+  volatile?: string;
+}
+
 export async function basePromptFor(
   flow: LlmFlow,
   surface?: ConversationSurface,
   authoringHint?: AuthoringPromptHint,
-): Promise<string> {
+): Promise<BasePrompt> {
   if (flow === "converse") {
     const result = await generateMainAgentSystemPrompt({
       ...(surface ? { surface } : {}),
       ...(authoringHint ? { authoring_hint: authoringHint } : {}),
     });
-    return result.content;
+    return { content: result.content, ...(result.volatile ? { volatile: result.volatile } : {}) };
+  }
+  if (flow === "workflow_step") {
+    throw new Error(
+      "basePromptFor: workflow_step carries an author-written body, not a base prompt",
+    );
   }
   if (flow === "suggest_next") {
     // `suggest_next` is intentionally outside this assembler's purview
@@ -109,5 +129,5 @@ export async function basePromptFor(
     // future drift towards the heavy assembler from compiling.
     throw new Error("basePromptFor: suggest_next must use suggestion-prompt.ts");
   }
-  return BASE_SYSTEM_PROMPTS[flow];
+  return { content: BASE_SYSTEM_PROMPTS[flow] };
 }

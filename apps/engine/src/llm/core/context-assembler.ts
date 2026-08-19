@@ -175,10 +175,13 @@ export async function assembleEnhancedPrompt(
   // Substitute runtime tokens (`${engine_url}` in the install-grounding block)
   // into the base prompt via the SAME mechanism as skill bodies, so the install
   // command is pre-filled. No-op when the base carries no `${…}` token.
-  const baseSystem = applyRuntimeTemplate(
-    await basePromptFor(p.flow, p.surface, p.authoring_hint),
-    p.runtime_context,
-  );
+  const basePrompt = await basePromptFor(p.flow, p.surface, p.authoring_hint);
+  const baseSystem = applyRuntimeTemplate(basePrompt.content, p.runtime_context);
+  // Per-turn slice of the base prompt (authoring focus). Rendered at the tail,
+  // with the other volatile sections, instead of inside the cached prefix.
+  const baseVolatile = basePrompt.volatile
+    ? applyRuntimeTemplate(basePrompt.volatile, p.runtime_context)
+    : null;
   const skillsApplicable = await retrieveApplicableSkills(
     {
       tenant_id: p.tenant_id,
@@ -468,8 +471,24 @@ export async function assembleEnhancedPrompt(
       ? renderTenantSummaryBlock(await loadTenantSummary(p.tenant_id, db))
       : null;
 
+  // Captured on every render so the drop ladder's final pass is the one that
+  // reaches the splitter.
+  let lastSections: Array<{ text: string; volatile: boolean }> = [];
   const render = () => {
     const sections: string[] = [];
+    // Which sections must NOT sit in the cached prefix.
+    //
+    // The classification lives HERE, where each section is pushed and its
+    // volatility is known, instead of being guessed downstream from a string
+    // prefix. cache-blocks.ts used a two-marker allow-list and treated
+    // everything unrecognised as stable, which quietly put the live tenant
+    // snapshot, the runtime block, the authoring context and the interaction
+    // log inside the cached prefix — each of them changing every turn.
+    const volatileTexts = new Set<string>();
+    const vol = (text: string) => {
+      volatileTexts.add(text);
+      sections.push(text);
+    };
     // Tenant snapshot appears at BOTH ends of the stable head:
     //   1) immediately before the base prompt so the model reads it
     //      first on the initial pass, and
@@ -477,9 +496,9 @@ export async function assembleEnhancedPrompt(
     //      is the most recent context before the user turn.
     // The duplication costs a few hundred tokens but reliably beats
     // the 85k-of-skills wall where a mid-prompt snapshot gets ignored.
-    if (tenantSummaryBlock) sections.push(tenantSummaryBlock);
+    if (tenantSummaryBlock) vol(tenantSummaryBlock);
     sections.push(baseSystem);
-    if (runtimeBlock) sections.push(runtimeBlock);
+    if (runtimeBlock) vol(runtimeBlock);
     // Ambient skills render as a single per-scope INDEX block — one
     // line per skill (slug + title + first-line description). The
     // LLM uses `load_skill(<slug>)` to pull the full body when it
@@ -526,9 +545,9 @@ export async function assembleEnhancedPrompt(
     // hints, not authoritative rules. Drops BEFORE recipe bodies in the
     // ladder (promoted skills are the durable surface; candidates are
     // the cheapest section to lose without breaking authoring).
-    if (skillCandidatesBlock) sections.push(skillCandidatesBlock);
+    if (skillCandidatesBlock) vol(skillCandidatesBlock);
     for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
-    if (userMemory) sections.push(formatUserMemory(userMemory));
+    if (userMemory) vol(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
     // Recorded endpoint samples render right above the latest preview:
     // the model reads "what the endpoints return" → "what the last
@@ -539,17 +558,19 @@ export async function assembleEnhancedPrompt(
     if (connectorSchemaBlock) sections.push(connectorSchemaBlock);
     if (probeShapeExamplesBlock) sections.push(probeShapeExamplesBlock);
     if (latestPreviewEntries.length > 0) {
-      sections.push(formatLatestPreview(latestPreviewEntries));
+      vol(formatLatestPreview(latestPreviewEntries));
     }
     if (interactionLogEntries.length > 0) {
-      sections.push(formatInteractionLog(interactionLogEntries));
+      vol(formatInteractionLog(interactionLogEntries));
     }
-    for (const f of failures) sections.push(formatFailure(f));
-    if (tenantSummaryBlock) sections.push(tenantSummaryBlock);
+    for (const f of failures) vol(formatFailure(f));
+    if (tenantSummaryBlock) vol(tenantSummaryBlock);
     // Authoring context lives at the very tail so it stays in the
     // volatile cache segment — it changes every turn and must not
     // invalidate the stable prefix above.
-    if (authoringContext) sections.push(authoringContext);
+    if (baseVolatile) vol(baseVolatile);
+    if (authoringContext) vol(authoringContext);
+    lastSections = sections.map((text) => ({ text, volatile: volatileTexts.has(text) }));
     return sections.join("\n\n");
   };
 
@@ -789,6 +810,7 @@ export async function assembleEnhancedPrompt(
     priorWorkflowsBlock !== null ? priorWorkflowsSurvivors.map((r) => r.slug) : [];
   return {
     system,
+    system_sections: lastSections,
     messages: p.user_turns,
     token_counts: {
       system: systemTokens,

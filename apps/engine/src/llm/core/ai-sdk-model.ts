@@ -83,17 +83,31 @@ function contextLengthFor(modelId: string): number {
   return MODEL_CONTEXT_LENGTHS[bare] ?? 128_000;
 }
 
-function prependDate(messages: SubkitLlmMessage[]): SubkitLlmMessage[] {
-  const first = messages[0]?.content;
-  if (typeof first === "string" && first.startsWith("The current date and time is"))
-    return messages;
-  return [
-    {
-      role: "system",
-      content: `The current date and time is ${new Date().toISOString()}`,
-    },
-    ...messages,
-  ];
+const DATE_PREFIX = "The current date and time is";
+
+/**
+ * State the wall-clock time to the model, AFTER the leading system messages.
+ *
+ * WHY not at position 0, where this used to sit: the string carries
+ * milliseconds, so it was unique on every call and stood in front of
+ * everything. A cached prefix has to match from the first byte, so nothing
+ * behind it could ever be reused — the cache hint attached to the stable
+ * system block could not have worked even once. Placing the stamp behind that
+ * block keeps the full precision AND leaves the prefix intact, so neither
+ * property has to be traded for the other.
+ */
+function withCurrentDate(messages: SubkitLlmMessage[]): SubkitLlmMessage[] {
+  const already = messages.some(
+    (m) => typeof m.content === "string" && m.content.startsWith(DATE_PREFIX),
+  );
+  if (already) return messages;
+  let at = 0;
+  while (at < messages.length && messages[at]?.role === "system") at += 1;
+  const stamp: SubkitLlmMessage = {
+    role: "system",
+    content: `${DATE_PREFIX} ${new Date().toISOString()}`,
+  };
+  return [...messages.slice(0, at), stamp, ...messages.slice(at)];
 }
 
 export interface AiSdkModelOptions extends ModelInitOptions {
@@ -280,7 +294,7 @@ export class AiSdkModel implements SubkitLlm {
       messages: params.messages as ModelMessage[],
       maxRetries: this.opts.maxRetries ?? 0,
       abortSignal: callSignal,
-      // prependDate() injects a leading system-role message into `messages`;
+      // withCurrentDate() injects a system-role message into `messages`;
       // AI SDK 7 rejects system messages inside the `messages` array unless
       // this is opted in (the top-level `instructions` option is the other
       // sanctioned channel). No-op when there is no system-role message.
@@ -364,7 +378,7 @@ export class AiSdkModel implements SubkitLlm {
       signal?: AbortSignal;
     },
   ): Promise<SubkitLlmResponse> {
-    const prepared = prependDate(messages);
+    const prepared = withCurrentDate(messages);
     const params: Parameters<typeof this.callWithFallback>[0] = {
       messages: prepared,
       temperature: opts?.temperature ?? 0,
@@ -399,7 +413,7 @@ export class AiSdkModel implements SubkitLlm {
     const isOModel = this.modelId.startsWith("o");
     const temperature = isOModel ? undefined : (input.temperature ?? 0);
 
-    const seeded = prependDate(input.messages);
+    const seeded = withCurrentDate(input.messages);
     const convo: SubkitLlmMessage[] = [...seeded];
 
     let finalResult: T | undefined;

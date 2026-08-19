@@ -16,6 +16,14 @@ export interface AgentSystemPromptInput {
 export interface AgentSystemPromptResult {
   /** The fully composed system prompt body. */
   content: string;
+  /**
+   * The per-turn slice of the prompt (the authoring-focus block).
+   *
+   * Kept out of `content` so the assembler can render it behind the cache
+   * breakpoint: it names the current stage and next action, so leaving it in
+   * the body invalidated the cached prefix once per turn.
+   */
+  volatile?: string;
 }
 
 export interface AgentDefinition {
