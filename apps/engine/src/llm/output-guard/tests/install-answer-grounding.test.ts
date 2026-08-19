@@ -33,7 +33,7 @@ function bash(...lines: string[]): string {
 
 describe("install-answer grounding — cross-layer (prompt + guard + chat-first)", () => {
   it("layer 1: the mcp base prompt renders the install command with the real host", async () => {
-    const base = await basePromptFor("converse", "mcp");
+    const base = (await basePromptFor("converse", "mcp")).content;
     const system = applyRuntimeTemplate(base, { engine_url: ENGINE_URL });
     expect(system).toContain(INSTALL_CMD);
     expect(system).not.toContain("${engine_url}");
@@ -41,7 +41,7 @@ describe("install-answer grounding — cross-layer (prompt + guard + chat-first)
 
   it("layer 1: authoring/no-surface base does NOT carry the install grounding (stays lean)", async () => {
     // Guards the surface-gating that keeps the drop-ladder budget honest.
-    const base = await basePromptFor("converse", undefined);
+    const base = (await basePromptFor("converse", undefined)).content;
     expect(base).not.toContain("GROUNDING sk SELF-QUESTIONS");
   });
 
@@ -52,7 +52,7 @@ describe("install-answer grounding — cross-layer (prompt + guard + chat-first)
     // bug), the turn supplies no host and the command must render as the literal
     // `${engine_url}` token (which the RUNTIME CONTEXT cannot_help rule then handles),
     // NEVER a fabricated real URL. Guards the "hardcoded host = false green" hole.
-    const base = await basePromptFor("converse", "mcp");
+    const base = (await basePromptFor("converse", "mcp")).content;
     const noHost = applyRuntimeTemplate(base, {});
     expect(noHost).toContain("${engine_url}/install");
     expect(noHost).not.toContain("engine.acme.dev");

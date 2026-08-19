@@ -37,25 +37,31 @@ const STABLE_HEAD_MARKERS = ["# Skill:", "## Doc:", "## Knowledge:"];
 const VOLATILE_HEAD_MARKERS = ["# User memory", "## Prior failure:"];
 
 export function splitPromptIntoBlocks(prompt: EnhancedPrompt, flow: LlmFlow): CacheBlocks {
-  // Base system prompt lives at the top of `prompt.system` and ends at the
-  // first section break (empty line followed by a stable/volatile header).
-  const sections = prompt.system.split("\n\n");
-
   const stableParts: string[] = [];
   const volatileParts: string[] = [];
 
-  for (const section of sections) {
-    if (section.length === 0) continue;
-    const isVolatile = VOLATILE_HEAD_MARKERS.some((m) => section.startsWith(m));
-    const isStable = STABLE_HEAD_MARKERS.some((m) => section.startsWith(m));
-    if (isVolatile) {
-      volatileParts.push(section);
-    } else if (isStable) {
-      stableParts.push(section);
-    } else {
-      // Base system prompt — attach to stable so the cache-hint covers the
-      // flow's instruction set (rarely changes per-tenant).
-      stableParts.push(section);
+  if (prompt.system_sections && prompt.system_sections.length > 0) {
+    // The assembler decided this where each section was built. Nothing to
+    // re-derive, nothing to guess.
+    for (const section of prompt.system_sections) {
+      if (section.text.length === 0) continue;
+      (section.volatile ? volatileParts : stableParts).push(section.text);
+    }
+  } else {
+    // Fallback for prompts assembled elsewhere (one-shot callers and older
+    // fixtures) that carry no section list.
+    //
+    // Note the polarity: unknown is VOLATILE here. The reverse — treating
+    // anything unrecognised as stable — is what put per-turn blocks inside the
+    // cached prefix, and an over-cautious split only costs a cache miss,
+    // whereas an over-eager one silently pays full price for the whole prefix.
+    for (const section of prompt.system.split("\n\n")) {
+      if (section.length === 0) continue;
+      const isVolatile = VOLATILE_HEAD_MARKERS.some((m) => section.startsWith(m));
+      const isStable =
+        !isVolatile &&
+        (STABLE_HEAD_MARKERS.some((m) => section.startsWith(m)) || stableParts.length === 0);
+      (isStable ? stableParts : volatileParts).push(section);
     }
   }
 

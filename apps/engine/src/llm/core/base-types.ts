@@ -11,6 +11,18 @@ import type { LlmFlow } from "../types.ts";
 export interface SubkitLlmMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | Array<TextPart | ImagePart | FilePart>;
+  /**
+   * Provider-specific per-message options, passed through to the SDK verbatim.
+   *
+   * This carries the prompt-cache hint. Without a slot for it the hint was
+   * built by `toSystemMessages` and then dropped on the way to the provider —
+   * `enable_prompt_cache` gated a value nothing could ever read, so every
+   * one-shot flow paid full price for a prefix it re-sent every call.
+   */
+  // Structural rather than imported: the SDK declares ProviderOptions but does
+  // not export it, and `messages` is cast to ModelMessage[] at the call site
+  // anyway (ai-sdk-model.ts), so this only has to describe the shape.
+  providerOptions?: Record<string, Record<string, unknown>>;
 }
 
 export interface SubkitLlmResponse {
