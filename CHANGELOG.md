@@ -15,6 +15,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Read-only POST searches use the read retry contract.** A request explicitly
   classified as `side_effects: "read"` retries transient 5xx responses without
   adding write idempotency metadata.
+- **Paginated reads can preserve raw response pages.** Set
+  `output_mode: "pages"` in the workflow version to return the ordered,
+  unmodified page bodies for append-only archival before normalization.
 
 ### Fixed
 
@@ -27,6 +30,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   remain supported.
 - **Page limits fail closed.** Reaching `max_pages` before the endpoint signals
   completion fails the step instead of reporting a bounded prefix as complete.
+- **The pagination memory ceiling fails closed.** If another page is required
+  after the accumulator reaches the engine safety limit, the step fails rather
+  than succeeding with a warning and a truncated result.
 
 ## [6.6.4] – 2026-08-19
 

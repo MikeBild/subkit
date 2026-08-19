@@ -107,6 +107,7 @@ interface OffsetSpec {
   offset_param: string;
   limit_param: string;
   parameter_location?: "query" | "body";
+  output_mode?: "items" | "pages";
   items_path?: string;
   stop_when_empty_path?: string;
   max_pages?: number;
@@ -119,6 +120,7 @@ interface PageSpec {
   limit_param: string;
   start_page: number;
   parameter_location?: "query" | "body";
+  output_mode?: "items" | "pages";
   items_path?: string;
   max_pages?: number;
 }
@@ -130,6 +132,7 @@ interface CursorSpec {
   page_size?: number;
   limit_param?: string;
   parameter_location?: "query" | "body";
+  output_mode?: "items" | "pages";
   items_path?: string;
   max_pages?: number;
 }
@@ -160,6 +163,10 @@ export function makeStrategy(spec: PaginationSpec, ctx: PageContext): Pagination
         });
       },
       merge(acc, body) {
+        if (spec.output_mode === "pages") {
+          acc.push(body);
+          return acc;
+        }
         const arr = extractArray(body, spec.items_path ?? spec.stop_when_empty_path);
         if (Array.isArray(arr)) acc.push(...arr);
         else acc.push(body);
@@ -192,6 +199,10 @@ export function makeStrategy(spec: PaginationSpec, ctx: PageContext): Pagination
         });
       },
       merge(acc, body) {
+        if (spec.output_mode === "pages") {
+          acc.push(body);
+          return acc;
+        }
         const arr = extractArray(body, spec.items_path);
         if (Array.isArray(arr)) acc.push(...arr);
         else acc.push(body);
@@ -226,6 +237,10 @@ export function makeStrategy(spec: PaginationSpec, ctx: PageContext): Pagination
       return buildNextPage(spec, ctx, params);
     },
     merge(acc, body) {
+      if (spec.output_mode === "pages") {
+        acc.push(body);
+        return acc;
+      }
       const arr = extractArray(body, spec.items_path);
       if (Array.isArray(arr)) acc.push(...arr);
       else acc.push(body);

@@ -204,6 +204,53 @@ describe("pagination checkpoint", () => {
     }
   });
 
+  test("POST body pagination can preserve each raw response page", async () => {
+    const postMock = await createMockServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      const offset = Number(body.offset);
+      const rows = offset === 0 ? [{ key: "a" }, { key: "b" }] : [{ key: "c" }];
+      jsonResponse(res, 200, { rows, rowCount: 3, metadata: { offset } });
+    });
+
+    try {
+      const { execution_id, step_row_id } = await createExecutionRow();
+      const step: RequestStep = {
+        id: "analytics-pages",
+        kind: "request",
+        method: "POST",
+        side_effects: "read",
+        url: `${postMock.baseUrl}/runReport`,
+        body: { dateRanges: [{ startDate: "2026-07-01", endDate: "2026-07-28" }] },
+        pagination: {
+          strategy: "offset",
+          parameter_location: "body",
+          output_mode: "pages",
+          page_size: 2,
+          offset_param: "offset",
+          limit_param: "limit",
+          items_path: "rows",
+          max_pages: 10,
+        },
+        max_retries: 0,
+      };
+      const ctx = makeStepRunCtx({ execution_id, step_row_id, step });
+      const result = await runRequestStep({ ctx, step, scope: {} });
+
+      expect(result.status).toBe("succeeded");
+      expect(result.output).toEqual([
+        { rows: [{ key: "a" }, { key: "b" }], rowCount: 3, metadata: { offset: 0 } },
+        { rows: [{ key: "c" }], rowCount: 3, metadata: { offset: 2 } },
+      ]);
+      expect((result.request_meta as { pages_fetched?: number } | undefined)?.pages_fetched).toBe(
+        2,
+      );
+    } finally {
+      await postMock.close();
+    }
+  });
+
   test("max_pages fails closed instead of returning a silent prefix", async () => {
     const limitMock = await createMockServer((_req, res) => {
       jsonResponse(res, 200, { rows: [{ id: 1 }, { id: 2 }] });
