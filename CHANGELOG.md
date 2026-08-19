@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.8.0] – 2026-08-19
+
+### Added
+
+- **The engine answers `/health` and `/ready` as well as `/v1/health` and
+  `/v1/readyz`.** The unversioned pair runs the same handlers — same bodies,
+  same status codes, the same 503 while the database is unreachable or the
+  unit is draining — so a probe that knows only the conventional names no
+  longer reads a 404 as a dead service. The versioned pair stays the
+  documented contract and the only probe in `openapi.json`.
+
 ## [6.7.1] – 2026-08-19
 
 ### Fixed
