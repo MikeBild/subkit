@@ -6,7 +6,9 @@ import type { MiddlewareHandler } from "hono";
 import { errorFields, log } from "../../logging/logger.ts";
 import type { AppEnv } from "../openapi.ts";
 
-const SILENT_PATHS = new Set(["/v1/health"]);
+// The unversioned alias is the same probe under another name, so it gets the
+// same silence — otherwise a fleet-wide health poll fills the log.
+const SILENT_PATHS = new Set(["/v1/health", "/health"]);
 
 export function loggingMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {

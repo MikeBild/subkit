@@ -1,4 +1,7 @@
 // GET /v1/health — public, returns engine status + db connectivity.
+// GET /v1/readyz — public readiness probe.
+// GET /health, GET /ready — the same two handlers under the unversioned
+// names an infrastructure probe reaches for by default.
 
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
@@ -89,35 +92,66 @@ export interface HealthDeps {
   db?: Db;
 }
 
+interface HealthSnapshot {
+  status: "ok";
+  version: string;
+  db_connected: boolean;
+  uptime_seconds: number;
+}
+
+interface ReadySnapshot {
+  status: "ready" | "unavailable";
+  db_connected: boolean;
+}
+
+async function livenessSnapshot(db: Db): Promise<HealthSnapshot> {
+  return {
+    status: "ok" as const,
+    version: OPENAPI_INFO.version,
+    db_connected: await pingDb(db),
+    uptime_seconds: Math.floor((Date.now() - BOOT_AT) / 1000),
+  };
+}
+
+async function readinessSnapshot(db: Db): Promise<{ body: ReadySnapshot; status: 200 | 503 }> {
+  const db_connected = await pingDb(db);
+  // Draining (graceful shutdown in progress) is also "not ready": we want
+  // the load balancer / systemd gate to stop routing new traffic here while
+  // in-flight conversation turns finish, without leaking that posture on the
+  // public /v1/health route.
+  const ready = db_connected && !getHealthState().draining;
+  return {
+    body: { status: ready ? ("ready" as const) : ("unavailable" as const), db_connected },
+    status: ready ? 200 : 503,
+  };
+}
+
 export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps = {}): void {
-  app.openapi(route, async (c) => {
-    const db = deps.db ?? c.get("db") ?? getDb();
-    const db_connected = await pingDb(db);
-    return c.json(
-      {
-        status: "ok" as const,
-        version: OPENAPI_INFO.version,
-        db_connected,
-        uptime_seconds: Math.floor((Date.now() - BOOT_AT) / 1000),
-      },
-      200,
-    );
-  });
+  const resolveDb = (c: { get: (k: "db") => Db | undefined }): Db =>
+    deps.db ?? c.get("db") ?? getDb();
+
+  app.openapi(route, async (c) => c.json(await livenessSnapshot(resolveDb(c)), 200));
 
   app.openapi(readyRoute, async (c) => {
-    const db = deps.db ?? c.get("db") ?? getDb();
-    const db_connected = await pingDb(db);
-    // Draining (graceful shutdown in progress) is also "not ready": we want
-    // the load balancer / systemd gate to stop routing new traffic here while
-    // in-flight conversation turns finish, without leaking that posture on the
-    // public /v1/health route.
-    const ready = db_connected && !getHealthState().draining;
-    return c.json(
-      {
-        status: ready ? ("ready" as const) : ("unavailable" as const),
-        db_connected,
-      },
-      ready ? 200 : 503,
-    );
+    const { body, status } = await readinessSnapshot(resolveDb(c));
+    return c.json(body, status);
+  });
+
+  // UNVERSIONED ALIASES.
+  //
+  // The versioned pair above is the documented contract and stays the only
+  // probe in the OpenAPI document. These two add no behaviour of their own:
+  // same handlers, same bodies, same status codes, pinned by
+  // `apps/engine/src/http/tests/health.test.ts`. They exist because a probe
+  // pointed at this process without knowledge of subkit's versioned paths
+  // reads the 404 as "the service is down", which sends the reader to the
+  // wrong service. Registered as plain routes rather than `app.openapi` for
+  // the same reason /metrics is: an operational endpoint is not a second name
+  // in the published API.
+  app.get("/health", async (c) => c.json(await livenessSnapshot(resolveDb(c))));
+
+  app.get("/ready", async (c) => {
+    const { body, status } = await readinessSnapshot(resolveDb(c));
+    return c.json(body, status);
   });
 }

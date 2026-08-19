@@ -105,3 +105,79 @@ describe("GET /v1/readyz", () => {
     }
   });
 });
+
+describe("unversioned probe aliases", () => {
+  test("GET /health is byte-for-byte the /v1/health payload", async () => {
+    const [versioned, alias] = await Promise.all([
+      fetch(`${ctx.baseUrl}/v1/health`),
+      fetch(`${ctx.baseUrl}/health`),
+    ]);
+    expect(alias.status).toBe(200);
+    expect(alias.status).toBe(versioned.status);
+    const aliasBody = (await alias.json()) as Record<string, unknown>;
+    const versionedBody = (await versioned.json()) as Record<string, unknown>;
+    // uptime_seconds advances between the two requests; everything else is
+    // the same wire shape and the same values.
+    expect(Object.keys(aliasBody).sort()).toEqual(Object.keys(versionedBody).sort());
+    expect(aliasBody.status).toBe(versionedBody.status);
+    expect(aliasBody.version).toBe(versionedBody.version);
+    expect(aliasBody.db_connected).toBe(versionedBody.db_connected);
+    expect(typeof aliasBody.uptime_seconds).toBe("number");
+  });
+
+  test("GET /ready answers the readiness probe, not liveness", async () => {
+    const res = await fetch(`${ctx.baseUrl}/ready`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.status).toBe("ready");
+    expect(body.db_connected).toBe(true);
+  });
+
+  test("both aliases answer without an authorization header", async () => {
+    for (const path of ["/health", "/ready"]) {
+      const res = await fetch(`${ctx.baseUrl}${path}`);
+      expect([path, res.status]).toEqual([path, 200]);
+    }
+  });
+
+  test("GET /ready returns 503 when the database ping fails", async () => {
+    const throwingDb = {
+      execute: async () => {
+        throw new Error("db down");
+      },
+    } as unknown as Db;
+    const app = new OpenAPIHono<AppEnv>();
+    registerHealthRoute(app, { db: throwingDb });
+    const res = await app.request("http://127.0.0.1/ready");
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.status).toBe("unavailable");
+    expect(body.db_connected).toBe(false);
+  });
+
+  test("GET /ready returns 503 while draining", async () => {
+    const okDb = { execute: async () => undefined } as unknown as Db;
+    const app = new OpenAPIHono<AppEnv>();
+    registerHealthRoute(app, { db: okDb });
+    setHealthState({ draining: true });
+    try {
+      const res = await app.request("http://127.0.0.1/ready");
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body.status).toBe("unavailable");
+      expect(body.db_connected).toBe(true);
+    } finally {
+      setHealthState({ draining: false });
+    }
+  });
+
+  test("the aliases stay out of the published OpenAPI document", async () => {
+    const res = await fetch(`${ctx.baseUrl}/openapi.json`);
+    expect(res.status).toBe(200);
+    const doc = (await res.json()) as { paths: Record<string, unknown> };
+    expect(Object.keys(doc.paths)).toContain("/v1/health");
+    expect(Object.keys(doc.paths)).toContain("/v1/readyz");
+    expect(Object.keys(doc.paths)).not.toContain("/health");
+    expect(Object.keys(doc.paths)).not.toContain("/ready");
+  });
+});
