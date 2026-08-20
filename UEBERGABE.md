@@ -198,5 +198,5 @@ Prüfweg: E2E.
 **AK-SK-G.1 · Gates**
 Dann: EN/DE-Katalog-Parität; Testids ohne UUIDs; `bun run verify` grün;
 **Cockpit-Bundle regeneriert und mitcommittet** (`check:cockpit-drift`
-grün); Konventions-Kopie v1.4 im Repo.
+grün); Konventions-Kopie v1.5 im Repo.
 Prüfweg: CI-Gate.
