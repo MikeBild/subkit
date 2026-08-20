@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { NAVIGATION } from "../apps/cockpit/src/app/navigation.ts";
 
 // The family convention (COCKPIT-KONVENTION.md) is deliberately not enforced by
 // shared code — six products copy patterns, they do not import them (§7). What
@@ -21,26 +22,15 @@ const baseUrl = externalBaseUrl || `http://127.0.0.1:${previewPort}`;
 // Every route the shell can reach. The rules about forbidden words and
 // unlabelled actions are DOM-wide claims, and a claim checked on two pages is
 // not the claim the convention makes.
-const ROUTES = [
-  "overview",
-  "decisions",
-  "chat",
-  "inbox",
-  "workflows",
-  "runs",
-  "connectors",
-  "knowledge",
-  "skills",
-  "files",
-  "audit",
-  "usage",
-  "people",
-  "access",
-  "api-access",
-  "operations",
-  "notifications",
-  "settings",
-];
+//
+// The list is READ from the navigation table rather than typed beside it. A
+// typed copy is a second truth about which pages exist (§12), and it drifts in
+// exactly one direction: a page added to the sidebar is a page the sweep never
+// hears about. Reading the definition means a new navigation target is swept
+// the day it is added, without anybody remembering this file.
+const ROUTES = NAVIGATION.flatMap((group) => group.items).map((item) =>
+  item.path.replace(/^\//, ""),
+);
 
 const MOUNT_MARKERS = {
   overview: '[data-testid="overview-page"]',
@@ -434,6 +424,108 @@ function catalogRows(path) {
   });
 }
 
+const EXECUTION_ROWS = Array.from({ length: 8 }, (_, index) => {
+  const rotate = index % 4;
+  const started = new Date(NOW - index * 300_000);
+  return {
+    id: index === 0 ? ID : `execution-${index}`,
+    workflow_id: ID,
+    workflow_name: `Monatsreport ${index + 1}`,
+    workflow_version_id: null,
+    source_kind: ["saved", "draft", "step", "saved"][rotate],
+    source_ref: null,
+    status: ["succeeded", "running", "failed", "timed_out"][rotate],
+    request_source: ["scheduler", "chat", "api", "scheduler"][rotate],
+    parent_execution_id: null,
+    started_at: started.toISOString(),
+    finished_at: rotate === 1 ? null : new Date(started.getTime() + 119_600).toISOString(),
+    created_at: started.toISOString(),
+  };
+});
+
+/**
+ * What a detail surface asks for, and what the list never had to answer.
+ *
+ * The sweep used to stop at the top level, so the fixture only ever answered
+ * `GET /v1/connectors` and never `GET /v1/connectors/{id}` — the same gap seen
+ * from the other side. The record IS the first row of the list the reader just
+ * came from, so the two surfaces cannot disagree about the same thing; the
+ * extras below are only the fields a detail body reads and a list column does
+ * not carry.
+ */
+const DETAIL_EXTRAS = {
+  "/v1/workflows": {
+    description: "Fasst die Zahlen des Vormonats zusammen und verschickt den Bericht.",
+    steps: [
+      {
+        key: "fetch",
+        uses: "reporting-api",
+        description: "Zahlen des Vormonats abrufen",
+        kind: "connector",
+      },
+      { key: "send", uses: "mailer", description: "Bericht verschicken", kind: "connector" },
+    ],
+  },
+  "/v1/skills": {
+    body: "# Sichere Reports\n\nErst die aufgezeichnete Antwort vergleichen, dann den Pfad ändern.\n",
+  },
+};
+
+const DETAIL_LISTS = [
+  "/v1/workflows",
+  "/v1/connectors",
+  "/v1/knowledge-sources",
+  "/v1/skills",
+  "/v1/files",
+];
+
+function detailRecord(listPath) {
+  return { ...catalogRows(listPath)[0], ...(DETAIL_EXTRAS[listPath] ?? {}) };
+}
+
+const KNOWLEDGE_CONTENT = {
+  knowledge_source_id: ID,
+  version: "3",
+  editable: true,
+  documents: [
+    {
+      path: "betriebshandbuch.md",
+      content: "# Betriebshandbuch\n\nWer den Monatsreport betreut, prüft zuerst die Zugänge.\n",
+    },
+  ],
+};
+
+const FILE_CONTENT = "# Notizen zum Report\n\nDie Zahlen stammen aus dem Vormonat.\n";
+
+const EXECUTION_STEPS = [
+  {
+    id: "step-1",
+    execution_id: ID,
+    step_key: "fetch",
+    status: "succeeded",
+    started_at: days(0),
+    finished_at: days(0),
+    duration_ms: 840,
+    attempt: 1,
+    error: null,
+    output_preview: null,
+    result_preview: null,
+  },
+  {
+    id: "step-2",
+    execution_id: ID,
+    step_key: "send",
+    status: "succeeded",
+    started_at: days(0),
+    finished_at: days(0),
+    duration_ms: 260,
+    attempt: 1,
+    error: null,
+    output_preview: "2 Empfänger benachrichtigt.",
+    result_preview: null,
+  },
+];
+
 function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
@@ -506,15 +598,16 @@ function apiMock(gateOpen) {
         },
       });
 
-    if (
-      [
-        "/v1/workflows",
-        "/v1/connectors",
-        "/v1/knowledge-sources",
-        "/v1/skills",
-        "/v1/files",
-      ].includes(path)
-    ) {
+    // The detail surfaces the sweep now reaches, answered from the same rows
+    // the list page shows.
+    for (const listPath of DETAIL_LISTS) {
+      if (path === `${listPath}/${ID}`) return json(route, detailRecord(listPath));
+    }
+    if (path === `/v1/knowledge-sources/${ID}/content`) return json(route, KNOWLEDGE_CONTENT);
+    if (path === `/v1/files/${ID}/content`)
+      return route.fulfill({ status: 200, contentType: "text/markdown", body: FILE_CONTENT });
+
+    if (DETAIL_LISTS.includes(path)) {
       const items = catalogRows(path);
       const categories =
         path === "/v1/workflows" || path === "/v1/connectors"
@@ -526,27 +619,14 @@ function apiMock(gateOpen) {
       return json(route, { items, total: items.length, ...(categories ? { categories } : {}) });
     }
 
-    if (path === "/v1/executions") {
-      const items = Array.from({ length: 8 }, (_, index) => {
-        const rotate = index % 4;
-        const started = new Date(NOW - index * 300_000);
-        return {
-          id: index === 0 ? ID : `execution-${index}`,
-          workflow_id: ID,
-          workflow_name: `Monatsreport ${index + 1}`,
-          workflow_version_id: null,
-          source_kind: ["saved", "draft", "step", "saved"][rotate],
-          source_ref: null,
-          status: ["succeeded", "running", "failed", "timed_out"][rotate],
-          request_source: ["scheduler", "chat", "api", "scheduler"][rotate],
-          parent_execution_id: null,
-          started_at: started.toISOString(),
-          finished_at: rotate === 1 ? null : new Date(started.getTime() + 119_600).toISOString(),
-          created_at: started.toISOString(),
-        };
+    if (path === "/v1/executions")
+      return json(route, {
+        items: EXECUTION_ROWS,
+        total: EXECUTION_ROWS.length,
+        next_cursor: null,
       });
-      return json(route, { items, total: items.length, next_cursor: null });
-    }
+    if (path === `/v1/executions/${ID}`) return json(route, EXECUTION_ROWS[0]);
+    if (path === `/v1/executions/${ID}/steps`) return json(route, { items: EXECUTION_STEPS });
 
     if (path === "/v1/audit-log")
       return json(route, {
@@ -727,6 +807,24 @@ const violations = [];
 function breach(rule, where, actual) {
   violations.push({ rule, where, actual });
 }
+
+/**
+ * §12 — a surface the sweep could not reach is reported, not skipped.
+ *
+ * The old sweep stopped at the top level and said nothing about it, so a whole
+ * class of pages read as "checked and clean" when it was never looked at. A gap
+ * is not a breach — nothing is broken — but it is not silence either: it stands
+ * in the output beside the verdict, in the pass case as much as in the fail
+ * case, so the size of what is unchecked stays visible.
+ */
+const gaps = [];
+
+function gap(where, why) {
+  gaps.push({ where, why });
+}
+
+/** The detail surfaces the sweep actually reached, named in the verdict. */
+const swept = [];
 
 /**
  * §5 / §6 — the role word is one spelling family-wide.
@@ -1341,6 +1439,57 @@ async function checkSilentWhenEmpty(page) {
     breach("§1", "/overview (leere Queue)", "Zone A nennt eine Zahl, obwohl nichts offen ist");
 }
 
+/**
+ * §5 / §2 / §12 — the detail surface of a collection is swept like any page.
+ *
+ * Which pages have one is deliberately NOT a list in this script. A collection
+ * is a page that offers to open one of its rows, so the sweep follows the
+ * affordance a person follows: the first row's own open action. That way a new
+ * collection is covered the day it renders one, and a list whose detail view
+ * disappears stops claiming coverage it no longer has.
+ *
+ * Both shapes count. Five catalogs navigate to a route of their own; the runs
+ * list opens its detail in place. The convention is about what a person reads,
+ * and a panel is read exactly like a page.
+ */
+async function sweepDetailSurface(page, route) {
+  const opener = page.locator('[data-testid="data-table-open-0"]');
+  if ((await opener.count()) === 0) {
+    if ((await page.locator('[data-testid="data-table"]').count()) > 0)
+      gap(`/${route} · Detailfläche`, "die Liste bietet keine Zeile zum Öffnen");
+    return;
+  }
+  const listUrl = page.url();
+  try {
+    await opener.first().click();
+  } catch (error) {
+    gap(`/${route} · Detailfläche`, `Zeile lässt sich nicht öffnen: ${error.message}`);
+    return;
+  }
+  await page.waitForLoadState("networkidle").catch(() => {});
+  const where = page.url() === listUrl ? `/${route} · Detailansicht` : `/${route}/…`;
+  const shown = await page
+    .locator('[data-testid^="detail-"], [role="dialog"]')
+    .first()
+    .waitFor({ state: "visible", timeout: 15_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!shown) {
+    gap(where, "Detailfläche erscheint nicht — die Fixture liefert dafür keinen Datensatz");
+    return;
+  }
+  // A skeleton is a promise, not a state: reading the page while one is up
+  // measures the loading behaviour instead of the words.
+  await page
+    .locator('[data-slot="skeleton"]')
+    .first()
+    .waitFor({ state: "detached", timeout: 8_000 })
+    .catch(() => {});
+  swept.push(where);
+  await checkNoUnknownState(page, where);
+  await checkActionLabels(page, where);
+}
+
 async function startPreview() {
   if (externalBaseUrl) return null;
   const server = spawn(
@@ -1427,6 +1576,7 @@ try {
     await checkNoUnknownState(page, `/${route}`);
     await checkActionLabels(page, `/${route}`);
     await checkNoIdentifiers(page, `/${route}`);
+    await sweepDetailSurface(page, route);
     await page.close();
   }
   await context.close();
@@ -1451,8 +1601,19 @@ try {
   server?.kill();
 }
 
+// What was looked at and what was not is printed in both outcomes: a check
+// that names its blind spot only when it fails hides it precisely when the
+// reader believes it (§12).
+const report = violations.length === 0 ? console.log : console.error;
+report(`Geprüft: ${ROUTES.length} Routen, ${swept.length} Detailflächen (${swept.join(", ")})`);
+if (gaps.length > 0) {
+  report(`Nicht geprüft: ${gaps.length}`);
+  for (const { where, why } of gaps) report(`  ${where} — ${why}`);
+}
+report("");
+
 if (violations.length === 0) {
-  console.log(`Konvention-Check bestanden: ${ROUTES.length} Routen, keine Verstöße.`);
+  console.log("Konvention-Check bestanden: keine Verstöße.");
   process.exit(0);
 }
 
