@@ -53,7 +53,7 @@ const loginRoute = createRoute({
   method: "get",
   path: "/v1/identity/cockpit-login",
   tags: ["identity"],
-  summary: "Start a browser login for the Subkit Cockpit",
+  summary: "Start a browser login for the SubKit Cockpit",
   request: { query: CockpitLoginQuery },
   responses: {
     302: {

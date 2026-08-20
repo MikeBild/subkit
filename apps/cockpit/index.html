@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow,noarchive" />
     <meta name="color-scheme" content="light dark" />
-    <title>Subkit Cockpit</title>
+    <title>SubKit Cockpit</title>
+    <!-- Konvention §6: derselbe Glyph wie die Wortmarke der Seitenleiste, als eigene
+         Datei aus apps/cockpit/public. Der href steht hier OHNE Basispfad — Vite stellt
+         `base` ("/cockpit/") beim Bauen selbst davor. Wer ihn hier hinschreibt, bekommt
+         "/cockpit/cockpit/favicon.svg", und der Cockpit-Handler beantwortet das mit der
+         SPA-Rückfalllinie: 200, text/html, ein Reiter ohne Icon. Deshalb prüft
+         cockpit-favicon.test.ts die Rechnung Quelle -> gebaute Fassung. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script>
       // BLOCKING, and in the document rather than in the bundle. The class has
       // to be on <html> before the first paint; applied from an effect instead,
