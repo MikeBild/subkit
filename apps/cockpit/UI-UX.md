@@ -175,6 +175,17 @@ There is no "next scheduled run" tile. The engine exposes a cron expression, a t
 paused flag, and computes no next-fire instant anywhere; a time this page derived itself would be a
 guess presented as a fact.
 
+### System surface
+
+The installation's tools page holds the tools and none of their results. It used to render the
+failure groups and the repair counter a second time, from a second read of the same digest, and it
+showed different numbers than the overview did — because the two counted different things and
+neither said which. The failure groups live on the overview, the proposed repairs live in the
+decision queue, and this page links to both rather than restating either.
+
+Checking and repairing stay two acts in one order: the drift scan reads and reports, and every
+repair it proposes becomes a decision a person makes. There is no button that does both.
+
 ### Conversation surface
 
 Chat does not take the shared page frame, and that is a recorded decision rather than an oversight:

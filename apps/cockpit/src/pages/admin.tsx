@@ -1286,6 +1286,18 @@ export function AccessPage() {
   );
 }
 
+/**
+ * The installation's tools, and nothing that belongs to the overview.
+ *
+ * This page used to render the failure groups and the repair counter a second
+ * time, from a second read of the same digest — and it showed different numbers
+ * than the overview did, because the two counted different things and neither
+ * said so. One truth: the findings live on the overview, the decisions live in
+ * the queue, and what is left here is the tool that produces them.
+ *
+ * Checking and repairing stay two acts in one order (§13): the scan reads and
+ * reports, and every repair it proposes becomes a decision a person makes.
+ */
 export function OperationsPage() {
   const { t, dateTime } = useI18n();
   const session = useSession();
@@ -1303,6 +1315,8 @@ export function OperationsPage() {
       }),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["admin", "operations"] });
+      await client.invalidateQueries({ queryKey: ["overview"] });
+      await client.invalidateQueries({ queryKey: ["decisions"] });
       toast.success(t("operations.scanStarted"));
     },
   });
@@ -1328,85 +1342,40 @@ export function OperationsPage() {
       {query.isPending ? (
         <LoadingCards testId="operations-loading" />
       ) : (
-        query.data && (
-          <div className="grid gap-4">
-            <Card data-testid="operations-summary">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <CardTitle>
-                    {query.data.all_clear
-                      ? t("operations.summaryAllClear")
-                      : t("operations.summaryAttention", {
-                          failures: query.data.failure_groups.length,
-                          patches: query.data.patch_candidates.pending,
-                        })}
-                  </CardTitle>
-                  <Badge variant={query.data.all_clear ? "secondary" : "destructive"}>
-                    {query.data.all_clear ? t("operations.healthy") : t("operations.attention")}
-                  </Badge>
-                </div>
-                <CardDescription>
+        <div className="grid gap-4">
+          <Card data-testid="operations-tools">
+            <CardHeader>
+              <CardTitle>{t("operations.scanTitle")}</CardTitle>
+              <CardDescription>{t("operations.scanDescription")}</CardDescription>
+            </CardHeader>
+            {query.data && (
+              <CardContent>
+                <p className="text-sm text-muted-foreground" data-testid="operations-generated">
                   {t("operations.generated", { date: dateTime(query.data.generated_at) })}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-            <section className="grid gap-3 lg:grid-cols-2">
-              <Card data-testid="operations-failures">
-                <CardHeader>
-                  <CardTitle>{t("operations.failures")}</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2">
-                  {query.data.failure_groups.length ? (
-                    query.data.failure_groups.map((failure, index) => (
-                      <div
-                        key={`${failure.cause}-${index}`}
-                        className="rounded-lg border p-3"
-                        data-testid={`operations-failure-${index}`}
-                      >
-                        <p className="font-medium">{failure.workflow_name || failure.cause}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {failure.cause} · {failure.count}
-                        </p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{t("operations.noFailures")}</p>
-                  )}
-                </CardContent>
-              </Card>
-              <Card data-testid="operations-risks">
-                <CardHeader>
-                  <CardTitle>{t("operations.risks")}</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2">
-                  {query.data.risk.length ? (
-                    query.data.risk.map((risk, index) => (
-                      <div
-                        key={`${risk.headline}-${index}`}
-                        className="rounded-lg border p-3"
-                        data-testid={`operations-risk-${index}`}
-                      >
-                        <div className="flex gap-2">
-                          <p className="font-medium">{risk.headline}</p>
-                          <Badge variant={risk.severity === "critical" ? "destructive" : "outline"}>
-                            {t(
-                              risk.severity === "critical"
-                                ? "severity.critical"
-                                : "severity.warning",
-                            )}
-                          </Badge>
-                        </div>
-                        <p className="mt-1 text-sm text-muted-foreground">{risk.detail}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{t("operations.noRisks")}</p>
-                  )}
-                </CardContent>
-              </Card>
-            </section>
-          </div>
-        )
+                </p>
+              </CardContent>
+            )}
+          </Card>
+
+          <Card data-testid="operations-elsewhere">
+            <CardHeader>
+              <CardTitle>{t("operations.findingsTitle")}</CardTitle>
+              <CardDescription>{t("operations.findingsDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              <Button asChild variant="outline">
+                <Link to="/overview" data-testid="operations-open-overview">
+                  {t("operations.openOverview")}
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/decisions" data-testid="operations-open-decisions">
+                  {t("operations.openDecisions")}
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </AdminFrame>
   );

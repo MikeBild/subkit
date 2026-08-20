@@ -938,6 +938,33 @@ async function readZoneACount(page) {
   return Number(value);
 }
 
+/**
+ * §12 / §1 — one truth per fact.
+ *
+ * The tools page rendered the failure groups and the repair counter a second
+ * time, from a second read of the same digest, and reported different numbers
+ * than the overview did. A page that restates another page's findings will
+ * eventually contradict it, so the restatement is what is asserted against —
+ * not the numbers, which is a race nobody wins.
+ */
+async function checkOperationsIsToolsOnly(page) {
+  const echo = await page.evaluate((cause) => {
+    return {
+      cause: document.body.innerText.includes(cause),
+      groups: document.querySelectorAll('[data-testid^="operations-failure-"]').length,
+      risks: document.querySelectorAll('[data-testid^="operations-risk-"]').length,
+      link: Boolean(document.querySelector('[data-testid="operations-open-overview"]')),
+    };
+  }, FAILURE_GROUPS[0].cause);
+  if (echo.cause)
+    breach("§12", "/operations", "wiederholt die Fehlergruppen-Ursache der Übersicht");
+  if (echo.groups > 0)
+    breach("§12", "/operations", `${echo.groups} Fehlergruppen-Zeilen neben der Übersicht`);
+  if (echo.risks > 0)
+    breach("§12", "/operations", `${echo.risks} Risiko-Zeilen neben der Übersicht`);
+  if (!echo.link) breach("§12", "/operations", "kein Weg zu den Befunden auf der Übersicht");
+}
+
 /** §8.2 — positions older than three days stand under "Liegt schon länger". */
 async function checkAgingRubric(page) {
   const aged = page.locator('[data-testid="decisions-aged"]');
@@ -1138,6 +1165,10 @@ try {
   await checkAgingRubric(decisions);
   await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, bannerTotal });
   await decisions.close();
+
+  const operations = await openPage(context, "operations");
+  await checkOperationsIsToolsOnly(operations);
+  await operations.close();
 
   for (const route of ROUTES) {
     let page;
