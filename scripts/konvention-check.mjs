@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import { NAVIGATION } from "../apps/cockpit/src/app/navigation.ts";
+import { ALL_ROUTE_PATHS } from "../apps/cockpit/src/app/route-table.ts";
 import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 
 // The family convention (COCKPIT-KONVENTION.md) is deliberately not enforced by
@@ -20,23 +20,35 @@ const previewPort = Number(process.env.COCKPIT_PREVIEW_PORT || 4176);
 const externalBaseUrl = process.env.COCKPIT_BASE_URL?.replace(/\/$/, "");
 const baseUrl = externalBaseUrl || `http://127.0.0.1:${previewPort}`;
 
-// Every route the shell can reach. The rules about forbidden words and
+// Every route the cockpit can render. The rules about forbidden words and
 // unlabelled actions are DOM-wide claims, and a claim checked on two pages is
 // not the claim the convention makes.
 //
-// The list is READ from the navigation table rather than typed beside it. A
-// typed copy is a second truth about which pages exist (§12), and it drifts in
-// exactly one direction: a page added to the sidebar is a page the sweep never
-// hears about. Reading the definition means a new navigation target is swept
-// the day it is added, without anybody remembering this file.
-const ROUTES = NAVIGATION.flatMap((group) => group.items).map((item) =>
-  item.path.replace(/^\//, ""),
-);
+// The list is READ from the ROUTER's table, not typed beside it and not taken
+// from the navigation. A typed copy is a second truth about which pages exist
+// (§12). And the navigation is the wrong source even though the derivation is
+// right: it knows the pages it LINKS to, not the pages that are there. A route
+// reachable only by a redirect, a menu or a pasted link would be structurally
+// invisible — the check could run forever and never see it. `/approvals`,
+// `/chat/new` and `/chat/{id}` are exactly that shape here.
+const ROUTES = ALL_ROUTE_PATHS.map((path) => path.replace(/^\//, ""));
 
+/** A parameterised segment needs a record; the fixture's is the one it gets. */
+function concreteRoute(route) {
+  return route.replace("$conversationId", ID).replace("$resourceId", ID);
+}
+
+// How a mounted page is recognised. This is a table about RENDERING, not about
+// which routes exist — the two redirects are listed by the page they must land
+// on, which is the whole claim a redirect makes.
 const MOUNT_MARKERS = {
+  "": '[data-testid="overview-page"]',
+  approvals: '[data-testid="decisions-page"]',
   overview: '[data-testid="overview-page"]',
   decisions: '[data-testid="decisions-page"]',
   chat: '[data-testid="chat-workspace"]',
+  "chat/new": '[data-testid="chat-workspace"]',
+  "chat/$conversationId": '[data-testid="chat-workspace"]',
   people: '[data-testid="admin-people"]',
   access: '[data-testid="admin-access"]',
   "api-access": '[data-testid="admin-api-access"]',
@@ -48,6 +60,11 @@ const MOUNT_MARKERS = {
   knowledge: '[data-testid="catalog-knowledge"]',
   skills: '[data-testid="catalog-skills"]',
   files: '[data-testid="catalog-files"]',
+  "workflows/$resourceId": '[data-testid="detail-workflows"]',
+  "connectors/$resourceId": '[data-testid="detail-connectors"]',
+  "knowledge/$resourceId": '[data-testid="detail-knowledge"]',
+  "skills/$resourceId": '[data-testid="detail-skills"]',
+  "files/$resourceId": '[data-testid="detail-files"]',
 };
 
 const NOW = Date.now();
@@ -1482,7 +1499,13 @@ async function checkCounterCoherence(page, surfaces) {
  * so an empty one is itself a breach.
  */
 function checkBannerAgainstRubrics(banner, rubrics) {
-  if (!banner) return;
+  if (!banner) {
+    gap(
+      "/overview vs. /decisions",
+      "kein gelesenes Banner — der Abgleich von Banner und Rubriken entfällt",
+    );
+    return;
+  }
   for (const [name, rubric] of Object.entries(rubrics)) {
     if (name === "aged") continue;
     const claim = banner.claims[name];
@@ -1590,17 +1613,17 @@ async function checkSilentWhenEmpty(page) {
 }
 
 /**
- * §5 / §2 / §12 — the detail surface of a collection is swept like any page.
+ * §5 / §2 / §12 — a detail surface that is NOT a route is swept too.
  *
- * Which pages have one is deliberately NOT a list in this script. A collection
- * is a page that offers to open one of its rows, so the sweep follows the
- * affordance a person follows: the first row's own open action. That way a new
- * collection is covered the day it renders one, and a list whose detail view
- * disappears stops claiming coverage it no longer has.
+ * The route table covers every detail PAGE. It cannot cover a detail view that
+ * has no route of its own — the runs list opens its own in place — and a
+ * surface with no address is exactly the surface nobody remembers to check.
  *
- * Both shapes count. Five catalogs navigate to a route of their own; the runs
- * list opens its detail in place. The convention is about what a person reads,
- * and a panel is read exactly like a page.
+ * Which lists have one is deliberately not a table here. A collection is a page
+ * that offers to open one of its rows, so this follows the affordance a person
+ * follows: the first row's own open action. If that leads to an address, the
+ * route table already swept it and there is nothing to repeat; if it opens in
+ * place, this is the only chance to read it.
  */
 async function sweepDetailSurface(page, route) {
   const opener = page.locator('[data-testid="data-table-open-0"]');
@@ -1616,10 +1639,18 @@ async function sweepDetailSurface(page, route) {
     gap(`/${route} · Detailfläche`, `Zeile lässt sich nicht öffnen: ${error.message}`);
     return;
   }
-  await page.waitForLoadState("networkidle").catch(() => {});
-  const where = page.url() === listUrl ? `/${route} · Detailansicht` : `/${route}/…`;
+  try {
+    await page.waitForLoadState("networkidle", { timeout: 15_000 });
+  } catch (error) {
+    gap(`/${route} · Detailfläche`, `wurde nach dem Öffnen nicht ruhig: ${error.message}`);
+    return;
+  }
+  // An address means a route, and a route is swept from the table.
+  if (page.url() !== listUrl) return;
+
+  const where = `/${route} · Detailansicht`;
   const shown = await page
-    .locator('[data-testid^="detail-"], [role="dialog"]')
+    .locator('[role="dialog"]')
     .first()
     .waitFor({ state: "visible", timeout: 15_000 })
     .then(() => true)
@@ -1629,12 +1660,21 @@ async function sweepDetailSurface(page, route) {
     return;
   }
   // A skeleton is a promise, not a state: reading the page while one is up
-  // measures the loading behaviour instead of the words.
-  await page
-    .locator('[data-slot="skeleton"]')
-    .first()
-    .waitFor({ state: "detached", timeout: 8_000 })
-    .catch(() => {});
+  // measures the loading behaviour instead of the words. A skeleton that never
+  // goes away is therefore not a thing to wait out quietly — it means this
+  // surface was not read, and that is reported as a gap rather than swallowed.
+  try {
+    await page
+      .locator('[data-slot="skeleton"]')
+      .first()
+      .waitFor({ state: "detached", timeout: 8_000 });
+  } catch {
+    gap(
+      where,
+      "zeigte nach 8s noch ein Skelett — gelesen wurde ihr Ladeverhalten, nicht die Seite",
+    );
+    return;
+  }
   swept.push(where);
   await checkNoUnknownState(page, where);
   await checkActionLabels(page, where);
@@ -1676,8 +1716,9 @@ async function startPreview() {
 
 async function openPage(context, route) {
   const page = await context.newPage();
-  const response = await page.goto(`${baseUrl}/cockpit/${route}`, { waitUntil: "networkidle" });
-  if (!response?.ok()) throw new Error(`/${route} returned HTTP ${response?.status()}`);
+  const target = concreteRoute(route);
+  const response = await page.goto(`${baseUrl}/cockpit/${target}`, { waitUntil: "networkidle" });
+  if (!response?.ok()) throw new Error(`/${target} returned HTTP ${response?.status()}`);
   const marker = MOUNT_MARKERS[route] ?? `[data-testid="resource-${route}"]`;
   await page.locator(marker).waitFor({ state: "visible", timeout: 15_000 });
   return page;
@@ -1789,7 +1830,12 @@ try {
 // that names its blind spot only when it fails hides it precisely when the
 // reader believes it (§12).
 const report = violations.length === 0 ? console.log : console.error;
-report(`Geprüft: ${ROUTES.length} Routen, ${swept.length} Detailflächen (${swept.join(", ")})`);
+report(
+  `Geprüft: ${ROUTES.length} Routen aus der Router-Tabelle` +
+    (swept.length > 0
+      ? `, dazu ${swept.length} Detailfläche(n) ohne eigene Route (${swept.join(", ")})`
+      : ", keine Detailfläche ohne eigene Route"),
+);
 if (gaps.length > 0) {
   report(`Nicht geprüft: ${gaps.length}`);
   for (const { where, why } of gaps) report(`  ${where} — ${why}`);
