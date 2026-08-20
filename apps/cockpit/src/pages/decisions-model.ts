@@ -461,12 +461,21 @@ export interface DecisionTotals {
   conversation: number;
 }
 
+/**
+ * The three states, disjoint by construction.
+ *
+ * Each is the count of exactly one rubric on the decisions page, which is what
+ * lets another surface name a subset without contradicting the page it links
+ * to: `blocking` is the "blocking" rubric, `overdue` is the "expired" one, and
+ * `aging` is the aged rubric — which sits under a heading that says it blocks
+ * nothing, and must therefore never be counted as something that does.
+ */
 export interface OpenDecisionSubsets {
   /** Stopping something right now — blocking or inside its deadline. */
   blocking: number;
-  /** Past its deadline. */
+  /** Past its deadline, so it stopped being decidable rather than blocking. */
   overdue: number;
-  /** Waiting on nobody, and waiting long enough to say so. */
+  /** Blocking nothing, and sitting long enough that the queue says so. */
   aging: number;
 }
 
@@ -539,31 +548,49 @@ export function countOpenDecisions(input: {
   };
 }
 
-/** How the incident banner names its share of the queue. */
-export type BannerMode = "none" | "all" | "some" | "atLeast";
-
+/**
+ * What the incident banner may claim, and about how many.
+ *
+ * Only the two states §8.7 names: something is stopped right now, or a deadline
+ * passed unanswered. A position that merely sat is deliberately NOT in here.
+ * The queue files it under a heading that says it blocks nothing, and a red
+ * banner one click away saying it blocks a workflow is the product
+ * contradicting itself — which is exactly what this used to do for three of the
+ * five positions it counted. Age keeps the surfaces it honestly owns: Zone A's
+ * oldest-position line, the red navigation badge, and the rubric that names it.
+ *
+ * The two counts stay separate rather than summing into one predicate, because
+ * no single verb is true of both: an expired position stopped nothing, it
+ * lapsed.
+ */
 export interface BannerSubset {
-  /** Positions that are stopped, lapsed or aged — the ones costing something. */
+  /** Stopped right now — the queue's own blocking rubric. */
+  blocking: number;
+  /** Deadline passed unanswered — the queue's own expired rubric. */
+  overdue: number;
+  /** blocking + overdue. The banner's whole claim, and nothing beyond it. */
   count: number;
-  /** Every open position, so the banner never states a number without its base. */
+  /** Every open position, so neither number is stated without its base. */
   total: number;
-  mode: BannerMode;
+  /** The page holds fewer positions than the engine counted, so both numbers
+   *  are floors and the wording has to say "at least". */
+  atLeast: boolean;
+  /** Whether §8.7 applies at all. */
+  shown: boolean;
 }
 
-/**
- * The banner's subset, named rather than implied.
- *
- * §8.7 wants concrete numbers; a bare count next to a different count in Zone A
- * is what made the two read as a contradiction. Saying "N of M" makes the
- * relation explicit, and where the page holds fewer positions than the engine
- * counted, the honest word is "at least".
- */
 export function bannerSubset(open: OpenDecisions): BannerSubset {
-  const count = open.subsets.overdue + open.subsets.blocking + open.subsets.aging;
-  if (count === 0 || open.total === 0) return { count: 0, total: open.total, mode: "none" };
-  if (open.capped) return { count, total: open.total, mode: "atLeast" };
-  if (count >= open.total) return { count: open.total, total: open.total, mode: "all" };
-  return { count, total: open.total, mode: "some" };
+  const blocking = open.subsets.blocking;
+  const overdue = open.subsets.overdue;
+  const count = blocking + overdue;
+  return {
+    blocking,
+    overdue,
+    count,
+    total: open.total,
+    atLeast: open.capped && count > 0,
+    shown: count > 0 && open.total > 0,
+  };
 }
 
 export function filterByKinds(

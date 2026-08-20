@@ -419,7 +419,14 @@ function DecisionSection({
   children: ReactNode;
 }) {
   return (
-    <section className={cn("grid gap-2", muted && "opacity-70")} data-testid={testId}>
+    // The count is readable as a number, not only as rendered text: the banner
+    // states a share of this rubric, and the two are asserted against each
+    // other rather than trusted to stay in step.
+    <section
+      className={cn("grid gap-2", muted && "opacity-70")}
+      data-testid={testId}
+      data-count={String(count)}
+    >
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold">{title}</h2>
         <Badge variant="secondary" className="tabular-nums">

@@ -895,22 +895,37 @@ async function checkIncidentBanner(page, gateOpen) {
 }
 
 /**
- * §8.1 / §8.7 — the banner names a SUBSET, and says of what.
+ * §8.1 / §8.7 — the banner names its subsets, and says of what.
  *
- * A bare count beside a different count in Zone A is what made one screen show
- * 25, 30 and 119 without a word about how the three were related. The sentence
- * has to state both numbers, and the numbers have to be readable as numbers so
- * the four surfaces can be compared against each other rather than by eye.
+ * The pinned wording changed here on purpose, and it is a correction of the
+ * measure rather than a relaxation of it. The earlier regex pinned ONE sentence
+ * — "N von M blockieren ihren Workflow" — over a subset that summed the
+ * blocking, the lapsed and the merely-old positions. Two of those three claims
+ * were false: a lapsed position stopped nothing, and the aged ones sit one
+ * click away under a rubric whose own hint reads "Blockiert nichts". The
+ * assert therefore pinned a sentence the product could only satisfy by lying.
+ *
+ * What is pinned now is strictly more: each claim states its own share AND its
+ * base (§8.1), and the LABEL of each claim must equal the heading of the rubric
+ * it is a share of — which is checked against the rendered queue in
+ * checkCounterCoherence. A banner can no longer be worded into agreement with
+ * itself while disagreeing with the page it links to.
  */
-const BANNER_SENTENCE =
-  /^(Alle \d+|Mindestens \d+ von \d+|\d+ von \d+) blockieren ihren Workflow\.$/;
+const BANNER_CLAIM = /^(.+): (mindestens )?(\d+) von (\d+)$/;
+
+async function readBannerClaim(page, testId) {
+  return page.evaluate((id) => {
+    const element = document.querySelector(`[data-testid="${id}"]`);
+    if (!(element instanceof HTMLElement)) return null;
+    return { text: element.innerText.trim(), count: element.getAttribute("data-subset") };
+  }, testId);
+}
 
 async function checkBannerSubset(page) {
   const subset = await page.evaluate(() => {
     const element = document.querySelector('[data-testid="incident-decisions-count"]');
     if (!element) return null;
     return {
-      text: element.innerText.trim(),
       count: element.getAttribute("data-subset"),
       total: element.getAttribute("data-subset-total"),
     };
@@ -919,8 +934,6 @@ async function checkBannerSubset(page) {
     breach("§8.1", "/overview · overview-incident", "Banner nennt keine Teilmenge");
     return null;
   }
-  if (!BANNER_SENTENCE.test(subset.text))
-    breach("§8.1", "/overview · incident-decisions-count", subset.text);
   const count = Number(subset.count);
   const total = Number(subset.total);
   if (!(count > 0 && count <= total))
@@ -929,7 +942,38 @@ async function checkBannerSubset(page) {
       "/overview · incident-decisions-count",
       `Teilmenge ${subset.count} passt nicht in Gesamtzahl ${subset.total}`,
     );
-  return total;
+
+  const claims = {};
+  let named = 0;
+  for (const [name, testId] of [
+    ["blocking", "incident-blocking"],
+    ["overdue", "incident-overdue"],
+  ]) {
+    const claim = await readBannerClaim(page, testId);
+    if (!claim) continue;
+    named += 1;
+    const match = BANNER_CLAIM.exec(claim.text);
+    if (!match) {
+      breach("§8.1", `/overview · ${testId}`, claim.text);
+      continue;
+    }
+    const [, label, , share, base] = match;
+    if (Number(share) !== Number(claim.count))
+      breach("§8.1", `/overview · ${testId}`, `Satz nennt ${share}, das Attribut ${claim.count}`);
+    if (Number(base) !== total)
+      breach("§8.1", `/overview · ${testId}`, `Satz nennt Gesamtzahl ${base} statt ${total}`);
+    claims[name] = { label: label.trim(), count: Number(claim.count) };
+  }
+  if (named === 0)
+    breach("§8.7", "/overview · overview-incident", "Banner nennt keine einzige Teilmenge");
+  const stated = Object.values(claims).reduce((sum, claim) => sum + claim.count, 0);
+  if (stated !== count)
+    breach(
+      "§8.1",
+      "/overview · overview-incident",
+      `Teilmenge ${count}, benannt sind aber nur ${stated}`,
+    );
+  return { total, claims };
 }
 
 /** §1 — Zone A's head is the same number the badge carries, or the page lies. */
@@ -1092,13 +1136,29 @@ async function checkCounterCoherence(page, surfaces) {
       /^decision(-expired|-deferred|-aged)?-\d+$/.test(element.getAttribute("data-testid") ?? ""),
     );
     const wrapper = document.querySelector('[data-testid="decisions-queue"]');
+    const rubric = (id) => {
+      const section = document.querySelector(`[data-testid="${id}"]`);
+      if (!section) return null;
+      const heading = section.querySelector("h1, h2, h3, h4");
+      return {
+        count: Number(section.getAttribute("data-count")),
+        heading: heading instanceof HTMLElement ? heading.innerText.trim() : "",
+      };
+    };
     return {
       positions: cards.length,
       keys: cards.map((card) => card.getAttribute("data-decision-key")),
       total: wrapper?.getAttribute("data-total") ?? null,
       capped: wrapper?.getAttribute("data-capped") ?? null,
+      rubrics: {
+        blocking: rubric("decisions-blocking"),
+        overdue: rubric("decisions-expired"),
+        aged: rubric("decisions-aged"),
+      },
     };
   });
+
+  checkBannerAgainstRubrics(surfaces.banner, rendered.rubrics);
 
   if (rendered.positions !== QUEUE_SHOWN)
     breach(
@@ -1122,7 +1182,7 @@ async function checkCounterCoherence(page, surfaces) {
   const named = {
     "nav-decisions-count": surfaces.badge === null ? null : Number(surfaces.badge),
     "zone-a-decisions-count": surfaces.zoneA,
-    "incident-decisions-count": surfaces.bannerTotal,
+    "incident-decisions-count": surfaces.banner?.total ?? null,
     "decisions-queue": queueTotal,
   };
   for (const [where, value] of Object.entries(named)) {
@@ -1148,6 +1208,75 @@ async function checkCounterCoherence(page, surfaces) {
       "/decisions · decisions-queue",
       `${rendered.positions} von ${queueTotal} gezeigt, aber nicht als gekürzt ausgewiesen`,
     );
+}
+
+/**
+ * §8.1 / §8.7 — the banner and the queue describe the same page.
+ *
+ * Every claim the banner makes is read back against the rubric it is a share
+ * of: same words for the pile, same number in it. And the aged rubric — the
+ * one whose hint says it blocks nothing — must appear in no claim at all,
+ * which is what stops the sum from quietly growing back. The fixture keeps a
+ * non-empty aged rubric on purpose; without one this assertion proves nothing,
+ * so an empty one is itself a breach.
+ */
+function checkBannerAgainstRubrics(banner, rubrics) {
+  if (!banner) return;
+  for (const [name, rubric] of Object.entries(rubrics)) {
+    if (name === "aged") continue;
+    const claim = banner.claims[name];
+    if (!rubric) {
+      if (claim)
+        breach(
+          "§8.7",
+          "/overview vs. /decisions",
+          `Banner behauptet "${claim.label}", die Queue führt die Rubrik nicht`,
+        );
+      continue;
+    }
+    if (!claim) {
+      if (rubric.count > 0)
+        breach(
+          "§8.7",
+          "/overview vs. /decisions",
+          `Queue führt ${rubric.count} unter "${rubric.heading}", das Banner schweigt dazu`,
+        );
+      continue;
+    }
+    if (claim.label !== rubric.heading)
+      breach(
+        "§8.7",
+        "/overview vs. /decisions",
+        `Banner nennt die Rubrik "${claim.label}", die Queue "${rubric.heading}"`,
+      );
+    if (claim.count !== rubric.count)
+      breach(
+        "§8.1",
+        "/overview vs. /decisions",
+        `Banner zählt ${claim.count} für "${rubric.heading}", die Queue ${rubric.count}`,
+      );
+  }
+
+  if (!rubrics.aged || rubrics.aged.count === 0) {
+    breach(
+      "§8.7",
+      "/decisions",
+      "keine belegte Rubrik, die nichts blockiert — die Banner-Abgrenzung ist ungeprüft",
+    );
+    return;
+  }
+  const stated = Object.values(banner.claims).reduce((sum, claim) => sum + claim.count, 0);
+  const withAged = stated + rubrics.aged.count;
+  for (const claim of Object.values(banner.claims)) {
+    if (claim.label === rubrics.aged.heading)
+      breach(
+        "§8.7",
+        "/overview vs. /decisions",
+        `Banner behauptet "${rubrics.aged.heading}" — diese Rubrik blockiert nichts`,
+      );
+  }
+  if (stated === withAged)
+    breach("§8.7", "/overview", "Abgrenzung nicht prüfbar: die Alters-Rubrik ist leer");
 }
 
 /** §8.1 / §8.7 — nothing open means no badge and no banner, not a quiet zero. */
@@ -1224,14 +1353,14 @@ try {
   await checkAdminGroupName(overview);
   await checkInstallationEntries(overview);
   const badgeValue = await checkDecisionsNavEntry(overview);
-  const bannerTotal = await checkIncidentBanner(overview, true);
+  const banner = await checkIncidentBanner(overview, true);
   const zoneA = await readZoneACount(overview);
   await overview.close();
 
   const decisions = await openPage(context, "decisions");
   await checkAgingRubric(decisions);
   await checkCorrectionTitles(decisions);
-  await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, bannerTotal });
+  await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, banner });
   await decisions.close();
 
   const operations = await openPage(context, "operations");

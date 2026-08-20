@@ -587,11 +587,10 @@ const EN = {
   "overview.waiting.none": "Nothing is waiting for a decision.",
   "overview.waiting.checked": "Checked {date}",
   "overview.waiting.open": "Open decisions",
-  "overview.incident.subset": "{count} of {total} are blocking their workflow.",
-  "overview.incident.all": "All {total} are blocking their workflow.",
-  "overview.incident.atLeast": "At least {count} of {total} are blocking their workflow.",
+  "overview.incident.claim": "{label}: {count} of {total}",
+  "overview.incident.claimAtLeast": "{label}: at least {count} of {total}",
   "overview.incident.description":
-    "The oldest open position has waited {days} days. Until it is decided its workflow keeps failing.",
+    "These positions are stopped, or their deadline passed unanswered. Both are resolved in the decision queue.",
   "overview.incident.open": "Decide now",
   "decisions.description":
     "Every proposal that needs a person: proposed fixes, skill candidates and conversations waiting for an answer.",
@@ -1575,11 +1574,10 @@ const DE: Record<TranslationKey, string> = {
   "overview.waiting.none": "Nichts wartet auf eine Entscheidung.",
   "overview.waiting.checked": "Geprüft {date}",
   "overview.waiting.open": "Entscheidungen öffnen",
-  "overview.incident.subset": "{count} von {total} blockieren ihren Workflow.",
-  "overview.incident.all": "Alle {total} blockieren ihren Workflow.",
-  "overview.incident.atLeast": "Mindestens {count} von {total} blockieren ihren Workflow.",
+  "overview.incident.claim": "{label}: {count} von {total}",
+  "overview.incident.claimAtLeast": "{label}: mindestens {count} von {total}",
   "overview.incident.description":
-    "Die älteste offene Position wartet seit {days} Tagen. Bis sie entschieden ist, scheitert ihr Workflow weiter.",
+    "Diese Positionen stehen still, oder ihre Frist ist ohne Antwort verstrichen. Beides wird in der Entscheidungs-Queue aufgelöst.",
   "overview.incident.open": "Jetzt entscheiden",
   "decisions.description":
     "Alles, was einen Menschen braucht: vorgeschlagene Korrekturen, Skill-Kandidaten und Unterhaltungen, die auf eine Antwort warten.",

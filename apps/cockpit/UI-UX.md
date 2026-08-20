@@ -167,9 +167,17 @@ it through the same query as the navigation badge. It used to read three: the ba
 health digest's `stuck` flag, the waiting line read the digest's pending patch count, and the badge
 summed the three list endpoints — so one screen showed three totals for one queue and explained
 none of them. The digest knows only patch candidates and cannot answer for the queue; it keeps what
-it does own, the failure groups, the risks and the all-clear. Where the banner shows a share of the
-queue it says so in words — "25 of 30 are blocking their workflow", or "at least" where a source hit
-its page cap — because a bare count beside a different bare count reads as a contradiction.
+it does own, the failure groups, the risks and the all-clear.
+
+The incident banner names its shares and borrows their labels from the queue. It states one claim
+per rubric it is about — "Holding something up: 1 of 8", "Expired: 1 of 8", or "at least" where a
+source hit its page cap — and the label of each claim is read from the same catalog key that heads
+that rubric on the decisions page, so the two cannot be worded apart. It carries exactly two claims,
+because §8.7 names exactly two triggers: something is stopped, or a deadline passed unanswered. A
+position that has merely been sitting is not one of them. It briefly was, summed into a single
+sentence that said 25 of 30 were "blocking their workflow" — while the rubric one click away headed
+three of those five with a line that reads "blocking nothing". Age keeps the surfaces it honestly
+owns: Zone A's oldest-position line, the red navigation badge, and the rubric that names it.
 
 Deviation from the family convention, deliberate: Zone A links to the decision queue without
 reproducing any of it. The convention allows the overview to show the queue's top positions as well
