@@ -2,11 +2,11 @@
 
 import type { FileUIPart, SourceDocumentUIPart } from "ai";
 import {
+  FileIcon,
   FileTextIcon,
   GlobeIcon,
   ImageIcon,
   Music2Icon,
-  PaperclipIcon,
   VideoIcon,
   XIcon,
 } from "lucide-react";
@@ -39,7 +39,7 @@ const mediaCategoryIcons: Record<AttachmentMediaCategory, typeof ImageIcon> = {
   document: FileTextIcon,
   image: ImageIcon,
   source: GlobeIcon,
-  unknown: PaperclipIcon,
+  unknown: FileIcon,
   video: VideoIcon,
 };
 
