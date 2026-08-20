@@ -5,16 +5,38 @@ import { chromium } from "playwright";
 import { ALL_ROUTE_PATHS } from "../apps/cockpit/src/app/route-table.ts";
 import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 
-// The family convention (COCKPIT-KONVENTION.md, v1.5) is deliberately not enforced by
-// shared code — six products copy patterns, they do not import them (§7). What
-// is left is drift, so the rules that can be observed on a rendered page are
-// asserted here against this repo's own cockpit.
+// The family convention (COCKPIT-KONVENTION.md, the version named by
+// KONVENTION_VERSION below) is deliberately not enforced by shared code — six
+// products copy patterns, they do not import them (§7). What is left is drift,
+// so the rules that can be observed on a rendered page are asserted here
+// against this repo's own cockpit.
 //
 // It runs against the built bundle with every /v1 call mocked, so it needs
 // neither a database nor a running engine and reports the same verdict on any
 // machine. It reports EVERY breach it finds rather than stopping at the first:
 // the output is the work list for the next conformity round, and a list that
 // truncates itself hides the size of the gap.
+
+/**
+ * The convention version this checker is written against. Set BY HAND and held
+ * against the header of the copy in this repository by `checkKonventionVersion`.
+ *
+ * WHY a constant and not the number read out of the document: a checker that
+ * reads the version from COCKPIT-KONVENTION.md and then prints it makes the two
+ * agree by construction — the sentence asserts nothing. This file climbed from
+ * v1.4 to v1.5 by hand, and the places that still said "v1.4" were found by
+ * grep. That is exactly the drift a machine should catch: a convention copy that
+ * moves on while this checker stays put is a checker measuring against an
+ * agreement nobody holds it to any more.
+ *
+ * The number READ from the file is the label (`konventionVersionImRepo`, printed
+ * as "Maßstab"). Label and assert stand side by side on purpose — one says what
+ * was measured against, the other says whether that is still the family's yardstick.
+ */
+const KONVENTION_VERSION = "1.5";
+
+/** The version the repository copy actually names — the label, never the assert. */
+let konventionVersionImRepo = null;
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const previewPort = Number(process.env.COCKPIT_PREVIEW_PORT || 4176);
@@ -861,8 +883,52 @@ function gap(where, why) {
   gaps.push({ where, why });
 }
 
+// Two blind spots hold in EVERY run, so they are registered before the first
+// measurement instead of being discovered during one. Both are known and open
+// findings, not accidents — and a verdict that stays silent about them reads
+// wider than it is.
+gap(
+  "Wortmarke in der eingeklappten Schiene",
+  "gemessen wird nur die ausgeklappte Seitenleiste — wer Icon oder Name im eingeklappten Zustand zerstört, kommt hier durch",
+);
+gap(
+  "Katalog en",
+  "jede Regel läuft gegen de. Die stille Klasse: §2 verbietet einen ZUSTAND, geprüft wird das WORT „Unbekannt“ — auf en heißt derselbe Zustand „Unknown“ und fällt nicht auf",
+);
+
 /** The detail surfaces the sweep actually reached, named in the verdict. */
 const swept = [];
+
+/**
+ * §7 — the convention copy in this repository and this checker name the same version.
+ *
+ * The only rule here that needs neither a browser nor a server, and the only one
+ * about the checker itself. §7 makes the copy in each repository the mechanism
+ * against drift; a copy that has moved on while the checker still quotes the
+ * previous number turns that mechanism into decoration — the run ends with
+ * "keine Verstöße gegen v1.4" and reads like a clean bill of health for an
+ * agreement that no longer exists in that form.
+ */
+function checkKonventionVersion() {
+  const where = "COCKPIT-KONVENTION.md → Kopfzeile";
+  let header;
+  try {
+    header = readFileSync(new URL("../COCKPIT-KONVENTION.md", import.meta.url), "utf8").slice(
+      0,
+      400,
+    );
+  } catch (error) {
+    breach("§7", where, `keine lesbare Konventions-Kopie im Repo-Root (${String(error)})`);
+    return;
+  }
+  konventionVersionImRepo = header.match(/^Version (\d+\.\d+)/m)?.[1] ?? null;
+  if (konventionVersionImRepo !== KONVENTION_VERSION)
+    breach(
+      "§7",
+      where,
+      `Version ${konventionVersionImRepo ?? "(keine Kopfzeile mit Version)"} — dieser Check ist von Hand gegen v${KONVENTION_VERSION} geschrieben`,
+    );
+}
 
 /**
  * §5 / §6 — the role word is one spelling family-wide.
@@ -1958,9 +2024,26 @@ async function openPage(context, route) {
   return page;
 }
 
-const server = await startPreview();
-const browser = await chromium.launch({ headless: true });
+// The one rule that needs neither a browser nor a server, measured before
+// either is started: a preview that never comes up must not also cost the
+// version assert.
+checkKonventionVersion();
+
+/**
+ * Why the whole measurement sits inside a catch: an exception used to end the
+ * process on the spot, printing a stack trace where the report belongs and
+ * taking every breach collected so far with it. The exit code was right — but a
+ * run that could not measure has to SAY so, in the same shape as every other
+ * outcome, or the reader of a mandatory gate stage cannot tell "nothing found"
+ * from "nothing looked at".
+ */
+let abbruch = null;
+let server = null;
+let browser = null;
 try {
+  server = await startPreview();
+  browser = await chromium.launch({ headless: true });
+
   // German is the top-level language of the convention (§5), and every pinned
   // string it names is a German one.
   const context = await browser.newContext({
@@ -2059,20 +2142,47 @@ try {
   await checkFailureState(brokenPage, "/knowledge/… (Fixture mit unlesbarer Antwort)");
   await brokenPage.close();
   await broken.close();
+} catch (error) {
+  abbruch = error;
 } finally {
-  await browser.close();
+  await browser?.close();
   server?.kill();
 }
 
 // What was looked at and what was not is printed in both outcomes: a check
 // that names its blind spot only when it fails hides it precisely when the
 // reader believes it (§12).
-const report = violations.length === 0 ? console.log : console.error;
+//
+// The closing block names the MEASUREMENT, not only its result. As a mandatory
+// gate stage this last line is read as a certificate, and "keine Verstöße"
+// certifies nothing on its own: against which document, on how many routes, on
+// which stand, in which language. Everything it did NOT look at stands right
+// next to it, in the passing case as much as in the failing one.
+const gescheitert = violations.length > 0 || Boolean(abbruch);
+const report = gescheitert ? console.error : console.log;
+
+// The label comes from the file; the assert above does not (§7). Printing the
+// number the document names is honest reporting; comparing it to a number this
+// file carries by hand is the part that can fail.
+const massstab = konventionVersionImRepo
+  ? `COCKPIT-KONVENTION.md v${konventionVersionImRepo}`
+  : "COCKPIT-KONVENTION.md (Kopfzeile ohne lesbare Version)";
+const pruefstand = externalBaseUrl
+  ? `fremder Stand unter ${externalBaseUrl}`
+  : `die GEBAUTE Fassung — vite preview auf ${baseUrl}, also der Stand, den die Engine ausliefert, nicht der Dev-Server`;
+
 report(
-  `Geprüft: ${ROUTES.length} Routen aus der Router-Tabelle` +
-    (swept.length > 0
-      ? `, dazu ${swept.length} Detailfläche(n) ohne eigene Route (${swept.join(", ")})`
-      : ", keine Detailfläche ohne eigene Route"),
+  `Maßstab: ${massstab} (Kopfzeile der Repo-Kopie) · dieser Check ist von Hand gegen v${KONVENTION_VERSION} geschrieben`,
+);
+report(`Prüfstand: ${pruefstand}`);
+report("Sprache: nur de (sk-cockpit-locale=de, Browser-Locale de-DE)");
+report(
+  abbruch
+    ? `Geprüft: unvollständig — der Lauf brach ab, bevor die ${ROUTES.length} Routen der Router-Tabelle durch waren`
+    : `Geprüft: ${ROUTES.length} Routen aus der Router-Tabelle` +
+        (swept.length > 0
+          ? `, dazu ${swept.length} Detailfläche(n) ohne eigene Route (${swept.join(", ")})`
+          : ", keine Detailfläche ohne eigene Route"),
 );
 if (gaps.length > 0) {
   report(`Nicht geprüft: ${gaps.length}`);
@@ -2080,15 +2190,35 @@ if (gaps.length > 0) {
 }
 report("");
 
+function printViolations() {
+  for (const { rule, where, actual } of violations) {
+    console.error(`  ${rule} · ${where}\n      ist: ${actual}`);
+  }
+}
+
+if (abbruch) {
+  console.error(
+    `Konvention-Check ABGEBROCHEN: ${abbruch?.message ?? String(abbruch)}\n` +
+      "Ein Lauf, der nicht zu Ende messen konnte, ist kein bestandener Lauf. Was bis zum Abbruch\n" +
+      "gefunden wurde, steht unten — alles danach ist ungeprüft, nicht sauber.\n",
+  );
+  if (violations.length > 0) {
+    console.error(`Bis zum Abbruch gefunden: ${violations.length} Verstöße gegen ${massstab}\n`);
+    printViolations();
+    console.error("");
+  }
+  console.error(abbruch?.stack ?? String(abbruch));
+  process.exit(1);
+}
+
 if (violations.length === 0) {
-  console.log("Konvention-Check bestanden: keine Verstöße.");
+  console.log(
+    `Konvention-Check bestanden: keine Verstöße gegen ${massstab} auf ${ROUTES.length} Routen\n` +
+      "der gebauten Fassung, gemessen auf Deutsch. Was oben unter „Nicht geprüft“ steht, ist damit nicht gesagt.",
+  );
   process.exit(0);
 }
 
-console.error(
-  `Konvention-Check: ${violations.length} Verstöße gegen COCKPIT-KONVENTION.md (v1.5)\n`,
-);
-for (const { rule, where, actual } of violations) {
-  console.error(`  ${rule} · ${where}\n      ist: ${actual}`);
-}
+console.error(`Konvention-Check: ${violations.length} Verstöße gegen ${massstab}\n`);
+printViolations();
 process.exit(1);
