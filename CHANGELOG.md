@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [6.8.0] – 2026-08-19
+## [6.21.0] – 2026-08-20
 
 ### Added
 
@@ -14,6 +14,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unit is draining — so a probe that knows only the conventional names no
   longer reads a 404 as a dead service. The versioned pair stays the
   documented contract and the only probe in `openapi.json`.
+
+### Changed
+
+- **The version line continues at 6.21.0.** Release identities are immutable
+  once their workflow has run, and 6.8.0 through 6.20.12 were claimed by an
+  earlier numbering era of this repository. The next free minor above that
+  block is 6.21.0; nothing else about the release changes.
 
 ## [6.7.1] – 2026-08-19
 
