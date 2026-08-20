@@ -848,9 +848,11 @@ export function ChatPage() {
                 )}
               </MessageScrollerContent>
             </MessageScrollerViewport>
+            {/* One name, not two: the caption below IS the accessible name, so
+                an aria-label beside it would be a second source for one fact. */}
             <MessageScrollerButton
               direction="end"
-              aria-label={t("chat.scrollBottom")}
+              label={t("chat.scrollBottom")}
               data-testid="chat-scroll-bottom"
             />
           </MessageScroller>
