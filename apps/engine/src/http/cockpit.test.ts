@@ -26,7 +26,7 @@ describe("cockpit browser boundary", () => {
     expect(response.headers.get("content-security-policy")).not.toContain(
       "script-src 'unsafe-inline'",
     );
-    expect(html).toContain("Subkit Cockpit");
+    expect(html).toContain("SubKit Cockpit");
   });
 
   test("returns immutable assets and supports conditional requests", async () => {
@@ -48,6 +48,32 @@ describe("cockpit browser boundary", () => {
       headers: { "if-none-match": etag ?? "" },
     });
     expect(cached.status).toBe(304);
+  });
+
+  test("serves the app icon under the cockpit base path, as an image", async () => {
+    // §6 of the family convention: the tab carries the same mark as the
+    // sidebar. What is measured here is the SERVING side of that promise,
+    // because the trap lives here and not in the bundle: every unknown path
+    // under /cockpit/ falls back to the SPA shell, so a wrong href answers 200
+    // with text/html and looks exactly like success. Status alone proves
+    // nothing — the content type is the assert that separates the two.
+    const app = createOpenApiApp();
+    registerCockpitRoutes(app);
+
+    const shell = await app.request("http://subkit.test/cockpit/");
+    const href = (await shell.text()).match(/<link[^>]+rel="icon"[^>]+href="([^"]+)"/)?.[1];
+    expect(href).toBe("/cockpit/favicon.svg");
+
+    const icon = await app.request(`http://subkit.test${href}`);
+    expect(icon.status).toBe(200);
+    expect(icon.headers.get("content-type")).toBe("image/svg+xml");
+    expect(await icon.text()).toContain("<svg");
+
+    // The counter-example, pinned so nobody "fixes" the href by writing the
+    // base path into the source: this is what the doubled path really does.
+    const doubled = await app.request("http://subkit.test/cockpit/cockpit/favicon.svg");
+    expect(doubled.status).toBe(200);
+    expect(doubled.headers.get("content-type")).toBe("text/html; charset=utf-8");
   });
 
   test("binds CSRF proofs to one browser session", async () => {

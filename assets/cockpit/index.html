@@ -7,7 +7,14 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="cockpit-ui-contract" content="cockpit-ui" />
     <meta name="cockpit-ui-digest" content="sha256-TKGKJcvPqZE4TIanIFHFZRsaiGFZRIbtkCFFeB1Ho24=" />
-    <title>Subkit Cockpit</title>
+    <title>SubKit Cockpit</title>
+    <!-- Konvention §6: derselbe Glyph wie die Wortmarke der Seitenleiste, als eigene
+         Datei aus apps/cockpit/public. Der href steht hier OHNE Basispfad — Vite stellt
+         `base` ("/cockpit/") beim Bauen selbst davor. Wer ihn hier hinschreibt, bekommt
+         "/cockpit/cockpit/favicon.svg", und der Cockpit-Handler beantwortet das mit der
+         SPA-Rückfalllinie: 200, text/html, ein Reiter ohne Icon. Deshalb prüft
+         cockpit-favicon.test.ts die Rechnung Quelle -> gebaute Fassung. -->
+    <link rel="icon" type="image/svg+xml" href="/cockpit/favicon.svg" />
     <script>
       // BLOCKING, and in the document rather than in the bundle. The class has
       // to be on <html> before the first paint; applied from an effect instead,
@@ -24,7 +31,7 @@
         document.documentElement.classList.toggle('dark', dark)
       } catch {}
     </script>
-    <script type="module" crossorigin src="/cockpit/assets/index-DF0B5HY9.js"></script>
+    <script type="module" crossorigin src="/cockpit/assets/index-B7LIzavE.js"></script>
     <link rel="modulepreload" crossorigin href="/cockpit/assets/rolldown-runtime-hePW80VL.js">
     <link rel="modulepreload" crossorigin href="/cockpit/assets/react-6RyAq6rh.js">
     <link rel="modulepreload" crossorigin href="/cockpit/assets/tanstack-B_6QaYWr.js">

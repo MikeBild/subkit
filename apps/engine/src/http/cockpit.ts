@@ -151,7 +151,7 @@ export function registerCockpitRoutes(app: OpenAPIHono<AppEnv>): void {
 
   const serve = (c: Context<AppEnv>) => {
     if (!shell) {
-      return c.text("the Subkit Cockpit was not built into this deployment\n", 503, {
+      return c.text("the SubKit Cockpit was not built into this deployment\n", 503, {
         ...securityHeaders,
         "cache-control": NEVER,
       });

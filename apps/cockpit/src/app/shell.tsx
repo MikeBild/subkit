@@ -118,14 +118,40 @@ export function AppShell() {
       >
         <SidebarHeader data-testid="cockpit-sidebar-header">
           <SidebarMenu>
-            <SidebarMenuItem>
+            {/*
+              The wordmark (§6): product icon plus the product name in its
+              canonical spelling, top of the sidebar.
+
+              "SubKit" is a proper name with an internal capital, so it lives in
+              exactly ONE place — `app.name` in the catalogue, identical in EN
+              and DE, because a name is not translated. No literal here, no
+              `.toUpperCase()`, no `uppercase` class and no `tracking` wide
+              enough to pull the internal capital apart.
+
+              The three `cockpit-wordmark*` ids are the family's shared anchor
+              for the convention check and the parity harness — one selector
+              across six products instead of six dialects. They are COPIED from
+              the family pattern, not imported: the convention is a document,
+              not a package (§7).
+
+              The name carries its own id rather than only the container: the
+              all-caps guard reads the COMPUTED `text-transform` on the element
+              the name is painted on, and a container does not necessarily carry
+              the same value.
+            */}
+            <SidebarMenuItem data-testid="cockpit-wordmark">
               <SidebarMenuButton asChild size="lg" tooltip={t("app.name")}>
                 <Link to="/chat" data-testid="cockpit-home-link">
-                  <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
+                  <span
+                    data-testid="cockpit-wordmark-icon"
+                    className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground"
+                  >
                     <Workflow data-icon="inline-start" />
                   </span>
                   <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{t("app.name")}</span>
+                    <span data-testid="cockpit-wordmark-name" className="truncate font-semibold">
+                      {t("app.name")}
+                    </span>
                     <span className="truncate text-xs text-muted-foreground">
                       {session.tenant.display_name}
                     </span>

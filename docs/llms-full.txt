@@ -2763,7 +2763,7 @@ the slug is still the fastest, most reliable path.
 | "Your chat account isn't linked" | `chat.message.denied` audit (`identity_not_linked`) carries the sender's `users/<id>` for the link call |
 | Space stopped answering after the app was removed/re-added | Removal drops the space's session bindings by design; re-adding starts a fresh conversation |
 | User clicks a confirmation card, nothing happens | Only the requester can confirm (`actor_not_owner` audit); the clicking user gets an in-channel note |
-| Google shows "Subkit Chat Channels reagiert nicht" / "…isn't responding" after every message | Expected Google Chat behavior, not a sk failure. sk acknowledges the webhook immediately and posts the real reply asynchronously (turns can take seconds); Google's client shows this placeholder in the gap. A *real* failure looks different: no reply ever arrives, or a `chat.message.denied`/error audit row exists for that message |
+| Google shows "SubKit Chat Channels reagiert nicht" / "…isn't responding" after every message | Expected Google Chat behavior, not a sk failure. sk acknowledges the webhook immediately and posts the real reply asynchronously (turns can take seconds); Google's client shows this placeholder in the gap. A *real* failure looks different: no reply ever arrives, or a `chat.message.denied`/error audit row exists for that message |
 | Google Chat send fails after setup looked clean | The `private_key` PEM likely got mangled by shell quoting during `sk settings set`. Re-run with `$(cat key.pem)` verbatim; there is no server-side key validation, so a bad key only surfaces as a failed outbound send, not a rejected `settings set` |
 
 ## Known friction / roadmap
