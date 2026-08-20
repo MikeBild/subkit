@@ -1,5 +1,6 @@
 import type { Conversation } from "@/api/client";
 import type { PatchCandidate, SkillCandidate } from "@/api/decisions";
+import type { TranslationKey } from "@/lib/i18n";
 import { clipAtWord, conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
 import type { ConversationEvidence, PatchEvidence, SkillEvidence } from "./decisions-context";
 
@@ -86,12 +87,47 @@ export function ageInDays(waitingSince: string, now: number): number {
   return Math.max(0, Math.floor((now - started) / 86_400_000));
 }
 
-export function patchDecision(candidate: PatchCandidate, fallbackTitle: string): DecisionItem {
+/** The two names the engine gives a proposed change, in the order to prefer them. */
+export function patchChangeKind(candidate: PatchCandidate): {
+  proposalKind: string | null;
+  driftKind: string | null;
+} {
+  const envelope = readDiffEnvelope(candidate.diff);
+  return { proposalKind: envelope.proposalKind, driftKind: envelope.driftKind };
+}
+
+/** Which sentence a correction card is titled with, and what fills it. */
+export interface PatchTitle {
+  key: TranslationKey;
+  params: Record<string, string>;
+}
+
+/**
+ * The summary line a correction card carries instead of the engine's own text.
+ *
+ * `proposal.description` is written by the repair model and passed through the
+ * engine verbatim — it is English, it is a change note ("Field follows the
+ * rename: data.id → data.result.id"), and it was the card's TITLE. §5 asks the
+ * opposite of that: German on the top level, a summary rather than the raw
+ * artefact, and the English detail one layer down. The description keeps its
+ * place as the card's summary line; the title is composed here from what the
+ * decision is about — the workflow it would repair and the kind of change.
+ */
+export function patchTitle(input: { workflow: string | null; change: string | null }): PatchTitle {
+  const workflow = input.workflow?.trim() || null;
+  const change = input.change?.trim() || null;
+  if (workflow && change) return { key: "decisions.patchTitle", params: { workflow, change } };
+  if (workflow) return { key: "decisions.patchTitleWorkflow", params: { workflow } };
+  if (change) return { key: "decisions.patchTitleChange", params: { change } };
+  return { key: "decisions.fallbackTitle.patch", params: {} };
+}
+
+export function patchDecision(candidate: PatchCandidate, title: string): DecisionItem {
   const envelope = readDiffEnvelope(candidate.diff);
   return {
     kind: "patch",
     id: candidate.id,
-    title: envelope.description?.trim() || fallbackTitle,
+    title,
     target: candidate.workflow_name ?? null,
     origin: "observedFailure",
     waitingSince: candidate.created_at,

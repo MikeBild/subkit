@@ -67,6 +67,9 @@ const hours = (count) => new Date(NOW + count * 3_600_000).toISOString();
 // thing: if the cockpit ever leaks an identifier, the UUID rule must see it.
 const ID = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
 
+// The change notes are English on purpose: the engine passes the repair model's
+// own text through verbatim, and §5 is about what the CARD does with it — a
+// German summary line on top, the English note as the detail underneath.
 const PATCH_CANDIDATES = [
   {
     id: ID,
@@ -89,9 +92,9 @@ const PATCH_CANDIDATES = [
       proposal: {
         classification: "safe",
         kind: "update_field_path",
-        description: "Feld folgt der Umbenennung: data.id → data.result.id",
+        description: "Field follows the rename: data.id -> data.result.id",
         patch: { path: "data.id", value: "data.result.id" },
-        reasoning: "Die Antwort trägt die Kennung seit dem 8. August unter result.",
+        reasoning: "The response has carried the identifier under result since 8 August.",
       },
     },
   },
@@ -112,7 +115,11 @@ const PATCH_CANDIDATES = [
       drift_diff: "kind: stdlib_version_drift\nrecorded_major: 1\ncurrent_major: 2",
       drift_signal: { kind: "stdlib_version_drift" },
       classification_reasons: ["major version change"],
-      proposal: { classification: "unsafe", kind: "other", description: "Baustein anheben" },
+      proposal: {
+        classification: "unsafe",
+        kind: "other",
+        description: "Bump the built-in module to the current major",
+      },
     },
   },
   {
@@ -135,7 +142,7 @@ const PATCH_CANDIDATES = [
       proposal: {
         classification: "safe",
         kind: "update_field_path",
-        description: "Feld folgt der Umbenennung: total → total_amount",
+        description: "Field follows the rename: total -> total_amount",
         patch: { path: "data.total", value: "data.total_amount" },
       },
     },
@@ -1000,6 +1007,42 @@ async function checkAgingRubric(page) {
   }
 }
 
+/**
+ * §5 — a title is a summary in the reader's language, not the engine's artefact.
+ *
+ * `proposal.description` arrives as English change notes ("Field follows the
+ * rename: …") and used to BE the card title, so the queue read as a list of
+ * commit messages from another system.
+ */
+async function checkCorrectionTitles(page) {
+  const cards = await page.evaluate(() =>
+    [...document.querySelectorAll('article[data-decision-key^="patch:"]')].map((card) => {
+      const testId = card.getAttribute("data-testid") ?? "";
+      const title = card.querySelector(`[data-testid="${testId}-title"]`);
+      const summary = card.querySelector(`[data-testid="${testId}-summary"]`);
+      return {
+        title: title instanceof HTMLElement ? title.innerText.trim() : null,
+        summary: summary instanceof HTMLElement ? summary.innerText.trim() : null,
+      };
+    }),
+  );
+  if (cards.length === 0) {
+    breach("§5", "/decisions", "keine Korrektur-Karten gefunden, Titel-Regel ungeprüft");
+    return;
+  }
+  const notes = PATCH_CANDIDATES.map((candidate) => candidate.diff.proposal.description);
+  for (const card of cards) {
+    if (!card.title || !/^Korrektur(: | für )/.test(card.title))
+      breach("§5", "/decisions · Korrektur-Karte", `Titel "${card.title}"`);
+    else if (notes.includes(card.title))
+      breach("§5", "/decisions · Korrektur-Karte", `Titel ist der Änderungstext der Engine`);
+  }
+  // The English note is the detail, and dropping it would trade one loss for
+  // another: the reader still has to be able to see what would change.
+  if (!cards.some((card) => card.summary && notes.includes(card.summary)))
+    breach("§5", "/decisions · Korrektur-Karte", "der Änderungstext der Engine fehlt ganz");
+}
+
 /** §8.3 — a button names the act; "OK" and "Submit" name nothing. */
 async function checkActionLabels(page, where) {
   const generic = await page.evaluate(() => {
@@ -1187,6 +1230,7 @@ try {
 
   const decisions = await openPage(context, "decisions");
   await checkAgingRubric(decisions);
+  await checkCorrectionTitles(decisions);
   await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, bannerTotal });
   await decisions.close();
 
