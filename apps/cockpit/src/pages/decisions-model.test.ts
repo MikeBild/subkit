@@ -514,7 +514,7 @@ describe("countOpenDecisions", () => {
     expect(open.total).toBe(0);
     expect(open.subsets).toEqual({ blocking: 0, overdue: 0, aging: 0 });
     expect(open.oldestAgeDays).toBe(0);
-    expect(bannerSubset(open).mode).toBe("none");
+    expect(bannerSubset(open).shown).toBe(false);
   });
 
   test("byKind always carries all three sources, including the silent ones", () => {
@@ -544,27 +544,51 @@ describe("bannerSubset", () => {
     };
   }
 
-  test("names its share of the whole rather than standing alone", () => {
-    expect(bannerSubset(open({ total: 30, blocking: 25 }))).toEqual({
-      count: 25,
+  test("names each share of the whole rather than one number standing alone", () => {
+    expect(bannerSubset(open({ total: 30, blocking: 25, overdue: 2 }))).toEqual({
+      blocking: 25,
+      overdue: 2,
+      count: 27,
       total: 30,
-      mode: "some",
+      atLeast: false,
+      shown: true,
     });
   });
 
-  test("says so when the share is the whole queue", () => {
-    expect(bannerSubset(open({ total: 4, blocking: 2, aging: 2 })).mode).toBe("all");
+  test("never claims a position the queue files as blocking nothing", () => {
+    // The aged rubric sits under a heading that says it blocks nothing. A red
+    // banner counting it as something that does is the product contradicting
+    // itself one click away, which is exactly what this used to do.
+    const banner = bannerSubset(open({ total: 8, blocking: 1, overdue: 1, aging: 3 }));
+    expect(banner.count).toBe(2);
+    expect(banner.blocking + banner.overdue).toBe(banner.count);
+  });
+
+  test("aging alone raises no banner at all", () => {
+    expect(bannerSubset(open({ total: 12, aging: 9 })).shown).toBe(false);
+  });
+
+  test("keeps the two apart, because no one verb is true of both", () => {
+    const lapsed = bannerSubset(open({ total: 4, overdue: 4 }));
+    expect(lapsed.blocking).toBe(0);
+    expect(lapsed.overdue).toBe(4);
+    expect(lapsed.shown).toBe(true);
   });
 
   test("a capped page can only claim a floor", () => {
-    expect(bannerSubset(open({ total: 119, blocking: 5, capped: true }))).toEqual({
-      count: 5,
-      total: 119,
-      mode: "atLeast",
-    });
+    const banner = bannerSubset(open({ total: 119, blocking: 5, capped: true }));
+    expect(banner.atLeast).toBe(true);
+    expect(banner.count).toBe(5);
+    expect(banner.total).toBe(119);
   });
 
-  test("nothing urgent means no banner, even with a full queue", () => {
-    expect(bannerSubset(open({ total: 12 })).mode).toBe("none");
+  test("a capped page with nothing urgent claims nothing at all", () => {
+    const banner = bannerSubset(open({ total: 119, aging: 40, capped: true }));
+    expect(banner.shown).toBe(false);
+    expect(banner.atLeast).toBe(false);
+  });
+
+  test("an empty queue shows no banner", () => {
+    expect(bannerSubset(open({ total: 0 })).shown).toBe(false);
   });
 });

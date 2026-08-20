@@ -111,31 +111,45 @@ export function OverviewPage() {
         </Alert>
       ) : (
         <div className="grid gap-4">
-          {open !== null && banner !== null && banner.mode !== "none" && (
+          {banner !== null && banner.shown && (
             <Alert variant="destructive" data-testid="overview-incident">
-              <AlertTitle>
-                {/* The subset is named, not implied: the banner used to show one
-                    number and Zone A another, and nothing on the page said how
-                    the two were related. The data attributes carry the same two
-                    numbers the sentence states. */}
-                <span
-                  data-testid="incident-decisions-count"
-                  data-subset={String(banner.count)}
-                  data-subset-total={String(banner.total)}
-                >
-                  {t(
-                    banner.mode === "all"
-                      ? "overview.incident.all"
-                      : banner.mode === "atLeast"
-                        ? "overview.incident.atLeast"
-                        : "overview.incident.subset",
-                    { count: String(banner.count), total: String(banner.total) },
-                  )}
-                </span>
+              {/* Two claims, never one predicate over both: a lapsed position
+                  stopped nothing. Each carries its own share and the base it is
+                  a share of, and each borrows its label from the rubric key the
+                  queue heads that pile with — so the banner cannot come to say
+                  the opposite of the page it links to. */}
+              <AlertTitle
+                className="flex flex-wrap items-baseline gap-x-4 gap-y-1"
+                data-testid="incident-decisions-count"
+                data-subset={String(banner.count)}
+                data-subset-total={String(banner.total)}
+              >
+                {banner.blocking > 0 && (
+                  <span data-testid="incident-blocking" data-subset={String(banner.blocking)}>
+                    {t(
+                      banner.atLeast ? "overview.incident.claimAtLeast" : "overview.incident.claim",
+                      {
+                        label: t("decisions.section.blocking"),
+                        count: String(banner.blocking),
+                        total: String(banner.total),
+                      },
+                    )}
+                  </span>
+                )}
+                {banner.overdue > 0 && (
+                  <span data-testid="incident-overdue" data-subset={String(banner.overdue)}>
+                    {t(
+                      banner.atLeast ? "overview.incident.claimAtLeast" : "overview.incident.claim",
+                      {
+                        label: t("decisions.section.expired"),
+                        count: String(banner.overdue),
+                        total: String(banner.total),
+                      },
+                    )}
+                  </span>
+                )}
               </AlertTitle>
-              <AlertDescription>
-                {t("overview.incident.description", { days: String(open.oldestAgeDays) })}
-              </AlertDescription>
+              <AlertDescription>{t("overview.incident.description")}</AlertDescription>
               <Button variant="outline" size="sm" className="mt-3" asChild>
                 <Link to="/decisions" data-testid="overview-incident-open">
                   {t("overview.incident.open")}
