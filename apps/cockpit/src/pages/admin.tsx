@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Copy, Plus, RefreshCw, RotateCw, ScanSearch, Trash2 } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -29,7 +30,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import {
   Field,
   FieldContent,
@@ -1400,6 +1407,184 @@ export function OperationsPage() {
             </section>
           </div>
         )
+      )}
+    </AdminFrame>
+  );
+}
+
+interface NotificationRuleItem {
+  id: string;
+  name: string;
+  event_pattern: string;
+  workflow_pattern: string;
+  severity: string;
+  target_channel_id: string;
+  active: boolean;
+}
+
+interface NotificationChannelItem {
+  id: string;
+  platform: string;
+  channel_id: string;
+  default_severity: string;
+  rate_limit_per_minute: number;
+  circuit_state: string;
+  active: boolean;
+}
+
+const CIRCUIT_LABEL: Readonly<Record<string, TranslationKey>> = {
+  closed: "notifications.circuit.closed",
+  open: "notifications.circuit.open",
+  half_open: "notifications.circuit.halfOpen",
+};
+
+const SEVERITY_LABEL: Readonly<Record<string, TranslationKey>> = {
+  debug: "notifications.severity.debug",
+  info: "notifications.severity.info",
+  warn: "notifications.severity.warn",
+  error: "notifications.severity.error",
+  critical: "notifications.severity.critical",
+};
+
+/**
+ * Which events leave this installation, and through which channel.
+ *
+ * The delivery state is read as a word rather than through the shared status
+ * label: a circuit phase the engine can store must never resolve to
+ * "unknown" (§2), and the shared helper is allowed to fall through to it.
+ */
+export function NotificationsPage() {
+  const { t } = useI18n();
+  const rules = useQuery({
+    queryKey: ["admin", "notification-rules"],
+    queryFn: () => apiRequest<Envelope<NotificationRuleItem>>("/v1/notifications/rules"),
+  });
+  const channels = useQuery({
+    queryKey: ["admin", "notification-channels"],
+    queryFn: () => apiRequest<Envelope<NotificationChannelItem>>("/v1/notifications/channels"),
+  });
+  const ruleItems = rules.data?.items ?? [];
+  const channelItems = channels.data?.items ?? [];
+  const word = (map: Readonly<Record<string, TranslationKey>>, value: string, fallback: string) => {
+    const key = map[value];
+    return key ? t(key) : fallback;
+  };
+
+  return (
+    <AdminFrame
+      testId="admin-notifications"
+      titleKey="resource.notifications.title"
+      descriptionKey="resource.notifications.description"
+    >
+      {rules.isPending || channels.isPending ? (
+        <LoadingCards testId="notifications-loading" />
+      ) : ruleItems.length === 0 && channelItems.length === 0 ? (
+        // Never used, not measured zero: the next step belongs in the empty
+        // state, not in a manual somewhere else (§4).
+        <Empty className="min-h-52 border" data-testid="notifications-empty">
+          <EmptyHeader>
+            <EmptyTitle>{t("notifications.emptyTitle")}</EmptyTitle>
+            <EmptyDescription>{t("notifications.emptyDescription")}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button asChild variant="outline">
+              <Link to="/chat" data-testid="notifications-empty-setup">
+                {t("notifications.emptySetup")}
+              </Link>
+            </Button>
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <div className="grid gap-4">
+          <Card data-testid="notifications-rules">
+            <CardHeader>
+              <CardTitle>{t("notifications.rules")}</CardTitle>
+              <CardDescription>{t("notifications.rulesDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              {ruleItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="notifications-rules-none">
+                  {t("notifications.noRules")}
+                </p>
+              ) : (
+                ruleItems.map((rule, index) => (
+                  <div
+                    key={rule.id}
+                    className="rounded-lg border p-3"
+                    data-testid={`notifications-rule-${index}`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="min-w-0 font-medium break-words">{rule.name}</p>
+                      <Badge variant={rule.active ? "secondary" : "outline"}>
+                        {t(rule.active ? "notifications.active" : "notifications.paused")}
+                      </Badge>
+                      <Badge variant="outline">
+                        {word(SEVERITY_LABEL, rule.severity, rule.severity)}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground break-words">
+                      {t("notifications.ruleMatch", {
+                        events: rule.event_pattern,
+                        workflows: rule.workflow_pattern || "*",
+                      })}
+                    </p>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card data-testid="notifications-channels">
+            <CardHeader>
+              <CardTitle>{t("notifications.channels")}</CardTitle>
+              <CardDescription>{t("notifications.channelsDescription")}</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              {channelItems.length === 0 ? (
+                <p
+                  className="text-sm text-muted-foreground"
+                  data-testid="notifications-channels-none"
+                >
+                  {t("notifications.noChannels")}
+                </p>
+              ) : (
+                channelItems.map((channel, index) => (
+                  <div
+                    key={channel.id}
+                    className="rounded-lg border p-3"
+                    data-testid={`notifications-channel-${index}`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="min-w-0 font-medium break-words">{channel.platform}</p>
+                      <Badge variant={channel.active ? "secondary" : "outline"}>
+                        {t(channel.active ? "notifications.active" : "notifications.paused")}
+                      </Badge>
+                      <Badge
+                        variant={channel.circuit_state === "closed" ? "outline" : "destructive"}
+                      >
+                        {word(
+                          CIRCUIT_LABEL,
+                          channel.circuit_state,
+                          t("notifications.circuit.open"),
+                        )}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground break-words">
+                      {t("notifications.channelLimit", {
+                        severity: word(
+                          SEVERITY_LABEL,
+                          channel.default_severity,
+                          channel.default_severity,
+                        ),
+                        limit: String(channel.rate_limit_per_minute),
+                      })}
+                    </p>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </AdminFrame>
   );

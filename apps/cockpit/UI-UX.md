@@ -13,12 +13,19 @@ AI Elements render messages, tool calls, approval cards, suggestions and the pro
 
 Navigation follows the work instead of the engine's directory tree:
 
-- **Home** — Overview and Decisions
+- *(ungrouped)* — Overview and Decisions
 - **Work** — Chat and Inbox
 - **Build** — Workflows, Runs and Connectors
 - **Knowledge** — Knowledge, Skills and Files
-- **Govern** — Audit log and Usage
-- **Admin** — People, Access, API access, Operations and Engine settings
+- **Installation** — System, Settings, Credentials, Notifications, Audit, then People, Access and
+  Usage
+
+The first block carries no heading and the last one carries the family's name for it. The
+convention names both: the decisions entry stands ungrouped directly under the overview, and the
+administration block is called "Installation" in all six products and owns the same five entries —
+System, Settings, Credentials, Notifications, Audit — before anything Subkit adds to it. Audit and
+Usage used to sit in a "Govern" block of their own; a section that has to contain Audit cannot also
+leave it somewhere else.
 
 `src/app/navigation.ts` is the one declaration of that table and the source of
 this list; when the two disagree the code is right and this paragraph is stale.

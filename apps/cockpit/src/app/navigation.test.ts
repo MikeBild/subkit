@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { navigationItem, visibleNavigation } from "./navigation";
+import { NAVIGATION, navigationItem, visibleNavigation } from "./navigation";
 
 describe("cockpit navigation contract", () => {
   test("does not render entries without their effective permission", () => {
@@ -28,6 +28,25 @@ describe("cockpit navigation contract", () => {
     const item = navigationItem("/workflows/7d222f5a");
     expect(item?.permission).toBe("workflow:read");
     expect(item?.api).toContain("GET /v1/workflows");
+  });
+
+  test("leaves the overview and decisions entries without a group heading", () => {
+    const home = NAVIGATION.find((group) => group.id === "home");
+    expect(home?.labelKey).toBeUndefined();
+  });
+
+  test("keeps the five entries the installation section owes the convention", () => {
+    const installation = NAVIGATION.find((group) => group.id === "admin");
+    expect(installation?.labelKey).toBe("nav.group.admin");
+    // §6 pins the set, not the extras: the five come first and in this order,
+    // product-specific entries follow.
+    expect(installation?.items.slice(0, 5).map((item) => item.path)).toEqual([
+      "/operations",
+      "/settings",
+      "/api-access",
+      "/notifications",
+      "/audit",
+    ]);
   });
 
   test("uses the same read permissions as the engine routes", () => {

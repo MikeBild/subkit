@@ -140,7 +140,10 @@ export function AppShell() {
           <nav aria-label={t("nav.label")}>
             {groups.map((group) => (
               <SidebarGroup key={group.id} data-testid={`nav-group-${group.id}`}>
-                <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>
+                {/* No heading where the group has no name: §8.1 puts the
+                    decisions entry ungrouped under the overview, and a rendered
+                    label above it makes it a group again. */}
+                {group.labelKey && <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>}
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {group.items.map((item) => {

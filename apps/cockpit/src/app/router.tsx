@@ -1,5 +1,12 @@
 import { createRootRoute, createRoute, createRouter, Navigate } from "@tanstack/react-router";
-import { AccessPage, ApiAccessPage, OperationsPage, PeoplePage, SettingsPage } from "@/pages/admin";
+import {
+  AccessPage,
+  ApiAccessPage,
+  NotificationsPage,
+  OperationsPage,
+  PeoplePage,
+  SettingsPage,
+} from "@/pages/admin";
 import { AuditPage } from "@/pages/audit";
 import { CATALOG_RESOURCES, CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
@@ -62,6 +69,11 @@ const dedicatedRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/people", component: PeoplePage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/access", component: AccessPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/api-access", component: ApiAccessPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/notifications",
+    component: NotificationsPage,
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: "/operations", component: OperationsPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),
 ];
