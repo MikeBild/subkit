@@ -87,6 +87,7 @@ import { isStaleCall, toolLabel, toolOutcomeKey } from "@/lib/tool-presentation"
 import { cn } from "@/lib/utils";
 import { conversationRow } from "./chat-list-model";
 import { applyLiveCall, elapsedMs, type LiveCall, reduceLiveCall } from "./chat-live-calls";
+import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
 import { activeConversationId, type ConversationSelection } from "./chat-selection";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
 
@@ -99,35 +100,8 @@ const QUICK_START: readonly TranslationKey[] = [
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
-function localizedSummary(value: string | null | undefined, t: Translate): string {
-  if (!value) return t("chat.summary");
-  if (value === "You have an in-progress conversation. Continue the conversation.")
-    return t("chat.summary.inProgress");
-  return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
-}
-
-function localizedStage(value: string | null | undefined, t: Translate): string {
-  if (!value) return t("chat.context.ready");
-  const stageKeys: Partial<Record<string, TranslationKey>> = {
-    onboarding: "chat.context.onboarding",
-    authoring: "chat.context.authoring",
-    discovery: "chat.context.discovery",
-    diagnosis: "chat.context.diagnosis",
-    repair: "chat.context.repair",
-    execution: "chat.context.execution",
-  };
-  const key = stageKeys[value.toLowerCase()];
-  return key ? t(key) : t("chat.context.ready");
-}
-
 function localizedTarget(value: string | null | undefined, t: Translate): string {
   if (!value || value.toLowerCase() === "none") return t("chat.context.noTarget");
-  return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
-}
-
-function localizedNextAction(value: string | null | undefined, t: Translate): string {
-  if (!value) return t("chat.context.nextActionDefault");
-  if (value === "Continue the conversation.") return t("chat.context.continue");
   return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
 }
 
@@ -732,7 +706,7 @@ export function ChatPage() {
                 {current?.title || t("chat.new")}
               </h1>
               <p className="truncate text-xs text-muted-foreground" data-testid="chat-summary">
-                {localizedSummary(resume?.one_sentence, t)}
+                {resumeSummaryLine(resume, t)}
               </p>
             </div>
           </div>
@@ -952,7 +926,7 @@ export function ChatPage() {
             <dl className="grid gap-4 p-4 text-sm">
               <div data-testid="chat-context-stage">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.stage")}</dt>
-                <dd className="mt-1 font-medium">{localizedStage(resume?.stage, t)}</dd>
+                <dd className="mt-1 font-medium">{resumeStageLabel(resume?.stage, t)}</dd>
               </div>
               <div data-testid="chat-context-target">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.target")}</dt>
@@ -962,7 +936,7 @@ export function ChatPage() {
               </div>
               <div data-testid="chat-context-next-action">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.nextAction")}</dt>
-                <dd className="mt-1">{localizedNextAction(resume?.next_action, t)}</dd>
+                <dd className="mt-1">{resumeNextAction(resume?.stage, t)}</dd>
               </div>
               <div data-testid="chat-context-checkpoint">
                 <dt className="text-xs text-muted-foreground">{t("chat.context.checkpoint")}</dt>
@@ -978,6 +952,24 @@ export function ChatPage() {
                   <dt className="text-xs font-medium">{t("chat.context.approval")}</dt>
                   <dd className="mt-1 text-xs">{resume.pending_approval.summary}</dd>
                 </div>
+              )}
+              {/* The engine's own sentence is kept, one disclosure deep: it is
+                  the evidence behind the German line above, and throwing it
+                  away would make a wrong line unarguable. It is not the line
+                  itself — nobody reads the working context in another language
+                  by accident. */}
+              {resume?.one_sentence && (
+                <details
+                  className="text-xs text-muted-foreground"
+                  data-testid="chat-context-engine-wording"
+                >
+                  <summary className="cursor-pointer select-none">
+                    {t("chat.resume.engineWording")}
+                  </summary>
+                  <p className="mt-2">
+                    {hideTechnicalIdentifiers(resume.one_sentence, t("tool.referenceHiddenInline"))}
+                  </p>
+                </details>
               )}
             </dl>
           </ScrollArea>

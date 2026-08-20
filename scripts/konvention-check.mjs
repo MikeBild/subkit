@@ -206,6 +206,30 @@ const AWAITING_CONVERSATIONS = [
   },
 ];
 
+/**
+ * What the engine says about where a conversation stands.
+ *
+ * The prose is the engine's own, verbatim: §5 is about what the COCKPIT does
+ * with it. The German line is built from `stage` and `active_target`, so the
+ * assert below can read the one against the other.
+ */
+const RESUME_SUMMARY = {
+  active_target: {
+    kind: "connector",
+    name: "Reporting API 1",
+    slug: "reporting-api-0",
+    id: ID,
+    environment: "prod",
+  },
+  stage: "connector_drafting",
+  last_successful_probe: null,
+  last_successful_preview: null,
+  unsaved: true,
+  pending_approval: null,
+  next_action: "Probe the connector draft before saving so auth and response shape are verified.",
+  one_sentence: 'You were drafting connector "Reporting API 1" in prod but have not probed it yet.',
+};
+
 // The engine counts more waiting conversations than one page of them delivers.
 // Without this the fixture could never tell an exact total from a rendered row
 // count, which is precisely the confusion §8.1 is about.
@@ -586,16 +610,11 @@ function apiMock(gateOpen) {
           },
         ],
         tool_calls: [],
-        resume_summary: {
-          active_target: { kind: "none", name: "none", slug: null, id: null, environment: null },
-          stage: "onboarding",
-          last_successful_probe: null,
-          last_successful_preview: null,
-          unsaved: false,
-          pending_approval: null,
-          next_action: "Continue the conversation.",
-          one_sentence: "You have an in-progress conversation.",
-        },
+        // A state the cockpit used to render in English by construction: only
+        // ONE of the engine's seven sentences was ever translated, and only on
+        // byte equality. Six were English whatever happened, so the fixture
+        // stands in one of the six.
+        resume_summary: RESUME_SUMMARY,
       });
 
     // The detail surfaces the sweep now reaches, answered from the same rows
@@ -1295,6 +1314,39 @@ async function checkNoRawTimestamps(page, where) {
 }
 
 /**
+ * §5 — the conversation's state line is German, whatever the engine sent.
+ *
+ * `buildOneSentence()` composes seven English sentences out of a stage, a
+ * target and a next action. The cockpit translated exactly one of them, and
+ * only on byte equality with the whole composed string — so six states were
+ * English by construction, and the seventh went English too as soon as the
+ * sentence arrived without its appended next action.
+ *
+ * Two claims are pinned, and the second is the one that lasts. The line must
+ * not read as the engine's prose, AND it must not BE the engine's sentence:
+ * a check that only forbids known English openings is a check the next wording
+ * walks past. The exact German wording is pinned on top, so a cockpit that
+ * silently stops naming the connector cannot pass either.
+ */
+const RESUME_LINE =
+  "Du hast den Konnektor \u201eReporting API 1\u201c in prod entworfen, aber noch nicht geprobt.";
+
+async function checkResumeLine(page) {
+  const line = await page.evaluate(() => {
+    const element = document.querySelector('[data-testid="chat-summary"]');
+    return element instanceof HTMLElement ? element.innerText.trim() : null;
+  });
+  if (line === null) {
+    breach("§5", "/chat · chat-summary", "keine Zustandszeile der Unterhaltung");
+    return;
+  }
+  if (line === RESUME_SUMMARY.one_sentence)
+    breach("§5", "/chat · chat-summary", `der Satz der Engine steht wörtlich da: "${line}"`);
+  else if (line !== RESUME_LINE)
+    breach("§5", "/chat · chat-summary", `"${line}" statt "${RESUME_LINE}"`);
+}
+
+/**
  * §8.1 — four surfaces, one number.
  *
  * The badge, Zone A, the banner's base and the queue's own copy are compared
@@ -1594,6 +1646,10 @@ try {
   const operations = await openPage(context, "operations");
   await checkOperationsIsToolsOnly(operations);
   await operations.close();
+
+  const chat = await openPage(context, "chat");
+  await checkResumeLine(chat);
+  await chat.close();
 
   for (const route of ROUTES) {
     let page;
