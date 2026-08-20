@@ -151,6 +151,15 @@ The overview answers what is happening, and links to where it is decided. It car
 banner, a compact line saying how many positions are waiting and how long the oldest has been
 there, the root-cause failure groups, and the runs that happened recently.
 
+Every number about the queue comes from one function, `countOpenDecisions`, and the overview reads
+it through the same query as the navigation badge. It used to read three: the banner filtered the
+health digest's `stuck` flag, the waiting line read the digest's pending patch count, and the badge
+summed the three list endpoints — so one screen showed three totals for one queue and explained
+none of them. The digest knows only patch candidates and cannot answer for the queue; it keeps what
+it does own, the failure groups, the risks and the all-clear. Where the banner shows a share of the
+queue it says so in words — "25 of 30 are blocking their workflow", or "at least" where a source hit
+its page cap — because a bare count beside a different bare count reads as a contradiction.
+
 Deviation from the family convention, deliberate: Zone A links to the decision queue without
 reproducing any of it. The convention allows the overview to show the queue's top positions as well
 as link to them, and this product did exactly that — the same rows as `/decisions`, not decidable

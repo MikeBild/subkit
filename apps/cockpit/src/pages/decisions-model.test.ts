@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   ageInDays,
+  bannerSubset,
   conversationDecision,
+  countOpenDecisions,
   type DecisionItem,
   filterByKinds,
   groupDecisions,
@@ -401,5 +403,122 @@ describe("urgency", () => {
     const rubrics = partitionByUrgency([broken], NOW);
     expect(rubrics.expired).toEqual([]);
     expect(rubrics.blocking.map((entry) => entry.id)).toEqual(["broken"]);
+  });
+});
+
+describe("countOpenDecisions", () => {
+  const totals = { patch: 3, skill: 1, conversation: 2 };
+
+  test("the total is the sum of the engine's own counts, not the rows in hand", () => {
+    // Every source is fetched with a page cap. Counting the rows would
+    // under-report a backlog by exactly the amount that matters.
+    const open = countOpenDecisions({
+      items: [item("patch", 1)],
+      totals: { patch: 118, skill: 0, conversation: 1 },
+      nowMs: NOW,
+    });
+    expect(open.total).toBe(119);
+    expect(open.byKind).toEqual({ patch: 118, skill: 0, conversation: 1 });
+    expect(open.capped).toBe(true);
+  });
+
+  test("a position delivered twice is one decision", () => {
+    const twice = item("patch", 4, "same-row");
+    const open = countOpenDecisions({
+      items: [twice, { ...twice, title: "another rendering of the same row" }, item("skill", 1)],
+      totals: { patch: 1, skill: 1, conversation: 0 },
+      nowMs: NOW,
+    });
+    expect(open.total).toBe(2);
+    expect(open.capped).toBe(false);
+    expect(open.subsets.aging).toBe(1);
+  });
+
+  test("splits the queue into what stops you, what lapsed and what merely sat", () => {
+    const open = countOpenDecisions({
+      items: [
+        item("conversation", 0, "stopped"),
+        item("conversation", 1, "lapsed", {
+          expiresAt: new Date(NOW - 3_600_000).toISOString(),
+        }),
+        item("patch", 19, "old"),
+        item("patch", 1, "fresh"),
+        item("skill", 4, "older"),
+      ],
+      totals: { patch: 2, skill: 1, conversation: 2 },
+      nowMs: NOW,
+    });
+    expect(open.subsets).toEqual({ blocking: 1, overdue: 1, aging: 2 });
+    expect(open.oldestAgeDays).toBe(19);
+  });
+
+  test("without engine totals it counts what it holds rather than guessing", () => {
+    const open = countOpenDecisions({
+      items: [item("patch", 1), item("conversation", 2)],
+      totals: null,
+      nowMs: NOW,
+    });
+    expect(open.total).toBe(2);
+    expect(open.byKind).toEqual({ patch: 1, skill: 0, conversation: 1 });
+    expect(open.capped).toBe(false);
+  });
+
+  test("an empty queue counts to zero across every field", () => {
+    const open = countOpenDecisions({ items: [], totals: null, nowMs: NOW });
+    expect(open.total).toBe(0);
+    expect(open.subsets).toEqual({ blocking: 0, overdue: 0, aging: 0 });
+    expect(open.oldestAgeDays).toBe(0);
+    expect(bannerSubset(open).mode).toBe("none");
+  });
+
+  test("byKind always carries all three sources, including the silent ones", () => {
+    const open = countOpenDecisions({ items: [], totals, nowMs: NOW });
+    expect(Object.keys(open.byKind).sort()).toEqual(["conversation", "patch", "skill"]);
+  });
+});
+
+describe("bannerSubset", () => {
+  function open(overrides: {
+    total: number;
+    blocking?: number;
+    overdue?: number;
+    aging?: number;
+    capped?: boolean;
+  }) {
+    return {
+      total: overrides.total,
+      byKind: { patch: overrides.total, skill: 0, conversation: 0 },
+      subsets: {
+        blocking: overrides.blocking ?? 0,
+        overdue: overrides.overdue ?? 0,
+        aging: overrides.aging ?? 0,
+      },
+      oldestAgeDays: 0,
+      capped: overrides.capped ?? false,
+    };
+  }
+
+  test("names its share of the whole rather than standing alone", () => {
+    expect(bannerSubset(open({ total: 30, blocking: 25 }))).toEqual({
+      count: 25,
+      total: 30,
+      mode: "some",
+    });
+  });
+
+  test("says so when the share is the whole queue", () => {
+    expect(bannerSubset(open({ total: 4, blocking: 2, aging: 2 })).mode).toBe("all");
+  });
+
+  test("a capped page can only claim a floor", () => {
+    expect(bannerSubset(open({ total: 119, blocking: 5, capped: true }))).toEqual({
+      count: 5,
+      total: 119,
+      mode: "atLeast",
+    });
+  });
+
+  test("nothing urgent means no banner, even with a full queue", () => {
+    expect(bannerSubset(open({ total: 12 })).mode).toBe("none");
   });
 });
