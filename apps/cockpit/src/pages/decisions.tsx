@@ -25,7 +25,6 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import {
-  countByKind,
   type DecisionItem,
   type DecisionKind,
   filterByKinds,
@@ -126,7 +125,9 @@ export function DecisionsPage() {
   const urgency = partitionByUrgency(filtered, Date.now());
   const { current, aged } = urgency.deferred;
   const isFiltered = preferences.kinds.length > 0 && open.length > filtered.length;
-  const counts = countByKind(open);
+  // The breakdown comes from the same count as the badge, not from the rows the
+  // page happens to hold: the two disagreed the moment a source hit its cap.
+  const counted = queue.open;
 
   if (!queue.sources.patches && !queue.sources.skills && !queue.sources.conversations)
     return (
@@ -192,18 +193,18 @@ export function DecisionsPage() {
         {/* The number on the badge used to stand alone, which made it read as a
             demand of unknown origin. Naming its three sources answers "where do
             these come from" before anyone has to ask. */}
-        {queue.total !== null && queue.total > 0 && (
+        {counted !== null && counted.total > 0 && (
           <p className="-mt-2 text-xs text-muted-foreground" data-testid="decisions-sources">
             {t("decisions.sources", {
-              total: String(queue.total),
-              patches: String(counts.patch),
-              skills: String(counts.skill),
-              conversations: String(counts.conversation),
+              total: String(counted.total),
+              patches: String(counted.byKind.patch),
+              skills: String(counted.byKind.skill),
+              conversations: String(counted.byKind.conversation),
             })}
-            {queue.capped
+            {counted.capped
               ? ` ${t("decisions.capped", {
-                  shown: String(open.length),
-                  total: String(queue.total),
+                  shown: String(queue.items.length),
+                  total: String(counted.total),
                 })}`
               : ""}
           </p>
@@ -330,22 +331,31 @@ export function DecisionsPage() {
                 hint={t("decisions.section.deferredHint")}
                 count={current.length + aged.length}
               >
-                {current.length > 0 && (
-                  <div className="grid gap-2" data-testid="decisions-current">
-                    {renderGroups(current, "decision-deferred")}
-                  </div>
-                )}
-                {aged.length > 0 && (
-                  <div className="mt-2 grid gap-2 border-t pt-4" data-testid="decisions-aged">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold">{t("decisions.agedTitle")}</h3>
-                      <Badge variant="secondary" className="tabular-nums">
-                        {aged.length}
-                      </Badge>
+                {/* The queue's own copy of the one number, so a drift between
+                    badge, Zone A and this page is a failing assertion rather
+                    than something a reader has to notice. */}
+                <div
+                  data-testid="decisions-queue"
+                  data-total={String(counted?.total ?? 0)}
+                  data-capped={String(counted?.capped ?? false)}
+                >
+                  {current.length > 0 && (
+                    <div className="grid gap-2" data-testid="decisions-current">
+                      {renderGroups(current, "decision-deferred")}
                     </div>
-                    {renderGroups(aged, "decision-aged")}
-                  </div>
-                )}
+                  )}
+                  {aged.length > 0 && (
+                    <div className="mt-2 grid gap-2 border-t pt-4" data-testid="decisions-aged">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold">{t("decisions.agedTitle")}</h3>
+                        <Badge variant="secondary" className="tabular-nums">
+                          {aged.length}
+                        </Badge>
+                      </div>
+                      {renderGroups(aged, "decision-aged")}
+                    </div>
+                  )}
+                </div>
               </DecisionSection>
             )}
           </>

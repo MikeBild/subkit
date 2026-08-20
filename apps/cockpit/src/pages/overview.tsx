@@ -4,7 +4,7 @@ import { CircleCheck, ListChecks, RefreshCw } from "lucide-react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { useSession } from "@/app/session";
-import { canSeeDecisions } from "@/app/use-decisions";
+import { canSeeDecisions, useDecisionQueue } from "@/app/use-decisions";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { PageFrame } from "@/components/cockpit/page-frame";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -21,8 +21,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
+import { bannerSubset } from "./decisions-model";
 import type { FailureGroup, HealthDigest } from "./overview-model";
-import { partitionFailures, recentRuns, waitingSummary } from "./overview-model";
+import { partitionFailures, recentRuns } from "./overview-model";
 
 type Execution = components["schemas"]["Execution"];
 
@@ -46,12 +47,16 @@ export function OverviewPage() {
     staleTime: 30_000,
     queryFn: () => apiRequest<{ items: Execution[] }>("/v1/executions?limit=8"),
   });
+  // The waiting numbers come from the decision queue, never from the digest:
+  // the digest knows only patch candidates, so anything it said about "how many
+  // are waiting" was a third of the answer presented as the whole. The digest
+  // keeps what it does own — failure groups, risks and the all-clear.
+  const queue = useDecisionQueue(session.permissions);
   const digest = query.data;
   const { incidents, trials } = partitionFailures(digest?.failure_groups ?? []);
-  const waiting = digest ? waitingSummary(digest) : { total: 0, oldestDays: 0, stuckCount: 0 };
+  const open = queue.open;
+  const banner = open ? bannerSubset(open) : null;
   const recent = recentRuns(runsQuery.data?.items ?? []);
-  const stuck = digest?.patch_candidates.items.filter((item) => item.stuck) ?? [];
-  const oldestStuckDays = stuck.reduce((days, item) => Math.max(days, item.age_days), 0);
 
   if (!allowed)
     return (
@@ -106,13 +111,30 @@ export function OverviewPage() {
         </Alert>
       ) : (
         <div className="grid gap-4">
-          {stuck.length > 0 && (
+          {open !== null && banner !== null && banner.mode !== "none" && (
             <Alert variant="destructive" data-testid="overview-incident">
               <AlertTitle>
-                {t("overview.incident.title", { count: String(stuck.length) })}
+                {/* The subset is named, not implied: the banner used to show one
+                    number and Zone A another, and nothing on the page said how
+                    the two were related. The data attributes carry the same two
+                    numbers the sentence states. */}
+                <span
+                  data-testid="incident-decisions-count"
+                  data-subset={String(banner.count)}
+                  data-subset-total={String(banner.total)}
+                >
+                  {t(
+                    banner.mode === "all"
+                      ? "overview.incident.all"
+                      : banner.mode === "atLeast"
+                        ? "overview.incident.atLeast"
+                        : "overview.incident.subset",
+                    { count: String(banner.count), total: String(banner.total) },
+                  )}
+                </span>
               </AlertTitle>
               <AlertDescription>
-                {t("overview.incident.description", { days: String(oldestStuckDays) })}
+                {t("overview.incident.description", { days: String(open.oldestAgeDays) })}
               </AlertDescription>
               <Button variant="outline" size="sm" className="mt-3" asChild>
                 <Link to="/decisions" data-testid="overview-incident-open">
@@ -133,23 +155,25 @@ export function OverviewPage() {
               <CardDescription>{t("overview.waiting.description")}</CardDescription>
             </CardHeader>
             <CardContent>
-              {waiting.total > 0 ? (
+              {open !== null && open.total > 0 ? (
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span
-                    className="text-3xl font-semibold tabular-nums"
-                    data-testid="overview-waiting-count"
-                  >
-                    {waiting.total}
+                  <span data-testid="zone-a-decisions-count">
+                    <span
+                      className="text-3xl font-semibold tabular-nums"
+                      data-testid="overview-waiting-count"
+                    >
+                      {open.total}
+                    </span>
                   </span>
                   <span className="text-sm text-muted-foreground">
                     {t("overview.waiting.pendingLabel")}
                   </span>
-                  {waiting.oldestDays > 0 && (
+                  {open.oldestAgeDays > 0 && (
                     <span
                       className="text-sm text-muted-foreground"
                       data-testid="overview-waiting-oldest"
                     >
-                      {t("overview.waiting.oldest", { days: String(waiting.oldestDays) })}
+                      {t("overview.waiting.oldest", { days: String(open.oldestAgeDays) })}
                     </span>
                   )}
                 </div>
@@ -166,7 +190,7 @@ export function OverviewPage() {
                 </div>
               )}
             </CardContent>
-            {canDecide && waiting.total > 0 && (
+            {canDecide && open !== null && open.total > 0 && (
               <CardFooter>
                 <Button asChild>
                   <Link to="/decisions" data-testid="overview-open-decisions">

@@ -225,13 +225,13 @@ export function AppShell() {
 function DecisionsCounter() {
   const session = useSession();
   const queue = useDecisionQueue(session.permissions);
-  if (queue.failed || queue.total === null || queue.total === 0) return null;
+  if (queue.failed || queue.open === null || queue.open.total === 0) return null;
   return (
     <SidebarMenuBadge
       className={queue.overdue ? "text-destructive" : undefined}
       data-testid="nav-decisions-count"
     >
-      {queue.total}
+      {queue.open.total}
     </SidebarMenuBadge>
   );
 }

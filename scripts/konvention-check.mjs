@@ -209,9 +209,26 @@ const AWAITING_CONVERSATIONS = [
   },
 ];
 
-/** The number the navigation badge must show, derived the way the engine does. */
-const QUEUE_TOTAL =
+// The engine counts more waiting conversations than one page of them delivers.
+// Without this the fixture could never tell an exact total from a rendered row
+// count, which is precisely the confusion §8.1 is about.
+const CONVERSATION_TOTAL = AWAITING_CONVERSATIONS.length + 2;
+
+/** The number every surface must show: the engine's own counts, summed. */
+const QUEUE_TOTAL = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length + CONVERSATION_TOTAL;
+
+/** The number of distinct positions the page can actually render. */
+const QUEUE_SHOWN =
   PATCH_CANDIDATES.length + SKILL_CANDIDATES.length + AWAITING_CONVERSATIONS.length;
+
+/**
+ * What the patch endpoint hands over: the three candidates, one of them twice.
+ *
+ * A row delivered twice must be one decision on every surface — the badge, the
+ * queue and the banner. Shipping the duplicate through the fixture is the only
+ * way the dedup key is proven on a rendered page rather than in a unit alone.
+ */
+const PATCH_ROWS = [...PATCH_CANDIDATES, PATCH_CANDIDATES[0]];
 
 // §6 gives the installation section a notification entry, and §4 forbids
 // proving it with an empty page: a rule and a channel are what the populated
@@ -431,19 +448,26 @@ function apiMock(gateOpen) {
     if (path === "/v1/cockpit/bootstrap") return json(route, BOOTSTRAP);
     if (path === "/v1/operator/health-digest") return json(route, healthDigest(gateOpen));
 
+    // The three decision sources follow `gateOpen` too: the badge, Zone A and
+    // the banner all read them now, so the calm variant has to be able to say
+    // "nothing is open" through the same endpoints the busy one uses.
     if (path === "/v1/patch-candidates") {
-      const items = status === "proposed" ? PATCH_CANDIDATES : [];
-      return json(route, { items, total: items.length });
+      const items = gateOpen && status === "proposed" ? PATCH_ROWS : [];
+      return json(route, { items, total: gateOpen ? PATCH_CANDIDATES.length : 0 });
     }
     if (path === "/v1/skill-candidates") {
-      const items = status === "proposed" ? SKILL_CANDIDATES : [];
+      const items = gateOpen && status === "proposed" ? SKILL_CANDIDATES : [];
       return json(route, { items, total: items.length });
     }
     if (path === `/v1/skill-candidates/${ID}/evidence`) return json(route, { items: [] });
 
     if (path === "/v1/conversations") {
-      const items = status === "awaiting_input" ? AWAITING_CONVERSATIONS : AWAITING_CONVERSATIONS;
-      return json(route, { items, total: items.length });
+      if (status === "awaiting_input" && !gateOpen) return json(route, { items: [], total: 0 });
+      const items = AWAITING_CONVERSATIONS;
+      return json(route, {
+        items,
+        total: status === "awaiting_input" ? CONVERSATION_TOTAL : items.length,
+      });
     }
     if (path === `/v1/conversations/${ID}`)
       return json(route, {
@@ -860,6 +884,58 @@ async function checkIncidentBanner(page, gateOpen) {
     );
   else if (!shape.links[0].includes("/decisions"))
     breach("§8.7", "/overview · overview-incident", `Link zeigt auf ${shape.links[0]}`);
+  return checkBannerSubset(page);
+}
+
+/**
+ * §8.1 / §8.7 — the banner names a SUBSET, and says of what.
+ *
+ * A bare count beside a different count in Zone A is what made one screen show
+ * 25, 30 and 119 without a word about how the three were related. The sentence
+ * has to state both numbers, and the numbers have to be readable as numbers so
+ * the four surfaces can be compared against each other rather than by eye.
+ */
+const BANNER_SENTENCE =
+  /^(Alle \d+|Mindestens \d+ von \d+|\d+ von \d+) blockieren ihren Workflow\.$/;
+
+async function checkBannerSubset(page) {
+  const subset = await page.evaluate(() => {
+    const element = document.querySelector('[data-testid="incident-decisions-count"]');
+    if (!element) return null;
+    return {
+      text: element.innerText.trim(),
+      count: element.getAttribute("data-subset"),
+      total: element.getAttribute("data-subset-total"),
+    };
+  });
+  if (!subset) {
+    breach("§8.1", "/overview · overview-incident", "Banner nennt keine Teilmenge");
+    return null;
+  }
+  if (!BANNER_SENTENCE.test(subset.text))
+    breach("§8.1", "/overview · incident-decisions-count", subset.text);
+  const count = Number(subset.count);
+  const total = Number(subset.total);
+  if (!(count > 0 && count <= total))
+    breach(
+      "§8.1",
+      "/overview · incident-decisions-count",
+      `Teilmenge ${subset.count} passt nicht in Gesamtzahl ${subset.total}`,
+    );
+  return total;
+}
+
+/** §1 — Zone A's head is the same number the badge carries, or the page lies. */
+async function readZoneACount(page) {
+  const value = await page.evaluate(() => {
+    const element = document.querySelector('[data-testid="zone-a-decisions-count"]');
+    return element instanceof HTMLElement ? element.innerText.trim() : null;
+  });
+  if (value === null) {
+    breach("§1, §8.1", "/overview · overview-waiting", "Zone A nennt keine Anzahl");
+    return null;
+  }
+  return Number(value);
 }
 
 /** §8.2 — positions older than three days stand under "Liegt schon länger". */
@@ -908,32 +984,90 @@ async function checkNoIdentifiers(page, where) {
 }
 
 /**
- * §8.1 — the badge and the queue are one number.
+ * §8.1 — four surfaces, one number.
  *
- * They come from one query in the source, which is exactly why this is worth
- * asserting: the moment a second count is introduced anywhere, the two surfaces
- * start disagreeing about how much work is waiting.
+ * The badge, Zone A, the banner's base and the queue's own copy are compared
+ * against each other rather than against a constant, because the failure this
+ * asserts against is not a wrong number: it is two right-looking numbers that
+ * were never the same question. The rendered positions are counted separately —
+ * they are allowed to be FEWER than the total, and only when the page says so.
  */
-async function checkCounterCoherence(page, badgeValue) {
-  const positions = await page.evaluate(
-    () =>
-      [...document.querySelectorAll("article[data-testid]")].filter((element) =>
-        /^decision(-expired|-deferred|-aged)?-\d+$/.test(element.getAttribute("data-testid") ?? ""),
-      ).length,
-  );
-  if (positions !== QUEUE_TOTAL)
+async function checkCounterCoherence(page, surfaces) {
+  const rendered = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll("article[data-testid]")].filter((element) =>
+      /^decision(-expired|-deferred|-aged)?-\d+$/.test(element.getAttribute("data-testid") ?? ""),
+    );
+    const wrapper = document.querySelector('[data-testid="decisions-queue"]');
+    return {
+      positions: cards.length,
+      keys: cards.map((card) => card.getAttribute("data-decision-key")),
+      total: wrapper?.getAttribute("data-total") ?? null,
+      capped: wrapper?.getAttribute("data-capped") ?? null,
+    };
+  });
+
+  if (rendered.positions !== QUEUE_SHOWN)
     breach(
       "§8.1",
       "/decisions",
-      `${positions} Positionen gerendert, Fixture liefert ${QUEUE_TOTAL}`,
+      `${rendered.positions} Positionen gerendert, Fixture liefert ${QUEUE_SHOWN} verschiedene`,
     );
-  if (badgeValue === null || badgeValue === undefined) return;
-  if (Number(badgeValue) !== positions)
+  const distinct = new Set(rendered.keys.filter((key) => key !== null));
+  if (distinct.size !== rendered.positions)
     breach(
       "§8.1",
-      "/decisions vs. nav-decisions-count",
-      `Badge zeigt ${badgeValue}, Queue rendert ${positions} Positionen`,
+      "/decisions",
+      `${rendered.positions} Karten, aber ${distinct.size} verschiedene Positionen — doppelt gezählt`,
     );
+  if (rendered.total === null) {
+    breach("§8.1", "/decisions · decisions-queue", "Queue nennt ihre Gesamtzahl nicht");
+    return;
+  }
+
+  const queueTotal = Number(rendered.total);
+  const named = {
+    "nav-decisions-count": surfaces.badge === null ? null : Number(surfaces.badge),
+    "zone-a-decisions-count": surfaces.zoneA,
+    "incident-decisions-count": surfaces.bannerTotal,
+    "decisions-queue": queueTotal,
+  };
+  for (const [where, value] of Object.entries(named)) {
+    if (value === null || value === undefined) continue;
+    if (value !== queueTotal)
+      breach(
+        "§8.1",
+        `/overview + /decisions · ${where}`,
+        `zeigt ${value}, die Queue zählt ${queueTotal}`,
+      );
+  }
+  if (queueTotal !== QUEUE_TOTAL)
+    breach(
+      "§8.1",
+      "/decisions · decisions-queue",
+      `Gesamtzahl ${queueTotal}, Fixture-Endpunkte melden ${QUEUE_TOTAL}`,
+    );
+  // The fixture delivers fewer positions than the engine counts, so the page
+  // must say so rather than let the badge and the column disagree in silence.
+  if (rendered.capped !== "true")
+    breach(
+      "§8.1",
+      "/decisions · decisions-queue",
+      `${rendered.positions} von ${queueTotal} gezeigt, aber nicht als gekürzt ausgewiesen`,
+    );
+}
+
+/** §8.1 / §8.7 — nothing open means no badge and no banner, not a quiet zero. */
+async function checkSilentWhenEmpty(page) {
+  const present = await page.evaluate(() => ({
+    badge: Boolean(document.querySelector('[data-testid="nav-decisions-count"]')),
+    banner: Boolean(document.querySelector('[data-testid="overview-incident"]')),
+    zoneA: Boolean(document.querySelector('[data-testid="zone-a-decisions-count"]')),
+  }));
+  if (present.badge)
+    breach("§8.1", "/overview (leere Queue)", "Zähler-Badge trotz null offener Positionen");
+  if (present.banner) breach("§8.7", "/overview (leere Queue)", "Banner trotz leerer Queue");
+  if (present.zoneA)
+    breach("§1", "/overview (leere Queue)", "Zone A nennt eine Zahl, obwohl nichts offen ist");
 }
 
 async function startPreview() {
@@ -996,12 +1130,13 @@ try {
   await checkAdminGroupName(overview);
   await checkInstallationEntries(overview);
   const badgeValue = await checkDecisionsNavEntry(overview);
-  await checkIncidentBanner(overview, true);
+  const bannerTotal = await checkIncidentBanner(overview, true);
+  const zoneA = await readZoneACount(overview);
   await overview.close();
 
   const decisions = await openPage(context, "decisions");
   await checkAgingRubric(decisions);
-  await checkCounterCoherence(decisions, badgeValue);
+  await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, bannerTotal });
   await decisions.close();
 
   for (const route of ROUTES) {
@@ -1031,6 +1166,7 @@ try {
   await calm.route("**/v1/**", apiMock(false));
   const calmOverview = await openPage(calm, "overview");
   await checkIncidentBanner(calmOverview, false);
+  await checkSilentWhenEmpty(calmOverview);
   await calmOverview.close();
   await calm.close();
 } finally {

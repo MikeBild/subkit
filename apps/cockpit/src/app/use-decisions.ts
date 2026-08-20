@@ -16,8 +16,11 @@ import {
 } from "@/lib/name-index";
 import {
   conversationDecision,
+  countOpenDecisions,
   type DecisionItem,
+  decisionKey,
   hasOverdue,
+  type OpenDecisions,
   patchDecision,
   skillDecision,
 } from "@/pages/decisions-model";
@@ -36,12 +39,9 @@ export interface DecisionQueue {
   /** Whether this person may open a run. Decides whether the failing-run link
    *  appears at all — the permission is evaluated per object. */
   canReadRuns: boolean;
-  /** Exact open count from the engine totals, or null while unknown. */
-  total: number | null;
-  /** True when the page is showing fewer positions than the engine counted —
-   *  every source is capped at 200 rows, and a badge that silently disagrees
-   *  with the column below it is worse than saying so. */
-  capped: boolean;
+  /** The one count: total, per-source breakdown, subsets and oldest age.
+   *  Null while it cannot be read — an omitted number beats a guessed one. */
+  open: OpenDecisions | null;
   overdue: boolean;
   isPending: boolean;
   isFetching: boolean;
@@ -129,20 +129,27 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
           ),
         ),
       ];
-      const total = (patches?.total ?? 0) + (skills?.total ?? 0) + (conversations?.total ?? 0);
-      return { items, total };
+      return {
+        // Deduplicated here, not at the card: two sources may hand out the same
+        // row, and one position is one decision on every surface that shows it.
+        items: [...new Map(items.map((item) => [decisionKey(item), item])).values()],
+        totals: {
+          patch: patches?.total ?? 0,
+          skill: skills?.total ?? 0,
+          conversation: conversations?.total ?? 0,
+        },
+      };
     },
   });
 
   const items = query.data?.items ?? [];
-  const total = query.data?.total ?? null;
+  const now = Date.now();
   return {
     items,
     names: nameIndex,
     canReadRuns: permissions.includes("execution:read"),
-    total,
-    capped: total !== null && items.length < total,
-    overdue: hasOverdue(items, Date.now()),
+    open: query.data ? countOpenDecisions({ items, totals: query.data.totals, nowMs: now }) : null,
+    overdue: hasOverdue(items, now),
     isPending: query.isPending,
     isFetching: query.isFetching,
     failed: Boolean(query.error),
