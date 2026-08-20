@@ -110,7 +110,7 @@ describe("skill content pinning — turn-one-discipline phrases (6.2.12 regressi
 
 describe("attachment-handling skill content", () => {
   // Pins the regression fix for the "create a knowledge source using
-  // /Users/...md" flow: the agent was hallucinating a paperclip UI and
+  // /Users/...md" flow: the agent was hallucinating an upload UI and
   // bouncing users to slash commands. sk now handles pasted/dropped
   // paths directly; knowledge-source intents arrive as {"$file":"fid_…"},
   // while workflow-input text files may arrive as Local file contents blocks.
@@ -120,9 +120,9 @@ describe("attachment-handling skill content", () => {
     expect(bundle).toContain("Do not recommend `/attach` or `/upload`");
   });
 
-  test("loaded bundle forbids inventing a paperclip / drag-drop UI", () => {
-    expect(bundle).toContain("paperclip");
-    expect(bundle).toMatch(/no paperclip/i);
+  test("loaded bundle forbids inventing an attach-button / drag-drop UI", () => {
+    expect(bundle).toContain("no attach button, drag-drop zone, or file dialog");
+    expect(bundle).toMatch(/\bno attach button\b/i);
   });
 
   test("loaded bundle says the engine cannot read local filesystem paths", () => {
