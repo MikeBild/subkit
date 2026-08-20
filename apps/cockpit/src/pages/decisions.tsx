@@ -201,8 +201,12 @@ export function DecisionsPage() {
               skills: String(counted.byKind.skill),
               conversations: String(counted.byKind.conversation),
             })}
+            {/* The same middle dot the rest of the line uses. Without it the
+                enumeration and the display note ran into one sentence, and the
+                two number pairs — "8 offen" and "6 von 8" — stood side by side
+                unexplained. */}
             {counted.capped
-              ? ` ${t("decisions.capped", {
+              ? ` · ${t("decisions.capped", {
                   shown: String(queue.items.length),
                   total: String(counted.total),
                 })}`

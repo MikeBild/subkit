@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { NAVIGATION } from "../apps/cockpit/src/app/navigation.ts";
+import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 
 // The family convention (COCKPIT-KONVENTION.md) is deliberately not enforced by
 // shared code — six products copy patterns, they do not import them (§7). What
@@ -1217,6 +1218,41 @@ async function checkRubricLanguage(page) {
 }
 
 /**
+ * §8.1 / §8.2 — the queue's head is one line, not two sentences run together.
+ *
+ * The separator was missing in front of the display note, so an enumeration
+ * that sets a middle dot between every other claim let the last two collide:
+ * "… Unterhaltungen: 4 Angezeigt: 6 von 8." Two number pairs then stood beside
+ * each other with nothing saying how they relate — and the note never said WHY
+ * it showed fewer than it counted.
+ *
+ * The expected line is COMPOSED here from the German catalog rather than
+ * spelled out, because what is asserted is the composition: the wording itself
+ * is pinned elsewhere, and a second copy of it here would only mean two places
+ * to change one sentence (§12).
+ */
+const german = (key, values) => interpolate(CATALOGS.de[key], values);
+
+const QUEUE_HEADER = `${german("decisions.sources", {
+  total: QUEUE_TOTAL,
+  patches: PATCH_CANDIDATES.length,
+  skills: SKILL_CANDIDATES.length,
+  conversations: CONVERSATION_TOTAL,
+})} · ${german("decisions.capped", { shown: QUEUE_SHOWN, total: QUEUE_TOTAL })}`;
+
+async function checkQueueHeader(page) {
+  const line = await page.evaluate(() => {
+    const element = document.querySelector('[data-testid="decisions-sources"]');
+    return element instanceof HTMLElement ? element.innerText.replace(/\s+/g, " ").trim() : null;
+  });
+  if (line === null) {
+    breach("§8.1", "/decisions · decisions-sources", "die Queue nennt ihre Herkunft nicht");
+    return;
+  }
+  if (line !== QUEUE_HEADER) breach("§8.1", "/decisions · decisions-sources", line);
+}
+
+/**
  * §5 — a title is a summary in the reader's language, not the engine's artefact.
  *
  * `proposal.description` arrives as English change notes ("Field follows the
@@ -1674,6 +1710,7 @@ try {
   const decisions = await openPage(context, "decisions");
   await checkAgingRubric(decisions);
   await checkRubricLanguage(decisions);
+  await checkQueueHeader(decisions);
   await checkCorrectionTitles(decisions);
   await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, banner });
   await decisions.close();
