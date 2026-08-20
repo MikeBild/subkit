@@ -1052,6 +1052,54 @@ async function checkAgingRubric(page) {
 }
 
 /**
+ * §5 / §8.2 — every rubric of the queue is headed in German, and in these words.
+ *
+ * `checkBannerAgainstRubrics()` reads the banner against the rubric it is a
+ * share of, but both sides take their wording from the same catalog key: flip
+ * that key to English and the two still agree, in English, and the check stays
+ * green. So the German wording is pinned here as well — once per rubric, and
+ * the aged one through the constant that already owns it.
+ *
+ * A rubric the fixture leaves empty is not rendered, and an unrendered heading
+ * proves nothing; that is why a missing section is itself a breach rather than
+ * a silent skip.
+ */
+const RUBRIC_HEADINGS = {
+  "decisions-expired": "Abgelaufen",
+  "decisions-blocking": "Blockiert gerade etwas",
+  "decisions-current": "Blockiert nichts",
+  "decisions-aged": AGED_RUBRIC,
+};
+
+async function checkRubricLanguage(page) {
+  const headings = await page.evaluate(
+    (ids) =>
+      Object.fromEntries(
+        ids.map((id) => {
+          const heading = document.querySelector(
+            `[data-testid="${id}"] h1, [data-testid="${id}"] h2, [data-testid="${id}"] h3, [data-testid="${id}"] h4`,
+          );
+          return [id, heading instanceof HTMLElement ? heading.innerText.trim() : null];
+        }),
+      ),
+    Object.keys(RUBRIC_HEADINGS),
+  );
+  for (const [testId, expected] of Object.entries(RUBRIC_HEADINGS)) {
+    const actual = headings[testId];
+    if (actual === null) {
+      breach(
+        "§8.2",
+        `/decisions · ${testId}`,
+        `Rubrik "${expected}" fehlt — ihr Wortlaut bleibt ungeprüft`,
+      );
+      continue;
+    }
+    if (actual !== expected)
+      breach("§5", `/decisions · ${testId}`, `Rubrik heißt "${actual}" statt "${expected}"`);
+  }
+}
+
+/**
  * §5 — a title is a summary in the reader's language, not the engine's artefact.
  *
  * `proposal.description` arrives as English change notes ("Field follows the
@@ -1359,6 +1407,7 @@ try {
 
   const decisions = await openPage(context, "decisions");
   await checkAgingRubric(decisions);
+  await checkRubricLanguage(decisions);
   await checkCorrectionTitles(decisions);
   await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, banner });
   await decisions.close();
