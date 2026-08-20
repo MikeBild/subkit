@@ -1,8 +1,9 @@
 import {
   Activity,
-  Bot,
+  Bell,
   Boxes,
   Cable,
+  Cpu,
   FileStack,
   Gauge,
   History,
@@ -32,15 +33,17 @@ export interface NavigationItem {
 }
 
 export interface NavigationGroup {
-  id: "home" | "work" | "build" | "knowledge" | "govern" | "admin";
-  labelKey: TranslationKey;
+  id: "home" | "work" | "build" | "knowledge" | "admin";
+  /** Absent where the convention forbids a heading: the overview and the
+   *  decisions entry stand ungrouped (§8.1), and a heading above them is a
+   *  group whatever the table calls it. */
+  labelKey?: TranslationKey;
   items: readonly NavigationItem[];
 }
 
 export const NAVIGATION: readonly NavigationGroup[] = [
   {
     id: "home",
-    labelKey: "nav.group.home",
     items: [
       {
         labelKey: "nav.overview",
@@ -146,9 +149,42 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     ],
   },
   {
-    id: "govern",
-    labelKey: "nav.group.govern",
+    // §6: the shared admin block is called "Installation" in all six products,
+    // and it carries the same five entries — System, Einstellungen,
+    // Zugangsdaten, Benachrichtigungen, Audit — before anything this product
+    // adds. Audit moved here from a group of its own: a section that has to
+    // contain it cannot also leave it somewhere else.
+    id: "admin",
+    labelKey: "nav.group.admin",
     items: [
+      {
+        labelKey: "nav.operations",
+        path: "/operations",
+        permission: "stats:read",
+        icon: Cpu,
+        api: ["GET /v1/operator/health-digest"],
+      },
+      {
+        labelKey: "nav.settings",
+        path: "/settings",
+        permission: "settings:read",
+        icon: Settings,
+        api: ["GET /v1/settings"],
+      },
+      {
+        labelKey: "nav.apiAccess",
+        path: "/api-access",
+        permission: "api_key:read",
+        icon: KeyRound,
+        api: ["GET /v1/identity/api-keys"],
+      },
+      {
+        labelKey: "nav.notifications",
+        path: "/notifications",
+        permission: "notification:read",
+        icon: Bell,
+        api: ["GET /v1/notifications/rules", "GET /v1/notifications/channels"],
+      },
       {
         labelKey: "nav.audit",
         path: "/audit",
@@ -156,19 +192,6 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         icon: History,
         api: ["GET /v1/audit-log"],
       },
-      {
-        labelKey: "nav.usage",
-        path: "/usage",
-        permission: "stats:read",
-        icon: Gauge,
-        api: ["GET /v1/stats/executions"],
-      },
-    ],
-  },
-  {
-    id: "admin",
-    labelKey: "nav.group.admin",
-    items: [
       {
         labelKey: "nav.people",
         path: "/people",
@@ -184,25 +207,11 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         api: ["GET /v1/rbac/roles"],
       },
       {
-        labelKey: "nav.apiAccess",
-        path: "/api-access",
-        permission: "api_key:read",
-        icon: KeyRound,
-        api: ["GET /v1/identity/api-keys"],
-      },
-      {
-        labelKey: "nav.operations",
-        path: "/operations",
+        labelKey: "nav.usage",
+        path: "/usage",
         permission: "stats:read",
-        icon: Bot,
-        api: ["GET /v1/operator/health-digest"],
-      },
-      {
-        labelKey: "nav.settings",
-        path: "/settings",
-        permission: "settings:read",
-        icon: Settings,
-        api: ["GET /v1/settings"],
+        icon: Gauge,
+        api: ["GET /v1/stats/executions"],
       },
     ],
   },
