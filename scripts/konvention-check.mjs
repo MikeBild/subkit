@@ -38,6 +38,7 @@ const ROUTES = [
   "access",
   "api-access",
   "operations",
+  "notifications",
   "settings",
 ];
 
@@ -49,6 +50,7 @@ const MOUNT_MARKERS = {
   access: '[data-testid="admin-access"]',
   "api-access": '[data-testid="admin-api-access"]',
   operations: '[data-testid="admin-operations"]',
+  notifications: '[data-testid="admin-notifications"]',
   settings: '[data-testid="admin-settings"]',
   workflows: '[data-testid="catalog-workflows"]',
   connectors: '[data-testid="catalog-connectors"]',
@@ -210,6 +212,44 @@ const AWAITING_CONVERSATIONS = [
 /** The number the navigation badge must show, derived the way the engine does. */
 const QUEUE_TOTAL =
   PATCH_CANDIDATES.length + SKILL_CANDIDATES.length + AWAITING_CONVERSATIONS.length;
+
+// §6 gives the installation section a notification entry, and §4 forbids
+// proving it with an empty page: a rule and a channel are what the populated
+// state looks like.
+const NOTIFICATION_RULES = [
+  {
+    id: ID,
+    tenant_id: ID,
+    name: "Gescheiterte geplante Läufe",
+    event_pattern: "execution.failed",
+    workflow_pattern: "*",
+    severity: "error",
+    request_source_filter: ["scheduler"],
+    target_workspace_id: "workspace-betrieb",
+    target_channel_id: "kanal-betrieb",
+    active: true,
+    created_at: days(30),
+    updated_at: days(30),
+  },
+];
+
+const NOTIFICATION_CHANNELS = [
+  {
+    id: ID,
+    tenant_id: ID,
+    workspace_id: "workspace-betrieb",
+    channel_id: "kanal-betrieb",
+    platform: "Slack",
+    default_severity: "warn",
+    rate_limit_per_minute: 10,
+    circuit_state: "closed",
+    circuit_open_until: null,
+    consecutive_failures: 0,
+    active: true,
+    created_at: days(30),
+    updated_at: days(30),
+  },
+];
 
 const FAILURE_GROUPS = [
   {
@@ -503,6 +543,9 @@ function apiMock(gateOpen) {
         next_cursor: null,
       });
 
+    if (path === "/v1/notifications/rules") return json(route, { items: NOTIFICATION_RULES });
+    if (path === "/v1/notifications/channels") return json(route, { items: NOTIFICATION_CHANNELS });
+
     if (path === "/v1/notifications/inbox")
       return json(route, {
         items: Array.from({ length: 6 }, (_, index) => ({
@@ -676,6 +719,34 @@ async function checkAdminGroupName(page) {
   }
   const label = (await group.first().innerText()).split("\n")[0]?.trim() ?? "";
   if (label !== "Installation") breach("§6", "/overview · nav-group-admin", label);
+}
+
+/**
+ * §6 — the installation section carries the five entries the family shares.
+ *
+ * The convention pins the set, not the extras: a product may add its own
+ * entries, but a section missing System, Einstellungen, Zugangsdaten,
+ * Benachrichtigungen or Audit is a section a person has to learn twice.
+ */
+const INSTALLATION_ENTRIES = [
+  "System",
+  "Einstellungen",
+  "Zugangsdaten",
+  "Benachrichtigungen",
+  "Audit",
+];
+
+async function checkInstallationEntries(page) {
+  const labels = await page.evaluate(() => {
+    const group = document.querySelector('[data-testid="nav-group-admin"]');
+    if (!group) return null;
+    return [...group.querySelectorAll("a[data-testid]")].map((link) => link.innerText.trim());
+  });
+  if (labels === null) return;
+  for (const entry of INSTALLATION_ENTRIES) {
+    if (!labels.includes(entry))
+      breach("§6", "/overview · nav-group-admin", `Eintrag "${entry}" fehlt`);
+  }
 }
 
 /**
@@ -923,6 +994,7 @@ try {
   const overview = await openPage(context, "overview");
   await checkRoleLabel(overview);
   await checkAdminGroupName(overview);
+  await checkInstallationEntries(overview);
   const badgeValue = await checkDecisionsNavEntry(overview);
   await checkIncidentBanner(overview, true);
   await overview.close();
