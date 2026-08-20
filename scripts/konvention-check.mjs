@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { ALL_ROUTE_PATHS } from "../apps/cockpit/src/app/route-table.ts";
 import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 
-// The family convention (COCKPIT-KONVENTION.md) is deliberately not enforced by
+// The family convention (COCKPIT-KONVENTION.md, v1.5) is deliberately not enforced by
 // shared code — six products copy patterns, they do not import them (§7). What
 // is left is drift, so the rules that can be observed on a rendered page are
 // asserted here against this repo's own cockpit.
@@ -874,6 +875,199 @@ async function checkRoleLabel(page) {
   const label = await page.locator('[data-testid="account-role"]').innerText();
   if (label.trim() !== "Administrator")
     breach("§5, §6", "/overview · [data-testid=account-role]", label.trim());
+}
+
+/**
+ * §6 (v1.5) — Wortmarke, Schreibweise des Produktnamens, App-Icon, Browser-Titel.
+ *
+ * The five assertions below are the five checkpoints §6 asks every product for.
+ * Each one exists because the obvious, cheaper version of it passes on a broken
+ * console:
+ *
+ *  1. The name is compared CASE-SENSITIVELY. A case-insensitive `includes`
+ *     accepts "SUBKIT" and "subkit", which is precisely the drift the family
+ *     agreed to end — the internal capital IS the name.
+ *  2. The all-caps guard reads the COMPUTED `text-transform`, not the class
+ *     list. A class list check goes green the moment somebody adds `uppercase`
+ *     through a variant, a parent rule or the stylesheet, and it cannot see a
+ *     `.toUpperCase()` in the code at all — so the rendered text is read too.
+ *  3. The icon has to be measurably on the page, not merely in the DOM: a
+ *     `display:none` square is an icon nobody has.
+ *  4. The browser title is the first thing anybody reads of this product.
+ *  5. The favicon link must RESOLVE. Status 200 alone is worthless here: the
+ *     cockpit handler answers every unknown path under /cockpit/ with the SPA
+ *     shell — 200, text/html — so "/cockpit/cockpit/favicon.svg" reads as a
+ *     success and shows an empty tab. Hence content type AND a real decode,
+ *     the latter because an SVG with a broken XML comment still ships as
+ *     image/svg+xml and still renders nothing as an <img>.
+ */
+const PRODUCT_NAME = "SubKit";
+const BROWSER_TITLE = `${PRODUCT_NAME} Cockpit`;
+
+// The path the cockpit is served under — read from the Vite configuration
+// rather than typed here, because a second truth about the base path is exactly
+// the bug this check is meant to catch.
+const COCKPIT_BASE = readFileSync(
+  new URL("../apps/cockpit/vite.config.ts", import.meta.url),
+  "utf8",
+).match(/\bbase:\s*"([^"]+)"/)?.[1];
+if (!COCKPIT_BASE) throw new Error("apps/cockpit/vite.config.ts nennt keinen base-Pfad");
+
+async function checkWordmark(page) {
+  const where = "/overview · Seitenleiste [data-testid=cockpit-wordmark]";
+  const wordmark = page.locator('[data-testid="cockpit-wordmark"]');
+  if ((await wordmark.count()) === 0) {
+    breach("§6 (Wortmarke)", where, 'keine Wortmarke mit data-testid="cockpit-wordmark" im DOM');
+    return;
+  }
+
+  const seen = await wordmark.first().evaluate((node) => {
+    const nameEl = node.querySelector('[data-testid="cockpit-wordmark-name"]');
+    const iconHost = node.querySelector('[data-testid="cockpit-wordmark-icon"]');
+    const iconEl = iconHost ? iconHost.querySelector("svg, img") : null;
+    const nameStyle = nameEl ? getComputedStyle(nameEl) : null;
+    const iconStyle = iconEl ? getComputedStyle(iconEl) : null;
+    const box = iconEl ? iconEl.getBoundingClientRect() : null;
+    return {
+      containerText: node.textContent ?? "",
+      hasName: Boolean(nameEl),
+      nameText: nameEl?.textContent ?? "",
+      transform: nameStyle?.textTransform ?? null,
+      caps: nameStyle?.fontVariantCaps ?? null,
+      hasIcon: Boolean(iconEl),
+      iconVisible: Boolean(
+        box &&
+          box.width > 0 &&
+          box.height > 0 &&
+          iconStyle &&
+          iconStyle.visibility !== "hidden" &&
+          iconStyle.display !== "none" &&
+          Number(iconStyle.opacity) > 0,
+      ),
+      iconBeforeName: Boolean(
+        iconEl &&
+          nameEl &&
+          (iconEl.compareDocumentPosition(nameEl) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+      ),
+    };
+  });
+
+  // 1 — the canonical spelling, character for character.
+  if (!seen.containerText.includes(PRODUCT_NAME))
+    breach(
+      "§6 (Wortmarke)",
+      where,
+      `"${seen.containerText.trim().split("\n")[0] ?? ""}" — "${PRODUCT_NAME}" steht nicht zeichengenau darin`,
+    );
+
+  // 2 — no all-caps and no all-lowercase, measured on the rendered element.
+  if (!seen.hasName) {
+    breach("§6 (Wortmarke)", where, 'keine Namenszeile mit data-testid="cockpit-wordmark-name"');
+  } else {
+    if (seen.transform === "uppercase" || seen.transform === "lowercase")
+      breach(
+        "§6 (Schreibweise)",
+        `${where} · cockpit-wordmark-name`,
+        `berechnetes text-transform: ${seen.transform}`,
+      );
+    if (seen.caps && seen.caps !== "normal")
+      breach(
+        "§6 (Schreibweise)",
+        `${where} · cockpit-wordmark-name`,
+        `berechnetes font-variant-caps: ${seen.caps}`,
+      );
+    const rendered = seen.nameText.trim();
+    const hasLetters = rendered !== rendered.toUpperCase() || rendered !== rendered.toLowerCase();
+    if (hasLetters && rendered === rendered.toUpperCase())
+      breach("§6 (Schreibweise)", `${where} · cockpit-wordmark-name`, `Versalien: "${rendered}"`);
+    if (hasLetters && rendered === rendered.toLowerCase())
+      breach(
+        "§6 (Schreibweise)",
+        `${where} · cockpit-wordmark-name`,
+        `kleingeschrieben: "${rendered}"`,
+      );
+  }
+
+  // 3 — an icon element, visible, beside the name.
+  if (!seen.hasIcon) {
+    breach("§6 (App-Icon)", where, "kein Icon-Element neben dem Namen");
+  } else if (!seen.iconVisible) {
+    breach("§6 (App-Icon)", where, "das Icon-Element steht im DOM, ist aber nicht sichtbar");
+  } else if (seen.hasName && !seen.iconBeforeName) {
+    breach("§6 (App-Icon)", where, "das Icon steht nicht vor dem Namen");
+  }
+}
+
+/** §6 — the browser title is exactly „<Produktname> Cockpit". */
+async function checkBrowserTitle(page) {
+  const title = await page.title();
+  if (title !== BROWSER_TITLE)
+    breach("§6 (Browser-Titel)", "/overview · <title>", `"${title}" statt "${BROWSER_TITLE}"`);
+}
+
+/**
+ * §6 — the favicon link exists AND the file behind it actually arrives.
+ *
+ * Resolved against the page's own address, so the real base path (/cockpit/) is
+ * part of the measurement rather than an assumption about it.
+ */
+async function checkFavicon(page) {
+  const where = "/overview · <link rel=icon>";
+  const href = await page.evaluate(() => {
+    const link = document.querySelector('link[rel~="icon"]');
+    return link ? link.getAttribute("href") : null;
+  });
+  if (!href) {
+    breach("§6 (App-Icon)", where, 'kein <link rel="icon"> im Dokument');
+    return;
+  }
+
+  // Resolved against the page's own address, so the base path is measured and
+  // not assumed. `/favicon.svg` in the source is correct precisely BECAUSE Vite
+  // turns it into `${COCKPIT_BASE}favicon.svg` when it builds; what arrives in
+  // the browser is the only thing worth asserting on.
+  const resolved = new URL(href, page.url()).toString();
+  const at = `${where} → ${resolved}`;
+
+  if (!new URL(resolved).pathname.startsWith(COCKPIT_BASE))
+    breach(
+      "§6 (App-Icon)",
+      at,
+      `der Verweis löst außerhalb des Basispfads "${COCKPIT_BASE}" auf — dort liefert die Engine nichts aus`,
+    );
+
+  const response = await page.request.get(resolved);
+  if (response.status() !== 200) {
+    breach("§6 (App-Icon)", at, `HTTP ${response.status()}`);
+    return;
+  }
+
+  const type = response.headers()["content-type"] ?? "";
+  if (!/^image\//i.test(type)) {
+    breach(
+      "§6 (App-Icon)",
+      at,
+      `Status 200, aber Content-Type "${type}" — der Verweis landet auf der SPA-Rückfalllinie, nicht auf dem Icon`,
+    );
+    return;
+  }
+
+  const decoded = await page.evaluate(
+    (url) =>
+      new Promise((resolve) => {
+        const probe = new Image();
+        probe.onload = () => resolve(probe.naturalWidth > 0 && probe.naturalHeight > 0);
+        probe.onerror = () => resolve(false);
+        probe.src = url;
+      }),
+    resolved,
+  );
+  if (!decoded)
+    breach(
+      "§6 (App-Icon)",
+      at,
+      "Status 200 und Bild-Content-Type, aber der Browser dekodiert die Datei nicht — der Reiter bleibt leer",
+    );
 }
 
 /** §6 — the admin navigation group is called "Installation", never "Administration". */
@@ -1780,6 +1974,9 @@ try {
   await context.route("**/v1/**", apiMock(true));
 
   const overview = await openPage(context, "overview");
+  await checkWordmark(overview);
+  await checkBrowserTitle(overview);
+  await checkFavicon(overview);
   await checkRoleLabel(overview);
   await checkAdminGroupName(overview);
   await checkInstallationEntries(overview);
@@ -1888,7 +2085,9 @@ if (violations.length === 0) {
   process.exit(0);
 }
 
-console.error(`Konvention-Check: ${violations.length} Verstöße gegen COCKPIT-KONVENTION.md\n`);
+console.error(
+  `Konvention-Check: ${violations.length} Verstöße gegen COCKPIT-KONVENTION.md (v1.5)\n`,
+);
 for (const { rule, where, actual } of violations) {
   console.error(`  ${rule} · ${where}\n      ist: ${actual}`);
 }
