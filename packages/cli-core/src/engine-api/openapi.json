@@ -31,7 +31,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "subkit_session",
-        "description": "HttpOnly same-origin browser session used by the Subkit Cockpit."
+        "description": "HttpOnly same-origin browser session used by the SubKit Cockpit."
       }
     },
     "schemas": {
@@ -20152,7 +20152,7 @@
         "tags": [
           "identity"
         ],
-        "summary": "Start a browser login for the Subkit Cockpit",
+        "summary": "Start a browser login for the SubKit Cockpit",
         "parameters": [
           {
             "schema": {

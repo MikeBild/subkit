@@ -1,7 +1,7 @@
-# Subkit Cockpit UI/UX
+# SubKit Cockpit UI/UX
 
-Subkit implements the copied `cockpit-ui` family contract without importing runtime code from a
-sibling product. The Cockpit is built, embedded and released with Subkit; it has its own routes,
+SubKit implements the copied `cockpit-ui` family contract without importing runtime code from a
+sibling product. The Cockpit is built, embedded and released with SubKit; it has its own routes,
 session boundary, API facade and deployment lifecycle.
 
 ## Product adaptation
@@ -23,7 +23,7 @@ Navigation follows the work instead of the engine's directory tree:
 The first block carries no heading and the last one carries the family's name for it. The
 convention names both: the decisions entry stands ungrouped directly under the overview, and the
 administration block is called "Installation" in all six products and owns the same five entries —
-System, Settings, Credentials, Notifications, Audit — before anything Subkit adds to it. Audit and
+System, Settings, Credentials, Notifications, Audit — before anything SubKit adds to it. Audit and
 Usage used to sit in a "Govern" block of their own; a section that has to contain Audit cannot also
 leave it somewhere else.
 
@@ -232,14 +232,14 @@ transcript shows no timer rather than a fabricated one.
 
 The shared contract is copied into each repository; no Cockpit imports another product at runtime.
 
-| Product | Pattern retained for Subkit | Product-specific boundary |
+| Product | Pattern retained for SubKit | Product-specific boundary |
 | --- | --- | --- |
 | WorkKit | One scroll owner per pane, `min-h-0`/`min-w-0`, account submenu, context help | Mission and run semantics stay in WorkKit |
 | WikiKit | Fixed responsive tables and stable table-view contracts | Sources, pages and decisions stay in WikiKit |
 | ContentKit | Tooltip/context-help composition and compact page hierarchy | Publishing and moderation stay in ContentKit |
 | WatchKit | Wrapped, fixed-layout tables with no horizontal page scroll | Drift and evidence semantics stay in WatchKit |
 | CodeKit | Neutral selection and explicit action hierarchy | Projects, tasks and credentials stay in CodeKit |
-| Subkit | Conversation-first work surface, governed tool and approval cards | Workflows, connectors and tenant governance stay in Subkit |
+| SubKit | Conversation-first work surface, governed tool and approval cards | Workflows, connectors and tenant governance stay in SubKit |
 
 ### Action hierarchy
 
@@ -277,7 +277,7 @@ authenticated bilingual route sweep after SSO and publishes its screenshots as a
 
 ## Entscheidungs-Grammatik
 
-Wortgleiche Kopie von §8 der Cockpit-Konvention v1.4 (`COCKPIT-KONVENTION.md` im Repo-Root). Sie steht hier, weil die Entscheidungs-Seite dieses Produkts an ihr gemessen wird; der Maßstab hat eine Quelle und keine abweichenden Kopien (§13). Wo Subkit bewusst abweicht, steht die Begründung oben unter „Decisions surface" — die Queue ist keine 780-px-Spalte (§8.2), und es gibt kein „Später erinnern"-Regal (§8.3/§8.5), weil die Engine keinen zurückgestellten Zustand kennt. Beide Abweichungen bleiben bestehen; die Kopie unten wird davon nicht angepasst, sonst wäre sie keine.
+Wortgleiche Kopie von §8 der Cockpit-Konvention v1.5 (`COCKPIT-KONVENTION.md` im Repo-Root). Sie steht hier, weil die Entscheidungs-Seite dieses Produkts an ihr gemessen wird; der Maßstab hat eine Quelle und keine abweichenden Kopien (§13). Wo SubKit bewusst abweicht, steht die Begründung oben unter „Decisions surface" — die Queue ist keine 780-px-Spalte (§8.2), und es gibt kein „Später erinnern"-Regal (§8.3/§8.5), weil die Engine keinen zurückgestellten Zustand kennt. Beide Abweichungen bleiben bestehen; die Kopie unten wird davon nicht angepasst, sonst wäre sie keine.
 
 ### 8. Entscheidungs-Grammatik
 

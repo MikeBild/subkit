@@ -2501,7 +2501,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Start a browser login for the Subkit Cockpit */
+        /** Start a browser login for the SubKit Cockpit */
         get: {
             parameters: {
                 query?: {
