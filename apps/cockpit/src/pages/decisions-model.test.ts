@@ -9,7 +9,9 @@ import {
   groupDecisions,
   hasOverdue,
   partitionByUrgency,
+  patchChangeKind,
   patchDecision,
+  patchTitle,
   QUESTION_LINE_MAX,
   skillDecision,
   sortDecisions,
@@ -120,7 +122,7 @@ describe("decision filtering and grouping", () => {
 });
 
 describe("decision adapters", () => {
-  test("a patch takes its title from the proposal description, never from an id", () => {
+  test("a patch keeps the engine's own change note as its summary, not as its title", () => {
     const decision = patchDecision(
       {
         id: "11111111-1111-4111-8111-111111111111",
@@ -132,15 +134,59 @@ describe("decision adapters", () => {
         classification: "safe",
         status: "proposed",
         fixture_id: null,
-        diff: { proposal: { description: "Follow the renamed field" } },
+        diff: {
+          proposal: { kind: "update_field_path", description: "Follow the renamed field" },
+        },
         created_at: daysAgo(18),
         updated_at: daysAgo(18),
       },
-      "Proposed fix",
+      "Korrektur für Daily report: Folgt einem verschobenen Feld",
     );
-    expect(decision.title).toBe("Follow the renamed field");
+    expect(decision.title).toBe("Korrektur für Daily report: Folgt einem verschobenen Feld");
+    // The English change note is the DETAIL, and it is still carried.
+    expect(decision.summary).toBe("Follow the renamed field");
     expect(decision.target).toBe("Daily report");
     expect(decision.classification).toBe("safe");
+  });
+
+  test("a patch names the kinds the title is composed from", () => {
+    expect(
+      patchChangeKind({
+        id: "3",
+        tenant_id: "t",
+        workflow_id: "w",
+        workflow_name: null,
+        connector_id: null,
+        endpoint_key: null,
+        classification: "safe",
+        status: "proposed",
+        fixture_id: null,
+        diff: { proposal: { kind: "rename_param" }, drift_signal: { kind: "schema_diff" } },
+        created_at: daysAgo(1),
+        updated_at: daysAgo(1),
+      } as never),
+    ).toEqual({ proposalKind: "rename_param", driftKind: "schema_diff" });
+  });
+
+  describe("patchTitle", () => {
+    test("names the workflow and what the change does", () => {
+      expect(patchTitle({ workflow: "Monatsreport", change: "Folgt einem Feld" })).toEqual({
+        key: "decisions.patchTitle",
+        params: { workflow: "Monatsreport", change: "Folgt einem Feld" },
+      });
+    });
+
+    test("drops the half it does not have rather than inventing it", () => {
+      expect(patchTitle({ workflow: "Monatsreport", change: null }).key).toBe(
+        "decisions.patchTitleWorkflow",
+      );
+      expect(patchTitle({ workflow: null, change: "Ergänzt einen Header" }).key).toBe(
+        "decisions.patchTitleChange",
+      );
+      expect(patchTitle({ workflow: "  ", change: "  " }).key).toBe(
+        "decisions.fallbackTitle.patch",
+      );
+    });
   });
 
   test("a patch without a readable proposal falls back to a translated label", () => {
@@ -159,9 +205,9 @@ describe("decision adapters", () => {
         created_at: daysAgo(1),
         updated_at: daysAgo(1),
       },
-      "Proposed fix",
+      "Vorgeschlagene Korrektur",
     );
-    expect(decision.title).toBe("Proposed fix");
+    expect(decision.title).toBe("Vorgeschlagene Korrektur");
     expect(decision.target).toBeNull();
   });
 
