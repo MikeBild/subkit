@@ -11,29 +11,16 @@ import type { components } from "@/api/schema";
 // What it owes instead: how many are waiting and how long the oldest has been
 // there (one line, linking to where they can be decided), what is failing and
 // whether that is real, and what actually ran recently.
+//
+// The waiting numbers are NOT derived here. The digest carries only patch
+// candidates and its own `stuck` flag, so every number this file could offer
+// about the queue would be a third of it: `countOpenDecisions` in
+// decisions-model.ts owns that count for every surface, and this file keeps
+// what the digest genuinely owns — failure groups, risks, the all-clear.
 
 export type HealthDigest = components["schemas"]["OperatorHealthDigest"];
 export type FailureGroup = HealthDigest["failure_groups"][number];
 type Execution = components["schemas"]["Execution"];
-
-export interface WaitingSummary {
-  total: number;
-  /** Age of the oldest position, in whole days. */
-  oldestDays: number;
-  /** Positions the digest flags as stuck — old enough to be an incident. */
-  stuckCount: number;
-}
-
-export function waitingSummary(digest: HealthDigest): WaitingSummary {
-  const items = digest.patch_candidates.items;
-  return {
-    // The digest's `pending` is an exact count; `items` is capped. Never
-    // report the capped length as the total.
-    total: digest.patch_candidates.pending,
-    oldestDays: items.reduce((days, item) => Math.max(days, item.age_days), 0),
-    stuckCount: items.filter((item) => item.stuck).length,
-  };
-}
 
 export interface PartitionedFailures {
   /** Failures from scheduled or mixed traffic — the real operating picture. */

@@ -26,7 +26,7 @@ import {
   skillContext,
 } from "@/pages/decisions-context";
 import type { DecisionItem, DecisionKind, DecisionOrigin } from "@/pages/decisions-model";
-import { ageInDays } from "@/pages/decisions-model";
+import { ageInDays, decisionKey } from "@/pages/decisions-model";
 
 const KIND_LABEL: Record<DecisionKind, TranslationKey> = {
   patch: "decisions.kind.patch",
@@ -460,6 +460,7 @@ export function DecisionCard({
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const testId = `${testIdPrefix}-${index}`;
+  const key = decisionKey(item);
   const now = Date.now();
   const age = ageInDays(item.waitingSince, now);
   const deadline = deadlineLabel(item.expiresAt, now, t);
@@ -481,7 +482,9 @@ export function DecisionCard({
   });
 
   return (
-    <article className="rounded-lg border p-4" data-testid={testId}>
+    // The dedup key the counter uses, carried on the card so "one position is
+    // one decision" is observable on the rendered page and not only in a unit.
+    <article className="rounded-lg border p-4" data-testid={testId} data-decision-key={key}>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="outline" data-testid={`${testId}-kind`}>
           {t(KIND_LABEL[item.kind])}

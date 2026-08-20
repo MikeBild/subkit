@@ -584,9 +584,11 @@ const EN = {
   "overview.waiting.none": "Nothing is waiting for a decision.",
   "overview.waiting.checked": "Checked {date}",
   "overview.waiting.open": "Open decisions",
-  "overview.incident.title": "Stuck fixes: {count}",
+  "overview.incident.subset": "{count} of {total} are blocking their workflow.",
+  "overview.incident.all": "All {total} are blocking their workflow.",
+  "overview.incident.atLeast": "At least {count} of {total} are blocking their workflow.",
   "overview.incident.description":
-    "The oldest proposed fix has waited {days} days. Until it is decided the underlying workflow keeps failing.",
+    "The oldest open position has waited {days} days. Until it is decided its workflow keeps failing.",
   "overview.incident.open": "Decide now",
   "decisions.description":
     "Every proposal that needs a person: proposed fixes, skill candidates and conversations waiting for an answer.",
@@ -1564,9 +1566,11 @@ const DE: Record<TranslationKey, string> = {
   "overview.waiting.none": "Nichts wartet auf eine Entscheidung.",
   "overview.waiting.checked": "Geprüft {date}",
   "overview.waiting.open": "Entscheidungen öffnen",
-  "overview.incident.title": "Festliegende Korrekturen: {count}",
+  "overview.incident.subset": "{count} von {total} blockieren ihren Workflow.",
+  "overview.incident.all": "Alle {total} blockieren ihren Workflow.",
+  "overview.incident.atLeast": "Mindestens {count} von {total} blockieren ihren Workflow.",
   "overview.incident.description":
-    "Die älteste vorgeschlagene Korrektur wartet seit {days} Tagen. Bis sie entschieden ist, scheitert der zugrunde liegende Workflow weiter.",
+    "Die älteste offene Position wartet seit {days} Tagen. Bis sie entschieden ist, scheitert ihr Workflow weiter.",
   "overview.incident.open": "Jetzt entscheiden",
   "decisions.description":
     "Alles, was einen Menschen braucht: vorgeschlagene Korrekturen, Skill-Kandidaten und Unterhaltungen, die auf eine Antwort warten.",

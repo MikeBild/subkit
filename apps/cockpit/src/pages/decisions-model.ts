@@ -418,11 +418,116 @@ export function hasOverdue(items: readonly DecisionItem[], now: number): boolean
   });
 }
 
-/** How many positions each source contributed — the queue's own breakdown. */
-export function countByKind(items: readonly DecisionItem[]): Record<DecisionKind, number> {
-  const counts: Record<DecisionKind, number> = { patch: 0, skill: 0, conversation: 0 };
-  for (const item of items) counts[item.kind] += 1;
-  return counts;
+/** The engine's exact per-source counts. Three lists, three numbers, one sum. */
+export interface DecisionTotals {
+  patch: number;
+  skill: number;
+  conversation: number;
+}
+
+export interface OpenDecisionSubsets {
+  /** Stopping something right now — blocking or inside its deadline. */
+  blocking: number;
+  /** Past its deadline. */
+  overdue: number;
+  /** Waiting on nobody, and waiting long enough to say so. */
+  aging: number;
+}
+
+export interface OpenDecisions {
+  /** Every open position, counted once. The one number every surface shows. */
+  total: number;
+  byKind: Record<DecisionKind, number>;
+  subsets: OpenDecisionSubsets;
+  /** Age of the oldest position the page actually holds, in whole days. */
+  oldestAgeDays: number;
+  /** True when the engine counted more than the page was handed — every source
+   *  is fetched with a page cap, and a number that silently disagrees with the
+   *  list under it is what made three surfaces show three answers. */
+  capped: boolean;
+}
+
+/** The dedup key. Two sources can hand out the same row; one position is one decision. */
+export function decisionKey(item: DecisionItem): string {
+  return `${item.kind}:${item.id}`;
+}
+
+/**
+ * The one count behind the navigation badge, Zone A and the incident banner.
+ *
+ * Before this there were three: the banner filtered the health digest's own
+ * `stuck` flag, Zone A read the digest's `patch_candidates.pending`, and the
+ * badge summed three list endpoints — so the same queue was 25, 30 and 119 on
+ * one screen. The digest knows only patch candidates and cannot answer for the
+ * queue, which is why the digest is no longer asked: the totals come from the
+ * three endpoints that own the three lists, and everything else here is derived
+ * from the positions themselves, by an age and urgency rule a test can state.
+ */
+export function countOpenDecisions(input: {
+  items: readonly DecisionItem[];
+  totals: DecisionTotals | null;
+  nowMs: number;
+}): OpenDecisions {
+  const seen = new Map<string, DecisionItem>();
+  for (const item of input.items) {
+    const key = decisionKey(item);
+    if (!seen.has(key)) seen.set(key, item);
+  }
+  const unique = [...seen.values()];
+  const counted = input.totals
+    ? { ...input.totals }
+    : unique.reduce(
+        (counts, item) => {
+          counts[item.kind] += 1;
+          return counts;
+        },
+        { patch: 0, skill: 0, conversation: 0 } as DecisionTotals,
+      );
+  const total = counted.patch + counted.skill + counted.conversation;
+  const subsets: OpenDecisionSubsets = { blocking: 0, overdue: 0, aging: 0 };
+  let oldestAgeDays = 0;
+  for (const item of unique) {
+    const urgency = decisionUrgency(item, input.nowMs);
+    const age = ageInDays(item.waitingSince, input.nowMs);
+    if (age > oldestAgeDays) oldestAgeDays = age;
+    if (urgency === "expired") subsets.overdue += 1;
+    else if (urgency === "blocking" || urgency === "expiring") subsets.blocking += 1;
+    else if (age >= AGED_AFTER_DAYS) subsets.aging += 1;
+  }
+  return {
+    total,
+    byKind: { patch: counted.patch, skill: counted.skill, conversation: counted.conversation },
+    subsets,
+    oldestAgeDays,
+    capped: unique.length < total,
+  };
+}
+
+/** How the incident banner names its share of the queue. */
+export type BannerMode = "none" | "all" | "some" | "atLeast";
+
+export interface BannerSubset {
+  /** Positions that are stopped, lapsed or aged — the ones costing something. */
+  count: number;
+  /** Every open position, so the banner never states a number without its base. */
+  total: number;
+  mode: BannerMode;
+}
+
+/**
+ * The banner's subset, named rather than implied.
+ *
+ * §8.7 wants concrete numbers; a bare count next to a different count in Zone A
+ * is what made the two read as a contradiction. Saying "N of M" makes the
+ * relation explicit, and where the page holds fewer positions than the engine
+ * counted, the honest word is "at least".
+ */
+export function bannerSubset(open: OpenDecisions): BannerSubset {
+  const count = open.subsets.overdue + open.subsets.blocking + open.subsets.aging;
+  if (count === 0 || open.total === 0) return { count: 0, total: open.total, mode: "none" };
+  if (open.capped) return { count, total: open.total, mode: "atLeast" };
+  if (count >= open.total) return { count: open.total, total: open.total, mode: "all" };
+  return { count, total: open.total, mode: "some" };
 }
 
 export function filterByKinds(
