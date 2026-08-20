@@ -7,6 +7,7 @@ import type { components } from "@/api/schema";
 import { AgentPanel } from "@/components/cockpit/agent-panel";
 import { MarkdownWorkspace } from "@/components/cockpit/markdown-workspace";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
+import { bytes, MISSING } from "@/components/cockpit/table-columns";
 import { WorkflowGallery } from "@/components/cockpit/workflow-gallery";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { type DetailEntry, detailEntries, SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 
@@ -62,14 +64,46 @@ function recordTitle(record: RecordValue | undefined): string {
   return "—";
 }
 
-function visibleEntries(record: RecordValue): [string, string][] {
-  return Object.entries(record)
-    .filter(([key, value]) => {
-      if (/(tenant|credential|secret|token|password|hash)/i.test(key)) return false;
-      return ["string", "number", "boolean"].includes(typeof value) || value === null;
-    })
-    .slice(0, 14)
-    .map(([key, value]) => [key.replaceAll("_", " "), value === null ? "—" : String(value)]);
+/**
+ * One curated field as the reader sees it.
+ *
+ * The value goes through the same helpers the list cells use — a state word
+ * through `statusLabel`, a byte count through `bytes`, a timestamp through the
+ * locale's own formatter. Passing `String(value)` straight through is how a
+ * raw ISO instant and a bare `true` ended up on the page beside labels nobody
+ * had chosen either.
+ */
+function renderDetailValue(
+  entry: DetailEntry,
+  t: ReturnType<typeof useI18n>["t"],
+  dateTime: ReturnType<typeof useI18n>["dateTime"],
+): string {
+  const { value, format } = entry;
+  if (value === null || value === undefined || value === "") return MISSING;
+  switch (format) {
+    case "date":
+      return typeof value === "string" ? dateTime(value) : MISSING;
+    case "boolean":
+      return t(value === true ? "common.yes" : "common.no");
+    case "status":
+      return typeof value === "string" ? statusLabel(t, value) : MISSING;
+    case "bytes":
+      return bytes(value);
+    case "scope": {
+      const key = typeof value === "string" ? SCOPE_KEYS[value] : undefined;
+      return key ? t(key) : String(value);
+    }
+    case "sideEffects": {
+      const key = typeof value === "string" ? SIDE_EFFECT_KEYS[value] : undefined;
+      return key ? t(key) : String(value);
+    }
+    case "maturity":
+      return t(
+        value === "experimental" ? "catalog.maturity.experimental" : "catalog.maturity.stable",
+      );
+    default:
+      return String(value);
+  }
 }
 
 function GovernanceBar({ record, canWrite }: { record: RecordValue; canWrite: boolean }) {
@@ -95,12 +129,22 @@ function GovernanceBar({ record, canWrite }: { record: RecordValue; canWrite: bo
 }
 
 function Overview({ record }: { record: RecordValue }) {
+  const { t, dateTime } = useI18n();
+  const entries = detailEntries(record);
+  // A record with nothing curated to show draws no frame. An empty grid is not
+  // a state, it is a leftover.
+  if (entries.length === 0) return null;
   return (
-    <dl className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 xl:grid-cols-3">
-      {visibleEntries(record).map(([key, value]) => (
-        <div key={key} className="min-w-0 bg-background p-4">
-          <dt className="text-xs capitalize text-muted-foreground">{key}</dt>
-          <dd className="mt-1 truncate text-sm font-medium">{value}</dd>
+    <dl
+      className="grid gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 xl:grid-cols-3"
+      data-testid="detail-overview"
+    >
+      {entries.map((entry) => (
+        <div key={entry.key} className="min-w-0 bg-background p-4">
+          <dt className="text-xs text-muted-foreground">{t(entry.labelKey)}</dt>
+          <dd className="mt-1 truncate text-sm font-medium">
+            {renderDetailValue(entry, t, dateTime)}
+          </dd>
         </div>
       ))}
     </dl>
@@ -509,6 +553,17 @@ export function CatalogDetailPage({
           <CheckCircle2 className="size-4" />
           {t("detail.workspaceScoped")}
         </div>
+        {/* The record's own reference, one disclosure deep. It is not a value
+            on the page (§5) — but the person who has to quote it to operations
+            should not have to read the address bar for it, and a truncated
+            prefix would be a reference that no longer references anything. */}
+        <details className="text-xs text-muted-foreground" data-testid="detail-technical">
+          <summary className="cursor-pointer select-none">{t("detail.technicalReference")}</summary>
+          <p className="mt-2">{t("detail.technicalReferenceHint")}</p>
+          <p className="mt-1 font-mono break-all" data-testid="detail-technical-id">
+            {id}
+          </p>
+        </details>
       </div>
     </main>
   );
