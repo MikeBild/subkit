@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { authStateLabel, connectorAuthState } from "@/lib/connector-auth-state";
+import { SCOPE_KEYS, SIDE_EFFECT_KEYS } from "@/lib/detail-fields";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
@@ -189,19 +190,6 @@ function stringList(row: CatalogRow, field: string): string[] {
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
 }
-
-const SCOPE_KEYS: Record<string, TranslationKey> = {
-  global: "scope.global",
-  connector: "scope.connector",
-  workflow: "scope.workflow",
-};
-
-const SIDE_EFFECT_KEYS: Record<string, TranslationKey> = {
-  none: "sideEffects.none",
-  read: "sideEffects.read",
-  write: "sideEffects.write",
-  destructive: "sideEffects.destructive",
-};
 
 /**
  * Workflow health rides on the name rather than taking an eighth column.
