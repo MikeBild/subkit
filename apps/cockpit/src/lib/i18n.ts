@@ -650,7 +650,8 @@ const EN = {
   "decisions.time.minutes": "{count} min",
   "decisions.sources":
     "{total} open · fixes from runs: {patches} · proposed skills: {skills} · conversations: {conversations}",
-  "decisions.capped": "Showing {shown} of {total}.",
+  "decisions.capped":
+    "Showing the {shown} longest-waiting of {total} \u2014 this view does not load more at once",
   "decisions.confidence": "Assessment: {level}",
   "decisions.confidence.low": "low",
   "decisions.confidence.medium": "medium",
@@ -1675,7 +1676,8 @@ const DE: Record<TranslationKey, string> = {
   "decisions.time.minutes": "{count} Min.",
   "decisions.sources":
     "{total} offen · Korrekturen aus Läufen: {patches} · Skill-Vorschläge: {skills} · Unterhaltungen: {conversations}",
-  "decisions.capped": "Angezeigt: {shown} von {total}.",
+  "decisions.capped":
+    "Angezeigt: die {shown} \u00e4ltesten von {total} \u2014 mehr l\u00e4dt diese Ansicht nicht auf einmal",
   "decisions.confidence": "Einschätzung: {level}",
   "decisions.confidence.low": "niedrig",
   "decisions.confidence.medium": "mittel",
