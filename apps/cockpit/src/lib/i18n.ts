@@ -80,6 +80,11 @@ const EN = {
   "session.unavailable.title": "Cockpit unavailable",
   "session.unavailable.description": "The engine did not return a session.",
   "session.retry": "Try again",
+  "error.title": "This page could not be shown",
+  "error.description":
+    "Something in this view failed while rendering. Nothing was changed \u2014 try again, or go back to the overview.",
+  "error.backToOverview": "Back to the overview",
+  "error.detail": "Technical detail",
   "resource.inbox.title": "Inbox",
   "resource.inbox.description": "Pending notifications and work that needs attention.",
   "resource.inbox.empty": "Nothing needs your attention.",
@@ -332,6 +337,10 @@ const EN = {
   "resource.emptyDescription": "Subkit will show workspace records here.",
   "resource.loadFailed": "Could not load {resource}",
   "resource.loadFailedDescription": "Refresh the page or try again in a moment.",
+  "knowledge.contentFailed": "This knowledge source could not be read",
+  "knowledge.noDocuments": "No document yet",
+  "knowledge.noDocumentsDescription":
+    "This source carries no readable document. Upload one or continue in chat.",
   "resource.records": "{count} records",
   "resource.workspaceScoped": "Workspace scoped",
   "resource.detail.description": "Current details for this workspace record.",
@@ -1087,6 +1096,11 @@ const DE: Record<TranslationKey, string> = {
   "session.unavailable.title": "Cockpit nicht verfügbar",
   "session.unavailable.description": "Die Engine hat keine Sitzung zurückgegeben.",
   "session.retry": "Erneut versuchen",
+  "error.title": "Diese Seite ließ sich nicht anzeigen",
+  "error.description":
+    "Beim Aufbau dieser Ansicht ist etwas schiefgegangen. Geändert wurde nichts \u2014 versuch es erneut oder geh zurück zur Übersicht.",
+  "error.backToOverview": "Zurück zur Übersicht",
+  "error.detail": "Technische Einzelheit",
   "resource.inbox.title": "Eingang",
   "resource.inbox.description":
     "Offene Benachrichtigungen und Aufgaben, die Aufmerksamkeit benötigen.",
@@ -1346,6 +1360,10 @@ const DE: Record<TranslationKey, string> = {
   "resource.emptyDescription": "Subkit zeigt hier Datensätze des Arbeitsbereichs an.",
   "resource.loadFailed": "{resource} konnten nicht geladen werden",
   "resource.loadFailedDescription": "Lad die Seite neu oder versuch es in Kürze erneut.",
+  "knowledge.contentFailed": "Diese Wissensquelle ließ sich nicht lesen",
+  "knowledge.noDocuments": "Noch kein Dokument",
+  "knowledge.noDocumentsDescription":
+    "Diese Quelle enthält kein lesbares Dokument. Lad eines hoch oder mach im Chat weiter.",
   "resource.records": "{count} Datensätze",
   "resource.workspaceScoped": "Auf den Arbeitsbereich begrenzt",
   "resource.detail.description": "Aktuelle Details dieses Datensatzes im Arbeitsbereich.",

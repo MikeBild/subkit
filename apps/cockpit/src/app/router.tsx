@@ -16,6 +16,7 @@ import { InboxPage } from "@/pages/inbox";
 import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
 import { UsagePage } from "@/pages/usage";
+import { ErrorScreen } from "./error-screen";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
 
@@ -113,7 +114,13 @@ const routeTree = rootRoute.addChildren([
   ...catalogRoutes,
 ]);
 
-export const router = createRouter({ routeTree, basepath: "/cockpit" });
+// One catch-all for every route: a render fault keeps the shell, the language
+// and a way out, instead of the router's own English default.
+export const router = createRouter({
+  routeTree,
+  basepath: "/cockpit",
+  defaultErrorComponent: ErrorScreen,
+});
 
 declare module "@tanstack/react-router" {
   interface Register {

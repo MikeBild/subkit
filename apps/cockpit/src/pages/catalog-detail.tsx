@@ -256,7 +256,12 @@ function KnowledgeBody({ id, canWrite }: { id: string; canWrite: boolean }) {
       apiRequest<KnowledgeContent>(`/v1/knowledge-sources/${encodeURIComponent(id)}/content`),
   });
   const [documentIndex, setDocumentIndex] = useState(0);
-  const document = content.data?.documents[documentIndex];
+  // The optional chain used to stop after `.data?`, so an answer without a
+  // `documents` array did not render a failure — it threw, and the router's
+  // catch-all replaced the whole cockpit. A guard that covers the first half of
+  // a path is not a guard.
+  const documents = Array.isArray(content.data?.documents) ? content.data.documents : [];
+  const document = documents[documentIndex];
   const [value, setValue] = useState("");
   useEffect(() => setValue(document?.content ?? ""), [document]);
   const save = useMutation({
@@ -275,12 +280,38 @@ function KnowledgeBody({ id, canWrite }: { id: string; canWrite: boolean }) {
     },
   });
   if (content.isPending) return <Skeleton className="h-96 w-full" />;
-  if (content.error || !document) return <Overview record={{ editable: false }} />;
+  // Two different facts, and the page used to answer both with a one-cell
+  // table reading "editable false". A source that could not be read is an
+  // error with a way out (§4); a source that carries no document yet is an
+  // empty state and says so.
+  if (content.error)
+    return (
+      <Alert variant="destructive" data-testid="knowledge-load-failed">
+        <AlertTitle>{t("knowledge.contentFailed")}</AlertTitle>
+        <AlertDescription>{t("resource.loadFailedDescription")}</AlertDescription>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          data-testid="knowledge-content-retry"
+          onClick={() => void content.refetch()}
+        >
+          {t("session.retry")}
+        </Button>
+      </Alert>
+    );
+  if (!document)
+    return (
+      <Alert data-testid="knowledge-empty">
+        <AlertTitle>{t("knowledge.noDocuments")}</AlertTitle>
+        <AlertDescription>{t("knowledge.noDocumentsDescription")}</AlertDescription>
+      </Alert>
+    );
   return (
     <div className="flex min-h-[34rem] flex-col overflow-hidden rounded-xl border">
-      {content.data.documents.length > 1 && (
+      {documents.length > 1 && (
         <div className="flex flex-wrap gap-2 border-b p-2">
-          {content.data.documents.map((item, index) => (
+          {documents.map((item, index) => (
             <Button
               key={item.path}
               size="sm"
@@ -299,7 +330,7 @@ function KnowledgeBody({ id, canWrite }: { id: string; canWrite: boolean }) {
         onSave={() => save.mutate()}
         saving={save.isPending}
         dirty={value !== document.content}
-        readOnly={!canWrite || !content.data.editable}
+        readOnly={!canWrite || content.data?.editable !== true}
         label={document.path}
       />
     </div>
