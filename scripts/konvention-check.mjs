@@ -1305,6 +1305,45 @@ async function checkCorrectionTitles(page) {
     breach("§5", "/decisions · Korrektur-Karte", "der Änderungstext der Engine fehlt ganz");
 }
 
+/**
+ * §5 — a label only a screen reader ever hears is still a label.
+ *
+ * The jump button in the chat carried its ONLY caption as sr-only text, hard
+ * coded English. Nothing on the rendered page showed it, so no reading of the
+ * screen could catch it — and for a German screen-reader user that string was
+ * the entire account of what the button does.
+ *
+ * The rule is checked against the German catalog rather than against a list of
+ * suspicious words: on a German page every screen-reader caption is a catalog
+ * value, interpolation included. That way the check needs no vocabulary of its
+ * own and still catches the next caption somebody types straight into a
+ * component.
+ */
+const GERMAN_CAPTIONS = Object.values(CATALOGS.de).map(
+  (value) =>
+    new RegExp(
+      `^${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\\{[^}]+\\\}/g, ".+?")}$`,
+    ),
+);
+
+async function checkScreenReaderLanguage(page, where) {
+  const captions = await page.evaluate(() => [
+    ...new Set(
+      [...document.querySelectorAll(".sr-only")]
+        .map((element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "")
+        .filter(Boolean),
+    ),
+  ]);
+  for (const caption of captions) {
+    if (!GERMAN_CAPTIONS.some((pattern) => pattern.test(caption)))
+      breach(
+        "§5",
+        where,
+        `Screenreader-Beschriftung "${caption}" steht nicht im deutschen Katalog`,
+      );
+  }
+}
+
 /** §8.3 — a button names the act; "OK" and "Submit" name nothing. */
 async function checkActionLabels(page, where) {
   const generic = await page.evaluate(() => {
@@ -1681,6 +1720,7 @@ async function sweepDetailSurface(page, route) {
   await checkNoIdentifiers(page, where);
   await checkCuratedFieldLabels(page, where);
   await checkNoRawTimestamps(page, where);
+  await checkScreenReaderLanguage(page, where);
 }
 
 async function startPreview() {
@@ -1777,6 +1817,7 @@ try {
     await checkNoIdentifiers(page, `/${route}`);
     await checkCuratedFieldLabels(page, `/${route}`);
     await checkNoRawTimestamps(page, `/${route}`);
+    await checkScreenReaderLanguage(page, `/${route}`);
     await sweepDetailSurface(page, route);
     await page.close();
   }
