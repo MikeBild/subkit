@@ -604,7 +604,8 @@ const EN = {
   "decisions.age.today": "Waiting since today",
   "decisions.age.day": "Waiting 1 day",
   "decisions.age.days": "Waiting {days} days",
-  "decisions.agedTitle": "Waiting longer",
+  "decisions.agedTitle": "Been waiting a while",
+  "decisions.agedHint": "Blocking nothing — and sitting here for more than three days.",
   // Where a position came from. A queue that cannot say why something is in it
   // is a list of demands without reasons.
   "decisions.origin.observedFailure": "From a failure observed in a run",
@@ -622,7 +623,7 @@ const EN = {
   "decisions.section.blocking": "Holding something up",
   "decisions.section.blockingHint":
     "This conversation is stopped and will not continue until you answer.",
-  "decisions.section.deferred": "Can wait",
+  "decisions.section.deferred": "Blocking nothing",
   "decisions.section.deferredHint":
     "The workflow keeps running — and keeps failing — until this is decided.",
   "decisions.section.expired": "Expired",
@@ -1589,6 +1590,7 @@ const DE: Record<TranslationKey, string> = {
   "decisions.age.day": "Wartet 1 Tag",
   "decisions.age.days": "Wartet {days} Tage",
   "decisions.agedTitle": "Liegt schon länger",
+  "decisions.agedHint": "Blockiert nichts — und liegt seit mehr als drei Tagen hier.",
   // Woher eine Position stammt. Eine Warteschlange, die nicht sagen kann, warum
   // etwas darin liegt, ist eine Forderungsliste ohne Begründung.
   "decisions.origin.observedFailure": "Aus einem beobachteten Fehler in einem Lauf",
@@ -1606,7 +1608,7 @@ const DE: Record<TranslationKey, string> = {
   "decisions.section.blocking": "Blockiert gerade etwas",
   "decisions.section.blockingHint":
     "Diese Unterhaltung steht still und läuft erst weiter, wenn du antwortest.",
-  "decisions.section.deferred": "Kann warten",
+  "decisions.section.deferred": "Blockiert nichts",
   "decisions.section.deferredHint":
     "Der Workflow läuft weiter — und schlägt weiter fehl —, solange das nicht entschieden ist.",
   "decisions.section.expired": "Abgelaufen",
