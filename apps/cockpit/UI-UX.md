@@ -95,6 +95,13 @@ the badge and the column disagree in silence.
 The count never appears without its sources. A bare number is a demand of unknown origin, so the
 heading is followed by the split — how many are fixes distilled from failing runs, how many are
 proposed skills, how many are conversations — and each filter chip carries its own share of it.
+A proposed fix is titled in the reader's language. The engine passes the repair model's own change
+note through verbatim — "Field follows the rename: data.id → data.result.id" — and that note used
+to be the card's title, so the queue read as a list of commit messages from another system. The
+title is now composed from what the decision is about, the workflow it would repair and the kind of
+change, and the engine's note keeps its place as the summary line beneath it: German on top, the
+original one layer down.
+
 Every card then names where it came from before it names what it is, and what it acts on as a
 name: two of the three sources carry only an id for their target, so the client resolves those ids
 against the workflow and connector catalogues. An id we hold is always a valid route and always

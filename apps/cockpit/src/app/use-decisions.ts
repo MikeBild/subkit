@@ -14,6 +14,7 @@ import {
   resolveTargetName,
   skillTargetName,
 } from "@/lib/name-index";
+import { driftKindKey, proposalKindKey } from "@/pages/decisions-context";
 import {
   conversationDecision,
   countOpenDecisions,
@@ -21,7 +22,9 @@ import {
   decisionKey,
   hasOverdue,
   type OpenDecisions,
+  patchChangeKind,
   patchDecision,
+  patchTitle,
   skillDecision,
 } from "@/pages/decisions-model";
 
@@ -111,9 +114,18 @@ export function useDecisionQueue(permissions: readonly string[]): DecisionQueue 
         sources.conversations ? listAwaitingConversations() : null,
       ]);
       const items: DecisionItem[] = [
-        ...(patches?.items ?? []).map((candidate) =>
-          patchDecision(candidate, t("decisions.fallbackTitle.patch")),
-        ),
+        ...(patches?.items ?? []).map((candidate) => {
+          // The engine passes the repair model's English change note straight
+          // through. It stays as the card's summary; the title is the German
+          // line derived from what the decision is about (§5).
+          const kinds = patchChangeKind(candidate);
+          const changeKey = proposalKindKey(kinds.proposalKind) ?? driftKindKey(kinds.driftKind);
+          const title = patchTitle({
+            workflow: candidate.workflow_name ?? null,
+            change: changeKey ? t(changeKey) : null,
+          });
+          return patchDecision(candidate, t(title.key, title.params));
+        }),
         ...(skills?.items ?? []).map((candidate) =>
           skillDecision(candidate, skillTargetName(nameIndex, candidate)),
         ),
