@@ -8,7 +8,7 @@ import {
   SettingsPage,
 } from "@/pages/admin";
 import { AuditPage } from "@/pages/audit";
-import { CATALOG_RESOURCES, CatalogPage } from "@/pages/catalog";
+import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
 import { DecisionsPage } from "@/pages/decisions";
@@ -17,6 +17,7 @@ import { OverviewPage } from "@/pages/overview";
 import { RunsPage } from "@/pages/runs";
 import { UsagePage } from "@/pages/usage";
 import { ErrorScreen } from "./error-screen";
+import { CATALOG_RESOURCES, CHAT_ROUTES, PAGE_ROUTES, type PageRoute } from "./route-table";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
 
@@ -31,55 +32,56 @@ function IndexRedirect() {
   );
 }
 
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/",
-  component: IndexRedirect,
-});
-const chatRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/chat",
-  component: ChatPage,
-});
-const newChatRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/chat/new",
-  component: ChatPage,
-});
-const conversationRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/chat/$conversationId",
-  component: ChatPage,
-});
+// One component behind all three chat paths: a conversation is chosen from the
+// path, not from a different page. The paths are read off the table by
+// position rather than mapped over it — a mapped tuple loses its literal types,
+// and with them every `<Link to="/chat">` in the product.
+const [CHAT_PATH, NEW_CHAT_PATH, CONVERSATION_PATH] = CHAT_ROUTES;
 
-// Every page is its own module (CUI-PAGE-2). There is no generic resource
-// renderer any more: a list that cannot say which columns it has cannot say
-// which relations matter either.
-const dedicatedRoutes = [
-  createRoute({ getParentRoute: () => rootRoute, path: "/overview", component: OverviewPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/decisions", component: DecisionsPage }),
+const chatRoutes = [
+  createRoute({ getParentRoute: () => rootRoute, path: CHAT_PATH, component: ChatPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: NEW_CHAT_PATH, component: ChatPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: CONVERSATION_PATH, component: ChatPage }),
+];
+
+// The redirects. `/` picks its target from the session's permissions; the other
+// names it in the table.
+const redirectRoutes = [
+  createRoute({ getParentRoute: () => rootRoute, path: "/", component: IndexRedirect }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/approvals",
     component: () => <Navigate to="/decisions" replace />,
   }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/inbox", component: InboxPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/runs", component: RunsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/audit", component: AuditPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/usage", component: UsagePage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/people", component: PeoplePage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/access", component: AccessPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/api-access", component: ApiAccessPage }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/notifications",
-    component: NotificationsPage,
-  }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/operations", component: OperationsPage }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: SettingsPage }),
 ];
 
-const catalogRoutes = [...CATALOG_RESOURCES].flatMap((resource) => [
+// Every page is its own module (CUI-PAGE-2). There is no generic resource
+// renderer any more: a list that cannot say which columns it has cannot say
+// which relations matter either.
+//
+// The map is exhaustive over PAGE_ROUTES, so a page route that exists only
+// here — invisible to the navigation and to the conformity sweep — cannot be
+// added: it has to be in the table first, and then it is swept.
+const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
+  "/overview": OverviewPage,
+  "/decisions": DecisionsPage,
+  "/inbox": InboxPage,
+  "/runs": RunsPage,
+  "/audit": AuditPage,
+  "/usage": UsagePage,
+  "/people": PeoplePage,
+  "/access": AccessPage,
+  "/api-access": ApiAccessPage,
+  "/notifications": NotificationsPage,
+  "/operations": OperationsPage,
+  "/settings": SettingsPage,
+};
+
+const dedicatedRoutes = PAGE_ROUTES.map((path) =>
+  createRoute({ getParentRoute: () => rootRoute, path, component: PAGE_COMPONENTS[path] }),
+);
+
+const catalogRoutes = CATALOG_RESOURCES.flatMap((resource) => [
   createRoute({
     getParentRoute: () => rootRoute,
     path: `/${resource}`,
@@ -106,10 +108,8 @@ const catalogRoutes = [...CATALOG_RESOURCES].flatMap((resource) => [
 ]);
 
 const routeTree = rootRoute.addChildren([
-  indexRoute,
-  chatRoute,
-  newChatRoute,
-  conversationRoute,
+  ...redirectRoutes,
+  ...chatRoutes,
   ...dedicatedRoutes,
   ...catalogRoutes,
 ]);
