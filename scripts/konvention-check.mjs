@@ -1504,6 +1504,41 @@ function checkBannerAgainstRubrics(banner, rubrics) {
     breach("§8.7", "/overview", "Abgrenzung nicht prüfbar: die Alters-Rubrik ist leer");
 }
 
+/**
+ * §4 / §5 — a broken answer meets a designed German state, not a catch-all.
+ *
+ * The knowledge page read `content.data?.documents[index]`: the optional chain
+ * stopped after `.data?`, so a body without a `documents` array did not render
+ * a failure — it threw, and the router's own default replaced the entire
+ * cockpit with "Something went wrong! / Show Error". No sidebar, no product,
+ * no way back, and not a German word on it.
+ *
+ * Both halves are pinned by one assertion, because for the reader they are one
+ * fact: the shell stands, the page mounts, the state is German, and there is a
+ * way out. Should the guard ever shorten again, the catch-all takes the page
+ * and every one of those four claims fails at once.
+ */
+const CATCH_ALL_PHRASES = ["Something went wrong", "Show Error"];
+
+async function checkFailureState(page, where) {
+  const seen = await page.evaluate(() => ({
+    shell: Boolean(document.querySelector('[data-testid="cockpit-shell"]')),
+    sidebar: Boolean(document.querySelector('[data-testid="cockpit-sidebar"]')),
+    mounted: Boolean(document.querySelector('[data-testid="detail-knowledge"]')),
+    back: Boolean(document.querySelector('[data-testid="detail-back"]')),
+    state: Boolean(document.querySelector('[data-testid="knowledge-empty"]')),
+    text: document.body.innerText,
+  }));
+  if (!seen.shell || !seen.sidebar)
+    breach("§4", where, "die Hülle ist weg — ein Auffangschirm hat das Cockpit ersetzt");
+  if (!seen.mounted) breach("§4", where, "die Detailseite mountet nicht");
+  if (!seen.back) breach("§4", where, "kein Weg zurück");
+  if (!seen.state) breach("§4", where, "kein gestalteter Zustand für die unlesbare Antwort");
+  for (const phrase of CATCH_ALL_PHRASES) {
+    if (seen.text.includes(phrase)) breach("§5", where, `englischer Auffangschirm: "${phrase}"`);
+  }
+}
+
 /** §8.1 / §8.7 — nothing open means no badge and no banner, not a quiet zero. */
 async function checkSilentWhenEmpty(page) {
   const present = await page.evaluate(() => ({
@@ -1684,6 +1719,30 @@ try {
   await checkSilentWhenEmpty(calmOverview);
   await calmOverview.close();
   await calm.close();
+
+  // Third fixture variant: one endpoint answers with a body the page cannot
+  // read. A cockpit is judged by what it does when an answer is wrong, not
+  // only by what it does when everything is right.
+  const broken = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    locale: "de-DE",
+  });
+  await broken.addInitScript(() => {
+    localStorage.setItem("sk-cockpit-locale", "de");
+    localStorage.setItem("sk-cockpit-theme", "light");
+  });
+  const busyMock = apiMock(true);
+  await broken.route("**/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === `/v1/knowledge-sources/${ID}/content`) return json(route, { items: [], total: 0 });
+    return busyMock(route);
+  });
+  const brokenPage = await broken.newPage();
+  await brokenPage.goto(`${baseUrl}/cockpit/knowledge/${ID}`, { waitUntil: "networkidle" });
+  await brokenPage.waitForTimeout(500);
+  await checkFailureState(brokenPage, "/knowledge/… (Fixture mit unlesbarer Antwort)");
+  await brokenPage.close();
+  await broken.close();
 } finally {
   await browser.close();
   server?.kill();
