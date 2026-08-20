@@ -366,6 +366,10 @@ const EN = {
   "resource.field.headline": "Summary",
   "resource.field.severity": "Severity",
   "resource.field.other": "Information",
+  "resource.field.healthReason": "Reason",
+  "resource.field.authType": "Sign-in method",
+  "resource.field.needsReauth": "Needs signing in again",
+  "resource.field.authFailedAt": "Sign-in failed",
   "catalog.lifecycle": "Lifecycle",
   "catalog.version": "Version",
   "catalog.updated": "Updated",
@@ -542,6 +546,9 @@ const EN = {
   "detail.test": "Test connection",
   "detail.back": "Back to list",
   "detail.workspaceScoped": "All data on this page is workspace scoped.",
+  "detail.technicalReference": "Technical reference",
+  "detail.technicalReferenceHint":
+    "Quote this line when you ask the operations team about this record.",
   "detail.editMetadata": "Edit metadata",
   "detail.editMetadataDescription":
     "Rename this workspace record without changing its governed structure.",
@@ -1351,6 +1358,10 @@ const DE: Record<TranslationKey, string> = {
   "resource.field.headline": "Zusammenfassung",
   "resource.field.severity": "Schweregrad",
   "resource.field.other": "Information",
+  "resource.field.healthReason": "Begründung",
+  "resource.field.authType": "Anmeldeverfahren",
+  "resource.field.needsReauth": "Muss neu angemeldet werden",
+  "resource.field.authFailedAt": "Anmeldung fehlgeschlagen",
   "catalog.lifecycle": "Lebenszyklus",
   "catalog.version": "Version",
   "catalog.updated": "Aktualisiert",
@@ -1528,6 +1539,9 @@ const DE: Record<TranslationKey, string> = {
   "detail.test": "Verbindung testen",
   "detail.back": "Zurück zur Liste",
   "detail.workspaceScoped": "Alle Daten auf dieser Seite sind auf den Arbeitsbereich begrenzt.",
+  "detail.technicalReference": "Technische Referenz",
+  "detail.technicalReferenceHint":
+    "Diese Zeile hilft dem Betrieb, wenn du zu diesem Eintrag nachfragst.",
   "detail.editMetadata": "Metadaten bearbeiten",
   "detail.editMetadataDescription":
     "Diesen Datensatz umbenennen, ohne seine gesteuerte Struktur zu ändern.",

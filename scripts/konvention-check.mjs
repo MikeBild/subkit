@@ -1268,6 +1268,33 @@ async function checkNoIdentifiers(page, where) {
 }
 
 /**
+ * §5 — a field label is a word somebody chose, not a lower-cased engine key.
+ *
+ * The catalogue detail pages built their overview from the response itself and
+ * labelled each cell `key.replaceAll("_", " ")`. That is worse than an untranslated
+ * string: it LOOKS designed. The tell is the casing — a machine-made label keeps
+ * the engine's lower-case snake vocabulary, a chosen German one starts with a
+ * capital. Nothing here needs to know which fields exist, which is why it also
+ * catches the next field the engine adds.
+ */
+async function checkCuratedFieldLabels(page, where) {
+  const raw = await page.evaluate(() =>
+    [...document.querySelectorAll("dt")]
+      .map((element) => element.textContent?.trim() ?? "")
+      .filter((text) => /^[a-z][a-z0-9]*(?: [a-z0-9]+)*$/.test(text)),
+  );
+  for (const label of new Set(raw))
+    breach("§5", where, `Feldname "${label}" ist ein durchgereichter Engine-Schlüssel`);
+}
+
+/** §5 — a point in time is a readable time, not the transport's encoding. */
+async function checkNoRawTimestamps(page, where) {
+  const text = await page.locator("body").innerText();
+  const match = text.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+  if (match) breach("§5", where, `roher Zeitstempel auf der Fläche: ${match[0]}…`);
+}
+
+/**
  * §8.1 — four surfaces, one number.
  *
  * The badge, Zone A, the banner's base and the queue's own copy are compared
@@ -1488,6 +1515,9 @@ async function sweepDetailSurface(page, route) {
   swept.push(where);
   await checkNoUnknownState(page, where);
   await checkActionLabels(page, where);
+  await checkNoIdentifiers(page, where);
+  await checkCuratedFieldLabels(page, where);
+  await checkNoRawTimestamps(page, where);
 }
 
 async function startPreview() {
@@ -1576,6 +1606,8 @@ try {
     await checkNoUnknownState(page, `/${route}`);
     await checkActionLabels(page, `/${route}`);
     await checkNoIdentifiers(page, `/${route}`);
+    await checkCuratedFieldLabels(page, `/${route}`);
+    await checkNoRawTimestamps(page, `/${route}`);
     await sweepDetailSurface(page, route);
     await page.close();
   }
