@@ -325,38 +325,40 @@ export function DecisionsPage() {
               </DecisionSection>
             )}
             {(current.length > 0 || aged.length > 0) && (
-              <DecisionSection
-                testId="decisions-deferred"
-                title={t("decisions.section.deferred")}
-                hint={t("decisions.section.deferredHint")}
-                count={current.length + aged.length}
+              // The queue's own copy of the one number, so a drift between
+              // badge, Zone A and this page is a failing assertion rather than
+              // something a reader has to notice.
+              <div
+                className="grid gap-6"
+                data-testid="decisions-queue"
+                data-total={String(counted?.total ?? 0)}
+                data-capped={String(counted?.capped ?? false)}
               >
-                {/* The queue's own copy of the one number, so a drift between
-                    badge, Zone A and this page is a failing assertion rather
-                    than something a reader has to notice. */}
-                <div
-                  data-testid="decisions-queue"
-                  data-total={String(counted?.total ?? 0)}
-                  data-capped={String(counted?.capped ?? false)}
-                >
-                  {current.length > 0 && (
-                    <div className="grid gap-2" data-testid="decisions-current">
-                      {renderGroups(current, "decision-deferred")}
-                    </div>
-                  )}
-                  {aged.length > 0 && (
-                    <div className="mt-2 grid gap-2 border-t pt-4" data-testid="decisions-aged">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold">{t("decisions.agedTitle")}</h3>
-                        <Badge variant="secondary" className="tabular-nums">
-                          {aged.length}
-                        </Badge>
-                      </div>
-                      {renderGroups(aged, "decision-aged")}
-                    </div>
-                  )}
-                </div>
-              </DecisionSection>
+                {current.length > 0 && (
+                  <DecisionSection
+                    testId="decisions-current"
+                    title={t("decisions.section.deferred")}
+                    hint={t("decisions.section.deferredHint")}
+                    count={current.length}
+                  >
+                    {renderGroups(current, "decision-deferred")}
+                  </DecisionSection>
+                )}
+                {/* §8.2 names this rubric, and it is a rubric of its own rather
+                    than a sub-heading inside another one: it used to sit under
+                    a section headed "Kann warten", which is the product
+                    deciding on the reader's behalf what it has no way to know. */}
+                {aged.length > 0 && (
+                  <DecisionSection
+                    testId="decisions-aged"
+                    title={t("decisions.agedTitle")}
+                    hint={t("decisions.agedHint")}
+                    count={aged.length}
+                  >
+                    {renderGroups(aged, "decision-aged")}
+                  </DecisionSection>
+                )}
+              </div>
             )}
           </>
         )}

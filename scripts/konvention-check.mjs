@@ -965,7 +965,16 @@ async function checkOperationsIsToolsOnly(page) {
   if (!echo.link) breach("§12", "/operations", "kein Weg zu den Befunden auf der Übersicht");
 }
 
-/** §8.2 — positions older than three days stand under "Liegt schon länger". */
+/**
+ * §8.2 — positions older than three days stand under "Liegt schon länger".
+ *
+ * The name is pinned, and pinned once: the rubric used to sit nested inside a
+ * section headed "Kann warten" — the product deciding on the reader's behalf
+ * what it has no way to know — and a second rubric wearing the same name would
+ * make the pinned one unfindable.
+ */
+const AGED_RUBRIC = "Liegt schon länger";
+
 async function checkAgingRubric(page) {
   const aged = page.locator('[data-testid="decisions-aged"]');
   if ((await aged.count()) === 0) {
@@ -973,7 +982,22 @@ async function checkAgingRubric(page) {
     return;
   }
   const heading = (await aged.first().locator("h1, h2, h3, h4").first().innerText()).trim();
-  if (heading !== "Liegt schon länger") breach("§8.2", "/decisions · decisions-aged", heading);
+  if (heading !== AGED_RUBRIC) breach("§8.2", "/decisions · decisions-aged", heading);
+
+  const headings = await page.evaluate(() =>
+    [
+      ...document.querySelectorAll(
+        '[data-testid^="decisions-"] h1, [data-testid^="decisions-"] h2, [data-testid^="decisions-"] h3, [data-testid^="decisions-"] h4',
+      ),
+    ].map((element) => element.innerText.trim()),
+  );
+  const wearing = headings.filter((entry) => entry === AGED_RUBRIC).length;
+  if (wearing !== 1)
+    breach("§8.2", "/decisions", `${wearing} Rubriken heißen "${AGED_RUBRIC}" statt genau einer`);
+  for (const forbidden of ["Kann warten"]) {
+    if (headings.includes(forbidden))
+      breach("§8.2", "/decisions", `Rubrik "${forbidden}" urteilt für den Leser`);
+  }
 }
 
 /** §8.3 — a button names the act; "OK" and "Submit" name nothing. */

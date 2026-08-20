@@ -125,7 +125,11 @@ The queue's first division is what a position is doing to you, not how old it is
 waiting for an answer is stopped — an elicitation is pending and the agent loop is suspended
 mid-turn — while a proposed fix blocks nothing and instead lets its workflow keep running and keep
 failing. Age still divides the second pile, because that is the honest measure there, but it can no
-longer put the position nobody is waiting on above the one that is stopped dead. Where the engine
+longer put the position nobody is waiting on above the one that is stopped dead. That second pile
+is two rubrics side by side and not one nested in the other: "Blocking nothing", and beneath it the
+family's name for what has sat longer than three days. It used to be nested under a heading that
+read "Can wait" — a verdict the product has no way to reach on the reader's behalf, and one that
+buried the rubric the convention actually names. Where the engine
 supplies a deadline the queue sorts by it and says how long is left; a lapsed position moves into
 its own muted rubric rather than sitting in the working queue as if it were still decidable.
 
