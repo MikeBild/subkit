@@ -1,12 +1,17 @@
 // The identity question, driven through the browser that takes the frames.
 //
 // The rule this file obeys: a guard that checks TEXT instead of EFFECT is not a
-// guard. It cost this repository three rounds. A sister repo pinned its identity
+// guard. It cost this repository four rounds. A sister repo pinned its identity
 // rule as "the line is present"; an implementation that left the line in place
 // and asked the wrong document passed 12/0 with the hole fully open. Then the
 // reader here was sharpened against prose — and the sharpening OPENED the next
 // hole: a comment stripper that swallows `<!-->` swallows the foreign marker
 // behind it, and the sweep wrote 296 frames of a WorkKit cockpit at exit 0.
+// Then the reader became the browser and the hole moved AGAIN, one level up:
+// the right reader was asked ONCE, on a page of its own, before the first
+// frame. Against a stand that changes hands after answering, that bought one
+// honest answer and 240 foreign documents — exit 0, 296 frames. The last
+// describe() in this file is that stand.
 //
 // So the fixtures below are not handed to a function. They are SERVED over real
 // HTTP and read by a real Chromium — the same engine, the same parse and the
@@ -16,7 +21,7 @@
 // tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI). `bun run test:contract` runs this.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
@@ -268,4 +273,103 @@ describe("the visual sweep asks whose console it is photographing", () => {
     expect(output).toContain("this is not SubKit but WorkKit");
     expect(existsSync(outputDir), "not one frame was written").toBe(false);
   }, 120_000);
+});
+
+/**
+ * A stand that CHANGES HANDS after its first answer — the shape that survived
+ * three repairs of the reader.
+ *
+ * Upstream is this repository's own shell. The first HTML answer goes out as
+ * delivered, which is the answer an identity question gets; every one after it
+ * carries WorkKit. Nothing about the reader is wrong here — the reader was asked
+ * once and told the truth once.
+ *
+ * Measured against the version before this file's `standAt()`: exit 0, 296
+ * frames, 1 SubKit answer against 240 WorkKit ones. The sweep is RUN, and the
+ * only statements that count are its exit code and the files on disk.
+ */
+describe("a stand that changes hands mid-run photographs nothing of the new owner", () => {
+  const root2 = root;
+  let handOver: Server;
+  let handOverUrl = "";
+  let htmlAnswers = 0;
+  let foreignAnswers = 0;
+  /** Answers 1..switchAfter are ours; everything after belongs to somebody else. */
+  let switchAfter = 1;
+
+  beforeAll(async () => {
+    // The REAL built cockpit, so the pages actually mount and the run gets far
+    // enough to have something to take. Only the document changes hands;
+    // everything else is served as built.
+    const built = join(root2, "assets/cockpit");
+    handOver = createServer(async (request, response) => {
+      const path = new URL(request.url ?? "/", "http://x").pathname.replace(/^\/cockpit/, "");
+      const asset = /\.[a-z0-9]+$/i.test(path) ? join(built, path) : null;
+      if (asset !== null && existsSync(asset)) {
+        const type = asset.endsWith(".js")
+          ? "text/javascript"
+          : asset.endsWith(".css")
+            ? "text/css"
+            : asset.endsWith(".svg")
+              ? "image/svg+xml"
+              : "application/octet-stream";
+        response.writeHead(200, { "content-type": type });
+        response.end(readFileSync(asset));
+        return;
+      }
+      const ours = readFileSync(join(built, "index.html"), "utf8");
+      htmlAnswers += 1;
+      const mine = htmlAnswers <= switchAfter;
+      if (!mine) foreignAnswers += 1;
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end(
+        mine
+          ? ours
+          : ours
+              .replace(/(<meta name="cockpit-product" content=")[^"]*(")/, "$1WorkKit$2")
+              .replace(/<title>[^<]*<\/title>/, "<title>WorkKit Cockpit</title>"),
+      );
+    });
+    await new Promise<void>((done) => handOver.listen(0, "127.0.0.1", done));
+    handOverUrl = `http://127.0.0.1:${(handOver.address() as AddressInfo).port}`;
+  });
+
+  afterAll(() => handOver?.close());
+
+  test("the sweep stops at the first document of the new owner", async () => {
+    htmlAnswers = 0;
+    foreignAnswers = 0;
+    switchAfter = 1;
+    const outputDir = join(root2, ".artifacts/cockpit-sweep/hand-over-contract");
+    rmSync(outputDir, { recursive: true, force: true });
+    const run = Bun.spawn(["bun", "run", "scripts/verify-cockpit-visual.mjs"], {
+      stdout: "pipe",
+      stderr: "pipe",
+      cwd: root2,
+      env: {
+        ...process.env,
+        COCKPIT_BASE_URL: handOverUrl,
+        COCKPIT_SCREENSHOT_DIR: outputDir,
+        PLAYWRIGHT_BROWSERS_PATH: browsersPath(),
+      },
+    });
+    const output = `${await new Response(run.stdout).text()}${await new Response(run.stderr).text()}`;
+    const exitCode = await run.exited;
+    expect(exitCode, output).not.toBe(0);
+    expect(output).toContain("NOT TAKEN");
+    expect(output).toContain("this is not SubKit but WorkKit");
+    // THE number: how many documents of the new owner the run saw before it
+    // stopped. One — the one it stopped on. The version before `standAt()` saw
+    // 240 of them and photographed every one.
+    expect(foreignAnswers, "it stopped at the FIRST foreign document").toBe(1);
+    // And what it left behind is only what it took while the stand was still
+    // ours — one frame, from the one navigation that got an honest answer, and
+    // it carries that answer in its name.
+    const frames = existsSync(outputDir) ? readdirSync(outputDir) : [];
+    expect(frames.length, frames.join(", ")).toBeLessThanOrEqual(1);
+    expect(
+      frames.every((name) => name.startsWith("subkit-")),
+      frames.join(", "),
+    ).toBe(true);
+  }, 180_000);
 });

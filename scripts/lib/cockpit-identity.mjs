@@ -19,14 +19,32 @@
  * at exit 0. Four shapes that still beat a regex are pinned in
  * `tests/contract/cockpit-identity.test.ts`, served over real HTTP.
  *
- * `readIdentity` asks the page. Same engine, same parse, same document as the
- * screenshots — so reader and photographer cannot disagree, and the shapes stop
- * being cases at all.
+ * THE BOUNDARY MOVED, and it is worth naming: the reader used to sit on the
+ * DELIVERED BYTES and now sits on the RENDERED DOM. That is not a strictly
+ * sharper reader, it is a different one, and it loses a case the byte reader
+ * won — a document whose text stamps WorkKit and whose inline script rewrites
+ * the marker to SubKit on load reads as WorkKit in the bytes and as SubKit
+ * here. Taken deliberately: the DOM is what gets photographed. A frame shows
+ * the rendered document, so the name on the frame has to come from the same
+ * place the picture does. Bytes nobody can see are not what a screenshot is
+ * about.
  *
- * `markerIn` remains for the one place where no browser exists: the definition
- * site on disk. There the rule is FAIL-SAFE — anything a parser could read
- * differently from a string comparison yields `null`, which every caller turns
- * into "not identified", never into a guessed name.
+ * ONE DOOR, and it is `standAt().visit()`.
+ *
+ * Asking once was still not asking. The reader was the camera and the question
+ * was put to a page of its own, before the first frame — `browser.newPage()` on
+ * `/cockpit/`, while every frame came from a `browser.newContext()` of its own
+ * on `/cockpit/<route>`. One browser, but neither the same page nor the same
+ * document. Measured against a stand that changes hands after its first answer:
+ * 1 SubKit answer (the identity question) against 240 WorkKit answers (every
+ * document photographed), exit 0, 296 frames. Identity is a property of a stand
+ * OVER TIME, not a one-off answer to one URL.
+ *
+ * So navigation and identity are one act. `visit()` is a door, not a reader:
+ * nothing here hands out a page without first going through what names it, and
+ * a run that never got a name has no name to write a file under — see
+ * `frameName`. The price is one `page.evaluate` per navigation, and it is the
+ * right price.
  */
 import { readFileSync } from "node:fs";
 
@@ -147,14 +165,138 @@ export function identityProblem({ delivered, title, expected, baseUrl }) {
       `this is not ${expected}: the document on ${baseUrl} carries no ` +
       `<meta name="${IDENTITY_META}">. Its title reads "${title}". Either a sister ` +
       "console holds the port, or it is a build from before the marker existed. Both would be " +
-      `photographed as ${expected}.`
+      `measured and photographed under the name ${expected}.`
     );
   }
   if (delivered !== expected) {
     return (
       `this is not ${expected} but ${delivered}: the document on ${baseUrl} calls itself ` +
-      `"${delivered}", apps/cockpit/index.html names "${expected}". Nothing was photographed.`
+      `"${delivered}", apps/cockpit/index.html names "${expected}". Nothing here is a statement ` +
+      `about ${expected}.`
     );
   }
   return null;
+}
+
+/**
+ * A name a file may be written under: a plain word, nothing that is also a path.
+ *
+ * The product name comes out of a served document and is then part of a file
+ * path. It can only ever be the value this repository's own index.html carries
+ * — `identityProblem` refuses everything else — but a string that reaches a
+ * path must be checked where it reaches it, not where it is believed to be
+ * harmless.
+ */
+const PLAIN_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * THE DOOR: a stand, and the only way to a page on it.
+ *
+ * `visit()` navigates AND names, in one act, on the page that is about to be
+ * used. There is deliberately no way to do one without the other — asking once
+ * before the first frame is what produced 296 pictures of a console that
+ * changed hands after answering the question.
+ *
+ * `refuse(sentence, options)` builds the caller's own error type: the visual
+ * sweep needs "NOT TAKEN" and exit 1, the convention check needs `NichtGemessen`
+ * and exit 2. The sentences themselves are composed here so both callers say
+ * the same things about the same situations.
+ *
+ * The gate is a BARRIER, not a race leg. Nothing observes the stand alongside
+ * the run and interrupts it; the run cannot proceed except through the gate.
+ * That distinction is the property worth copying from the sibling that got here
+ * first — its identity gate is a barrier and its harness-death gate is a race,
+ * and only the first of the two can promise anything.
+ */
+export function standAt({ baseUrl, refuse, hint = "" }) {
+  // Read once per run, not per navigation: this is OUR file, and the question
+  // being asked 300 times is about the stand, not about the repository.
+  const expected = expectedIdentity();
+  /** Which product answered on which page — set only by a navigation that named it. */
+  const named = new WeakMap();
+  /** The identity of the LAST answer. Never an earlier one; see `visit`. */
+  let identity = null;
+  const tail = hint ? ` ${hint}` : "";
+
+  return {
+    baseUrl,
+    expected,
+    /**
+     * Whose console answered LAST — for reports, never for an assert.
+     *
+     * A stand that has changed hands has no confirmed identity any more.
+     * Printing the first answer above an abort that named a different product
+     * is one report saying two different things.
+     */
+    get identity() {
+      return identity;
+    },
+
+    /**
+     * Go to a page of this stand — and get one only if the stand names itself.
+     *
+     * @param page   a Playwright page; it is the reader AND the camera.
+     * @param path   the part after `/cockpit/`; `""` is the shell.
+     * @returns the navigation response, for callers that check more than status.
+     */
+    async visit(page, path, options = { waitUntil: "networkidle" }) {
+      const url = `${baseUrl}/cockpit/${path}`;
+      // Withdrawn before the question, restored only by an answer. Every path
+      // out of here that is not the last line leaves this page unnamed.
+      named.delete(page);
+      identity = null;
+      let response;
+      try {
+        response = await page.goto(url, options);
+      } catch (error) {
+        throw refuse(`nothing answers on ${url}: ${error.message}.${tail}`, { cause: error });
+      }
+      if (!response?.ok()) throw refuse(`${url} answered with HTTP ${response?.status()}.${tail}`);
+      const { marker, title } = await readIdentity(page);
+      const problem = identityProblem({ delivered: marker, title, expected, baseUrl });
+      if (problem !== null) throw refuse(problem);
+      named.set(page, marker);
+      identity = marker;
+      return response;
+    },
+
+    /**
+     * The file name a frame of THIS page may be written under.
+     *
+     * CONSTRUCTIVE, and that is the whole point: the name is built from the
+     * product that ANSWERED on this page, so an unauthorised run has no name to
+     * write under — no path comes into existence and `screenshot` is never
+     * called. A guard one can forget to call is a guard one forgets; this one
+     * cannot be forgotten, because without it there is no path.
+     */
+    frameName(page, label) {
+      const product = named.get(page);
+      if (product === undefined)
+        throw refuse(
+          `no frame of an unnamed page (${label}): this page never went through visit(), so ` +
+            "nothing has said whose console it shows and there is no name to write the file under.",
+        );
+      if (!PLAIN_NAME.test(product))
+        throw refuse(`"${product}" is not a name a file can be written under (${label}).`);
+      return `${product.toLowerCase()}-${label}.png`;
+    },
+
+    /**
+     * The name of an artifact assembled from frames this stand already named.
+     *
+     * A contact sheet has no document of its own — it is built with
+     * `setContent` out of files that are already on disk. It still gets its name
+     * from an answer: `identity` is null until a visit succeeds and null again
+     * the moment one fails, so a run that never passed the gate cannot name this
+     * either.
+     */
+    sheetName(label) {
+      if (identity === null)
+        throw refuse(
+          `no contact sheet without a named stand (${label}): nothing on ${baseUrl} has confirmed ` +
+            "whose console these frames are of.",
+        );
+      return `${identity.toLowerCase()}-${label}.png`;
+    },
+  };
 }
