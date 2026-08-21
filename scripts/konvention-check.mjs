@@ -2161,7 +2161,15 @@ async function sweepDetailSurface(page, route) {
  */
 class NichtGemessen extends Error {}
 
-/** The stand's confirmed identity — for the report only, never for an assert. */
+/**
+ * The stand's confirmed identity — for the report only, never for an assert.
+ *
+ * It holds the identity of the LAST answer, not of the first. The assert runs
+ * again whenever the stand goes quiet mid-sweep, and a stand that changed hands
+ * has no confirmed identity any more: leaving the old one standing printed
+ * "Stand: … identity SubKit" above an abort that named WorkKit — one report
+ * saying two different things.
+ */
 let gemesseneKennung = null;
 
 /**
@@ -2172,6 +2180,9 @@ let gemesseneKennung = null;
  * surface this repository does not own.
  */
 function assertPruefstandsKennung(html) {
+  // Withdrawn first, restored only by an answer. Every path out of here that is
+  // not the last line is a stand this run cannot name.
+  gemesseneKennung = null;
   const quelle = new URL("../apps/cockpit/index.html", import.meta.url);
   const erwartet = markerIn(readFileSync(quelle, "utf8"));
   if (erwartet === null) {
