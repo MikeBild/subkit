@@ -365,7 +365,7 @@ function isEntryPath(token: string): boolean {
 const reachCache = new Map<string, { files: string[]; packages: Set<string> }>();
 
 function reachableFrom(entries: readonly string[]): { files: string[]; packages: Set<string> } {
-  const key = [...entries].sort().join(" ");
+  const key = [...entries].sort().join("\0");
   const cached = reachCache.get(key);
   if (cached) return cached;
   const queue: string[] = [];
