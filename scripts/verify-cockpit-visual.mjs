@@ -1,6 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
+import { expectedIdentity, identityProblem } from "./lib/cockpit-identity.mjs";
 
 const baseUrl = (process.env.COCKPIT_BASE_URL || "http://127.0.0.1:4175").replace(/\/$/, "");
 const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
@@ -1043,6 +1044,32 @@ async function assertInteractiveSelectors(page, label) {
   if (missing.length) throw new Error(`${label} has interactives without data-testid: ${missing}`);
 }
 
+/**
+ * Whose console is being photographed — asked before the first frame.
+ *
+ * This script starts no server; it points at whatever holds `COCKPIT_BASE_URL`.
+ * On its default port a masterless process of a foreign session was listening
+ * for two days, and 252 screenshots of someone else's cockpit would have been
+ * produced in silence. The identity comes from the document the stand serves,
+ * not from the port, and not from anything this file types by hand.
+ */
+async function assertStandIsOurs() {
+  let served;
+  try {
+    const response = await fetch(`${baseUrl}/cockpit/`);
+    if (!response.ok) throw new Error(`answered with HTTP ${response.status}`);
+    served = await response.text();
+  } catch (error) {
+    throw new Error(
+      `nothing photographable on ${baseUrl}/cockpit/: ${error.message}. ` +
+        "This sweep starts no server — build the cockpit and run a preview on that port first.",
+    );
+  }
+  const problem = identityProblem({ served, expected: expectedIdentity(), baseUrl });
+  if (problem !== null) throw new Error(`Cockpit visual sweep NOT TAKEN — ${problem}`);
+}
+
+await assertStandIsOurs();
 await mkdir(outputDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [];
