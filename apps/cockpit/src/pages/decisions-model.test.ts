@@ -6,6 +6,7 @@ import {
   countOpenDecisions,
   type DecisionItem,
   filterByKinds,
+  type GroupMode,
   groupDecisions,
   hasOverdue,
   partitionByUrgency,
@@ -118,6 +119,75 @@ describe("decision filtering and grouping", () => {
     const byKind = groupDecisions(items, "kind");
     expect(byKind.map((group) => group.key)).toEqual(["patch", "skill"]);
     expect(byKind[0]?.items).toHaveLength(2);
+  });
+
+  // Grouping is a rearrangement, and the queue's total is the one number four
+  // surfaces agree on (§8.1). A mode that drops or duplicates a position leaves
+  // every grouped view internally consistent and the badge above it wrong — the
+  // exact failure shape the four-way assert exists for, arriving through a door
+  // it does not watch.
+  const MODES: GroupMode[] = ["none", "kind", "source"];
+
+  test("every mode returns each position exactly once", () => {
+    const items = [
+      item("patch", 1, "a", { target: "Daily report" }),
+      item("skill", 1, "b", { target: null }),
+      item("patch", 2, "c", { target: "Daily report" }),
+      item("conversation", 4, "d", { target: "Nightly sync" }),
+      item("skill", 5, "e", { target: null }),
+    ];
+    for (const mode of MODES) {
+      const flat = groupDecisions(items, mode).flatMap((group) => group.items);
+      expect(flat, mode).toHaveLength(items.length);
+      expect(new Set(flat.map((entry) => entry.id)).size, mode).toBe(items.length);
+      expect([...flat].map((entry) => entry.id).sort(), mode).toEqual(
+        items.map((entry) => entry.id).sort(),
+      );
+    }
+  });
+
+  test("the group counts sum to the ungrouped count", () => {
+    const items = [
+      item("patch", 1, "a", { target: "Daily report" }),
+      item("conversation", 1, "b", { target: "Daily report" }),
+      item("skill", 3, "c", { target: null }),
+    ];
+    for (const mode of MODES) {
+      const groups = groupDecisions(items, mode);
+      const sum = groups.reduce((total, group) => total + group.items.length, 0);
+      expect(sum, mode).toBe(items.length);
+    }
+  });
+
+  test("positions without a source land in one group rather than vanishing", () => {
+    const items = [item("skill", 1, "a"), item("skill", 2, "b"), item("patch", 1, "c")];
+    const bySource = groupDecisions(items, "source");
+    expect(bySource).toHaveLength(1);
+    expect(bySource[0]?.key).toBe("");
+    expect(bySource[0]?.items).toHaveLength(3);
+  });
+
+  test("grouping does not change what the queue counts, on any rubric", () => {
+    const items = [
+      item("conversation", 0, "a", { expiresAt: new Date(NOW - 1000).toISOString() }),
+      item("conversation", 0, "b", { expiresAt: new Date(NOW + 3_600_000).toISOString() }),
+      item("patch", 1, "c", { target: "Daily report" }),
+      item("skill", 9, "d"),
+    ];
+    const rubrics = partitionByUrgency(items, NOW);
+    const counted = countOpenDecisions({ items, totals: null, nowMs: NOW });
+    for (const mode of MODES) {
+      const perRubric = [
+        rubrics.expired,
+        rubrics.blocking,
+        rubrics.deferred.current,
+        rubrics.deferred.aged,
+      ].map((rubric) => groupDecisions(rubric, mode).flatMap((group) => group.items).length);
+      expect(
+        perRubric.reduce((a, b) => a + b, 0),
+        mode,
+      ).toBe(counted.total);
+    }
   });
 });
 
