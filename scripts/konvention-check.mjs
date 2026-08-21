@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { ALL_ROUTE_PATHS } from "../apps/cockpit/src/app/route-table.ts";
 import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
+// §7 keeps the six products from importing each other's rules; it says nothing
+// about this file reading its own repository's. The identity READER lived here
+// a second time, and the second copy carried the same defect as the first — it
+// answered with the first `content="…"` in the document, prose included. The
+// assert below stays local: its wording is pinned line by line and is German.
+import { IDENTITY_META, markerIn, titleIn } from "./lib/cockpit-identity.mjs";
 
 // The family convention (COCKPIT-KONVENTION.md, the version named by
 // KONVENTION_VERSION below) is deliberately not enforced by shared code — six
@@ -2146,9 +2152,6 @@ async function sweepDetailSurface(page, route) {
 // turns every real breach into "that is not SubKit".
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The attribute the console stamps on its document. */
-const IDENTITY_META = "cockpit-product";
-
 /**
  * A run that did not measure, as opposed to one that measured and found breaches.
  *
@@ -2157,13 +2160,6 @@ const IDENTITY_META = "cockpit-product";
  * cost CodeKit eight repairs on someone else's surface.
  */
 class NichtGemessen extends Error {}
-
-/** A document's marker, or null if it carries none. */
-function markerIn(html) {
-  return (
-    new RegExp(`<meta[^>]+name="${IDENTITY_META}"[^>]+content="([^"]+)"`).exec(html)?.[1] ?? null
-  );
-}
 
 /** The stand's confirmed identity — for the report only, never for an assert. */
 let gemesseneKennung = null;
@@ -2187,7 +2183,7 @@ function assertPruefstandsKennung(html) {
   }
   const geliefert = markerIn(html);
   if (geliefert === null) {
-    const titel = /<title>([^<]*)<\/title>/.exec(html)?.[1]?.trim() ?? "(no <title>)";
+    const titel = titleIn(html);
     throw new NichtGemessen(
       `this is not ${erwartet}: the document on ${baseUrl} carries no ` +
         `<meta name="${IDENTITY_META}">. Its title reads "${titel}". ` +
