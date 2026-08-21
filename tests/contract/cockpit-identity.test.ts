@@ -131,6 +131,16 @@ let server: Server;
 let baseUrl = "";
 let browser: Browser;
 
+// A COLD CHROMIUM START IS NOT A DEFECT, and Bun's default budget for a hook is
+// 5 s. This one measured 5006.99 ms on this machine — 1 run in 6 went red, and
+// because a failing `beforeAll` takes its whole describe with it, the run then
+// cost 124 s instead of 10 and reported a launch error instead of the tests it
+// never ran. On a runner the first launch is colder than here: the binary is
+// not in the page cache, and nothing has ever executed it.
+//
+// So the budget is stated rather than inherited. It is not a slow test being
+// waved through — the launch takes well under a second once warm; it is the
+// wall being put where a cold start cannot reach it.
 beforeAll(async () => {
   server = createServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -141,7 +151,7 @@ beforeAll(async () => {
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   browser = await chromium.launch({ headless: true });
-});
+}, 60_000);
 
 afterAll(async () => {
   await browser?.close();
