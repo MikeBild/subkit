@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
-import { expectedIdentity, identityProblem, readIdentity } from "./lib/cockpit-identity.mjs";
+import { standAt } from "./lib/cockpit-identity.mjs";
 
 const baseUrl = (process.env.COCKPIT_BASE_URL || "http://127.0.0.1:4175").replace(/\/$/, "");
 const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
@@ -1059,13 +1059,66 @@ async function assertInteractiveSelectors(page, label) {
  * line below says where this one comes from.
  */
 let framesWritten = 0;
-async function shoot(target, options) {
-  await target.screenshot(options);
-  framesWritten += 1;
+/**
+ * Where every frame this run wrote is lying — by the label it was taken under.
+ *
+ * The contact sheets are built out of these files. They used to RECONSTRUCT the
+ * file names, which meant a second place that knows how a frame is called; now
+ * the name exists once, where the file was written.
+ */
+const written = new Map();
+
+/**
+ * The output directory, made ready at the moment of the first write.
+ *
+ * Emptied, not merely created: the closing line counts the frames of THIS run
+ * against the files lying here, and a leftover from an earlier run would make
+ * that comparison lie in the safe-looking direction.
+ *
+ * Made ready LATE, on the first frame, because it is now possible for the run to
+ * be refused after it has started walking the routes. A refused run leaves no
+ * directory behind and destroys no earlier one — "nothing was photographed" is
+ * then true of the disk as well as of the sentence.
+ */
+let outputReady = false;
+async function prepareOutput() {
+  if (outputReady) return;
+  await rm(outputDir, { recursive: true, force: true });
+  await mkdir(outputDir, { recursive: true });
+  outputReady = true;
 }
 
 /**
- * Whose console is being photographed — asked THROUGH THE CAMERA.
+ * A frame of a page THIS STAND NAMED, written under the name of the product
+ * that answered on it.
+ *
+ * `stand.frameName` is where the run is authorised, and it authorises
+ * constructively: a page that never went through `stand.visit()` has no product,
+ * so there is no path, so `screenshot` is never reached. Nothing here has to
+ * remember to check anything.
+ */
+async function shoot(page, label, options) {
+  await prepareOutput();
+  const path = resolve(outputDir, stand.frameName(page, label));
+  await page.screenshot({ ...options, path });
+  framesWritten += 1;
+  written.set(label, path);
+}
+
+/**
+ * A contact sheet: assembled from frames already on disk, named from the last
+ * answer this stand gave. Counted like every other frame.
+ */
+async function shootSheet(page, label, options) {
+  await prepareOutput();
+  const path = resolve(outputDir, stand.sheetName(label));
+  await page.screenshot({ ...options, path });
+  framesWritten += 1;
+  written.set(label, path);
+}
+
+/**
+ * Whose console is being photographed — asked AT EVERY NAVIGATION.
  *
  * This script starts no server; it points at whatever holds `COCKPIT_BASE_URL`.
  * On its default port a masterless process of a foreign session was listening
@@ -1073,58 +1126,24 @@ async function shoot(target, options) {
  * produced in silence.
  *
  * The question used to be asked of the HTTP TEXT with a regex while the frames
- * came out of Chromium's parse — two readers of one document, and every shape
- * they disagree about is a WorkKit cockpit photographed under our name. Ten
- * such shapes in one day, and the last was opened by the repair of the one
- * before it. This asks the same browser instance, on the same URL, with the
- * same parser that takes every frame below, so the two cannot disagree by
- * construction.
+ * came out of Chromium's parse. That was repaired to the browser — and the
+ * repair still asked ONCE, on a page of its own, before the first frame. One
+ * browser, but not the same page and not the same document: measured against a
+ * stand that changes hands after its first answer, the sweep got 1 SubKit
+ * answer and photographed 240 WorkKit documents, exit 0, 296 frames.
+ *
+ * `stand.visit()` is the only way to a page here, and it names what it opens.
+ * The `readdir`-free promise this makes is stronger than a check: an
+ * unauthorised page has no file name (`frameName`), so it cannot produce a
+ * picture at all.
  */
-async function assertStandIsOurs(browser) {
-  const page = await browser.newPage();
-  try {
-    let response;
-    try {
-      response = await page.goto(`${baseUrl}/cockpit/`, { waitUntil: "domcontentloaded" });
-    } catch (error) {
-      throw new Error(
-        `nothing photographable on ${baseUrl}/cockpit/: ${error.message}. ` +
-          "This sweep starts no server — build the cockpit and run a preview on that port first.",
-      );
-    }
-    if (!response?.ok())
-      throw new Error(
-        `nothing photographable on ${baseUrl}/cockpit/: answered with HTTP ${response?.status()}. ` +
-          "This sweep starts no server — build the cockpit and run a preview on that port first.",
-      );
-    const { marker, title } = await readIdentity(page);
-    const problem = identityProblem({
-      delivered: marker,
-      title,
-      expected: expectedIdentity(),
-      baseUrl,
-    });
-    if (problem !== null) throw new Error(`Cockpit visual sweep NOT TAKEN — ${problem}`);
-  } finally {
-    await page.close();
-  }
-}
+const stand = standAt({
+  baseUrl,
+  refuse: (sentence, options) => new Error(`Cockpit visual sweep NOT TAKEN — ${sentence}`, options),
+  hint: "This sweep starts no server — build the cockpit and run a preview on that port first.",
+});
 
 const browser = await chromium.launch({ headless: true });
-try {
-  await assertStandIsOurs(browser);
-} catch (error) {
-  // The browser is the reader now, so it is already open when the answer comes
-  // back. Nothing has been written at this point, and nothing will be: the
-  // output directory is not even created until the stand has been named.
-  await browser.close();
-  throw error;
-}
-// Emptied, not merely created: the closing line counts the frames of THIS run
-// against the files lying here, and a leftover from an earlier run would make
-// that comparison lie in the safe-looking direction.
-await rm(outputDir, { recursive: true, force: true });
-await mkdir(outputDir, { recursive: true });
 const errors = [];
 const locales = [
   { name: "de", browser: "de-DE" },
@@ -1168,11 +1187,9 @@ for (const locale of variants) {
     });
     await page.route("**/v1/**", mockApi);
     for (const route of routes) {
-      const response = await page.goto(`${baseUrl}/cockpit/${route}`, { waitUntil: "networkidle" });
-      if (!response?.ok())
-        throw new Error(
-          `${locale.artifact}/${viewport.name}/${route} returned HTTP ${response?.status()}`,
-        );
+      // The door. Status and identity in one act, on the page that is about to
+      // be photographed — not on a page of its own, and not once for the run.
+      await stand.visit(page, route);
       try {
         await page.locator(markerFor(route)).waitFor({ state: "visible" });
       } catch (error) {
@@ -1233,27 +1250,21 @@ for (const locale of variants) {
           }
         }
       }
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-${viewport.name}-${route}.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-${viewport.name}-${route}`, { fullPage: false });
     }
     if (viewport.name === "desktop") {
       for (const resource of ["workflows", "connectors", "knowledge", "skills", "files"]) {
-        await page.goto(`${baseUrl}/cockpit/${resource}/${uuid}`, { waitUntil: "networkidle" });
+        await stand.visit(page, `${resource}/${uuid}`);
         await page.locator(`[data-testid="detail-${resource}"]`).waitFor({ state: "visible" });
         await assertViewport(page, `${locale.artifact}/desktop/${resource}-detail`);
         await assertTables(page, `${locale.artifact}/desktop/${resource}-detail`);
         await assertInteractiveSelectors(page, `${locale.artifact}/desktop/${resource}-detail`);
-        await shoot(page, {
-          path: resolve(outputDir, `${locale.artifact}-desktop-${resource}-detail.png`),
-          fullPage: false,
-        });
+        await shoot(page, `${locale.artifact}-desktop-${resource}-detail`, { fullPage: false });
       }
       // The expanded decision card. The sweep only ever photographed collapsed
       // cards, which is how a surface that asks people to approve things they
       // cannot see stayed green through every frame this sweep took.
-      await page.goto(`${baseUrl}/cockpit/decisions`, { waitUntil: "networkidle" });
+      await stand.visit(page, "decisions");
       let expandedCards = 0;
       for (const prefix of ["decision", "decision-expired", "decision-deferred", "decision-aged"]) {
         // Two positions per section, because the three kinds expand to entirely
@@ -1267,11 +1278,7 @@ for (const locale of variants) {
             .locator(`[data-testid="${prefix}-${position}-detail"]`)
             .waitFor({ state: "visible", timeout: 10_000 });
           await page.waitForTimeout(300);
-          await shoot(page, {
-            path: resolve(
-              outputDir,
-              `${locale.artifact}-desktop-${prefix}-${position}-expanded.png`,
-            ),
+          await shoot(page, `${locale.artifact}-desktop-${prefix}-${position}-expanded`, {
             fullPage: false,
           });
           expandedCards += 1;
@@ -1285,16 +1292,13 @@ for (const locale of variants) {
       // §8.2 and §8.5: the group toggle rearranging the queue, and the shelves
       // open. Both were photographed only by accident before — they sit in the
       // toolbar and below the fold of the plain decisions shot.
-      await page.goto(`${baseUrl}/cockpit/decisions`, { waitUntil: "networkidle" });
+      await stand.visit(page, "decisions");
       await page.locator('[data-testid="decisions-group-1"]').click();
       await page
         .locator('[data-testid="decisions-group"][data-mode="kind"]')
         .waitFor({ state: "attached" });
       await page.waitForTimeout(300);
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-decisions-grouped.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-desktop-decisions-grouped`, { fullPage: false });
       await page.locator('[data-testid="decisions-group-0"]').click();
       await page
         .locator('[data-testid="decisions-group"][data-mode="none"]')
@@ -1309,36 +1313,24 @@ for (const locale of variants) {
       }
       await page.locator('[data-testid="decisions-shelf-decided-toggle"]').scrollIntoViewIfNeeded();
       await page.waitForTimeout(500);
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-decisions-shelves.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-desktop-decisions-shelves`, { fullPage: false });
 
-      await page.goto(`${baseUrl}/cockpit/chat`, { waitUntil: "networkidle" });
+      await stand.visit(page, "chat");
       await page.locator('[data-testid="conversation-new"]').click();
       await page
         .locator('[data-testid="conversation-create-dialog"]')
         .waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-chat-create.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-desktop-chat-create`, { fullPage: false });
       await page.locator('[data-testid="conversation-create-cancel"]').click();
       const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
       await tool.scrollIntoViewIfNeeded();
       await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-chat-tool.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-desktop-chat-tool`, { fullPage: false });
       await page.locator('[data-testid="chat-context-toggle"]').click();
       await page.locator('[data-testid="chat-context"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-chat-context.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-desktop-chat-context`, { fullPage: false });
       await page.locator('[data-testid="chat-context-close"]').click();
       await page
         .locator('[data-testid="chat-composer-input"]')
@@ -1348,31 +1340,19 @@ for (const locale of variants) {
         .locator('[data-testid="chat-error"]')
         .waitFor({ state: "hidden" })
         .catch(() => {});
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-chat-interaction.png`),
-        fullPage: false,
-      });
-      await page.goto(`${baseUrl}/cockpit/usage`, { waitUntil: "networkidle" });
+      await shoot(page, `${locale.artifact}-desktop-chat-interaction`, { fullPage: false });
+      await stand.visit(page, "usage");
       await page.locator('[data-testid="data-table-refresh"]').hover();
       await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-tooltip.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-desktop-tooltip`, { fullPage: false });
       await page.locator('[data-testid="account-menu-trigger"]').click();
       await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-account.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-desktop-account`, { fullPage: false });
       await page.locator('[data-testid="account-language-menu"]').hover();
       await page.locator('[data-testid="account-language-content"]').waitFor({ state: "visible" });
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-account-language.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-desktop-account-language`, { fullPage: false });
       await page.keyboard.press("Escape");
       await page.locator('[data-testid="account-language-content"]').waitFor({ state: "hidden" });
       await page.keyboard.press("Escape");
@@ -1381,10 +1361,7 @@ for (const locale of variants) {
       await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
       await page.locator('[data-testid="account-theme-menu"]').hover();
       await page.locator('[data-testid="account-theme-content"]').waitFor({ state: "visible" });
-      await shoot(page, {
-        path: resolve(outputDir, `${locale.artifact}-desktop-account-theme.png`),
-        fullPage: false,
-      });
+      await shoot(page, `${locale.artifact}-desktop-account-theme`, { fullPage: false });
     }
     await context.close();
   }
@@ -1395,9 +1372,13 @@ for (const locale of variants) {
     const contact = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     const cards = await Promise.all(
       routes.map(async (route) => {
-        const bytes = await readFile(
-          resolve(outputDir, `${locale.artifact}-${viewport}-${route}.png`),
-        );
+        // Read back by the label the frame was WRITTEN under, not by a name
+        // rebuilt here. A second place that knows how a frame is called is a
+        // second place that can be wrong about it.
+        const frame = written.get(`${locale.artifact}-${viewport}-${route}`);
+        if (frame === undefined)
+          throw new Error(`no frame ${locale.artifact}/${viewport}/${route} to build a sheet from`);
+        const bytes = await readFile(frame);
         const source = `data:image/png;base64,${bytes.toString("base64")}`;
         return `<figure><img src="${source}" alt=""><figcaption>${route}</figcaption></figure>`;
       }),
@@ -1413,10 +1394,7 @@ for (const locale of variants) {
     </style><main>${cards.join("")}</main>`,
       { waitUntil: "load" },
     );
-    await shoot(contact, {
-      path: resolve(outputDir, `${locale.artifact}-${viewport}-contact-sheet.png`),
-      fullPage: true,
-    });
+    await shootSheet(contact, `${locale.artifact}-${viewport}-contact-sheet`, { fullPage: true });
     await contact.close();
   }
 }

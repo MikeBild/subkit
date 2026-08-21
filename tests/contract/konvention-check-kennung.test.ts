@@ -16,19 +16,25 @@
 // document, prose included, so a WorkKit console that quoted our name in a
 // comment was measured under the heading "identity SubKit".
 //
-// The last statement below is the only one that guards anything: it RUNS the
-// script against served trap documents. Everything above it reads source text,
-// and source text is not effect — `.not.toContain("function markerIn(")` was
-// meant to stop the reader growing back, and `const markerIn2 = (html) => …`
-// walked past it 12/12 green. Those statements are LOCKS against silent
-// removal, and they are labelled as locks; they catch a deletion, never a
-// rewrite.
+// The last statements below are the only ones that guard anything: they RUN the
+// script against served trap documents, including a stand that CHANGES HANDS
+// mid-run. Everything above them reads source text, and source text is not
+// effect — `.not.toContain("function markerIn(")` was meant to stop the reader
+// growing back, and `const markerIn2 = (html) => …` walked past it 12/12 green.
+// Those statements are LOCKS against silent removal, and they are labelled as
+// locks; they catch a deletion, never a rewrite.
+//
+// What the script now promises is not "the identity is asked first" — it was,
+// and a stand that changed hands after answering was measured anyway. It is
+// that there is no way to a page at all except through `stand.visit()`, which
+// navigates and names in one act. The ban on `.goto(` below is the text side of
+// that; the runs at the bottom are the effect side.
 //
 // It lives in tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI); a guard over a mandatory gate stage that
 // CI never runs is just another comment. `bun run test:contract` runs this.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
@@ -37,6 +43,8 @@ import { chromium } from "playwright";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const source = readFileSync(join(root, "scripts/konvention-check.mjs"), "utf8");
+/** The shared door. The refusal sentences moved here when both scripts started using it. */
+const library = readFileSync(join(root, "scripts/lib/cockpit-identity.mjs"), "utf8");
 
 /**
  * Comments out, string literals intact.
@@ -102,13 +110,6 @@ const code = stripComments(source);
 const shell = readFileSync(join(root, "apps/cockpit/index.html"), "utf8");
 const marker = /<meta[^>]+name="cockpit-product"[^>]+content="([^"]+)"/.exec(shell)?.[1];
 
-/** The assert's body — not the whole file, see the ban below. */
-function assertBody(): string {
-  const start = code.indexOf("async function assertPruefstandsKennung(page) {");
-  expect(start, "the identity assert is findable").toBeGreaterThan(0);
-  return code.slice(start, code.indexOf("\n}\n", start));
-}
-
 describe("the convention check asks whose console answered", () => {
   test("apps/cockpit/index.html is the definition site", () => {
     // Without a marker in the source every ban below would be silently true.
@@ -116,22 +117,14 @@ describe("the convention check asks whose console answered", () => {
     expect([...shell.matchAll(/name="cockpit-product"/g)]).toHaveLength(1);
   });
 
-  test("the assert derives its expected value instead of typing it", () => {
-    expect(code).toContain(
-      'const quelle = new URL("../apps/cockpit/index.html", import.meta.url);',
+  test("the expected value is derived from the definition site, not typed", () => {
+    // The derivation moved into the shared door with the assert. What must not
+    // come back is a second definition site in this file.
+    expect(library).toContain(
+      'export const IDENTITY_SOURCE = new URL("../../apps/cockpit/index.html", import.meta.url);',
     );
-    expect(code).toContain("const erwartet = markerIn(readFileSync(quelle,");
-
-    const body = assertBody();
-    expect(
-      body.includes(`'${marker}'`) || body.includes(`"${marker}"`),
-      `the body types "${marker}" instead of reading it from apps/cockpit/index.html`,
-    ).toBe(false);
-    // And not via the existing constant either: `PRODUCT_NAME` is what §6
-    // measures. An identity that is also a checked rule turns every real breach
-    // into "that is not SubKit".
-    expect(body).not.toContain("PRODUCT_NAME");
-    expect(body).not.toContain("<title>SubKit");
+    expect(library).toContain("const expected = expectedIdentity();");
+    expect(code, "no second definition site here").not.toContain('apps/cockpit/index.html"');
   });
 
   test("the expected value occurs exactly once in the code, as PRODUCT_NAME", () => {
@@ -167,14 +160,14 @@ describe("the convention check asks whose console answered", () => {
     // The expectation IS the script's source text; a template literal would
     // resolve it instead of checking it.
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
-    expect(code).toContain('no longer carries <meta name="${IDENTITY_META}" content="…">.');
-    expect(code).toContain("a finding about THIS repository");
+    expect(library).toContain('<meta name="${IDENTITY_META}" content="…">.');
+    expect(library).toContain("a finding about THIS repository");
   });
 
   test("a foreign console is NAMED, not merely rejected", () => {
-    expect(code).toContain("Its title reads");
+    expect(library).toContain("Its title reads");
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
-    expect(code).toContain("this is not ${erwartet} but ${geliefert}");
+    expect(library).toContain("this is not ${expected} but ${delivered}");
   });
 
   test("the reader is imported, not defined here (a lock, not a guard)", () => {
@@ -184,7 +177,7 @@ describe("the convention check asks whose console answered", () => {
     // Deliberately understated. The bans below catch the import DISAPPEARING;
     // they do not catch a reader growing back — `const markerIn2 = (html) => …`
     // kept this file 12/12 green with a second reader in place. What actually
-    // holds the class is the run at the bottom of this file.
+    // holds the class is the runs at the bottom of this file.
     expect(code).toContain('from "./lib/cockpit-identity.mjs"');
     expect(code, "no second definition of the reader").not.toContain("function markerIn(");
     expect(code, "no second definition of the attribute").not.toContain(
@@ -192,38 +185,40 @@ describe("the convention check asks whose console answered", () => {
     );
   });
 
-  test("the confirmed identity is withdrawn before it is asked for again", () => {
-    // The assert runs again whenever the stand goes quiet mid-sweep. Leaving the
-    // first answer standing printed "Stand: … identity SubKit" above an abort
-    // that named WorkKit — one report saying two different things.
-    const body = assertBody();
-    expect(body).toContain("gemesseneKennung = null;");
-    expect(body.indexOf("gemesseneKennung = null;")).toBeLessThan(
-      body.indexOf("throw new NichtGemessen("),
-    );
-    expect(code).toContain("gemesseneKennung = erwartet;");
+  test("there is no way to a page that is not the door (a lock)", () => {
+    // THE statement of this round, and the one the previous shape could not
+    // make. The identity WAS asked first, on a shell page of its own, and every
+    // measured route was a different document — a stand that changes hands after
+    // answering was then measured for the whole run. Navigation and identity are
+    // one act now, so "asked first" is not a claim anybody has to keep.
+    expect(code).toContain("const stand = standAt({");
+    expect(code, "no navigation outside the door").not.toContain(".goto(");
+    expect(code).toContain("await stand.visit(page, target);");
   });
 
-  test("the identity is asked BEFORE the first route is measured (a lock)", () => {
-    // Otherwise a foreign peer costs a whole run before being discarded: 156 s.
-    // The browser now starts FIRST, because it is the reader — a second's
-    // launch, against 156 s of measuring somebody else's surface.
-    const browser = code.indexOf("browser = await chromium.launch(");
-    const kennung = code.indexOf("await assertPruefstandsKennung(schale);");
-    const ersteRoute = code.indexOf('await openPage(context, "overview")');
-    expect(browser, "the browser is launched").toBeGreaterThan(0);
-    expect(kennung, "the assert is called").toBeGreaterThan(browser);
-    expect(kennung, "and before anything is measured").toBeLessThan(ersteRoute);
+  test("the door names the page it opens, at every navigation (a lock)", () => {
+    // In the library, because that is where the door lives. Both halves in one
+    // function body: the marker is read by the same Chromium that just
+    // navigated, on the page that is about to be used.
+    const visit = library.slice(
+      library.indexOf("async visit(page, path, options"),
+      library.indexOf("frameName(page, label)"),
+    );
+    expect(visit, "the door is findable").not.toBe("");
+    expect(visit).toContain("response = await page.goto(url, options);");
+    expect(visit).toContain("const { marker, title } = await readIdentity(page);");
+    expect(visit).toContain("if (problem !== null) throw refuse(problem);");
+    // Withdrawn before the question, restored only by an answer: a stand that
+    // changed hands has no confirmed identity, and printing the old one above
+    // an abort that named another product is one report saying two things.
+    expect(visit.indexOf("identity = null;")).toBeLessThan(visit.indexOf("await page.goto("));
+    expect(visit).toContain("identity = marker;");
   });
 
-  test("the identity comes off the PAGE, not off a second read of the text (a lock)", () => {
-    // Two readers of one document are two answers, and every shape they
-    // disagree about is a WorkKit console measured under SubKit's name. The
-    // marker is read by the same Chromium that renders every route below.
-    expect(code).toContain("const { marker: geliefert, title: titel } = await readIdentity(page);");
-    expect(code, "no text of the served document is read here").not.toContain(
-      "markerIn(await response.text())",
-    );
+  test("the report reads the identity of the LAST answer", () => {
+    expect(code).toContain("stand.identity === null");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    expect(code).toContain("identity ${stand.identity} (from");
   });
 
   test('"not measured" has an exit code of its own', () => {
@@ -238,8 +233,12 @@ describe("the convention check asks whose console answered", () => {
       "const nichtGemessen = abbruch instanceof NichtGemessen || (Boolean(abbruch) && !routenDurchlaufen);",
     );
     expect(code).toContain("routenDurchlaufen = true;");
-    // All three branches of the assert take that exit.
-    expect([...assertBody().matchAll(/throw new NichtGemessen\(/g)]).toHaveLength(3);
+    // And the door refuses in this file's currency: a foreign or dead stand is
+    // "not measured", never a breach somebody works off.
+    expect(code).toContain("refuse: (satz, optionen) => new NichtGemessen(satz, optionen),");
+    expect(code, "a refused run is not a work list").toContain(
+      "if (error instanceof NichtGemessen) throw error;",
+    );
   });
 
   test("a stand that died mid-sweep is asked about before a breach is written", () => {
@@ -253,12 +252,10 @@ describe("the convention check asks whose console answered", () => {
     expect(probe, "the sweep asks whether anybody still answers").toBeGreaterThan(0);
     expect(write, "the mount breach is still written").toBeGreaterThan(0);
     expect(probe).toBeLessThan(write);
-    // Asked by EFFECT: the shell is loaded again in the browser, not the error
-    // message parsed — and by the browser, so a stand that changed hands is
-    // caught by the same reader that would have photographed it.
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
-    expect(code).toContain("response = await page.goto(`${baseUrl}/cockpit/`");
-    expect(code).toContain("await assertPruefstandsKennung(page);");
+    // Asked by EFFECT: the shell is loaded again through the door, not the error
+    // message parsed — so status and identity are both re-settled by the same
+    // reader that would otherwise have measured the page.
+    expect(code).toContain('await stand.visit(page, "", { waitUntil: "domcontentloaded" });');
   });
 });
 
@@ -342,4 +339,91 @@ describe("the convention check, run against a foreign console", () => {
     },
     180_000,
   );
+});
+
+/**
+ * A stand that CHANGES HANDS in the middle of the run.
+ *
+ * The shape the round before this one could not see. The identity was asked
+ * once, on a shell page, and every answer after that belonged to somebody else.
+ * The first answers here are ours — the reachability probe, the shell, the first
+ * pages — and from then on a sister console holds the port.
+ *
+ * The real built cockpit is served so the pages actually mount; only the
+ * DOCUMENT changes hands. Exit 2, and the report must not carry a confirmed
+ * identity above the abort.
+ */
+describe("the convention check, run against a stand that changes hands", () => {
+  let handOver: Server;
+  let handOverUrl = "";
+  let htmlAnswers = 0;
+  let foreignAnswers = 0;
+
+  beforeAll(async () => {
+    const built = join(root, "assets/cockpit");
+    handOver = createServer((request, response) => {
+      const path = new URL(request.url ?? "/", "http://x").pathname.replace(/^\/cockpit/, "");
+      const asset = /\.[a-z0-9]+$/i.test(path) ? join(built, path) : null;
+      if (asset !== null && existsSync(asset)) {
+        const type = asset.endsWith(".js")
+          ? "text/javascript"
+          : asset.endsWith(".css")
+            ? "text/css"
+            : asset.endsWith(".svg")
+              ? "image/svg+xml"
+              : "application/octet-stream";
+        response.writeHead(200, { "content-type": type });
+        response.end(readFileSync(asset));
+        return;
+      }
+      const ours = readFileSync(join(built, "index.html"), "utf8");
+      htmlAnswers += 1;
+      // Four honest answers: the reachability probe, the shell, and the first
+      // pages. Everything from there on belongs to the new owner.
+      const mine = htmlAnswers <= 4;
+      if (!mine) foreignAnswers += 1;
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end(
+        mine
+          ? ours
+          : ours
+              .replace(/(<meta name="cockpit-product" content=")[^"]*(")/, "$1WorkKit$2")
+              .replace(/<title>[^<]*<\/title>/, "<title>WorkKit Cockpit</title>"),
+      );
+    });
+    await new Promise<void>((done) => handOver.listen(0, "127.0.0.1", done));
+    handOverUrl = `http://127.0.0.1:${(handOver.address() as AddressInfo).port}`;
+  });
+
+  afterAll(() => handOver?.close());
+
+  test("the run stops at the first document of the new owner", async () => {
+    htmlAnswers = 0;
+    foreignAnswers = 0;
+    const run = Bun.spawn(["bun", "run", "scripts/konvention-check.mjs"], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        COCKPIT_BASE_URL: handOverUrl,
+        PLAYWRIGHT_BROWSERS_PATH: (() => {
+          const parts = chromium.executablePath().split("/");
+          return parts.slice(0, parts.lastIndexOf("ms-playwright") + 1).join("/");
+        })(),
+      },
+    });
+    const output = `${await new Response(run.stdout).text()}${await new Response(run.stderr).text()}`;
+    const exitCode = await run.exited;
+    expect(exitCode, output).toBe(2);
+    expect(output).toContain("NOT MEASURED");
+    expect(output).toContain("this is not SubKit but WorkKit");
+    // The identity is WITHDRAWN, not left standing from the honest answers.
+    expect(output).not.toContain("identity SubKit");
+    // One foreign document seen, and it is the one the run stopped on.
+    expect(foreignAnswers, "it stopped at the FIRST foreign document").toBe(1);
+    // And it had really started: the honest answers before the hand-over were
+    // spent on pages, not on the shell alone.
+    expect(htmlAnswers, "the run got past the shell before the stand changed").toBeGreaterThan(2);
+  }, 180_000);
 });

@@ -8,13 +8,12 @@ import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 // about this file reading its own repository's. The identity READER lived here
 // a second time, and the second copy carried the same defect as the first — it
 // answered with the first `content="…"` in the document, prose included. Both
-// copies are gone: the served document is read by the BROWSER this run measures
-// with (`readIdentity`), the same parser that renders every page below, so no
-// regex of ours can disagree with what is on the screen. `markerIn` is left for
-// the definition site on disk, where there is no browser to ask, and answers
-// null for anything a parser could read differently. The assert below stays
-// local: its wording is pinned line by line and is German.
-import { IDENTITY_META, markerIn, readIdentity } from "./lib/cockpit-identity.mjs";
+// copies are gone, and so is the ASSERT: there is no separate identity step in
+// this file any more. `standAt().visit()` is the only way to a page, and it
+// navigates and names in one act, so a stand that changes hands after answering
+// once is caught at the next document rather than never. The price is one
+// `page.evaluate` per navigation.
+import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
 
 // The family convention (COCKPIT-KONVENTION.md, the version named by
 // KONVENTION_VERSION below) is deliberately not enforced by shared code — six
@@ -2167,57 +2166,28 @@ async function sweepDetailSurface(page, route) {
 class NichtGemessen extends Error {}
 
 /**
- * The stand's confirmed identity — for the report only, never for an assert.
+ * THE DOOR — every page of this run comes through it, and it names what it opens.
  *
- * It holds the identity of the LAST answer, not of the first. The assert runs
- * again whenever the stand goes quiet mid-sweep, and a stand that changed hands
- * has no confirmed identity any more: leaving the old one standing printed
- * "Stand: … identity SubKit" above an abort that named WorkKit — one report
- * saying two different things.
- */
-let gemesseneKennung = null;
-
-/**
- * Whose console answered — asked before a single rule is measured.
+ * There used to be an `assertPruefstandsKennung(page)` here, called once on a
+ * shell page before the sweep. That is asking, not knowing: the shell was one
+ * document and every measured route was another. On a stand that changes hands
+ * after its first answer the question gets SubKit once and the run measures a
+ * sister console for the rest — the sibling harness measured 1 honest answer
+ * against 240 foreign ones that way, at exit 0.
  *
- * Throws rather than reports: a foreign console is not a breach, it is a run
- * that did not happen. A breach would become a line someone works off, on a
- * surface this repository does not own.
+ * `visit()` puts the question at the navigation instead. A foreign console is
+ * not a breach, it is a run that did not happen, so `refuse` builds
+ * `NichtGemessen` (exit 2) and not a line somebody works off.
+ *
+ * `stand.identity` holds the identity of the LAST answer and is withdrawn at the
+ * start of every navigation. A stand that changed hands has no confirmed
+ * identity any more: leaving the old one standing printed "Stand: … identity
+ * SubKit" above an abort that named WorkKit — one report saying two things.
  */
-async function assertPruefstandsKennung(page) {
-  // Withdrawn first, restored only by an answer. Every path out of here that is
-  // not the last line is a stand this run cannot name.
-  gemesseneKennung = null;
-  const quelle = new URL("../apps/cockpit/index.html", import.meta.url);
-  const erwartet = markerIn(readFileSync(quelle, "utf8"));
-  if (erwartet === null) {
-    throw new NichtGemessen(
-      `apps/cockpit/index.html no longer carries <meta name="${IDENTITY_META}" content="…">. ` +
-        "The identity assert derives its expected value from that file and now has none — " +
-        `a finding about THIS repository, and no statement about whatever answers on ${baseUrl}.`,
-    );
-  }
-  // Asked of the PAGE, not of a text this file fetched for itself: a second
-  // reader of one document is a second answer, and the gap between the two is
-  // exactly a WorkKit console measured under SubKit's name.
-  const { marker: geliefert, title: titel } = await readIdentity(page);
-  if (geliefert === null) {
-    throw new NichtGemessen(
-      `this is not ${erwartet}: the document on ${baseUrl} carries no ` +
-        `<meta name="${IDENTITY_META}">. Its title reads "${titel}". ` +
-        "A sister console listening there? The DOM anchors are identical family-wide, so this " +
-        `run would have measured them and filed the breaches under ${erwartet}.`,
-    );
-  }
-  if (geliefert !== erwartet) {
-    throw new NichtGemessen(
-      `this is not ${erwartet} but ${geliefert}: the document on ${baseUrl} calls itself ` +
-        `"${geliefert}", apps/cockpit/index.html names "${erwartet}". Nothing was measured.`,
-    );
-  }
-  gemesseneKennung = erwartet;
-  return erwartet;
-}
+const stand = standAt({
+  baseUrl,
+  refuse: (satz, optionen) => new NichtGemessen(satz, optionen),
+});
 
 async function startPreview() {
   // Reachability only. WHOSE console it is, is a question for the browser —
@@ -2266,38 +2236,31 @@ async function startPreview() {
 /**
  * Does the page not mount, or does nobody answer any more?
  *
- * Asked by EFFECT, not by reading the message: the shell is fetched again and
- * its marker re-read. A dead stand and a §6 breach look identical from inside
- * the sweep, and the loop used to file the dead one as a finding — killing the
- * preview server at route 11 produced 16 invented "page does not mount"
- * breaches and exit 1, a complete and convincing work list about nothing.
+ * Asked by EFFECT, not by reading the message: the shell is loaded again through
+ * the door, so status AND identity are re-settled. A dead stand and a §6 breach
+ * look identical from inside the sweep, and the loop used to file the dead one
+ * as a finding — killing the preview server at route 11 produced 16 invented
+ * "page does not mount" breaches and exit 1, a complete and convincing work list
+ * about nothing.
  *
- * Re-reading the marker also covers the second case: the port stayed open, but
+ * Going through the door also covers the second case: the port stayed open, but
  * a sister console took it over. A port says that somebody answers, never who.
+ *
+ * It is the ONLY place where a mount failure is still worth a second question.
+ * Every navigation settles the identity for itself now; this one settles what a
+ * timed-out MOUNT means, which is a different question.
  */
 async function assertStandStillAnswers(cause) {
   const page = await browser.newPage();
   try {
-    let response;
-    try {
-      response = await page.goto(`${baseUrl}/cockpit/`, { waitUntil: "domcontentloaded" });
-    } catch (error) {
-      throw new NichtGemessen(
-        `nobody answers on ${baseUrl} any more (${error.message}). The stand died while the ` +
-          "sweep was running, so nothing after it is a statement about the console — only about " +
-          `the absence of one. First symptom: ${cause.message}`,
-        { cause },
-      );
-    }
-    if (!response?.ok()) {
-      throw new NichtGemessen(
-        `${baseUrl}/cockpit/ answered with HTTP ${response?.status()} mid-sweep. Whatever the ` +
-          "pages reported from here on is about that, not about the console. First symptom: " +
-          `${cause.message}`,
-        { cause },
-      );
-    }
-    await assertPruefstandsKennung(page);
+    await stand.visit(page, "", { waitUntil: "domcontentloaded" });
+  } catch (error) {
+    throw new NichtGemessen(
+      `${error.message} The stand stopped being what it was while the sweep was running, so ` +
+        "nothing after that point is a statement about the console. First symptom: " +
+        `${cause.message}`,
+      { cause },
+    );
   } finally {
     await page.close();
   }
@@ -2306,8 +2269,9 @@ async function assertStandStillAnswers(cause) {
 async function openPage(context, route) {
   const page = await context.newPage();
   const target = concreteRoute(route);
-  const response = await page.goto(`${baseUrl}/cockpit/${target}`, { waitUntil: "networkidle" });
-  if (!response?.ok()) throw new Error(`/${target} returned HTTP ${response?.status()}`);
+  // The door: this page reaches its route and says whose console it is, or the
+  // run stops. There is no second step that could be skipped.
+  await stand.visit(page, target);
   const marker = MOUNT_MARKERS[route] ?? `[data-testid="resource-${route}"]`;
   await page.locator(marker).waitFor({ state: "visible", timeout: 15_000 });
   return page;
@@ -2339,19 +2303,16 @@ try {
   const preview = await startPreview();
   server = preview.server;
 
-  // The browser starts BEFORE the identity question, because it IS the reader.
-  // What must still come first is the answer: asking after the route sweep costs
-  // a full run against a foreign surface — 156 s and eight findings at CodeKit.
-  // Launching a browser and closing it again costs about a second.
+  // The browser starts BEFORE the first question, because it IS the reader.
+  // The shell is opened first so a foreign or dead stand costs a second instead
+  // of a full run against somebody else's surface — 156 s and eight findings at
+  // CodeKit. It is an EARLY door, not the only one: the identity is settled
+  // again at every navigation below, because a stand can change hands after
+  // answering.
   browser = await chromium.launch({ headless: true });
   const schale = await browser.newPage();
   try {
-    const antwort = await schale.goto(`${baseUrl}/cockpit/`, { waitUntil: "domcontentloaded" });
-    if (!antwort?.ok())
-      throw new NichtGemessen(
-        `${baseUrl}/cockpit/ answered with HTTP ${antwort?.status()} when the identity was asked`,
-      );
-    await assertPruefstandsKennung(schale);
+    await stand.visit(schale, "", { waitUntil: "domcontentloaded" });
   } finally {
     await schale.close();
   }
@@ -2408,6 +2369,11 @@ try {
     try {
       page = await openPage(context, route);
     } catch (error) {
+      // A run that was refused at the door is not a work list — it is not a run.
+      // Rethrowing rather than probing again: the door has already settled that
+      // this stand is not ours, and a breach written here would be a line about
+      // somebody else's surface.
+      if (error instanceof NichtGemessen) throw error;
       // Asked BEFORE the breach is written: a dead stand must not become a line
       // somebody works off.
       await assertStandStillAnswers(error);
@@ -2460,7 +2426,7 @@ try {
     return busyMock(route);
   });
   const brokenPage = await broken.newPage();
-  await brokenPage.goto(`${baseUrl}/cockpit/knowledge/${ID}`, { waitUntil: "networkidle" });
+  await stand.visit(brokenPage, `knowledge/${ID}`);
   await brokenPage.waitForTimeout(500);
   await checkFailureState(brokenPage, "/knowledge/… (Fixture mit unlesbarer Antwort)");
   await brokenPage.close();
@@ -2509,11 +2475,11 @@ const massstab = konventionVersionImRepo
 // qualified — "the built version the engine ships" is simply false about a
 // foreign console, and a trailing caveat does not make a false sentence true.
 const pruefstand =
-  gemesseneKennung === null
+  stand.identity === null
     ? `${baseUrl} — WHOSE console answered there is unresolved, so nothing is said about what was measured`
     : externalBaseUrl
-      ? `foreign stand at ${externalBaseUrl} · identity ${gemesseneKennung} (from <meta name="${IDENTITY_META}"> of the served document)`
-      : `the BUILT version — vite preview on ${baseUrl}, the stand the engine ships rather than the dev server · identity ${gemesseneKennung} (from <meta name="${IDENTITY_META}"> of the served document)`;
+      ? `foreign stand at ${externalBaseUrl} · identity ${stand.identity} (from <meta name="${IDENTITY_META}"> of the served document)`
+      : `the BUILT version — vite preview on ${baseUrl}, the stand the engine ships rather than the dev server · identity ${stand.identity} (from <meta name="${IDENTITY_META}"> of the served document)`;
 
 report(
   `Standard: ${massstab} (header line of the repo copy) · this check is written by hand against v${KONVENTION_VERSION}`,
