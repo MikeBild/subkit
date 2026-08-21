@@ -8,8 +8,14 @@
 // other (4081 · 4173 · 4176 · 4183 · 4192).
 //
 // What this file pins is the better shape: exactly one definition site,
-// `apps/cockpit/index.html`, which the script READS. Copied from WatchKit, not
-// imported — the convention is a document, not a package (§7).
+// `apps/cockpit/index.html`, which the script READS. The rule itself is copied
+// from WatchKit rather than imported — the convention is a document, not a
+// package (§7). Within THIS repository the opposite holds: the reader used to
+// exist twice, here and in scripts/lib/cockpit-identity.mjs, and both copies
+// carried the same defect — each answered with the first `content="…"` in the
+// document, prose included, so a WorkKit console that quoted our name in a
+// comment was measured under the heading "identity SubKit". The reader is now
+// imported; the assert's German wording stays local and is pinned below.
 //
 // It lives in tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI); a guard over a mandatory gate stage that
@@ -159,6 +165,16 @@ describe("the convention check asks whose console answered", () => {
     expect(code).toContain("Its title reads");
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
     expect(code).toContain("this is not ${erwartet} but ${geliefert}");
+  });
+
+  test("the reader exists once in this repository, and is imported", () => {
+    // Two copies of one decision are where two versions of it come from: the
+    // prose-blind reader was fixed in the library and stood on unfixed here.
+    expect(code).toContain('from "./lib/cockpit-identity.mjs"');
+    expect(code, "no second definition of the reader").not.toContain("function markerIn(");
+    expect(code, "no second definition of the attribute").not.toContain(
+      'const IDENTITY_META = "cockpit-product"',
+    );
   });
 
   test("the identity is checked BEFORE the browser starts", () => {
