@@ -192,4 +192,21 @@ describe("the convention check asks whose console answered", () => {
     // All three branches of the assert take that exit.
     expect([...assertBody().matchAll(/throw new NichtGemessen\(/g)]).toHaveLength(3);
   });
+
+  test("a stand that died mid-sweep is asked about before a breach is written", () => {
+    // A LOCK against silent removal, not a guard — the guard is the live
+    // counter-check: kill the preview server over its port at route 11.
+    // Before: exit 1 with 16 invented "page does not mount" breaches and
+    // "aborted at route 27 of 27 ... 0 were never looked at". After: exit 2.
+    const probe = code.indexOf("await assertStandStillAnswers(error);");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    const write = code.indexOf('breach("§6", `/${route}`, `page does not mount:');
+    expect(probe, "the sweep asks whether anybody still answers").toBeGreaterThan(0);
+    expect(write, "the mount breach is still written").toBeGreaterThan(0);
+    expect(probe).toBeLessThan(write);
+    // Asked by EFFECT: the shell is fetched again, not the error message parsed.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    expect(code).toContain("const response = await fetch(`${baseUrl}/cockpit/`);");
+    expect(code).toContain("assertPruefstandsKennung(await response.text());");
+  });
 });
