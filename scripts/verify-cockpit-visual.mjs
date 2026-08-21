@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { standAt } from "./lib/cockpit-identity.mjs";
+import { AuditAction } from "../apps/engine/src/audit/types.ts";
 
 const baseUrl = (process.env.COCKPIT_BASE_URL || "http://127.0.0.1:4175").replace(/\/$/, "");
 const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
@@ -27,6 +28,53 @@ const routes = [
   "operations",
   "settings",
 ];
+
+/**
+ * The audit rows this sweep photographs — and the promise that they are REAL.
+ *
+ * A fixture that invents a verb photographs a world that does not exist: the
+ * frame looks like evidence, the row can never appear in a running product, and
+ * no defect in how that row is NAMED can ever be seen in it. Four invented verbs
+ * were removed from this list once (`workflow.update`, `connector.test`,
+ * `skill.archive`, `settings.write`) and the same commit left `settings.updated`
+ * standing — a fifth, spelled plausibly enough that reading the list did not
+ * catch it. Reading is not the instrument; `AuditAction` is.
+ *
+ * So the rows are checked against the engine's own enum BEFORE the browser
+ * starts. It exits 2 — not 1 — because an invented verb is not a finding about
+ * the cockpit: it is a sweep that measured a fiction, and "measured nothing"
+ * must never leave as "found nothing".
+ */
+const AUDIT_FIXTURE_ROWS = [
+  { action: "patch_candidate.approved", resource_type: "patch_candidate", result: "success" },
+  { action: "skill_candidate.rejected", resource_type: "skill_candidate", result: "success" },
+  { action: "workflow.updated", resource_type: "workflow", result: "success" },
+  { action: "connector.invoked", resource_type: "connector", result: "denied" },
+  { action: "settings.changed", resource_type: "settings", result: "error" },
+];
+
+function assertAuditFixtureActionsAreReal() {
+  const known = new Set(Object.values(AuditAction));
+  if (known.size === 0) {
+    console.error(
+      "Cockpit visual sweep NOT TAKEN — `AuditAction` came back empty, so every fixture row would",
+      "\n        pass by default. The enum moved in apps/engine/src/audit/types.ts.",
+    );
+    process.exit(2);
+  }
+  const invented = AUDIT_FIXTURE_ROWS.map((row) => row.action).filter(
+    (action) => !known.has(action),
+  );
+  if (invented.length > 0) {
+    console.error(
+      "Cockpit visual sweep NOT TAKEN — the audit fixture writes verbs the engine cannot:",
+      `\n        ${invented.join(", ")}`,
+      `\n        Not one of the ${known.size} values of \`AuditAction\` (apps/engine/src/audit/types.ts).`,
+      "\n        A fixture that invents a verb photographs a world that does not exist.",
+    );
+    process.exit(2);
+  }
+}
 
 const conversation = {
   id: uuid,
@@ -507,16 +555,13 @@ async function mockApi(route) {
     // product cannot write, so no frame could ever show one of them named
     // wrongly, or named at all.
     //
-    // `settings.updated` is left in on purpose as the one action the cockpit has
+    // `settings.changed` is left in on purpose as the one action the cockpit has
     // no word for: the honest fallback — the engine's own string — has to be
-    // visible in a frame, or nobody notices it becoming "Unbekannt".
-    const catalogue = [
-      { action: "patch_candidate.approved", resource_type: "patch_candidate", result: "success" },
-      { action: "skill_candidate.rejected", resource_type: "skill_candidate", result: "success" },
-      { action: "workflow.updated", resource_type: "workflow", result: "success" },
-      { action: "connector.invoked", resource_type: "connector", result: "denied" },
-      { action: "settings.updated", resource_type: "settings", result: "error" },
-    ];
+    // visible in a frame, or nobody notices it becoming "Unbekannt". It is the
+    // ENGINE's spelling and not a plausible-looking one: the first version of
+    // this list wrote `settings.updated`, which no `AuditAction` carries, so the
+    // commit that removed four invented verbs shipped a fifth.
+    const catalogue = AUDIT_FIXTURE_ROWS;
     // The engine filters on `action` and takes a comma-separated list. A mock
     // that ignored it would photograph a filter labelled "Entscheidungen" over
     // rows that are not decisions.
@@ -1210,6 +1255,10 @@ const stand = standAt({
   refuse: (sentence, options) => new Error(`Cockpit visual sweep NOT TAKEN — ${sentence}`, options),
   hint: "This sweep starts no server — build the cockpit and run a preview on that port first.",
 });
+
+// BEFORE the browser starts, and before a single frame is produced: a sweep
+// pointed at a fiction must cost milliseconds, not 296 screenshots.
+assertAuditFixtureActionsAreReal();
 
 const browser = await chromium.launch({ headless: true });
 const errors = [];
