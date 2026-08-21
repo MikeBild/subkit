@@ -1736,7 +1736,9 @@ const german = (key, values) => interpolate(CATALOGS.de[key], values);
  * `article[data-state]` and button/tab/link labels, and a line in a paragraph
  * is none of them — and „Für später erinnert" was not even in the word list.
  *
- * So both halves now come from somewhere:
+ * WHAT IS DERIVED, AND WHAT STILL IS NOT. The honest form of the claim, because
+ * the previous one — "so both halves now come from somewhere" — was not true of
+ * the second half and read as though it were:
  *
  *  - THE STATES come out of the generated engine contract. A decision here is a
  *    patch or skill candidate, and their `status` enums are the product's own
@@ -1747,6 +1749,18 @@ const german = (key, values) => interpolate(CATALOGS.de[key], values);
  *  - THE WORDS come out of both catalogues, for the keys named below, in both
  *    languages. Rename the key and the run stops; change the word and the new
  *    word is what gets looked for.
+ *  - THE REST — `PROSE_WORDS` — is held by nothing, and CAN go stale. That is
+ *    drift in the direction of OUT OF DATE rather than SHRUNK: rename such a
+ *    word on the surface and this alphabet keeps the dead one and misses the
+ *    live one. It cannot make the check blind the way a shrinking list does,
+ *    but it can make it look wider than it is.
+ *
+ * So: the derived half cannot drift in silence; the prose half can. Which is
+ * the reason the list below is as short as it can be made — every word that a
+ * catalogue key actually spells was moved OUT of it and into the derived half.
+ * It was not a theory: „Beantwortet" sat in the prose list while the catalogue
+ * key `tool.status.approvalResponded` had „Responded" on en. The alphabet held
+ * the dead word and missed the live one, which is the whole class in one entry.
  */
 const engineOpenApi = JSON.parse(
   readFileSync(
@@ -1792,38 +1806,63 @@ const SETTLED_STATUS_KEYS = [
 ];
 
 /**
- * WHAT IS EXTRA HERE ON PURPOSE, and why it is not the typed list coming back.
+ * FINISHED WORK THAT NO STATUS BADGE SPELLS — but a catalogue key does.
  *
- * These are words for finished work that this console spells in PROSE or on a
- * TILE rather than in a status badge, so no catalogue key carries them. Four of
- * them are the ones the counter line above actually used. They enlarge the
- * alphabet; they cannot shrink it, and nothing below depends on them being
- * complete — the derived half is what the guard holds.
+ * These words used to sit in `PROSE_WORDS` as literals, on the belief that "no
+ * status key carries them". Four keys do, and reading them instead of typing
+ * them is what makes this half of the alphabet follow the console: change the
+ * word and the new word is what gets looked for, rename the key and the run
+ * stops at `assertSettledAlphabetIsCurrent` rather than measuring a vocabulary
+ * nobody uses.
+ *
+ * They are separate from SETTLED_STATUS_KEYS because they are not states: they
+ * are a tool outcome, a lapsed deadline and an answered question, and a reader
+ * who finds them under a list called "status keys" learns something false.
+ */
+const SETTLED_PROSE_KEYS = [
+  "status.expired",
+  "decisions.expired",
+  "tool.outcome.done",
+  "tool.status.approvalResponded",
+];
+
+/**
+ * WHAT IS STILL TYPED, and the honest note on it.
+ *
+ * Family vocabulary for finished work that this console does not currently
+ * spell anywhere — so there is no key to read it from and nothing holds it.
+ * They enlarge the alphabet and cannot shrink it, which is why they are allowed
+ * to stay; but an entry here is a GUESS about wording, not a reading of it, and
+ * a guess that the surface later adopts under a different spelling goes quietly
+ * out of date. Anything that acquires a catalogue key belongs in the list above,
+ * not in this one.
  */
 const PROSE_WORDS = [
-  ["Entschieden", "prose — no status key spells it"],
-  ["Zurückgestellt", "prose — no status key spells it"],
-  ["Für später erinnert", "prose — the counter line's own wording"],
-  ["Abgelaufen", "prose — `status.expired` is not a candidate state"],
-  ["Erledigt", "prose — the empty state's own word"],
-  ["Beantwortet", "prose — a question that is over"],
-  ["Decided", "prose"],
-  ["Deferred", "prose"],
-  ["Snoozed", "prose"],
-  ["Dismissed", "prose"],
-  ["Discarded", "prose"],
-  ["Expired", "prose"],
-  ["Settled", "prose"],
-  ["Done", "prose"],
-  ["Answered", "prose"],
+  ["Entschieden", "unbound prose — the family's word, nowhere in this console"],
+  ["Zurückgestellt", "unbound prose — the family's word, nowhere in this console"],
+  ["Für später erinnert", "unbound prose — the counter line's own wording"],
+  ["Decided", "unbound prose"],
+  ["Deferred", "unbound prose"],
+  ["Snoozed", "unbound prose"],
+  ["Dismissed", "unbound prose"],
+  ["Discarded", "unbound prose"],
+  ["Settled", "unbound prose"],
 ];
 
 /** Every word for finished work this build can put on a screen, and where it came from. */
 const SETTLED_WORDS = new Map();
-for (const key of SETTLED_STATUS_KEYS)
+for (const key of [...SETTLED_STATUS_KEYS, ...SETTLED_PROSE_KEYS])
   for (const locale of ["de", "en"]) {
     const label = CATALOGS[locale]?.[key];
-    if (label) SETTLED_WORDS.set(label, `${key} · ${locale}`);
+    if (!label) continue;
+    // ACCUMULATED, not overwritten. `status.aborted` and `status.cancelled` both
+    // read „Abgebrochen" on de, and a bare `.set` made the report name whichever
+    // key happened to come last — one report, two keys, the wrong source named.
+    const seen = SETTLED_WORDS.get(label);
+    SETTLED_WORDS.set(
+      label,
+      seen === undefined ? `${key} · ${locale}` : `${seen}, ${key} · ${locale}`,
+    );
   }
 for (const [word, why] of PROSE_WORDS) if (!SETTLED_WORDS.has(word)) SETTLED_WORDS.set(word, why);
 
@@ -1847,7 +1886,7 @@ function assertSettledAlphabetIsCurrent() {
     );
   if (SETTLED_STATES.length === 0)
     missing.push(`${CANDIDATE_STATES.join(", ") || "nothing"} — not one settled state among them`);
-  for (const key of SETTLED_STATUS_KEYS)
+  for (const key of [...SETTLED_STATUS_KEYS, ...SETTLED_PROSE_KEYS])
     for (const locale of ["de", "en"]) {
       const label = CATALOGS[locale]?.[key];
       if (!label) missing.push(`${key} — no ${locale} entry in apps/cockpit/src/lib/i18n.ts`);
@@ -1857,7 +1896,7 @@ function assertSettledAlphabetIsCurrent() {
     "Convention check NOT MEASURED: the §8.5 alphabet no longer covers this console's own words",
     "\n        for finished work. A rule whose vocabulary has drifted reports nothing and passes.",
     `\n        ${missing.join("\n        ")}`,
-    "\n        Restore the key(s), or say in SETTLED_STATUS_KEYS that the state is gone, and run again.",
+    "\n        Restore the key(s), or say in SETTLED_STATUS_KEYS / SETTLED_PROSE_KEYS that the word is gone,\n        and run again.",
   );
   process.exit(2);
 }
@@ -1961,10 +2000,19 @@ async function unfoldDecisions(page) {
  */
 async function checkNothingSettled(page) {
   const unopened = await unfoldDecisions(page);
+  // NOT a gap, and this is the whole point of the distinction. A gap is a blind
+  // spot the run KNOWS about and prints beside a verdict that still stands; it
+  // does not touch the exit code. Reporting an unopened section as one let §8.5
+  // — the rule whose load-bearing step is that every collapsible is opened
+  // first — degrade to "not measured" and exit 0 anyway. That is the class this
+  // repository has spent the day on: a check that stops measuring and stays
+  // green. So it aborts with 2, in the currency the report already has for
+  // "this run says nothing".
   if (unopened > 0)
-    gap(
-      "/decisions · §8.5",
-      `${unopened} folded section(s) were never opened — what stands inside them was not read`,
+    throw new NichtGemessen(
+      `/decisions · §8.5: ${unopened} folded section(s) were never opened — Radix does not mount a ` +
+        "closed Collapsible, so what stands inside them was not in the DOM to be read. The rule " +
+        "was not measured on this page.",
     );
 
   const found = await page.evaluate(
@@ -2017,10 +2065,15 @@ async function checkNothingSettled(page) {
       "/decisions",
       `${found.stateless} positions carry no data-state — their state stays unmeasured`,
     );
-  if (found.text.length === 0) {
-    gap("/decisions · §8.5", "the page rendered no text, so no word was looked for in it");
-    return;
-  }
+  // Same currency, same reason: shape 5 — the settled word standing beside a
+  // figure — is the ONE the other four cannot see, and with no text there is
+  // nothing to look in. A silent `return` here left four shapes reported and the
+  // fifth simply absent, under a verdict that read as a clean bill of health.
+  if (found.text.length === 0)
+    throw new NichtGemessen(
+      "/decisions · §8.5: the page rendered no text at all, so the one shape the other four cannot " +
+        "see — a settled word standing beside a figure — was not looked for.",
+    );
   for (const [word, provenance] of SETTLED_WORDS) {
     const hit = countedWith(found.text, word);
     if (hit !== null)
