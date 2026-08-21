@@ -103,6 +103,13 @@ const traps = {
     `<meta name="${IDENTITY_META}" content="WorkKit" content="SubKit" />` +
       "<title>WorkKit Cockpit</title>",
   ),
+  // Chromium decodes character references in the attribute VALUE too, so the
+  // marker reads WorkKit while a string comparison reads `Work&#75;it`. Served
+  // over real HTTP, not handed to a function: 23 shapes were driven through this
+  // stand and this is the one from the parser class that still got through.
+  charRefInAttributeValue: shell(
+    `<meta name="${IDENTITY_META}" content="Work&#75;it" /><title>WorkKit Cockpit</title>`,
+  ),
   // Chromium decodes character references in the attribute NAME, so this IS the
   // marker to the parser and is not to a string comparison — which then walks on
   // and finds the harmless-looking one behind it.
@@ -224,6 +231,12 @@ describe("the visual sweep asks whose console it is photographing", () => {
     for (const [shape, document] of Object.entries(traps))
       expect(markerIn(document), `${shape} must not yield a guessed name`).toBeNull();
     expect(markerIn(`<!-- <meta name="${IDENTITY_META}" content="SubKit" />`)).toBeNull();
+    // A character reference in the VALUE, which the rule above skipped for three
+    // rounds while covering the same thing in the NAME. Chromium reads WorkKit;
+    // a string comparison reads `Work&#75;it`. Refusing to name it is the only
+    // safe answer, here as everywhere else in this function.
+    expect(markerIn(shell(`<meta name="${IDENTITY_META}" content="Work&#75;it" />`))).toBeNull();
+    expect(markerIn(shell(`<meta name="${IDENTITY_META}" content="Sub&amp;Kit" />`))).toBeNull();
     expect(markerIn(shell(""))).toBeNull();
     // And it still reads an honest document honestly, or the definition site
     // could never be named at all.
