@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { expectedIdentity, identityProblem, readIdentity } from "./lib/cockpit-identity.mjs";
@@ -1120,6 +1120,10 @@ try {
   await browser.close();
   throw error;
 }
+// Emptied, not merely created: the closing line counts the frames of THIS run
+// against the files lying here, and a leftover from an earlier run would make
+// that comparison lie in the safe-looking direction.
+await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
 const errors = [];
 const locales = [
@@ -1418,7 +1422,21 @@ for (const locale of variants) {
 }
 await browser.close();
 if (errors.length) throw new Error(errors.join("; "));
+// The count, held against the effect it claims to describe.
+//
+// "Every frame goes through the counter" used to be a contract test over the
+// source text, banning the string ".screenshot({". `await page.screenshot(opts)`
+// — no brace — walked straight past it, 3/3 green, and the closing line would
+// have understated the run again. A rule about how a call is SPELLED is not a
+// rule about what was written; this one counts the files.
+const framesOnDisk = (await readdir(outputDir)).filter((name) => name.endsWith(".png")).length;
+if (framesOnDisk !== framesWritten)
+  throw new Error(
+    `Cockpit visual sweep counted ${framesWritten} frames but ${outputDir} holds ${framesOnDisk} ` +
+      "PNG files. A screenshot was taken past shoot(), so the number below would not be a " +
+      "measurement of this run.",
+  );
 console.log(
   `Cockpit visual sweep passed: ${framesWritten} screenshots in ${outputDir} ` +
-    "(counted at each write, contact sheets included — not computed from the route table)",
+    "(counted at each write and held against the files on disk — not computed from the route table)",
 );
