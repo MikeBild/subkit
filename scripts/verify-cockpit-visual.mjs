@@ -1023,6 +1023,35 @@ async function assertTables(page, label) {
   if (unsafeOverflows.length) throw new Error(`${label} has uncontained table overflow`);
 }
 
+/**
+ * A list of blank values is not a list.
+ *
+ * Found in a screenshot, which is the wrong instrument: the workflow detail read
+ * „Läuft automatisch: , , , , , , , , , , , ," — thirteen empty entries joined
+ * with commas, under a sentence claiming the workflow runs by itself. No run
+ * reported it, because every rule this sweep had asked about layout, tables or
+ * WORDS, and this surface had no words to show.
+ *
+ * The rule is about the SEPARATORS, not about any one field: two commas with
+ * nothing between them, a label whose value begins with one, or a text that ends
+ * on one — each means something was enumerated that had nothing to say.
+ */
+async function assertBlankLists(page, label) {
+  const hits = await page.evaluate(() =>
+    [...document.querySelectorAll("body *")]
+      // Code is exempt: a JSON line or a diff row legitimately ends on a comma,
+      // and the rule is about PROSE that enumerates nothing.
+      .filter((element) => element.children.length === 0 && element.closest("pre, code") === null)
+      .map((element) => (element.textContent ?? "").trim())
+      .filter((text) => /,\s*,/.test(text) || /:\s*,/.test(text) || /,\s*$/.test(text)),
+  );
+  const found = [...new Set(hits)];
+  if (found.length)
+    throw new Error(
+      `${label} renders a list of blank values: ${found.map((t) => `"${t.slice(0, 90)}"`).join(", ")}`,
+    );
+}
+
 async function assertInteractiveSelectors(page, label) {
   const missing = await page
     .locator('button, input, textarea, a[href], [role="menuitem"], [role="menuitemradio"]')
@@ -1231,6 +1260,7 @@ for (const locale of variants) {
       await assertTables(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertHeadingAlignment(page, `${locale.artifact}/${viewport.name}/${route}`);
       await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
+      await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "access") {
         const localizedRoles =
@@ -1259,6 +1289,7 @@ for (const locale of variants) {
         await assertViewport(page, `${locale.artifact}/desktop/${resource}-detail`);
         await assertTables(page, `${locale.artifact}/desktop/${resource}-detail`);
         await assertInteractiveSelectors(page, `${locale.artifact}/desktop/${resource}-detail`);
+        await assertBlankLists(page, `${locale.artifact}/desktop/${resource}-detail`);
         await shoot(page, `${locale.artifact}-desktop-${resource}-detail`, { fullPage: false });
       }
       // The expanded decision card. The sweep only ever photographed collapsed

@@ -98,7 +98,16 @@ export function WorkflowGallery({
         `/v1/schedules?workflow_id=${encodeURIComponent(workflowId)}`,
       ),
   });
-  const activeSchedules = (schedules.data?.items ?? []).filter((entry) => entry.enabled !== false);
+  // An entry that names no time is not a schedule anybody can read. The filter
+  // used to ask only whether the entry was enabled, so entries without a cron
+  // and without a timezone became empty strings and the line read
+  // "Läuft automatisch: , , , , , , , , , , , ," — thirteen blanks and a
+  // sentence claiming the workflow runs by itself. What survives here is what
+  // has something to say.
+  const activeSchedules = (schedules.data?.items ?? [])
+    .filter((entry) => entry.enabled !== false)
+    .map((entry) => [entry.cron, entry.timezone].filter(Boolean).join(" · "))
+    .filter((label) => label.length > 0);
 
   const views = joinStepsWithLastRun(steps, runSteps.data?.items ?? []);
   const wholeRun = runs.__workflow;
@@ -117,11 +126,7 @@ export function WorkflowGallery({
     <div className="grid gap-3" data-testid="workflow-gallery">
       <p className="text-xs text-muted-foreground" data-testid="workflow-schedule">
         {activeSchedules.length > 0
-          ? t("run.schedule", {
-              schedule: activeSchedules
-                .map((entry) => [entry.cron, entry.timezone].filter(Boolean).join(" · "))
-                .join(", "),
-            })
+          ? t("run.schedule", { schedule: activeSchedules.join(", ") })
           : t("run.scheduleNone")}
       </p>
       {canRun && (
