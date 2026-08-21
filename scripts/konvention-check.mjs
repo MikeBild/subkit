@@ -2251,6 +2251,14 @@ async function startPreview() {
  * timed-out MOUNT means, which is a different question.
  */
 async function assertStandStillAnswers(cause) {
+  // No reader, no second question. Everything that fails BEFORE `chromium
+  // .launch()` returns — a preview that never came up, a browser that is not
+  // installed on this machine — arrives here with `browser` still null, and the
+  // first line below then threw "null is not an object (evaluating
+  // 'browser.newPage')". That TypeError became the reported cause: a run that
+  // could not measure named ITS OWN null pointer instead of the missing
+  // Chromium, and the report sent the reader looking in the wrong place.
+  if (browser === null) throw new NichtGemessen(cause.message, { cause });
   const page = await browser.newPage();
   try {
     await stand.visit(page, "", { waitUntil: "domcontentloaded" });
@@ -2440,7 +2448,12 @@ try {
     try {
       await assertStandStillAnswers(error);
     } catch (dead) {
-      abbruch = dead;
+      // The verdict, or nothing. `assertStandStillAnswers` answers a question —
+      // "was that the console failing, or is nobody left to ask" — and its
+      // answer is a NichtGemessen. Anything else coming out of it is the
+      // measuring instrument breaking, and an instrument's own fault must never
+      // take the place of the cause it was asked about.
+      abbruch = dead instanceof NichtGemessen ? dead : error;
     }
   }
 } finally {
