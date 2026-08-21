@@ -240,14 +240,25 @@ export function DecisionsPage() {
               {t(KIND_LABEL[kind])}
             </Button>
           ))}
-          <span className="flex items-center gap-2 sm:ml-auto">
-            <span className="text-xs text-muted-foreground">{t("decisions.group.label")}</span>
+          {/* The toggle says what it groups BY, so the label is part of the
+              control rather than decoration: "Keine / Art / Verursacher" on
+              their own name three things without saying of what. */}
+          <span
+            className="flex items-center gap-2 sm:ml-auto"
+            data-testid="decisions-group"
+            data-mode={preferences.group}
+          >
+            <span className="text-xs text-muted-foreground" data-testid="decisions-group-label">
+              {t("decisions.group.label")}
+            </span>
             {GROUP_MODES.map((mode, index) => (
               <Button
                 key={mode}
                 variant={preferences.group === mode ? "default" : "ghost"}
                 size="sm"
                 data-testid={`decisions-group-${index}`}
+                data-mode={mode}
+                aria-pressed={preferences.group === mode}
                 onClick={() => persist({ ...preferences, group: mode })}
               >
                 {t(GROUP_LABEL[mode])}
