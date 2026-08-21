@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { CircleCheck, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -6,8 +7,6 @@ import { toast } from "sonner";
 import {
   approvePatchCandidate,
   approveSkillCandidate,
-  listPatchCandidatesByStatus,
-  listSkillCandidatesByStatus,
   rejectPatchCandidate,
   rejectSkillCandidate,
 } from "@/api/decisions";
@@ -19,27 +18,44 @@ import { PageFrame } from "@/components/cockpit/page-frame";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import {
+  type DecidableItem,
+  type DecidableKind,
   type DecisionItem,
-  type DecisionKind,
   filterByKinds,
   type GroupMode,
   groupDecisions,
+  isDecidable,
+  type OpenDecisions,
   partitionByUrgency,
 } from "./decisions-model";
 
-const KINDS: DecisionKind[] = ["conversation", "patch", "skill"];
+/**
+ * The kinds this page decides. A waiting conversation is not one of them.
+ *
+ * Measured on 21.08.2026: the page reported "35 offen · Korrekturen 2 ·
+ * Skill-Vorschläge 1 · Unterhaltungen 32" — and 32 of those 35 positions
+ * carried no approve and no reject, because a question asked inside a
+ * conversation is answered inside that conversation. They are counted and
+ * named on the tile above, which leads to the list where they can be answered
+ * (§8.5a, §8.5b).
+ */
+const KINDS: DecidableKind[] = ["patch", "skill"];
 const GROUP_MODES: GroupMode[] = ["none", "kind", "source"];
-const KIND_LABEL: Record<DecisionKind, TranslationKey> = {
+const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.kind.patch",
   skill: "decisions.kind.skill",
-  conversation: "decisions.kind.conversation",
 };
+/** The tile names the category in the plural; the chip below names the kind. */
+const TILE_LABEL: Record<DecidableKind, TranslationKey> = {
+  patch: "decisions.tile.patch",
+  skill: "decisions.tile.skill",
+};
+
 const GROUP_LABEL: Record<GroupMode, TranslationKey> = {
   none: "decisions.group.none",
   kind: "decisions.group.kind",
@@ -48,7 +64,7 @@ const GROUP_LABEL: Record<GroupMode, TranslationKey> = {
 const PREFERENCE_KEY = "sk-cockpit-decisions";
 
 interface Preferences {
-  kinds: DecisionKind[];
+  kinds: DecidableKind[];
   group: GroupMode;
 }
 
@@ -59,7 +75,9 @@ function readPreferences(): Preferences {
     const parsed = JSON.parse(raw) as Partial<Preferences>;
     return {
       kinds: Array.isArray(parsed.kinds)
-        ? parsed.kinds.filter((kind): kind is DecisionKind => KINDS.includes(kind as DecisionKind))
+        ? parsed.kinds.filter((kind): kind is DecidableKind =>
+            KINDS.includes(kind as DecidableKind),
+          )
         : [],
       group: GROUP_MODES.includes(parsed.group as GroupMode) ? (parsed.group as GroupMode) : "none",
     };
@@ -120,8 +138,11 @@ export function DecisionsPage() {
     onSettled: () => setBusyId(null),
   });
 
-  const open = queue.items.filter((item) => !decided.includes(item.id));
-  const filtered = filterByKinds(open, preferences.kinds);
+  // Only what can be decided reaches the queue. `queue.items` still carries the
+  // waiting conversations, because the counter and the incident banner are
+  // about them — but they have no card here.
+  const open = queue.items.filter(isDecidable).filter((item) => !decided.includes(item.id));
+  const filtered = filterByKinds(open, preferences.kinds) as DecidableItem[];
   const urgency = partitionByUrgency(filtered, Date.now());
   const { current, aged } = urgency.deferred;
   const isFiltered = preferences.kinds.length > 0 && open.length > filtered.length;
@@ -139,15 +160,15 @@ export function DecisionsPage() {
       </main>
     );
 
-  function renderGroups(items: DecisionItem[], prefix: string) {
+  function renderGroups(items: DecidableItem[], prefix: string) {
     const groups = groupDecisions(items, preferences.group);
     let position = 0;
     return groups.map((group) => (
-      <div key={group.key} className="grid gap-2 pt-2 first:pt-0">
+      <div key={group.key} className="grid gap-1.5 pt-2 first:pt-0">
         {preferences.group !== "none" && (
           <p className="text-xs font-medium text-muted-foreground">
             {preferences.group === "kind"
-              ? t(KIND_LABEL[group.key as DecisionKind])
+              ? t(KIND_LABEL[group.key as DecidableKind])
               : group.key || t("decisions.group.noSource")}
           </p>
         )}
@@ -156,7 +177,7 @@ export function DecisionsPage() {
           return (
             <DecisionCard
               key={item.id}
-              item={item}
+              item={item as DecidableItem}
               index={index}
               testIdPrefix={prefix}
               names={queue.names}
@@ -189,29 +210,14 @@ export function DecisionsPage() {
         </IconButton>
       }
     >
-      <div className="grid gap-6">
-        {/* The number on the badge used to stand alone, which made it read as a
-            demand of unknown origin. Naming its three sources answers "where do
-            these come from" before anyone has to ask. */}
+      <div className="grid gap-5">
         {counted !== null && counted.total > 0 && (
-          <p className="-mt-2 text-xs text-muted-foreground" data-testid="decisions-sources">
-            {t("decisions.sources", {
-              total: String(counted.total),
-              patches: String(counted.byKind.patch),
-              skills: String(counted.byKind.skill),
-              conversations: String(counted.byKind.conversation),
-            })}
-            {/* The same middle dot the rest of the line uses. Without it the
-                enumeration and the display note ran into one sentence, and the
-                two number pairs — "8 offen" and "6 von 8" — stood side by side
-                unexplained. */}
-            {counted.capped
-              ? ` · ${t("decisions.capped", {
-                  shown: String(queue.items.length),
-                  total: String(counted.total),
-                })}`
-              : ""}
-          </p>
+          <CategoryTiles
+            counted={counted}
+            shown={queue.items.length}
+            selected={preferences.kinds}
+            onSelect={(kinds) => persist({ ...preferences, kinds })}
+          />
         )}
         <div className="flex flex-wrap items-center gap-2" data-testid="decisions-toolbar">
           <Button
@@ -222,6 +228,9 @@ export function DecisionsPage() {
           >
             {t("decisions.chip.all")}
           </Button>
+          {/* Art-Chips only. §8.5 forbids a chip that puts the queue into a past
+              STATE — decided, discarded, deferred — and there is none: this list
+              is closed over the two kinds the page can act on. */}
           {KINDS.map((kind, index) => (
             <Button
               key={kind}
@@ -269,8 +278,8 @@ export function DecisionsPage() {
 
         {queue.isPending ? (
           <div className="grid gap-2" role="status" aria-label={t("common.loading")}>
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
           </div>
         ) : queue.failed ? (
           <Alert variant="destructive" data-testid="decisions-error">
@@ -289,7 +298,7 @@ export function DecisionsPage() {
         ) : filtered.length === 0 ? (
           isFiltered ? (
             <div
-              className="flex min-h-52 flex-col items-center justify-center rounded-lg border p-4 text-center"
+              className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
               data-testid="decisions-empty-filtered"
             >
               <p className="text-sm font-medium">{t("decisions.emptyFiltered")}</p>
@@ -305,7 +314,7 @@ export function DecisionsPage() {
             </div>
           ) : (
             <div
-              className="flex min-h-52 flex-col items-center justify-center rounded-lg border p-4 text-center"
+              className="flex min-h-32 flex-col items-center justify-center rounded-lg border p-4 text-center"
               data-testid="decisions-empty"
             >
               <CircleCheck
@@ -317,103 +326,143 @@ export function DecisionsPage() {
             </div>
           )
         ) : (
-          <>
-            {urgency.expired.length > 0 && (
+          // The queue's own copy of the one number, so a drift between the
+          // tiles, the badge and this list is a failing assertion rather than
+          // something a reader has to notice. `data-total` counts what this
+          // list holds — the decidable positions — not the whole page.
+          <div
+            className="grid gap-5"
+            data-testid="decisions-queue"
+            data-total={String(counted?.decidable ?? 0)}
+            data-capped={String(counted?.capped ?? false)}
+          >
+            {current.length > 0 && (
               <DecisionSection
-                testId="decisions-expired"
-                title={t("decisions.section.expired")}
-                hint={t("decisions.section.expiredHint")}
-                count={urgency.expired.length}
-                muted
+                testId="decisions-current"
+                title={t("decisions.section.deferred")}
+                hint={t("decisions.section.deferredHint")}
+                count={current.length}
               >
-                {renderGroups(urgency.expired, "decision-expired")}
+                {renderGroups(current as DecidableItem[], "decision-deferred")}
               </DecisionSection>
             )}
-            {urgency.blocking.length > 0 && (
+            {/* §8.2 names this rubric, and it is a rubric of its own rather
+                than a sub-heading inside another one: it used to sit under
+                a section headed "Kann warten", which is the product
+                deciding on the reader's behalf what it has no way to know. */}
+            {aged.length > 0 && (
               <DecisionSection
-                testId="decisions-blocking"
-                title={t("decisions.section.blocking")}
-                hint={t("decisions.section.blockingHint")}
-                count={urgency.blocking.length}
+                testId="decisions-aged"
+                title={t("decisions.agedTitle")}
+                hint={t("decisions.agedHint")}
+                count={aged.length}
               >
-                {renderGroups(urgency.blocking, "decision")}
+                {renderGroups(aged as DecidableItem[], "decision-aged")}
               </DecisionSection>
             )}
-            {(current.length > 0 || aged.length > 0) && (
-              // The queue's own copy of the one number, so a drift between
-              // badge, Zone A and this page is a failing assertion rather than
-              // something a reader has to notice.
-              <div
-                className="grid gap-6"
-                data-testid="decisions-queue"
-                data-total={String(counted?.total ?? 0)}
-                data-capped={String(counted?.capped ?? false)}
-              >
-                {current.length > 0 && (
-                  <DecisionSection
-                    testId="decisions-current"
-                    title={t("decisions.section.deferred")}
-                    hint={t("decisions.section.deferredHint")}
-                    count={current.length}
-                  >
-                    {renderGroups(current, "decision-deferred")}
-                  </DecisionSection>
-                )}
-                {/* §8.2 names this rubric, and it is a rubric of its own rather
-                    than a sub-heading inside another one: it used to sit under
-                    a section headed "Kann warten", which is the product
-                    deciding on the reader's behalf what it has no way to know. */}
-                {aged.length > 0 && (
-                  <DecisionSection
-                    testId="decisions-aged"
-                    title={t("decisions.agedTitle")}
-                    hint={t("decisions.agedHint")}
-                    count={aged.length}
-                  >
-                    {renderGroups(aged, "decision-aged")}
-                  </DecisionSection>
-                )}
-              </div>
-            )}
-          </>
+          </div>
         )}
 
-        <DecisionShelf
-          titleKey="decisions.shelf.decided"
-          testId="decisions-shelf-decided"
-          enabled={queue.sources.patches || queue.sources.skills}
-          load={async () => {
-            const [patches, skills] = await Promise.all([
-              queue.sources.patches ? listPatchCandidatesByStatus("applied") : null,
-              queue.sources.skills ? listSkillCandidatesByStatus("approved") : null,
-            ]);
-            return [
-              ...(patches?.items ?? []).map(
-                (entry) => entry.workflow_name ?? t("decisions.fallbackTitle.patch"),
-              ),
-              ...(skills?.items ?? []).map((entry) => entry.title),
-            ];
-          }}
-        />
-        <DecisionShelf
-          titleKey="decisions.shelf.discarded"
-          testId="decisions-shelf-discarded"
-          enabled={queue.sources.patches || queue.sources.skills}
-          load={async () => {
-            const [patches, skills] = await Promise.all([
-              queue.sources.patches ? listPatchCandidatesByStatus("rejected") : null,
-              queue.sources.skills ? listSkillCandidatesByStatus("rejected") : null,
-            ]);
-            return [
-              ...(patches?.items ?? []).map(
-                (entry) => entry.workflow_name ?? t("decisions.fallbackTitle.patch"),
-              ),
-              ...(skills?.items ?? []).map((entry) => entry.title),
-            ];
-          }}
-        />
+        <HistoryLink />
       </div>
     </PageFrame>
+  );
+}
+
+/**
+ * §8.5a — one tile per category, each leading to the list it counts.
+ *
+ * This replaces a single run-on line ("35 offen · Korrekturen aus Läufen: 2 ·
+ * Skill-Vorschläge: 1 · Unterhaltungen: 32") that stated four numbers and led
+ * nowhere. There is no tile for anything settled, and there never may be: §8.5
+ * allows counter tiles for what is open only.
+ *
+ * The conversation tile is the one that leaves this page, because that is where
+ * its positions are answered.
+ */
+function CategoryTiles({
+  counted,
+  shown,
+  selected,
+  onSelect,
+}: {
+  counted: OpenDecisions;
+  shown: number;
+  selected: DecidableKind[];
+  onSelect: (kinds: DecidableKind[]) => void;
+}) {
+  const { t } = useI18n();
+  const only = (kind: DecidableKind): DecidableKind[] =>
+    selected.length === 1 && selected[0] === kind ? [] : [kind];
+  return (
+    <div className="grid gap-2" data-testid="decisions-tiles">
+      <div className="grid gap-2 sm:grid-cols-3">
+        {KINDS.map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            className={cn(
+              "rounded-lg border p-3 text-left transition-colors hover:bg-muted/50",
+              selected.length === 1 && selected[0] === kind && "border-primary bg-muted/40",
+            )}
+            data-testid={`decisions-tile-${kind}`}
+            data-count={String(counted.byKind[kind])}
+            aria-pressed={selected.length === 1 && selected[0] === kind}
+            onClick={() => onSelect(only(kind))}
+          >
+            <span className="block text-2xl font-semibold tabular-nums">
+              {counted.byKind[kind]}
+            </span>
+            <span className="block text-sm">{t(TILE_LABEL[kind])}</span>
+          </button>
+        ))}
+        <Link
+          to="/chat"
+          className="rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
+          data-testid="decisions-tile-conversation"
+          data-count={String(counted.byKind.conversation)}
+        >
+          <span className="block text-2xl font-semibold tabular-nums">
+            {counted.byKind.conversation}
+          </span>
+          <span className="block text-sm">{t("decisions.tile.conversation")}</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            {t("decisions.tile.conversationHint")}
+          </span>
+        </Link>
+      </div>
+      {counted.capped && (
+        <p className="text-xs text-muted-foreground" data-testid="decisions-capped">
+          {t("decisions.capped", { shown: String(shown), total: String(counted.total) })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * §8.5 — the one way to the past, and the only one.
+ *
+ * Not a shelf, not a section, not a state chip: a sentence with a link. The
+ * history it points at is complete because the audit log is append-only; what
+ * the log does NOT cover is said on that page rather than implied here.
+ */
+function HistoryLink() {
+  const { t } = useI18n();
+  const session = useSession();
+  if (!session.permissions.includes("audit:read")) return null;
+  return (
+    <p className="text-sm text-muted-foreground" data-testid="decisions-history">
+      {t("decisions.history.label")}{" "}
+      <Link
+        to="/audit"
+        search={{ scope: "decisions" }}
+        className="underline underline-offset-2"
+        data-testid="decisions-history-link"
+      >
+        {t("decisions.history.link")}
+      </Link>
+    </p>
   );
 }
 
@@ -451,54 +500,5 @@ function DecisionSection({
       <p className="-mt-1 text-xs text-muted-foreground">{hint}</p>
       {children}
     </section>
-  );
-}
-
-interface DecisionShelfProps {
-  titleKey: TranslationKey;
-  testId: string;
-  enabled: boolean;
-  load: () => Promise<string[]>;
-}
-
-function DecisionShelf({ titleKey, testId, enabled, load }: DecisionShelfProps) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const query = useQuery({
-    queryKey: ["decisions", "shelf", testId],
-    enabled: enabled && open,
-    queryFn: load,
-  });
-
-  if (!enabled) return null;
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen} className="rounded-lg border">
-      <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start px-4 opacity-70"
-          data-testid={`${testId}-toggle`}
-        >
-          {t(titleKey)}
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="grid gap-1 px-4 pb-4 text-sm text-muted-foreground opacity-70">
-        {query.isPending ? (
-          <span>{t("common.loading")}</span>
-        ) : query.error ? (
-          <span>{t("resource.loadFailedDescription")}</span>
-        ) : query.data && query.data.length > 0 ? (
-          query.data.map((entry, index) => (
-            <span key={`${entry}-${index}`} data-testid={`${testId}-item-${index}`}>
-              {entry}
-            </span>
-          ))
-        ) : (
-          <span data-testid={`${testId}-empty`}>{t("decisions.shelf.empty")}</span>
-        )}
-      </CollapsibleContent>
-    </Collapsible>
   );
 }

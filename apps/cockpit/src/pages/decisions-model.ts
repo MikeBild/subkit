@@ -59,15 +59,41 @@ export interface DecisionItem {
 }
 
 /** The kind-specific evidence an expanded card renders. */
-export type DecisionDetail =
-  | { kind: "patch"; evidence: PatchEvidence }
-  | { kind: "skill"; evidence: SkillEvidence; body: string; sections: SkillSections }
-  | {
-      kind: "conversation";
-      evidence: ConversationEvidence;
-      question: string | null;
-      tool: string | null;
-    };
+export type PatchDetail = { kind: "patch"; evidence: PatchEvidence };
+export type SkillDetail = {
+  kind: "skill";
+  evidence: SkillEvidence;
+  body: string;
+  sections: SkillSections;
+};
+export type ConversationDetail = {
+  kind: "conversation";
+  evidence: ConversationEvidence;
+  question: string | null;
+  tool: string | null;
+};
+
+export type DecisionDetail = PatchDetail | SkillDetail | ConversationDetail;
+
+/**
+ * A position this page can actually decide.
+ *
+ * A waiting conversation is not one. It carries no approve and no reject here —
+ * the card's only action was ever a link into the chat — so the queue was
+ * asking a person to work through positions it could not act on: 32 of 35 on
+ * the day this was measured. §8.5b: what has no consequence here is not a
+ * decision here. It is counted, named and pointed at, on the tile above.
+ */
+export type DecidableKind = Exclude<DecisionKind, "conversation">;
+
+export type DecidableItem = Omit<DecisionItem, "kind" | "detail"> & {
+  kind: DecidableKind;
+  detail: PatchDetail | SkillDetail;
+};
+
+export function isDecidable(item: DecisionItem): item is DecidableItem {
+  return item.kind !== "conversation" && item.detail.kind !== "conversation";
+}
 
 /** The four lists a proposed skill carries beside its body. */
 export interface SkillSections {
@@ -482,6 +508,15 @@ export interface OpenDecisionSubsets {
 export interface OpenDecisions {
   /** Every open position, counted once. The one number every surface shows. */
   total: number;
+  /**
+   * The subset the queue below the tiles actually holds.
+   *
+   * `total` counts everything waiting on this person; `decidable` counts what
+   * can be approved or rejected here. The two were the same number for as long
+   * as waiting conversations were rendered as cards nobody could act on, which
+   * is how a queue of three grew to thirty-five.
+   */
+  decidable: number;
   byKind: Record<DecisionKind, number>;
   subsets: OpenDecisionSubsets;
   /** Age of the oldest position the page actually holds, in whole days. */
@@ -541,6 +576,7 @@ export function countOpenDecisions(input: {
   }
   return {
     total,
+    decidable: counted.patch + counted.skill,
     byKind: { patch: counted.patch, skill: counted.skill, conversation: counted.conversation },
     subsets,
     oldestAgeDays,
@@ -583,13 +619,20 @@ export function bannerSubset(open: OpenDecisions): BannerSubset {
   const blocking = open.subsets.blocking;
   const overdue = open.subsets.overdue;
   const count = blocking + overdue;
+  // The base is the conversations, not the whole page. Both states the banner
+  // may claim belong to a waiting conversation and to nothing else: only an
+  // elicitation carries a deadline, and only a suspended agent loop is stopped
+  // dead. Stating them as a share of every open position made the two numbers
+  // unreadable — "2 of 35" invited the reader to look for the other 33 in a
+  // queue that never held them.
+  const total = open.byKind.conversation;
   return {
     blocking,
     overdue,
     count,
-    total: open.total,
+    total,
     atLeast: open.capped && count > 0,
-    shown: count > 0 && open.total > 0,
+    shown: count > 0 && total > 0,
   };
 }
 

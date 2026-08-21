@@ -115,9 +115,14 @@ export function OverviewPage() {
             <Alert variant="destructive" data-testid="overview-incident">
               {/* Two claims, never one predicate over both: a lapsed position
                   stopped nothing. Each carries its own share and the base it is
-                  a share of, and each borrows its label from the rubric key the
-                  queue heads that pile with — so the banner cannot come to say
-                  the opposite of the page it links to. */}
+                  a share of — and the base is the conversations, because both
+                  states belong to a waiting conversation and to nothing else.
+                  Only an elicitation carries a deadline, and only a suspended
+                  agent loop is stopped dead. Stating them as a share of every
+                  open position invited the reader to look for the rest in a
+                  queue that never held them; the decisions page names the same
+                  number on its conversation tile, and the two are asserted
+                  against each other. */}
               <AlertTitle
                 className="flex flex-wrap items-baseline gap-x-4 gap-y-1"
                 data-testid="incident-decisions-count"
@@ -129,7 +134,7 @@ export function OverviewPage() {
                     {t(
                       banner.atLeast ? "overview.incident.claimAtLeast" : "overview.incident.claim",
                       {
-                        label: t("decisions.section.blocking"),
+                        label: t("decisions.waiting.blocking"),
                         count: String(banner.blocking),
                         total: String(banner.total),
                       },
@@ -141,7 +146,7 @@ export function OverviewPage() {
                     {t(
                       banner.atLeast ? "overview.incident.claimAtLeast" : "overview.incident.claim",
                       {
-                        label: t("decisions.section.expired"),
+                        label: t("decisions.waiting.overdue"),
                         count: String(banner.overdue),
                         total: String(banner.total),
                       },
