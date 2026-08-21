@@ -2252,6 +2252,40 @@ async function startPreview() {
   throw new NichtGemessen(`preview server did not answer on ${baseUrl} within 60s`);
 }
 
+/**
+ * Does the page not mount, or does nobody answer any more?
+ *
+ * Asked by EFFECT, not by reading the message: the shell is fetched again and
+ * its marker re-read. A dead stand and a §6 breach look identical from inside
+ * the sweep, and the loop used to file the dead one as a finding — killing the
+ * preview server at route 11 produced 16 invented "page does not mount"
+ * breaches and exit 1, a complete and convincing work list about nothing.
+ *
+ * Re-reading the marker also covers the second case: the port stayed open, but
+ * a sister console took it over. A port says that somebody answers, never who.
+ */
+async function assertStandStillAnswers(cause) {
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/cockpit/`);
+  } catch (error) {
+    throw new NichtGemessen(
+      `nobody answers on ${baseUrl} any more (${error.message}). The stand died while the sweep ` +
+        "was running, so nothing after it is a statement about the console — only about the " +
+        `absence of one. First symptom: ${cause.message}`,
+      { cause },
+    );
+  }
+  if (!response.ok) {
+    throw new NichtGemessen(
+      `${baseUrl}/cockpit/ answered with HTTP ${response.status} mid-sweep. Whatever the pages ` +
+        `reported from here on is about that, not about the console. First symptom: ${cause.message}`,
+      { cause },
+    );
+  }
+  assertPruefstandsKennung(await response.text());
+}
+
 async function openPage(context, route) {
   const page = await context.newPage();
   const target = concreteRoute(route);
@@ -2338,10 +2372,17 @@ try {
 
   for (const route of ROUTES) {
     besuchteRouten += 1;
+    // Progress on stderr, one line per route: the sweep is the long part of a
+    // mandatory gate stage, and "aborted at route 11" is only checkable against
+    // a run that said where it was.
+    console.error(`route ${besuchteRouten}/${ROUTES.length}: /${route}`);
     let page;
     try {
       page = await openPage(context, route);
     } catch (error) {
+      // Asked BEFORE the breach is written: a dead stand must not become a line
+      // somebody works off.
+      await assertStandStillAnswers(error);
       breach("§6", `/${route}`, `page does not mount: ${error.message}`);
       continue;
     }
@@ -2398,6 +2439,16 @@ try {
   await broken.close();
 } catch (error) {
   abbruch = error;
+  // Everything outside the route loop lands here — the four pages before it, the
+  // two fixture variants after it. Same question: was that the console failing,
+  // or was there nobody left to ask?
+  if (!(error instanceof NichtGemessen)) {
+    try {
+      await assertStandStillAnswers(error);
+    } catch (dead) {
+      abbruch = dead;
+    }
+  }
 } finally {
   await browser?.close();
   server?.kill();
