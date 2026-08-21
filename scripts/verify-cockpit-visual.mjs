@@ -1202,6 +1202,38 @@ for (const locale of variants) {
       if (expandedCards === 0) {
         throw new Error(`${locale.artifact}: no decision card exposed an expand toggle`);
       }
+      // §8.2 and §8.5: the group toggle rearranging the queue, and the shelves
+      // open. Both were photographed only by accident before — they sit in the
+      // toolbar and below the fold of the plain decisions shot.
+      await page.goto(`${baseUrl}/cockpit/decisions`, { waitUntil: "networkidle" });
+      await page.locator('[data-testid="decisions-group-1"]').click();
+      await page
+        .locator('[data-testid="decisions-group"][data-mode="kind"]')
+        .waitFor({ state: "attached" });
+      await page.waitForTimeout(300);
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.artifact}-desktop-decisions-grouped.png`),
+        fullPage: false,
+      });
+      await page.locator('[data-testid="decisions-group-0"]').click();
+      await page
+        .locator('[data-testid="decisions-group"][data-mode="none"]')
+        .waitFor({ state: "attached" });
+      for (const shelf of ["decisions-shelf-decided", "decisions-shelf-discarded"]) {
+        const toggle = page.locator(`[data-testid="${shelf}-toggle"]`);
+        await toggle.scrollIntoViewIfNeeded();
+        await toggle.click();
+        await page
+          .locator(`[data-testid="${shelf}-toggle"][aria-expanded="true"]`)
+          .waitFor({ state: "attached", timeout: 10_000 });
+      }
+      await page.locator('[data-testid="decisions-shelf-decided-toggle"]').scrollIntoViewIfNeeded();
+      await page.waitForTimeout(500);
+      await page.screenshot({
+        path: resolve(outputDir, `${locale.artifact}-desktop-decisions-shelves.png`),
+        fullPage: false,
+      });
+
       await page.goto(`${baseUrl}/cockpit/chat`, { waitUntil: "networkidle" });
       await page.locator('[data-testid="conversation-new"]').click();
       await page
