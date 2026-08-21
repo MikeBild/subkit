@@ -1529,6 +1529,145 @@ async function checkQueueHeader(page) {
   if (line !== QUEUE_HEADER) breach("§8.1", "/decisions · decisions-sources", line);
 }
 
+/** The queue's two numbers: the total it claims, and the cards it actually drew. */
+async function readQueueShape(page) {
+  return page.evaluate(() => ({
+    total:
+      document.querySelector('[data-testid="decisions-queue"]')?.getAttribute("data-total") ?? null,
+    positions: [...document.querySelectorAll("article[data-testid]")].filter((element) =>
+      /^decision(-expired|-deferred|-aged)?-\d+$/.test(element.getAttribute("data-testid") ?? ""),
+    ).length,
+  }));
+}
+
+const GROUP_CONTROL_LABEL = "Gruppieren";
+const GROUP_OPTIONS = [
+  { testId: "decisions-group-0", mode: "none", label: "Keine" },
+  { testId: "decisions-group-1", mode: "kind", label: "Art" },
+  { testId: "decisions-group-2", mode: "source", label: "Verursacher" },
+];
+
+/**
+ * §8.2 — the toggle is named, and grouping only rearranges.
+ *
+ * Two separate claims, and the second is the one nothing watched. Grouping that
+ * loses or duplicates a position leaves every grouped view internally
+ * consistent while the badge above it goes wrong — the §8.1 failure shape,
+ * entering through the one door the four-way assert does not cover, because
+ * that assert only ever sees the flat list.
+ *
+ * The toggle's own words are pinned like every other rubric word (§5): "Keine /
+ * Art / Verursacher" name three things without saying of what, so the label
+ * beside them is part of the control and not decoration.
+ */
+async function checkGroupToggle(page) {
+  if ((await page.locator('[data-testid="decisions-group"]').count()) === 0) {
+    breach("§8.2", "/decisions", "no group toggle above the queue");
+    return;
+  }
+  const label = page.locator('[data-testid="decisions-group-label"]');
+  if ((await label.count()) === 0)
+    breach("§8.2", "/decisions · decisions-group", "the toggle does not say what it groups by");
+  else {
+    const text = (await label.first().innerText()).trim();
+    if (text !== GROUP_CONTROL_LABEL)
+      breach(
+        "§5",
+        "/decisions · decisions-group-label",
+        `toggle reads "${text}" instead of "${GROUP_CONTROL_LABEL}"`,
+      );
+  }
+
+  const flat = await readQueueShape(page);
+  for (const option of GROUP_OPTIONS) {
+    const button = page.locator(`[data-testid="${option.testId}"]`);
+    if ((await button.count()) === 0) {
+      breach("§8.2", `/decisions · ${option.testId}`, `mode "${option.label}" is missing`);
+      continue;
+    }
+    const text = (await button.first().innerText()).trim();
+    if (text !== option.label)
+      breach(
+        "§5",
+        `/decisions · ${option.testId}`,
+        `mode reads "${text}" instead of "${option.label}"`,
+      );
+    await button.first().click();
+    await page
+      .locator(`[data-testid="decisions-group"][data-mode="${option.mode}"]`)
+      .waitFor({ state: "attached", timeout: 5_000 });
+    const grouped = await readQueueShape(page);
+    if (grouped.total !== flat.total)
+      breach(
+        "§8.1",
+        `/decisions · decisions-queue (Gruppieren: ${option.label})`,
+        `total is ${grouped.total}, ungrouped it is ${flat.total}`,
+      );
+    if (grouped.positions !== flat.positions)
+      breach(
+        "§8.2",
+        `/decisions · decisions-queue (Gruppieren: ${option.label})`,
+        `${grouped.positions} positions rendered, ungrouped there are ${flat.positions} — grouping rearranges, it does not filter`,
+      );
+  }
+  // Back to the default: the preference is persisted (§8.2), so a mode left on
+  // here would still be on when the route sweep reopens this page.
+  await page.locator('[data-testid="decisions-group-0"]').first().click();
+  await page
+    .locator('[data-testid="decisions-group"][data-mode="none"]')
+    .waitFor({ state: "attached", timeout: 5_000 });
+}
+
+const SHELVES = [
+  { testId: "decisions-shelf-decided", title: "Entschieden" },
+  { testId: "decisions-shelf-discarded", title: "Verworfen" },
+];
+
+/**
+ * §8.5 — state and history are separate surfaces.
+ *
+ * The shelves sit below the queue, collapsed, and they open: a shelf that
+ * cannot be opened is a heading. Their emptiness is not asserted — what is on
+ * them belongs to the fixture, what matters here is that the queue is not where
+ * decided work keeps living.
+ */
+async function checkShelves(page) {
+  for (const shelf of SHELVES) {
+    const toggle = page.locator(`[data-testid="${shelf.testId}-toggle"]`);
+    if ((await toggle.count()) === 0) {
+      breach("§8.5", "/decisions", `shelf "${shelf.title}" is missing below the queue`);
+      continue;
+    }
+    const text = (await toggle.first().innerText()).trim();
+    if (text !== shelf.title)
+      breach(
+        "§5",
+        `/decisions · ${shelf.testId}`,
+        `shelf reads "${text}" instead of "${shelf.title}"`,
+      );
+    if ((await toggle.first().getAttribute("aria-expanded")) !== "false")
+      breach("§8.5", `/decisions · ${shelf.testId}`, "shelf starts open instead of collapsed");
+    await toggle.first().click();
+    try {
+      await page
+        .locator(`[data-testid="${shelf.testId}-toggle"][aria-expanded="true"]`)
+        .waitFor({ state: "attached", timeout: 5_000 });
+    } catch {
+      breach("§8.5", `/decisions · ${shelf.testId}`, "shelf does not open");
+      continue;
+    }
+    await toggle.first().click();
+  }
+  // The third shelf §8.5 names has no state behind it, and the missing restore
+  // action has no endpoint. Both are recorded as deviations in
+  // apps/cockpit/UI-UX.md; naming them here keeps a green run from reading as a
+  // full §8.5 pass.
+  gap(
+    "/decisions · §8.5",
+    'the "Zurückgestellt" shelf and the restore action are not measured — the engine has no deferred state and no un-reject endpoint (deviation recorded in apps/cockpit/UI-UX.md)',
+  );
+}
+
 /**
  * §5 — a title is a summary in the reader's language, not the engine's artefact.
  *
@@ -2206,6 +2345,8 @@ try {
   await checkQueueHeader(decisions);
   await checkCorrectionTitles(decisions);
   await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, banner });
+  await checkGroupToggle(decisions);
+  await checkShelves(decisions);
   await decisions.close();
 
   const operations = await openPage(context, "operations");
