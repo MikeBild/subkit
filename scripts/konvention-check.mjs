@@ -2715,17 +2715,45 @@ async function sweepDetailSurface(page, route) {
     return;
   }
   const listUrl = page.url();
+  // THE SURFACE IS THERE AND THIS RUN COULD NOT READ IT — a different sentence
+  // from "there is nothing here to read", and the line the three throws below
+  // are drawn on. The list offered a row (the `return` above already covers the
+  // case where it does not), so a row that will not open, a page that will not
+  // settle and a skeleton that never leaves are all this run losing its grip on
+  // a surface that exists. Six rules then go unmeasured on it: the six calls at
+  // the end of this function — checkNoUnknownState, checkActionLabels,
+  // checkNoIdentifiers, checkCuratedFieldLabels, checkNoRawTimestamps,
+  // checkScreenReaderLanguage.
+  //
+  // A gap does not move the exit code. Reported as gaps, all three ended the run
+  // at 0 with those six skipped — the same shape that was closed in
+  // checkNothingSettled for a route, one level down on a detail surface. So they
+  // abort with 2, in the currency this report already has for "this run says
+  // nothing".
+  //
+  // The two gaps that STAY gaps below are the other sentence: no row to open,
+  // and no dialog after opening one. Both say the surface is not there in this
+  // fixture, and a surface that does not exist is a hole in what is covered, not
+  // a failed reading.
   try {
     await opener.first().click();
   } catch (error) {
-    gap(`/${route} · detail surface`, `row cannot be opened: ${error.message}`);
-    return;
+    throw new NichtGemessen(
+      `/${route} · detail surface: the row would not open (${error.message}). The list offers one, ` +
+        "so the surface exists and this run could not reach it — six rules were skipped on it, not " +
+        "passed.",
+      { cause: error },
+    );
   }
   try {
     await page.waitForLoadState("networkidle", { timeout: 15_000 });
   } catch (error) {
-    gap(`/${route} · detail surface`, `did not settle after opening: ${error.message}`);
-    return;
+    throw new NichtGemessen(
+      `/${route} · detail surface: it did not settle after opening (${error.message}). What would ` +
+        "have been read is a surface still in motion, so it was not read — six rules were skipped " +
+        "on it, not passed.",
+      { cause: error },
+    );
   }
   // An address means a route, and a route is swept from the table.
   if (page.url() !== listUrl) return;
@@ -2743,16 +2771,20 @@ async function sweepDetailSurface(page, route) {
   }
   // A skeleton is a promise, not a state: reading the page while one is up
   // measures the loading behaviour instead of the words. A skeleton that never
-  // goes away is therefore not a thing to wait out quietly — it means this
-  // surface was not read, and that is reported as a gap rather than swallowed.
+  // goes away is therefore not a thing to wait out quietly — and not a gap
+  // either, for the reason given above: the dialog IS open, the six checks
+  // below simply did not run on it.
   try {
     await page
       .locator('[data-slot="skeleton"]')
       .first()
       .waitFor({ state: "detached", timeout: 8_000 });
-  } catch {
-    gap(where, "still a skeleton after 8s — what was read is its loading behaviour, not the page");
-    return;
+  } catch (error) {
+    throw new NichtGemessen(
+      `${where}: still a skeleton after 8s. The surface is open and what could be read off it is ` +
+        "its loading behaviour, not its words — six rules were skipped on it, not passed.",
+      { cause: error },
+    );
   }
   swept.push(where);
   await checkNoUnknownState(page, where);
