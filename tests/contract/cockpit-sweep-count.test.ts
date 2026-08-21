@@ -21,7 +21,8 @@
 // tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI). `bun run test:contract` runs this.
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,9 +36,33 @@ describe("the visual sweep reports the frames it wrote", () => {
     // numbers differ and the run fail.
     expect(source).toContain("framesWritten += 1;");
     expect(source).toContain(
-      'const framesOnDisk = (await readdir(outputDir)).filter((name) => name.endsWith(".png")).length;',
+      "(await readdir(outputDir, { recursive: true, withFileTypes: true })).filter(",
     );
+    expect(source).toContain('(entry) => entry.isFile() && entry.name.endsWith(".png"),');
     expect(source).toContain("if (framesOnDisk !== framesWritten)");
+  });
+
+  test("the disk side counts FILES, and all of them", () => {
+    // The rule the line used to carry read one level and took every NAME ending
+    // in .png. Driven here rather than argued: four written frames, two of them
+    // one level down, next to a directory called x.png. The old rule answers 3
+    // — it misses the two below and counts the directory, and both errors point
+    // towards a number that looks fine.
+    const root2 = join(tmpdir(), `sweep-count-${Date.now()}`);
+    mkdirSync(join(root2, "unter"), { recursive: true });
+    mkdirSync(join(root2, "x.png"), { recursive: true });
+    for (const name of ["a.png", "b.png", "unter/c.png", "unter/d.png"])
+      writeFileSync(join(root2, name), "");
+    try {
+      const old = readdirSync(root2).filter((name) => name.endsWith(".png")).length;
+      const now = readdirSync(root2, { recursive: true, withFileTypes: true }).filter(
+        (entry) => entry.isFile() && entry.name.endsWith(".png"),
+      ).length;
+      expect(old, "what the line used to answer").toBe(3);
+      expect(now, "what was actually written").toBe(4);
+    } finally {
+      rmSync(root2, { recursive: true, force: true });
+    }
   });
 
   test("the output directory holds only this run's frames (a lock)", () => {
