@@ -94,24 +94,6 @@ export function proposalKindKey(kind: string | null): TranslationKey | null {
   return kind ? (PROPOSAL_KIND_LABEL[kind] ?? null) : null;
 }
 
-// What the waiting conversation wants back. The tool name was carried to the
-// card and rendered nowhere, so a person could read the question but not tell
-// whether answering it meant typing a sentence or clicking yes.
-const ANSWER_KIND_LABEL: Record<string, TranslationKey> = {
-  ask_user_text: "decisions.answer.text",
-  ask_user_confirm: "decisions.answer.confirm",
-  ask_user_choice: "decisions.answer.choice",
-  ask_user_multi: "decisions.answer.multi",
-  ask_user_form: "decisions.answer.form",
-  // The gate variant asks for the same thing through a different code path.
-  ask_user_form_gate: "decisions.answer.form",
-};
-
-/** The kind of answer a prompting tool wants, or null for one we do not know. */
-export function answerKindKey(tool: string | null): TranslationKey | null {
-  return tool ? (ANSWER_KIND_LABEL[tool] ?? null) : null;
-}
-
 export interface ContextLabels {
   /** Already-translated word for the drift that caused this, or null. */
   cause: string | null;

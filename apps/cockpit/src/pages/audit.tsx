@@ -23,7 +23,15 @@ import {
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
-import { actorTypeKey, auditResourceHref, resourceTypeKey } from "@/pages/audit-model";
+import {
+  type AuditScope,
+  actorTypeKey,
+  auditActionKey,
+  auditResourceHref,
+  DECISION_ACTIONS,
+  isAuditScope,
+  resourceTypeKey,
+} from "@/pages/audit-model";
 
 type AuditEntry = components["schemas"]["AuditEntry"];
 type AuditList = components["schemas"]["AuditLogListResponse"];
@@ -53,17 +61,27 @@ export function AuditPage() {
   const allowed = session.permissions.includes("audit:read");
   const title = t("resource.audit.title");
   const [result, setResult] = useState("all");
+  // The one link on the decisions page arrives here with the scope it means
+  // (§8.5). Read from the location the way the chat reads its opening prompt —
+  // this router validates no search schema, so the URL is the contract.
+  const [scope, setScope] = useState<AuditScope>(() => {
+    const value = new URLSearchParams(window.location.search).get("scope");
+    return isAuditScope(value) ? value : "all";
+  });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const debouncedSearch = useDebouncedValue(search);
 
   const query = useQuery({
-    queryKey: ["audit", result, page, cursors[page]],
+    queryKey: ["audit", result, scope, page, cursors[page]],
     enabled: allowed,
     queryFn: () => {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (result !== "all") params.set("result", result);
+      // The engine filters on `action` and takes a list, so the scope is a
+      // query and not a sieve over an already-paged answer.
+      if (scope === "decisions") params.set("action", DECISION_ACTIONS.join(","));
       const before = cursors[page];
       if (before) params.set("before", before);
       return apiRequest<AuditList>(`/v1/audit-log?${params}`);
@@ -83,9 +101,18 @@ export function AuditPage() {
     const column = tableColumns<AuditEntry>({ t, dateTime });
     return [
       column.date("ts", (entry) => entry.ts, t("audit.column.time"), { width: "w-[18%]" }),
-      column.text("action", (entry) => entry.action, t("resource.field.action"), {
-        width: "w-[24%]",
-      }),
+      // The verb, named. The engine's own string stays reachable as the cell's
+      // title, because that is what an operator quotes in a ticket.
+      column.custom(
+        "action",
+        (entry) => entry.action,
+        t("resource.field.action"),
+        (entry) => {
+          const key = auditActionKey(entry.action);
+          return <span title={entry.action}>{key ? t(key) : entry.action}</span>;
+        },
+        { width: "w-[24%]" },
+      ),
       column.custom(
         "result",
         (entry) => entry.result,
@@ -125,10 +152,11 @@ export function AuditPage() {
     ];
   }, [t, dateTime]);
 
-  const hasActiveFilters = Boolean(debouncedSearch.trim()) || result !== "all";
+  const hasActiveFilters = Boolean(debouncedSearch.trim()) || result !== "all" || scope !== "all";
   const resetFilters = useCallback(() => {
     setSearch("");
     setResult("all");
+    setScope("all");
     setPage(0);
     setCursors([undefined]);
   }, []);
@@ -167,6 +195,35 @@ export function AuditPage() {
                 data-testid="audit-search"
               />
             </InputGroup>
+            {/* §8.5: the decision history is reachable in the log by a filter,
+                not only by knowing the engine's four verbs by heart. */}
+            <Select
+              value={scope}
+              onValueChange={(next) => {
+                if (!isAuditScope(next)) return;
+                setScope(next);
+                setPage(0);
+                setCursors([undefined]);
+              }}
+            >
+              <SelectTrigger
+                className="w-52"
+                aria-label={t("audit.filterScope")}
+                data-testid="audit-scope-filter"
+              >
+                <SelectValue placeholder={t("audit.scope.all")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all" data-testid="audit-scope-all">
+                    {t("audit.scope.all")}
+                  </SelectItem>
+                  <SelectItem value="decisions" data-testid="audit-scope-decisions">
+                    {t("audit.scope.decisions")}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
             <Select
               value={result}
               onValueChange={(next) => {
@@ -260,6 +317,16 @@ export function AuditPage() {
         actionsLabel={t("common.actions")}
         openLabel={t("common.open")}
       />
+      {/* What a complete-looking log does NOT hold. Without this line a short
+          page reads as "nothing happened" rather than "nothing of this kind was
+          recorded here", and the decisions page points at this surface as THE
+          history — so the boundary of that promise belongs on it. */}
+      <p
+        className="shrink-0 border-t px-4 py-3 text-xs text-muted-foreground sm:px-6 lg:px-8"
+        data-testid="audit-scope-note"
+      >
+        {t("audit.coverageNote")}
+      </p>
     </PageFrame>
   );
 }

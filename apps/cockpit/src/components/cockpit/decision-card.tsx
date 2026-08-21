@@ -16,28 +16,38 @@ import { useI18n } from "@/lib/i18n-context";
 import type { NameIndex } from "@/lib/name-index";
 import { EMPTY_NAME_INDEX } from "@/lib/name-index";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { cn } from "@/lib/utils";
 import type { ContextEntry, DecisionContext } from "@/pages/decisions-context";
 import {
-  answerKindKey,
-  conversationContext,
   driftKindKey,
   patchContext,
   proposalKindKey,
   skillContext,
 } from "@/pages/decisions-context";
-import type { DecisionItem, DecisionKind, DecisionOrigin } from "@/pages/decisions-model";
+import type {
+  DecidableItem,
+  DecidableKind,
+  DecisionItem,
+  DecisionOrigin,
+} from "@/pages/decisions-model";
 import { ageInDays, decisionKey } from "@/pages/decisions-model";
 
-const KIND_LABEL: Record<DecisionKind, TranslationKey> = {
+/**
+ * Only the two kinds this card can decide.
+ *
+ * A waiting conversation used to render here too, with no approve, no reject
+ * and a link into the chat as its only action — a card in a decision queue that
+ * could not decide anything. It is counted on the tile above the queue now and
+ * answered where it was asked (§8.5b).
+ */
+const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.kind.patch",
   skill: "decisions.kind.skill",
-  conversation: "decisions.kind.conversation",
 };
 
-const KIND_EFFECT: Record<DecisionKind, TranslationKey> = {
+const KIND_EFFECT: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.effect.patch",
   skill: "decisions.effect.skill",
-  conversation: "decisions.effect.conversation",
 };
 
 const ORIGIN_LABEL: Record<DecisionOrigin, TranslationKey> = {
@@ -79,16 +89,15 @@ function deadlineLabel(
 type Translate = ReturnType<typeof useI18n>["t"];
 
 /** True when expanding this card would actually show something. */
-function detailHasContent(item: DecisionItem): boolean {
+function detailHasContent(item: DecidableItem): boolean {
   const detail = item.detail;
   if (detail.kind === "patch") return true;
-  if (detail.kind === "skill") return detail.body.trim().length > 0;
-  return Boolean(detail.question);
+  return detail.body.trim().length > 0;
 }
 
 /** Translate one decision's raw evidence into the two context columns. */
 function decisionContext(
-  item: DecisionItem,
+  item: DecidableItem,
   t: Translate,
   names: NameIndex,
   canReadRuns: boolean,
@@ -118,8 +127,7 @@ function decisionContext(
       canReadRuns,
     );
   }
-  if (detail.kind === "skill") return skillContext(detail.evidence, labels, names);
-  return conversationContext(detail.evidence, labels, names);
+  return skillContext(detail.evidence, labels, names);
 }
 
 /** The two columns: what produced this, and what a decision would act on. */
@@ -249,7 +257,7 @@ function DecisionDetailPanel({
   testId,
   canReadRuns,
 }: {
-  item: DecisionItem;
+  item: DecidableItem;
   testId: string;
   canReadRuns: boolean;
 }) {
@@ -310,7 +318,7 @@ function DecisionDetailPanel({
     );
   }
 
-  if (detail.kind === "skill") {
+  {
     const { sections } = detail;
     return (
       <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
@@ -354,24 +362,6 @@ function DecisionDetailPanel({
       </div>
     );
   }
-
-  // The question in full, not the clipped line the collapsed card carries —
-  // that split is why the engine stopped sending an excerpt of it.
-  const answerKey = answerKindKey(detail.tool);
-  return (
-    <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
-      <DetailBlock heading={t("decisions.detail.question")} testId={`${testId}-question`}>
-        <DetailText className="max-w-prose text-sm break-words whitespace-pre-wrap">
-          {detail.question ?? t("decisions.detail.noQuestion")}
-        </DetailText>
-      </DetailBlock>
-      {answerKey && (
-        <DetailBlock heading={t("decisions.detail.answerKind")} testId={`${testId}-answer-kind`}>
-          <p className="max-w-prose text-sm text-muted-foreground">{t(answerKey)}</p>
-        </DetailBlock>
-      )}
-    </div>
-  );
 }
 
 /** The runs a proposed skill was distilled from. The count was always on the
@@ -427,7 +417,7 @@ function SkillEvidenceList({
 }
 
 export interface DecisionCardProps {
-  item: DecisionItem;
+  item: DecidableItem;
   index: number;
   canDecide: boolean;
   busy: boolean;
@@ -482,10 +472,24 @@ export function DecisionCard({
   });
 
   return (
-    // The dedup key the counter uses, carried on the card so "one position is
-    // one decision" is observable on the rendered page and not only in a unit.
-    <article className="rounded-lg border p-4" data-testid={testId} data-decision-key={key}>
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+    // One line, not a quarter of a screen. The card used to stack a badge row,
+    // an origin sentence, a title, a summary, an effect line and a two-column
+    // "Comes from / Affects" block before its buttons — 35 positions needed
+    // nine screens, where CodeKit shows three per screen. Everything below the
+    // first line is real and stays; it moves behind the named toggle §8.4 asks
+    // for, so the queue is scannable and the detail is one click away.
+    //
+    // The dedup key the counter uses is carried here so "one position is one
+    // decision" is observable on the rendered page and not only in a unit.
+    // `data-state` says what this position IS: only open work stands on this
+    // page, and the convention check reads that back off every card.
+    <article
+      className="rounded-lg border"
+      data-testid={testId}
+      data-decision-key={key}
+      data-state="open"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
         <Badge variant="outline" data-testid={`${testId}-kind`}>
           {t(KIND_LABEL[item.kind])}
         </Badge>
@@ -498,20 +502,17 @@ export function DecisionCard({
             )}
           </Badge>
         )}
-        {item.target ? (
-          <span className="min-w-0 truncate" data-testid={`${testId}-target`}>
-            {hideTechnicalIdentifiers(item.target, t("tool.referenceHiddenInline"))}
-          </span>
-        ) : (
-          <span data-testid={`${testId}-target`}>
-            {t(
-              item.kind === "conversation"
-                ? "decisions.target.none"
-                : "decisions.target.allWorkflows",
-            )}
-          </span>
-        )}
-        <span data-testid={`${testId}-age`}>
+        {/* The title carries the line. It is truncated here and whole in the
+            panel — a queue has to be scannable, and nothing is lost, because
+            opening the row shows the same sentence unclipped. */}
+        <p
+          className="min-w-0 flex-1 truncate text-sm font-medium"
+          title={item.title}
+          data-testid={`${testId}-title`}
+        >
+          {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
+        </p>
+        <span className="text-xs text-muted-foreground" data-testid={`${testId}-age`}>
           {age === 0
             ? t("decisions.age.today")
             : age === 1
@@ -520,127 +521,24 @@ export function DecisionCard({
         </span>
         {deadline && (
           <span
-            className={deadline.expired ? "text-destructive" : "text-warning"}
+            className={cn("text-xs", deadline.expired ? "text-destructive" : "text-warning")}
             data-testid={`${testId}-deadline`}
           >
             {deadline.label}
           </span>
         )}
-      </div>
-
-      {/* Where this came from, before what it is: a position nobody can explain
-          is a demand without a reason, and that is what "where do the 118 come
-          from" was asking. */}
-      <p className="mt-2 text-xs text-muted-foreground" data-testid={`${testId}-origin`}>
-        {t(ORIGIN_LABEL[item.origin])}
-      </p>
-
-      {/* No line clamp: the title was cut at two lines because the column was
-          780px wide. It is not any more, and a truncated title is a name the
-          reader has to guess at. */}
-      <p
-        className="mt-2 max-w-prose text-sm font-medium break-words"
-        data-testid={`${testId}-title`}
-      >
-        {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
-      </p>
-      {/* What this position concretely is — the proposed change, the opening of
-          the skill text, the question asked. `title` is a name; this is the
-          thing a person needs in order to choose. */}
-      {item.summary && item.summary !== item.title && (
-        <p
-          className="mt-1 max-w-prose text-sm text-muted-foreground break-words"
-          data-testid={`${testId}-summary`}
-        >
-          {hideTechnicalIdentifiers(item.summary, t("tool.referenceHiddenInline"))}
-        </p>
-      )}
-      <p className="mt-1 text-xs text-muted-foreground">{t(KIND_EFFECT[item.kind])}</p>
-      {item.confidence && (
-        // A model's confidence is a claim, not a measurement: a word with its
-        // scale named and the count it rests on, never a bar and never the
-        // success colour.
-        <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testId}-confidence`}>
-          {t("decisions.confidence", { level: t(CONFIDENCE_LABEL[item.confidence]) })}
-          {item.evidenceCount !== null
-            ? ` · ${t("decisions.evidence", { count: String(item.evidenceCount) })}`
-            : ""}
-        </p>
-      )}
-
-      <ContextColumns context={context} testId={testId} />
-
-      {expanded && <DecisionDetailPanel item={item} testId={testId} canReadRuns={canReadRuns} />}
-
-      {showDiff && (
-        <div className="mt-3">
-          {preview.isPending ? (
-            <p className="text-sm text-muted-foreground" data-testid={`${testId}-diff-loading`}>
-              {t("decisions.diffLoading")}
-            </p>
-          ) : preview.error || !preview.data ? (
-            <p className="text-sm text-destructive" data-testid={`${testId}-diff-error`}>
-              {t("decisions.diffFailed")}
-            </p>
-          ) : (
-            <DiffCard
-              testId={`${testId}-diff`}
-              embedded
-              targetLabel={item.target ?? t("decisions.kind.patch")}
-              before={preview.data.before_step}
-              after={preview.data.after_step}
-              changedPaths={preview.data.changed_paths}
-              driftSummary={preview.data.drift_summary}
-              patch={preview.data.proposal?.patch}
-              fixtureAvailable={preview.data.fixture_available}
-              dryRun={dryRun.data ?? null}
-              dryRunPending={preview.data.fixture_available === true && dryRun.isPending}
-            />
-          )}
-        </div>
-      )}
-
-      {rejecting && (
-        <div className="mt-3">
-          <Textarea
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            placeholder={t("decisions.notePlaceholder")}
-            data-testid={`${testId}-note`}
-            aria-label={t("decisions.note")}
-          />
-          <p className="mt-1 text-xs text-muted-foreground">{t("decisions.noteScope")}</p>
-        </div>
-      )}
-
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {hasDetail && !compact && (
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid={`${testId}-toggle`}
-              onClick={() => setExpanded((value) => !value)}
-            >
-              {t(expanded ? "decisions.showLess" : "decisions.showMore")}
-            </Button>
-          )}
-          {/* A waiting conversation has no approve/reject here — the answer
-              happens in the chat — so going there IS the action. */}
-          {item.kind === "conversation" && (
-            <Button size="sm" asChild>
-              <Link
-                to="/chat/$conversationId"
-                params={{ conversationId: item.id }}
-                data-testid={`${testId}-source`}
-              >
-                {t("decisions.openConversation")}
-              </Link>
-            </Button>
-          )}
-        </div>
-
-        {canDecide && item.kind !== "conversation" && (
+        {hasDetail && !compact && (
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid={`${testId}-toggle`}
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {t(expanded ? "decisions.showLess" : "decisions.showMore")}
+          </Button>
+        )}
+        {canDecide && (
           <div className="flex flex-wrap items-center gap-2">
             {rejecting ? (
               <>
@@ -687,6 +585,96 @@ export function DecisionCard({
           </div>
         )}
       </div>
+
+      {rejecting && (
+        <div className="border-t px-3 pt-2 pb-3">
+          <Textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder={t("decisions.notePlaceholder")}
+            data-testid={`${testId}-note`}
+            aria-label={t("decisions.note")}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">{t("decisions.noteScope")}</p>
+        </div>
+      )}
+
+      {expanded && (
+        <div className="border-t px-3 pt-2 pb-3">
+          {/* Where this came from, before what it is: a position nobody can
+              explain is a demand without a reason. */}
+          <p className="text-xs text-muted-foreground" data-testid={`${testId}-origin`}>
+            {t(ORIGIN_LABEL[item.origin])}
+          </p>
+          <p className="mt-1 max-w-prose text-sm font-medium break-words">
+            {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
+          </p>
+          {/* What this position concretely is — the proposed change, the
+              opening of the skill text. `title` is a name; this is the thing a
+              person needs in order to choose. */}
+          {item.summary && item.summary !== item.title && (
+            <p
+              className="mt-1 max-w-prose text-sm text-muted-foreground break-words"
+              data-testid={`${testId}-summary`}
+            >
+              {hideTechnicalIdentifiers(item.summary, t("tool.referenceHiddenInline"))}
+            </p>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">{t(KIND_EFFECT[item.kind])}</p>
+          {item.target ? (
+            <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testId}-target`}>
+              {hideTechnicalIdentifiers(item.target, t("tool.referenceHiddenInline"))}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testId}-target`}>
+              {t("decisions.target.allWorkflows")}
+            </p>
+          )}
+          {item.confidence && (
+            // A model's confidence is a claim, not a measurement: a word with
+            // its scale named and the count it rests on, never a bar and never
+            // the success colour.
+            <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testId}-confidence`}>
+              {t("decisions.confidence", { level: t(CONFIDENCE_LABEL[item.confidence]) })}
+              {item.evidenceCount !== null
+                ? ` · ${t("decisions.evidence", { count: String(item.evidenceCount) })}`
+                : ""}
+            </p>
+          )}
+
+          <ContextColumns context={context} testId={testId} />
+
+          <DecisionDetailPanel item={item} testId={testId} canReadRuns={canReadRuns} />
+
+          {showDiff && (
+            <div className="mt-3">
+              {preview.isPending ? (
+                <p className="text-sm text-muted-foreground" data-testid={`${testId}-diff-loading`}>
+                  {t("decisions.diffLoading")}
+                </p>
+              ) : preview.error || !preview.data ? (
+                <p className="text-sm text-destructive" data-testid={`${testId}-diff-error`}>
+                  {t("decisions.diffFailed")}
+                </p>
+              ) : (
+                <DiffCard
+                  testId={`${testId}-diff`}
+                  embedded
+                  targetLabel={item.target ?? t("decisions.kind.patch")}
+                  before={preview.data.before_step}
+                  after={preview.data.after_step}
+                  changedPaths={preview.data.changed_paths}
+                  driftSummary={preview.data.drift_summary}
+                  patch={preview.data.proposal?.patch}
+                  fixtureAvailable={preview.data.fixture_available}
+                  dryRun={dryRun.data ?? null}
+                  dryRunPending={preview.data.fixture_available === true && dryRun.isPending}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </article>
   );
 }
