@@ -7,6 +7,33 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="cockpit-ui-contract" content="cockpit-ui" />
     <meta name="cockpit-ui-digest" content="sha256-TKGKJcvPqZE4TIanIFHFZRsaiGFZRIbtkCFFeB1Ho24=" />
+    <!--
+      WESSEN KONSOLE DAS IST, im ausgelieferten Dokument.
+
+      Die Familienkonvention macht die DOM-Verankerungen aller sechs Konsolen
+      ABSICHTLICH gleich — `cockpit-wordmark`, `operator-role`, `sidebar`,
+      `page-title` —, damit ein Prüflauf und der Paritäts-Harness eine gemeinsame
+      Verankerung haben. Ein Check, der versehentlich auf eine Schwesterkonsole
+      zeigt, findet deshalb JEDEN Selektor, den er sucht, und schreibt deren
+      Oberfläche unter SubKits Namen auf. Das ist nicht hypothetisch: bei CodeKit
+      hielt WorkKit den Prüfstands-Port, und der Lauf erzeugte in 156 s acht
+      Verstöße über eine Seite, die nie CodeKit war. Die Prüfstände liegen dicht
+      beieinander (CodeKit 4081 · WikiKit 4173 · SubKit 4176 · WatchKit 4183 ·
+      WorkKit 4192), ein Tippfehler in der Port-Angabe genügt.
+
+      Das hier ist die EINZIGE Verankerung, an der ein Check „wessen Konsole hat
+      geantwortet?“ beantworten darf, und es ist ausdrücklich NICHT der Titel und
+      nicht die Wortmarke: beides sind Regeln, die scripts/konvention-check.mjs
+      gebrochen finden können muss (§6). Eine Kennung, die zugleich Prüfgegenstand
+      ist, macht aus jedem echten Verstoß ein „das ist gar nicht SubKit“.
+
+      Diese Zeile ist die einzige DEFINITION des Werts. scripts/konvention-check.mjs
+      LIEST ihn von hier, statt ihn abzutippen — wer das Produkt umbenennt, ändert
+      eine Zeile. apps/cockpit/src/app/cockpit-kennung.test.ts hält ihn gegen den
+      Namen aus package.json, damit er nicht vom Produkt wegdriften kann, und gegen
+      die gebaute Fassung in assets/cockpit, damit er den Bau überlebt.
+    -->
+    <meta name="cockpit-product" content="SubKit" />
     <title>SubKit Cockpit</title>
     <!-- Konvention §6: derselbe Glyph wie die Wortmarke der Seitenleiste, als eigene
          Datei aus apps/cockpit/public. Der href steht hier OHNE Basispfad — Vite stellt

@@ -1983,8 +1983,126 @@ async function sweepDetailSurface(page, route) {
   await checkScreenReaderLanguage(page, where);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WESSEN KONSOLE ANTWORTET
+//
+// `startPreview` beantwortet „antwortet dort etwas?" und nicht „antwortet dort
+// SUBKIT?". Der Unterschied ist bei CodeKit real ausgelöst worden: WorkKit hielt
+// CodeKits Prüfstands-Port, und dieser Check erzeugte in 156 s acht Verstöße mit
+// CodeKits Namen über eine Oberfläche, die nie CodeKit war. Kein Timeout, kein
+// Absturz — ein vollständiger, überzeugender, falscher Bericht. Der ist teurer
+// als ein Timeout: der Timeout wird untersucht, die acht Verstöße werden
+// repariert.
+//
+// SubKit ist dafür besonders exponiert. Die Konvention macht die
+// DOM-Verankerungen in allen sechs Konsolen ABSICHTLICH gleich
+// (`cockpit-wordmark`, `operator-role`, `sidebar`, `page-title`), damit ein
+// Prüflauf überhaupt eine gemeinsame Verankerung hat — also erfüllt eine fremde
+// Schwesterkonsole ALLE Vorbedingungen, an denen dieser Lauf sonst scheitern
+// würde. Und die Prüfstände liegen dicht beieinander: CodeKit 4081 · WikiKit
+// 4173 · SubKit 4176 · WatchKit 4183 · WorkKit 4192. Ein Tippfehler in
+// COCKPIT_PREVIEW_PORT, ein vergessener Dev-Server oder ein seit Wochen
+// laufender Fremdserver genügt; `--strictPort` verhindert nur, dass DIESER Lauf
+// ausweicht, nicht dass dort schon jemand anders sitzt. Mit COCKPIT_BASE_URL
+// fällt selbst dieser Schutz weg.
+//
+// WARUM DER MARKER ABGELEITET UND NICHT ABGETIPPT IST
+//
+// CodeKit hat es mit einem Marker im gelieferten Dokument gelöst und die
+// Schwäche seiner Fassung selbst benannt: dort steht der Sollwert als LITERAL im
+// Skript, während ein Contract-Test denselben Wert importiert. Wer den Marker
+// umbenennt, bekommt „fremdes Dokument" über die EIGENE Konsole — die Meldung,
+// die am teuersten falsch ist. Hier gibt es deshalb genau EINE Definitionsstelle,
+// `apps/cockpit/index.html`, und dieser Assert LIEST den Sollwert von dort.
+// Umbenanntes Attribut heißt dann nicht „fremdes Dokument", sondern den Satz,
+// der wahr ist: der Sollwert ist aus dieser Datei nicht mehr ableitbar — ein
+// Befund über dieses Repository.
+//
+// Und ausdrücklich NICHT Titel oder Wortmarke: beides sind Regeln, die dieser
+// Lauf gebrochen finden können muss (§6 — `checkWordmark`, `checkBrowserTitle`).
+// Eine Kennung, die zugleich Prüfgegenstand ist, macht aus jedem echten Verstoß
+// ein „das ist gar nicht SubKit" und misst danach nichts mehr. Deshalb benutzt
+// dieser Assert `PRODUCT_NAME` nicht, obwohl die Konstante weiter oben steht.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Das Attribut, das die Konsole ihrem Dokument mitgibt. */
+const IDENTITY_META = "cockpit-product";
+
+/**
+ * Ein Lauf, der NICHT gemessen hat — im Unterschied zu einem, der gemessen und
+ * Verstöße gefunden hat.
+ *
+ * Der Ausgang trennt die beiden: 1 heißt „gemessen und rot", 2 heißt „es wurde
+ * nichts gemessen". Für eine Pflichtstufe ist das der Unterschied zwischen einer
+ * Arbeitsliste und einem Grund, die Stufe stummzuschalten — und genau die
+ * Verwechslung hat bei CodeKit acht Reparaturen an einer fremden Oberfläche
+ * ausgelöst.
+ */
+class NichtGemessen extends Error {}
+
+/** Der Marker eines Dokuments, oder `null`, wenn es keinen trägt. */
+function markerIn(html) {
+  return (
+    new RegExp(`<meta[^>]+name="${IDENTITY_META}"[^>]+content="([^"]+)"`).exec(html)?.[1] ?? null
+  );
+}
+
+/** Die bestätigte Kennung des Prüfstands — nur für den Bericht, nie für einen Assert. */
+let gemesseneKennung = null;
+
+/**
+ * Prüft, WESSEN Konsole geantwortet hat — bevor eine einzige Regel gemessen wird.
+ *
+ * Wirft, statt zu berichten, und zwar mit Absicht: ein fremdes Gegenüber ist kein
+ * Konventionsverstoß, sondern ein Lauf, der nicht stattgefunden hat. Ein Verstoß
+ * wäre eine Zeile in einer Arbeitsliste, die jemand abarbeitet — an einer
+ * Oberfläche, die diesem Repository nicht gehört.
+ */
+function assertPruefstandsKennung(html) {
+  const quelle = new URL("../apps/cockpit/index.html", import.meta.url);
+  const erwartet = markerIn(readFileSync(quelle, "utf8"));
+  if (erwartet === null) {
+    throw new NichtGemessen(
+      `apps/cockpit/index.html trägt kein <meta name="${IDENTITY_META}" content="…"> mehr. ` +
+        "Der Kennungs-Assert leitet seinen Sollwert aus dieser Datei ab und hat jetzt keinen — " +
+        `das ist ein Befund über DIESES Repository und keine Aussage über das Gegenüber auf ${baseUrl}.`,
+    );
+  }
+  const geliefert = markerIn(html);
+  if (geliefert === null) {
+    const titel = /<title>([^<]*)<\/title>/.exec(html)?.[1]?.trim() ?? "(kein <title>)";
+    throw new NichtGemessen(
+      `das ist nicht ${erwartet}: das Dokument auf ${baseUrl} trägt keinen ` +
+        `<meta name="${IDENTITY_META}">. Sein Titel lautet „${titel}“. ` +
+        "Hört dort eine Schwesterkonsole? Die DOM-Verankerungen sind familienweit gleich, " +
+        `also hätte dieser Lauf sie gemessen und die Verstöße ${erwartet} zugeschrieben.`,
+    );
+  }
+  if (geliefert !== erwartet) {
+    throw new NichtGemessen(
+      `das ist nicht ${erwartet}, sondern ${geliefert}: das Dokument auf ${baseUrl} nennt sich ` +
+        `„${geliefert}“, apps/cockpit/index.html nennt „${erwartet}“. Gemessen wurde nichts.`,
+    );
+  }
+  gemesseneKennung = erwartet;
+  return erwartet;
+}
+
 async function startPreview() {
-  if (externalBaseUrl) return null;
+  // Auch der fremde Stand wird abgerufen, bevor irgendetwas misst: mit
+  // COCKPIT_BASE_URL zeigt dieser Lauf auf ein Gegenüber, das niemand für ihn
+  // gestartet hat — der Fall, in dem die Kennungsfrage am nötigsten ist.
+  if (externalBaseUrl) {
+    let response;
+    try {
+      response = await fetch(`${baseUrl}/cockpit/`);
+    } catch (error) {
+      throw new NichtGemessen(`${baseUrl}/cockpit/ war nicht erreichbar: ${error.message}`);
+    }
+    if (!response.ok)
+      throw new NichtGemessen(`${baseUrl}/cockpit/ antwortete mit HTTP ${response.status}`);
+    return { server: null, shell: await response.text() };
+  }
   const server = spawn(
     "bunx",
     [
@@ -2004,14 +2122,19 @@ async function startPreview() {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`${baseUrl}/cockpit/`);
-      if (response.ok) return server;
+      // Der RUMPF wird hier gelesen, nicht nur der Statuscode: „dort antwortet
+      // etwas" ist nicht „dort antwortet SubKit". Und aus DIESER Antwort, nicht
+      // aus einem zweiten Abruf — zwischen zwei Abrufen kann das Gegenüber ein
+      // anderes sein, und dann prüfte die Kennung ein Dokument, das der Lauf
+      // nie gemessen hat.
+      if (response.ok) return { server, shell: await response.text() };
     } catch {
       // The server is still binding; the deadline is the only give-up signal.
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   server.kill();
-  throw new Error(`preview server did not answer on ${baseUrl} within 60s`);
+  throw new NichtGemessen(`preview server did not answer on ${baseUrl} within 60s`);
 }
 
 async function openPage(context, route) {
@@ -2041,7 +2164,16 @@ let abbruch = null;
 let server = null;
 let browser = null;
 try {
-  server = await startPreview();
+  const preview = await startPreview();
+  server = preview.server;
+
+  // Wessen Konsole hat geantwortet? Aus DEMSELBEN Dokument gelesen, auf das
+  // `startPreview` gewartet hat, und VOR dem Browserstart. Erst nach der Messung
+  // zu fragen hieße, minutenlang Verstöße über eine fremde Oberfläche zu
+  // sammeln, bevor der Lauf sie verwirft — bei CodeKit waren es 156 Sekunden und
+  // acht Befunde.
+  assertPruefstandsKennung(preview.shell);
+
   browser = await chromium.launch({ headless: true });
 
   // German is the top-level language of the convention (§5), and every pinned
@@ -2167,9 +2299,20 @@ const report = gescheitert ? console.error : console.log;
 const massstab = konventionVersionImRepo
   ? `COCKPIT-KONVENTION.md v${konventionVersionImRepo}`
   : "COCKPIT-KONVENTION.md (Kopfzeile ohne lesbare Version)";
-const pruefstand = externalBaseUrl
-  ? `fremder Stand unter ${externalBaseUrl}`
-  : `die GEBAUTE Fassung — vite preview auf ${baseUrl}, also der Stand, den die Engine ausliefert, nicht der Dev-Server`;
+// Die Kennung steht in BEIDEN Ausgängen neben dem Prüfstand. „vite preview auf
+// 127.0.0.1:4176" ist eine Adresse und keine Identität; wer dort saß, sagt erst
+// das Attribut aus dem gelieferten Dokument.
+//
+// Ohne bestätigte Kennung wird die Beschreibung ZURÜCKGENOMMEN, nicht nur
+// eingeschränkt: „die gebaute Fassung, also der Stand, den die Engine
+// ausliefert" ist über eine fremde Konsole schlicht falsch, und ein „· Kennung
+// nicht bestätigt" dahinter macht einen falschen Satz nicht wahr.
+const pruefstand =
+  gemesseneKennung === null
+    ? `${baseUrl} — WESSEN Konsole dort antwortet, ist ungeklärt; über den gemessenen Stand ist damit nichts gesagt`
+    : externalBaseUrl
+      ? `fremder Stand unter ${externalBaseUrl} · Kennung ${gemesseneKennung} (aus <meta name="${IDENTITY_META}"> des gelieferten Dokuments)`
+      : `die GEBAUTE Fassung — vite preview auf ${baseUrl}, also der Stand, den die Engine ausliefert, nicht der Dev-Server · Kennung ${gemesseneKennung} (aus <meta name="${IDENTITY_META}"> des gelieferten Dokuments)`;
 
 report(
   `Maßstab: ${massstab} (Kopfzeile der Repo-Kopie) · dieser Check ist von Hand gegen v${KONVENTION_VERSION} geschrieben`,
@@ -2198,9 +2341,14 @@ function printViolations() {
 
 if (abbruch) {
   console.error(
-    `Konvention-Check ABGEBROCHEN: ${abbruch?.message ?? String(abbruch)}\n` +
-      "Ein Lauf, der nicht zu Ende messen konnte, ist kein bestandener Lauf. Was bis zum Abbruch\n" +
-      "gefunden wurde, steht unten — alles danach ist ungeprüft, nicht sauber.\n",
+    abbruch instanceof NichtGemessen
+      ? `Konvention-Check NICHT GEMESSEN: ${abbruch.message}\n` +
+          "Über die Oberfläche sagt dieser Lauf NICHTS. Was unten steht, stammt aus den Prüfungen,\n" +
+          "die keinen Prüfstand brauchen (§7, Konventions-Version); eine leere Liste ist hier kein\n" +
+          "Freispruch, sondern eine Messung, die nicht stattgefunden hat.\n"
+      : `Konvention-Check ABGEBROCHEN: ${abbruch?.message ?? String(abbruch)}\n` +
+          "Ein Lauf, der nicht zu Ende messen konnte, ist kein bestandener Lauf. Was bis zum Abbruch\n" +
+          "gefunden wurde, steht unten — alles danach ist ungeprüft, nicht sauber.\n",
   );
   if (violations.length > 0) {
     console.error(`Bis zum Abbruch gefunden: ${violations.length} Verstöße gegen ${massstab}\n`);
@@ -2208,7 +2356,7 @@ if (abbruch) {
     console.error("");
   }
   console.error(abbruch?.stack ?? String(abbruch));
-  process.exit(1);
+  process.exit(abbruch instanceof NichtGemessen ? 2 : 1);
 }
 
 if (violations.length === 0) {
