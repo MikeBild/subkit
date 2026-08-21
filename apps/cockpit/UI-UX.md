@@ -275,9 +275,9 @@ raw tool payload excerpts, visible UUIDs and resource error states. It also reco
 tooltip and user-menu states for visual comparison. The production deployment verifier repeats the
 authenticated bilingual route sweep after SSO and publishes its screenshots as a workflow artifact.
 
-## Entscheidungs-Grammatik
+## Decision grammar
 
-Wortgleiche Kopie von §8 der Cockpit-Konvention v1.5 (`COCKPIT-KONVENTION.md` im Repo-Root). Sie steht hier, weil die Entscheidungs-Seite dieses Produkts an ihr gemessen wird; der Maßstab hat eine Quelle und keine abweichenden Kopien (§13). Wo SubKit bewusst abweicht, steht die Begründung oben unter „Decisions surface" — die Queue ist keine 780-px-Spalte (§8.2), und es gibt kein „Später erinnern"-Regal (§8.3/§8.5), weil die Engine keinen zurückgestellten Zustand kennt. Beide Abweichungen bleiben bestehen; die Kopie unten wird davon nicht angepasst, sonst wäre sie keine.
+What follows is a verbatim German copy of §8 of Cockpit Convention v1.5 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). This product's decisions page is measured against it. Deliberate deviations are justified above under "Decisions surface" — the queue is not a 780 px column (§8.2), and there is no "remind me later" shelf (§8.3/§8.5) because the engine has no deferred state. Both stand; the copy below is not adjusted to them, or it would no longer be a copy.
 
 ### 8. Entscheidungs-Grammatik
 
