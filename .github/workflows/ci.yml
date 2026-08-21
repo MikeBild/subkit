@@ -180,12 +180,11 @@ jobs:
       - name: Validate docker compose
         run: docker compose config > /dev/null
 
-  # The cockpit convention check — the same stage `bun run verify` runs
-  # locally (package.json), spelled out here because ci.yml enumerates stages
-  # and never calls `verify`. A stage that lives only in `verify` is enforced
-  # on the machines of people who remember to type it; tests/contract/
-  # ci-workflows.test.ts holds this correspondence so the sentence above
-  # cannot quietly become false.
+  # The cockpit convention check — the same stage `bun run verify` runs locally
+  # (package.json), spelled out here because ci.yml enumerates stages and never
+  # calls `verify`. tests/contract/ci-workflows.test.ts holds the two in
+  # correspondence, so neither side can drop it quietly. Still absent from the
+  # pre-push hook: a push can be green locally and fail here.
   #
   # Its own job rather than a step in `quality`: it is the only check that
   # needs a browser, the install below costs about a minute, and running it in

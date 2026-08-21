@@ -30,7 +30,7 @@ import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
  * agreement nobody holds it to any more.
  *
  * The number READ from the file is the label (`konventionVersionImRepo`, printed
- * as "Maßstab"). Label and assert stand side by side on purpose — one says what
+ * as "Standard"). Label and assert stand side by side on purpose — one says what
  * was measured against, the other says whether that is still the family's yardstick.
  */
 const KONVENTION_VERSION = "1.5";
@@ -888,12 +888,12 @@ function gap(where, why) {
 // findings, not accidents — and a verdict that stays silent about them reads
 // wider than it is.
 gap(
-  "Wortmarke in der eingeklappten Schiene",
-  "gemessen wird nur die ausgeklappte Seitenleiste — wer Icon oder Name im eingeklappten Zustand zerstört, kommt hier durch",
+  "wordmark in the collapsed rail",
+  "only the expanded sidebar is measured — breaking the icon or the name while collapsed passes here",
 );
 gap(
-  "Katalog en",
-  "jede Regel läuft gegen de. Die stille Klasse: §2 verbietet einen ZUSTAND, geprüft wird das WORT „Unbekannt“ — auf en heißt derselbe Zustand „Unknown“ und fällt nicht auf",
+  "catalogue en",
+  "every rule runs against de. The silent class: §2 forbids a STATE, what is measured is the WORD „Unbekannt“ — on en the same state reads „Unknown“ and goes unnoticed",
 );
 
 /** The detail surfaces the sweep actually reached, named in the verdict. */
@@ -918,7 +918,7 @@ function checkKonventionVersion() {
       400,
     );
   } catch (error) {
-    breach("§7", where, `keine lesbare Konventions-Kopie im Repo-Root (${String(error)})`);
+    breach("§7", where, `no readable convention copy in the repo root (${String(error)})`);
     return;
   }
   konventionVersionImRepo = header.match(/^Version (\d+\.\d+)/m)?.[1] ?? null;
@@ -926,7 +926,7 @@ function checkKonventionVersion() {
     breach(
       "§7",
       where,
-      `Version ${konventionVersionImRepo ?? "(keine Kopfzeile mit Version)"} — dieser Check ist von Hand gegen v${KONVENTION_VERSION} geschrieben`,
+      `version ${konventionVersionImRepo ?? "(no version in the header line)"} — this check is written by hand against v${KONVENTION_VERSION}`,
     );
 }
 
@@ -983,7 +983,7 @@ async function checkWordmark(page) {
   const where = "/overview · Seitenleiste [data-testid=cockpit-wordmark]";
   const wordmark = page.locator('[data-testid="cockpit-wordmark"]');
   if ((await wordmark.count()) === 0) {
-    breach("§6 (Wortmarke)", where, 'keine Wortmarke mit data-testid="cockpit-wordmark" im DOM');
+    breach("§6 (Wortmarke)", where, 'no wordmark with data-testid="cockpit-wordmark" in the DOM');
     return;
   }
 
@@ -1023,12 +1023,12 @@ async function checkWordmark(page) {
     breach(
       "§6 (Wortmarke)",
       where,
-      `"${seen.containerText.trim().split("\n")[0] ?? ""}" — "${PRODUCT_NAME}" steht nicht zeichengenau darin`,
+      `"${seen.containerText.trim().split("\n")[0] ?? ""}" — does not contain "${PRODUCT_NAME}" character for character`,
     );
 
   // 2 — no all-caps and no all-lowercase, measured on the rendered element.
   if (!seen.hasName) {
-    breach("§6 (Wortmarke)", where, 'keine Namenszeile mit data-testid="cockpit-wordmark-name"');
+    breach("§6 (Wortmarke)", where, 'no name line with data-testid="cockpit-wordmark-name"');
   } else {
     if (seen.transform === "uppercase" || seen.transform === "lowercase")
       breach(
@@ -1056,11 +1056,11 @@ async function checkWordmark(page) {
 
   // 3 — an icon element, visible, beside the name.
   if (!seen.hasIcon) {
-    breach("§6 (App-Icon)", where, "kein Icon-Element neben dem Namen");
+    breach("§6 (App-Icon)", where, "no icon element beside the name");
   } else if (!seen.iconVisible) {
-    breach("§6 (App-Icon)", where, "das Icon-Element steht im DOM, ist aber nicht sichtbar");
+    breach("§6 (App-Icon)", where, "the icon element is in the DOM but not visible");
   } else if (seen.hasName && !seen.iconBeforeName) {
-    breach("§6 (App-Icon)", where, "das Icon steht nicht vor dem Namen");
+    breach("§6 (App-Icon)", where, "the icon does not precede the name");
   }
 }
 
@@ -1068,7 +1068,7 @@ async function checkWordmark(page) {
 async function checkBrowserTitle(page) {
   const title = await page.title();
   if (title !== BROWSER_TITLE)
-    breach("§6 (Browser-Titel)", "/overview · <title>", `"${title}" statt "${BROWSER_TITLE}"`);
+    breach("§6 (Browser-Titel)", "/overview · <title>", `"${title}" instead of "${BROWSER_TITLE}"`);
 }
 
 /**
@@ -1084,7 +1084,7 @@ async function checkFavicon(page) {
     return link ? link.getAttribute("href") : null;
   });
   if (!href) {
-    breach("§6 (App-Icon)", where, 'kein <link rel="icon"> im Dokument');
+    breach("§6 (App-Icon)", where, 'no <link rel="icon"> in the document');
     return;
   }
 
@@ -1099,7 +1099,7 @@ async function checkFavicon(page) {
     breach(
       "§6 (App-Icon)",
       at,
-      `der Verweis löst außerhalb des Basispfads "${COCKPIT_BASE}" auf — dort liefert die Engine nichts aus`,
+      `the reference resolves outside the base path "${COCKPIT_BASE}" — the engine serves nothing there`,
     );
 
   const response = await page.request.get(resolved);
@@ -1113,7 +1113,7 @@ async function checkFavicon(page) {
     breach(
       "§6 (App-Icon)",
       at,
-      `Status 200, aber Content-Type "${type}" — der Verweis landet auf der SPA-Rückfalllinie, nicht auf dem Icon`,
+      `status 200 but content type "${type}" — the reference lands on the SPA fallback, not on the icon`,
     );
     return;
   }
@@ -1132,7 +1132,7 @@ async function checkFavicon(page) {
     breach(
       "§6 (App-Icon)",
       at,
-      "Status 200 und Bild-Content-Type, aber der Browser dekodiert die Datei nicht — der Reiter bleibt leer",
+      "status 200 and an image content type, but the browser does not decode the file — the tab stays empty",
     );
 }
 
@@ -1140,7 +1140,7 @@ async function checkFavicon(page) {
 async function checkAdminGroupName(page) {
   const group = page.locator('[data-testid="nav-group-admin"]');
   if ((await group.count()) === 0) {
-    breach("§6", "/overview · Sidebar", "keine Admin-Nav-Gruppe vorhanden");
+    breach("§6", "/overview · Sidebar", "no admin nav group present");
     return;
   }
   const label = (await group.first().innerText()).split("\n")[0]?.trim() ?? "";
@@ -1171,7 +1171,7 @@ async function checkInstallationEntries(page) {
   if (labels === null) return;
   for (const entry of INSTALLATION_ENTRIES) {
     if (!labels.includes(entry))
-      breach("§6", "/overview · nav-group-admin", `Eintrag "${entry}" fehlt`);
+      breach("§6", "/overview · nav-group-admin", `entry "${entry}" is missing`);
   }
 }
 
@@ -1186,7 +1186,7 @@ async function checkInstallationEntries(page) {
 async function checkDecisionsNavEntry(page) {
   const entry = page.locator('[data-testid="nav-decisions"]');
   if ((await entry.count()) === 0) {
-    breach("§6, §8.1", "/overview · Sidebar", 'kein Nav-Eintrag "Entscheidungen"');
+    breach("§6, §8.1", "/overview · Sidebar", 'no nav entry "Entscheidungen"');
     return;
   }
   const label = (await entry.first().innerText()).trim();
@@ -1212,18 +1212,18 @@ async function checkDecisionsNavEntry(page) {
     breach(
       "§6, §8.1",
       "/overview · nav-decisions",
-      `steht unter der Gruppenüberschrift "${placement.groupHeading}" statt ungruppiert`,
+      `sits under the group heading "${placement.groupHeading}" instead of ungrouped`,
     );
   if (placement && placement.previous !== "nav-overview")
     breach(
       "§8.1",
       "/overview · nav-decisions",
-      `steht nicht direkt unter der Übersicht (davor: ${placement.previous})`,
+      `does not sit directly below the overview (preceded by: ${placement.previous})`,
     );
 
   const badge = page.locator('[data-testid="nav-decisions-count"]');
   if ((await badge.count()) === 0) {
-    breach("§8.1", "/overview · nav-decisions", "kein Zähler-Badge am Eintrag");
+    breach("§8.1", "/overview · nav-decisions", "no counter badge on the entry");
     return null;
   }
   return (await badge.first().innerText()).trim();
@@ -1258,11 +1258,15 @@ async function checkIncidentBanner(page, gateOpen) {
   const present = (await banner.count()) > 0;
   if (!gateOpen) {
     if (present)
-      breach("§8.7", "/overview (Fixture ohne offenes Gate)", "Banner trotz all-clear sichtbar");
+      breach(
+        "§8.7",
+        "/overview (fixture without an open gate)",
+        "banner visible despite all-clear",
+      );
     return;
   }
   if (!present) {
-    breach("§8.7", "/overview (Fixture mit offenem Gate)", "kein Incident-Banner im DOM");
+    breach("§8.7", "/overview (fixture with an open gate)", "no incident banner in the DOM");
     return;
   }
   const shape = await page.evaluate(() => {
@@ -1274,18 +1278,18 @@ async function checkIncidentBanner(page, gateOpen) {
     return { before, links };
   });
   if (!shape) {
-    breach("§8.7", "/overview", "Kacheln fehlen, Bannerposition nicht bestimmbar");
+    breach("§8.7", "/overview", "tiles missing, banner position cannot be determined");
     return;
   }
-  if (!shape.before) breach("§8.7", "/overview", "Banner steht im DOM nach den Kacheln");
+  if (!shape.before) breach("§8.7", "/overview", "banner sits after the tiles in the DOM");
   if (shape.links.length !== 1)
     breach(
       "§8.7",
       "/overview · overview-incident",
-      `${shape.links.length} Links statt genau einem`,
+      `${shape.links.length} links instead of exactly one`,
     );
   else if (!shape.links[0].includes("/decisions"))
-    breach("§8.7", "/overview · overview-incident", `Link zeigt auf ${shape.links[0]}`);
+    breach("§8.7", "/overview · overview-incident", `link points at ${shape.links[0]}`);
   return checkBannerSubset(page);
 }
 
@@ -1326,7 +1330,7 @@ async function checkBannerSubset(page) {
     };
   });
   if (!subset) {
-    breach("§8.1", "/overview · overview-incident", "Banner nennt keine Teilmenge");
+    breach("§8.1", "/overview · overview-incident", "banner names no subset");
     return null;
   }
   const count = Number(subset.count);
@@ -1335,7 +1339,7 @@ async function checkBannerSubset(page) {
     breach(
       "§8.1",
       "/overview · incident-decisions-count",
-      `Teilmenge ${subset.count} passt nicht in Gesamtzahl ${subset.total}`,
+      `subset ${subset.count} does not fit inside total ${subset.total}`,
     );
 
   const claims = {};
@@ -1354,19 +1358,23 @@ async function checkBannerSubset(page) {
     }
     const [, label, , share, base] = match;
     if (Number(share) !== Number(claim.count))
-      breach("§8.1", `/overview · ${testId}`, `Satz nennt ${share}, das Attribut ${claim.count}`);
+      breach(
+        "§8.1",
+        `/overview · ${testId}`,
+        `sentence says ${share}, the attribute says ${claim.count}`,
+      );
     if (Number(base) !== total)
-      breach("§8.1", `/overview · ${testId}`, `Satz nennt Gesamtzahl ${base} statt ${total}`);
+      breach("§8.1", `/overview · ${testId}`, `sentence gives total ${base} instead of ${total}`);
     claims[name] = { label: label.trim(), count: Number(claim.count) };
   }
   if (named === 0)
-    breach("§8.7", "/overview · overview-incident", "Banner nennt keine einzige Teilmenge");
+    breach("§8.7", "/overview · overview-incident", "banner names not a single subset");
   const stated = Object.values(claims).reduce((sum, claim) => sum + claim.count, 0);
   if (stated !== count)
     breach(
       "§8.1",
       "/overview · overview-incident",
-      `Teilmenge ${count}, benannt sind aber nur ${stated}`,
+      `subset ${count}, but only ${stated} are named`,
     );
   return { total, claims };
 }
@@ -1378,7 +1386,7 @@ async function readZoneACount(page) {
     return element instanceof HTMLElement ? element.innerText.trim() : null;
   });
   if (value === null) {
-    breach("§1, §8.1", "/overview · overview-waiting", "Zone A nennt keine Anzahl");
+    breach("§1, §8.1", "/overview · overview-waiting", "zone A names no count");
     return null;
   }
   return Number(value);
@@ -1402,13 +1410,11 @@ async function checkOperationsIsToolsOnly(page) {
       link: Boolean(document.querySelector('[data-testid="operations-open-overview"]')),
     };
   }, FAILURE_GROUPS[0].cause);
-  if (echo.cause)
-    breach("§12", "/operations", "wiederholt die Fehlergruppen-Ursache der Übersicht");
+  if (echo.cause) breach("§12", "/operations", "repeats the overview's error-group cause");
   if (echo.groups > 0)
-    breach("§12", "/operations", `${echo.groups} Fehlergruppen-Zeilen neben der Übersicht`);
-  if (echo.risks > 0)
-    breach("§12", "/operations", `${echo.risks} Risiko-Zeilen neben der Übersicht`);
-  if (!echo.link) breach("§12", "/operations", "kein Weg zu den Befunden auf der Übersicht");
+    breach("§12", "/operations", `${echo.groups} error-group rows beside the overview`);
+  if (echo.risks > 0) breach("§12", "/operations", `${echo.risks} risk rows beside the overview`);
+  if (!echo.link) breach("§12", "/operations", "no way to the findings on the overview");
 }
 
 /**
@@ -1424,7 +1430,7 @@ const AGED_RUBRIC = "Liegt schon länger";
 async function checkAgingRubric(page) {
   const aged = page.locator('[data-testid="decisions-aged"]');
   if ((await aged.count()) === 0) {
-    breach("§8.2", "/decisions", "keine Aging-Rubrik, obwohl Positionen älter als 3 Tage sind");
+    breach("§8.2", "/decisions", "no aging rubric although positions are older than 3 days");
     return;
   }
   const heading = (await aged.first().locator("h1, h2, h3, h4").first().innerText()).trim();
@@ -1439,10 +1445,14 @@ async function checkAgingRubric(page) {
   );
   const wearing = headings.filter((entry) => entry === AGED_RUBRIC).length;
   if (wearing !== 1)
-    breach("§8.2", "/decisions", `${wearing} Rubriken heißen "${AGED_RUBRIC}" statt genau einer`);
+    breach(
+      "§8.2",
+      "/decisions",
+      `${wearing} rubrics are called "${AGED_RUBRIC}" instead of exactly one`,
+    );
   for (const forbidden of ["Kann warten"]) {
     if (headings.includes(forbidden))
-      breach("§8.2", "/decisions", `Rubrik "${forbidden}" urteilt für den Leser`);
+      breach("§8.2", "/decisions", `rubric "${forbidden}" judges on the reader's behalf`);
   }
 }
 
@@ -1485,12 +1495,12 @@ async function checkRubricLanguage(page) {
       breach(
         "§8.2",
         `/decisions · ${testId}`,
-        `Rubrik "${expected}" fehlt — ihr Wortlaut bleibt ungeprüft`,
+        `rubric "${expected}" is missing — its wording stays unmeasured`,
       );
       continue;
     }
     if (actual !== expected)
-      breach("§5", `/decisions · ${testId}`, `Rubrik heißt "${actual}" statt "${expected}"`);
+      breach("§5", `/decisions · ${testId}`, `rubric reads "${actual}" instead of "${expected}"`);
   }
 }
 
@@ -1523,7 +1533,11 @@ async function checkQueueHeader(page) {
     return element instanceof HTMLElement ? element.innerText.replace(/\s+/g, " ").trim() : null;
   });
   if (line === null) {
-    breach("§8.1", "/decisions · decisions-sources", "die Queue nennt ihre Herkunft nicht");
+    breach(
+      "§8.1",
+      "/decisions · decisions-sources",
+      "the queue does not name where its positions come from",
+    );
     return;
   }
   if (line !== QUEUE_HEADER) breach("§8.1", "/decisions · decisions-sources", line);
@@ -1688,20 +1702,20 @@ async function checkCorrectionTitles(page) {
     }),
   );
   if (cards.length === 0) {
-    breach("§5", "/decisions", "keine Korrektur-Karten gefunden, Titel-Regel ungeprüft");
+    breach("§5", "/decisions", "no correction cards found, the title rule stays unmeasured");
     return;
   }
   const notes = PATCH_CANDIDATES.map((candidate) => candidate.diff.proposal.description);
   for (const card of cards) {
     if (!card.title || !/^Korrektur(: | für )/.test(card.title))
-      breach("§5", "/decisions · Korrektur-Karte", `Titel "${card.title}"`);
+      breach("§5", "/decisions · correction card", `title "${card.title}"`);
     else if (notes.includes(card.title))
-      breach("§5", "/decisions · Korrektur-Karte", `Titel ist der Änderungstext der Engine`);
+      breach("§5", "/decisions · correction card", `title is the engine's own change note`);
   }
   // The English note is the detail, and dropping it would trade one loss for
   // another: the reader still has to be able to see what would change.
   if (!cards.some((card) => card.summary && notes.includes(card.summary)))
-    breach("§5", "/decisions · Korrektur-Karte", "der Änderungstext der Engine fehlt ganz");
+    breach("§5", "/decisions · correction card", "the engine's change note is missing entirely");
 }
 
 /**
@@ -1735,11 +1749,7 @@ async function checkScreenReaderLanguage(page, where) {
   ]);
   for (const caption of captions) {
     if (!GERMAN_CAPTIONS.some((pattern) => pattern.test(caption)))
-      breach(
-        "§5",
-        where,
-        `Screenreader-Beschriftung "${caption}" steht nicht im deutschen Katalog`,
-      );
+      breach("§5", where, `screen-reader caption "${caption}" is not in the German catalogue`);
   }
 }
 
@@ -1794,14 +1804,14 @@ async function checkCuratedFieldLabels(page, where) {
       .filter((text) => /^[a-z][a-z0-9]*(?: [a-z0-9]+)*$/.test(text)),
   );
   for (const label of new Set(raw))
-    breach("§5", where, `Feldname "${label}" ist ein durchgereichter Engine-Schlüssel`);
+    breach("§5", where, `field name "${label}" is a passed-through engine key`);
 }
 
 /** §5 — a point in time is a readable time, not the transport's encoding. */
 async function checkNoRawTimestamps(page, where) {
   const text = await page.locator("body").innerText();
   const match = text.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
-  if (match) breach("§5", where, `roher Zeitstempel auf der Fläche: ${match[0]}…`);
+  if (match) breach("§5", where, `raw timestamp on the surface: ${match[0]}…`);
 }
 
 /**
@@ -1828,13 +1838,13 @@ async function checkResumeLine(page) {
     return element instanceof HTMLElement ? element.innerText.trim() : null;
   });
   if (line === null) {
-    breach("§5", "/chat · chat-summary", "keine Zustandszeile der Unterhaltung");
+    breach("§5", "/chat · chat-summary", "no conversation state line");
     return;
   }
   if (line === RESUME_SUMMARY.one_sentence)
-    breach("§5", "/chat · chat-summary", `der Satz der Engine steht wörtlich da: "${line}"`);
+    breach("§5", "/chat · chat-summary", `the engine's sentence is reproduced verbatim: "${line}"`);
   else if (line !== RESUME_LINE)
-    breach("§5", "/chat · chat-summary", `"${line}" statt "${RESUME_LINE}"`);
+    breach("§5", "/chat · chat-summary", `"${line}" instead of "${RESUME_LINE}"`);
 }
 
 /**
@@ -1880,17 +1890,17 @@ async function checkCounterCoherence(page, surfaces) {
     breach(
       "§8.1",
       "/decisions",
-      `${rendered.positions} Positionen gerendert, Fixture liefert ${QUEUE_SHOWN} verschiedene`,
+      `${rendered.positions} positions rendered, the fixture serves ${QUEUE_SHOWN} distinct ones`,
     );
   const distinct = new Set(rendered.keys.filter((key) => key !== null));
   if (distinct.size !== rendered.positions)
     breach(
       "§8.1",
       "/decisions",
-      `${rendered.positions} Karten, aber ${distinct.size} verschiedene Positionen — doppelt gezählt`,
+      `${rendered.positions} cards but ${distinct.size} distinct positions — counted twice`,
     );
   if (rendered.total === null) {
-    breach("§8.1", "/decisions · decisions-queue", "Queue nennt ihre Gesamtzahl nicht");
+    breach("§8.1", "/decisions · decisions-queue", "the queue does not name its total");
     return;
   }
 
@@ -1907,14 +1917,14 @@ async function checkCounterCoherence(page, surfaces) {
       breach(
         "§8.1",
         `/overview + /decisions · ${where}`,
-        `zeigt ${value}, die Queue zählt ${queueTotal}`,
+        `shows ${value}, the queue counts ${queueTotal}`,
       );
   }
   if (queueTotal !== QUEUE_TOTAL)
     breach(
       "§8.1",
       "/decisions · decisions-queue",
-      `Gesamtzahl ${queueTotal}, Fixture-Endpunkte melden ${QUEUE_TOTAL}`,
+      `total ${queueTotal}, the fixture endpoints report ${QUEUE_TOTAL}`,
     );
   // The fixture delivers fewer positions than the engine counts, so the page
   // must say so rather than let the badge and the column disagree in silence.
@@ -1922,7 +1932,7 @@ async function checkCounterCoherence(page, surfaces) {
     breach(
       "§8.1",
       "/decisions · decisions-queue",
-      `${rendered.positions} von ${queueTotal} gezeigt, aber nicht als gekürzt ausgewiesen`,
+      `${rendered.positions} of ${queueTotal} shown, but not declared as capped`,
     );
 }
 
@@ -1938,10 +1948,7 @@ async function checkCounterCoherence(page, surfaces) {
  */
 function checkBannerAgainstRubrics(banner, rubrics) {
   if (!banner) {
-    gap(
-      "/overview vs. /decisions",
-      "kein gelesenes Banner — der Abgleich von Banner und Rubriken entfällt",
-    );
+    gap("/overview vs. /decisions", "no banner was read — banner and rubrics cannot be reconciled");
     return;
   }
   for (const [name, rubric] of Object.entries(rubrics)) {
@@ -1952,7 +1959,7 @@ function checkBannerAgainstRubrics(banner, rubrics) {
         breach(
           "§8.7",
           "/overview vs. /decisions",
-          `Banner behauptet "${claim.label}", die Queue führt die Rubrik nicht`,
+          `banner claims "${claim.label}", the queue has no such rubric`,
         );
       continue;
     }
@@ -1961,7 +1968,7 @@ function checkBannerAgainstRubrics(banner, rubrics) {
         breach(
           "§8.7",
           "/overview vs. /decisions",
-          `Queue führt ${rubric.count} unter "${rubric.heading}", das Banner schweigt dazu`,
+          `queue holds ${rubric.count} under "${rubric.heading}", the banner is silent about them`,
         );
       continue;
     }
@@ -1969,13 +1976,13 @@ function checkBannerAgainstRubrics(banner, rubrics) {
       breach(
         "§8.7",
         "/overview vs. /decisions",
-        `Banner nennt die Rubrik "${claim.label}", die Queue "${rubric.heading}"`,
+        `banner calls the rubric "${claim.label}", the queue calls it "${rubric.heading}"`,
       );
     if (claim.count !== rubric.count)
       breach(
         "§8.1",
         "/overview vs. /decisions",
-        `Banner zählt ${claim.count} für "${rubric.heading}", die Queue ${rubric.count}`,
+        `banner counts ${claim.count} for "${rubric.heading}", the queue ${rubric.count}`,
       );
   }
 
@@ -1983,7 +1990,7 @@ function checkBannerAgainstRubrics(banner, rubrics) {
     breach(
       "§8.7",
       "/decisions",
-      "keine belegte Rubrik, die nichts blockiert — die Banner-Abgrenzung ist ungeprüft",
+      "no populated rubric that blocks nothing — the banner boundary stays unmeasured",
     );
     return;
   }
@@ -1994,11 +2001,11 @@ function checkBannerAgainstRubrics(banner, rubrics) {
       breach(
         "§8.7",
         "/overview vs. /decisions",
-        `Banner behauptet "${rubrics.aged.heading}" — diese Rubrik blockiert nichts`,
+        `banner claims "${rubrics.aged.heading}" — that rubric blocks nothing`,
       );
   }
   if (stated === withAged)
-    breach("§8.7", "/overview", "Abgrenzung nicht prüfbar: die Alters-Rubrik ist leer");
+    breach("§8.7", "/overview", "boundary not measurable: the aged rubric is empty");
 }
 
 /**
@@ -2027,10 +2034,10 @@ async function checkFailureState(page, where) {
     text: document.body.innerText,
   }));
   if (!seen.shell || !seen.sidebar)
-    breach("§4", where, "die Hülle ist weg — ein Auffangschirm hat das Cockpit ersetzt");
-  if (!seen.mounted) breach("§4", where, "die Detailseite mountet nicht");
-  if (!seen.back) breach("§4", where, "kein Weg zurück");
-  if (!seen.state) breach("§4", where, "kein gestalteter Zustand für die unlesbare Antwort");
+    breach("§4", where, "the shell is gone — a catch-all screen replaced the cockpit");
+  if (!seen.mounted) breach("§4", where, "the detail page does not mount");
+  if (!seen.back) breach("§4", where, "no way back");
+  if (!seen.state) breach("§4", where, "no designed state for the unreadable response");
   for (const phrase of CATCH_ALL_PHRASES) {
     if (seen.text.includes(phrase)) breach("§5", where, `englischer Auffangschirm: "${phrase}"`);
   }
@@ -2044,10 +2051,10 @@ async function checkSilentWhenEmpty(page) {
     zoneA: Boolean(document.querySelector('[data-testid="zone-a-decisions-count"]')),
   }));
   if (present.badge)
-    breach("§8.1", "/overview (leere Queue)", "Zähler-Badge trotz null offener Positionen");
-  if (present.banner) breach("§8.7", "/overview (leere Queue)", "Banner trotz leerer Queue");
+    breach("§8.1", "/overview (empty queue)", "counter badge despite zero open positions");
+  if (present.banner) breach("§8.7", "/overview (empty queue)", "banner despite an empty queue");
   if (present.zoneA)
-    breach("§1", "/overview (leere Queue)", "Zone A nennt eine Zahl, obwohl nichts offen ist");
+    breach("§1", "/overview (empty queue)", "zone A states a number although nothing is open");
 }
 
 /**
@@ -2067,26 +2074,26 @@ async function sweepDetailSurface(page, route) {
   const opener = page.locator('[data-testid="data-table-open-0"]');
   if ((await opener.count()) === 0) {
     if ((await page.locator('[data-testid="data-table"]').count()) > 0)
-      gap(`/${route} · Detailfläche`, "die Liste bietet keine Zeile zum Öffnen");
+      gap(`/${route} · detail surface`, "the list offers no row to open");
     return;
   }
   const listUrl = page.url();
   try {
     await opener.first().click();
   } catch (error) {
-    gap(`/${route} · Detailfläche`, `Zeile lässt sich nicht öffnen: ${error.message}`);
+    gap(`/${route} · detail surface`, `row cannot be opened: ${error.message}`);
     return;
   }
   try {
     await page.waitForLoadState("networkidle", { timeout: 15_000 });
   } catch (error) {
-    gap(`/${route} · Detailfläche`, `wurde nach dem Öffnen nicht ruhig: ${error.message}`);
+    gap(`/${route} · detail surface`, `did not settle after opening: ${error.message}`);
     return;
   }
   // An address means a route, and a route is swept from the table.
   if (page.url() !== listUrl) return;
 
-  const where = `/${route} · Detailansicht`;
+  const where = `/${route} · detail view`;
   const shown = await page
     .locator('[role="dialog"]')
     .first()
@@ -2094,7 +2101,7 @@ async function sweepDetailSurface(page, route) {
     .then(() => true)
     .catch(() => false);
   if (!shown) {
-    gap(where, "Detailfläche erscheint nicht — die Fixture liefert dafür keinen Datensatz");
+    gap(where, "detail surface does not appear — the fixture serves no record for it");
     return;
   }
   // A skeleton is a promise, not a state: reading the page while one is up
@@ -2107,10 +2114,7 @@ async function sweepDetailSurface(page, route) {
       .first()
       .waitFor({ state: "detached", timeout: 8_000 });
   } catch {
-    gap(
-      where,
-      "zeigte nach 8s noch ein Skelett — gelesen wurde ihr Ladeverhalten, nicht die Seite",
-    );
+    gap(where, "still a skeleton after 8s — what was read is its loading behaviour, not the page");
     return;
   }
   swept.push(where);
@@ -2123,104 +2127,78 @@ async function sweepDetailSurface(page, route) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WESSEN KONSOLE ANTWORTET
+// WHOSE CONSOLE ANSWERED
 //
-// `startPreview` beantwortet „antwortet dort etwas?" und nicht „antwortet dort
-// SUBKIT?". Der Unterschied ist bei CodeKit real ausgelöst worden: WorkKit hielt
-// CodeKits Prüfstands-Port, und dieser Check erzeugte in 156 s acht Verstöße mit
-// CodeKits Namen über eine Oberfläche, die nie CodeKit war. Kein Timeout, kein
-// Absturz — ein vollständiger, überzeugender, falscher Bericht. Der ist teurer
-// als ein Timeout: der Timeout wird untersucht, die acht Verstöße werden
-// repariert.
+// `startPreview` answers "is something there?", not "is SubKit there?". At
+// CodeKit that gap produced 8 breaches in 156 s against a surface that was
+// WorkKit — no timeout, no crash, a complete and convincing false report.
 //
-// SubKit ist dafür besonders exponiert. Die Konvention macht die
-// DOM-Verankerungen in allen sechs Konsolen ABSICHTLICH gleich
-// (`cockpit-wordmark`, `operator-role`, `sidebar`, `page-title`), damit ein
-// Prüflauf überhaupt eine gemeinsame Verankerung hat — also erfüllt eine fremde
-// Schwesterkonsole ALLE Vorbedingungen, an denen dieser Lauf sonst scheitern
-// würde. Und die Prüfstände liegen dicht beieinander: CodeKit 4081 · WikiKit
-// 4173 · SubKit 4176 · WatchKit 4183 · WorkKit 4192. Ein Tippfehler in
-// COCKPIT_PREVIEW_PORT, ein vergessener Dev-Server oder ein seit Wochen
-// laufender Fremdserver genügt; `--strictPort` verhindert nur, dass DIESER Lauf
-// ausweicht, nicht dass dort schon jemand anders sitzt. Mit COCKPIT_BASE_URL
-// fällt selbst dieser Schutz weg.
+// The family makes it likely: §7 keeps the DOM anchors identical across all six
+// consoles, so a sister console satisfies every precondition this run would
+// otherwise fail on, and the stands sit next to each other (4081 · 4173 · 4176
+// · 4183 · 4192).
 //
-// WARUM DER MARKER ABGELEITET UND NICHT ABGETIPPT IST
-//
-// CodeKit hat es mit einem Marker im gelieferten Dokument gelöst und die
-// Schwäche seiner Fassung selbst benannt: dort steht der Sollwert als LITERAL im
-// Skript, während ein Contract-Test denselben Wert importiert. Wer den Marker
-// umbenennt, bekommt „fremdes Dokument" über die EIGENE Konsole — die Meldung,
-// die am teuersten falsch ist. Hier gibt es deshalb genau EINE Definitionsstelle,
-// `apps/cockpit/index.html`, und dieser Assert LIEST den Sollwert von dort.
-// Umbenanntes Attribut heißt dann nicht „fremdes Dokument", sondern den Satz,
-// der wahr ist: der Sollwert ist aus dieser Datei nicht mehr ableitbar — ein
-// Befund über dieses Repository.
-//
-// Und ausdrücklich NICHT Titel oder Wortmarke: beides sind Regeln, die dieser
-// Lauf gebrochen finden können muss (§6 — `checkWordmark`, `checkBrowserTitle`).
-// Eine Kennung, die zugleich Prüfgegenstand ist, macht aus jedem echten Verstoß
-// ein „das ist gar nicht SubKit" und misst danach nichts mehr. Deshalb benutzt
-// dieser Assert `PRODUCT_NAME` nicht, obwohl die Konstante weiter oben steht.
+// The expected value is DERIVED, never typed: one definition site,
+// apps/cockpit/index.html. A renamed attribute then reports the true sentence —
+// the value is no longer derivable from that file — instead of "foreign
+// document" about our own console. And deliberately not the title or wordmark:
+// §6 must be able to find those broken, and an identity that is also under test
+// turns every real breach into "that is not SubKit".
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Das Attribut, das die Konsole ihrem Dokument mitgibt. */
+/** The attribute the console stamps on its document. */
 const IDENTITY_META = "cockpit-product";
 
 /**
- * Ein Lauf, der NICHT gemessen hat — im Unterschied zu einem, der gemessen und
- * Verstöße gefunden hat.
+ * A run that did not measure, as opposed to one that measured and found breaches.
  *
- * Der Ausgang trennt die beiden: 1 heißt „gemessen und rot", 2 heißt „es wurde
- * nichts gemessen". Für eine Pflichtstufe ist das der Unterschied zwischen einer
- * Arbeitsliste und einem Grund, die Stufe stummzuschalten — und genau die
- * Verwechslung hat bei CodeKit acht Reparaturen an einer fremden Oberfläche
- * ausgelöst.
+ * Exit 1 is a work list, exit 2 is an absent measurement. For a mandatory gate
+ * stage that is the difference between repairing and muting — the confusion that
+ * cost CodeKit eight repairs on someone else's surface.
  */
 class NichtGemessen extends Error {}
 
-/** Der Marker eines Dokuments, oder `null`, wenn es keinen trägt. */
+/** A document's marker, or null if it carries none. */
 function markerIn(html) {
   return (
     new RegExp(`<meta[^>]+name="${IDENTITY_META}"[^>]+content="([^"]+)"`).exec(html)?.[1] ?? null
   );
 }
 
-/** Die bestätigte Kennung des Prüfstands — nur für den Bericht, nie für einen Assert. */
+/** The stand's confirmed identity — for the report only, never for an assert. */
 let gemesseneKennung = null;
 
 /**
- * Prüft, WESSEN Konsole geantwortet hat — bevor eine einzige Regel gemessen wird.
+ * Whose console answered — asked before a single rule is measured.
  *
- * Wirft, statt zu berichten, und zwar mit Absicht: ein fremdes Gegenüber ist kein
- * Konventionsverstoß, sondern ein Lauf, der nicht stattgefunden hat. Ein Verstoß
- * wäre eine Zeile in einer Arbeitsliste, die jemand abarbeitet — an einer
- * Oberfläche, die diesem Repository nicht gehört.
+ * Throws rather than reports: a foreign console is not a breach, it is a run
+ * that did not happen. A breach would become a line someone works off, on a
+ * surface this repository does not own.
  */
 function assertPruefstandsKennung(html) {
   const quelle = new URL("../apps/cockpit/index.html", import.meta.url);
   const erwartet = markerIn(readFileSync(quelle, "utf8"));
   if (erwartet === null) {
     throw new NichtGemessen(
-      `apps/cockpit/index.html trägt kein <meta name="${IDENTITY_META}" content="…"> mehr. ` +
-        "Der Kennungs-Assert leitet seinen Sollwert aus dieser Datei ab und hat jetzt keinen — " +
-        `das ist ein Befund über DIESES Repository und keine Aussage über das Gegenüber auf ${baseUrl}.`,
+      `apps/cockpit/index.html no longer carries <meta name="${IDENTITY_META}" content="…">. ` +
+        "The identity assert derives its expected value from that file and now has none — " +
+        `a finding about THIS repository, and no statement about whatever answers on ${baseUrl}.`,
     );
   }
   const geliefert = markerIn(html);
   if (geliefert === null) {
-    const titel = /<title>([^<]*)<\/title>/.exec(html)?.[1]?.trim() ?? "(kein <title>)";
+    const titel = /<title>([^<]*)<\/title>/.exec(html)?.[1]?.trim() ?? "(no <title>)";
     throw new NichtGemessen(
-      `das ist nicht ${erwartet}: das Dokument auf ${baseUrl} trägt keinen ` +
-        `<meta name="${IDENTITY_META}">. Sein Titel lautet „${titel}“. ` +
-        "Hört dort eine Schwesterkonsole? Die DOM-Verankerungen sind familienweit gleich, " +
-        `also hätte dieser Lauf sie gemessen und die Verstöße ${erwartet} zugeschrieben.`,
+      `this is not ${erwartet}: the document on ${baseUrl} carries no ` +
+        `<meta name="${IDENTITY_META}">. Its title reads "${titel}". ` +
+        "A sister console listening there? The DOM anchors are identical family-wide, so this " +
+        `run would have measured them and filed the breaches under ${erwartet}.`,
     );
   }
   if (geliefert !== erwartet) {
     throw new NichtGemessen(
-      `das ist nicht ${erwartet}, sondern ${geliefert}: das Dokument auf ${baseUrl} nennt sich ` +
-        `„${geliefert}“, apps/cockpit/index.html nennt „${erwartet}“. Gemessen wurde nichts.`,
+      `this is not ${erwartet} but ${geliefert}: the document on ${baseUrl} calls itself ` +
+        `"${geliefert}", apps/cockpit/index.html names "${erwartet}". Nothing was measured.`,
     );
   }
   gemesseneKennung = erwartet;
@@ -2228,18 +2206,18 @@ function assertPruefstandsKennung(html) {
 }
 
 async function startPreview() {
-  // Auch der fremde Stand wird abgerufen, bevor irgendetwas misst: mit
-  // COCKPIT_BASE_URL zeigt dieser Lauf auf ein Gegenüber, das niemand für ihn
-  // gestartet hat — der Fall, in dem die Kennungsfrage am nötigsten ist.
+  // A foreign stand is fetched before anything measures too: with COCKPIT_BASE_URL
+  // this run points at something nobody started for it, which is where the
+  // identity question matters most.
   if (externalBaseUrl) {
     let response;
     try {
       response = await fetch(`${baseUrl}/cockpit/`);
     } catch (error) {
-      throw new NichtGemessen(`${baseUrl}/cockpit/ war nicht erreichbar: ${error.message}`);
+      throw new NichtGemessen(`${baseUrl}/cockpit/ was not reachable: ${error.message}`);
     }
     if (!response.ok)
-      throw new NichtGemessen(`${baseUrl}/cockpit/ antwortete mit HTTP ${response.status}`);
+      throw new NichtGemessen(`${baseUrl}/cockpit/ answered with HTTP ${response.status}`);
     return { server: null, shell: await response.text() };
   }
   const server = spawn(
@@ -2261,11 +2239,9 @@ async function startPreview() {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`${baseUrl}/cockpit/`);
-      // Der RUMPF wird hier gelesen, nicht nur der Statuscode: „dort antwortet
-      // etwas" ist nicht „dort antwortet SubKit". Und aus DIESER Antwort, nicht
-      // aus einem zweiten Abruf — zwischen zwei Abrufen kann das Gegenüber ein
-      // anderes sein, und dann prüfte die Kennung ein Dokument, das der Lauf
-      // nie gemessen hat.
+      // The BODY, not just the status code, and from THIS response rather than a
+      // second fetch: between two fetches the peer can change, and the identity
+      // would then vouch for a document the run never measured.
       if (response.ok) return { server, shell: await response.text() };
     } catch {
       // The server is still binding; the deadline is the only give-up signal.
@@ -2312,11 +2288,8 @@ try {
   const preview = await startPreview();
   server = preview.server;
 
-  // Wessen Konsole hat geantwortet? Aus DEMSELBEN Dokument gelesen, auf das
-  // `startPreview` gewartet hat, und VOR dem Browserstart. Erst nach der Messung
-  // zu fragen hieße, minutenlang Verstöße über eine fremde Oberfläche zu
-  // sammeln, bevor der Lauf sie verwirft — bei CodeKit waren es 156 Sekunden und
-  // acht Befunde.
+  // Read from the SAME document `startPreview` waited on, and BEFORE the browser
+  // starts. Asking afterwards costs a full run first: 156 s and eight findings.
   assertPruefstandsKennung(preview.shell);
 
   browser = await chromium.launch({ headless: true });
@@ -2369,7 +2342,7 @@ try {
     try {
       page = await openPage(context, route);
     } catch (error) {
-      breach("§6", `/${route}`, `Seite mountet nicht: ${error.message}`);
+      breach("§6", `/${route}`, `page does not mount: ${error.message}`);
       continue;
     }
     await checkNoUnknownState(page, `/${route}`);
@@ -2451,64 +2424,59 @@ const report = gescheitert ? console.error : console.log;
 // file carries by hand is the part that can fail.
 const massstab = konventionVersionImRepo
   ? `COCKPIT-KONVENTION.md v${konventionVersionImRepo}`
-  : "COCKPIT-KONVENTION.md (Kopfzeile ohne lesbare Version)";
-// Die Kennung steht in BEIDEN Ausgängen neben dem Prüfstand. „vite preview auf
-// 127.0.0.1:4176" ist eine Adresse und keine Identität; wer dort saß, sagt erst
-// das Attribut aus dem gelieferten Dokument.
-//
-// Ohne bestätigte Kennung wird die Beschreibung ZURÜCKGENOMMEN, nicht nur
-// eingeschränkt: „die gebaute Fassung, also der Stand, den die Engine
-// ausliefert" ist über eine fremde Konsole schlicht falsch, und ein „· Kennung
-// nicht bestätigt" dahinter macht einen falschen Satz nicht wahr.
+  : "COCKPIT-KONVENTION.md (header line without a readable version)";
+// The identity stands beside the stand in BOTH outcomes: an address is not an
+// identity. Without a confirmed one the description is WITHDRAWN rather than
+// qualified — "the built version the engine ships" is simply false about a
+// foreign console, and a trailing caveat does not make a false sentence true.
 const pruefstand =
   gemesseneKennung === null
-    ? `${baseUrl} — WESSEN Konsole dort antwortet, ist ungeklärt; über den gemessenen Stand ist damit nichts gesagt`
+    ? `${baseUrl} — WHOSE console answered there is unresolved, so nothing is said about what was measured`
     : externalBaseUrl
-      ? `fremder Stand unter ${externalBaseUrl} · Kennung ${gemesseneKennung} (aus <meta name="${IDENTITY_META}"> des gelieferten Dokuments)`
-      : `die GEBAUTE Fassung — vite preview auf ${baseUrl}, also der Stand, den die Engine ausliefert, nicht der Dev-Server · Kennung ${gemesseneKennung} (aus <meta name="${IDENTITY_META}"> des gelieferten Dokuments)`;
+      ? `foreign stand at ${externalBaseUrl} · identity ${gemesseneKennung} (from <meta name="${IDENTITY_META}"> of the served document)`
+      : `the BUILT version — vite preview on ${baseUrl}, the stand the engine ships rather than the dev server · identity ${gemesseneKennung} (from <meta name="${IDENTITY_META}"> of the served document)`;
 
 report(
-  `Maßstab: ${massstab} (Kopfzeile der Repo-Kopie) · dieser Check ist von Hand gegen v${KONVENTION_VERSION} geschrieben`,
+  `Standard: ${massstab} (header line of the repo copy) · this check is written by hand against v${KONVENTION_VERSION}`,
 );
-report(`Prüfstand: ${pruefstand}`);
-report("Sprache: nur de (sk-cockpit-locale=de, Browser-Locale de-DE)");
+report(`Stand: ${pruefstand}`);
+report("Language: de only (sk-cockpit-locale=de, browser locale de-DE)");
 report(
   abbruch
-    ? `Geprüft: unvollständig — der Lauf brach bei Route ${besuchteRouten} von ${ROUTES.length} der Router-Tabelle ab, ${ROUTES.length - besuchteRouten} wurden nie angesehen`
-    : `Geprüft: ${ROUTES.length} Routen aus der Router-Tabelle` +
+    ? `Measured: incomplete — the run aborted at route ${besuchteRouten} of ${ROUTES.length} in the router table, ${ROUTES.length - besuchteRouten} were never looked at`
+    : `Measured: ${ROUTES.length} routes from the router table` +
         (swept.length > 0
-          ? `, dazu ${swept.length} Detailfläche(n) ohne eigene Route (${swept.join(", ")})`
-          : ", keine Detailfläche ohne eigene Route"),
+          ? `, plus ${swept.length} detail surface(s) without a route of their own (${swept.join(", ")})`
+          : ", no detail surface without a route of its own"),
 );
 if (gaps.length > 0) {
-  report(`Nicht geprüft: ${gaps.length}`);
+  report(`Not measured: ${gaps.length}`);
   for (const { where, why } of gaps) report(`  ${where} — ${why}`);
 }
 report("");
 
 function printViolations() {
   for (const { rule, where, actual } of violations) {
-    console.error(`  ${rule} · ${where}\n      ist: ${actual}`);
+    console.error(`  ${rule} · ${where}\n      is: ${actual}`);
   }
 }
 
 if (abbruch) {
   console.error(
     nichtGemessen
-      ? `Konvention-Check NICHT GEMESSEN: ${abbruch.message}\n` +
-          "Über die Oberfläche sagt dieser Lauf NICHTS. Was unten steht, stammt aus den Prüfungen,\n" +
-          "die keinen Prüfstand brauchen (§7, Konventions-Version) und aus den Routen, die der Lauf\n" +
-          "vor dem Abbruch noch erreicht hat; eine leere Liste ist hier kein Freispruch, sondern eine\n" +
-          "Messung, die nicht stattgefunden hat.\n"
-      : `Konvention-Check ABGEBROCHEN: ${abbruch?.message ?? String(abbruch)}\n` +
-          "Ein Lauf, der nicht zu Ende messen konnte, ist kein bestandener Lauf. Was bis zum Abbruch\n" +
-          "gefunden wurde, steht unten — alles danach ist ungeprüft, nicht sauber.\n",
+      ? `Convention check NOT MEASURED: ${abbruch.message}\n` +
+          "This run says NOTHING about the surface. What follows comes from the checks that need no\n" +
+          "stand (§7, convention version) and from the routes reached before the abort; an empty list\n" +
+          "here is not an acquittal but a measurement that did not happen.\n"
+      : `Convention check ABORTED: ${abbruch?.message ?? String(abbruch)}\n` +
+          "A run that could not finish measuring is not a passing run. What was found up to the abort\n" +
+          "is below — everything after it is unmeasured, not clean.\n",
   );
   if (violations.length > 0) {
     console.error(
       nichtGemessen
-        ? `Bis zum Abbruch notiert: ${violations.length} — keine Arbeitsliste, der Lauf hat nicht gemessen\n`
-        : `Bis zum Abbruch gefunden: ${violations.length} Verstöße gegen ${massstab}\n`,
+        ? `Noted before the abort: ${violations.length} — not a work list, the run did not measure\n`
+        : `Found before the abort: ${violations.length} breaches of ${massstab}\n`,
     );
     printViolations();
     console.error("");
@@ -2519,12 +2487,12 @@ if (abbruch) {
 
 if (violations.length === 0) {
   console.log(
-    `Konvention-Check bestanden: keine Verstöße gegen ${massstab} auf ${ROUTES.length} Routen\n` +
-      "der gebauten Fassung, gemessen auf Deutsch. Was oben unter „Nicht geprüft“ steht, ist damit nicht gesagt.",
+    `Convention check passed: no breaches of ${massstab} on ${ROUTES.length} routes of the\n` +
+      'built version, measured in German. What stands above under "Not measured" is not covered by this.',
   );
   process.exit(0);
 }
 
-console.error(`Konvention-Check: ${violations.length} Verstöße gegen ${massstab}\n`);
+console.error(`Convention check: ${violations.length} breaches of ${massstab}\n`);
 printViolations();
 process.exit(1);
