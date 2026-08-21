@@ -80,9 +80,14 @@ export type DecisionDetail = PatchDetail | SkillDetail | ConversationDetail;
  *
  * A waiting conversation is not one. It carries no approve and no reject here —
  * the card's only action was ever a link into the chat — so the queue was
- * asking a person to work through positions it could not act on: 32 of 35 on
- * the day this was measured. §8.5b: what has no consequence here is not a
- * decision here. It is counted, named and pointed at, on the tile above.
+ * asking a person to work through positions it could not act on. §8.5b: what
+ * has no consequence here is not a decision here. It is counted, named and
+ * pointed at, on the tile above.
+ *
+ * This comment used to put a size on it — "32 of 35 on the day this was
+ * measured". That 32 came from the test bench's mock, which ignored the status
+ * filter; on PROD the same call answers total=1. The rule never depended on the
+ * number, so the number is gone and the rule stands (§8.5b's correction block).
  */
 export type DecidableKind = Exclude<DecisionKind, "conversation">;
 
