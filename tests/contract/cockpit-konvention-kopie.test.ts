@@ -9,9 +9,16 @@
 // Neither was held. Measured on 21.08.2026: `apps/cockpit/UI-UX.md` is named
 // nowhere in scripts/, tests/, package.json, .github/ or apps/cockpit/src, and
 // a paragraph "8.99 Erfundene Regel" pasted into it left `konvention:check` at
-// exit 0. The root copy was bound only through its FIRST 400 BYTES — the
-// version header that `checkKonventionVersion()` reads — so its body was held
-// by nothing at all.
+// exit 0. The root copy was bound only through its FIRST 400 CHARACTERS — the
+// version header that `checkKonventionVersion()` reads, via `.slice(0, 400)` on
+// an already-decoded string — so its body was held by nothing at all.
+//
+// CHARACTERS, NOT BYTES, and the two are not the same number in this document.
+// `String.prototype.length` and `.slice()` count UTF-16 code units; this file is
+// German, so „§", „·", the umlauts and the em dashes each cost more than one
+// byte in UTF-8. The §8 slice below is 5961 code units and 6075 UTF-8 bytes —
+// the same text, two units, a 114 gap. The one place in this file that really
+// does work in bytes is the sha256 digest, which hashes the Buffer.
 //
 // The cost is a readFileSync and a comparison. The benefit is precisely the
 // class of error that struck TWICE in one day: the v1.6 distribution went out
@@ -99,9 +106,12 @@ describe("the copy of §8 this product's decisions page is measured against", ()
   const copy = uiux.slice(uiux.indexOf("### 8. Entscheidungs-Grammatik")).trimEnd();
 
   test("UI-UX.md carries §8 word for word, only the heading level shifted", () => {
-    expect(source.length, "the §8 slice of the family document is not empty").toBeGreaterThan(
-      1_000,
-    );
+    // `.length` is UTF-16 code units, not bytes — see the note at the top of
+    // this file. The floor is a floor either way; the label is what was wrong.
+    expect(
+      source.length,
+      "the §8 slice of the family document is not empty (length in UTF-16 code units)",
+    ).toBeGreaterThan(1_000);
     expect(copy).toBe(source);
   });
 
@@ -111,7 +121,8 @@ describe("the copy of §8 this product's decisions page is measured against", ()
     // "### 8. Entscheidungs-Grammatik" after the fence and WatchKit's shape
     // stays green, because its slice stops at the first match. Two of them —
     // the count, and the fact that no heading of any level follows the fence,
-    // so the byte comparison above really covers the rest of the file.
+    // so the text comparison above really covers the rest of the file. Text,
+    // not bytes: `expect(copy).toBe(source)` compares decoded strings.
     expect([...uiux.matchAll(/^#{2,4} 8\. /gm)], "one §8 section, not two").toHaveLength(1);
     const fence = uiux.indexOf("### 8. Entscheidungs-Grammatik");
     expect(fence, "the fence is findable").toBeGreaterThan(0);
