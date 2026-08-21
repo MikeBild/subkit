@@ -272,8 +272,16 @@ async function mockApi(route) {
       recent_conversations: [],
     });
   }
-  if (path === "/v1/conversations" && request.method() === "GET")
-    return json(route, { items: conversations, total: conversations.length });
+  if (path === "/v1/conversations" && request.method() === "GET") {
+    // The status filter is answered, not ignored. It used to be: the decisions
+    // page asks `?status=awaiting_input`, got all 32 conversations back with
+    // `total: 32`, and photographed 32 positions waiting on an answer where the
+    // fixture had built 11. Every frame of that surface overstated it, and the
+    // number a person quoted from the screenshot was the fixture's length.
+    const status = new URL(request.url()).searchParams.get("status");
+    const items = status ? conversations.filter((entry) => entry.status === status) : conversations;
+    return json(route, { items, total: items.length });
+  }
   if (path === "/v1/conversations" && request.method() === "POST")
     return sse(route, { conversation, status: "active" });
   if (path === `/v1/conversations/${uuid}`) {
@@ -493,22 +501,53 @@ async function mockApi(route) {
     return json(route, { items, total: 240, next_cursor: null });
   }
   if (path === "/v1/audit-log") {
-    const items = Array.from({ length: 24 }, (_, index) => {
-      const rotate = index % 4;
+    // Actions the engine ACTUALLY emits. The four this fixture used to rotate
+    // through — workflow.update, connector.test, skill.archive, settings.write —
+    // exist in no AuditAction: the sweep was photographing a log of verbs the
+    // product cannot write, so no frame could ever show one of them named
+    // wrongly, or named at all.
+    //
+    // `settings.updated` is left in on purpose as the one action the cockpit has
+    // no word for: the honest fallback — the engine's own string — has to be
+    // visible in a frame, or nobody notices it becoming "Unbekannt".
+    const catalogue = [
+      { action: "patch_candidate.approved", resource_type: "patch_candidate", result: "success" },
+      { action: "skill_candidate.rejected", resource_type: "skill_candidate", result: "success" },
+      { action: "workflow.updated", resource_type: "workflow", result: "success" },
+      { action: "connector.invoked", resource_type: "connector", result: "denied" },
+      { action: "settings.updated", resource_type: "settings", result: "error" },
+    ];
+    // The engine filters on `action` and takes a comma-separated list. A mock
+    // that ignored it would photograph a filter labelled "Entscheidungen" over
+    // rows that are not decisions.
+    const wanted = (new URL(request.url()).searchParams.get("action") ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const rows = wanted.length
+      ? catalogue.filter((entry) => wanted.includes(entry.action))
+      : catalogue;
+    const items = Array.from({ length: wanted.length ? rows.length * 4 : 24 }, (_, index) => {
+      const row = rows[index % rows.length];
       return {
         id: index === 0 ? uuid : `audit-${index}`,
         ts: new Date(Date.parse(conversation.updated_at) - index * 120_000).toISOString(),
         tenant_id: uuid,
-        actor_type: ["user", "system_account", "system", "user"][rotate],
-        actor_id: rotate === 2 ? null : uuid,
-        action: ["workflow.update", "connector.test", "skill.archive", "settings.write"][rotate],
-        resource_type: ["workflow", "connector", "skill", "settings"][rotate],
-        resource_id: rotate === 3 ? null : uuid,
-        result: ["success", "success", "denied", "error"][rotate],
+        actor_type: ["user", "system_account", "system", "user"][index % 4],
+        actor_id: index % 4 === 2 ? null : uuid,
+        action: row.action,
+        resource_type: row.resource_type,
+        resource_id: row.resource_type === "settings" ? null : uuid,
+        result: row.result,
         trace_id: null,
         ip: null,
         user_agent: null,
-        reason: rotate === 2 ? "Rolle deckt skill:write nicht ab." : null,
+        reason:
+          row.result === "denied"
+            ? "Rolle deckt skill:write nicht ab."
+            : row.action === "skill_candidate.rejected"
+              ? "Deckt sich mit einem schon freigegebenen Skill."
+              : null,
         metadata: {},
       };
     });
@@ -1297,7 +1336,7 @@ for (const locale of variants) {
       // cannot see stayed green through every frame this sweep took.
       await stand.visit(page, "decisions");
       let expandedCards = 0;
-      for (const prefix of ["decision", "decision-expired", "decision-deferred", "decision-aged"]) {
+      for (const prefix of ["decision-deferred", "decision-aged"]) {
         // Two positions per section, because the three kinds expand to entirely
         // different panels and one of them is always second in its section.
         for (const position of [0, 1]) {
@@ -1334,17 +1373,20 @@ for (const locale of variants) {
       await page
         .locator('[data-testid="decisions-group"][data-mode="none"]')
         .waitFor({ state: "attached" });
-      for (const shelf of ["decisions-shelf-decided", "decisions-shelf-discarded"]) {
-        const toggle = page.locator(`[data-testid="${shelf}-toggle"]`);
-        await toggle.scrollIntoViewIfNeeded();
-        await toggle.click();
-        await page
-          .locator(`[data-testid="${shelf}-toggle"][aria-expanded="true"]`)
-          .waitFor({ state: "attached", timeout: 10_000 });
-      }
-      await page.locator('[data-testid="decisions-shelf-decided-toggle"]').scrollIntoViewIfNeeded();
-      await page.waitForTimeout(500);
-      await shoot(page, `${locale.artifact}-desktop-decisions-shelves`, { fullPage: false });
+      // §8.5: what stands at the FOOT of the decisions page. There used to be
+      // two shelves of settled work there; there is one sentence with one link
+      // now, and a frame that stops at the viewport would show neither. This
+      // console's frames are exactly as tall as the viewport — 1000 px — so the
+      // foot needs a photograph of its own.
+      await page.locator('[data-testid="decisions-history"]').scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+      await shoot(page, `${locale.artifact}-desktop-decisions-foot`, { fullPage: false });
+
+      // The other end of that link, opened the way the link opens it.
+      await stand.visit(page, "audit?scope=decisions");
+      await page.locator('[data-testid="resource-audit"]').waitFor({ state: "visible" });
+      await page.waitForTimeout(300);
+      await shoot(page, `${locale.artifact}-desktop-audit-decisions`, { fullPage: false });
 
       await stand.visit(page, "chat");
       await page.locator('[data-testid="conversation-new"]').click();
