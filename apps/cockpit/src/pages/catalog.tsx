@@ -206,12 +206,23 @@ function HealthMark({ row }: { row: CatalogRow }) {
   if (!state || state === "ok") return null;
   const reason = stringField(row, "health_reason");
   const tone = state === "degraded" ? "bg-destructive" : "bg-warning";
+  // The reason is FREE TEXT the engine wrote, in whatever language the engine
+  // happened to use (LOCAL-SK-ENGINE-FREITEXT-SPRACHE). The cockpit cannot
+  // translate it, but it can stop pretending the sentence is its own: the
+  // translated state word stands alone, and the engine's sentence sits on its
+  // own line behind a label that names its author. That way a reader who finds
+  // a foreign sentence there knows why it is foreign, instead of reading a
+  // half-translated line the cockpit appears to have written.
   return (
-    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${tone}`} />
-      <span className="min-w-0">
-        {t("workflows.health", { state: statusLabel(t, state) })}
-        {reason ? ` · ${reason}` : ""}
+    <span className="flex items-start gap-1.5 text-xs text-muted-foreground">
+      <span aria-hidden="true" className={`mt-1 size-2 shrink-0 rounded-full ${tone}`} />
+      <span className="flex min-w-0 flex-col">
+        <span className="min-w-0">{t("workflows.health", { state: statusLabel(t, state) })}</span>
+        {reason ? (
+          <span className="min-w-0" data-testid="workflow-health-engine-wording">
+            {t("workflows.healthEngineWording", { reason })}
+          </span>
+        ) : null}
       </span>
     </span>
   );
