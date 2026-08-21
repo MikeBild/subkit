@@ -1407,7 +1407,15 @@ if (errors.length) throw new Error(errors.join("; "));
 // — no brace — walked straight past it, 3/3 green, and the closing line would
 // have understated the run again. A rule about how a call is SPELLED is not a
 // rule about what was written; this one counts the files.
-const framesOnDisk = (await readdir(outputDir)).filter((name) => name.endsWith(".png")).length;
+//
+// FILES, and ALL of them. The line used to read ONE level and take every NAME
+// ending in .png. Measured: four written frames, two of them one level down,
+// next to a DIRECTORY called x.png — it answered 3, missing the two below and
+// counting the directory. Both errors point the same way, towards a number that
+// looks fine.
+const framesOnDisk = (await readdir(outputDir, { recursive: true, withFileTypes: true })).filter(
+  (entry) => entry.isFile() && entry.name.endsWith(".png"),
+).length;
 if (framesOnDisk !== framesWritten)
   throw new Error(
     `Cockpit visual sweep counted ${framesWritten} frames but ${outputDir} holds ${framesOnDisk} ` +
