@@ -970,7 +970,7 @@ gap(
 );
 gap(
   "catalogue en",
-  "every rule runs against de. The silent class: §2 forbids a STATE, what is measured is the WORD „Unbekannt“ — on en the same state reads „Unknown“ and goes unnoticed",
+  "every rule runs against de. The silent class: §2 forbids a STATE, what is measured is the WORD „Unbekannt“ — on en the same state reads „Unknown“ and goes unnoticed. §8.5 has a live instance: „Answered“ left the settled alphabet when the prose half was bound, and it is the word `decisions.tile.conversationHint` spells on en",
 );
 gap(
   "/decisions · §8.5 completeness of the history",
@@ -1761,6 +1761,29 @@ const german = (key, values) => interpolate(CATALOGS.de[key], values);
  * It was not a theory: „Beantwortet" sat in the prose list while the catalogue
  * key `tool.status.approvalResponded` had „Responded" on en. The alphabet held
  * the dead word and missed the live one, which is the whole class in one entry.
+ *
+ * WHAT THAT MOVE DID TO THE SIZE OF THE ALPHABET — measured, because the first
+ * statement of it was not. `SETTLED_WORDS.size` was 34 before the move and is
+ * 34 after it: the move is a SWAP, not a growth. „Answered" — a typed guess —
+ * leaves, „Responded" — read from `tool.status.approvalResponded` · en —
+ * arrives, and the other 33 words are the same words. The claim "30 -> 34" in
+ * the commit that made the move is a number nobody measured; no reading of the
+ * two builds produces 30. The readings that do exist, both builds, in order:
+ * union of all words 34 -> 34, derived words only 19 -> 25, entries fed in
+ * (keys plus typed literals) 25 -> 23, catalogue hits counted with duplicates
+ * plus literals 35 -> 37.
+ *
+ * AND THE DIRECTION IS NOT THE ONE CLAIMED DIRECTLY ABOVE. „Answered" is the
+ * one word this move takes OUT of the alphabet, so the prose half did not only
+ * enlarge here — it shrank by one, which is the direction the paragraph above
+ * says a derived half cannot drift in and an unbound one should not. The word
+ * is live on the surface: `decisions.tile.conversationHint` on en reads
+ * "Answered in the conversation, not here." A settled word standing beside a
+ * figure in that sentence would now go unread. It stays without consequence
+ * for ONE reason only, and it is a reason recorded as a gap rather than as
+ * coverage: this run measures de alone (see the registered `catalogue en` gap,
+ * and "Language: de only" in the report). The day en is measured, this hole is
+ * a real one.
  */
 const engineOpenApi = JSON.parse(
   readFileSync(
