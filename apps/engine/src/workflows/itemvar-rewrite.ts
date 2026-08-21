@@ -514,7 +514,7 @@ export function rewriteWorkflowItemVars(def: WorkflowDef): WorkflowItemvarRewrit
       return { ok: false, reason: rewriteResult.reason, step_id: site.step_id, field: site.field };
     }
     if (rewriteResult.changed) {
-      rewrites.set(`${site.step_id} ${site.field}`, rewriteResult.rewritten);
+      rewrites.set(`${site.step_id}\0${site.field}`, rewriteResult.rewritten);
       changes.push({
         step_id: site.step_id,
         field: site.field,
@@ -529,7 +529,7 @@ export function rewriteWorkflowItemVars(def: WorkflowDef): WorkflowItemvarRewrit
   for (const step of out.steps) {
     const site = jsonataSiteOf(step);
     if (site) {
-      const replacement = rewrites.get(`${site.step_id} ${site.field}`);
+      const replacement = rewrites.get(`${site.step_id}\0${site.field}`);
       if (replacement !== undefined) {
         (step as Record<string, unknown>)[site.field] = replacement;
       }
