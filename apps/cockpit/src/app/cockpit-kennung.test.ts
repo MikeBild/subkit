@@ -1,18 +1,15 @@
-// Die Kennung im AUSGELIEFERTEN Dokument, maschinell gehalten.
+// Pins the product identifier in the SHIPPED document.
 //
-// scripts/konvention-check.mjs prüft den Marker am gelieferten Dokument des
-// Prüfstands und beantwortet damit „wessen Konsole hat geantwortet?". Diese Datei
-// prüft ihn an der GEBAUTEN Fassung, denn nur die wird ausgeliefert: ein Marker,
-// den der Bau wegwirft, umbenennt oder verdoppelt, macht aus jedem Lauf gegen die
-// eigene Konsole ein „fremdes Dokument" — die Meldung, die am teuersten falsch ist.
-// Dieselbe Rechnung wie beim Favicon (cockpit-favicon.test.ts), aus demselben
-// Grund: Quelle und gebaute Fassung sind zwei Wahrheiten, solange niemand sie
-// gegeneinander hält.
+// scripts/konvention-check.mjs checks the marker on the served document and thus
+// answers "whose console replied?". This file checks it on the BUILT copy, since
+// only that one ships: a marker the build drops, renames or duplicates turns every
+// run against your own console into "foreign document" — the most expensive wrong
+// answer there is. Same reasoning as the favicon (cockpit-favicon.test.ts): source
+// and build are two truths until something holds them against each other.
 //
-// Und der Wert wird gegen `package.json` gehalten statt hier wiederholt: der
-// Marker existiert, um zu sagen WELCHES Produkt das ist. Einer, der vom Namen des
-// Produkts wegdriften kann, wäre schlimmer als keiner — er behauptet eine
-// Identität, die niemand mehr prüft.
+// The value is held against `package.json` instead of repeated here: the marker
+// exists to say WHICH product this is, so one that can drift from the product name
+// would be worse than none.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -26,44 +23,43 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { na
 
 const MARKER = /<meta[^>]+name="cockpit-product"[^>]+content="([^"]+)"/;
 
-/** Die Kennung eines Dokuments, oder null wenn es keine trägt. */
+/** A document's identifier, or null if it carries none. */
 function kennung(html: string): string | null {
   return MARKER.exec(html)?.[1] ?? null;
 }
 
-describe("die gebaute Konsole sagt, welches Produkt sie ist", () => {
-  test("die Quelle trägt genau eine Definitionsstelle", () => {
+describe("the built console says which product it is", () => {
+  test("the source carries exactly one definition site", () => {
     expect(kennung(sourceHtml)).toBeString();
     expect([...sourceHtml.matchAll(/name="cockpit-product"/g)]).toHaveLength(1);
   });
 
-  test("die gebaute Fassung trägt sie unverändert und genau einmal", () => {
-    // Vite schreibt `href` und `src` um, nicht `content` — dieser Satz macht aus
-    // dieser Erwartung eine Zusicherung.
+  test("the build carries it unchanged and exactly once", () => {
+    // Vite rewrites `href` and `src`, not `content` — this test turns that
+    // expectation into a guarantee.
     expect(kennung(builtHtml)).toBe(kennung(sourceHtml));
     expect(
       [...builtHtml.matchAll(/name="cockpit-product"/g)],
-      "zwei Marker sind zwei Antworten auf dieselbe Frage",
+      "two markers are two answers to the same question",
     ).toHaveLength(1);
   });
 
-  test("die Kennung IST der Produktname aus package.json", () => {
+  test("the identifier IS the product name from package.json", () => {
     expect(kennung(builtHtml)?.toLowerCase()).toBe(pkg.name.toLowerCase());
   });
 
-  test("die eingebettete Kopie trägt sie auch", () => {
-    // `bun build --compile` liefert das Cockpit aus cockpit-embedded.ts aus, nicht
-    // aus assets/cockpit. Eine Kennung, die nur auf der Platte steht, beantwortet
-    // die Frage genau dort nicht, wo sie ein Betreiber stellt.
+  test("the embedded copy carries it too", () => {
+    // `bun build --compile` serves the cockpit from cockpit-embedded.ts, not from
+    // assets/cockpit. An identifier that only exists on disk fails to answer
+    // exactly where an operator asks.
     const embedded = Buffer.from(EMBEDDED_COCKPIT["index.html"] ?? "", "base64").toString("utf8");
     expect(kennung(embedded)).toBe(kennung(sourceHtml));
   });
 
-  test("die Kennung ist NICHT der Titel und nicht die Wortmarke", () => {
-    // §6 prüft Browser-Titel und Wortmarke; eine Kennung, die zugleich
-    // Prüfgegenstand ist, macht aus jedem echten Verstoß ein „das ist gar nicht
-    // SubKit" und misst danach nichts mehr. Der Titel darf die Kennung enthalten,
-    // aber er darf sie nicht SEIN.
+  test("the identifier is NOT the title and not the wordmark", () => {
+    // §6 checks browser title and wordmark; an identifier that is itself under
+    // test turns every real violation into "that isn't SubKit". The title may
+    // contain the identifier, but it must not BE it.
     const titel = /<title>([^<]*)<\/title>/.exec(builtHtml)?.[1]?.trim();
     expect(titel).toBeString();
     expect(titel).not.toBe(kennung(builtHtml));

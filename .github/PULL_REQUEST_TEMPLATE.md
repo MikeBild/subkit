@@ -20,8 +20,9 @@ Read AGENTS.md if any of the rules are unclear.
 
 - [ ] `bun run verify` is green locally (lint + typecheck + audit:invariants + openapi-drift + konvention:check + determinism + test:unit + verify:ai + test:integration + build:sk + test:e2e).
 - [ ] Cockpit surface touched? `konvention:check` runs inside `verify` and measures the BUILT
-      cockpit (`vite preview`) against `COCKPIT-KONVENTION.md`. It is not part of CI's step list
-      and not part of the pre-push hook — locally green is the only place it is currently asked.
+      cockpit (`vite preview`) against `COCKPIT-KONVENTION.md`. CI runs it as its own required
+      job (`konvention` in `ci.yml`), but it is not part of the pre-push hook — a push can be
+      green locally and still fail this gate on CI.
 
 ## Boundary checklist (skip the rows that don't apply)
 

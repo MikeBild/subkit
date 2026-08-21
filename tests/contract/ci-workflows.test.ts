@@ -111,18 +111,18 @@ function scriptsInWorkflows(): Map<string, string> {
  * because widening ci.yml's step list is a separate decision from this stage.
  */
 const ONLY_IN_THE_LOCAL_GATE: Record<string, string> = {
-  "check:settings-doc-drift": "kein CI-Schritt — offene Lücke (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
-  "check:slash-doc-drift": "kein CI-Schritt — offene Lücke (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
-  "check:config-example-drift": "kein CI-Schritt — offene Lücke (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
-  "check:embedded-drift": "kein CI-Schritt — offene Lücke (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
-  "check:catalog-drift": "kein CI-Schritt — offene Lücke (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
+  "check:settings-doc-drift": "no CI step — open gap (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
+  "check:slash-doc-drift": "no CI step — open gap (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
+  "check:config-example-drift": "no CI step — open gap (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
+  "check:embedded-drift": "no CI step — open gap (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
+  "check:catalog-drift": "no CI step — open gap (LOCAL-SK-DRIFTCHECKS-NICHT-IN-CI)",
   // Covered in substance, not by name: `test:e2e` is `build:sk` plus
   // scripts/test-e2e-isolated.ts, and ci.yml's quality job runs `build:all`
   // followed by that exact script.
   "test:e2e": "ci.yml ruft scripts/test-e2e-isolated.ts direkt, nach build:all",
 };
 
-describe("Gate und Workflows", () => {
+describe("gate and workflows", () => {
   test("ci.yml triggers on push to main and on pull requests", () => {
     const on = ci.on as { push: { branches: string[] }; pull_request?: unknown };
     expect(on.push.branches).toEqual(["main"]);
@@ -134,7 +134,7 @@ describe("Gate und Workflows", () => {
   // Remove a stage from `verify` and leave the workflows alone, or add one to
   // `verify` and forget the workflow, and this fails. `bun run verify` stops
   // meaning "CI will pass" the moment the two lists diverge silently.
-  test("jede Gate-Stufe läuft in einem Workflow — oder steht benannt in der Ausnahmeliste", () => {
+  test("every gate stage runs in a workflow, or is named in the exception list", () => {
     const stages = verifyStages();
     const inWorkflows = scriptsInWorkflows();
     const missing = stages.filter((stage) => !inWorkflows.has(stage)).sort();
@@ -142,14 +142,13 @@ describe("Gate und Workflows", () => {
     // And the other direction: an entry that is no longer a gate stage must not
     // sit here pretending to excuse something.
     for (const name of Object.keys(ONLY_IN_THE_LOCAL_GATE)) {
-      expect(
-        stages,
-        `'${name}' steht in der Ausnahmeliste, ist aber keine Gate-Stufe mehr`,
-      ).toContain(name);
+      expect(stages, `'${name}' is in the exception list but is no longer a gate stage`).toContain(
+        name,
+      );
     }
   });
 
-  test("konvention:check ist Gate-Stufe UND CI-Job", () => {
+  test("konvention:check is a gate stage AND a CI job", () => {
     expect(verifyStages()).toContain("konvention:check");
     expect(runs(job(ci, "konvention"))).toContain("bun run konvention:check");
   });
@@ -160,11 +159,11 @@ describe("Gate und Workflows", () => {
   // step the stage is red for a reason that has nothing to do with the
   // convention, and a mandatory stage that is red for the wrong reason is how a
   // stage gets muted.
-  test("der konvention-Job installiert einen Browser, bevor er einen braucht", () => {
+  test("the konvention job installs a browser before it needs one", () => {
     const steps = runs(job(ci, "konvention"));
     const install = steps.findIndex((step) => /playwright install/.test(step));
     const check = steps.findIndex((step) => step === "bun run konvention:check");
-    expect(install, "konvention-Job muss playwright-Browser installieren").toBeGreaterThanOrEqual(
+    expect(install, "the konvention job must install playwright browsers").toBeGreaterThanOrEqual(
       0,
     );
     expect(steps[install]).toContain("chromium");
@@ -177,7 +176,7 @@ describe("Gate und Workflows", () => {
   // includes the check that was added last, which is the one a `needs` list is
   // most likely to have missed. `build` is the required status check on main,
   // so a job outside its `needs` is a job nothing waits for.
-  test("der build-Aggregat hängt an JEDEM anderen Job und prüft jedes Ergebnis", () => {
+  test("the build aggregate depends on EVERY other job and checks every result", () => {
     const others = Object.keys(ci.jobs ?? {}).filter((name) => name !== "build");
     const aggregate = job(ci, "build");
     expect((aggregate.needs ?? []).sort()).toEqual(others.sort());
@@ -187,7 +186,7 @@ describe("Gate und Workflows", () => {
     const body = runs(aggregate).join("\n");
     for (const name of others) {
       const variable = `${name.replace(/-.*/, "").toUpperCase()}_RESULT`;
-      expect(body, `build prüft das Ergebnis von '${name}' (${variable})`).toContain(variable);
+      expect(body, `build checks the result of '${name}' (${variable})`).toContain(variable);
     }
   });
 
@@ -195,12 +194,12 @@ describe("Gate und Workflows", () => {
   // gate job requires a green ci.yml run on the release SHA. That is what makes
   // a stage added to ci.yml also a stage the release cannot skip, so the
   // dependency is asserted rather than assumed.
-  test("release.yml kommt nur an einem grünen ci.yml vorbei", () => {
+  test("release.yml only gets past a green ci.yml", () => {
     const gate = runs(job(release, "gate")).join("\n");
     expect(gate).toContain("--workflow ci.yml");
     expect(gate).toContain('--commit "$SHA"');
     for (const name of ["build-cli-binaries", "docker-publish"]) {
-      expect(job(release, name).needs ?? [], `${name} hängt am gate`).toContain("gate");
+      expect(job(release, name).needs ?? [], `${name} depends on the gate`).toContain("gate");
     }
   });
 
@@ -211,12 +210,12 @@ describe("Gate und Workflows", () => {
     for (const [name, where] of scriptsInWorkflows()) {
       expect(
         pkg.scripts[name],
-        `${where} ruft \`bun run ${name}\`, das package.json nicht kennt`,
+        `${where} calls \`bun run ${name}\`, which package.json does not define`,
       ).toBeDefined();
     }
   });
 
-  test("jeder Job, der bun benutzt, installiert mit frozen lockfile über setup-bun", () => {
+  test("every job using bun installs with a frozen lockfile via setup-bun", () => {
     for (const [name, entry] of Object.entries(ci.jobs ?? {})) {
       const commands = runs(entry);
       if (!commands.some((command) => command.includes("bun "))) continue;

@@ -1,33 +1,19 @@
-// Der Kennungs-Assert des Konventions-Checks, maschinell gehalten.
+// The convention check's identity assert, held by machine.
 //
-// WARUM DIESE DATEI EXISTIERT
+// `startPreview` answers "is something there?", not "is SubKit there?". At
+// CodeKit that gap produced 8 breaches in 156 s against a surface that was
+// WorkKit — no timeout, no crash, a complete and convincing false report. §7
+// makes it likely: the DOM anchors are identical across all six consoles, so a
+// sister console meets every precondition, and the stands sit next to each
+// other (4081 · 4173 · 4176 · 4183 · 4192).
 //
-// `startPreview` beantwortet „antwortet dort etwas?" und nicht „antwortet dort
-// SubKit?". Bei CodeKit ist der Unterschied real ausgelöst worden: WorkKit hielt
-// CodeKits Prüfstands-Port, und der Konventions-Check erzeugte in 156 s acht
-// Verstöße mit CodeKits Namen über eine Oberfläche, die nie CodeKit war. Kein
-// Timeout, kein Absturz — ein vollständiger, überzeugender, falscher Bericht.
+// What this file pins is the better shape: exactly one definition site,
+// `apps/cockpit/index.html`, which the script READS. Copied from WatchKit, not
+// imported — the convention is a document, not a package (§7).
 //
-// Die Familie ist dafür gebaut: die Konvention macht die DOM-Verankerungen aller
-// sechs Konsolen ABSICHTLICH gleich, also erfüllt eine fremde Schwesterkonsole
-// alle Vorbedingungen, an denen ein Lauf sonst scheitern würde. Und die
-// Prüfstände liegen dicht beieinander (4081 · 4173 · 4176 · 4183 · 4192).
-//
-// CodeKits Lösung hatte eine benannte Schwäche: der Sollwert stand als LITERAL im
-// Skript, während ein Test denselben Wert aus der Quelle nahm — wer ihn umbenennt,
-// bekommt „fremdes Dokument" über die EIGENE Konsole. Dieser Test hält die bessere
-// Fassung fest: es gibt genau eine Definitionsstelle, `apps/cockpit/index.html`,
-// und das Skript LIEST sie.
-//
-// Das Muster ist von WatchKit übernommen und ABGESCHRIEBEN, nicht importiert: die
-// Konvention ist ein Dokument, kein Paket (§7).
-// WARUM tests/contract/ UND NICHT scripts/__tests__/
-//
-// CIs Shard-Job laeuft `scripts/test-files-isolated.ts --shard N/8 apps packages`
-// — `scripts` fehlt dort (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI). Ein Test unter
-// scripts/__tests__/ liefe im lokalen Gate und in CI GAR NICHT, und ein Waechter
-// ueber einer Pflichtstufe, den CI nie ausfuehrt, ist wieder nur ein Kommentar.
-// tests/contract/ fuehrt CI ueber `bun run test:contract` wirklich aus.
+// It lives in tests/contract/ because CI's shard job runs `apps packages` only
+// (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI); a guard over a mandatory gate stage that
+// CI never runs is just another comment. `bun run test:contract` runs this.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -100,22 +86,21 @@ const code = stripComments(source);
 const shell = readFileSync(join(root, "apps/cockpit/index.html"), "utf8");
 const marker = /<meta[^>]+name="cockpit-product"[^>]+content="([^"]+)"/.exec(shell)?.[1];
 
-/** Der Rumpf des Asserts — nicht die ganze Datei, siehe oben. */
+/** The assert's body — not the whole file, see the ban below. */
 function assertBody(): string {
   const start = code.indexOf("function assertPruefstandsKennung(html) {");
-  expect(start, "der Kennungs-Assert ist auffindbar").toBeGreaterThan(0);
+  expect(start, "the identity assert is findable").toBeGreaterThan(0);
   return code.slice(start, code.indexOf("\n}\n", start));
 }
 
-describe("der Konventions-Check fragt, wessen Konsole geantwortet hat", () => {
-  test("apps/cockpit/index.html ist die Definitionsstelle", () => {
-    // Sichert jeden Satz darunter ab: ohne Marker in der Quelle wären die
-    // Literal-Verbote stillschweigend wahr.
-    expect(marker, 'apps/cockpit/index.html trägt <meta name="cockpit-product">').toBeTruthy();
+describe("the convention check asks whose console answered", () => {
+  test("apps/cockpit/index.html is the definition site", () => {
+    // Without a marker in the source every ban below would be silently true.
+    expect(marker, 'apps/cockpit/index.html carries <meta name="cockpit-product">').toBeTruthy();
     expect([...shell.matchAll(/name="cockpit-product"/g)]).toHaveLength(1);
   });
 
-  test("der Assert leitet seinen Sollwert ab, statt ihn abzutippen", () => {
+  test("the assert derives its expected value instead of typing it", () => {
     expect(code).toContain(
       'const quelle = new URL("../apps/cockpit/index.html", import.meta.url);',
     );
@@ -124,92 +109,87 @@ describe("der Konventions-Check fragt, wessen Konsole geantwortet hat", () => {
     const body = assertBody();
     expect(
       body.includes(`'${marker}'`) || body.includes(`"${marker}"`),
-      `der Rumpf tippt „${marker}" ab, statt ihn aus apps/cockpit/index.html zu lesen`,
+      `the body types "${marker}" instead of reading it from apps/cockpit/index.html`,
     ).toBe(false);
-    // Und er benutzt auch die vorhandene Konstante nicht: `PRODUCT_NAME` ist
-    // Prüfgegenstand von §6. Eine Kennung, die zugleich eine geprüfte Regel ist,
-    // macht aus jedem echten Verstoß ein „das ist gar nicht SubKit".
+    // And not via the existing constant either: `PRODUCT_NAME` is what §6
+    // measures. An identity that is also a checked rule turns every real breach
+    // into "that is not SubKit".
     expect(body).not.toContain("PRODUCT_NAME");
     expect(body).not.toContain("<title>SubKit");
   });
 
-  test("der Sollwert steht genau einmal im Code — als PRODUCT_NAME, sonst nirgends", () => {
-    // Der Rumpf allein zu prüfen war umgehbar: ein `const RUECKFALL = "SubKit"`
-    // auf Modulebene plus `erwartet || RUECKFALL` im Rumpf ließ alle sieben
-    // Sätze grün, und der Assert hätte wieder einen abgetippten Sollwert gehabt.
-    // Genau ein Vorkommen im ganzen Code, und es ist die Konstante, die §6
-    // gegen die Wortmarke hält — jedes zweite ist der Rückfallwert.
+  test("the expected value occurs exactly once in the code, as PRODUCT_NAME", () => {
+    // Checking the body alone was bypassable: `const RUECKFALL = "SubKit"` at
+    // module level plus `erwartet || RUECKFALL` inside kept all seven statements
+    // green with a hand-typed target restored. One occurrence, and it is the
+    // constant §6 measures the wordmark against; a second one is the fallback.
     const literal = new RegExp(marker?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") ?? "", "g");
     const treffer = [...code.matchAll(literal)];
     expect(
       treffer,
-      `„${marker}" steht ${treffer.length}× im Code, erlaubt ist genau 1×`,
+      `"${marker}" occurs ${treffer.length}x in the code, exactly 1x is allowed`,
     ).toHaveLength(1);
     expect(code).toContain(`const PRODUCT_NAME = "${marker}";`);
   });
 
-  test("der Kommentar-Filter nimmt nachgestellte Kommentare mit und lässt Strings stehen", () => {
-    // Der umgekehrte Fehlalarm: ohne diesen Filter macht ein nachgestellter
-    // Kommentar mit dem Produktnamen den Satz darüber grundlos rot.
-    expect(stripComments(`const a = 1; // ${marker} erklärt hier etwas`)).toBe("const a = 1; ");
+  test("the comment filter takes trailing comments and leaves strings alone", () => {
+    // The reverse false alarm: without it a trailing comment naming the product
+    // turns the statement above into a groundless failure.
+    expect(stripComments(`const a = 1; // ${marker} explains something here`)).toBe(
+      "const a = 1; ",
+    );
     expect(stripComments('const u = "http://127.0.0.1:4176/cockpit/";')).toBe(
       'const u = "http://127.0.0.1:4176/cockpit/";',
     );
-    // Und der Filter darf die Datei nicht auffressen: die Zeilen bleiben stehen.
+    // And it must not eat the file: the line count survives.
     expect(code.split("\n")).toHaveLength(source.split("\n").length);
   });
 
-  test("ein umbenanntes Attribut ist ein Befund über DIESES Repository", () => {
-    // Die Meldung, die CodeKits Fassung falsch herum gibt: dort sagt ein
-    // umbenannter Marker „fremdes Dokument" über die eigene Konsole.
-    // Der erwartete Wert IST der Quelltext des Skripts; ein Template-Literal hier löste
-    // ihn auf, statt ihn zu prüfen.
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: geprüft wird der Quelltext, nicht sein Ergebnis
-    expect(code).toContain('trägt kein <meta name="${IDENTITY_META}" content="…"> mehr.');
-    expect(code).toContain("das ist ein Befund über DIESES Repository");
+  test("a renamed attribute is a finding about THIS repository", () => {
+    // CodeKit's version says it the wrong way round: there a renamed marker
+    // reports "foreign document" about its own console.
+    // The expectation IS the script's source text; a template literal would
+    // resolve it instead of checking it.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    expect(code).toContain('no longer carries <meta name="${IDENTITY_META}" content="…">.');
+    expect(code).toContain("a finding about THIS repository");
   });
 
-  test("eine fremde Konsole wird BENANNT, nicht nur abgelehnt", () => {
-    // Der Fortschritt gegenüber CodeKit: der Lauf sagt, wer geantwortet hat.
-    expect(code).toContain("Sein Titel lautet");
-    // Der erwartete Wert IST der Quelltext des Skripts; ein Template-Literal hier löste
-    // ihn auf, statt ihn zu prüfen.
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: geprüft wird der Quelltext, nicht sein Ergebnis
-    expect(code).toContain("das ist nicht ${erwartet}, sondern ${geliefert}");
+  test("a foreign console is NAMED, not merely rejected", () => {
+    expect(code).toContain("Its title reads");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    expect(code).toContain("this is not ${erwartet} but ${geliefert}");
   });
 
-  test("die Kennung wird VOR dem Browserstart geprüft", () => {
-    // Sonst kostet ein fremdes Gegenüber erst den ganzen Lauf und wird dann
-    // verworfen — bei CodeKit 156 Sekunden.
+  test("the identity is checked BEFORE the browser starts", () => {
+    // Otherwise a foreign peer costs a whole run before being discarded: 156 s.
     const kennung = code.indexOf("assertPruefstandsKennung(preview.shell);");
     const browser = code.indexOf("await chromium.launch(");
-    expect(kennung, "der Assert wird aufgerufen").toBeGreaterThan(0);
-    expect(browser, "der Browser wird gestartet").toBeGreaterThan(0);
+    expect(kennung, "the assert is called").toBeGreaterThan(0);
+    expect(browser, "the browser is launched").toBeGreaterThan(0);
     expect(kennung).toBeLessThan(browser);
   });
 
-  test("geprüft wird das Dokument, auf das gewartet wurde — nicht ein zweites", () => {
-    // Zwei Abrufe wären zwei Dokumente, und die Kennung prüfte dann eines, das
-    // der Lauf nie gemessen hat.
+  test("the document that was waited on is the one checked, not a second one", () => {
+    // Two fetches are two documents, and the identity would vouch for one the
+    // run never measured.
     expect(code).toContain("if (response.ok) return { server, shell: await response.text() };");
     expect(code).toContain("assertPruefstandsKennung(preview.shell);");
   });
 
-  test("„nicht gemessen“ hat einen eigenen Ausgang", () => {
-    // 1 heißt „gemessen und rot" und ist eine Arbeitsliste. 2 heißt „es wurde
-    // nichts gemessen" — für eine Pflichtstufe der Unterschied zwischen
-    // reparieren und stummschalten.
+  test('"not measured" has an exit code of its own', () => {
+    // 1 is a work list, 2 is an absent measurement — for a mandatory gate stage
+    // the difference between repairing and muting.
     expect(code).toContain("class NichtGemessen extends Error {}");
     expect(code).toContain("process.exit(nichtGemessen ? 2 : 1);");
-    // Und „nicht gemessen" endet nicht bei der ersten Route: ein Abbruch
-    // mitten im Sweep — bei einem gestorbenen Vorschau-Server Route 11 von 27 —
-    // hat die Routenliste nicht durchlaufen und ist deshalb genauso wenig eine
-    // Messung wie ein fremdes Gegenüber vor der ersten.
+    // And it does not end at the first route: an abort mid-sweep — route 11 of
+    // 27 when the preview server dies — never got through the route list and is
+    // no more a measurement than a foreign peer before the first one.
     expect(code).toContain(
       "const nichtGemessen = abbruch instanceof NichtGemessen || (Boolean(abbruch) && !routenDurchlaufen);",
     );
     expect(code).toContain("routenDurchlaufen = true;");
-    // Alle drei Zweige des Asserts nehmen diesen Ausgang.
+    // All three branches of the assert take that exit.
     expect([...assertBody().matchAll(/throw new NichtGemessen\(/g)]).toHaveLength(3);
   });
 });
