@@ -19,8 +19,8 @@
 // no gate.ts, its gate IS the `verify` chain in package.json, so the stages are
 // read from there.
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 
 const root = join(import.meta.dir, "../..");
 
@@ -122,6 +122,282 @@ const ONLY_IN_THE_LOCAL_GATE: Record<string, string> = {
   "test:e2e": "ci.yml ruft scripts/test-e2e-isolated.ts direkt, nach build:all",
 };
 
+// ---------------------------------------------------------------------------
+// Does this job need a browser? Derived, not commented.
+//
+// The requirement used to be a sentence about ONE job: "the konvention job
+// installs a browser". It was true, it stayed true, and it was worthless the
+// day `bun run test:contract` — a step in a DIFFERENT job — grew two files that
+// drive Chromium. A comment cannot notice that. This can:
+//
+//   1. every `run:` step of every job yields its entry paths (a token that
+//      names a real file or directory, after `bun run <script>` has been
+//      resolved through package.json — recursively, because gate stages chain),
+//   2. a directory entry expands to the test files a runner would execute,
+//   3. every entry file is read, its COMMENTS ARE STRIPPED FIRST (a file that
+//      merely names playwright in prose must not put itself on the list), and
+//      its specifiers are collected in all four forms this repo writes them,
+//   4. relative specifiers are resolved and followed transitively,
+//   5. a bare specifier resolving to one of the browser packages makes the job
+//      one that must install a browser before its first entry-bearing step.
+//
+// The mechanism is COPIED from WikiKit's test of the same name rather than
+// imported — §7: patterns travel as copies across the family.
+// ---------------------------------------------------------------------------
+
+const BROWSER_PACKAGES = new Set(["playwright", "playwright-core", "puppeteer", "puppeteer-core"]);
+
+const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".mjs", ".js", ".jsx"];
+const TEST_FILE = /\.test\.(ts|tsx)$/;
+
+/**
+ * Source with its comments and regex literals removed.
+ *
+ * Naive stripping is not an option here: half the entry files are ABOUT
+ * browsers and say so at length, and `readFileSync(…).includes("playwright")`
+ * would mark every one of them.
+ *
+ * Regex literals have to be skipped too, and finding that out cost a round:
+ * THIS file's own specifier pattern ends in a character class holding a
+ * backtick. Read as a template string, that backtick opened a string state that
+ * ran for twenty-two lines and carried the comments after it through
+ * unstripped — so the guard put itself on the list of files that need a
+ * browser, for a sentence in its own prose. Telling a regex from a division is
+ * the usual heuristic: what may precede a regex is an operator, a bracket or a
+ * keyword, never a value.
+ */
+const BEFORE_A_REGEX = new Set("(,=:[!&|?{};+-*%<>~^".split(""));
+const KEYWORD_BEFORE_A_REGEX =
+  /\b(return|typeof|instanceof|in|of|case|new|delete|void|do|else|yield|await)$/;
+
+function stripComments(source: string): string {
+  let out = "";
+  let index = 0;
+  // The last thing that was code, so a `/` can be read as regex or division.
+  let previous = "";
+  while (index < source.length) {
+    const char = source[index] as string;
+    const next = source[index + 1];
+    if (char === '"' || char === "'" || char === "`") {
+      const start = index;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === "\\") index += 2;
+        else if (source[index] === char) break;
+        else index += 1;
+      }
+      index += 1;
+      out += source.slice(start, index);
+      previous = out.trimEnd();
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (index < source.length && source[index] !== "\n") index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      index += 2;
+      while (index < source.length && !(source[index] === "*" && source[index + 1] === "/"))
+        index += 1;
+      index += 2;
+      continue;
+    }
+    if (char === "/" && startsARegex(previous)) {
+      index += 1;
+      let inClass = false;
+      while (index < source.length) {
+        const inner = source[index] as string;
+        if (inner === "\\") index += 2;
+        else if (inner === "[") {
+          inClass = true;
+          index += 1;
+        } else if (inner === "]") {
+          inClass = false;
+          index += 1;
+        } else if (inner === "/" && !inClass) break;
+        else if (inner === "\n") break;
+        else index += 1;
+      }
+      index += 1;
+      while (index < source.length && /[a-z]/.test(source[index] as string)) index += 1;
+      out += " ";
+      continue;
+    }
+    out += char;
+    index += 1;
+    if (!/\s/.test(char)) previous = out;
+  }
+  return out;
+}
+
+function startsARegex(previous: string): boolean {
+  const trimmed = previous.trimEnd();
+  if (trimmed.length === 0) return true;
+  const last = trimmed[trimmed.length - 1] as string;
+  return BEFORE_A_REGEX.has(last) || KEYWORD_BEFORE_A_REGEX.test(trimmed);
+}
+
+/**
+ * Every module specifier in a source file, in all four forms.
+ *
+ * `from "x"` (static and re-export), `import "x"` (side effect), `import("x")`
+ * (dynamic) and `require("x")`. A dynamic import whose specifier is held in a
+ * variable is invisible to this — deliberately so: `tests/e2e` builds one that
+ * way precisely so the suite runs on a host without a browser.
+ */
+const SPECIFIER = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["'`]([^"'`\n]+)["'`]/g;
+
+function specifiersOf(source: string): string[] {
+  return [...stripComments(source).matchAll(SPECIFIER)].map((match) => match[1] as string);
+}
+
+/** Read once. The shard job's entry paths alone expand to some 1,400 files. */
+const specifierCache = new Map<string, string[]>();
+
+function specifiersOfFile(file: string): string[] {
+  const cached = specifierCache.get(file);
+  if (cached) return cached;
+  let found: string[] = [];
+  try {
+    found = specifiersOf(readFileSync(join(root, file), "utf8"));
+  } catch {
+    found = [];
+  }
+  specifierCache.set(file, found);
+  return found;
+}
+
+/** The package a bare specifier belongs to — `@scope/name` counts as one. */
+function packageOf(specifier: string): string {
+  const parts = specifier.split("/");
+  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] as string);
+}
+
+function browserPackagesIn(source: string): string[] {
+  return [
+    ...new Set(
+      specifiersOf(source)
+        .filter((specifier) => !specifier.startsWith("."))
+        .map(packageOf)
+        .filter((name) => BROWSER_PACKAGES.has(name)),
+    ),
+  ].sort();
+}
+
+/**
+ * A relative specifier as a repo-relative path, or null when it resolves to
+ * nothing this walk should read.
+ *
+ * Only SOURCE files. The engine imports `docs/llms-full.txt` as a bundled
+ * asset, and following that led the walk into a documentation blob whose code
+ * samples say `import("playwright")` — which made the shard job look like it
+ * needed a browser because a manual page mentions one.
+ */
+function resolveRelative(fromFile: string, specifier: string): string | null {
+  const base = resolve(root, dirname(fromFile), specifier);
+  const candidates = [
+    ...(SOURCE_EXTENSIONS.some((extension) => base.endsWith(extension)) ? [base] : []),
+    ...SOURCE_EXTENSIONS.map((extension) => base + extension),
+    ...SOURCE_EXTENSIONS.map((extension) => join(base, `index${extension}`)),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate) && statSync(candidate).isFile()) return relative(root, candidate);
+  }
+  return null;
+}
+
+/** The test files a runner would execute under a directory. */
+function testFilesUnder(directory: string): string[] {
+  const found: string[] = [];
+  const walk = (current: string): void => {
+    for (const item of readdirSync(join(root, current), { withFileTypes: true })) {
+      if (item.name === "node_modules" || item.name.startsWith(".")) continue;
+      const child = join(current, item.name);
+      if (item.isDirectory()) walk(child);
+      else if (TEST_FILE.test(item.name)) found.push(child);
+    }
+  };
+  walk(directory);
+  return found;
+}
+
+/**
+ * The entry paths a single `run:` step actually hands to a runner.
+ *
+ * Only `bun test` and `bun run` are read. Everything else — biome, docker,
+ * apt-get — takes no entry files, and reading their arguments is how `bun run
+ * lint` ("biome check .") would put the whole repository into every job.
+ */
+function entryPathsIn(command: string, seen = new Set<string>()): string[] {
+  const paths: string[] = [];
+  for (const part of command.split(/&&|\|\||[;\n|]/)) {
+    const tokens = part.trim().split(/\s+/).filter(Boolean);
+    if (tokens[0] !== "bun") continue;
+    if (tokens[1] === "test") {
+      paths.push(...tokens.slice(2).filter(isEntryPath));
+      continue;
+    }
+    if (tokens[1] !== "run") continue;
+    const target = tokens[2];
+    if (!target) continue;
+    if (isEntryPath(target)) {
+      paths.push(target, ...tokens.slice(3).filter(isEntryPath));
+      continue;
+    }
+    // A gate stage: recurse into what it runs. `verify` chains twenty of them.
+    const body = pkg.scripts[target];
+    if (body !== undefined && !seen.has(target)) {
+      seen.add(target);
+      paths.push(...entryPathsIn(body, seen));
+    }
+  }
+  return paths;
+}
+
+function isEntryPath(token: string): boolean {
+  if (token.startsWith("-") || token === "." || token.includes("$")) return false;
+  const full = join(root, token);
+  return existsSync(full);
+}
+
+/** Every file reachable from these entry paths, and every package they name. */
+const reachCache = new Map<string, { files: string[]; packages: Set<string> }>();
+
+function reachableFrom(entries: readonly string[]): { files: string[]; packages: Set<string> } {
+  const key = [...entries].sort().join(" ");
+  const cached = reachCache.get(key);
+  if (cached) return cached;
+  const queue: string[] = [];
+  for (const entry of entries) {
+    const full = join(root, entry);
+    if (!existsSync(full)) continue;
+    if (statSync(full).isDirectory()) queue.push(...testFilesUnder(entry));
+    else queue.push(entry);
+  }
+  const visited = new Set<string>();
+  const packages = new Set<string>();
+  while (queue.length > 0) {
+    const file = queue.pop() as string;
+    if (visited.has(file)) continue;
+    visited.add(file);
+    for (const specifier of specifiersOfFile(file)) {
+      if (specifier.startsWith(".")) {
+        const target = resolveRelative(file, specifier);
+        if (target !== null && !visited.has(target)) queue.push(target);
+      } else packages.add(packageOf(specifier));
+    }
+  }
+  const result = { files: [...visited], packages };
+  reachCache.set(key, result);
+  return result;
+}
+
+/** The browser packages a single `run:` step can reach. */
+function browsersReachedBy(command: string): string[] {
+  const reach = reachableFrom(entryPathsIn(command));
+  return [...reach.packages].filter((name) => BROWSER_PACKAGES.has(name)).sort();
+}
+
 describe("gate and workflows", () => {
   test("ci.yml triggers on push to main and on pull requests", () => {
     const on = ci.on as { push: { branches: string[] }; pull_request?: unknown };
@@ -153,23 +429,131 @@ describe("gate and workflows", () => {
     expect(runs(job(ci, "konvention"))).toContain("bun run konvention:check");
   });
 
-  // The convention check is the only job that opens a browser, and playwright's
-  // browser binaries are not in node_modules — `bun install` brings the library
-  // and not Chromium, and there is no postinstall that fetches it. Without this
-  // step the stage is red for a reason that has nothing to do with the
-  // convention, and a mandatory stage that is red for the wrong reason is how a
-  // stage gets muted.
-  test("the konvention job installs a browser before it needs one", () => {
-    const steps = runs(job(ci, "konvention"));
-    const install = steps.findIndex((step) => /playwright install/.test(step));
-    const check = steps.findIndex((step) => step === "bun run konvention:check");
-    expect(install, "the konvention job must install playwright browsers").toBeGreaterThanOrEqual(
-      0,
+  // ---------------------------------------------------------------------
+  // The browser requirement, DERIVED — see the block above BROWSER_PACKAGES.
+  // ---------------------------------------------------------------------
+
+  // The reader has to see a specifier in every form the repo writes one, and it
+  // must not see the ones that are only being TALKED about. This file is the
+  // hardest case of the second kind: its own prose says "playwright" a dozen
+  // times, so without stripping comments first it would put itself on the list
+  // of files that need a browser — and the rule would be green on a machine
+  // where nothing works.
+  test("the reader sees every specifier form, and none that is only mentioned", () => {
+    // The quotes are spliced in rather than typed. A fixture that spells out
+    // `from "playwright"` IS an import as far as any reader is concerned — this
+    // file sits inside tests/contract, so the fixture would put the quality job
+    // on the list for a reason that only exists in a test.
+    const q = '"';
+    const source = [
+      `import { chromium } from ${q}playwright${q};`,
+      `import defaultExport from ${q}playwright-core${q};`,
+      `export { thing } from ${q}./relative.ts${q};`,
+      `import ${q}side-effect-only${q};`,
+      `const late = await import(${q}puppeteer${q});`,
+      `const older = require(${q}puppeteer-core${q});`,
+      `// import { nope } from ${q}commented-out${q};`,
+      `/* import { alsoNope } from ${q}block-commented${q}; */`,
+      `const url = ${q}https://playwright.dev/docs${q};`,
+    ].join("\n");
+    expect(specifiersOf(source).sort()).toEqual(
+      [
+        "./relative.ts",
+        "playwright",
+        "playwright-core",
+        "puppeteer",
+        "puppeteer-core",
+        "side-effect-only",
+      ].sort(),
     );
-    expect(steps[install]).toContain("chromium");
-    // ubuntu-24.04 does not carry Chromium's system libraries.
-    expect(steps[install]).toContain("--with-deps");
-    expect(install).toBeLessThan(check);
+
+    // A regex literal whose character class holds a quote. Read as a string,
+    // it swallows everything after it and the comment below survives — which is
+    // exactly how this file first put itself on the list.
+    const withRegex = [
+      `const pattern = /["'${"`"}]/g;`,
+      `// import { hidden } from ${q}puppeteer${q};`,
+      `import { real } from ${q}./neighbour.ts${q};`,
+    ].join("\n");
+    expect(specifiersOf(withRegex)).toEqual(["./neighbour.ts"]);
+
+    const own = readFileSync(join(root, "tests/contract/ci-workflows.test.ts"), "utf8");
+    expect(own, "this file names the packages in prose").toContain("playwright-core");
+    expect(browserPackagesIn(own), "…and must not thereby demand a browser").toEqual([]);
+  });
+
+  // The walk is transitive or it is a directory listing. `scripts/lib/
+  // cockpit-identity.mjs` is reachable from tests/contract ONLY through a
+  // relative import inside cockpit-identity.test.ts, so it is the landmark that
+  // separates "followed the imports" from "read the entry files".
+  test("the walk follows relative imports out of the entry files", () => {
+    const reached = reachableFrom(["tests/contract"]);
+    expect(reached.files).toContain("tests/contract/cockpit-identity.test.ts");
+    expect(reached.files).toContain("scripts/lib/cockpit-identity.mjs");
+    expect([...reached.packages].filter((name) => BROWSER_PACKAGES.has(name))).toEqual([
+      "playwright",
+    ]);
+  });
+
+  // THE ASSERTION THE RED BUILD WAS ABOUT.
+  //
+  // Playwright's browser binaries are not in node_modules — `bun install`
+  // brings the library and there is no postinstall that fetches Chromium. The
+  // konvention job knew that; the quality job did not, and `bun run
+  // test:contract` had quietly acquired two browser-driven files. The stage
+  // went red for a reason that has nothing to do with what it measures, which
+  // is how a mandatory stage gets muted — and worse, a failing `beforeAll`
+  // takes its whole describe with it, so CI executed 46 of 62 contract tests
+  // and reported a launch error instead of the 16 it never ran.
+  //
+  // The old shape of this test named ONE job and could not have caught that.
+  // The requirement is now derived: every job, every entry file its steps
+  // actually run, everything those reach through relative imports.
+  test("every job that can reach a browser package installs one first", () => {
+    const needing: string[] = [];
+    for (const [name, entry] of Object.entries(ci.jobs ?? {})) {
+      const commands = (entry.steps ?? []).map((step) => step.run ?? "");
+      const needy = commands
+        .map((command, index) => ({ index, browsers: browsersReachedBy(command) }))
+        .filter((step) => step.browsers.length > 0);
+      if (needy.length === 0) continue;
+      needing.push(name);
+
+      const first = needy[0] as { index: number; browsers: string[] };
+      const install = commands.findIndex((command) => /playwright install/.test(command));
+      expect(
+        install,
+        `job '${name}' reaches ${first.browsers.join(", ")} but never installs a browser`,
+      ).toBeGreaterThanOrEqual(0);
+      expect(commands[install]).toContain("chromium");
+      // ubuntu-24.04 does not carry Chromium's system libraries.
+      expect(commands[install]).toContain("--with-deps");
+      // Before the step that needs it, not merely somewhere in the job.
+      expect(
+        install,
+        `job '${name}' installs the browser after '${commands[first.index]}' has already asked for one`,
+      ).toBeLessThan(first.index);
+    }
+    // Exact, not `length > 0`: a reader that silently stopped finding anything
+    // would make every assertion in the loop above vacuous, which is the
+    // failure mode this whole file exists against.
+    expect(needing.sort()).toEqual(["konvention", "quality"]);
+  });
+
+  // The honest edge of the derivation. An entry path is a token that names a
+  // real file or directory in the run command; a runner that hard-codes the
+  // directory it scans (scripts/test-e2e-isolated.ts scans tests/e2e itself)
+  // therefore hides its test files from the walk. It costs nothing today —
+  // tests/e2e reaches playwright only through a dynamic specifier held in a
+  // variable, deliberately, so the suite runs on a host without a browser — and
+  // the quality job installs one anyway. Recorded rather than papered over: if
+  // that ever changes, this expectation is the thing that has to be revisited.
+  test("a runner that hides its own test files is a known blind spot", () => {
+    const hidden = reachableFrom(["scripts/test-e2e-isolated.ts"]);
+    expect(hidden.files).toContain("scripts/test-e2e-isolated.ts");
+    expect(hidden.files.some((file) => file.startsWith("tests/e2e/"))).toBe(false);
+    const suites = reachableFrom(["tests/e2e"]);
+    expect([...suites.packages].filter((pkg) => BROWSER_PACKAGES.has(pkg))).toEqual([]);
   });
 
   // A green "build" signal must not be reachable past a red check — and "past"
