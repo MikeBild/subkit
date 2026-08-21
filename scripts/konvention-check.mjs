@@ -7,9 +7,14 @@ import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 // §7 keeps the six products from importing each other's rules; it says nothing
 // about this file reading its own repository's. The identity READER lived here
 // a second time, and the second copy carried the same defect as the first — it
-// answered with the first `content="…"` in the document, prose included. The
-// assert below stays local: its wording is pinned line by line and is German.
-import { IDENTITY_META, markerIn, titleIn } from "./lib/cockpit-identity.mjs";
+// answered with the first `content="…"` in the document, prose included. Both
+// copies are gone: the served document is read by the BROWSER this run measures
+// with (`readIdentity`), the same parser that renders every page below, so no
+// regex of ours can disagree with what is on the screen. `markerIn` is left for
+// the definition site on disk, where there is no browser to ask, and answers
+// null for anything a parser could read differently. The assert below stays
+// local: its wording is pinned line by line and is German.
+import { IDENTITY_META, markerIn, readIdentity } from "./lib/cockpit-identity.mjs";
 
 // The family convention (COCKPIT-KONVENTION.md, the version named by
 // KONVENTION_VERSION below) is deliberately not enforced by shared code — six
@@ -2179,7 +2184,7 @@ let gemesseneKennung = null;
  * that did not happen. A breach would become a line someone works off, on a
  * surface this repository does not own.
  */
-function assertPruefstandsKennung(html) {
+async function assertPruefstandsKennung(page) {
   // Withdrawn first, restored only by an answer. Every path out of here that is
   // not the last line is a stand this run cannot name.
   gemesseneKennung = null;
@@ -2192,9 +2197,11 @@ function assertPruefstandsKennung(html) {
         `a finding about THIS repository, and no statement about whatever answers on ${baseUrl}.`,
     );
   }
-  const geliefert = markerIn(html);
+  // Asked of the PAGE, not of a text this file fetched for itself: a second
+  // reader of one document is a second answer, and the gap between the two is
+  // exactly a WorkKit console measured under SubKit's name.
+  const { marker: geliefert, title: titel } = await readIdentity(page);
   if (geliefert === null) {
-    const titel = titleIn(html);
     throw new NichtGemessen(
       `this is not ${erwartet}: the document on ${baseUrl} carries no ` +
         `<meta name="${IDENTITY_META}">. Its title reads "${titel}". ` +
@@ -2213,9 +2220,9 @@ function assertPruefstandsKennung(html) {
 }
 
 async function startPreview() {
-  // A foreign stand is fetched before anything measures too: with COCKPIT_BASE_URL
-  // this run points at something nobody started for it, which is where the
-  // identity question matters most.
+  // Reachability only. WHOSE console it is, is a question for the browser —
+  // this function may not answer it, because an answer read here would be read
+  // by a second parser and could differ from the one that measures.
   if (externalBaseUrl) {
     let response;
     try {
@@ -2225,7 +2232,7 @@ async function startPreview() {
     }
     if (!response.ok)
       throw new NichtGemessen(`${baseUrl}/cockpit/ answered with HTTP ${response.status}`);
-    return { server: null, shell: await response.text() };
+    return { server: null };
   }
   const server = spawn(
     "bunx",
@@ -2246,10 +2253,7 @@ async function startPreview() {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`${baseUrl}/cockpit/`);
-      // The BODY, not just the status code, and from THIS response rather than a
-      // second fetch: between two fetches the peer can change, and the identity
-      // would then vouch for a document the run never measured.
-      if (response.ok) return { server, shell: await response.text() };
+      if (response.ok) return { server };
     } catch {
       // The server is still binding; the deadline is the only give-up signal.
     }
@@ -2272,25 +2276,31 @@ async function startPreview() {
  * a sister console took it over. A port says that somebody answers, never who.
  */
 async function assertStandStillAnswers(cause) {
-  let response;
+  const page = await browser.newPage();
   try {
-    response = await fetch(`${baseUrl}/cockpit/`);
-  } catch (error) {
-    throw new NichtGemessen(
-      `nobody answers on ${baseUrl} any more (${error.message}). The stand died while the sweep ` +
-        "was running, so nothing after it is a statement about the console — only about the " +
-        `absence of one. First symptom: ${cause.message}`,
-      { cause },
-    );
+    let response;
+    try {
+      response = await page.goto(`${baseUrl}/cockpit/`, { waitUntil: "domcontentloaded" });
+    } catch (error) {
+      throw new NichtGemessen(
+        `nobody answers on ${baseUrl} any more (${error.message}). The stand died while the ` +
+          "sweep was running, so nothing after it is a statement about the console — only about " +
+          `the absence of one. First symptom: ${cause.message}`,
+        { cause },
+      );
+    }
+    if (!response?.ok()) {
+      throw new NichtGemessen(
+        `${baseUrl}/cockpit/ answered with HTTP ${response?.status()} mid-sweep. Whatever the ` +
+          "pages reported from here on is about that, not about the console. First symptom: " +
+          `${cause.message}`,
+        { cause },
+      );
+    }
+    await assertPruefstandsKennung(page);
+  } finally {
+    await page.close();
   }
-  if (!response.ok) {
-    throw new NichtGemessen(
-      `${baseUrl}/cockpit/ answered with HTTP ${response.status} mid-sweep. Whatever the pages ` +
-        `reported from here on is about that, not about the console. First symptom: ${cause.message}`,
-      { cause },
-    );
-  }
-  assertPruefstandsKennung(await response.text());
 }
 
 async function openPage(context, route) {
@@ -2329,11 +2339,22 @@ try {
   const preview = await startPreview();
   server = preview.server;
 
-  // Read from the SAME document `startPreview` waited on, and BEFORE the browser
-  // starts. Asking afterwards costs a full run first: 156 s and eight findings.
-  assertPruefstandsKennung(preview.shell);
-
+  // The browser starts BEFORE the identity question, because it IS the reader.
+  // What must still come first is the answer: asking after the route sweep costs
+  // a full run against a foreign surface — 156 s and eight findings at CodeKit.
+  // Launching a browser and closing it again costs about a second.
   browser = await chromium.launch({ headless: true });
+  const schale = await browser.newPage();
+  try {
+    const antwort = await schale.goto(`${baseUrl}/cockpit/`, { waitUntil: "domcontentloaded" });
+    if (!antwort?.ok())
+      throw new NichtGemessen(
+        `${baseUrl}/cockpit/ answered with HTTP ${antwort?.status()} when the identity was asked`,
+      );
+    await assertPruefstandsKennung(schale);
+  } finally {
+    await schale.close();
+  }
 
   // German is the top-level language of the convention (§5), and every pinned
   // string it names is a German one.

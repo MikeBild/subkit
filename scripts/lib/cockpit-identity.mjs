@@ -7,20 +7,26 @@
  * pointed at such a port without asking anything, so 296 screenshots of a
  * foreign console would have been indistinguishable from our own.
  *
- * This module is IMPORTABLE on purpose, and the decision is a pure function.
- * A guard that is only pinned as source text is not a guard: a sister repo's
- * identity rule demanded "the line is present", and an implementation that left
- * the line in place while checking the wrong document passed 12/0 with the hole
- * fully open. `tests/contract/cockpit-identity.test.ts` runs `identityProblem`
- * against fixtures instead — including the ones it must reject.
+ * ONE READER, and it is the browser.
  *
- * The convention check READS the marker from here rather than carrying its own
- * copy. It used to carry one, and both copies held the same defect — which is
- * what two versions of one decision are for. Its assert stays behind, because
- * its wording is pinned line by line by
- * `tests/contract/konvention-check-kennung.test.ts` and is German
- * (LOCAL-SK-SPRACHE-IM-CODE); the READER is what the two shared and what is
- * shared now.
+ * This module used to answer the question with a regex over the HTTP text while
+ * the frames came out of Chromium's parse. Two readers of one document is two
+ * answers, and the gap between them is a document that photographs as WorkKit
+ * and reads as SubKit. Ten such shapes were measured in one day, each closed by
+ * a sharper regex, and the tenth was OPENED by the repair of the ninth: the
+ * comment stripper introduced for prose swallowed the foreign marker behind an
+ * abruptly closed `<!-->`, and the sweep wrote 296 frames of a WorkKit cockpit
+ * at exit 0. Four shapes that still beat a regex are pinned in
+ * `tests/contract/cockpit-identity.test.ts`, served over real HTTP.
+ *
+ * `readIdentity` asks the page. Same engine, same parse, same document as the
+ * screenshots — so reader and photographer cannot disagree, and the shapes stop
+ * being cases at all.
+ *
+ * `markerIn` remains for the one place where no browser exists: the definition
+ * site on disk. There the rule is FAIL-SAFE — anything a parser could read
+ * differently from a string comparison yields `null`, which every caller turns
+ * into "not identified", never into a guessed name.
  */
 import { readFileSync } from "node:fs";
 
@@ -35,48 +41,83 @@ export const IDENTITY_META = "cockpit-product";
 export const IDENTITY_SOURCE = new URL("../../apps/cockpit/index.html", import.meta.url);
 
 /**
- * A document's comments, which are prose and not its stamp.
+ * What the page says it is — read by the engine that takes the frames.
  *
- * Load-bearing. Every console in this family explains the marker in a comment
- * directly ABOVE it, and prose that quotes the line as an example puts a second
- * `content="…"` into the document — ahead of the real one. `markerIn` used to
- * answer with the first thing it found anywhere in the text. A built WorkKit
- * console whose prose quoted `content="SubKit"` therefore passed as ours: the
- * sweep exited 0 and wrote 296 screenshots of a foreign cockpit, and the
- * convention check measured 27 routes of it under the heading "identity SubKit".
- *
- * The unterminated `<!--` is swallowed to the end on purpose, the way a browser
- * swallows it: a document whose markup cannot be delimited has no readable
- * stamp, and "unreadable" must come out as "not identified", never as a guess.
+ * `getElementsByTagName` in document order and `.name`/`.content` off the
+ * parsed element: that is the parser's own answer, including the two shapes a
+ * text reader gets backwards. With `content="WorkKit" content="SubKit"` the
+ * parser keeps the FIRST and a reader searching for `content=` after `name=`
+ * finds the second; with `name="cockpit&#45;product"` the parser decodes the
+ * character reference in the attribute NAME and a string comparison does not.
  */
-const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
-
-/**
- * A document's marker, or null if it carries none.
- *
- * Read from the MARKUP only. A fixture for this function has to carry the shape
- * of a real shell, prose comment included — in a minimal shell the marker is the
- * first occurrence in the file, which is the one case the old reader got right.
- */
-export function markerIn(html) {
-  return (
-    new RegExp(`<meta[^>]+name="${IDENTITY_META}"[^>]+content="([^"]+)"`).exec(
-      html.replace(HTML_COMMENT, ""),
-    )?.[1] ?? null
-  );
+export async function readIdentity(page) {
+  return page.evaluate((name) => {
+    const meta = [...document.getElementsByTagName("meta")].find(
+      (candidate) => candidate.name === name,
+    );
+    return {
+      marker: meta?.content || null,
+      title: document.title.trim() || "(no <title>)",
+    };
+  }, IDENTITY_META);
 }
 
 /**
- * A document's title, for naming what answered instead of only rejecting it.
+ * A document's comments, or null when this file cannot say where they end.
  *
- * Past the comments as well: this string is printed in the sentence that names
- * a foreign console, and a title quoted in prose would let that console be
- * announced under a name it does not carry.
+ * `<!-->` and `<!--->` are COMPLETE, abruptly closed, empty comments; `--!>`
+ * closes one early; an unterminated `<!--` runs to the end of the file. Each of
+ * them puts the parser's idea of "inside a comment" somewhere else than a
+ * `<!--[\s\S]*?-->` regex puts it, and the first of them cost a full sweep of a
+ * foreign cockpit. None of them is reconstructed here — a document whose markup
+ * cannot be delimited by this reader has no readable stamp, full stop.
  */
-export function titleIn(html) {
-  return (
-    /<title>([^<]*)<\/title>/.exec(html.replace(HTML_COMMENT, ""))?.[1]?.trim() || "(no <title>)"
-  );
+function withoutComments(html) {
+  let out = "";
+  let index = 0;
+  for (;;) {
+    const open = html.indexOf("<!--", index);
+    if (open === -1) return out + html.slice(index);
+    out += html.slice(index, open);
+    if (/^<!--(>|->)/.test(html.slice(open))) return null;
+    const close = html.indexOf("-->", open + 4);
+    if (close === -1) return null;
+    if (html.slice(open, close).includes("--!>")) return null;
+    index = close + 3;
+  }
+}
+
+/**
+ * A document's marker as far as TEXT can be trusted with it, or null.
+ *
+ * Only for the definition site on disk, where there is no browser to ask. Every
+ * branch that is not "exactly one unambiguous marker" answers null, because the
+ * only safe thing to do with a document two readers would read differently is
+ * to refuse to name it. That refusal is exit 2 at every caller — an absent
+ * measurement, never a guessed identity.
+ */
+export function markerIn(html) {
+  const body = withoutComments(html);
+  if (body === null) return null;
+  const found = [];
+  for (const [, attributes] of body.matchAll(/<meta\b([^>]*)>/gi)) {
+    const names = [...attributes.matchAll(/\bname\s*=\s*"([^"]*)"/gi)].map(([, value]) => value);
+    // A character reference in the attribute NAME is decoded by the parser and
+    // not by a string comparison, so anything that could decode makes the whole
+    // document unreadable rather than "not the marker".
+    if (names.some((name) => name.includes("&"))) return null;
+    // A quoting style this reader cannot see is the same situation.
+    if (/\bname\s*=/i.test(attributes) && names.length === 0) return null;
+    if (!names.includes(IDENTITY_META)) continue;
+    if (names.length > 1) return null;
+    const contents = [...attributes.matchAll(/\bcontent\s*=\s*"([^"]*)"/gi)].map(
+      ([, value]) => value,
+    );
+    if (contents.length !== 1) return null;
+    found.push(contents[0]);
+  }
+  if (found.length !== 1) return null;
+  return found[0] || null;
 }
 
 /** What this repository calls its console, read from the definition site. */
@@ -87,22 +128,24 @@ export function expectedIdentity(source = IDENTITY_SOURCE) {
 /**
  * Why the stand must not be measured — or null when it may be.
  *
- * Returns a sentence rather than throwing, so a caller can decide its own error
- * type and its own exit code, and so a test can drive every branch.
+ * Takes what the PARSER read, not a document to re-read: whoever calls this has
+ * a page open, and re-reading the text here would be the second reader all over
+ * again. Returns a sentence rather than throwing, so a caller can decide its
+ * own error type and its own exit code, and so a test can drive every branch.
  */
-export function identityProblem({ served, expected, baseUrl }) {
+export function identityProblem({ delivered, title, expected, baseUrl }) {
   if (expected === null) {
     return (
-      `apps/cockpit/index.html no longer carries <meta name="${IDENTITY_META}" content="…">. ` +
-      "The expected identity is derived from that file and now has none — a finding about THIS " +
-      `repository, and no statement about whatever answers on ${baseUrl}.`
+      `apps/cockpit/index.html no longer carries one unambiguous ` +
+      `<meta name="${IDENTITY_META}" content="…">. The expected identity is derived from that ` +
+      `file and now has none — a finding about THIS repository, and no statement about whatever ` +
+      `answers on ${baseUrl}.`
     );
   }
-  const delivered = markerIn(served);
   if (delivered === null) {
     return (
       `this is not ${expected}: the document on ${baseUrl} carries no ` +
-      `<meta name="${IDENTITY_META}">. Its title reads "${titleIn(served)}". Either a sister ` +
+      `<meta name="${IDENTITY_META}">. Its title reads "${title}". Either a sister ` +
       "console holds the port, or it is a build from before the marker existed. Both would be " +
       `photographed as ${expected}.`
     );
