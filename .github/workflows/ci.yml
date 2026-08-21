@@ -111,6 +111,20 @@ jobs:
         # fail before release rather than ship the previous Cockpit bundle.
         run: bun run check:cockpit-drift
 
+      # Two contract files drive a real Chromium (tests/contract/
+      # cockpit-identity.test.ts and konvention-check-kennung.test.ts): the
+      # identity rule is asserted against the same parse the frames come from,
+      # not against prose. `bun install` brings the playwright LIBRARY only —
+      # there is no postinstall that downloads a browser — so without this step
+      # their `beforeAll` throws "Executable doesn't exist", and a failing
+      # beforeAll takes its whole describe with it: CI ran 46 of 62 contract
+      # tests and called the missing 16 a launch error.
+      # tests/contract/ci-workflows.test.ts derives this requirement per job by
+      # walking each job's entry files, so a browser-driven file added to any
+      # other job's reach fails there instead of on a runner.
+      - name: Install Chromium for Playwright
+        run: bunx playwright install --with-deps chromium
+
       - name: Contract tests
         run: bun run test:contract
 
