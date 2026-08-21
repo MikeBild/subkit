@@ -21,7 +21,7 @@
 // tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI). `bun run test:contract` runs this.
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,7 +48,10 @@ describe("the visual sweep reports the frames it wrote", () => {
     // one level down, next to a directory called x.png. The old rule answers 3
     // — it misses the two below and counts the directory, and both errors point
     // towards a number that looks fine.
-    const root2 = join(tmpdir(), `sweep-count-${Date.now()}`);
+    // mkdtempSync, not a timestamp: the directory needs to be UNIQUE, and a
+    // clock reading is a poor way to get that — two runs in the same
+    // millisecond collide, and the reading is wall-clock in a test file.
+    const root2 = mkdtempSync(join(tmpdir(), "sweep-count-"));
     mkdirSync(join(root2, "unter"), { recursive: true });
     mkdirSync(join(root2, "x.png"), { recursive: true });
     for (const name of ["a.png", "b.png", "unter/c.png", "unter/d.png"])
