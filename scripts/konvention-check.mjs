@@ -1719,44 +1719,281 @@ const german = (key, values) => interpolate(CATALOGS.de[key], values);
  * would have been GREEN on the very console that still had two shelves of
  * decided work under its queue — the content simply was not there to see.
  */
-const SETTLED_WORDS = ["Entschieden", "Verworfen", "Zurückgestellt", "Abgelaufen", "Erledigt"];
-const SETTLED_STATES = ["decided", "approved", "rejected", "discarded", "deferred", "expired"];
+/**
+ * THE ALPHABET OF FINISHED WORK — DERIVED, NOT TYPED.
+ *
+ * The previous version of this rule listed five German words and six state
+ * names as literals, connected to nothing. That is weaker than either family
+ * version of the same rule, and weaker in the way that does not announce
+ * itself: WikiKit's list can shrink when a catalogue key is renamed, and it
+ * still reads FROM the catalogue; a typed list cannot shrink because it was
+ * never attached — it simply measures a vocabulary the product stopped using,
+ * reports nothing, and exits 0.
+ *
+ * It was measured, not suspected. `Entschieden 128 · Verworfen 12 · Für später
+ * erinnert 4 · Abgelaufen 3` placed plainly in a <p> on /decisions passed the
+ * built check with exit 0 and no breach: the four shapes below read headings,
+ * `article[data-state]` and button/tab/link labels, and a line in a paragraph
+ * is none of them — and „Für später erinnert" was not even in the word list.
+ *
+ * So both halves now come from somewhere:
+ *
+ *  - THE STATES come out of the generated engine contract. A decision here is a
+ *    patch or skill candidate, and their `status` enums are the product's own
+ *    statement of what a candidate can BE. The check is inverted against them:
+ *    a position whose `data-state` is not one of the OPEN states is settled —
+ *    so a settled state invented tomorrow is caught without anybody adding it
+ *    to a list.
+ *  - THE WORDS come out of both catalogues, for the keys named below, in both
+ *    languages. Rename the key and the run stops; change the word and the new
+ *    word is what gets looked for.
+ */
+const engineOpenApi = JSON.parse(
+  readFileSync(
+    new URL("../packages/cli-core/src/engine-api/openapi.json", import.meta.url),
+    "utf8",
+  ),
+);
 
-async function checkNothingSettled(page) {
-  // 0. Open everything that can be opened, and wait for the content to mount.
-  const triggers = page.locator(
-    '[data-testid="decisions-page"] [aria-expanded="false"], [data-testid="decisions-page"] summary',
-  );
-  const openable = await triggers.count();
-  for (let index = 0; index < openable; index += 1) {
-    const trigger = triggers.nth(index);
-    try {
-      await trigger.click({ timeout: 2_000 });
-    } catch {
-      // A control that will not open cannot hide anything either.
-    }
+/** What a decision IS, according to the contract the engine publishes. */
+const CANDIDATE_SCHEMAS = ["PatchCandidate", "SkillCandidate"];
+
+function candidateStates(schema) {
+  const properties = engineOpenApi.components?.schemas?.[schema]?.properties;
+  return properties?.status?.enum ?? properties?.state?.enum ?? [];
+}
+
+const CANDIDATE_STATES = [...new Set(CANDIDATE_SCHEMAS.flatMap(candidateStates))].sort();
+
+/**
+ * The one state a candidate is in while it still waits, plus the card's own
+ * word for it. `decision-card.tsx` writes `data-state="open"`; the contract
+ * calls the same thing `proposed`. Everything else is over.
+ */
+const OPEN_STATES = ["open", "proposed"];
+const SETTLED_STATES = CANDIDATE_STATES.filter((state) => !OPEN_STATES.includes(state));
+
+/**
+ * The catalogue keys this run CLAIMS name a state something is in after it is
+ * over. Written out rather than derived, because "which states are past" is a
+ * statement about the domain — a list read out of the same file it is compared
+ * against would agree by construction. This is the claim; the catalogue is the
+ * evidence, and `assertSettledAlphabetIsCurrent` is what stops the two drifting
+ * apart in silence.
+ */
+const SETTLED_STATUS_KEYS = [
+  ...SETTLED_STATES.map((state) => `status.${state}`),
+  "status.abandoned",
+  "status.aborted",
+  "status.archived",
+  "status.cancelled",
+  "status.completed",
+  "status.succeeded",
+];
+
+/**
+ * WHAT IS EXTRA HERE ON PURPOSE, and why it is not the typed list coming back.
+ *
+ * These are words for finished work that this console spells in PROSE or on a
+ * TILE rather than in a status badge, so no catalogue key carries them. Four of
+ * them are the ones the counter line above actually used. They enlarge the
+ * alphabet; they cannot shrink it, and nothing below depends on them being
+ * complete — the derived half is what the guard holds.
+ */
+const PROSE_WORDS = [
+  ["Entschieden", "prose — no status key spells it"],
+  ["Zurückgestellt", "prose — no status key spells it"],
+  ["Für später erinnert", "prose — the counter line's own wording"],
+  ["Abgelaufen", "prose — `status.expired` is not a candidate state"],
+  ["Erledigt", "prose — the empty state's own word"],
+  ["Beantwortet", "prose — a question that is over"],
+  ["Decided", "prose"],
+  ["Deferred", "prose"],
+  ["Snoozed", "prose"],
+  ["Dismissed", "prose"],
+  ["Discarded", "prose"],
+  ["Expired", "prose"],
+  ["Settled", "prose"],
+  ["Done", "prose"],
+  ["Answered", "prose"],
+];
+
+/** Every word for finished work this build can put on a screen, and where it came from. */
+const SETTLED_WORDS = new Map();
+for (const key of SETTLED_STATUS_KEYS)
+  for (const locale of ["de", "en"]) {
+    const label = CATALOGS[locale]?.[key];
+    if (label) SETTLED_WORDS.set(label, `${key} · ${locale}`);
   }
-  if (openable > 0) await page.waitForTimeout(300);
+for (const [word, why] of PROSE_WORDS) if (!SETTLED_WORDS.has(word)) SETTLED_WORDS.set(word, why);
+
+/**
+ * A DRIFTED ALPHABET IS BLIND, NOT CLEAN — so this stops the run with 2 rather
+ * than reporting a violation, and it does so BEFORE the preview server and the
+ * browser start. "Measured nothing" must never leave as "found nothing".
+ *
+ * WatchKit has no such guard, and it was measured there: a renamed catalogue
+ * key let the same probe run all the way through and exit 0 without a word.
+ * WorkKit has one, and it is the reason its list cannot quietly get shorter.
+ *
+ * One direction only. An extra word costs nothing; a MISSING one is exactly the
+ * hole a counter line walks through.
+ */
+function assertSettledAlphabetIsCurrent() {
+  const missing = [];
+  if (CANDIDATE_STATES.length === 0)
+    missing.push(
+      `no status enum on ${CANDIDATE_SCHEMAS.join(" or ")} in packages/cli-core/src/engine-api/openapi.json`,
+    );
+  if (SETTLED_STATES.length === 0)
+    missing.push(`${CANDIDATE_STATES.join(", ") || "nothing"} — not one settled state among them`);
+  for (const key of SETTLED_STATUS_KEYS)
+    for (const locale of ["de", "en"]) {
+      const label = CATALOGS[locale]?.[key];
+      if (!label) missing.push(`${key} — no ${locale} entry in apps/cockpit/src/lib/i18n.ts`);
+    }
+  if (missing.length === 0) return;
+  console.error(
+    "Convention check NOT MEASURED: the §8.5 alphabet no longer covers this console's own words",
+    "\n        for finished work. A rule whose vocabulary has drifted reports nothing and passes.",
+    `\n        ${missing.join("\n        ")}`,
+    "\n        Restore the key(s), or say in SETTLED_STATUS_KEYS that the state is gone, and run again.",
+  );
+  process.exit(2);
+}
+
+/**
+ * A settled word STANDING WITH A NUMBER, read off the rendered text.
+ *
+ * This is the shape the four structural readings below cannot see and the one
+ * the counter line used. It is not a word ban: „Abgelaufen" is the correct
+ * label on a conversation whose deadline lapsed while it still waits for an
+ * answer, and the page's own way out of the present tense is a sentence built
+ * from these words. What §8.5 forbids is a COUNT of what is over — so the
+ * measure is the word next to a figure.
+ *
+ * CASE-SENSITIVE and WHOLE WORDS, which is the entire difference between the
+ * label „Verworfen 12" and this page's own prose „Was bereits entschieden
+ * wurde:". Escaped, because these words come out of a catalogue and a catalogue
+ * may one day hold a bracket. The separator deliberately excludes the newline:
+ * a badge on one line and an unrelated figure on the next is not a counter.
+ */
+const COUNT_SEPARATOR = "[ \\u00a0:·•|()\\[\\]]{0,3}";
+
+function countedWith(text, word) {
+  const literal = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const hit =
+    new RegExp(`(^|[^\\p{L}])${literal}${COUNT_SEPARATOR}\\d`, "u").exec(text) ??
+    new RegExp(`\\d${COUNT_SEPARATOR}${literal}([^\\p{L}]|$)`, "u").exec(text);
+  if (hit === null) return null;
+  const from = Math.max(0, hit.index - 30);
+  return `${from === 0 ? "" : "…"}${text.slice(from, from + 130).replace(/\n/g, " ⏎ ")}…`;
+}
+
+/**
+ * Everything that can be opened, opened — EACH TRIGGER PRESSED ONCE, BY IDENTITY.
+ *
+ * The previous shape walked a Playwright locator by index and would have been
+ * the count-based loop ContentKit measured: there, a progress loop that read
+ * "how many are still folded" reported "nothing answered a click" across four
+ * routes on which every click worked, because opening one panel reveals the
+ * next folded thing inside it and the number stood still. Identity in a
+ * `WeakSet` answers the question the count cannot: was THIS trigger pressed.
+ *
+ * TWO KINDS OF TRIGGER ARE EXCLUDED, both measured elsewhere and neither tidy:
+ *
+ *  - `aria-haspopup` — dialogs and menus. What they open is a portal outside
+ *    the page, not folded content, and its overlay then swallows every
+ *    following click.
+ *  - `role="combobox"` — Radix's `Select` carries `aria-expanded` and NO
+ *    `aria-haspopup`, and opens on POINTERDOWN, so a synthetic `click()` does
+ *    nothing to it. ContentKit paid 29 hanging triggers per route for that
+ *    omission: 510 s instead of 22 s.
+ *
+ * Bounded, because a trigger that folds itself back is a defect and not a
+ * reason to spin. What the bound leaves shut is reported as unread, not as
+ * clean: Radix does not mount a closed Collapsible's content, so a rule that
+ * read the DOM as it found it would have been green on a console that still had
+ * two shelves of decided work under its queue.
+ */
+const FOLDED =
+  '[data-testid="decisions-page"] [aria-expanded="false"]:not([aria-haspopup]):not([role="combobox"])';
+
+async function unfoldDecisions(page) {
+  return page.evaluate(async (selector) => {
+    const settle = () =>
+      new Promise((done) =>
+        setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(done)), 0),
+      );
+    const pressed = new WeakSet();
+    for (let step = 0; step < 120; step += 1) {
+      for (const details of document.querySelectorAll(
+        '[data-testid="decisions-page"] details:not([open])',
+      ))
+        details.open = true;
+      const next = [...document.querySelectorAll(selector)].find(
+        (element) => element instanceof HTMLElement && !pressed.has(element),
+      );
+      if (!next) return 0;
+      pressed.add(next);
+      next.click();
+      // Waited for the STATE to be rendered, not for a fixed delay: React has to
+      // commit before the trigger nested inside this panel exists at all.
+      await settle();
+    }
+    return [...document.querySelectorAll(selector)].filter((element) => !pressed.has(element))
+      .length;
+  }, FOLDED);
+}
+
+/**
+ * §8.5 — the decisions page shows what waits, and nothing that is over.
+ *
+ * Checked IN FIVE SHAPES, because one shape is one spelling of the same idea
+ * and the next implementation will choose another:
+ *
+ *   1. no heading anywhere on the page carries a settled word,
+ *   2. no rendered position carries a state that is not an open one,
+ *   3. no chip, tab or toggle offers to put the queue into a past state,
+ *   4. there is no collapsed section whose trigger names one,
+ *   5. no settled word stands beside a figure in the rendered text of the page,
+ *      in whatever markup — which is the one the other four cannot see.
+ */
+async function checkNothingSettled(page) {
+  const unopened = await unfoldDecisions(page);
+  if (unopened > 0)
+    gap(
+      "/decisions · §8.5",
+      `${unopened} folded section(s) were never opened — what stands inside them was not read`,
+    );
 
   const found = await page.evaluate(
-    ({ words, states }) => {
-      const page = document.querySelector('[data-testid="decisions-page"]');
-      if (!page) return null;
-      const headings = [...page.querySelectorAll("h1, h2, h3, h4, summary")]
+    ({ words, openStates }) => {
+      const surface = document.querySelector('[data-testid="decisions-page"]');
+      if (!surface) return null;
+      const headings = [...surface.querySelectorAll("h1, h2, h3, h4, summary")]
         .map((element) => element.innerText.trim())
         .filter((text) => words.some((word) => text === word || text.startsWith(`${word} `)));
-      const cards = [...page.querySelectorAll("article[data-state]")]
+      const cards = [...surface.querySelectorAll("article[data-state]")]
         .map((element) => element.getAttribute("data-state") ?? "")
-        .filter((state) => states.includes(state));
-      const controls = [...page.querySelectorAll("button, [role='tab'], a")]
+        .filter((state) => !openStates.includes(state));
+      const controls = [...surface.querySelectorAll("button, [role='tab'], a")]
         .map((element) => element.innerText.trim())
         .filter((text) => words.some((word) => text === word));
-      const stateless = [...page.querySelectorAll("article[data-decision-key]")].filter(
+      const stateless = [...surface.querySelectorAll("article[data-decision-key]")].filter(
         (element) => !element.hasAttribute("data-state"),
       ).length;
-      return { headings, cards, controls, stateless, opened: words.length };
+      // The WHOLE page, not the queue container: a counter line put in the page
+      // header, the shell or a footer counts just as much. Only runs of spaces
+      // are collapsed — the newline has to survive, or a badge on one line and a
+      // figure on the next would read as a counter.
+      const text =
+        document.body instanceof HTMLElement
+          ? document.body.innerText.replace(/[^\S\n]+/g, " ")
+          : "";
+      return { headings, cards, controls, stateless, text };
     },
-    { words: SETTLED_WORDS, states: SETTLED_STATES },
+    { words: [...SETTLED_WORDS.keys()], openStates: OPEN_STATES },
   );
   if (found === null) {
     breach("§8.5", "/decisions", "the page did not mount, nothing about it was measured");
@@ -1765,7 +2002,11 @@ async function checkNothingSettled(page) {
   for (const heading of found.headings)
     breach("§8.5", "/decisions", `section "${heading}" holds settled work on the decisions page`);
   for (const state of found.cards)
-    breach("§8.5", "/decisions", `a position renders with data-state="${state}"`);
+    breach(
+      "§8.5",
+      "/decisions",
+      `a position renders with data-state="${state}" — not one of ${OPEN_STATES.join(", ")}`,
+    );
   for (const control of found.controls)
     breach("§8.5", "/decisions", `the control "${control}" puts the queue into a past state`);
   // A position without a state cannot be asked what it is, so the rule above
@@ -1776,6 +2017,19 @@ async function checkNothingSettled(page) {
       "/decisions",
       `${found.stateless} positions carry no data-state — their state stays unmeasured`,
     );
+  if (found.text.length === 0) {
+    gap("/decisions · §8.5", "the page rendered no text, so no word was looked for in it");
+    return;
+  }
+  for (const [word, provenance] of SETTLED_WORDS) {
+    const hit = countedWith(found.text, word);
+    if (hit !== null)
+      breach(
+        "§8.5",
+        "/decisions · the rendered text of the page",
+        `"${word}" (${provenance}) stands beside a figure — a count of what is over: ${hit}`,
+      );
+  }
 }
 
 /**
@@ -2595,6 +2849,10 @@ checkKonventionVersion();
  * outcome, or the reader of a mandatory gate stage cannot tell "nothing found"
  * from "nothing looked at".
  */
+// BEFORE the preview server and the browser start. A run whose vocabulary has
+// drifted must cost milliseconds and say so, not produce a clean report.
+assertSettledAlphabetIsCurrent();
+
 let abbruch = null;
 let server = null;
 let browser = null;
