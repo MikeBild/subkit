@@ -294,9 +294,14 @@ const QUEUE_TOTAL = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length + CONVERSA
  *
  * Not the same as QUEUE_TOTAL any more, and that is the point of this round: a
  * waiting conversation is counted and named on its own tile and answered in the
- * conversation, because the queue never had an approve or a reject for it. On
- * the day this was measured the product's own line read "35 offen · Korrekturen
- * aus Läufen: 2 · Skill-Vorschläge: 1 · Unterhaltungen: 32" (§8.5b).
+ * conversation, because the queue never had an approve or a reject for it.
+ *
+ * The line THIS FIXTURE paints reads "35 offen · Korrekturen aus Läufen: 2 ·
+ * Skill-Vorschläge: 1 · Unterhaltungen: 32" — the bench's numbers, chosen here,
+ * and never a measurement of the product. §8.5b once carried that 32 as one:
+ * the mock behind it ignored the status filter, and on PROD the same call
+ * answers total=1. What the fixture is for is the rule, which holds at any
+ * size: a position with no consequence here is not a decision here.
  */
 const DECIDABLE_TOTAL = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length;
 
