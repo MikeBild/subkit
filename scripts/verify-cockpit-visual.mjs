@@ -1,8 +1,8 @@
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
-import { standAt } from "./lib/cockpit-identity.mjs";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
+import { standAt } from "./lib/cockpit-identity.mjs";
 
 const baseUrl = (process.env.COCKPIT_BASE_URL || "http://127.0.0.1:4175").replace(/\/$/, "");
 const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
