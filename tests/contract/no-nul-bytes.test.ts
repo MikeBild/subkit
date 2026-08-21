@@ -18,10 +18,27 @@
 // binary newcomer is a one-line, visible decision here rather than a silent
 // hole.
 //
+// THE LIMIT OF THAT SENTENCE, registered rather than papered over: TRACKED.
+// `git ls-files` reads the index, so a file that was never `git add`ed is not in
+// the listing and is never opened. Measured on 21.08.2026: a file with a raw
+// 0x00 written into the repository root and left unstaged — this run stayed at
+// 3 pass / 0 fail. The assurance is therefore "nothing IN THE INDEX is invisible
+// to grep", not "nothing in this working tree is". A verifier grepping a
+// checkout still gets an empty result from an untracked file, which is exactly
+// the failure this file exists for, one step earlier.
+//
+// It is left as a limit on purpose. Widening the sweep to the whole working tree
+// means walking node_modules, dist/, .git/ and every local artefact — a slow
+// scan whose findings are almost all about files this repository does not own,
+// and the noise is what makes a guard get muted. The last test below states the
+// limit by DRIVING it in a throwaway repository, so it is a line in the output
+// of every `test:contract` run rather than a paragraph somebody has to find.
+//
 // It lives in tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI). `bun run test:contract` runs this.
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,8 +47,9 @@ const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 /** Formats whose bytes are not text. Everything else is scanned. */
 const BINARY_SUFFIXES = [".gif", ".png", ".jpg", ".jpeg", ".ico", ".pdf", ".woff", ".woff2"];
 
-function trackedFiles(): string[] {
-  const listing = Bun.spawnSync(["git", "ls-files", "-z"], { cwd: root });
+/** The index, not the working tree — see "THE LIMIT OF THAT SENTENCE" above. */
+function trackedFiles(cwd: string = root): string[] {
+  const listing = Bun.spawnSync(["git", "ls-files", "-z"], { cwd });
   if (listing.exitCode !== 0) throw new Error(`git ls-files failed: ${listing.stderr.toString()}`);
   return listing.stdout
     .toString()
@@ -83,5 +101,33 @@ describe("no tracked source file is invisible to text search", () => {
       found,
       `a NUL byte makes the whole file "data" to file(1) and invisible to every grep that skips binaries:\n  ${found.join("\n  ")}`,
     ).toEqual([]);
+  });
+
+  test("and it says nothing about an UNTRACKED file — the known limit, driven", () => {
+    // Not a defect to fix here, a boundary to state. It is DRIVEN rather than
+    // written down because a described limit ages into a wrong one: this builds
+    // a repository with the same two files the real case has — one NUL in the
+    // index, one NUL beside it — and shows the listing returns only the first.
+    // The day `git ls-files` is swapped for a working-tree walk, this test goes
+    // red and the header note above it has to be rewritten with it.
+    const sandbox = mkdtempSync(join(tmpdir(), "nul-untracked-"));
+    try {
+      expect(Bun.spawnSync(["git", "init", "-q"], { cwd: sandbox }).exitCode).toBe(0);
+      writeFileSync(join(sandbox, "tracked.ts"), Buffer.from('join("\0");', "utf8"));
+      writeFileSync(join(sandbox, "untracked.ts"), Buffer.from('join("\0");', "utf8"));
+      expect(Bun.spawnSync(["git", "add", "tracked.ts"], { cwd: sandbox }).exitCode).toBe(0);
+
+      // Both files really do carry the byte — otherwise this test would pass by
+      // measuring nothing, which is the class the whole file is about.
+      expect(nulAt(readFileSync(join(sandbox, "tracked.ts")))).not.toBeNull();
+      expect(nulAt(readFileSync(join(sandbox, "untracked.ts")))).not.toBeNull();
+
+      expect(
+        trackedFiles(sandbox),
+        "git ls-files is index-based: the unstaged file is not in the listing, so it is never opened",
+      ).toEqual(["tracked.ts"]);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
   });
 });
