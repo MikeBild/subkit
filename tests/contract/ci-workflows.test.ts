@@ -19,7 +19,8 @@
 // no gate.ts, its gate IS the `verify` chain in package.json, so the stages are
 // read from there.
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 
 const root = join(import.meta.dir, "../..");
@@ -562,6 +563,53 @@ describe("gate and workflows", () => {
     },
     WALK_BUDGET_MS,
   );
+
+  /**
+   * THE CHEAP HALF OF THE PROOF — the derivation above says a job REACHES a
+   * browser package; this says that reaching it means needing a BINARY.
+   *
+   * The expensive way to know that is the one that found the red build: empty
+   * the browser cache, run the stage, then `playwright install` to put the
+   * cache back. It measured 41 pass / 8 fail — 49 of 65 — and then 65 / 0 into
+   * the same cache. It is also 95 MB over the network, and 95 MB before every
+   * commit does not belong in a mandatory gate; a stage nobody can afford to
+   * run is a stage that gets skipped, which is the failure this file exists
+   * against.
+   *
+   * So the cache is not emptied — it is not consulted. `PLAYWRIGHT_BROWSERS_PATH`
+   * pointed at a fresh empty directory is the same world as a runner that never
+   * installed anything, minus the download: the failure is EXPECTED and nothing
+   * is fetched to recover from it. Measured at 208 ms, and the directory is
+   * still empty afterwards.
+   *
+   * What it pins is the shape of the red build, not just its exit code: ONE
+   * failing hook takes the whole file with it, so the run reports a launch
+   * error instead of the tests it never ran.
+   */
+  test("a browser-driven contract file goes red when no browser is installed", async () => {
+    // mkdtemp, not a name built from a clock: several sessions of this family
+    // run at once and a shared temp name measures whoever got there first.
+    const noBrowsers = mkdtempSync(join(tmpdir(), "sk-no-browser-"));
+    try {
+      const run = Bun.spawn(["bun", "test", "tests/contract/cockpit-identity.test.ts"], {
+        stdout: "pipe",
+        stderr: "pipe",
+        cwd: root,
+        env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: noBrowsers },
+      });
+      const output = `${await new Response(run.stdout).text()}${await new Response(run.stderr).text()}`;
+      const exitCode = await run.exited;
+      expect(exitCode, output).not.toBe(0);
+      // Playwright's own words for "the library is here, the binary is not" —
+      // which is exactly what `bun install` leaves behind.
+      expect(output).toContain("playwright install");
+      // NOTHING WAS DOWNLOADED. If this ever stops holding, the stage has
+      // quietly become the 95 MB one.
+      expect(readdirSync(noBrowsers)).toEqual([]);
+    } finally {
+      rmSync(noBrowsers, { recursive: true, force: true });
+    }
+  }, 120_000);
 
   // The honest edge of the derivation. An entry path is a token that names a
   // real file or directory in the run command; a runner that hard-codes the
