@@ -289,8 +289,27 @@ const CONVERSATION_TOTAL = AWAITING_CONVERSATIONS.length + 2;
 /** The number every surface must show: the engine's own counts, summed. */
 const QUEUE_TOTAL = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length + CONVERSATION_TOTAL;
 
-/** The number of distinct positions the page can actually render. */
-const QUEUE_SHOWN =
+/**
+ * The positions the QUEUE holds — the ones this page can decide.
+ *
+ * Not the same as QUEUE_TOTAL any more, and that is the point of this round: a
+ * waiting conversation is counted and named on its own tile and answered in the
+ * conversation, because the queue never had an approve or a reject for it. On
+ * the day this was measured the product's own line read "35 offen · Korrekturen
+ * aus Läufen: 2 · Skill-Vorschläge: 1 · Unterhaltungen: 32" (§8.5b).
+ */
+const DECIDABLE_TOTAL = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length;
+
+/** The number of distinct decidable positions the queue can actually render. */
+const QUEUE_SHOWN = PATCH_CANDIDATES.length + SKILL_CANDIDATES.length;
+
+/**
+ * The rows the PAGE holds across all three sources.
+ *
+ * The capped note is about the page, not about the queue: it explains why the
+ * tiles add up to more than the console has in hand.
+ */
+const PAGE_SHOWN =
   PATCH_CANDIDATES.length + SKILL_CANDIDATES.length + AWAITING_CONVERSATIONS.length;
 
 /**
@@ -698,31 +717,74 @@ function apiMock(gateOpen) {
     if (path === `/v1/executions/${ID}`) return json(route, EXECUTION_ROWS[0]);
     if (path === `/v1/executions/${ID}/steps`) return json(route, { items: EXECUTION_STEPS });
 
-    if (path === "/v1/audit-log")
+    if (path === "/v1/audit-log") {
+      // The decision history the §8.5 link leads to. The engine's `action`
+      // filter takes a comma-separated list, so the fixture answers it the same
+      // way — a mock that ignored the filter would let a page that never sent
+      // one pass. `settings.write` is deliberately not a verb the cockpit has a
+      // word for: the honest fallback (the engine's own string) has to be
+      // visible in a frame too, or nobody would notice it turning into
+      // "Unbekannt".
+      const wanted = (url.searchParams.get("action") ?? "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+      const rows = [
+        {
+          action: "patch_candidate.approved",
+          resource_type: "patch_candidate",
+          result: "success",
+          actor_type: "user",
+          reason: null,
+        },
+        {
+          action: "skill_candidate.rejected",
+          resource_type: "skill_candidate",
+          result: "success",
+          actor_type: "user",
+          reason: "Deckt sich mit einem schon freigegebenen Skill.",
+        },
+        {
+          action: "workflow.updated",
+          resource_type: "workflow",
+          result: "success",
+          actor_type: "system_account",
+          reason: null,
+        },
+        {
+          action: "connector.invoked",
+          resource_type: "connector",
+          result: "denied",
+          actor_type: "system",
+          reason: "Rolle deckt skill:write nicht ab.",
+        },
+        {
+          action: "settings.write",
+          resource_type: "settings",
+          result: "error",
+          actor_type: "user",
+          reason: null,
+        },
+      ];
+      const selected = wanted.length > 0 ? rows.filter((row) => wanted.includes(row.action)) : rows;
       return json(route, {
-        items: Array.from({ length: 8 }, (_, index) => {
-          const rotate = index % 4;
-          return {
-            id: index === 0 ? ID : `audit-${index}`,
-            ts: new Date(NOW - index * 120_000).toISOString(),
-            tenant_id: ID,
-            actor_type: ["user", "system_account", "system", "user"][rotate],
-            actor_id: rotate === 2 ? null : ID,
-            action: ["workflow.update", "connector.test", "skill.archive", "settings.write"][
-              rotate
-            ],
-            resource_type: ["workflow", "connector", "skill", "settings"][rotate],
-            resource_id: rotate === 3 ? null : ID,
-            result: ["success", "success", "denied", "error"][rotate],
-            trace_id: null,
-            ip: null,
-            user_agent: null,
-            reason: rotate === 2 ? "Rolle deckt skill:write nicht ab." : null,
-            metadata: {},
-          };
-        }),
+        items: selected.map((row, index) => ({
+          id: index === 0 ? ID : `audit-${index}`,
+          ts: new Date(NOW - index * 120_000).toISOString(),
+          tenant_id: ID,
+          actor_id: row.actor_type === "system" ? null : ID,
+          resource_id: row.resource_type === "settings" ? null : ID,
+          trace_id: null,
+          ip: null,
+          user_agent: null,
+          before: null,
+          after: null,
+          metadata: {},
+          ...row,
+        })),
         next_cursor: null,
       });
+    }
 
     if (path === "/v1/notifications/rules") return json(route, { items: NOTIFICATION_RULES });
     if (path === "/v1/notifications/channels") return json(route, { items: NOTIFICATION_CHANNELS });
@@ -904,6 +966,14 @@ gap(
 gap(
   "catalogue en",
   "every rule runs against de. The silent class: §2 forbids a STATE, what is measured is the WORD „Unbekannt“ — on en the same state reads „Unknown“ and goes unnoticed",
+);
+gap(
+  "/decisions · §8.5 completeness of the history",
+  "the ONE link and the naming of the four decision verbs in the log are measured; whether the log HOLDS every decision is not — that is the engine's write path, and this check never writes one",
+);
+gap(
+  "/decisions · §8.5b the size of the number itself",
+  "the tiles are measured, the cut is not: this check cannot say whether 35 positions should have been 5. What it can say — that a position with no consequence here is not a decision here — is asserted; the grouping of like corrections into one decision remains open (SK-R1)",
 );
 
 /** The detail surfaces the sweep actually reached, named in the verdict. */
@@ -1469,7 +1539,7 @@ async function checkAgingRubric(page) {
 /**
  * §5 / §8.2 — every rubric of the queue is headed in German, and in these words.
  *
- * `checkBannerAgainstRubrics()` reads the banner against the rubric it is a
+ * `checkBannerAgainstConversations()` reads the banner against the count it is a
  * share of, but both sides take their wording from the same catalog key: flip
  * that key to English and the two still agree, in English, and the check stays
  * green. So the German wording is pinned here as well — once per rubric, and
@@ -1478,10 +1548,17 @@ async function checkAgingRubric(page) {
  * A rubric the fixture leaves empty is not rendered, and an unrendered heading
  * proves nothing; that is why a missing section is itself a breach rather than
  * a silent skip.
+ *
+ * Two rubrics left this table with the waiting conversations: "Abgelaufen" and
+ * "Blockiert gerade etwas" describe an elicitation deadline and a suspended
+ * agent loop, and neither can be true of a proposed fix or a proposed skill.
+ * Pinning them here would have pinned a heading the page can no longer produce
+ * — which is not a stricter check, it is a check that measures the fixture.
+ * The two words did not disappear from the product: they are the banner's two
+ * claims on the overview, read back against the conversation tile in
+ * checkBannerAgainstConversations().
  */
 const RUBRIC_HEADINGS = {
-  "decisions-expired": "Abgelaufen",
-  "decisions-blocking": "Blockiert gerade etwas",
   "decisions-current": "Blockiert nichts",
   "decisions-aged": AGED_RUBRIC,
 };
@@ -1515,42 +1592,279 @@ async function checkRubricLanguage(page) {
 }
 
 /**
- * §8.1 / §8.2 — the queue's head is one line, not two sentences run together.
+ * §8.5a — one tile per category, each leading to the list it counts.
  *
- * The separator was missing in front of the display note, so an enumeration
- * that sets a middle dot between every other claim let the last two collide:
- * "… Unterhaltungen: 4 Angezeigt: 6 von 8." Two number pairs then stood beside
- * each other with nothing saying how they relate — and the note never said WHY
- * it showed fewer than it counted.
+ * What stood here was one run-on line, and the queue header assert pinned its
+ * punctuation: "8 offen · Korrekturen aus Läufen: 3 · Skill-Vorschläge: 1 ·
+ * Unterhaltungen: 4 · Angezeigt: 6 von 8". It stated four numbers, led
+ * nowhere, and on the real console it read "35 offen … Unterhaltungen: 32" —
+ * a sentence whose largest number belonged to positions the page could not
+ * decide.
  *
- * The expected line is COMPOSED here from the German catalog rather than
- * spelled out, because what is asserted is the composition: the wording itself
- * is pinned elsewhere, and a second copy of it here would only mean two places
- * to change one sentence (§12).
+ * What is asserted now is stronger than the wording it replaces: every category
+ * carries its own count AS A NUMBER, the counts sum to the page total, and each
+ * tile LEADS somewhere — the two decidable ones filter the queue in place, the
+ * conversation one leaves for the surface where its positions are answered. A
+ * tile that only displays is a number without a destination, which §8.5a
+ * forbids by name.
  */
-const german = (key, values) => interpolate(CATALOGS.de[key], values);
+const TILES = [
+  {
+    testId: "decisions-tile-patch",
+    label: "Korrekturen aus Läufen",
+    expected: PATCH_CANDIDATES.length,
+  },
+  { testId: "decisions-tile-skill", label: "Skill-Vorschläge", expected: SKILL_CANDIDATES.length },
+  {
+    testId: "decisions-tile-conversation",
+    label: "Rückfragen in Unterhaltungen",
+    expected: CONVERSATION_TOTAL,
+    leaves: "/chat",
+  },
+];
 
-const QUEUE_HEADER = `${german("decisions.sources", {
-  total: QUEUE_TOTAL,
-  patches: PATCH_CANDIDATES.length,
-  skills: SKILL_CANDIDATES.length,
-  conversations: CONVERSATION_TOTAL,
-})} · ${german("decisions.capped", { shown: QUEUE_SHOWN, total: QUEUE_TOTAL })}`;
-
-async function checkQueueHeader(page) {
-  const line = await page.evaluate(() => {
-    const element = document.querySelector('[data-testid="decisions-sources"]');
-    return element instanceof HTMLElement ? element.innerText.replace(/\s+/g, " ").trim() : null;
-  });
-  if (line === null) {
+async function checkCategoryTiles(page) {
+  let summed = 0;
+  for (const tile of TILES) {
+    const shape = await page.evaluate((testId) => {
+      const element = document.querySelector(`[data-testid="${testId}"]`);
+      if (!(element instanceof HTMLElement)) return null;
+      return {
+        count: element.getAttribute("data-count"),
+        text: element.innerText.replace(/\s+/g, " ").trim(),
+        href: element.getAttribute("href"),
+        pressable: element.hasAttribute("aria-pressed"),
+      };
+    }, tile.testId);
+    if (shape === null) {
+      breach("§8.5a", `/decisions · ${tile.testId}`, `no tile for "${tile.label}"`);
+      continue;
+    }
+    const counted = Number(shape.count);
+    if (!Number.isFinite(counted))
+      breach("§8.5a", `/decisions · ${tile.testId}`, "the tile names no count a check can read");
+    else {
+      summed += counted;
+      if (counted !== tile.expected)
+        breach(
+          "§8.1",
+          `/decisions · ${tile.testId}`,
+          `tile counts ${counted}, the fixture endpoint reports ${tile.expected}`,
+        );
+      if (!shape.text.includes(String(counted)))
+        breach("§8.5a", `/decisions · ${tile.testId}`, `tile shows "${shape.text}", not its count`);
+    }
+    if (!shape.text.includes(tile.label))
+      breach(
+        "§5",
+        `/decisions · ${tile.testId}`,
+        `tile reads "${shape.text}" and does not name "${tile.label}"`,
+      );
+    // Every tile leads to the filtered list. The two decidable ones do it in
+    // place (a pressed chip is a filter), the conversation one by leaving.
+    if (tile.leaves) {
+      if (!(shape.href ?? "").includes(tile.leaves))
+        breach(
+          "§8.5a",
+          `/decisions · ${tile.testId}`,
+          `tile leads to ${shape.href ?? "nowhere"} instead of ${tile.leaves}`,
+        );
+    } else if (!shape.pressable)
+      breach("§8.5a", `/decisions · ${tile.testId}`, "tile does not lead to the filtered list");
+  }
+  if (summed !== QUEUE_TOTAL)
     breach(
       "§8.1",
-      "/decisions · decisions-sources",
-      "the queue does not name where its positions come from",
+      "/decisions · decisions-tiles",
+      `the tiles sum to ${summed}, the page counts ${QUEUE_TOTAL}`,
     );
+  // The page still holds fewer positions than the engine counted, and still has
+  // to say so — the note moved off the header line onto the tiles, it did not
+  // disappear.
+  const capped = await page.evaluate(() => {
+    const element = document.querySelector('[data-testid="decisions-capped"]');
+    return element instanceof HTMLElement ? element.innerText.replace(/\s+/g, " ").trim() : null;
+  });
+  const expectedCapped = german("decisions.capped", { shown: PAGE_SHOWN, total: QUEUE_TOTAL });
+  if (capped === null)
+    breach(
+      "§8.1",
+      "/decisions · decisions-capped",
+      "shows fewer than it counts and does not say so",
+    );
+  else if (capped !== expectedCapped) breach("§8.1", "/decisions · decisions-capped", capped);
+}
+
+const german = (key, values) => interpolate(CATALOGS.de[key], values);
+
+/**
+ * §8.5 — the decisions page shows what waits, and nothing that is over.
+ *
+ * The rule is new and it is checked IN SEVERAL SHAPES, because one shape is one
+ * spelling of the same idea and the next implementation will choose another:
+ *
+ *   1. no heading anywhere on the page carries a settled word,
+ *   2. no rendered position carries a settled `data-state`,
+ *   3. no chip, tab or toggle offers to put the queue into a past state,
+ *   4. there is no collapsed section whose trigger names one.
+ *
+ * EVERY collapsible on the page is opened first. This is the load-bearing step
+ * and it was found the hard way in a sister repo: Radix does not mount the
+ * content of a closed Collapsible, so a rule that reads the DOM as it finds it
+ * would have been GREEN on the very console that still had two shelves of
+ * decided work under its queue — the content simply was not there to see.
+ */
+const SETTLED_WORDS = ["Entschieden", "Verworfen", "Zurückgestellt", "Abgelaufen", "Erledigt"];
+const SETTLED_STATES = ["decided", "approved", "rejected", "discarded", "deferred", "expired"];
+
+async function checkNothingSettled(page) {
+  // 0. Open everything that can be opened, and wait for the content to mount.
+  const triggers = page.locator(
+    '[data-testid="decisions-page"] [aria-expanded="false"], [data-testid="decisions-page"] summary',
+  );
+  const openable = await triggers.count();
+  for (let index = 0; index < openable; index += 1) {
+    const trigger = triggers.nth(index);
+    try {
+      await trigger.click({ timeout: 2_000 });
+    } catch {
+      // A control that will not open cannot hide anything either.
+    }
+  }
+  if (openable > 0) await page.waitForTimeout(300);
+
+  const found = await page.evaluate(
+    ({ words, states }) => {
+      const page = document.querySelector('[data-testid="decisions-page"]');
+      if (!page) return null;
+      const headings = [...page.querySelectorAll("h1, h2, h3, h4, summary")]
+        .map((element) => element.innerText.trim())
+        .filter((text) => words.some((word) => text === word || text.startsWith(`${word} `)));
+      const cards = [...page.querySelectorAll("article[data-state]")]
+        .map((element) => element.getAttribute("data-state") ?? "")
+        .filter((state) => states.includes(state));
+      const controls = [...page.querySelectorAll("button, [role='tab'], a")]
+        .map((element) => element.innerText.trim())
+        .filter((text) => words.some((word) => text === word));
+      const stateless = [...page.querySelectorAll("article[data-decision-key]")].filter(
+        (element) => !element.hasAttribute("data-state"),
+      ).length;
+      return { headings, cards, controls, stateless, opened: words.length };
+    },
+    { words: SETTLED_WORDS, states: SETTLED_STATES },
+  );
+  if (found === null) {
+    breach("§8.5", "/decisions", "the page did not mount, nothing about it was measured");
     return;
   }
-  if (line !== QUEUE_HEADER) breach("§8.1", "/decisions · decisions-sources", line);
+  for (const heading of found.headings)
+    breach("§8.5", "/decisions", `section "${heading}" holds settled work on the decisions page`);
+  for (const state of found.cards)
+    breach("§8.5", "/decisions", `a position renders with data-state="${state}"`);
+  for (const control of found.controls)
+    breach("§8.5", "/decisions", `the control "${control}" puts the queue into a past state`);
+  // A position without a state cannot be asked what it is, so the rule above
+  // would pass on it by saying nothing.
+  if (found.stateless > 0)
+    breach(
+      "§8.5",
+      "/decisions",
+      `${found.stateless} positions carry no data-state — their state stays unmeasured`,
+    );
+}
+
+/**
+ * §8.5 — exactly one way to the past, and it goes to the log.
+ *
+ * "genau einen Verweis — ein Satz mit Link, keine Zähler-Kacheln." So: one link
+ * to /audit and not two, in a sentence, and no tile counting anything settled.
+ */
+async function checkHistoryLink(page) {
+  const shape = await page.evaluate(() => {
+    const links = [
+      ...document.querySelectorAll('[data-testid="decisions-page"] a[href*="/audit"]'),
+    ];
+    const sentence = document.querySelector('[data-testid="decisions-history"]');
+    return {
+      count: links.length,
+      href: links[0]?.getAttribute("href") ?? null,
+      text: sentence instanceof HTMLElement ? sentence.innerText.replace(/\s+/g, " ").trim() : null,
+    };
+  });
+  if (shape.count === 0) {
+    breach("§8.5", "/decisions", "no way from the decisions page to the recorded history");
+    return;
+  }
+  if (shape.count !== 1)
+    breach("§8.5", "/decisions", `${shape.count} ways to the history instead of exactly one`);
+  const expected = `${german("decisions.history.label")} ${german("decisions.history.link")}`;
+  if (shape.text !== expected)
+    breach(
+      "§5",
+      "/decisions · decisions-history",
+      `reads "${shape.text}" instead of "${expected}"`,
+    );
+  if (!(shape.href ?? "").includes("scope=decisions"))
+    breach(
+      "§8.5",
+      "/decisions · decisions-history",
+      `the link leads to ${shape.href} — the log opens unfiltered and the history stays unfindable`,
+    );
+}
+
+/**
+ * §8.5 — where the past arrives as a machine value, the naming belongs in the log.
+ *
+ * SubKit records every decision: `patch_candidate.approved`,
+ * `skill_candidate.rejected`, with the reason. Measured against the live tenant
+ * on 21.08.2026, `/v1/audit-log?action=…` returned twenty such entries. And the
+ * page rendered `entry.action` verbatim, so a complete history arrived as
+ * engine strings, its resource column read "Unbekannt", and no filter led to
+ * it. Present, complete, unfindable — which is the case §8.5 names.
+ */
+const AUDIT_DECISION_ROWS = [
+  { action: "patch_candidate.approved", label: "Korrektur freigegeben" },
+  { action: "skill_candidate.rejected", label: "Skill-Kandidat abgelehnt" },
+];
+
+async function checkDecisionHistoryIsReadable(page) {
+  const filter = page.locator('[data-testid="audit-scope-filter"]');
+  if ((await filter.count()) === 0) {
+    breach("§8.5", "/audit", "no filter leads to the decision history");
+    return;
+  }
+  const rows = await page.evaluate((expected) => {
+    const text = document.body.innerText;
+    return expected.map((row) => ({
+      ...row,
+      named: text.includes(row.label),
+      raw: text.includes(row.action),
+    }));
+  }, AUDIT_DECISION_ROWS);
+  for (const row of rows) {
+    if (row.raw)
+      breach(
+        "§5",
+        "/audit",
+        `the log says "${row.action}" instead of a word in the reader's language`,
+      );
+    if (!row.named)
+      breach(
+        "§5",
+        "/audit",
+        `the decision "${row.label}" is recorded but never named on the surface`,
+      );
+  }
+  const note = await page.evaluate(() => {
+    const element = document.querySelector('[data-testid="audit-scope-note"]');
+    return element instanceof HTMLElement ? element.innerText.trim() : null;
+  });
+  if (!note)
+    breach(
+      "§12",
+      "/audit",
+      "the log does not say what it does NOT cover — a short page then reads as an all-clear",
+    );
 }
 
 /** The queue's two numbers: the total it claims, and the cards it actually drew. */
@@ -1559,7 +1873,7 @@ async function readQueueShape(page) {
     total:
       document.querySelector('[data-testid="decisions-queue"]')?.getAttribute("data-total") ?? null,
     positions: [...document.querySelectorAll("article[data-testid]")].filter((element) =>
-      /^decision(-expired|-deferred|-aged)?-\d+$/.test(element.getAttribute("data-testid") ?? ""),
+      /^decision(-deferred|-aged)-\d+$/.test(element.getAttribute("data-testid") ?? ""),
     ).length,
   }));
 }
@@ -1642,56 +1956,6 @@ async function checkGroupToggle(page) {
     .waitFor({ state: "attached", timeout: 5_000 });
 }
 
-const SHELVES = [
-  { testId: "decisions-shelf-decided", title: "Entschieden" },
-  { testId: "decisions-shelf-discarded", title: "Verworfen" },
-];
-
-/**
- * §8.5 — state and history are separate surfaces.
- *
- * The shelves sit below the queue, collapsed, and they open: a shelf that
- * cannot be opened is a heading. Their emptiness is not asserted — what is on
- * them belongs to the fixture, what matters here is that the queue is not where
- * decided work keeps living.
- */
-async function checkShelves(page) {
-  for (const shelf of SHELVES) {
-    const toggle = page.locator(`[data-testid="${shelf.testId}-toggle"]`);
-    if ((await toggle.count()) === 0) {
-      breach("§8.5", "/decisions", `shelf "${shelf.title}" is missing below the queue`);
-      continue;
-    }
-    const text = (await toggle.first().innerText()).trim();
-    if (text !== shelf.title)
-      breach(
-        "§5",
-        `/decisions · ${shelf.testId}`,
-        `shelf reads "${text}" instead of "${shelf.title}"`,
-      );
-    if ((await toggle.first().getAttribute("aria-expanded")) !== "false")
-      breach("§8.5", `/decisions · ${shelf.testId}`, "shelf starts open instead of collapsed");
-    await toggle.first().click();
-    try {
-      await page
-        .locator(`[data-testid="${shelf.testId}-toggle"][aria-expanded="true"]`)
-        .waitFor({ state: "attached", timeout: 5_000 });
-    } catch {
-      breach("§8.5", `/decisions · ${shelf.testId}`, "shelf does not open");
-      continue;
-    }
-    await toggle.first().click();
-  }
-  // The third shelf §8.5 names has no state behind it, and the missing restore
-  // action has no endpoint. Both are recorded as deviations in
-  // apps/cockpit/UI-UX.md; naming them here keeps a green run from reading as a
-  // full §8.5 pass.
-  gap(
-    "/decisions · §8.5",
-    'the "Zurückgestellt" shelf and the restore action are not measured — the engine has no deferred state and no un-reject endpoint (deviation recorded in apps/cockpit/UI-UX.md)',
-  );
-}
-
 /**
  * §5 — a title is a summary in the reader's language, not the engine's artefact.
  *
@@ -1700,6 +1964,21 @@ async function checkShelves(page) {
  * commit messages from another system.
  */
 async function checkCorrectionTitles(page) {
+  // The summary moved behind the named toggle when the cards became one line
+  // each, and a closed panel is not in the DOM at all — the same lesson the
+  // §8.5 rule below is built on. So: open every correction card first, or this
+  // check would report the change note as MISSING on a page that carries it.
+  const toggles = page.locator('article[data-decision-key^="patch:"] [aria-expanded="false"]');
+  const closed = await toggles.count();
+  for (let index = 0; index < closed; index += 1) {
+    try {
+      await toggles.nth(index).click({ timeout: 2_000 });
+    } catch {
+      // Handled by the assertion below: an unopenable card shows no note.
+    }
+  }
+  if (closed > 0) await page.waitForTimeout(300);
+
   const cards = await page.evaluate(() =>
     [...document.querySelectorAll('article[data-decision-key^="patch:"]')].map((card) => {
       const testId = card.getAttribute("data-testid") ?? "";
@@ -1869,7 +2148,7 @@ async function checkResumeLine(page) {
 async function checkCounterCoherence(page, surfaces) {
   const rendered = await page.evaluate(() => {
     const cards = [...document.querySelectorAll("article[data-testid]")].filter((element) =>
-      /^decision(-expired|-deferred|-aged)?-\d+$/.test(element.getAttribute("data-testid") ?? ""),
+      /^decision(-deferred|-aged)-\d+$/.test(element.getAttribute("data-testid") ?? ""),
     );
     const wrapper = document.querySelector('[data-testid="decisions-queue"]');
     const rubric = (id) => {
@@ -1886,15 +2165,16 @@ async function checkCounterCoherence(page, surfaces) {
       keys: cards.map((card) => card.getAttribute("data-decision-key")),
       total: wrapper?.getAttribute("data-total") ?? null,
       capped: wrapper?.getAttribute("data-capped") ?? null,
-      rubrics: {
-        blocking: rubric("decisions-blocking"),
-        overdue: rubric("decisions-expired"),
-        aged: rubric("decisions-aged"),
-      },
+      rubrics: { aged: rubric("decisions-aged") },
+      conversationTile: Number(
+        document
+          .querySelector('[data-testid="decisions-tile-conversation"]')
+          ?.getAttribute("data-count") ?? Number.NaN,
+      ),
     };
   });
 
-  checkBannerAgainstRubrics(surfaces.banner, rendered.rubrics);
+  checkBannerAgainstConversations(surfaces.banner, rendered.conversationTile, rendered.rubrics);
 
   if (rendered.positions !== QUEUE_SHOWN)
     breach(
@@ -1914,27 +2194,32 @@ async function checkCounterCoherence(page, surfaces) {
     return;
   }
 
+  // Two numbers, each with its own scope, and neither may drift.
+  //
+  // The badge and Zone A count everything that waits on this person — that is
+  // the whole page, tiles included. The queue counts what it holds, which is
+  // the decidable part. Before the split there was one number for both, and it
+  // was the queue's: a badge saying 35 above a list the reader was expected to
+  // work through, 32 of whose entries could not be worked on here.
   const queueTotal = Number(rendered.total);
-  const named = {
+  const pageWide = {
     "nav-decisions-count": surfaces.badge === null ? null : Number(surfaces.badge),
     "zone-a-decisions-count": surfaces.zoneA,
-    "incident-decisions-count": surfaces.banner?.total ?? null,
-    "decisions-queue": queueTotal,
   };
-  for (const [where, value] of Object.entries(named)) {
+  for (const [where, value] of Object.entries(pageWide)) {
     if (value === null || value === undefined) continue;
-    if (value !== queueTotal)
+    if (value !== QUEUE_TOTAL)
       breach(
         "§8.1",
         `/overview + /decisions · ${where}`,
-        `shows ${value}, the queue counts ${queueTotal}`,
+        `shows ${value}, the page counts ${QUEUE_TOTAL}`,
       );
   }
-  if (queueTotal !== QUEUE_TOTAL)
+  if (queueTotal !== DECIDABLE_TOTAL)
     breach(
       "§8.1",
       "/decisions · decisions-queue",
-      `total ${queueTotal}, the fixture endpoints report ${QUEUE_TOTAL}`,
+      `the queue claims ${queueTotal}, the decidable endpoints report ${DECIDABLE_TOTAL}`,
     );
   // The fixture delivers fewer positions than the engine counts, so the page
   // must say so rather than let the badge and the column disagree in silence.
@@ -1947,54 +2232,65 @@ async function checkCounterCoherence(page, surfaces) {
 }
 
 /**
- * §8.1 / §8.7 — the banner and the queue describe the same page.
+ * §8.1 / §8.7 — the banner and the decisions page describe the same thing.
  *
- * Every claim the banner makes is read back against the rubric it is a share
- * of: same words for the pile, same number in it. And the aged rubric — the
- * one whose hint says it blocks nothing — must appear in no claim at all,
- * which is what stops the sum from quietly growing back. The fixture keeps a
- * non-empty aged rubric on purpose; without one this assertion proves nothing,
- * so an empty one is itself a breach.
+ * Every claim the banner makes is read back against what the decisions page
+ * says about the SAME positions. That used to be a rubric of the queue; it is
+ * the conversation tile now, because both states the banner may claim — stopped
+ * right now, deadline lapsed — belong to a waiting conversation and to nothing
+ * else, and those left the queue.
+ *
+ * What is asserted is unchanged in substance and one shape stronger: the two
+ * claims must be shares of the tile's number and never exceed it, their words
+ * must be the two pinned German ones, and no claim may wear the heading of the
+ * rubric that says it blocks nothing. The fixture keeps that rubric non-empty on
+ * purpose; without one the last assertion proves nothing, so an empty one is
+ * itself a breach.
  */
-function checkBannerAgainstRubrics(banner, rubrics) {
+const BANNER_CLAIM_LABELS = {
+  blocking: "Unterhaltungen, die auf deine Antwort warten",
+  overdue: "Unterhaltungen mit verfallener Frist",
+};
+
+function checkBannerAgainstConversations(banner, conversationTile, rubrics) {
   if (!banner) {
-    gap("/overview vs. /decisions", "no banner was read — banner and rubrics cannot be reconciled");
+    gap(
+      "/overview vs. /decisions",
+      "no banner was read — banner and decisions page cannot be reconciled",
+    );
     return;
   }
-  for (const [name, rubric] of Object.entries(rubrics)) {
-    if (name === "aged") continue;
-    const claim = banner.claims[name];
-    if (!rubric) {
-      if (claim)
-        breach(
-          "§8.7",
-          "/overview vs. /decisions",
-          `banner claims "${claim.label}", the queue has no such rubric`,
-        );
-      continue;
-    }
-    if (!claim) {
-      if (rubric.count > 0)
-        breach(
-          "§8.7",
-          "/overview vs. /decisions",
-          `queue holds ${rubric.count} under "${rubric.heading}", the banner is silent about them`,
-        );
-      continue;
-    }
-    if (claim.label !== rubric.heading)
-      breach(
-        "§8.7",
-        "/overview vs. /decisions",
-        `banner calls the rubric "${claim.label}", the queue calls it "${rubric.heading}"`,
-      );
-    if (claim.count !== rubric.count)
-      breach(
-        "§8.1",
-        "/overview vs. /decisions",
-        `banner counts ${claim.count} for "${rubric.heading}", the queue ${rubric.count}`,
-      );
+  if (!Number.isFinite(conversationTile)) {
+    breach(
+      "§8.7",
+      "/overview vs. /decisions",
+      "the decisions page names no conversation count, so the banner's base is unmeasurable",
+    );
+    return;
   }
+  if (banner.total !== conversationTile)
+    breach(
+      "§8.1",
+      "/overview vs. /decisions",
+      `banner states a share of ${banner.total}, the decisions page counts ${conversationTile} conversations`,
+    );
+  let stated = 0;
+  for (const [name, claim] of Object.entries(banner.claims)) {
+    stated += claim.count;
+    const expected = BANNER_CLAIM_LABELS[name];
+    if (expected === undefined) {
+      breach("§8.7", "/overview", `banner makes an unknown claim "${claim.label}"`);
+      continue;
+    }
+    if (claim.label !== expected)
+      breach("§5", "/overview", `banner claims "${claim.label}" instead of "${expected}"`);
+  }
+  if (stated > conversationTile)
+    breach(
+      "§8.1",
+      "/overview vs. /decisions",
+      `banner claims ${stated} positions out of ${conversationTile}`,
+    );
 
   if (!rubrics.aged || rubrics.aged.count === 0) {
     breach(
@@ -2004,8 +2300,6 @@ function checkBannerAgainstRubrics(banner, rubrics) {
     );
     return;
   }
-  const stated = Object.values(banner.claims).reduce((sum, claim) => sum + claim.count, 0);
-  const withAged = stated + rubrics.aged.count;
   for (const claim of Object.values(banner.claims)) {
     if (claim.label === rubrics.aged.heading)
       breach(
@@ -2014,8 +2308,6 @@ function checkBannerAgainstRubrics(banner, rubrics) {
         `banner claims "${rubrics.aged.heading}" — that rubric blocks nothing`,
       );
   }
-  if (stated === withAged)
-    breach("§8.7", "/overview", "boundary not measurable: the aged rubric is empty");
 }
 
 /**
@@ -2352,12 +2644,25 @@ try {
   const decisions = await openPage(context, "decisions");
   await checkAgingRubric(decisions);
   await checkRubricLanguage(decisions);
-  await checkQueueHeader(decisions);
+  await checkCategoryTiles(decisions);
   await checkCorrectionTitles(decisions);
   await checkCounterCoherence(decisions, { badge: badgeValue, zoneA, banner });
   await checkGroupToggle(decisions);
-  await checkShelves(decisions);
+  await checkHistoryLink(decisions);
+  // Last on this page: it opens every collapsible it can find, and a page left
+  // expanded would make the assertions above measure a different surface.
+  await checkNothingSettled(decisions);
   await decisions.close();
+
+  // The other end of the one link §8.5 allows. Opened with the scope the link
+  // carries, because an unfiltered log proves nothing about findability.
+  const auditHistory = await context.newPage();
+  await stand.visit(auditHistory, "audit?scope=decisions");
+  await auditHistory
+    .locator('[data-testid="resource-audit"]')
+    .waitFor({ state: "visible", timeout: 15_000 });
+  await checkDecisionHistoryIsReadable(auditHistory);
+  await auditHistory.close();
 
   const operations = await openPage(context, "operations");
   await checkOperationsIsToolsOnly(operations);

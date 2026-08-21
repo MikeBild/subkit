@@ -603,7 +603,12 @@ describe("bannerSubset", () => {
   }) {
     return {
       total: overrides.total,
-      byKind: { patch: overrides.total, skill: 0, conversation: 0 },
+      decidable: 0,
+      // The banner's base is the CONVERSATIONS, not the whole page: both states
+      // it may claim — stopped right now, deadline lapsed — belong to a waiting
+      // conversation and to nothing else. `total` here is therefore the
+      // conversation count, which is what the banner states its shares of.
+      byKind: { patch: 0, skill: 0, conversation: overrides.total },
       subsets: {
         blocking: overrides.blocking ?? 0,
         overdue: overrides.overdue ?? 0,

@@ -33,6 +33,10 @@ export function actorTypeKey(actorType: string): TranslationKey {
 
 const RESOURCE_KEYS: Record<string, TranslationKey> = {
   workflow: "nav.workflows",
+  // Both kinds of decision. Without them the resource column of every decision
+  // entry read "Unbekannt" — the log HELD the history and could not name it.
+  patch_candidate: "decisions.kind.patch",
+  skill_candidate: "decisions.kind.skill",
   connector: "resource.connectors.title",
   knowledge_source: "nav.knowledge",
   skill: "nav.skills",
@@ -47,4 +51,65 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
 
 export function resourceTypeKey(resourceType: string): TranslationKey {
   return RESOURCE_KEYS[resourceType] ?? "common.unknown";
+}
+
+/**
+ * What an audited action IS, in the reader's language.
+ *
+ * The column used to render `entry.action` verbatim, so the decision history —
+ * which the engine has always recorded — arrived as `patch_candidate.approved`
+ * and `skill_candidate.rejected`: present, complete, and unreadable. §8.5 is
+ * explicit about this case: where the past reaches the log only as a machine
+ * value, the naming and the filter belong IN the log, not the sections back in
+ * the queue.
+ *
+ * The map is deliberately partial. An action nobody has named yet renders as
+ * the engine's own string rather than as "Unbekannt": a raw verb is worse than
+ * a German one and far better than a word that claims the log recorded nothing.
+ */
+const ACTION_KEYS: Record<string, TranslationKey> = {
+  "patch_candidate.approved": "audit.action.patchApproved",
+  "patch_candidate.rejected": "audit.action.patchRejected",
+  "patch_candidate.proposed": "audit.action.patchProposed",
+  "patch_candidate.auto_applied": "audit.action.patchAutoApplied",
+  "patch_candidate.dry_run_requested": "audit.action.patchDryRun",
+  "skill_candidate.approved": "audit.action.skillApproved",
+  "skill_candidate.rejected": "audit.action.skillRejected",
+  "skill_candidate.proposed": "audit.action.skillProposed",
+  "skill_candidate.superseded": "audit.action.skillSuperseded",
+  "workflow.created": "audit.action.workflowCreated",
+  "workflow.updated": "audit.action.workflowUpdated",
+  "execution.started": "audit.action.executionStarted",
+  "execution.completed": "audit.action.executionCompleted",
+  "connector.invoked": "audit.action.connectorInvoked",
+  "credential.accessed": "audit.action.credentialAccessed",
+  "api_key.used": "audit.action.apiKeyUsed",
+  "chat.message.sent": "audit.action.chatMessageSent",
+  "webhook.inbound.received": "audit.action.webhookReceived",
+  "webhook.inbound.denied": "audit.action.webhookDenied",
+  "webhook.inbound.created": "audit.action.webhookCreated",
+};
+
+export function auditActionKey(action: string): TranslationKey | null {
+  return ACTION_KEYS[action] ?? null;
+}
+
+/**
+ * The four verbs that make up the decision history.
+ *
+ * The engine's `action` filter takes a comma-separated list, so this is one
+ * query rather than a client-side sieve over a cursor-paged list — which would
+ * have returned short pages and an unusable "next".
+ */
+export const DECISION_ACTIONS = [
+  "patch_candidate.approved",
+  "patch_candidate.rejected",
+  "skill_candidate.approved",
+  "skill_candidate.rejected",
+] as const;
+
+export type AuditScope = "all" | "decisions";
+
+export function isAuditScope(value: unknown): value is AuditScope {
+  return value === "all" || value === "decisions";
 }
