@@ -14,16 +14,26 @@
 // exist twice, here and in scripts/lib/cockpit-identity.mjs, and both copies
 // carried the same defect — each answered with the first `content="…"` in the
 // document, prose included, so a WorkKit console that quoted our name in a
-// comment was measured under the heading "identity SubKit". The reader is now
-// imported; the assert's German wording stays local and is pinned below.
+// comment was measured under the heading "identity SubKit".
+//
+// The last statement below is the only one that guards anything: it RUNS the
+// script against served trap documents. Everything above it reads source text,
+// and source text is not effect — `.not.toContain("function markerIn(")` was
+// meant to stop the reader growing back, and `const markerIn2 = (html) => …`
+// walked past it 12/12 green. Those statements are LOCKS against silent
+// removal, and they are labelled as locks; they catch a deletion, never a
+// rewrite.
 //
 // It lives in tests/contract/ because CI's shard job runs `apps packages` only
 // (LOCAL-SK-SCRIPTS-TESTS-NICHT-IN-CI); a guard over a mandatory gate stage that
 // CI never runs is just another comment. `bun run test:contract` runs this.
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const source = readFileSync(join(root, "scripts/konvention-check.mjs"), "utf8");
@@ -94,7 +104,7 @@ const marker = /<meta[^>]+name="cockpit-product"[^>]+content="([^"]+)"/.exec(she
 
 /** The assert's body — not the whole file, see the ban below. */
 function assertBody(): string {
-  const start = code.indexOf("function assertPruefstandsKennung(html) {");
+  const start = code.indexOf("async function assertPruefstandsKennung(page) {");
   expect(start, "the identity assert is findable").toBeGreaterThan(0);
   return code.slice(start, code.indexOf("\n}\n", start));
 }
@@ -167,9 +177,14 @@ describe("the convention check asks whose console answered", () => {
     expect(code).toContain("this is not ${erwartet} but ${geliefert}");
   });
 
-  test("the reader exists once in this repository, and is imported", () => {
+  test("the reader is imported, not defined here (a lock, not a guard)", () => {
     // Two copies of one decision are where two versions of it come from: the
     // prose-blind reader was fixed in the library and stood on unfixed here.
+    //
+    // Deliberately understated. The bans below catch the import DISAPPEARING;
+    // they do not catch a reader growing back — `const markerIn2 = (html) => …`
+    // kept this file 12/12 green with a second reader in place. What actually
+    // holds the class is the run at the bottom of this file.
     expect(code).toContain('from "./lib/cockpit-identity.mjs"');
     expect(code, "no second definition of the reader").not.toContain("function markerIn(");
     expect(code, "no second definition of the attribute").not.toContain(
@@ -189,20 +204,26 @@ describe("the convention check asks whose console answered", () => {
     expect(code).toContain("gemesseneKennung = erwartet;");
   });
 
-  test("the identity is checked BEFORE the browser starts", () => {
+  test("the identity is asked BEFORE the first route is measured (a lock)", () => {
     // Otherwise a foreign peer costs a whole run before being discarded: 156 s.
-    const kennung = code.indexOf("assertPruefstandsKennung(preview.shell);");
-    const browser = code.indexOf("await chromium.launch(");
-    expect(kennung, "the assert is called").toBeGreaterThan(0);
+    // The browser now starts FIRST, because it is the reader — a second's
+    // launch, against 156 s of measuring somebody else's surface.
+    const browser = code.indexOf("browser = await chromium.launch(");
+    const kennung = code.indexOf("await assertPruefstandsKennung(schale);");
+    const ersteRoute = code.indexOf('await openPage(context, "overview")');
     expect(browser, "the browser is launched").toBeGreaterThan(0);
-    expect(kennung).toBeLessThan(browser);
+    expect(kennung, "the assert is called").toBeGreaterThan(browser);
+    expect(kennung, "and before anything is measured").toBeLessThan(ersteRoute);
   });
 
-  test("the document that was waited on is the one checked, not a second one", () => {
-    // Two fetches are two documents, and the identity would vouch for one the
-    // run never measured.
-    expect(code).toContain("if (response.ok) return { server, shell: await response.text() };");
-    expect(code).toContain("assertPruefstandsKennung(preview.shell);");
+  test("the identity comes off the PAGE, not off a second read of the text (a lock)", () => {
+    // Two readers of one document are two answers, and every shape they
+    // disagree about is a WorkKit console measured under SubKit's name. The
+    // marker is read by the same Chromium that renders every route below.
+    expect(code).toContain("const { marker: geliefert, title: titel } = await readIdentity(page);");
+    expect(code, "no text of the served document is read here").not.toContain(
+      "markerIn(await response.text())",
+    );
   });
 
   test('"not measured" has an exit code of its own', () => {
@@ -232,9 +253,93 @@ describe("the convention check asks whose console answered", () => {
     expect(probe, "the sweep asks whether anybody still answers").toBeGreaterThan(0);
     expect(write, "the mount breach is still written").toBeGreaterThan(0);
     expect(probe).toBeLessThan(write);
-    // Asked by EFFECT: the shell is fetched again, not the error message parsed.
+    // Asked by EFFECT: the shell is loaded again in the browser, not the error
+    // message parsed — and by the browser, so a stand that changed hands is
+    // caught by the same reader that would have photographed it.
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
-    expect(code).toContain("const response = await fetch(`${baseUrl}/cockpit/`);");
-    expect(code).toContain("assertPruefstandsKennung(await response.text());");
+    expect(code).toContain("response = await page.goto(`${baseUrl}/cockpit/`");
+    expect(code).toContain("await assertPruefstandsKennung(page);");
   });
+});
+
+/**
+ * The same question, RUN instead of read.
+ *
+ * Everything above this line inspects source text. This block starts a stand,
+ * puts a foreign console on it and runs `scripts/konvention-check.mjs` at it.
+ * Exit 2 or the guard does not exist — whatever the source says about itself.
+ *
+ * The four documents are the shapes that a regex over the HTTP text called
+ * "SubKit" while Chromium rendered WorkKit. They are not four rules here; they
+ * are one reader, and it is the browser's.
+ */
+describe("the convention check, run against a foreign console", () => {
+  const stamp = (product: string) => `<meta name="cockpit-product" content="${product}" />`;
+  const quoted = `<!--\n      The line reads:\n\n      ${stamp("SubKit")}\n    -->`;
+  const page = (head: string) =>
+    `<!doctype html><html><head>${head}<title>WorkKit Cockpit</title></head><body></body></html>`;
+
+  const stands = {
+    "an honest sister console": page(stamp("WorkKit")),
+    "our name quoted in the prose above the stamp": page(`${quoted}${stamp("WorkKit")}`),
+    "a foreign marker behind an abruptly closed <!--> comment": page(
+      `<!-->${stamp("WorkKit")}${quoted}${stamp("SubKit")}`,
+    ),
+    "the same behind <!--->": page(`<!--->${stamp("WorkKit")}${quoted}${stamp("SubKit")}`),
+    "two content attributes on one marker": page(
+      '<meta name="cockpit-product" content="WorkKit" content="SubKit" />',
+    ),
+    "a character reference in the attribute name": page(
+      `<meta name="cockpit&#45;product" content="WorkKit" />${stamp("SubKit")}`,
+    ),
+  };
+
+  let served = "";
+  let server: Server;
+  let baseUrl = "";
+
+  beforeAll(async () => {
+    server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end(served);
+    });
+    // Port 0: several sessions of this family run at once, and a fixed port
+    // measures whoever got there first.
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterAll(() => server?.close());
+
+  test.each(Object.entries(stands))(
+    "%s is not measured",
+    async (_shape, document) => {
+      served = document;
+      const run = Bun.spawn(["bun", "run", "scripts/konvention-check.mjs"], {
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          COCKPIT_BASE_URL: baseUrl,
+          // The test preload moves HOME into a throwaway directory, which is also
+          // where Playwright would look for its browsers.
+          PLAYWRIGHT_BROWSERS_PATH: (() => {
+            const parts = chromium.executablePath().split("/");
+            return parts.slice(0, parts.lastIndexOf("ms-playwright") + 1).join("/");
+          })(),
+        },
+      });
+      const output = `${await new Response(run.stdout).text()}${await new Response(run.stderr).text()}`;
+      const exitCode = await run.exited;
+      // 2, not 1: a work list about a surface this repository does not own is
+      // worse than no list at all.
+      expect(exitCode, output).toBe(2);
+      expect(output).toContain("NOT MEASURED");
+      expect(output).toContain("this is not SubKit but WorkKit");
+      // And the report must not carry a confirmed identity above the abort.
+      expect(output).not.toContain("identity SubKit");
+    },
+    180_000,
+  );
 });

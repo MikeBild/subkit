@@ -1,7 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
-import { expectedIdentity, identityProblem } from "./lib/cockpit-identity.mjs";
+import { expectedIdentity, identityProblem, readIdentity } from "./lib/cockpit-identity.mjs";
 
 const baseUrl = (process.env.COCKPIT_BASE_URL || "http://127.0.0.1:4175").replace(/\/$/, "");
 const outputDir = resolve(process.env.COCKPIT_SCREENSHOT_DIR || ".artifacts/cockpit-sweep/local");
@@ -1065,33 +1065,62 @@ async function shoot(target, options) {
 }
 
 /**
- * Whose console is being photographed — asked before the first frame.
+ * Whose console is being photographed — asked THROUGH THE CAMERA.
  *
  * This script starts no server; it points at whatever holds `COCKPIT_BASE_URL`.
  * On its default port a masterless process of a foreign session was listening
  * for two days, and 296 screenshots of someone else's cockpit would have been
- * produced in silence. The identity comes from the document the stand serves,
- * not from the port, and not from anything this file types by hand.
+ * produced in silence.
+ *
+ * The question used to be asked of the HTTP TEXT with a regex while the frames
+ * came out of Chromium's parse — two readers of one document, and every shape
+ * they disagree about is a WorkKit cockpit photographed under our name. Ten
+ * such shapes in one day, and the last was opened by the repair of the one
+ * before it. This asks the same browser instance, on the same URL, with the
+ * same parser that takes every frame below, so the two cannot disagree by
+ * construction.
  */
-async function assertStandIsOurs() {
-  let served;
+async function assertStandIsOurs(browser) {
+  const page = await browser.newPage();
   try {
-    const response = await fetch(`${baseUrl}/cockpit/`);
-    if (!response.ok) throw new Error(`answered with HTTP ${response.status}`);
-    served = await response.text();
-  } catch (error) {
-    throw new Error(
-      `nothing photographable on ${baseUrl}/cockpit/: ${error.message}. ` +
-        "This sweep starts no server — build the cockpit and run a preview on that port first.",
-    );
+    let response;
+    try {
+      response = await page.goto(`${baseUrl}/cockpit/`, { waitUntil: "domcontentloaded" });
+    } catch (error) {
+      throw new Error(
+        `nothing photographable on ${baseUrl}/cockpit/: ${error.message}. ` +
+          "This sweep starts no server — build the cockpit and run a preview on that port first.",
+      );
+    }
+    if (!response?.ok())
+      throw new Error(
+        `nothing photographable on ${baseUrl}/cockpit/: answered with HTTP ${response?.status()}. ` +
+          "This sweep starts no server — build the cockpit and run a preview on that port first.",
+      );
+    const { marker, title } = await readIdentity(page);
+    const problem = identityProblem({
+      delivered: marker,
+      title,
+      expected: expectedIdentity(),
+      baseUrl,
+    });
+    if (problem !== null) throw new Error(`Cockpit visual sweep NOT TAKEN — ${problem}`);
+  } finally {
+    await page.close();
   }
-  const problem = identityProblem({ served, expected: expectedIdentity(), baseUrl });
-  if (problem !== null) throw new Error(`Cockpit visual sweep NOT TAKEN — ${problem}`);
 }
 
-await assertStandIsOurs();
-await mkdir(outputDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
+try {
+  await assertStandIsOurs(browser);
+} catch (error) {
+  // The browser is the reader now, so it is already open when the answer comes
+  // back. Nothing has been written at this point, and nothing will be: the
+  // output directory is not even created until the stand has been named.
+  await browser.close();
+  throw error;
+}
+await mkdir(outputDir, { recursive: true });
 const errors = [];
 const locales = [
   { name: "de", browser: "de-DE" },
