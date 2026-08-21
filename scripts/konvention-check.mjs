@@ -2302,6 +2302,12 @@ checkKonventionVersion();
 let abbruch = null;
 let server = null;
 let browser = null;
+// How far the route sweep got. `NichtGemessen` only ever covered the window
+// BEFORE the first route, so a preview server that died mid-sweep — route 11 of
+// 27 — exited 1, "measured and red", carrying the one breach recorded just
+// before the throw as if it were a finding while 16 routes were never looked at.
+let besuchteRouten = 0;
+let routenDurchlaufen = false;
 try {
   const preview = await startPreview();
   server = preview.server;
@@ -2358,6 +2364,7 @@ try {
   await chat.close();
 
   for (const route of ROUTES) {
+    besuchteRouten += 1;
     let page;
     try {
       page = await openPage(context, route);
@@ -2374,6 +2381,7 @@ try {
     await sweepDetailSurface(page, route);
     await page.close();
   }
+  routenDurchlaufen = true;
   await context.close();
 
   // Second fixture variant: nothing open, so the banner must be gone.
@@ -2431,6 +2439,10 @@ try {
 // certifies nothing on its own: against which document, on how many routes, on
 // which stand, in which language. Everything it did NOT look at stands right
 // next to it, in the passing case as much as in the failing one.
+// An abort that never got through the route list is not a red run, it is an
+// absent one — the same distinction `NichtGemessen` draws for the window before
+// the first route, applied to the window the routes themselves occupy.
+const nichtGemessen = abbruch instanceof NichtGemessen || (Boolean(abbruch) && !routenDurchlaufen);
 const gescheitert = violations.length > 0 || Boolean(abbruch);
 const report = gescheitert ? console.error : console.log;
 
@@ -2462,7 +2474,7 @@ report(`Prüfstand: ${pruefstand}`);
 report("Sprache: nur de (sk-cockpit-locale=de, Browser-Locale de-DE)");
 report(
   abbruch
-    ? `Geprüft: unvollständig — der Lauf brach ab, bevor die ${ROUTES.length} Routen der Router-Tabelle durch waren`
+    ? `Geprüft: unvollständig — der Lauf brach bei Route ${besuchteRouten} von ${ROUTES.length} der Router-Tabelle ab, ${ROUTES.length - besuchteRouten} wurden nie angesehen`
     : `Geprüft: ${ROUTES.length} Routen aus der Router-Tabelle` +
         (swept.length > 0
           ? `, dazu ${swept.length} Detailfläche(n) ohne eigene Route (${swept.join(", ")})`
@@ -2482,22 +2494,27 @@ function printViolations() {
 
 if (abbruch) {
   console.error(
-    abbruch instanceof NichtGemessen
+    nichtGemessen
       ? `Konvention-Check NICHT GEMESSEN: ${abbruch.message}\n` +
           "Über die Oberfläche sagt dieser Lauf NICHTS. Was unten steht, stammt aus den Prüfungen,\n" +
-          "die keinen Prüfstand brauchen (§7, Konventions-Version); eine leere Liste ist hier kein\n" +
-          "Freispruch, sondern eine Messung, die nicht stattgefunden hat.\n"
+          "die keinen Prüfstand brauchen (§7, Konventions-Version) und aus den Routen, die der Lauf\n" +
+          "vor dem Abbruch noch erreicht hat; eine leere Liste ist hier kein Freispruch, sondern eine\n" +
+          "Messung, die nicht stattgefunden hat.\n"
       : `Konvention-Check ABGEBROCHEN: ${abbruch?.message ?? String(abbruch)}\n` +
           "Ein Lauf, der nicht zu Ende messen konnte, ist kein bestandener Lauf. Was bis zum Abbruch\n" +
           "gefunden wurde, steht unten — alles danach ist ungeprüft, nicht sauber.\n",
   );
   if (violations.length > 0) {
-    console.error(`Bis zum Abbruch gefunden: ${violations.length} Verstöße gegen ${massstab}\n`);
+    console.error(
+      nichtGemessen
+        ? `Bis zum Abbruch notiert: ${violations.length} — keine Arbeitsliste, der Lauf hat nicht gemessen\n`
+        : `Bis zum Abbruch gefunden: ${violations.length} Verstöße gegen ${massstab}\n`,
+    );
     printViolations();
     console.error("");
   }
   console.error(abbruch?.stack ?? String(abbruch));
-  process.exit(abbruch instanceof NichtGemessen ? 2 : 1);
+  process.exit(nichtGemessen ? 2 : 1);
 }
 
 if (violations.length === 0) {
