@@ -177,6 +177,18 @@ describe("the convention check asks whose console answered", () => {
     );
   });
 
+  test("the confirmed identity is withdrawn before it is asked for again", () => {
+    // The assert runs again whenever the stand goes quiet mid-sweep. Leaving the
+    // first answer standing printed "Stand: … identity SubKit" above an abort
+    // that named WorkKit — one report saying two different things.
+    const body = assertBody();
+    expect(body).toContain("gemesseneKennung = null;");
+    expect(body.indexOf("gemesseneKennung = null;")).toBeLessThan(
+      body.indexOf("throw new NichtGemessen("),
+    );
+    expect(code).toContain("gemesseneKennung = erwartet;");
+  });
+
   test("the identity is checked BEFORE the browser starts", () => {
     // Otherwise a foreign peer costs a whole run before being discarded: 156 s.
     const kennung = code.indexOf("assertPruefstandsKennung(preview.shell);");
