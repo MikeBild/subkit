@@ -398,6 +398,21 @@ function browsersReachedBy(command: string): string[] {
   return [...reach.packages].filter((name) => BROWSER_PACKAGES.has(name)).sort();
 }
 
+/**
+ * What the import walk is allowed to cost — stated, not inherited.
+ *
+ * These three tests read every file reachable from the entry points of the CI
+ * jobs, which is most of the repository. Bun's default budget for a test is
+ * 5 s, and this file hit that wall twice on this machine (5130 ms, 7629 ms)
+ * without having changed: the walk is I/O over a few hundred files and its cost
+ * is the disk's mood, not the repository's size. A runner's disk is colder.
+ *
+ * A budget that a healthy run exceeds is not a measurement of anything — it
+ * reports "too slow" for a test that found nothing wrong, which is how a
+ * mandatory stage gets muted.
+ */
+const WALK_BUDGET_MS = 30_000;
+
 describe("gate and workflows", () => {
   test("ci.yml triggers on push to main and on pull requests", () => {
     const on = ci.on as { push: { branches: string[] }; pull_request?: unknown };
@@ -486,14 +501,18 @@ describe("gate and workflows", () => {
   // cockpit-identity.mjs` is reachable from tests/contract ONLY through a
   // relative import inside cockpit-identity.test.ts, so it is the landmark that
   // separates "followed the imports" from "read the entry files".
-  test("the walk follows relative imports out of the entry files", () => {
-    const reached = reachableFrom(["tests/contract"]);
-    expect(reached.files).toContain("tests/contract/cockpit-identity.test.ts");
-    expect(reached.files).toContain("scripts/lib/cockpit-identity.mjs");
-    expect([...reached.packages].filter((name) => BROWSER_PACKAGES.has(name))).toEqual([
-      "playwright",
-    ]);
-  });
+  test(
+    "the walk follows relative imports out of the entry files",
+    () => {
+      const reached = reachableFrom(["tests/contract"]);
+      expect(reached.files).toContain("tests/contract/cockpit-identity.test.ts");
+      expect(reached.files).toContain("scripts/lib/cockpit-identity.mjs");
+      expect([...reached.packages].filter((name) => BROWSER_PACKAGES.has(name))).toEqual([
+        "playwright",
+      ]);
+    },
+    WALK_BUDGET_MS,
+  );
 
   // THE ASSERTION THE RED BUILD WAS ABOUT.
   //
@@ -509,36 +528,40 @@ describe("gate and workflows", () => {
   // The old shape of this test named ONE job and could not have caught that.
   // The requirement is now derived: every job, every entry file its steps
   // actually run, everything those reach through relative imports.
-  test("every job that can reach a browser package installs one first", () => {
-    const needing: string[] = [];
-    for (const [name, entry] of Object.entries(ci.jobs ?? {})) {
-      const commands = (entry.steps ?? []).map((step) => step.run ?? "");
-      const needy = commands
-        .map((command, index) => ({ index, browsers: browsersReachedBy(command) }))
-        .filter((step) => step.browsers.length > 0);
-      if (needy.length === 0) continue;
-      needing.push(name);
+  test(
+    "every job that can reach a browser package installs one first",
+    () => {
+      const needing: string[] = [];
+      for (const [name, entry] of Object.entries(ci.jobs ?? {})) {
+        const commands = (entry.steps ?? []).map((step) => step.run ?? "");
+        const needy = commands
+          .map((command, index) => ({ index, browsers: browsersReachedBy(command) }))
+          .filter((step) => step.browsers.length > 0);
+        if (needy.length === 0) continue;
+        needing.push(name);
 
-      const first = needy[0] as { index: number; browsers: string[] };
-      const install = commands.findIndex((command) => /playwright install/.test(command));
-      expect(
-        install,
-        `job '${name}' reaches ${first.browsers.join(", ")} but never installs a browser`,
-      ).toBeGreaterThanOrEqual(0);
-      expect(commands[install]).toContain("chromium");
-      // ubuntu-24.04 does not carry Chromium's system libraries.
-      expect(commands[install]).toContain("--with-deps");
-      // Before the step that needs it, not merely somewhere in the job.
-      expect(
-        install,
-        `job '${name}' installs the browser after '${commands[first.index]}' has already asked for one`,
-      ).toBeLessThan(first.index);
-    }
-    // Exact, not `length > 0`: a reader that silently stopped finding anything
-    // would make every assertion in the loop above vacuous, which is the
-    // failure mode this whole file exists against.
-    expect(needing.sort()).toEqual(["konvention", "quality"]);
-  });
+        const first = needy[0] as { index: number; browsers: string[] };
+        const install = commands.findIndex((command) => /playwright install/.test(command));
+        expect(
+          install,
+          `job '${name}' reaches ${first.browsers.join(", ")} but never installs a browser`,
+        ).toBeGreaterThanOrEqual(0);
+        expect(commands[install]).toContain("chromium");
+        // ubuntu-24.04 does not carry Chromium's system libraries.
+        expect(commands[install]).toContain("--with-deps");
+        // Before the step that needs it, not merely somewhere in the job.
+        expect(
+          install,
+          `job '${name}' installs the browser after '${commands[first.index]}' has already asked for one`,
+        ).toBeLessThan(first.index);
+      }
+      // Exact, not `length > 0`: a reader that silently stopped finding anything
+      // would make every assertion in the loop above vacuous, which is the
+      // failure mode this whole file exists against.
+      expect(needing.sort()).toEqual(["konvention", "quality"]);
+    },
+    WALK_BUDGET_MS,
+  );
 
   // The honest edge of the derivation. An entry path is a token that names a
   // real file or directory in the run command; a runner that hard-codes the
@@ -548,13 +571,17 @@ describe("gate and workflows", () => {
   // variable, deliberately, so the suite runs on a host without a browser — and
   // the quality job installs one anyway. Recorded rather than papered over: if
   // that ever changes, this expectation is the thing that has to be revisited.
-  test("a runner that hides its own test files is a known blind spot", () => {
-    const hidden = reachableFrom(["scripts/test-e2e-isolated.ts"]);
-    expect(hidden.files).toContain("scripts/test-e2e-isolated.ts");
-    expect(hidden.files.some((file) => file.startsWith("tests/e2e/"))).toBe(false);
-    const suites = reachableFrom(["tests/e2e"]);
-    expect([...suites.packages].filter((pkg) => BROWSER_PACKAGES.has(pkg))).toEqual([]);
-  });
+  test(
+    "a runner that hides its own test files is a known blind spot",
+    () => {
+      const hidden = reachableFrom(["scripts/test-e2e-isolated.ts"]);
+      expect(hidden.files).toContain("scripts/test-e2e-isolated.ts");
+      expect(hidden.files.some((file) => file.startsWith("tests/e2e/"))).toBe(false);
+      const suites = reachableFrom(["tests/e2e"]);
+      expect([...suites.packages].filter((pkg) => BROWSER_PACKAGES.has(pkg))).toEqual([]);
+    },
+    WALK_BUDGET_MS,
+  );
 
   // A green "build" signal must not be reachable past a red check — and "past"
   // includes the check that was added last, which is the one a `needs` list is
