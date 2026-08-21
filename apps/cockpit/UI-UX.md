@@ -150,11 +150,13 @@ A proposed skill states the model's confidence as a word with its scale named an
 observed cases it rests on. Never a bar, never a percentage, and never the success colour for
 "high": a model's confidence is a claim about itself, not a measurement of the world.
 
-Deviation from the family convention, deliberate: there is no "remind me later" shelf. The engine
-models a patch candidate as proposed, applied, rejected or superseded and has no deferred state;
-inventing a cockpit-local snooze would show a position as parked that the engine still counts as
-open. Rejecting with a note is the honest alternative, and the "decided" and "rejected" shelves
-are read back from those engine states.
+Deviation from the family convention, deliberate: there is no "remind me later" action. §8.3 lists
+one in the ⋯ menu, but the engine models a patch candidate as proposed, applied, rejected or
+superseded and has no deferred state; inventing a cockpit-local snooze would show a position as
+parked that the engine still counts as open. Rejecting with a note is the honest alternative.
+What is settled does not come back onto this page at all: §8.5 keeps state and history apart, so
+the decided and rejected positions live in the audit trail, reached by the single link the queue
+carries.
 
 ### Overview surface
 
@@ -277,7 +279,7 @@ authenticated bilingual route sweep after SSO and publishes its screenshots as a
 
 ## Decision grammar
 
-What follows is a verbatim German copy of §8 of Cockpit Convention v1.5 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). This product's decisions page is measured against it. Deliberate deviations are justified above under "Decisions surface" — the queue is not a 780 px column (§8.2), and there is no "remind me later" shelf (§8.3/§8.5) because the engine has no deferred state. Both stand; the copy below is not adjusted to them, or it would no longer be a copy.
+What follows is a verbatim German copy of §8 of Cockpit Convention v1.6 (`COCKPIT-KONVENTION.md` in the repo root), kept in German and byte-identical on purpose: the standard has one source and no diverging copies (§13). This product's decisions page is measured against it. Deliberate deviations are justified above under "Decisions surface" — the queue is not a 780 px column (§8.2), and there is no "remind me later" entry in the ⋯ menu (§8.3) because the engine has no deferred state. Both stand; the copy below is not adjusted to them, or it would no longer be a copy.
 
 ### 8. Entscheidungs-Grammatik
 
@@ -293,10 +295,22 @@ Jedes Produkt, das menschliche Entscheidungen sammelt (Freigaben, Reviews, Budge
 
 **8.4 Aufklappen.** Zeilen mit mehr Kontext tragen unten links einen benannten Toggle („Mehr anzeigen"), nie einen nackten Chevron. Aufgeklappt: volle Begründung, Rohdaten der Quelle, ggf. Formular für strukturierte Rückfragen. Die Entscheidungs-Buttons wandern ins Panel (kollabiert Kompakt-Form, expandiert Voll-Form).
 
-**8.5 Regale.** Unter der aktiven Queue: einklappbare Sektionen „Zurückgestellt" (mit Wiedervorlage-Zeit), „Verworfen", „Entschieden" — gedimmt, mit Rückhol-Aktion wo die API es erlaubt. Grundsatz dahinter: **Zustand und Geschichte sind getrennte Flächen.** Die Queue zeigt nur den aktuellen Zustand (Erledigtes verschwindet, nichts wird durchgestrichen); die vollständige Geschichte wohnt im Audit/Aktivitätsprotokoll (append, nie gekürzt).
+**8.5 Zustand und Geschichte sind getrennte Flächen.** Die Entscheidungs-Seite zeigt ausschließlich, was auf den Menschen wartet. Zurückgestellt, Verworfen und Entschieden sind Vergangenheit: Erledigtes verlässt die Queue — es wird nicht gedimmt, nicht durchgestrichen, nicht in eigene Sektionen unter der Queue gestellt und nicht über Zustands-Chips wieder hereingeholt. Ein Umschalter, der die Queue auf einen vergangenen Zustand stellt, ist ein Konventionsbruch; Filter auf der Queue filtern die **Art**, nie den Zustand. Die vollständige Geschichte wohnt im Audit-/Aktivitätsprotokoll (append, nie gekürzt) und ist von der Entscheidungs-Seite über **genau einen** Verweis erreichbar — ein Satz mit Link, keine Zähler-Kacheln. Wo die Vergangenheit dort nur als Maschinenwert ankommt, gehören Benennung und Filter ins Protokoll, nicht die Sektionen zurück in die Queue.
+
+**8.5a Zähler-Kacheln.** Für **Offenes** erwünscht — wenn sie Entscheidungen nach **Kategorie**
+aufschlüsseln und dadurch Übersicht schaffen, statt eine Summe zu wiederholen. Jede Kachel führt
+auf die gefilterte Liste. Für **Erledigtes** gibt es keine. *(Mike, 21.08.2026.)*
+
+**8.5b Die Zahl selbst ist eine Design-Frage.** Eine Entscheidungs-Seite, die einem Menschen
+Hunderte Positionen vorlegt, hat ihre Aufgabe verfehlt, egal wie gut sie gegliedert ist.
+Gemessen am 21.08.2026: WatchKit legt **359 Positionen** vor, weil Doku- und Drift-Befunde als
+Entscheidungen zählen; WorkKit zeigt **15 gleichartige Budget-Sperren einzeln**; SubKit lässt
+**jede Korrektur-Karte einer Gruppe einzeln** entscheiden; bei SubKit sind **32 von 35**
+Positionen wartende Unterhaltungen. Das ist kein Darstellungs-, sondern ein Zuschnittsproblem:
+**was gleichartig ist, wird zu einer Entscheidung zusammengefasst; was folgenlos ist, ist keine.**
 
 **8.6 Leere.** Nie etwas offen: grüner Check, „Alles erledigt" + „Gerade wartet keine Entscheidung auf dich." Nur weggefiltert: eigene, kompaktere Meldung mit Hinweis auf die Filter. Beide getrennt testbar (§4 gilt).
 
 **8.7 Incident-Banner.** Die Übersicht zeigt oberhalb aller Kacheln einen nicht schließbaren roten Banner, sobald ein Budget-/Health-Gate offen oder eine Frist gerissen ist — mit konkreten Zahlen und Link auf die Entscheidungs-Seite. Ein Dashboard, das bei offenen Gates Ruhe meldet, ist ein Konventionsbruch.
 
-**8.8 Produkt-Spezifisch bleibt:** die Arten (Kinds) und ihre Badges, die Resolver-Formulare, die Quell-Referenzen. Familienweit sind Struktur, Sprache, Sortierung, Regale, Leere-Zustände und der Banner-Vertrag.
+**8.8 Produkt-Spezifisch bleibt:** die Arten (Kinds) und ihre Badges, die Resolver-Formulare, die Quell-Referenzen. Familienweit sind Struktur, Sprache, Sortierung, die Trennung von Zustand und Geschichte, Leere-Zustände und der Banner-Vertrag.
