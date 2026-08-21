@@ -132,6 +132,14 @@ export function markerIn(html) {
       ([, value]) => value,
     );
     if (contents.length !== 1) return null;
+    // The same rule one attribute to the right, and it was missing for three
+    // rounds while the paragraph above claimed to cover it. Chromium decodes a
+    // character reference in the attribute VALUE exactly as it does in the
+    // name: `content="Work&#75;it"` is `WorkKit` to the parser and stays
+    // `Work&#75;it` here. It fell LOUD rather than quiet — the expected value is
+    // read from our own file, so the two disagree and every caller exits — but a
+    // rule this file states about itself and does not keep is not a rule.
+    if (contents[0].includes("&")) return null;
     found.push(contents[0]);
   }
   if (found.length !== 1) return null;
