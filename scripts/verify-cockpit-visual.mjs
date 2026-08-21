@@ -1045,11 +1045,31 @@ async function assertInteractiveSelectors(page, label) {
 }
 
 /**
+ * Every frame this run wrote, counted where it is written.
+ *
+ * The closing line used to CALCULATE the number:
+ * `routes * viewports * variants + variants * 12`. It reported 252 while the run
+ * wrote 296 — the 12 was stale, and the four contact sheets per pass were in no
+ * term of the formula at all. The count is not even a constant: the expanded
+ * decision cards depend on which toggles a fixture exposes, so a hand formula
+ * cannot be right for two runs in a row. That number was then quoted onwards as
+ * a measurement.
+ *
+ * A number never travels without the rule that produced it, which is why the
+ * line below says where this one comes from.
+ */
+let framesWritten = 0;
+async function shoot(target, options) {
+  await target.screenshot(options);
+  framesWritten += 1;
+}
+
+/**
  * Whose console is being photographed — asked before the first frame.
  *
  * This script starts no server; it points at whatever holds `COCKPIT_BASE_URL`.
  * On its default port a masterless process of a foreign session was listening
- * for two days, and 252 screenshots of someone else's cockpit would have been
+ * for two days, and 296 screenshots of someone else's cockpit would have been
  * produced in silence. The identity comes from the document the stand serves,
  * not from the port, and not from anything this file types by hand.
  */
@@ -1180,7 +1200,7 @@ for (const locale of variants) {
           }
         }
       }
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-${viewport.name}-${route}.png`),
         fullPage: false,
       });
@@ -1192,14 +1212,14 @@ for (const locale of variants) {
         await assertViewport(page, `${locale.artifact}/desktop/${resource}-detail`);
         await assertTables(page, `${locale.artifact}/desktop/${resource}-detail`);
         await assertInteractiveSelectors(page, `${locale.artifact}/desktop/${resource}-detail`);
-        await page.screenshot({
+        await shoot(page, {
           path: resolve(outputDir, `${locale.artifact}-desktop-${resource}-detail.png`),
           fullPage: false,
         });
       }
       // The expanded decision card. The sweep only ever photographed collapsed
       // cards, which is how a surface that asks people to approve things they
-      // cannot see stayed green through 252 screenshots.
+      // cannot see stayed green through every frame this sweep took.
       await page.goto(`${baseUrl}/cockpit/decisions`, { waitUntil: "networkidle" });
       let expandedCards = 0;
       for (const prefix of ["decision", "decision-expired", "decision-deferred", "decision-aged"]) {
@@ -1214,7 +1234,7 @@ for (const locale of variants) {
             .locator(`[data-testid="${prefix}-${position}-detail"]`)
             .waitFor({ state: "visible", timeout: 10_000 });
           await page.waitForTimeout(300);
-          await page.screenshot({
+          await shoot(page, {
             path: resolve(
               outputDir,
               `${locale.artifact}-desktop-${prefix}-${position}-expanded.png`,
@@ -1238,7 +1258,7 @@ for (const locale of variants) {
         .locator('[data-testid="decisions-group"][data-mode="kind"]')
         .waitFor({ state: "attached" });
       await page.waitForTimeout(300);
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-decisions-grouped.png`),
         fullPage: false,
       });
@@ -1256,7 +1276,7 @@ for (const locale of variants) {
       }
       await page.locator('[data-testid="decisions-shelf-decided-toggle"]').scrollIntoViewIfNeeded();
       await page.waitForTimeout(500);
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-decisions-shelves.png`),
         fullPage: false,
       });
@@ -1267,7 +1287,7 @@ for (const locale of variants) {
         .locator('[data-testid="conversation-create-dialog"]')
         .waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-chat-create.png`),
         fullPage: false,
       });
@@ -1275,14 +1295,14 @@ for (const locale of variants) {
       const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
       await tool.scrollIntoViewIfNeeded();
       await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-chat-tool.png`),
         fullPage: false,
       });
       await page.locator('[data-testid="chat-context-toggle"]').click();
       await page.locator('[data-testid="chat-context"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-chat-context.png`),
         fullPage: false,
       });
@@ -1295,7 +1315,7 @@ for (const locale of variants) {
         .locator('[data-testid="chat-error"]')
         .waitFor({ state: "hidden" })
         .catch(() => {});
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-chat-interaction.png`),
         fullPage: false,
       });
@@ -1303,20 +1323,20 @@ for (const locale of variants) {
       await page.locator('[data-testid="data-table-refresh"]').hover();
       await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-tooltip.png`),
         fullPage: false,
       });
       await page.locator('[data-testid="account-menu-trigger"]').click();
       await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-account.png`),
         fullPage: false,
       });
       await page.locator('[data-testid="account-language-menu"]').hover();
       await page.locator('[data-testid="account-language-content"]').waitFor({ state: "visible" });
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-account-language.png`),
         fullPage: false,
       });
@@ -1328,7 +1348,7 @@ for (const locale of variants) {
       await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
       await page.locator('[data-testid="account-theme-menu"]').hover();
       await page.locator('[data-testid="account-theme-content"]').waitFor({ state: "visible" });
-      await page.screenshot({
+      await shoot(page, {
         path: resolve(outputDir, `${locale.artifact}-desktop-account-theme.png`),
         fullPage: false,
       });
@@ -1360,7 +1380,7 @@ for (const locale of variants) {
     </style><main>${cards.join("")}</main>`,
       { waitUntil: "load" },
     );
-    await contact.screenshot({
+    await shoot(contact, {
       path: resolve(outputDir, `${locale.artifact}-${viewport}-contact-sheet.png`),
       fullPage: true,
     });
@@ -1370,5 +1390,6 @@ for (const locale of variants) {
 await browser.close();
 if (errors.length) throw new Error(errors.join("; "));
 console.log(
-  `Cockpit visual sweep passed: ${routes.length * viewports.length * variants.length + variants.length * 12} screenshots in ${outputDir}`,
+  `Cockpit visual sweep passed: ${framesWritten} screenshots in ${outputDir} ` +
+    "(counted at each write, contact sheets included — not computed from the route table)",
 );
