@@ -153,7 +153,7 @@ describe("error envelope wire — 429 hint + retry_after", () => {
         retry_after: 30,
       });
     });
-    server = serve({ fetch: app.fetch, port: 0 });
+    server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
     const addr = (server as unknown as { address: () => { port: number } | null }).address();
     if (!addr || typeof addr !== "object") throw new Error("test server address resolution failed");
     baseUrl = `http://127.0.0.1:${addr.port}`;

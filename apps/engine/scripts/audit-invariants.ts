@@ -910,8 +910,23 @@ function checkTestServersBindLoopback(): Result {
   // match. Pin the hostname and the OS can only hand out a port that is
   // free ON THAT ADDRESS.
   //
+  // BOTH `serve` FUNCTIONS COUNT (LOCAL-SK-SERVE-REGEL-ZWEI-LESER). The
+  // first version of this check matched `Bun.serve(` only, and the suites
+  // that actually broke the gate do not use it: `@hono/node-server` exports
+  // a bare `serve({ fetch, port: 0 })`, and that is what
+  // `http/tests/setup.ts` — the harness behind every HTTP and MCP suite —
+  // calls. Ten call sites stayed wildcard-bound behind a green invariant,
+  // and two full gate runs died on it: one suite reached 127.0.0.1:55492
+  // and was answered by WorkKit's Postgres, another reached
+  // 127.0.0.1:55432 and was answered by ContentKit's. Same defect, same
+  // day, a rule that only covered one of its two readers.
+  //
+  // The bare form is matched with a boundary that excludes a leading `.`
+  // or word character, so `observe(` / `preserve(` / `foo.serve(` do not
+  // trip it while `Bun.serve(` still does.
+  //
   // Allow-list a deliberate wildcard bind via
-  // `// bind-wildcard-allowed: <reason>` on the `Bun.serve(` line.
+  // `// bind-wildcard-allowed: <reason>` on the `serve(` line.
   const LOOPBACK = /hostname\s*:\s*["'`](?:127\.0\.0\.1|localhost|::1)["'`]/;
   const isTs = (p: string) => p.endsWith(".ts") || p.endsWith(".tsx");
   const isTestFile = (p: string) =>
@@ -926,12 +941,24 @@ function checkTestServersBindLoopback(): Result {
   for (const f of files) {
     const rel = relative(REPO, f);
     const src = readFileSync(f, "utf8");
-    const marker = /Bun\.serve\s*\(/g;
+    // The call must be followed by an options OBJECT. Without that, the bare
+    // form also matched `serve()` written in a COMMENT ("read at boot only by
+    // serve()") and then balanced braces from some unrelated literal far below
+    // it — a false positive that would have to be annotated as if it were a
+    // real bind.
+    const marker = /(?:\bBun\.serve|(?<![.\w])serve)\s*\(\s*\{/g;
     let m = marker.exec(src);
     while (m !== null) {
       const lineNo = src.slice(0, m.index).split("\n").length;
-      const lineText = src.split("\n")[lineNo - 1] ?? "";
-      if (!lineText.includes("bind-wildcard-allowed:")) {
+      // The marker line OR the three lines above it. A trailing
+      // `// bind-wildcard-allowed:` on the `serve(` line does not survive the
+      // formatter — biome moves it onto the next line — so requiring it there
+      // let a formatting pass silently disarm the allow-list. Reading the
+      // lead-in comment instead is both formatter-proof and where a reason
+      // long enough to be worth anything actually fits.
+      const lines = src.split("\n");
+      const scope = lines.slice(Math.max(0, lineNo - 4), lineNo).join("\n");
+      if (!scope.includes("bind-wildcard-allowed:")) {
         // Balance braces from the option object so a nested literal
         // (routes, tls, fetch handler) cannot end the scan early.
         const open = src.indexOf("{", m.index);
@@ -957,7 +984,8 @@ function checkTestServersBindLoopback(): Result {
     return {
       id: "test_servers_bind_loopback",
       status: "PASS",
-      message: "every Bun.serve in a test pins a loopback hostname (no wildcard bind)",
+      message:
+        "every Bun.serve and @hono/node-server serve in a test pins a loopback hostname (no wildcard bind)",
     };
   }
   return {

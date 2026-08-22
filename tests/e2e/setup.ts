@@ -426,7 +426,7 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
   // HTTP server on random port.
   const registry = buildDefaultRegistry(testDb.db);
   const app = createApp({ db: testDb.db, registry, boss });
-  const server: ServerType = serve({ fetch: app.fetch, port: 0 });
+  const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
   const sockets = trackConnections(server);
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") throw new Error("failed to get server port");
