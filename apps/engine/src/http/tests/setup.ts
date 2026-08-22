@@ -151,7 +151,7 @@ export async function createHttpTestServer(
   });
 
   // Bind a free port. Passing port=0 asks the kernel to pick.
-  const server: ServerType = serve({ fetch: app.fetch, port: 0 });
+  const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
   // node-server returns a node http.Server; pull the port from address().
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") {

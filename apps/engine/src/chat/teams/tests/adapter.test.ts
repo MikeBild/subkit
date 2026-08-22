@@ -32,7 +32,7 @@ beforeAll(async () => {
     return c.json({ id: `activity-${hits.length}` });
   });
   await new Promise<void>((resolve) => {
-    server = serve({ fetch: app.fetch, port: 0 }, (info) => {
+    server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" }, (info) => {
       baseUrl = `http://127.0.0.1:${info.port}`;
       resolve();
     });
