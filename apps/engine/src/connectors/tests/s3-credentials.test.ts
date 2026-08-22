@@ -11,6 +11,14 @@
 // Docker. The two signing round-trips reuse the MinIO gating pattern
 // from s3-driver.test.ts.
 
+// A case that could not run must report SKIP, never PASS.
+//
+// LOCAL-SK-DOCKERFALL-ZAEHLT-ALS-BESTANDEN — the two MinIO round-trips used a
+// bare `return` as their docker gate, so under `SKIP_DOCKER=1` they reported
+// "pass" while asserting nothing. The typed-error cases below need no docker
+// and are not gated; only the signing round-trips are, with
+// `describe.skipIf`, so bun counts them as skipped.
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { upsertCredential } from "../../credentials/service.ts";
 import { tenants } from "../../db/schema/index.ts";
@@ -99,7 +107,8 @@ async function startMinio(): Promise<MinioHandle> {
 
 let testDb: TestDb;
 let tenantId: string;
-let docker: boolean;
+// Module scope, so the result is known before bun builds the test list.
+const DOCKER = await dockerAvailable();
 let minio: MinioHandle | null = null;
 const BUCKET = `subkit-cred-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: unique bucket per run
 
@@ -139,8 +148,7 @@ beforeAll(async () => {
     .values({ slug: "s3-cred-t", display_name: "s3 cred tenant" })
     .returning();
   tenantId = t!.id;
-  docker = await dockerAvailable();
-  if (docker) {
+  if (DOCKER) {
     minio = await startMinio();
     const { S3Client } = await import("@bradenmacdonald/s3-lite-client");
     const bootstrap = new S3Client({
@@ -269,12 +277,9 @@ describe("s3 credential resolution — typed errors (no network)", () => {
   });
 });
 
-describe("s3 credential resolution — signing round-trips (MinIO)", () => {
+describe.skipIf(!DOCKER)("s3 credential resolution — signing round-trips (MinIO)", () => {
   test("header-mode pseudo-header credential signs requests", async () => {
-    if (!docker || !minio) {
-      console.log("[s3-credentials.test] skipped: docker not available");
-      return;
-    }
+    if (!minio) throw new Error("MinIO bootstrap did not complete");
     const conn = await makeS3Connector({
       name: "s3-header-signed",
       auth_type: "header",
@@ -309,10 +314,7 @@ describe("s3 credential resolution — signing round-trips (MinIO)", () => {
   }, 120_000);
 
   test("aws_sigv4 credential signs requests", async () => {
-    if (!docker || !minio) {
-      console.log("[s3-credentials.test] skipped: docker not available");
-      return;
-    }
+    if (!minio) throw new Error("MinIO bootstrap did not complete");
     const conn = await makeS3Connector({
       name: "s3-sigv4-signed",
       auth_type: "aws_sigv4",

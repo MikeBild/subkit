@@ -5,6 +5,17 @@
 // laptops without Docker exit 0 without failing. Tests the full
 // ObjectStore surface against a real S3-compatible endpoint.
 
+// A case that could not run must report SKIP, never PASS.
+//
+// LOCAL-SK-DOCKERFALL-ZAEHLT-ALS-BESTANDEN — the docker gate used to be a bare
+// `return` in each test body. Under `SKIP_DOCKER=1` (how CI's test shards run)
+// the run reported "20 pass, 0 skip" for this group while 15 of those cases had
+// asserted nothing. A count that cannot distinguish "verified" from "never ran"
+// is not evidence, and it is the number a release reads.
+//
+// The probe therefore happens once, at module scope, and the suites are gated
+// with `describe.skipIf` / `test.skipIf` so bun counts them as skipped.
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { S3ObjectStore } from "./object-store.ts";
@@ -93,16 +104,13 @@ async function startMinio(): Promise<MinioHandle> {
 
 const BUCKET = `sk-objstore-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
 
-let docker = false;
+// Module scope, so the result is known before bun builds the test list.
+const DOCKER = await dockerAvailable();
 let minio: MinioHandle | null = null;
 let store: S3ObjectStore | null = null;
 
 beforeAll(async () => {
-  docker = await dockerAvailable();
-  if (!docker) {
-    console.log("[object-store.s3.test] Docker unavailable — skipping S3 suite.");
-    return;
-  }
+  if (!DOCKER) return;
   minio = await startMinio();
   const bootstrap = new S3Client({
     region: "us-east-1",
@@ -143,9 +151,9 @@ async function drainStream(stream: AsyncIterable<Uint8Array>): Promise<Buffer> {
   return out;
 }
 
-describe("S3ObjectStore (MinIO)", () => {
+describe.skipIf(!DOCKER)("S3ObjectStore (MinIO)", () => {
   test("put then get round-trips bytes", async () => {
-    if (!docker || !store) return;
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
     const payload = Buffer.from("hello s3");
     await store.put("unit/a.bin", payload);
     const got = await store.get("unit/a.bin");
@@ -153,14 +161,14 @@ describe("S3ObjectStore (MinIO)", () => {
   });
 
   test("exists returns true after put, false for unknown key", async () => {
-    if (!docker || !store) return;
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
     await store.put("unit/exists.bin", Buffer.from("x"));
     expect(await store.exists("unit/exists.bin")).toBe(true);
     expect(await store.exists("unit/never.bin")).toBe(false);
   });
 
   test("head returns size matching uploaded bytes", async () => {
-    if (!docker || !store) return;
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
     const payload = Buffer.from("12345");
     await store.put("unit/head.bin", payload);
     const h = await store.head("unit/head.bin");
@@ -169,19 +177,19 @@ describe("S3ObjectStore (MinIO)", () => {
   });
 
   test("head returns null for missing key", async () => {
-    if (!docker || !store) return;
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
     expect(await store.head("unit/absent.bin")).toBeNull();
   });
 
   test("delete removes the key; exists returns false", async () => {
-    if (!docker || !store) return;
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
     await store.put("unit/del.bin", Buffer.from("bye"));
     await store.delete("unit/del.bin");
     expect(await store.exists("unit/del.bin")).toBe(false);
   });
 
   test("copy replicates bytes to dst key", async () => {
-    if (!docker || !store) return;
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
     await store.put("unit/src.bin", Buffer.from("copy me"));
     await store.copy("unit/src.bin", "unit/dst.bin");
     const got = await store.get("unit/dst.bin");
@@ -190,7 +198,7 @@ describe("S3ObjectStore (MinIO)", () => {
   });
 
   test("openRead streams the same bytes as get()", async () => {
-    if (!docker || !store) return;
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
     const payload = Buffer.from("streamed from s3");
     await store.put("unit/stream.bin", payload);
     const stream = await store.openRead("unit/stream.bin");
@@ -199,14 +207,14 @@ describe("S3ObjectStore (MinIO)", () => {
   });
 
   test("presignPut returns a real URL (not local:// sentinel)", async () => {
-    if (!docker || !store) return;
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
     const p = await store.presignPut("unit/presign.bin", 300);
     expect(p.url.startsWith("http")).toBe(true);
     expect(p.expires_in).toBeGreaterThanOrEqual(60);
   });
 
   test("uploaded bytes via put match after get (byte equality)", async () => {
-    if (!docker || !store) return;
+    if (!store) throw new Error("MinIO bootstrap did not produce a store");
     const bytes = new Uint8Array([0x01, 0x02, 0x03, 0xff, 0xfe]);
     await store.put("unit/bytes.bin", Buffer.from(bytes));
     const got = await store.get("unit/bytes.bin");
