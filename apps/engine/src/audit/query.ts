@@ -18,7 +18,7 @@
 // Both helpers take a drizzle `Db` executor so callers can swap in a
 // per-test database; neither touches the process-scoped pool.
 
-import { and, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import type { AuditActorType, AuditEntry, AuditResult } from "./types.ts";
@@ -56,7 +56,27 @@ export interface AuditQueryResult {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
-function buildWhere(filters: AuditQueryFilters, before?: Date) {
+/**
+ * Keyset cursor for the export walk.
+ *
+ * `ts` is the Postgres rendering of the column (`timestamptz::text`),
+ * NOT a JS `Date`: `Date` holds milliseconds while the column holds
+ * microseconds, so a cursor round-tripped through the driver loses up
+ * to 999µs and steps past unread rows. Keeping the value as the text
+ * Postgres produced and casting it back preserves the column exactly.
+ *
+ * `id` is the tiebreaker. Without it a boundary that lands inside a
+ * group of rows sharing one `ts` — the normal case, since `audit()`
+ * stamps `ts` from the JS clock for every row a request writes — drops
+ * the rest of that group.
+ */
+interface AuditKeysetCursor {
+  /** `timestamptz::text` as Postgres rendered it, full precision. */
+  ts: string;
+  id: string;
+}
+
+function buildWhere(filters: AuditQueryFilters, before?: Date | AuditKeysetCursor) {
   const tenantConds = [eq(auditLog.tenant_id, filters.tenant_id)];
   if (filters.actions && filters.actions.length > 0) {
     tenantConds.push(inArray(auditLog.action, filters.actions));
@@ -73,7 +93,15 @@ function buildWhere(filters: AuditQueryFilters, before?: Date) {
   if (filters.trace_id) tenantConds.push(eq(auditLog.trace_id, filters.trace_id));
   if (filters.ts_from) tenantConds.push(gte(auditLog.ts, filters.ts_from));
   if (filters.ts_to) tenantConds.push(lte(auditLog.ts, filters.ts_to));
-  if (before) tenantConds.push(lt(auditLog.ts, before));
+  if (before instanceof Date) {
+    tenantConds.push(lt(auditLog.ts, before));
+  } else if (before) {
+    // Row-wise comparison, matching `ORDER BY ts DESC, id DESC` exactly:
+    // "strictly after the last row I emitted", with the tiebreaker.
+    tenantConds.push(
+      sql`(${auditLog.ts}, ${auditLog.id}) < (${before.ts}::timestamptz, ${before.id}::uuid)`,
+    );
+  }
   return and(...tenantConds);
 }
 
@@ -147,18 +175,29 @@ export async function getAuditRowById(
  * bounded batches (500 rows each) and yields one AuditEntry at a time
  * so the caller never has to hold the full set in memory. Ordering
  * matches `queryAuditLog` — newest first, tie-broken by id.
+ *
+ * The batch boundary rides a KEYSET cursor `(ts, id)` carrying the
+ * timestamp as Postgres text. A cursor of `ts` alone silently truncated
+ * the export twice over — see `AuditKeysetCursor` and
+ * `tests/export-completeness.integration.test.ts`, which pins the emitted
+ * set against `count(*)`.
  */
 export async function* streamAuditLog(
   db: Db,
   filters: AuditQueryFilters,
 ): AsyncIterable<AuditEntry> {
   const batchSize = 500;
-  let cursor: Date | undefined;
+  let cursor: AuditKeysetCursor | undefined;
   // Guard against pathological tenants with millions of rows — hard cap
   // is enforced by the caller (route) via the `ts_from`/`ts_to` filter.
   while (true) {
-    const rows: Array<typeof auditLog.$inferSelect> = await db
-      .select()
+    const rows = await db
+      .select({
+        ...getTableColumns(auditLog),
+        // The column as Postgres renders it, so the next cursor keeps
+        // the microseconds the driver's Date would drop.
+        ts_text: sql<string>`${auditLog.ts}::text`,
+      })
       .from(auditLog)
       .where(buildWhere(filters, cursor))
       .orderBy(desc(auditLog.ts), desc(auditLog.id))
@@ -168,7 +207,7 @@ export async function* streamAuditLog(
     if (rows.length < batchSize) return;
     const last = rows[rows.length - 1];
     if (!last) return;
-    cursor = last.ts;
+    cursor = { ts: last.ts_text, id: last.id };
   }
 }
 
