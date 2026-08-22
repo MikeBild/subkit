@@ -23,7 +23,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { streamAuditLog } from "../query.ts";
+
+const uuid = createDeterministicUuidFactory(0x5ec7e7);
 
 let testDb: TestDb;
 let tenantId = "";
@@ -52,7 +55,7 @@ describe("audit export — completeness against the table snapshot", () => {
     const values = Array.from(
       { length: TIED_ROWS },
       () =>
-        `('${crypto.randomUUID()}', timestamptz '${TIED_TS}', '${tenantId}', 'system',` +
+        `('${uuid()}', timestamptz '${TIED_TS}', '${tenantId}', 'system',` +
         ` 'system.startup', 'system', 'success', '{}'::jsonb)`,
     );
     await testDb.pool.query(
@@ -82,7 +85,7 @@ describe("audit export — completeness against the table snapshot", () => {
     const base = "2026-07-02T09:00:00.000000Z";
     const ids: string[] = [];
     for (let i = 1; i <= 40; i++) {
-      const id = crypto.randomUUID();
+      const id = uuid();
       ids.push(id);
       await testDb.pool.query(
         `INSERT INTO audit_log (id, ts, tenant_id, actor_type, action, resource_type, result, metadata)
