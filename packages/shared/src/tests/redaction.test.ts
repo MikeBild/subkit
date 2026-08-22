@@ -11,6 +11,7 @@ import { describe, expect, test } from "bun:test";
 import {
   findSecretSpans,
   redactWithMaxDepth,
+  scrubSecrets,
   scrubString,
   scrubStringsDeep,
 } from "../redaction.ts";
@@ -357,4 +358,45 @@ describe("generic-scan parity (scrubString ⇄ findSecretSpans)", () => {
       expect(viaSpans).toBe(scrubString(text));
     });
   }
+});
+
+// The prompt-key net's edge, both directions.
+//
+// LOCAL-SK-ZWEITER-AUDIT-SCHREIBER — `body` had to join the net because
+// `Skill.body` IS the assembled prompt and `update_skill` audits whole Skill
+// rows. Added unanchored, it also swallowed `body_step_id` in the
+// loop→for_each migration audit row: a step IDENTIFIER, not prose. A net that
+// eats identifiers destroys the evidence an append-only trail exists for, so
+// `body` is anchored where its neighbours are not. Both halves are pinned
+// here; loosening the anchor turns the second case red.
+describe("prompt-key net — what collapses and what must survive", () => {
+  const PROSE = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
+
+  test("prose under a prompt-shaped key collapses to the marker", () => {
+    const out = scrubSecrets({
+      prompt: PROSE,
+      system_prompt: PROSE,
+      instructions: PROSE,
+      body: PROSE,
+      skill_body: PROSE,
+      messages: [{ role: "system", content: PROSE }],
+    }) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(out)) {
+      expect(JSON.stringify(value), `${key} must not carry the prose`).not.toContain(PROSE);
+    }
+  });
+
+  test("structural names that merely start with 'body' survive verbatim", () => {
+    const out = scrubSecrets({
+      body_step_id: "process_row",
+      bodyweight: "72kg",
+      // Counters share the word but carry no prose — the value-type gate.
+      prompt_tokens: 1234,
+      message_count: 3,
+    }) as Record<string, unknown>;
+    expect(out.body_step_id).toBe("process_row");
+    expect(out.bodyweight).toBe("72kg");
+    expect(out.prompt_tokens).toBe(1234);
+    expect(out.message_count).toBe(3);
+  });
 });
