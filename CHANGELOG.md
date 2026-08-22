@@ -4,6 +4,63 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.0] – 2026-08-22
+
+### Fixed
+
+- **The audit trail dispatched over MCP with no permission check.**
+  `list_audit` and `get_audit_entry` serve the same rows as
+  `GET /v1/audit-log`, which demands `audit:read`. On MCP they carried no
+  `rbac` descriptor, and the dispatcher's step is `if (descriptor.rbac)` — so
+  `can()` was skipped entirely and any MCP principal could page the tenant's
+  whole audit history. The `member` role names this exact denial in its own
+  description ("NOT permitted: … audit reads") and does not hold
+  `audit:read`; neither does `enduser`. Both tools now require it,
+  tenant-scoped, matching the HTTP middleware.
+- **Forgotten was the default, so one entry was not the answer.**
+  `descriptorFor` now falls back to a tool's own `permission` declaration,
+  which `wrapOne` had been enforcing on the chat path only — one declaration
+  now covers both surfaces, and it can only ever add a `can()`. Ungated tools
+  drop from 82 to 61 in the admin catalog and from 46 to 41 in product mode.
+  `rbac-descriptor-coverage.test.ts` names every remaining ungated tool with a
+  reason and fails on any new one, so the number is visible rather than implied.
+- **The audit scrubber ate the skill version history.** `audit_log.before`/
+  `.after` is not only a log: `updateSkill` writes whole Skill rows there and
+  `restoreSkill` reads them back. Running the prompt-prose net over those
+  columns collapsed `Skill.body` to a redaction marker, and because
+  `restoreSkill` delegates to `updateSkill`, a restore wrote that marker back
+  as the live body of an append-only record. The prose net is now off for the
+  two snapshot columns and on everywhere else; both credential nets still run
+  on all four fields. No released build ever carried the defect.
+- **The body redaction net deleted structured payloads.** A `request_body`
+  object was matched by key name and replaced whole, so the operator lost
+  exactly the record the log is opened for. The prose half still collapses
+  strings and objects; the `body` half now collapses strings only and recurses
+  into objects, so nested prose one level deeper is still caught.
+- **A malformed `before` cursor was a 500, not a 400.** Widening the parameter
+  to admit the keyset cursor left no shape check, so any 1..128-character value
+  reached Postgres as a `::timestamptz` / `::uuid` cast and surfaced a client
+  error as a server fault.
+
+### Changed
+
+- **The invariant run is now part of CI, on the push path.**
+  `audit-invariants.yml` triggered on `pull_request` and `schedule` and hung
+  outside the `build` aggregate branch protection requires, so a direct push to
+  main ran no invariant at all. The blocking run is now the `invariants` job in
+  `ci.yml`; the nightly stays for drift on main that no push triggered.
+- **The wildcard-bind invariant knew one of two `serve()`.** It matched
+  `Bun.serve(` only, while the suites that actually broke the gate call the
+  bare `serve()` from `@hono/node-server` — including the harness behind every
+  HTTP and MCP suite. Both forms are matched now, and the allow-list marker is
+  read from the lead-in comment rather than a trailing one a formatter moves.
+- **Fifteen S3 cases that checked nothing reported pass.** Each gated on Docker
+  with a bare `return` in its body, so under `SKIP_DOCKER=1` they entered,
+  returned, and were counted as passed. The probe runs once at module scope and
+  the suites are gated with `describe.skipIf`, so they report as skipped. The
+  `expect()` count is unchanged — the same five cases were doing all the
+  verifying the whole time.
+
 ## [6.21.0] – 2026-08-20
 
 ### Added
