@@ -836,6 +836,59 @@ function checkExecutorCanonical(): Result {
 
 // ---------- driver ----------
 
+function checkAuditLogSingleWriter(): Result {
+  // `audit_log` is append-only and rides the ndjson export, so its payload
+  // scrub has to be a property of the TABLE, not of one writer's manners.
+  // The scrub therefore sits in `db/audit.ts#writeAudit`, at the insert.
+  //
+  // That only holds while `writeAudit` really is the only insert. It was not:
+  // `EngineClient.audit_write` carried its own `insert(auditLog)` and ~32
+  // conversation write tools wrote `prompt` and `api_token` through it
+  // verbatim (LOCAL-SK-ZWEITER-AUDIT-SCHREIBER). A second call to the
+  // scrubber at that second site would have fixed that ONE site; this check
+  // is what stops the third one, because a new direct insert now fails here
+  // instead of shipping.
+  //
+  // Tests may insert directly — they seed rows on purpose and never carry a
+  // real secret. Production source may not.
+  const isTs = (p: string) => p.endsWith(".ts") || p.endsWith(".tsx");
+  const isTestFile = (p: string) =>
+    p.includes(".test.") || p.includes("/tests/") || p.includes("/__tests__/");
+  const files = [
+    ...listFiles(ENGINE_SRC, (p) => isTs(p) && !isTestFile(p)),
+    ...listFiles(join(REPO, "packages"), (p) => isTs(p) && !isTestFile(p)),
+  ];
+  // The one legitimate writer.
+  const WRITER = join(ENGINE_SRC, "db", "audit.ts");
+  const INSERT = /\.insert\s*\(\s*auditLog\s*\)|INSERT\s+INTO\s+audit_log/gi;
+
+  const violations: string[] = [];
+  for (const f of files) {
+    if (f === WRITER) continue;
+    const src = readFileSync(f, "utf8");
+    INSERT.lastIndex = 0;
+    let m = INSERT.exec(src);
+    while (m !== null) {
+      violations.push(`${relative(REPO, f)}:${src.slice(0, m.index).split("\n").length}`);
+      m = INSERT.exec(src);
+    }
+  }
+
+  if (violations.length === 0) {
+    return {
+      id: "audit_log_single_writer",
+      status: "PASS",
+      message:
+        "audit_log has a single writer (db/audit.ts#writeAudit), so the scrub cannot be bypassed",
+    };
+  }
+  return {
+    id: "audit_log_single_writer",
+    status: "FAIL",
+    message: `production code inserts into audit_log outside db/audit.ts — such a row skips the payload scrub in \`writeAudit\` and lands in the append-only trail (and every ndjson export) unredacted. Route the write through \`writeAudit\` / \`auditAwait\`:\n  ${violations.join("\n  ")}`,
+  };
+}
+
 function checkTestServersBindLoopback(): Result {
   // A test HTTP server MUST bind the same address the test dials.
   //
@@ -928,6 +981,7 @@ const CHECKS: Array<() => Result> = [
   checkNoSnapshots,
   checkNoLiveLlm,
   checkCoverageFloor,
+  checkAuditLogSingleWriter,
   checkRegressionIsolation,
   checkTestSeamsGated,
   checkEngineHomedirAbsence,

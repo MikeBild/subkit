@@ -6,7 +6,7 @@ import { writeAudit } from "../db/audit.ts";
 import type { Executor } from "../db/client.ts";
 import { getContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
-import { scrubSecrets } from "../logging/scrub-secrets.ts";
+import { scrubAuditEntry } from "./scrub.ts";
 import type { AuditEntry } from "./types.ts";
 
 /**
@@ -37,17 +37,12 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
   // every payload field that can carry user-provided data is scrubbed
   // BEFORE the row is built. The scrubbed copy is what flows to both
   // the structured logger (mirror) and the `audit_log` insert.
-  const scrubbedReason =
-    typeof entry.reason === "string"
-      ? (scrubSecrets(entry.reason) as string)
-      : (entry.reason ?? null);
-  const scrubbedBefore =
-    entry.before !== undefined && entry.before !== null ? scrubSecrets(entry.before) : null;
-  const scrubbedAfter =
-    entry.after !== undefined && entry.after !== null ? scrubSecrets(entry.after) : null;
-  const scrubbedMetadata = scrubSecrets(entry.metadata ?? {}) as Record<string, unknown>;
-
-  return {
+  //
+  // The rule itself lives in `scrubAuditEntry` and is applied AGAIN by
+  // `writeAudit`, the single SQL writer — this call is what keeps the
+  // LOGGER mirror clean, that one is what keeps the TABLE clean no
+  // matter which writer got there. See `audit/scrub.ts`.
+  return scrubAuditEntry({
     id: entry.id ?? crypto.randomUUID(),
     ts: entry.ts ?? new Date(),
     tenant_id: tenantId,
@@ -60,11 +55,11 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
     trace_id: traceId,
     ip: entry.ip ?? null,
     user_agent: entry.user_agent ?? null,
-    before: scrubbedBefore as AuditEntry["before"],
-    after: scrubbedAfter as AuditEntry["after"],
-    reason: scrubbedReason,
-    metadata: scrubbedMetadata,
-  };
+    before: (entry.before ?? null) as AuditEntry["before"],
+    after: (entry.after ?? null) as AuditEntry["after"],
+    reason: entry.reason ?? null,
+    metadata: entry.metadata ?? {},
+  });
 }
 
 function logEntry(filled: AuditEntry): void {

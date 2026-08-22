@@ -67,7 +67,18 @@ export const SENSITIVE_KEY_PATTERN: RegExp =
 // make any connector field legitimately named `prompt` or `instructions`
 // un-authorable. The audit trail needs a broader net than the draft
 // gate, so the two nets stay separate.
-export const PROMPT_KEY_PATTERN: RegExp = /prompt|messages|instructions/i;
+//
+// `body` is in the net because a Skill's prompt is not stored under a
+// prompt-shaped name: `update_skill` audits `before`/`after` as whole Skill
+// rows, and `Skill.body` IS the assembled prompt. The pattern matched the
+// five keys someone thought to look for and missed the one the product
+// actually writes (LOCAL-SK-ZWEITER-AUDIT-SCHREIBER). Cost of the widening
+// is bounded: in production `scrubSecrets` has exactly one consumer, the
+// audit payload scrubber (`audit/scrub.ts`) — so an HTTP `body` captured in
+// audit metadata collapses to the marker too, which for an append-only,
+// exported trail is the outcome we want anyway. Non-string, non-object
+// values under the key (counters) still fall through untouched.
+export const PROMPT_KEY_PATTERN: RegExp = /prompt|messages|instructions|body/i;
 
 export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
   { kind: "pat", regex: /\bdop_v1_[A-Za-z0-9]{32,}/g },
