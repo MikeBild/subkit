@@ -93,6 +93,36 @@ function formatAuditCursor(c: AuditKeysetCursor): string {
 }
 
 /**
+ * The cursor's shape, as one regex: an ISO-8601 UTC timestamp with up to
+ * microsecond precision, optionally followed by `|<uuid>`.
+ *
+ * LOCAL-SK-CURSOR-MUELL-500 — the route's `before` param was widened from
+ * `.datetime()` to `.min(1).max(128)` so the keyset form would pass, and
+ * nothing took over the shape check. `"abc|def"` then reached the SQL cast
+ * (`'abc'::timestamptz`), which throws: a client error reported as a 500 and
+ * filed in the operator diagnostics register. The envelope is generic — no
+ * SQL leaks — but the status was a lie about whose fault it was.
+ *
+ * This constant is the single definition of the shape. The HTTP layer builds
+ * its Zod validator from it (so the rejection is a 400 with an OpenAPI
+ * `pattern`), and `parseAuditCursor` enforces it again for every non-HTTP
+ * caller.
+ */
+export const AUDIT_CURSOR_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z(?:\|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})?$/;
+
+/** A `before` value that is not a cursor. Thrown rather than swallowed: a
+ *  parser that answered `undefined` would mean "no cursor", i.e. silently
+ *  serving page one to a caller who asked for page five — the same class of
+ *  quiet wrongness the cursor itself was repaired for. */
+export class InvalidAuditCursorError extends Error {
+  constructor(raw: string) {
+    super(`invalid audit cursor: ${JSON.stringify(raw)}`);
+    this.name = "InvalidAuditCursorError";
+  }
+}
+
+/**
  * Parse a `next_cursor` handed back by a caller.
  *
  * A cursor minted before the keyset change carries only a timestamp.
@@ -101,16 +131,17 @@ function formatAuditCursor(c: AuditKeysetCursor): string {
  * comparison means exactly `ts < cursor`: the old behaviour, for the
  * only cursors that cannot do better, expressed in the new shape.
  * That way there is still just one predicate to reason about.
+ *
+ * An empty value still means "no cursor". Anything else that is not the
+ * shape above throws — see `AUDIT_CURSOR_PATTERN`.
  */
 export function parseAuditCursor(raw: string): AuditKeysetCursor | undefined {
   const trimmed = raw.trim();
   if (trimmed === "") return undefined;
+  if (!AUDIT_CURSOR_PATTERN.test(trimmed)) throw new InvalidAuditCursorError(raw);
   const sep = trimmed.lastIndexOf("|");
   if (sep === -1) return { ts: trimmed, id: MIN_UUID };
-  const ts = trimmed.slice(0, sep);
-  const id = trimmed.slice(sep + 1);
-  if (ts === "" || id === "") return undefined;
-  return { ts, id };
+  return { ts: trimmed.slice(0, sep), id: trimmed.slice(sep + 1) };
 }
 
 function buildWhere(filters: AuditQueryFilters, before?: AuditKeysetCursor) {
