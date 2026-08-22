@@ -339,6 +339,25 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   list_capability_gaps: {
     permission: "discovery:read",
   },
+  // The audit trail. `GET /v1/audit-log` and `/export.ndjson` both demand
+  // `audit:read`; these two tools are the SAME trail on MCP and shipped with
+  // no entry here at all, so `descriptorFor` produced no `rbac` and the
+  // dispatcher's `if (descriptor.rbac)` skipped `can()` entirely — every MCP
+  // principal could page the tenant's whole audit history. Their neighbours
+  // (`list_users`, `list_api_keys`, `read_knowledge`) were all covered; the
+  // trail was simply missed, which is what the descriptor-coverage guard in
+  // `apps/engine/src/tools/tests/rbac-descriptor-coverage.test.ts` now stops repeating.
+  list_audit: {
+    permission: "audit:read",
+  },
+  // No resource extractor: `audit:read` is declared over resource_type
+  // `audit` (rbac/permissions.json) and there is no per-row grant to scope
+  // to — the HTTP route gates the single-entry read tenant-scoped too
+  // (`app.use("/v1/audit-log/*", requirePermission("audit:read"))`). Both
+  // surfaces now ask the same question.
+  get_audit_entry: {
+    permission: "audit:read",
+  },
   // Content reads that the enduser role does not hold (connector:read,
   // schedule:read) — gated to match the typed fast-path
   // (`READ_PERMISSION_BY_LIST`) so the LLM-mediated and direct-MCP paths
@@ -365,11 +384,39 @@ const RBAC_OVERRIDES: Readonly<Record<string, NonNullable<ToolDescriptor["rbac"]
   },
 };
 
+/** Fall back to the tool's OWN `permission` declaration when the table above
+ *  has no entry.
+ *
+ *  Those declarations are enforced by `wrapOne` on the chat path only; the
+ *  dispatcher never saw them, because `descriptorFor` copied nothing but the
+ *  override. A tool like `delete_workflow` therefore carried the comment
+ *  "RBAC is enforced centrally via the `permission` descriptor" and was true
+ *  on chat, false on MCP. Deriving here makes ONE declaration cover both
+ *  surfaces, and it can only ever ADD a `can()` call where there was none.
+ *
+ *  `resolveResourceId` is deliberately not honoured: it is async (slug -> uuid
+ *  needs a DB round-trip) and this extractor is sync. Such a tool falls back
+ *  to the tenant-scoped check, the same shape `restore_workflow_version`
+ *  documents for its slug-only case. */
+function derivedRbac(t: ConversationTool): NonNullable<ToolDescriptor["rbac"]> | undefined {
+  const p = t.permission;
+  if (!p) return undefined;
+  const idArg = p.resourceIdArg;
+  if (idArg === undefined) return { permission: p.action };
+  return {
+    permission: p.action,
+    resource: (args) => {
+      const id = (args as Record<string, unknown>)[idArg];
+      return typeof id === "string" && id.length > 0 ? { type: p.resourceType, id } : null;
+    },
+  };
+}
+
 function descriptorFor(t: ConversationTool, surface: ToolSurface): ToolDescriptor | null {
   const visibility = visibilityFor(t.category, surface);
   if (visibility === "hidden") return null;
   const disabled = visibility === "disabled" ? describeDisabled(t.category) : undefined;
-  const rbac = RBAC_OVERRIDES[t.name];
+  const rbac = RBAC_OVERRIDES[t.name] ?? derivedRbac(t);
   return {
     name: t.name,
     description: t.description,
