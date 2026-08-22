@@ -73,6 +73,8 @@ function buildChargeFailedBody(eventId: string): string {
 beforeAll(async () => {
   slackServer = Bun.serve({
     port: 0,
+    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
+    hostname: "127.0.0.1",
     fetch: async (req) => {
       const headers: Record<string, string> = {};
       req.headers.forEach((v, k) => {

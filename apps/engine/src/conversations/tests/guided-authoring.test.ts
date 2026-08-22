@@ -18,6 +18,8 @@ beforeAll(async () => {
   ctx = await createConversationTestCtx("guided_authoring");
   server = Bun.serve({
     port: 0,
+    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
+    hostname: "127.0.0.1",
     fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/v1/health") {
