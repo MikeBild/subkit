@@ -72,13 +72,20 @@ export const SENSITIVE_KEY_PATTERN: RegExp =
 // prompt-shaped name: `update_skill` audits `before`/`after` as whole Skill
 // rows, and `Skill.body` IS the assembled prompt. The pattern matched the
 // five keys someone thought to look for and missed the one the product
-// actually writes (LOCAL-SK-ZWEITER-AUDIT-SCHREIBER). Cost of the widening
-// is bounded: in production `scrubSecrets` has exactly one consumer, the
-// audit payload scrubber (`audit/scrub.ts`) — so an HTTP `body` captured in
-// audit metadata collapses to the marker too, which for an append-only,
-// exported trail is the outcome we want anyway. Non-string, non-object
-// values under the key (counters) still fall through untouched.
-export const PROMPT_KEY_PATTERN: RegExp = /prompt|messages|instructions|body/i;
+// actually writes (LOCAL-SK-ZWEITER-AUDIT-SCHREIBER).
+//
+// Unlike its neighbours, `body` is ANCHORED — it fires on `body` and on a
+// `_body` suffix (`skill_body`, `request_body`), never on `body` as a
+// prefix. Added unanchored first, it swallowed `body_step_id` in the
+// loop→for_each migration audit row: a step IDENTIFIER, not prose, and the
+// operator lost it from an append-only record. A redaction net that eats
+// identifiers destroys the evidence the trail exists for. The loose forms
+// stay loose because `system_prompt` / `prompt_text` are all genuinely
+// prose; `body` is the one word that is also a common structural name.
+//
+// Non-string, non-object values under any of these keys (counters) still
+// fall through untouched — the caller gates on the VALUE type too.
+export const PROMPT_KEY_PATTERN: RegExp = /prompt|messages|instructions|(?:^|_)body$/i;
 
 export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
   { kind: "pat", regex: /\bdop_v1_[A-Za-z0-9]{32,}/g },
