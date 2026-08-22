@@ -20,6 +20,8 @@ beforeAll(async () => {
   env = await boot("authoring-regressions", { llm: "mock" });
   httpServer = Bun.serve({
     port: 0,
+    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
+    hostname: "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);
       // Suffix matching: each connector-creating test uses a DISTINCT
@@ -45,6 +47,8 @@ beforeAll(async () => {
   });
   graphqlServer = Bun.serve({
     port: 0,
+    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
+    hostname: "127.0.0.1",
     async fetch(req) {
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       return Response.json({ data: { __typename: "Query" } });
