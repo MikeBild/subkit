@@ -8,6 +8,15 @@
 // Pattern mirrors apps/engine/src/connectors/tests/s3-driver.test.ts and
 // apps/engine/src/storage/object-store.s3.test.ts.
 
+// A case that could not run must report SKIP, never PASS.
+//
+// LOCAL-SK-DOCKERFALL-ZAEHLT-ALS-BESTANDEN — the docker gate used to be a bare
+// `return` in each test body. Under `SKIP_DOCKER=1` (how CI's test shards run)
+// this group reported "pass" for cases that had asserted nothing. A count that
+// cannot distinguish "verified" from "never ran" is not evidence, and it is
+// the number a release reads. The probe now happens once at module scope and
+// the suite is gated with `describe.skipIf`, so bun counts them as skipped.
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { tenants } from "../../db/schema/index.ts";
@@ -114,18 +123,15 @@ async function* buildStream(
 
 const BUCKET = `sk-s3-async-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
 
-let docker: boolean;
+// Module scope, so the result is known before bun builds the test list.
+const DOCKER = await dockerAvailable();
 let testDb: TestDb;
 let tenantId: string;
 let minio: MinioHandle | null = null;
 let connectorId: string | null = null;
 
 beforeAll(async () => {
-  docker = await dockerAvailable();
-  if (!docker) {
-    console.log("[s3.async-body.test] Docker / MinIO unavailable — skipping suite.");
-    return;
-  }
+  if (!DOCKER) return;
   testDb = await createTestDb("s3_async_body");
   const [t] = await testDb.db
     .insert(tenants)
@@ -177,12 +183,9 @@ afterAll(async () => {
   if (testDb) await testDb.cleanup();
 }, 60_000);
 
-describe("s3 driver — AsyncIterable<Uint8Array> body", () => {
+describe.skipIf(!DOCKER)("s3 driver — AsyncIterable<Uint8Array> body", () => {
   test("1 MB AsyncIterable stream: downloaded bytes equal source", async () => {
-    if (!docker || !minio || !connectorId) {
-      console.log("[s3.async-body.test] skipped: docker not available");
-      return;
-    }
+    if (!minio || !connectorId) throw new Error("MinIO bootstrap did not complete");
     const SIZE = 1 * 1024 * 1024;
     const FILL = 0xab;
     const CHUNK = 64 * 1024;
@@ -227,10 +230,7 @@ describe("s3 driver — AsyncIterable<Uint8Array> body", () => {
   }, 120_000);
 
   test("10 MB AsyncIterable stream: downloaded bytes equal source", async () => {
-    if (!docker || !minio || !connectorId) {
-      console.log("[s3.async-body.test] skipped: docker not available");
-      return;
-    }
+    if (!minio || !connectorId) throw new Error("MinIO bootstrap did not complete");
     const SIZE = 10 * 1024 * 1024;
     const FILL = 0xcd;
     const CHUNK = 256 * 1024;

@@ -6,6 +6,15 @@
 // laptop without Docker simply logs a "skipped" notice and exits 0
 // instead of failing CI.
 
+// A case that could not run must report SKIP, never PASS.
+//
+// LOCAL-SK-DOCKERFALL-ZAEHLT-ALS-BESTANDEN — the docker gate used to be a bare
+// `return` in each test body. Under `SKIP_DOCKER=1` (how CI's test shards run)
+// this group reported "pass" for cases that had asserted nothing. A count that
+// cannot distinguish "verified" from "never ran" is not evidence, and it is
+// the number a release reads. The probe now happens once at module scope and
+// the suite is gated with `describe.skipIf`, so bun counts them as skipped.
+
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -110,7 +119,8 @@ async function startMinio(): Promise<MinioHandle> {
   };
 }
 
-let docker: boolean;
+// Module scope, so the result is known before bun builds the test list.
+const DOCKER = await dockerAvailable();
 let testDb: TestDb;
 let tenantId: string;
 let minio: MinioHandle | null = null;
@@ -118,13 +128,7 @@ let connectorId: string | null = null;
 const BUCKET = `subkit-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
 
 beforeAll(async () => {
-  docker = await dockerAvailable();
-  if (!docker) {
-    console.log(
-      "[s3-driver.test] Docker / MinIO unavailable, skipping S3 round-trip — exiting cleanly.",
-    );
-    return;
-  }
+  if (!DOCKER) return;
   console.log("[s3-driver.test] Docker available — pulling MinIO image (may take a while)...");
   testDb = await createTestDb("s3_driver");
   const [t] = await testDb.db
@@ -180,12 +184,9 @@ afterAll(async () => {
   if (testDb) await testDb.cleanup();
 }, 60_000);
 
-describe("s3 driver", () => {
+describe.skipIf(!DOCKER)("s3 driver", () => {
   test("MinIO available + put/get/head/list/delete + probe", async () => {
-    if (!docker || !minio || !connectorId) {
-      console.log("[s3-driver.test] skipped: docker not available");
-      return;
-    }
+    if (!minio || !connectorId) throw new Error("MinIO bootstrap did not complete");
     const fresh = await getConnector(tenantId, connectorId, testDb.db);
     expect(fresh).not.toBeNull();
 
@@ -269,7 +270,7 @@ describe("s3 driver", () => {
   }, 120_000);
 
   test("presigned URL + range GET + paginated LIST + multipart override", async () => {
-    if (!docker || !connectorId) return;
+    if (!connectorId) throw new Error("MinIO bootstrap did not complete");
     const fresh = await getConnector(tenantId, connectorId, testDb.db);
     if (!fresh) throw new Error("connector vanished");
 
