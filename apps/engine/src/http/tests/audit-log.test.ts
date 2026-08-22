@@ -174,6 +174,34 @@ describe("/v1/audit-log", () => {
     for (const row of p2.items) expect(ids1.has(row.id)).toBe(false);
   });
 
+  // LOCAL-SK-CURSOR-MUELL-500 — `before` was widened from `.datetime()` to
+  // `.min(1).max(128)` so the keyset cursor (`<ts>|<uuid>`) would pass. That
+  // left NO shape check: anything 1..128 chars reached `parseAuditCursor`,
+  // which split on the last `|` and handed both halves to Postgres as
+  // `::timestamptz` / `::uuid`. The cast throws, the request 500s, and the
+  // failure lands in the operator diagnostics register. The envelope is
+  // generic, so nothing leaked — but a client error must not be reported as
+  // a server fault.
+  test("malformed before cursor is 400, not 500", async () => {
+    for (const bad of ["abc|def", "not-a-cursor", "|", "2026-01-01T00:00:00Z|nope"]) {
+      const res = await fetch(`${srv.baseUrl}/v1/audit-log?before=${encodeURIComponent(bad)}`, {
+        headers: adminHeaders(),
+      });
+      expect(res.status, `before=${bad}`).toBe(400);
+    }
+  });
+
+  test("a real cursor still round-trips after the shape check", async () => {
+    const first = await fetch(`${srv.baseUrl}/v1/audit-log?limit=1`, { headers: adminHeaders() });
+    const p1 = (await first.json()) as { next_cursor: string | null };
+    expect(p1.next_cursor).toBeTruthy();
+    const res = await fetch(
+      `${srv.baseUrl}/v1/audit-log?limit=1&before=${encodeURIComponent(p1.next_cursor ?? "")}`,
+      { headers: adminHeaders() },
+    );
+    expect(res.status).toBe(200);
+  });
+
   test("GET /v1/audit-log/:id returns a single row", async () => {
     const id = seededIds[0] as string;
     const res = await fetch(`${srv.baseUrl}/v1/audit-log/${id}`, {

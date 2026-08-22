@@ -27,6 +27,7 @@ import { stream as honoStream } from "hono/streaming";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
 import type { AuditActorType, AuditResult } from "../../audit/index.ts";
 import {
+  AUDIT_CURSOR_PATTERN,
   type AuditQueryFilters,
   getAuditRowById,
   queryAuditLog,
@@ -84,7 +85,19 @@ const ListQuery = FilterQuery.extend({
   // (`<ts>|<uuid>`). Declaring it `.datetime()` would reject every
   // correct cursor, and a bare timestamp is exactly the shape that
   // silently dropped rows.
-  before: z.string().min(1).max(128).optional(),
+  //
+  // Opaque to this layer, but not unchecked: dropping `.datetime()` also
+  // dropped the only shape check, so `before=abc|def` walked through to
+  // `'abc'::timestamptz` and came back as a 500 in the operator diagnostics
+  // register (LOCAL-SK-CURSOR-MUELL-500). The pattern is the audit module's
+  // own definition of the cursor — imported, not restated here, so the
+  // validator and the parser cannot drift.
+  before: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(AUDIT_CURSOR_PATTERN, "must be a cursor returned by next_cursor (<ts>|<uuid>)")
+    .optional(),
 }).openapi("AuditLogListQuery");
 
 // ---------- OpenAPI routes ----------
