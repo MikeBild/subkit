@@ -836,6 +836,84 @@ function checkExecutorCanonical(): Result {
 
 // ---------- driver ----------
 
+function checkTestServersBindLoopback(): Result {
+  // A test HTTP server MUST bind the same address the test dials.
+  //
+  // `Bun.serve({ port: 0 })` binds the WILDCARD address (0.0.0.0) and the
+  // tests then dial `http://127.0.0.1:<port>`. Those are not the same
+  // socket: when another process already holds a SPECIFIC binding on
+  // 127.0.0.1 at that port, the specific binding wins and the test talks
+  // to the stranger. The ephemeral range that `port: 0` draws from is
+  // exactly where sibling products publish their Docker containers, so
+  // this is not hypothetical — measured on this machine: the connector
+  // draft probe reached 127.0.0.1:55492 and was answered by WorkKit's
+  // Postgres container ("socket connection was closed unexpectedly"),
+  // turning the release gate red with nothing wrong in subkit.
+  //
+  // The dangerous half is the other outcome: a suite that binds wildcard
+  // and dials loopback can just as easily go GREEN against a foreign
+  // service. `test-helpers/local-http.ts` already does this right
+  // (`server.listen(0, "127.0.0.1")`); the `Bun.serve` call sites must
+  // match. Pin the hostname and the OS can only hand out a port that is
+  // free ON THAT ADDRESS.
+  //
+  // Allow-list a deliberate wildcard bind via
+  // `// bind-wildcard-allowed: <reason>` on the `Bun.serve(` line.
+  const LOOPBACK = /hostname\s*:\s*["'`](?:127\.0\.0\.1|localhost|::1)["'`]/;
+  const isTs = (p: string) => p.endsWith(".ts") || p.endsWith(".tsx");
+  const isTestFile = (p: string) =>
+    p.includes(".test.") || p.includes("/tests/") || p.includes("/__tests__/");
+  const files = [
+    ...listFiles(ENGINE_SRC, (p) => isTs(p) && isTestFile(p)),
+    ...listFiles(join(REPO, "tests"), (p) => isTs(p) && isTestFile(p)),
+    ...listFiles(join(REPO, "packages"), (p) => isTs(p) && isTestFile(p)),
+  ];
+
+  const violations: string[] = [];
+  for (const f of files) {
+    const rel = relative(REPO, f);
+    const src = readFileSync(f, "utf8");
+    const marker = /Bun\.serve\s*\(/g;
+    let m = marker.exec(src);
+    while (m !== null) {
+      const lineNo = src.slice(0, m.index).split("\n").length;
+      const lineText = src.split("\n")[lineNo - 1] ?? "";
+      if (!lineText.includes("bind-wildcard-allowed:")) {
+        // Balance braces from the option object so a nested literal
+        // (routes, tls, fetch handler) cannot end the scan early.
+        const open = src.indexOf("{", m.index);
+        if (open !== -1) {
+          let depth = 0;
+          let k = open;
+          for (; k < src.length; k++) {
+            if (src[k] === "{") depth++;
+            else if (src[k] === "}") {
+              depth--;
+              if (depth === 0) break;
+            }
+          }
+          const body = src.slice(open, k + 1);
+          if (!LOOPBACK.test(body)) violations.push(`${rel}:${lineNo}`);
+        }
+      }
+      m = marker.exec(src);
+    }
+  }
+
+  if (violations.length === 0) {
+    return {
+      id: "test_servers_bind_loopback",
+      status: "PASS",
+      message: "every Bun.serve in a test pins a loopback hostname (no wildcard bind)",
+    };
+  }
+  return {
+    id: "test_servers_bind_loopback",
+    status: "FAIL",
+    message: `test server(s) bind the wildcard address while the suite dials 127.0.0.1 — the OS may hand out a port a foreign process already owns on loopback, and the test then measures that stranger (red for no reason, or green for the wrong one). Add \`hostname: "127.0.0.1"\`, or annotate \`// bind-wildcard-allowed: <reason>\`:\n  ${violations.join("\n  ")}`,
+  };
+}
+
 const CHECKS: Array<() => Result> = [
   checkSubsystemCount,
   checkNoNewSubsystem,
@@ -856,6 +934,7 @@ const CHECKS: Array<() => Result> = [
   checkNoGlobalFetchStubInTests,
   checkCompileBuildsKeepNodeEnvDynamic,
   checkExecutorCanonical,
+  checkTestServersBindLoopback,
 ];
 
 const results: Result[] = [];

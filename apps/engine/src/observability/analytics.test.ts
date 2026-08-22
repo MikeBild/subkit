@@ -68,6 +68,8 @@ async function ensureConfig(): Promise<void> {
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
+    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
+    hostname: "127.0.0.1",
     async fetch(req) {
       captured.push({
         url: req.url,
