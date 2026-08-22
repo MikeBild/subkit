@@ -12,10 +12,29 @@
 // (`list_users`, `list_api_keys`, `read_knowledge`) all had entries. It was
 // an omission, and nothing in the repo could tell an omission from a choice.
 //
-// Measured when that was found, against the ADMIN catalog (the widest, 116
-// tools): 82 had no `RBAC_OVERRIDES` entry. "Forgotten" was the default, not
-// the exception — so a single added entry would have been a fix for one tool
-// and no answer at all.
+// CATALOG DEFINITION — stated so the next measurement lands on the same
+// number, because the last one did not. A "tool" here is one descriptor
+// returned by `conversationToolProvider.list({ surface: "mcp", mcpMode })`,
+// and "ungated" is that descriptor having no `rbac` field. Nothing else is
+// counted: not the chat-only surface, not tools filtered out of the mode,
+// not the RBAC_OVERRIDES table itself. `ungatedIn()` below IS the predicate,
+// so the documented number and the enforced number cannot drift apart.
+//
+// Measured that way when this was found, against the ADMIN catalog (the
+// widest): 73 of 107 had no permission descriptor — 44 of 65 in product
+// mode. "Forgotten" was the default, not the exception, so a single added
+// entry would have been a fix for one tool and no answer at all.
+//
+// After the `descriptorFor` fallback to the tool's own `permission`
+// declaration: admin 73 -> 61, product 44 -> 41.
+//
+// CORRECTION (LOCAL-SK-DESKRIPTOR-ZAHL-ZU-HOCH). The commit that added this
+// file reported the before-state as "82 of 116" and "46 of 67", and the
+// paragraph above said 116/82 too. Those denominators match no catalog this
+// provider can produce; re-measured with the definition above, both the
+// before-state and the delta are as written here. The END state — 61 and 41
+// — was correct as published and is unchanged, and the direction the commit
+// argued from holds. Only the starting figure was too high.
 //
 // This test is the answer: every ungated tool is listed below WITH a reason,
 // and a tool that becomes reachable without a permission fails the suite until
@@ -155,6 +174,26 @@ describe("MCP RBAC descriptor coverage", () => {
       const extra = ungatedIn(mode).filter((n) => !admin.has(n));
       expect(extra, `${mode} mode exposes ungated tools admin does not`).toEqual([]);
     }
+  });
+
+  // LOCAL-SK-DESKRIPTOR-ZAHL-ZU-HOCH — the published count was prose, and
+  // prose drifts. This makes it arithmetic instead: the list above IS the
+  // inventory, so its size must equal what the provider actually reports as
+  // ungated, split into the two groups the header names (20 deliberate, 41
+  // known gap = 61). Adding a properly gated tool leaves all three numbers
+  // alone; adding an ungated one moves them together with the list, so the
+  // header can never again quote a figure the code does not produce.
+  test("the documented ungated count is the one the provider reports", () => {
+    const byDesign = Object.entries(UNGATED_BY_DESIGN)
+      .filter(([reason]) => !reason.startsWith("known gap"))
+      .flatMap(([, names]) => names);
+    const knownGap = UNGATED_BY_DESIGN["known gap — needs a permission"] ?? [];
+
+    expect(byDesign.length, "deliberate exemptions").toBe(20);
+    expect(knownGap.length, "known gaps still needing a permission").toBe(41);
+    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(61);
+    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(61);
+    expect(ungatedIn("product").length, "product catalog, ungated").toBe(41);
   });
 
   test("the audit trail is gated on MCP exactly as it is over HTTP", () => {
