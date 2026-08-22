@@ -464,3 +464,59 @@ describe("prompt-key net — promptKeys: false exempts prose, never credentials"
     expect(explicit.body).toBe("***REDACTED:prompt***");
   });
 });
+
+// The `body` half of the net collapses PROSE, not STRUCTURE.
+//
+// LOCAL-SK-BODY-NETZ-FRISST-STRUKTUR — adding `body` to the net cost a third
+// field after `body_step_id`: `request_body` in the sk debug trace and in the
+// structured log record holds an HTTP payload OBJECT, and the net deleted the
+// whole object. An operator opening `~/.sk/debug.log` to see what was sent got
+// `***REDACTED:prompt***` where the request had been — including the proof
+// that `api_key` inside it HAD been redacted.
+//
+// `body` is the one word in the net that is also a common structural name.
+// Prose is a string; a body that is an object is structure. The prose half
+// (`prompt` / `messages` / `instructions`) keeps collapsing both shapes,
+// because no structural field answers to those names.
+describe("prompt-key net — the body half collapses strings, not carriers", () => {
+  const PROSE = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
+
+  test("a string body still collapses, on every spelling", () => {
+    const out = scrubSecrets({
+      body: PROSE,
+      skill_body: PROSE,
+      request_body: PROSE,
+    }) as Record<string, unknown>;
+    expect(out.body).toBe("***REDACTED:prompt***");
+    expect(out.skill_body).toBe("***REDACTED:prompt***");
+    expect(out.request_body).toBe("***REDACTED:prompt***");
+  });
+
+  test("an object body keeps its shape and is scrubbed field by field", () => {
+    const out = scrubSecrets({
+      request_body: { api_key: "wf_live_secret", nested: { password: "secret123" } },
+    }) as { request_body: { api_key: unknown; nested: { password: unknown } } };
+    expect(out.request_body.api_key).toBe("***REDACTED:key_value***");
+    expect(out.request_body.nested.password).toBe("***REDACTED:key_value***");
+  });
+
+  test("prose nested inside an object body is still caught one level down", () => {
+    const out = scrubSecrets({
+      request_body: { model: "x", messages: [{ role: "system", content: PROSE }] },
+    }) as { request_body: Record<string, unknown> };
+    expect(out.request_body.model).toBe("x");
+    expect(out.request_body.messages).toBe("***REDACTED:prompt***");
+    expect(JSON.stringify(out)).not.toContain(PROSE);
+  });
+
+  test("the prose half still collapses carriers — only the body half narrowed", () => {
+    const out = scrubSecrets({
+      messages: [{ role: "system", content: PROSE }],
+      prompt: { text: PROSE },
+      instructions: [PROSE],
+    }) as Record<string, unknown>;
+    expect(out.messages).toBe("***REDACTED:prompt***");
+    expect(out.prompt).toBe("***REDACTED:prompt***");
+    expect(out.instructions).toBe("***REDACTED:prompt***");
+  });
+});
