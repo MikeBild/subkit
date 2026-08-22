@@ -1,4 +1,4 @@
-export type SecretKind = "pat" | "bearer" | "jwt" | "aws_key" | "key_value" | "generic";
+export type SecretKind = "pat" | "bearer" | "jwt" | "aws_key" | "key_value" | "generic" | "prompt";
 
 export interface SecretPattern {
   readonly kind: SecretKind;
@@ -48,6 +48,26 @@ const LOG_SCRUBBERS: ReadonlyArray<RegExp> = [
 
 export const SENSITIVE_KEY_PATTERN: RegExp =
   /token|secret|password|api[_-]?key|credential|authorization/i;
+
+// Prompt-shaped keys — redacted by `scrubSecrets` (the audit payload
+// scrubber) ONLY.
+//
+// A prompt is not credential-shaped, so not one of the patterns above
+// fires on it: it is prose, and the assembled prompt is exactly the
+// tenant's business content (the tenant snapshot block, system-prompt
+// additions, skill bodies, knowledge excerpts). `audit_log` is
+// append-only and rides the ndjson export, so a prompt that lands in
+// `metadata` is durable forever and leaves the deployment with every
+// compliance extract.
+//
+// DELIBERATELY NOT folded into `SENSITIVE_KEY_PATTERN`: that constant
+// is also the gate in `conversations/tools/update-connector-draft.ts`
+// (which REFUSES a draft carrying a matching key) and in
+// `conversations/tools/ask-user/secret-detection.ts`. Widening it would
+// make any connector field legitimately named `prompt` or `instructions`
+// un-authorable. The audit trail needs a broader net than the draft
+// gate, so the two nets stay separate.
+export const PROMPT_KEY_PATTERN: RegExp = /prompt|messages|instructions/i;
 
 export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
   { kind: "pat", regex: /\bdop_v1_[A-Za-z0-9]{32,}/g },
@@ -483,8 +503,21 @@ function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_PATTERN.test(key);
 }
 
+/** True for a key whose value carries prompt text. Numeric neighbours
+ *  (`prompt_tokens`, `message_count`) share the word but carry no prose,
+ *  so the caller gates on the VALUE type, not on the key alone. */
+function isPromptKey(key: string): boolean {
+  return PROMPT_KEY_PATTERN.test(key);
+}
+
 function isAlreadyRedacted(value: string): boolean {
   return /^\*\*\*redacted(?::[a-z_]+)?\*\*\*$/i.test(value);
+}
+
+/** An object or array — a shape that can carry prose beneath a
+ *  prompt-shaped key (`messages: [{ role, content }]`). */
+function isPlainCarrier(value: unknown): boolean {
+  return typeof value === "object" && value !== null;
 }
 
 function scrubSecretValue(input: unknown, depth: number, seen: WeakSet<object>): unknown {
@@ -505,6 +538,12 @@ function scrubSecretValue(input: unknown, depth: number, seen: WeakSet<object>):
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
     if (isSensitiveKey(key) && typeof value === "string") {
       out[key] = isAlreadyRedacted(value) ? value : REDACTED("key_value");
+    } else if (isPromptKey(key) && (typeof value === "string" || isPlainCarrier(value))) {
+      // A prompt reaches the audit trail as a string (`prompt`,
+      // `system_prompt`) or as a message array (`messages`), so both
+      // shapes collapse to the marker. A number or boolean under the
+      // same key is a counter, not prose — it falls through untouched.
+      out[key] = typeof value === "string" && isAlreadyRedacted(value) ? value : REDACTED("prompt");
     } else {
       out[key] = scrubSecretValue(value, depth + 1, seen);
     }
