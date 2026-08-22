@@ -32900,7 +32900,8 @@
           {
             "schema": {
               "type": "string",
-              "format": "date-time"
+              "minLength": 1,
+              "maxLength": 128
             },
             "required": false,
             "name": "before",

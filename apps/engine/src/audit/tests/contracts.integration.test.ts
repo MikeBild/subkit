@@ -469,7 +469,7 @@ describe("query filter coverage", () => {
     const second = await queryAuditLog(
       testDb.db,
       { tenant_id: tenantA },
-      { limit: 1, before: new Date(cursor) },
+      { limit: 1, before: cursor },
     );
     expect(second.items.length).toBe(1);
     if (first.items[0] && second.items[0]) {

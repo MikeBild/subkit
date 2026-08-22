@@ -10,11 +10,17 @@
 // for SOC2 evidence collection against the export endpoint.
 //
 // Cursor design: pages are ordered newest first. When the response
-// fills the requested page size, `next_cursor` echoes the `ts` of the
-// last returned row; the follow-up request passes `before=<cursor>`
-// to fetch the next page. Ties between rows with identical `ts`
-// values are broken by id in the underlying SELECT so the cursor
-// never skips a row.
+// fills the requested page size, `next_cursor` carries an OPAQUE keyset
+// cursor — the last row's timestamp AND its id — and the follow-up
+// request passes it back verbatim as `before=<cursor>`.
+//
+// This comment used to claim ties "are broken by id in the underlying
+// SELECT so the cursor never skips a row". The ORDER BY did break ties;
+// the CURSOR did not carry the id, so the next page asked for
+// `ts < <tie>` and skipped every remaining member of the group. The
+// prose was true about the sort and false about the walk, which is the
+// hardest kind of comment to catch. Measured before the fix: 6 rows of
+// 15 reached by a full walk. Do not reduce this cursor to a timestamp.
 
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { stream as honoStream } from "hono/streaming";
@@ -73,7 +79,12 @@ const FilterQuery = z
 
 const ListQuery = FilterQuery.extend({
   limit: z.coerce.number().int().positive().max(500).optional(),
-  before: z.string().datetime().optional(),
+  // OPAQUE cursor, echoed back from a previous `next_cursor`. Not a
+  // datetime: it carries the timestamp AND the tie-breaking id
+  // (`<ts>|<uuid>`). Declaring it `.datetime()` would reject every
+  // correct cursor, and a bare timestamp is exactly the shape that
+  // silently dropped rows.
+  before: z.string().min(1).max(128).optional(),
 }).openapi("AuditLogListQuery");
 
 // ---------- OpenAPI routes ----------
@@ -188,8 +199,12 @@ export function registerAuditLogRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     const filters = filtersFromQuery(principal.tenant_id, q);
     const limit = q.limit ?? 50;
-    const opts: { limit: number; before?: Date } = { limit };
-    if (q.before) opts.before = new Date(q.before);
+    // `before` is passed through VERBATIM. It used to be parsed into a
+    // `Date` here, which threw away the microseconds Postgres stores and
+    // the id that breaks a timestamp tie — between them, 9 rows in 15
+    // vanished from a full walk. The cursor is opaque to this layer now.
+    const opts: { limit: number; before?: string } = { limit };
+    if (q.before) opts.before = q.before;
     const { items, next_cursor } = await queryAuditLog(db, filters, opts);
     return c.json(
       {
